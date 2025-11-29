@@ -1,0 +1,85 @@
+WSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: Xero OAuth Lambda Function - Local Testing
+
+Globals:
+  Function:
+    Timeout: 60
+    MemorySize: 512
+    Runtime: nodejs18.x
+    Environment:
+      Variables:
+        RDS_HOST: buinsess-coaching-financial.ch6q24kwynr1.ap-southeast-2.rds.amazonaws.com
+        RDS_PORT: 5432
+        RDS_DATABASE: financial_db
+        RDS_USERNAME: postgres
+
+Resources:
+  XeroOAuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: xero-oauth-handler
+      CodeUri: lambda/xero-oauth-handler/
+      Handler: index.handler
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource:
+                - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:xero/*'
+                - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds/*'
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: 'arn:aws:logs:*:*:*'
+      Events:
+        InitiateAuth:
+          Type: Api
+          Properties:
+            Path: /xero/auth/initiate
+            Method: post
+        OAuthCallback:
+          Type: Api
+          Properties:
+            Path: /xero/auth/callback
+            Method: get 
+
+
+Description: Xero OAuth Lambda Function - Local Testing
+
+Globals:
+  Function:
+    Timeout: 60
+    MemorySize: 512
+    Runtime: nodejs18.x
+    Environment:
+      Variables:
+        RDS_HOST: buinsess-coaching-financial.ch6q24kwynr1.ap-southeast-2.rds.amazonaws.com
+        RDS_PORT: 5432
+        RDS_DATABASE: financial_db
+        RDS_USERNAME: postgres
+       
+
+Resources:
+  XeroOAuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: xero-oauth-handler
+      CodeUri: lambda/xero-oauth-handler/
+      Handler: index.handler
+      Events:
+        InitiateAuth:
+          Type: Api
+          Properties:
+            Path: /xero/auth/initiate
+            Method: post
+        OAuthCallback:
+          Type: Api
+          Properties:
+            Path: /xero/auth/callback
+            Method: get

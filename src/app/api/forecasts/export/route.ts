@@ -1,0 +1,118 @@
+import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
+import { ExcelExportService } from '@/app/finances/forecast/services/excel-export-service'
+import { PDFExportService } from '@/app/finances/forecast/services/pdf-export-service'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+/**
+ * GET /api/forecasts/export?forecast_id=xxx&user_id=xxx&format=pdf|excel
+ * Export forecast to PDF or Excel
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const forecastId = searchParams.get('forecast_id')
+    const userId = searchParams.get('user_id')
+    const format = searchParams.get('format') || 'pdf'
+
+    if (!forecastId || !userId) {
+      return NextResponse.json({ error: 'forecast_id and user_id are required' }, { status: 400 })
+    }
+
+    if (!['pdf', 'excel'].includes(format)) {
+      return NextResponse.json({ error: 'format must be "pdf" or "excel"' }, { status: 400 })
+    }
+
+    // Fetch forecast
+    const { data: forecast, error: forecastError } = await supabase
+      .from('financial_forecasts')
+      .select('*')
+      .eq('id', forecastId)
+      .eq('user_id', userId)
+      .single()
+
+    if (forecastError || !forecast) {
+      return NextResponse.json({ error: 'Forecast not found' }, { status: 404 })
+    }
+
+    // Fetch P&L lines
+    const { data: plLines, error: plError } = await supabase
+      .from('forecast_pl_lines')
+      .select('*')
+      .eq('forecast_id', forecastId)
+      .order('category')
+      .order('display_order')
+
+    if (plError) {
+      console.error('Error fetching P&L lines:', plError)
+      return NextResponse.json({ error: 'Failed to fetch forecast data' }, { status: 500 })
+    }
+
+    // Fetch payroll employees (optional)
+    const { data: payrollEmployees } = await supabase
+      .from('forecast_payroll_employees')
+      .select('*')
+      .eq('forecast_id', forecastId)
+      .order('employee_name')
+
+    // Fetch active scenario (optional)
+    const { data: scenarios } = await supabase
+      .from('forecast_scenarios')
+      .select('*')
+      .eq('forecast_id', forecastId)
+      .eq('is_active', true)
+      .single()
+
+    const exportData = {
+      forecast,
+      plLines: plLines || [],
+      payrollEmployees: payrollEmployees || [],
+      activeScenario: scenarios || undefined
+    }
+
+    if (format === 'excel') {
+      // Generate Excel
+      const excelService = new ExcelExportService(exportData)
+      const buffer = await excelService.generate()
+
+      const filename = `forecast_${forecast.fiscal_year}_${new Date().getTime()}.xlsx`
+
+      // Convert Buffer to Uint8Array for NextResponse
+      const uint8Array = new Uint8Array(buffer)
+
+      return new NextResponse(uint8Array, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="${filename}"`
+        }
+      })
+    } else {
+      // Generate PDF
+      const pdfService = new PDFExportService(exportData)
+      const doc = pdfService.generate()
+      const pdfBuffer = doc.output('arraybuffer')
+
+      const filename = `forecast_${forecast.fiscal_year}_${new Date().getTime()}.pdf`
+
+      return new NextResponse(pdfBuffer, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${filename}"`
+        }
+      })
+    }
+
+  } catch (error) {
+    console.error('Error in GET /api/forecasts/export:', error)
+    return NextResponse.json({
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
+  }
+}

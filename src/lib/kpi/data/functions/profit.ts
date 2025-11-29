@@ -1,0 +1,880 @@
+// src/lib/kpi/data/functions/profit.ts
+
+/**
+ * PROFIT Function - Financial Performance & Health KPIs
+ * Focus: Revenue, profitability, cash flow, and financial sustainability
+ * Total: 28 KPIs (was 30, removed 2 duplicates from essential.ts)
+ * All IDs prefixed with 'profit-' to prevent conflicts
+ * 
+ * ✅ FIXED: Removed profit-gross-profit-margin and profit-net-profit-margin (duplicates in essential.ts)
+ * GOLD STANDARD - Use this as template for all other function files
+ */
+
+import { KPIDefinition } from '../../types'
+import {
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  PiggyBank,
+  Wallet,
+  CreditCard,
+  Receipt,
+  Calculator,
+  BarChart3,
+  LineChart,
+  Activity,
+  Percent,
+  ArrowUpRight,
+  ArrowDownRight,
+  Clock,
+  Calendar,
+  Target,
+  Award,
+  AlertCircle,
+  CheckCircle,
+  Users,
+  Repeat,
+  Zap
+} from 'lucide-react'
+
+export const profitKPIs: KPIDefinition[] = [
+  // ==================== REVENUE METRICS ====================
+  {
+    id: 'profit-monthly-recurring-revenue',
+    name: 'Monthly Recurring Revenue (MRR)',
+    plainName: 'Predictable Revenue Each Month',
+    function: 'PROFIT',
+    category: 'Revenue Growth',
+    tier: 'essential',
+    industries: [
+      'professional-services',
+      'health-wellness',
+      'all'
+    ],
+    stages: [
+      'traction',
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'currency',
+    frequency: 'monthly',
+    description: 'Predictable revenue from recurring subscriptions or contracts normalized to a monthly amount',
+    whyItMatters: 'MRR provides predictable cash flow and makes business valuation easier - investors value recurring revenue 3-5x higher than one-time sales',
+    actionToTake: 'Track new MRR, expansion MRR, and churned MRR separately. Focus on growing net new MRR by 10-20% monthly',
+    formula: 'Sum of all monthly recurring contracts and subscriptions',
+    benchmarks: {
+      poor: 10000,
+      average: 50000,
+      good: 150000,
+      excellent: 500000
+    },
+    icon: TrendingUp,
+    tags: ['mrr', 'recurring-revenue', 'predictable-revenue', 'saas'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-annual-recurring-revenue',
+    name: 'Annual Recurring Revenue (ARR)',
+    plainName: 'Predictable Revenue Per Year',
+    function: 'PROFIT',
+    category: 'Revenue Growth',
+    tier: 'recommended',
+    industries: [
+      'professional-services',
+      'health-wellness',
+      'all'
+    ],
+    stages: [
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'currency',
+    frequency: 'monthly',
+    description: 'Total value of recurring revenue normalized to one year',
+    whyItMatters: 'ARR is the key metric for business valuation and growth tracking - makes it easy to compare growth rates year-over-year',
+    actionToTake: 'Track ARR growth rate monthly and aim for 100%+ year-over-year growth in early stages',
+    formula: 'MRR × 12',
+    benchmarks: {
+      poor: 120000,
+      average: 600000,
+      good: 1800000,
+      excellent: 6000000
+    },
+    icon: Calendar,
+    tags: ['arr', 'recurring-revenue', 'annual-revenue', 'growth'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-revenue-per-employee',
+    name: 'Revenue Per Employee',
+    plainName: 'How Much Revenue Each Team Member Generates',
+    function: 'PROFIT',
+    category: 'Productivity',
+    tier: 'recommended',
+    industries: ['all'],
+    stages: [
+      'traction',
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'currency',
+    frequency: 'quarterly',
+    description: 'Total annual revenue divided by number of full-time employees',
+    whyItMatters: 'Indicates team efficiency and scalability - high revenue per employee means you have leverage and can scale profitably',
+    actionToTake: 'Service businesses should target $150K-250K. If below $100K, review processes for automation opportunities or pricing',
+    formula: 'Annual Revenue / Number of Full-Time Employees',
+    benchmarks: {
+      poor: 75000,
+      average: 150000,
+      good: 250000,
+      excellent: 400000
+    },
+    icon: Users,
+    tags: ['productivity', 'efficiency', 'per-employee', 'leverage'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-revenue-concentration',
+    name: 'Revenue Concentration',
+    plainName: 'Percentage of Revenue from Top 5 Clients',
+    function: 'PROFIT',
+    category: 'Revenue Risk',
+    tier: 'advanced',
+    industries: ['all'],
+    stages: [
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'percentage',
+    frequency: 'quarterly',
+    description: 'Percentage of total revenue that comes from your five largest clients',
+    whyItMatters: 'High concentration means customer risk - losing one client could devastate your business',
+    actionToTake: 'If over 50%, actively diversify your customer base. No single client should represent more than 20% of revenue',
+    formula: '(Revenue from Top 5 Clients / Total Revenue) × 100',
+    benchmarks: {
+      poor: 70,
+      average: 50,
+      good: 30,
+      excellent: 20
+    },
+    icon: AlertCircle,
+    tags: ['risk', 'concentration', 'diversification', 'client-risk'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  // ==================== PROFIT MARGIN METRICS ====================
+  // NOTE: profit-gross-profit-margin and profit-net-profit-margin removed - they're in essential.ts
+
+  {
+    id: 'profit-operating-profit-margin',
+    name: 'Operating Profit Margin',
+    plainName: 'Profit from Core Operations',
+    function: 'PROFIT',
+    category: 'Profitability',
+    tier: 'recommended',
+    industries: ['all'],
+    stages: [
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'percentage',
+    frequency: 'monthly',
+    description: 'Profit from core business operations before interest and taxes',
+    whyItMatters: 'Shows how efficiently you run your core business without financial or tax considerations',
+    actionToTake: 'Target 15-25% for mature businesses. Track monthly to identify operational inefficiencies',
+    formula: '(Operating Income / Revenue) × 100',
+    benchmarks: {
+      poor: 5,
+      average: 12,
+      good: 20,
+      excellent: 30
+    },
+    icon: Calculator,
+    tags: ['margin', 'operating-profit', 'ebit', 'operational-efficiency'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-ebitda-margin',
+    name: 'EBITDA Margin',
+    plainName: 'Cash Profit Margin',
+    function: 'PROFIT',
+    category: 'Profitability',
+    tier: 'advanced',
+    industries: ['all'],
+    stages: [
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'percentage',
+    frequency: 'quarterly',
+    description: 'Earnings before interest, taxes, depreciation, and amortization as a percentage of revenue',
+    whyItMatters: 'Shows pure operational profitability - this is what investors and buyers look at for valuation',
+    actionToTake: 'Target 20-30% for acquisition-ready businesses. This is often used to value companies (Revenue × EBITDA multiple)',
+    formula: '(EBITDA / Revenue) × 100',
+    benchmarks: {
+      poor: 10,
+      average: 18,
+      good: 25,
+      excellent: 35
+    },
+    icon: Award,
+    tags: ['ebitda', 'cash-profit', 'valuation', 'operational-profit'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  // ==================== CASH FLOW METRICS ====================
+  {
+    id: 'profit-operating-cash-flow',
+    name: 'Operating Cash Flow',
+    plainName: 'Cash Generated from Operations',
+    function: 'PROFIT',
+    category: 'Cash Flow',
+    tier: 'essential',
+    industries: ['all'],
+    stages: [
+      'foundation',
+      'traction',
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'currency',
+    frequency: 'monthly',
+    description: 'Cash generated from normal business operations',
+    whyItMatters: 'Positive cash flow is survival - you can be profitable on paper but fail without cash',
+    actionToTake: 'Must be consistently positive. If negative, accelerate collections, delay payments, or reduce expenses immediately',
+    formula: 'Net Income + Non-Cash Expenses - Increase in Working Capital',
+    benchmarks: {
+      poor: -10000,
+      average: 20000,
+      good: 75000,
+      excellent: 200000
+    },
+    icon: TrendingUp,
+    tags: ['cash-flow', 'operations', 'liquidity', 'working-capital'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-cash-conversion-cycle',
+    name: 'Cash Conversion Cycle',
+    plainName: 'Days to Convert Inventory/Services to Cash',
+    function: 'PROFIT',
+    category: 'Cash Flow',
+    tier: 'recommended',
+    industries: [
+      'retail-ecommerce',
+      'construction-trades',
+      'operations-logistics',
+      'all'
+    ],
+    stages: [
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'days',
+    frequency: 'monthly',
+    description: 'Number of days between paying suppliers and collecting from customers',
+    whyItMatters: 'Lower is better - shows how efficiently you convert operations into cash',
+    actionToTake: 'Target under 30 days. Reduce by negotiating better payment terms with suppliers and collecting faster from customers',
+    formula: 'Days Inventory Outstanding + Days Sales Outstanding - Days Payable Outstanding',
+    benchmarks: {
+      poor: 90,
+      average: 60,
+      good: 30,
+      excellent: 15
+    },
+    icon: Clock,
+    tags: ['cash-conversion', 'working-capital', 'efficiency', 'cycle-time'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-free-cash-flow',
+    name: 'Free Cash Flow',
+    plainName: 'Cash Available After Investing in Business',
+    function: 'PROFIT',
+    category: 'Cash Flow',
+    tier: 'recommended',
+    industries: ['all'],
+    stages: [
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'currency',
+    frequency: 'quarterly',
+    description: 'Cash left over after paying for operations and necessary capital expenditures',
+    whyItMatters: 'This is truly discretionary cash - you can pay yourself, invest in growth, or save for emergencies',
+    actionToTake: 'Aim for positive free cash flow. If negative, reduce capital spending or increase operational cash flow',
+    formula: 'Operating Cash Flow - Capital Expenditures',
+    benchmarks: {
+      poor: -5000,
+      average: 15000,
+      good: 50000,
+      excellent: 150000
+    },
+    icon: PiggyBank,
+    tags: ['free-cash-flow', 'discretionary-cash', 'fcf', 'liquidity'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-cash-runway',
+    name: 'Cash Runway',
+    plainName: 'Months Until You Run Out of Cash',
+    function: 'PROFIT',
+    category: 'Cash Flow',
+    tier: 'essential',
+    industries: ['all'],
+    stages: [
+      'foundation',
+      'traction',
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'months',
+    frequency: 'monthly',
+    description: 'Number of months your business can operate with current cash at current burn rate',
+    whyItMatters: 'Critical survival metric - if under 6 months, you need to act immediately to increase revenue or reduce costs',
+    actionToTake: 'Maintain at least 6 months runway. If below 3 months, this is an emergency - cut costs and accelerate collections',
+    formula: 'Cash Balance / Monthly Burn Rate',
+    benchmarks: {
+      poor: 3,
+      average: 6,
+      good: 12,
+      excellent: 18
+    },
+    icon: AlertCircle,
+    tags: ['runway', 'burn-rate', 'survival', 'cash-reserves'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  // ==================== WORKING CAPITAL METRICS ====================
+  {
+    id: 'profit-working-capital',
+    name: 'Working Capital',
+    plainName: 'Money Available for Daily Operations',
+    function: 'PROFIT',
+    category: 'Liquidity',
+    tier: 'recommended',
+    industries: ['all'],
+    stages: [
+      'foundation',
+      'traction',
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'currency',
+    frequency: 'monthly',
+    description: 'Current assets minus current liabilities - cash available for operations',
+    whyItMatters: 'Measures short-term financial health - negative working capital means you may struggle to pay bills',
+    actionToTake: 'Should be positive and growing. If negative, you need to collect faster, pay slower, or raise capital',
+    formula: 'Current Assets - Current Liabilities',
+    benchmarks: {
+      poor: -10000,
+      average: 25000,
+      good: 100000,
+      excellent: 250000
+    },
+    icon: Wallet,
+    tags: ['working-capital', 'liquidity', 'current-assets', 'operations'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-current-ratio',
+    name: 'Current Ratio',
+    plainName: 'Ability to Pay Short-Term Obligations',
+    function: 'PROFIT',
+    category: 'Liquidity',
+    tier: 'recommended',
+    industries: ['all'],
+    stages: [
+      'traction',
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'ratio',
+    frequency: 'monthly',
+    description: 'Ratio of current assets to current liabilities',
+    whyItMatters: 'Shows ability to pay bills over the next 12 months - banks look at this when considering loans',
+    actionToTake: 'Target 1.5-2.0. Below 1.0 means insolvency risk. Above 3.0 might mean inefficient use of assets',
+    formula: 'Current Assets / Current Liabilities',
+    benchmarks: {
+      poor: 0.8,
+      average: 1.2,
+      good: 1.8,
+      excellent: 2.5
+    },
+    icon: Calculator,
+    tags: ['current-ratio', 'liquidity', 'solvency', 'financial-health'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-quick-ratio',
+    name: 'Quick Ratio (Acid Test)',
+    plainName: 'Ability to Pay Bills Immediately',
+    function: 'PROFIT',
+    category: 'Liquidity',
+    tier: 'advanced',
+    industries: ['all'],
+    stages: [
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'ratio',
+    frequency: 'monthly',
+    description: 'Ratio of liquid assets to current liabilities (excludes inventory)',
+    whyItMatters: 'More conservative than current ratio - shows ability to pay debts without selling inventory',
+    actionToTake: 'Target 1.0 or higher. Below 0.5 indicates potential liquidity crisis',
+    formula: '(Current Assets - Inventory) / Current Liabilities',
+    benchmarks: {
+      poor: 0.5,
+      average: 0.8,
+      good: 1.2,
+      excellent: 1.5
+    },
+    icon: Zap,
+    tags: ['quick-ratio', 'acid-test', 'liquidity', 'immediate-solvency'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  // ==================== ACCOUNTS RECEIVABLE ====================
+  {
+    id: 'profit-days-sales-outstanding',
+    name: 'Days Sales Outstanding (DSO)',
+    plainName: 'Average Days to Collect Payment',
+    function: 'PROFIT',
+    category: 'Receivables',
+    tier: 'essential',
+    industries: ['all'],
+    stages: [
+      'foundation',
+      'traction',
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'days',
+    frequency: 'monthly',
+    description: 'Average number of days it takes to collect payment after a sale',
+    whyItMatters: 'Cash stuck in receivables can\'t be used to run your business - lower DSO means healthier cash flow',
+    actionToTake: 'Target 30 days or less. If over 45 days, improve invoicing processes and follow up aggressively on overdue accounts',
+    formula: '(Accounts Receivable / Total Credit Sales) × Number of Days in Period',
+    benchmarks: {
+      poor: 60,
+      average: 45,
+      good: 30,
+      excellent: 15
+    },
+    icon: Clock,
+    tags: ['dso', 'receivables', 'collections', 'cash-flow'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-accounts-receivable-turnover',
+    name: 'Accounts Receivable Turnover',
+    plainName: 'How Often You Collect All Receivables',
+    function: 'PROFIT',
+    category: 'Receivables',
+    tier: 'recommended',
+    industries: ['all'],
+    stages: [
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'number',
+    frequency: 'quarterly',
+    description: 'Number of times per year you collect your average accounts receivable balance',
+    whyItMatters: 'Higher is better - shows efficient collection processes and good credit management',
+    actionToTake: 'Target 10+ times per year. If below 6, tighten credit terms and improve collection processes',
+    formula: 'Annual Revenue / Average Accounts Receivable',
+    benchmarks: {
+      poor: 4,
+      average: 8,
+      good: 12,
+      excellent: 16
+    },
+    icon: Repeat,
+    tags: ['ar-turnover', 'collections', 'efficiency', 'receivables'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-bad-debt-ratio',
+    name: 'Bad Debt Ratio',
+    plainName: 'Percentage of Revenue Lost to Non-Payment',
+    function: 'PROFIT',
+    category: 'Receivables',
+    tier: 'recommended',
+    industries: ['all'],
+    stages: [
+      'traction',
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'percentage',
+    frequency: 'quarterly',
+    description: 'Percentage of sales that are never collected',
+    whyItMatters: 'Directly impacts profitability - bad debt is revenue you worked for but will never receive',
+    actionToTake: 'Target under 2%. If higher, improve credit checks, require deposits, or implement stricter payment terms',
+    formula: '(Bad Debt Write-offs / Total Sales) × 100',
+    benchmarks: {
+      poor: 5,
+      average: 3,
+      good: 1.5,
+      excellent: 0.5
+    },
+    icon: AlertCircle,
+    tags: ['bad-debt', 'write-offs', 'credit-risk', 'collections'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  // ==================== ACCOUNTS PAYABLE ====================
+  {
+    id: 'profit-days-payable-outstanding',
+    name: 'Days Payable Outstanding (DPO)',
+    plainName: 'Average Days to Pay Suppliers',
+    function: 'PROFIT',
+    category: 'Payables',
+    tier: 'recommended',
+    industries: ['all'],
+    stages: [
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'days',
+    frequency: 'monthly',
+    description: 'Average number of days it takes you to pay supplier invoices',
+    whyItMatters: 'Longer DPO (within terms) helps cash flow - you hold onto cash longer while maintaining good supplier relationships',
+    actionToTake: 'Negotiate 30-60 day terms, but always pay within agreed terms to maintain good relationships and credit',
+    formula: '(Accounts Payable / Cost of Goods Sold) × Number of Days in Period',
+    benchmarks: {
+      poor: 15,
+      average: 30,
+      good: 45,
+      excellent: 60
+    },
+    icon: Calendar,
+    tags: ['dpo', 'payables', 'payment-terms', 'cash-flow'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  // ==================== ROI & EFFICIENCY ====================
+  {
+    id: 'profit-return-on-assets',
+    name: 'Return on Assets (ROA)',
+    plainName: 'Profit Generated Per Dollar of Assets',
+    function: 'PROFIT',
+    category: 'Returns',
+    tier: 'advanced',
+    industries: ['all'],
+    stages: [
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'percentage',
+    frequency: 'quarterly',
+    description: 'How efficiently you use assets to generate profit',
+    whyItMatters: 'Shows asset efficiency - service businesses should have high ROA, capital-intensive businesses lower',
+    actionToTake: 'Target 15%+ for service businesses. If low, consider whether you need all your assets or if pricing is sufficient',
+    formula: '(Net Income / Total Assets) × 100',
+    benchmarks: {
+      poor: 5,
+      average: 10,
+      good: 15,
+      excellent: 25
+    },
+    icon: BarChart3,
+    tags: ['roa', 'returns', 'asset-efficiency', 'profitability'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-return-on-equity',
+    name: 'Return on Equity (ROE)',
+    plainName: 'Return on Owner Investment',
+    function: 'PROFIT',
+    category: 'Returns',
+    tier: 'advanced',
+    industries: ['all'],
+    stages: [
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'percentage',
+    frequency: 'quarterly',
+    description: 'How much profit you generate for each dollar of owner equity',
+    whyItMatters: 'Shows return on your personal investment - should exceed what you could earn investing elsewhere',
+    actionToTake: 'Target 20%+ to justify the risk. If below 10%, consider whether the business is worth the investment and risk',
+    formula: '(Net Income / Shareholder Equity) × 100',
+    benchmarks: {
+      poor: 5,
+      average: 12,
+      good: 20,
+      excellent: 30
+    },
+    icon: Award,
+    tags: ['roe', 'returns', 'equity', 'owner-return'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-return-on-investment',
+    name: 'Return on Investment (ROI)',
+    plainName: 'Profit Generated Per Dollar Invested',
+    function: 'PROFIT',
+    category: 'Returns',
+    tier: 'recommended',
+    industries: ['all'],
+    stages: [
+      'foundation',
+      'traction',
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'percentage',
+    frequency: 'quarterly',
+    description: 'Percentage return on specific investments or the overall business',
+    whyItMatters: 'Helps evaluate investment decisions - should you buy that equipment, hire that person, or invest in marketing?',
+    actionToTake: 'Calculate ROI before major investments. Target 25%+ for marketing, 50%+ for equipment',
+    formula: '((Gain from Investment - Cost of Investment) / Cost of Investment) × 100',
+    benchmarks: {
+      poor: 10,
+      average: 25,
+      good: 50,
+      excellent: 100
+    },
+    icon: Target,
+    tags: ['roi', 'return', 'investment', 'efficiency'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  // ==================== DEBT & LEVERAGE ====================
+  {
+    id: 'profit-debt-to-equity-ratio',
+    name: 'Debt-to-Equity Ratio',
+    plainName: 'How Much Debt vs Owner Investment',
+    function: 'PROFIT',
+    category: 'Financial Health',
+    tier: 'advanced',
+    industries: ['all'],
+    stages: [
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'ratio',
+    frequency: 'quarterly',
+    description: 'Total debt divided by total equity',
+    whyItMatters: 'Measures financial leverage and risk - high debt means vulnerability to cash flow problems',
+    actionToTake: 'Target under 1.5 for most businesses. Above 3.0 indicates high risk and may limit borrowing capacity',
+    formula: 'Total Debt / Total Equity',
+    benchmarks: {
+      poor: 3.0,
+      average: 1.5,
+      good: 1.0,
+      excellent: 0.5
+    },
+    icon: AlertCircle,
+    tags: ['debt', 'equity', 'leverage', 'financial-risk'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-interest-coverage-ratio',
+    name: 'Interest Coverage Ratio',
+    plainName: 'Ability to Pay Interest on Debt',
+    function: 'PROFIT',
+    category: 'Financial Health',
+    tier: 'advanced',
+    industries: ['all'],
+    stages: [
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'ratio',
+    frequency: 'quarterly',
+    description: 'How many times your profit covers interest payments',
+    whyItMatters: 'Shows debt servicing ability - banks look at this when considering loans',
+    actionToTake: 'Target 3.0 or higher. Below 2.0 means you may struggle with debt payments if revenue drops',
+    formula: 'EBIT / Interest Expense',
+    benchmarks: {
+      poor: 1.5,
+      average: 3.0,
+      good: 5.0,
+      excellent: 8.0
+    },
+    icon: CheckCircle,
+    tags: ['interest-coverage', 'debt-service', 'financial-health', 'solvency'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  // ==================== BUDGET & VARIANCE ====================
+  {
+    id: 'profit-budget-variance',
+    name: 'Budget Variance',
+    plainName: 'Difference Between Actual and Budgeted Results',
+    function: 'PROFIT',
+    category: 'Financial Planning',
+    tier: 'recommended',
+    industries: ['all'],
+    stages: [
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'percentage',
+    frequency: 'monthly',
+    description: 'Percentage difference between actual financial results and budget',
+    whyItMatters: 'Shows forecasting accuracy and helps identify areas of concern or opportunity',
+    actionToTake: 'Investigate any variance over 10%. Adjust budgets quarterly based on actuals and new information',
+    formula: '((Actual - Budget) / Budget) × 100',
+    benchmarks: {
+      poor: 25,
+      average: 15,
+      good: 8,
+      excellent: 5
+    },
+    icon: BarChart3,
+    tags: ['budget', 'variance', 'forecasting', 'planning'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-burn-rate',
+    name: 'Burn Rate',
+    plainName: 'Cash Spent Per Month',
+    function: 'PROFIT',
+    category: 'Cash Flow',
+    tier: 'essential',
+    industries: ['all'],
+    stages: [
+      'foundation',
+      'traction',
+      'growth',
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'currency',
+    frequency: 'monthly',
+    description: 'Net cash consumed per month (negative cash flow)',
+    whyItMatters: 'Critical for pre-profitable businesses - determines how long you can operate before running out of cash',
+    actionToTake: 'If burning cash, track weekly. Reduce burn by cutting non-essential costs or accelerate revenue generation',
+    formula: 'Cash at Start of Month - Cash at End of Month',
+    benchmarks: {
+      poor: 50000,
+      average: 25000,
+      good: 10000,
+      excellent: 0
+    },
+    icon: TrendingDown,
+    tags: ['burn-rate', 'cash-burn', 'runway', 'survival'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+
+  {
+    id: 'profit-rule-of-40',
+    name: 'Rule of 40',
+    plainName: 'Growth Rate + Profit Margin',
+    function: 'PROFIT',
+    category: 'Growth Efficiency',
+    tier: 'advanced',
+    industries: [
+      'professional-services',
+      'health-wellness',
+      'all'
+    ],
+    stages: [
+      'scale',
+      'optimization',
+      'leadership'
+    ],
+    unit: 'percentage',
+    frequency: 'quarterly',
+    description: 'Sum of revenue growth rate and profit margin',
+    whyItMatters: 'Key metric for SaaS and high-growth businesses - balances growth and profitability. Score over 40% indicates healthy growth',
+    actionToTake: 'Target 40%+. If below 40%, either accelerate growth or improve margins. If above 60%, you\'re in elite territory',
+    formula: 'Revenue Growth Rate (%) + Profit Margin (%)',
+    benchmarks: {
+      poor: 20,
+      average: 30,
+      good: 40,
+      excellent: 60
+    },
+    icon: Award,
+    tags: ['rule-of-40', 'growth', 'profitability', 'efficiency'],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+]
