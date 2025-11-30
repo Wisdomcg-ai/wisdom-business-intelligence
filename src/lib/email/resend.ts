@@ -1,7 +1,14 @@
 import { Resend } from 'resend';
 
-// Initialize Resend client
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy-initialize Resend client (only at runtime, not build time)
+let resendClient: Resend | null = null;
+
+function getResendClient(): Resend {
+  if (!resendClient) {
+    resendClient = new Resend(process.env.RESEND_API_KEY);
+  }
+  return resendClient;
+}
 
 // Default from address - update this to your verified domain
 const DEFAULT_FROM = 'Wisdom BI <noreply@mail.wisdombi.ai>';
@@ -25,6 +32,7 @@ export interface EmailResult {
  */
 export async function sendEmail(options: SendEmailOptions): Promise<EmailResult> {
   try {
+    const resend = getResendClient();
     const { data, error } = await resend.emails.send({
       from: options.from || DEFAULT_FROM,
       to: options.to,
@@ -308,4 +316,4 @@ export async function sendMessageNotification(params: {
   });
 }
 
-export { resend };
+export { getResendClient };
