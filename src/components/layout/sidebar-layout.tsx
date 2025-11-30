@@ -202,13 +202,6 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [expandedSections, setExpandedSections] = useState<string[]>([
     'DASHBOARD',
-    'START HERE',
-    'ROADMAP',
-    'BUSINESS PLAN',
-    'FINANCES',
-    'EXECUTE',
-    'PRODUCTIVITY',
-    'COACHING',
   ])
   const [expandedSubItems, setExpandedSubItems] = useState<string[]>([])
   const [navigation, setNavigation] = useState<NavSection[]>([])
@@ -289,7 +282,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) =>
-      prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section]
+      prev.includes(section) ? [] : [section]
     )
   }
 

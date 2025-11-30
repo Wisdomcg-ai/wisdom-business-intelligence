@@ -188,7 +188,7 @@ export function SessionActionsCard({ userId }: SessionActionsCardProps) {
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">
-              Your Commitments
+              Actions from Coaching Session
             </h3>
             <p className="text-sm text-gray-500">
               {overdueCount > 0

@@ -168,14 +168,14 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <div className="max-w-[1600px] mx-auto p-6 space-y-6">
         {/* Smart Insight Header */}
         <InsightHeader
           insight={data.insight}
           onRefresh={refresh}
         />
 
-        {/* Session Actions - Your Commitments */}
+        {/* Actions from Coaching Session */}
         <SessionActionsCard userId={userId} />
 
         {/* Top Row: Annual Goals, 90-Day Goals, Quarterly Rocks */}
