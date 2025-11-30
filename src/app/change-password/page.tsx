@@ -68,11 +68,12 @@ export default function ChangePasswordPage() {
     setLoading(true)
 
     try {
-      // Update password
+      // Update password and set next onboarding step
       const { error: updateError } = await supabase.auth.updateUser({
         password: password,
         data: {
-          must_change_password: false
+          must_change_password: false,
+          onboarding_step: 'business-profile'
         }
       })
 
@@ -80,8 +81,8 @@ export default function ChangePasswordPage() {
         throw updateError
       }
 
-      // Redirect to dashboard
-      router.push('/dashboard')
+      // Redirect to business profile (next step in onboarding)
+      router.push('/business-profile')
     } catch (err) {
       console.error('Password change error:', err)
       setError(err instanceof Error ? err.message : 'Failed to change password')

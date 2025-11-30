@@ -70,8 +70,8 @@ export async function sendClientInvitation(params: {
 }): Promise<EmailResult> {
   const { to, clientName, coachName, businessName, loginUrl, tempPassword } = params;
 
-  // Fix URL to use /auth/login
-  const authLoginUrl = loginUrl.replace('/login', '/auth/login');
+  // loginUrl is now a magic link that goes directly to /auth/verify
+  const authLoginUrl = loginUrl;
 
   const html = `
     <!DOCTYPE html>
@@ -124,7 +124,7 @@ export async function sendClientInvitation(params: {
               <tr>
                 <td style="background-color: #0d9488; border-radius: 10px; padding: 16px 48px;">
                   <a href="${authLoginUrl}" style="color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; display: inline-block;">
-                    Log In to Your Dashboard
+                    Get Started
                   </a>
                 </td>
               </tr>
@@ -133,7 +133,7 @@ export async function sendClientInvitation(params: {
 
           <!-- Security Note -->
           <p style="text-align: center; color: #64748b; font-size: 13px; margin: 0 0 24px 0;">
-            You'll be prompted to set your own password on first login.
+            Click the button above to set up your account. This link expires in 7 days.
           </p>
 
           <!-- What's Next -->

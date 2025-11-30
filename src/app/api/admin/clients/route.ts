@@ -14,6 +14,18 @@ function generateSecurePassword(length = 16): string {
   return password
 }
 
+// Generate a secure magic link token
+function generateMagicToken(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz0123456789'
+  let token = ''
+  const array = new Uint32Array(32)
+  crypto.getRandomValues(array)
+  for (let i = 0; i < 32; i++) {
+    token += chars[array[i] % chars.length]
+  }
+  return token
+}
+
 export async function POST(request: Request) {
   const supabase = await createRouteHandlerClient()
 
@@ -109,8 +121,10 @@ export async function POST(request: Request) {
       }
     }
 
-    // Generate secure password
+    // Generate secure password and magic token
     const generatedPassword = generateSecurePassword()
+    const magicToken = generateMagicToken()
+    const tokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
 
     // STEP 1: Create user in Supabase Auth using Admin API
     // Create auth user
@@ -130,7 +144,10 @@ export async function POST(request: Request) {
           user_metadata: {
             first_name: firstName,
             last_name: lastName,
-            must_change_password: true
+            must_change_password: true,
+            magic_token: magicToken,
+            magic_token_expiry: tokenExpiry,
+            onboarding_step: 'password' // Track onboarding progress
           }
         })
       }
@@ -243,15 +260,16 @@ export async function POST(request: Request) {
       ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
       : user.email?.split('@')[0] || 'Your Coach'
 
-    const loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+    const magicLinkUrl = `${baseUrl}/auth/verify?token=${magicToken}&email=${encodeURIComponent(email)}`
 
     const emailResult = await sendClientInvitation({
       to: email,
       clientName: firstName,
       coachName,
       businessName,
-      loginUrl: `${loginUrl}/login`,
-      tempPassword: generatedPassword
+      loginUrl: magicLinkUrl, // Now a magic link that auto-signs in
+      tempPassword: undefined // No longer sending password in email
     })
 
     if (!emailResult.success) {

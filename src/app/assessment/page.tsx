@@ -738,8 +738,15 @@ function AssessmentContent() {
       localStorage.removeItem('assessment_draft');
       localStorage.removeItem('assessment_question_index');
 
-      // Redirect to dashboard - middleware will now allow access
-      router.push('/dashboard');
+      // Update onboarding step to 'results'
+      await supabase.auth.updateUser({
+        data: {
+          onboarding_step: 'results'
+        }
+      });
+
+      // Redirect to assessment results page (next step in onboarding)
+      router.push(`/dashboard/assessment-results?id=${assessment.id}`);
 
     } catch (error) {
       console.error('Error submitting assessment:', error);

@@ -404,6 +404,22 @@ export default function EnhancedBusinessProfile() {
     }
   }
 
+  // Navigate to assessment and update onboarding step
+  const navigateToAssessment = async () => {
+    // Update onboarding step in user metadata
+    const { error } = await supabase.auth.updateUser({
+      data: {
+        onboarding_step: 'assessment'
+      }
+    })
+
+    if (error) {
+      console.error('Failed to update onboarding step:', error)
+    }
+
+    router.push('/assessment')
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 p-8 flex items-center justify-center">
@@ -554,7 +570,7 @@ export default function EnhancedBusinessProfile() {
                     Great! Now let's complete your business assessment to unlock personalized insights and recommendations.
                   </p>
                   <button
-                    onClick={() => router.push('/assessment')}
+                    onClick={navigateToAssessment}
                     className="px-6 py-2.5 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors shadow-sm"
                   >
                     Start Assessment →
@@ -1809,11 +1825,11 @@ export default function EnhancedBusinessProfile() {
 
             {currentStep === STEPS.length && (
               <button
-                onClick={() => router.push('/dashboard')}
+                onClick={navigateToAssessment}
                 className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white hover:bg-teal-700 rounded-lg font-semibold transition-colors shadow-sm"
               >
-                Complete Profile
-                <CheckCircle className="w-5 h-5" />
+                Continue to Assessment
+                <ArrowRight className="w-5 h-5" />
               </button>
             )}
           </div>

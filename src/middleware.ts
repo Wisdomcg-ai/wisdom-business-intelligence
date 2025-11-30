@@ -66,6 +66,8 @@ export async function middleware(request: NextRequest) {
     '/auth/login',
     '/auth/signup',
     '/auth/reset-password',
+    '/auth/verify',
+    '/auth/callback',
     '/coach/login',
     '/admin/login',
     '/login'
@@ -86,34 +88,70 @@ export async function middleware(request: NextRequest) {
 
   // Onboarding flow check - only for authenticated users
   if (user) {
-    // Routes that don't require onboarding completion
-    const onboardingExemptRoutes = [
-      '/business-profile',
-      '/assessment',
-      '/auth/callback',
-      '/auth/logout',
-      '/coach',        // Coach portal doesn't require client onboarding
-      '/admin',        // Admin portal doesn't require client onboarding
-      '/dashboard'     // Allow dashboard access - it handles its own auth/data
-    ]
-    const isExemptRoute = onboardingExemptRoutes.some(route => pathname.startsWith(route))
+    // Get user metadata for onboarding state
+    const mustChangePassword = user.user_metadata?.must_change_password
+    const onboardingStep = user.user_metadata?.onboarding_step
+    const onboardingCompleted = user.user_metadata?.onboarding_completed
 
-    // Only check onboarding if not on exempt routes
-    if (!isExemptRoute) {
+    // Coach and Admin portals bypass onboarding
+    if (pathname.startsWith('/coach') || pathname.startsWith('/admin')) {
+      return response
+    }
+
+    // Define the linear onboarding flow
+    // Step 1: Change password (must_change_password = true)
+    // Step 2: Business profile (onboarding_step = 'business-profile')
+    // Step 3: Assessment (onboarding_step = 'assessment')
+    // Step 4: Results (onboarding_step = 'results')
+    // After: Dashboard (onboarding_completed = true OR no onboarding_step)
+
+    // Allow access to current onboarding step pages
+    const onboardingPages = {
+      password: '/change-password',
+      'business-profile': '/business-profile',
+      assessment: '/assessment',
+      results: '/dashboard/assessment-results'
+    }
+
+    // If user must change password, redirect to change-password unless already there
+    if (mustChangePassword) {
+      if (!pathname.startsWith('/change-password')) {
+        return NextResponse.redirect(new URL('/change-password', request.url))
+      }
+      return response
+    }
+
+    // If user has an onboarding step, enforce it
+    if (onboardingStep && !onboardingCompleted) {
+      const currentStepPage = onboardingPages[onboardingStep as keyof typeof onboardingPages]
+
+      if (currentStepPage) {
+        // Check if user is on the correct onboarding page
+        if (!pathname.startsWith(currentStepPage)) {
+          return NextResponse.redirect(new URL(currentStepPage, request.url))
+        }
+      }
+      return response
+    }
+
+    // If onboarding is not completed (no step set and no completed flag), check DB fallback
+    if (!onboardingCompleted && !onboardingStep) {
       try {
-        // STEP 1: Check if business profile is completed
+        // Check if business profile is completed
         const { data: businessProfile, error: profileError } = await supabase
           .from('business_profiles')
           .select('profile_completed')
           .eq('user_id', user.id)
-          .maybeSingle()  // Use maybeSingle to avoid errors if no row exists
+          .maybeSingle()
 
-        // If profile doesn't exist or is not completed, redirect to business profile
         if (profileError || !businessProfile || !businessProfile.profile_completed) {
-          return NextResponse.redirect(new URL('/business-profile', request.url))
+          if (!pathname.startsWith('/business-profile')) {
+            return NextResponse.redirect(new URL('/business-profile', request.url))
+          }
+          return response
         }
 
-        // STEP 2: Check if assessment is completed
+        // Check if assessment is completed
         const { data: completedAssessment, error: assessmentError } = await supabase
           .from('assessments')
           .select('id')
@@ -123,17 +161,14 @@ export async function middleware(request: NextRequest) {
           .limit(1)
           .maybeSingle()
 
-        // If no completed assessment (and no error), redirect to assessment page
         if (!assessmentError && !completedAssessment) {
-          return NextResponse.redirect(new URL('/assessment', request.url))
+          if (!pathname.startsWith('/assessment')) {
+            return NextResponse.redirect(new URL('/assessment', request.url))
+          }
+          return response
         }
-
-        // Both profile and assessment complete - allow access to everything
       } catch (error) {
-        // If there's an unexpected error, log it but allow the request through
-        // This prevents redirect loops when DB is having issues
         console.error('Error checking onboarding completion:', error)
-        // Don't redirect on errors - let the page handle it
       }
     }
   }
