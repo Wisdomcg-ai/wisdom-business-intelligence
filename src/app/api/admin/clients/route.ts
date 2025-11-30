@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { sendClientInvitation } from '@/lib/email/resend'
 
 // Generate a secure random password
 function generateSecurePassword(length = 16): string {
@@ -236,6 +237,29 @@ export async function POST(request: Request) {
       console.error('Onboarding tracking error:', onboardingError)
     }
 
+    // STEP 7: Send invitation email to client
+    const coachName = user.user_metadata?.first_name && user.user_metadata?.last_name
+      ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
+      : user.email?.split('@')[0] || 'Your Coach'
+
+    const loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+
+    const emailResult = await sendClientInvitation({
+      to: email,
+      clientName: firstName,
+      coachName,
+      businessName,
+      loginUrl: `${loginUrl}/login`,
+      tempPassword: generatedPassword
+    })
+
+    if (!emailResult.success) {
+      console.error('Failed to send invitation email:', emailResult.error)
+      // Don't fail the request - client was created successfully
+    } else {
+      console.log('[Admin Client Create] Invitation email sent:', emailResult.id)
+    }
+
     // Return success with password (only for admin to see)
     return NextResponse.json({
       success: true,
@@ -246,7 +270,9 @@ export async function POST(request: Request) {
       user: {
         email,
         temporaryPassword: generatedPassword // Return this so admin can manually send if needed
-      }
+      },
+      emailSent: emailResult.success,
+      emailError: emailResult.success ? undefined : emailResult.error
     })
 
   } catch (error) {
