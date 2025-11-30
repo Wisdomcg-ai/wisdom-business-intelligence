@@ -247,7 +247,7 @@ export default function CoachSessionsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-[1600px] mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
