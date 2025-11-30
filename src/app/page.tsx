@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { BarChart3, Target, CheckCircle2, Zap, ArrowRight, TrendingUp, Calendar, MessageCircle, Lightbulb, Compass, Play, Users } from 'lucide-react'
+import { CheckCircle2, ArrowRight, MessageCircle, Users } from 'lucide-react'
 
 export default function HomePage() {
   return (
