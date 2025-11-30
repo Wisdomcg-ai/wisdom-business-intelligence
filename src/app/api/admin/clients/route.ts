@@ -283,3 +283,166 @@ export async function POST(request: Request) {
     )
   }
 }
+
+// PATCH - Update client status (active/inactive)
+export async function PATCH(request: Request) {
+  const supabase = await createRouteHandlerClient()
+
+  try {
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Check if user is super admin
+    const { data: roleData } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .single()
+
+    if (!roleData || roleData.role !== 'super_admin') {
+      return NextResponse.json({ error: 'Access denied. Super admin privileges required.' }, { status: 403 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const clientId = searchParams.get('id')
+
+    if (!clientId) {
+      return NextResponse.json({ error: 'Client ID is required' }, { status: 400 })
+    }
+
+    const body = await request.json()
+    const { status } = body
+
+    if (!status || !['active', 'inactive', 'pending'].includes(status)) {
+      return NextResponse.json({ error: 'Invalid status. Must be active, inactive, or pending.' }, { status: 400 })
+    }
+
+    // Update business status
+    const { error: updateError } = await supabase
+      .from('businesses')
+      .update({ status })
+      .eq('id', clientId)
+
+    if (updateError) {
+      console.error('Error updating client status:', updateError)
+      return NextResponse.json({ error: 'Failed to update client status' }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, status })
+
+  } catch (error) {
+    console.error('Client update error:', error)
+    return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
+  }
+}
+
+// DELETE - Permanently delete a client and all associated data
+export async function DELETE(request: Request) {
+  const supabase = await createRouteHandlerClient()
+
+  try {
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Check if user is super admin
+    const { data: roleData } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .single()
+
+    if (!roleData || roleData.role !== 'super_admin') {
+      return NextResponse.json({ error: 'Access denied. Super admin privileges required.' }, { status: 403 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const clientId = searchParams.get('id')
+
+    if (!clientId) {
+      return NextResponse.json({ error: 'Client ID is required' }, { status: 400 })
+    }
+
+    // Get business to find owner_id for auth user deletion
+    const { data: business } = await supabase
+      .from('businesses')
+      .select('owner_id')
+      .eq('id', clientId)
+      .single()
+
+    // Delete in order to handle foreign key constraints
+    // 1. Delete user_permissions
+    await supabase.from('user_permissions').delete().eq('business_id', clientId)
+
+    // 2. Delete user_roles
+    await supabase.from('user_roles').delete().eq('business_id', clientId)
+
+    // 3. Delete onboarding_progress
+    await supabase.from('onboarding_progress').delete().eq('business_id', clientId)
+
+    // 4. Delete coaching_sessions
+    await supabase.from('coaching_sessions').delete().eq('business_id', clientId)
+
+    // 5. Delete messages
+    await supabase.from('messages').delete().eq('business_id', clientId)
+
+    // 6. Delete annual_goals
+    await supabase.from('annual_goals').delete().eq('business_id', clientId)
+
+    // 7. Delete quarterly_goals
+    await supabase.from('quarterly_goals').delete().eq('business_id', clientId)
+
+    // 8. Delete kpis
+    await supabase.from('kpis').delete().eq('business_id', clientId)
+
+    // 9. Delete action_items
+    await supabase.from('action_items').delete().eq('business_id', clientId)
+
+    // 10. Delete documents
+    await supabase.from('documents').delete().eq('business_id', clientId)
+
+    // 11. Delete business record
+    const { error: businessError } = await supabase
+      .from('businesses')
+      .delete()
+      .eq('id', clientId)
+
+    if (businessError) {
+      console.error('Error deleting business:', businessError)
+      return NextResponse.json({ error: 'Failed to delete client business' }, { status: 500 })
+    }
+
+    // 12. Delete system_roles for the user
+    if (business?.owner_id) {
+      await supabase.from('system_roles').delete().eq('user_id', business.owner_id)
+
+      // 13. Delete auth user using Admin API
+      const authResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${business.owner_id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+            'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+          }
+        }
+      )
+
+      if (!authResponse.ok) {
+        console.error('Failed to delete auth user, but business data was deleted')
+      }
+    }
+
+    console.log('[Admin] Client deleted:', clientId)
+    return NextResponse.json({ success: true })
+
+  } catch (error) {
+    console.error('Client deletion error:', error)
+    return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
+  }
+}

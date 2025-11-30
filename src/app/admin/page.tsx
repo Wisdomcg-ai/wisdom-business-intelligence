@@ -27,7 +27,9 @@ import {
   Mail,
   Loader2,
   Copy,
-  Check
+  Check,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react'
 
 interface Business {
@@ -86,6 +88,8 @@ export default function AdminDashboard() {
   const [editCoachForm, setEditCoachForm] = useState({ firstName: '', lastName: '', email: '', phone: '' })
   const [savingCoach, setSavingCoach] = useState(false)
   const [editCoachError, setEditCoachError] = useState<string | null>(null)
+  const [deletingClient, setDeletingClient] = useState<string | null>(null)
+  const [togglingStatus, setTogglingStatus] = useState<string | null>(null)
 
   useEffect(() => {
     checkAuthAndLoadData()
@@ -274,6 +278,82 @@ export default function AdminDashboard() {
     }
 
     setAssigningCoach(null)
+  }
+
+  async function toggleClientStatus(clientId: string, currentStatus: string) {
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active'
+    setTogglingStatus(clientId)
+
+    try {
+      const response = await fetch(`/api/admin/clients?id=${clientId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to update status')
+      }
+
+      // Update local state
+      setClients(prev => prev.map(c =>
+        c.id === clientId ? { ...c, status: newStatus } : c
+      ))
+
+      // Update stats
+      setStats(prev => ({
+        ...prev,
+        active: newStatus === 'active' ? prev.active + 1 : prev.active - 1,
+        pending: currentStatus === 'pending' ? prev.pending - 1 : prev.pending
+      }))
+
+    } catch (error) {
+      console.error('Error toggling status:', error)
+      alert(error instanceof Error ? error.message : 'Failed to update status')
+    } finally {
+      setTogglingStatus(null)
+    }
+  }
+
+  async function deleteClient(clientId: string, clientName: string) {
+    if (!confirm(`Are you sure you want to permanently delete "${clientName}"?\n\nThis will delete:\n• The business and all its data\n• All goals, KPIs, and action items\n• All coaching sessions and messages\n• The client's user account\n\nThis action cannot be undone.`)) {
+      return
+    }
+
+    setDeletingClient(clientId)
+
+    try {
+      const response = await fetch(`/api/admin/clients?id=${clientId}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to delete client')
+      }
+
+      // Remove from local state
+      setClients(prev => prev.filter(c => c.id !== clientId))
+
+      // Update stats
+      const deletedClient = clients.find(c => c.id === clientId)
+      if (deletedClient) {
+        setStats(prev => ({
+          ...prev,
+          total: prev.total - 1,
+          active: deletedClient.status === 'active' ? prev.active - 1 : prev.active,
+          pending: deletedClient.status === 'pending' ? prev.pending - 1 : prev.pending,
+          unassigned: !deletedClient.assigned_coach_id ? prev.unassigned - 1 : prev.unassigned
+        }))
+      }
+
+    } catch (error) {
+      console.error('Error deleting client:', error)
+      alert(error instanceof Error ? error.message : 'Failed to delete client')
+    } finally {
+      setDeletingClient(null)
+    }
   }
 
   async function loadClients() {
@@ -592,15 +672,47 @@ export default function AdminDashboard() {
                         <Link
                           href={`/admin/clients/${client.id}`}
                           className="text-teal-600 hover:text-teal-700"
+                          title="View"
                         >
                           <Eye className="w-4 h-4" />
                         </Link>
                         <Link
                           href={`/admin/clients/${client.id}/edit`}
                           className="text-gray-600 hover:text-gray-700"
+                          title="Edit"
                         >
                           <Edit className="w-4 h-4" />
                         </Link>
+                        <button
+                          onClick={() => toggleClientStatus(client.id, client.status)}
+                          disabled={togglingStatus === client.id}
+                          className={`${
+                            client.status === 'active'
+                              ? 'text-yellow-600 hover:text-yellow-700'
+                              : 'text-green-600 hover:text-green-700'
+                          } disabled:opacity-50`}
+                          title={client.status === 'active' ? 'Make Inactive' : 'Make Active'}
+                        >
+                          {togglingStatus === client.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : client.status === 'active' ? (
+                            <ToggleRight className="w-4 h-4" />
+                          ) : (
+                            <ToggleLeft className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => deleteClient(client.id, client.business_name)}
+                          disabled={deletingClient === client.id}
+                          className="text-red-600 hover:text-red-700 disabled:opacity-50"
+                          title="Delete"
+                        >
+                          {deletingClient === client.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
                       </div>
                     </td>
                   </tr>
