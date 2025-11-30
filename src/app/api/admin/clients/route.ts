@@ -129,7 +129,8 @@ export async function POST(request: Request) {
           email_confirm: true,
           user_metadata: {
             first_name: firstName,
-            last_name: lastName
+            last_name: lastName,
+            must_change_password: true
           }
         })
       }

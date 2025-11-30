@@ -56,15 +56,20 @@ export default function LoginPage() {
         }
       } else {
         // Sign in existing user
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email: formData.email,
           password: formData.password
         })
 
         if (signInError) throw signInError
 
-        // Redirect to dashboard
-        router.push('/dashboard')
+        // Check if user needs to change password
+        if (signInData.user?.user_metadata?.must_change_password) {
+          router.push('/change-password')
+        } else {
+          // Redirect to dashboard
+          router.push('/dashboard')
+        }
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred. Please try again.')
