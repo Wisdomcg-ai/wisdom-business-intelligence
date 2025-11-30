@@ -66,65 +66,108 @@ interface BusinessData {
 }
 
 const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
-  // WISE Framework aligned navigation - cleaner, more intuitive
   const navigation: NavSection[] = [
     {
-      title: 'HOME',
+      title: 'DASHBOARD',
+      defaultOpen: true,
+      items: [{ label: 'Home', href: '/dashboard', icon: LayoutDashboard }],
+    },
+    {
+      title: 'START HERE',
       defaultOpen: true,
       items: [
-        { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-      ],
-    },
-    {
-      title: 'WISDOM',
-      defaultOpen: false,
-      items: [
         { label: 'Business Profile', href: '/business-profile', icon: Building2 },
-        { label: 'Assessment', href: '/assessment', icon: ClipboardCheck },
-        { label: 'Roadmap', href: '/business-roadmap', icon: Compass },
+        { label: 'Business Assessment', href: '/assessment', icon: ClipboardCheck },
       ],
     },
     {
-      title: 'INSIGHTS',
-      defaultOpen: false,
+      title: 'ROADMAP',
+      defaultOpen: true,
       items: [
-        { label: 'Business Dashboard', href: '/business-dashboard', icon: BarChart3 },
-        { label: 'Financial Forecast', href: '/finances/forecast', icon: TrendingUp },
-        { label: 'Budget vs Actual', href: '/finances/budget', icon: Banknote },
+        { label: 'Business Roadmap', href: '/business-roadmap', icon: Compass },
       ],
     },
     {
-      title: 'STRATEGY',
-      defaultOpen: false,
+      title: 'BUSINESS PLAN',
+      defaultOpen: true,
       items: [
-        { label: 'Goals & Targets', href: '/goals', icon: Target },
-        { label: 'Vision & Mission', href: '/vision-mission', icon: Award },
+        { label: 'Vision, Mission & Values', href: '/vision-mission', icon: Target },
         { label: 'SWOT Analysis', href: '/swot', icon: FileText },
+        { label: 'Goals & Targets', href: '/goals', icon: Award },
         { label: 'One-Page Plan', href: '/one-page-plan', icon: FileText },
       ],
     },
     {
-      title: 'EXECUTION',
-      defaultOpen: false,
+      title: 'FINANCES',
+      defaultOpen: true,
       items: [
-        { label: 'Weekly Review', href: '/reviews/weekly', icon: Calendar },
-        { label: 'Quarterly Review', href: '/quarterly-review', icon: CalendarCheck },
-        { label: 'Issues List', href: '/issues-list', icon: AlertCircle },
-        { label: 'To-Do', href: '/todo', icon: CheckSquare },
-        { label: 'Open Loops', href: '/open-loops', icon: Layers },
+        { label: 'Financial Forecast', href: '/finances/forecast', icon: TrendingUp },
+        { label: 'Budget vs Actual', href: '/finances/budget', icon: FileText },
+        { label: '13-Week Cashflow', href: '/finances/cashflow', icon: Banknote, disabled: true },
       ],
     },
     {
-      title: 'COACHING',
+      title: 'EXECUTE',
+      defaultOpen: true,
+      items: [
+        { label: 'Business Dashboard', href: '/business-dashboard', icon: BarChart3 },
+        { label: 'Issues List', href: '/issues-list', icon: AlertCircle },
+      ],
+    },
+    {
+      title: 'PRODUCTIVITY',
+      defaultOpen: true,
+      items: [
+        { label: 'Open Loops', href: '/open-loops', icon: Layers },
+        { label: 'To-Do', href: '/todo', icon: CheckSquare },
+        { label: 'Stop Doing', href: '/stop-doing', icon: XCircle },
+      ],
+    },
+    {
+      title: 'REVIEWS',
+      defaultOpen: true,
+      items: [
+        { label: 'Weekly Review', href: '/reviews/weekly', icon: Calendar },
+        { label: 'Quarterly Review', href: '/quarterly-review', icon: CalendarCheck },
+      ],
+    },
+    {
+      title: 'BUSINESS ENGINES',
       defaultOpen: false,
       items: [
-        { label: 'Messages', href: '/messages', icon: MessageCircle },
-        { label: 'Session Notes', href: '/sessions', icon: FileText },
+        {
+          label: 'Marketing',
+          href: '/engines/marketing',
+          icon: LineChart,
+          children: [
+            { label: 'Value Proposition & USP', href: '/marketing/value-prop', icon: Target },
+            { label: 'Marketing Channels', href: '/marketing/channels', icon: LineChart },
+            { label: 'Content Planner', href: '/marketing/content', icon: FileText },
+          ],
+        },
+        {
+          label: 'Team',
+          href: '/engines/team',
+          icon: Users,
+          children: [
+            { label: 'Accountability Chart', href: '/team/accountability', icon: Network },
+            { label: 'Org Chart Builder', href: '/team/org-chart', icon: Users },
+            { label: 'Team Performance', href: '/team-performance', icon: Activity },
+            { label: 'Hiring Roadmap', href: '/team/hiring-roadmap', icon: Building2 },
+          ],
+        },
+        {
+          label: 'Systems',
+          href: '/engines/systems',
+          icon: Settings,
+          children: [
+            { label: 'Systems & Processes', href: '/systems/processes', icon: Settings, disabled: true },
+          ],
+        },
       ],
     },
   ]
 
-  // Add coach-specific section if user is a coach
   if (userRole === 'coach') {
     navigation.push({
       title: 'COACH TOOLS',
@@ -133,6 +176,17 @@ const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
         { label: 'Coach Notes', href: '/coach/notes', icon: MessageSquare, badge: 'Private' },
         { label: 'Client Overview', href: '/coach/clients', icon: Eye },
         { label: 'Engagement Tracking', href: '/coach/engagement', icon: LineChart },
+        { label: 'Client Questions', href: '/coach/questions', icon: FileQuestion, badge: '3 New' },
+      ],
+    })
+  } else {
+    navigation.push({
+      title: 'COACHING',
+      defaultOpen: true,
+      items: [
+        { label: 'Messages', href: '/messages', icon: MessageCircle },
+        { label: 'Session Notes', href: '/sessions', icon: FileText },
+        { label: 'Resources', href: '/coaching/resources', icon: FolderOpen, disabled: true },
       ],
     })
   }
@@ -147,7 +201,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
 
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [expandedSections, setExpandedSections] = useState<string[]>([
-    'HOME',
+    'DASHBOARD',
   ])
   const [expandedSubItems, setExpandedSubItems] = useState<string[]>([])
   const [navigation, setNavigation] = useState<NavSection[]>([])
@@ -162,7 +216,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   const [userName, setUserName] = useState<string>('User Account')
   const [userEmail, setUserEmail] = useState<string>('user@example.com')
 
-  // Don't render client sidebar for coach routes, auth routes, marketing, or legal pages
+  // Don't render client sidebar for coach routes, auth routes, marketing pages, or legal pages
   const isCoachRoute = pathname?.startsWith('/coach')
   const isAdminRoute = pathname?.startsWith('/admin')
   const isAuthRoute = pathname?.startsWith('/auth') || pathname?.startsWith('/login')
