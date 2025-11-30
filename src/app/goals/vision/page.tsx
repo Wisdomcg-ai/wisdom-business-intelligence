@@ -240,10 +240,10 @@ export default function VisionTargetsPage() {
       }))
       
       // Expand categories that have new KPIs
-      const categoriesToExpand = [...new Set(newKPIs.map((kpi: any) => 
+      const categoriesToExpand = [...new Set(newKPIs.map((kpi: any) =>
         kpi.category.charAt(0).toUpperCase() + kpi.category.slice(1)
-      ))]
-      setExpandedCategories(prev => [...new Set([...prev, ...categoriesToExpand])])
+      ))] as string[]
+      setExpandedCategories(prev => [...new Set([...prev, ...categoriesToExpand])] as string[])
     }
     
     setShowCalculator(false)

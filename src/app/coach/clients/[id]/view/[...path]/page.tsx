@@ -73,8 +73,8 @@ interface PageProps {
 }
 
 export default function CoachViewPage({ params }: PageProps) {
-  const clientId = params.id
-  const pathArray = params.path
+  const clientId = params?.id
+  const pathArray = params?.path
 
   const { activeBusiness, setActiveBusiness, isLoading: contextLoading } = useBusinessContext()
   const [PageComponent, setPageComponent] = useState<React.ComponentType<any> | null>(null)

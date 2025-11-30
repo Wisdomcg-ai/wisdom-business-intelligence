@@ -36,7 +36,7 @@ export default function QuarterlySummaryPage() {
   useEffect(() => {
     const fetchReview = async () => {
       try {
-        const data = await quarterlyReviewService.getReviewById(params.id as string);
+        const data = await quarterlyReviewService.getReviewById(params?.id as string);
         setReview(data);
       } catch (error) {
         console.error('Error fetching review:', error);
@@ -45,10 +45,10 @@ export default function QuarterlySummaryPage() {
       }
     };
 
-    if (params.id) {
+    if (params?.id) {
       fetchReview();
     }
-  }, [params.id]);
+  }, [params?.id]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-AU', {

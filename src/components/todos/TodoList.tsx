@@ -92,8 +92,8 @@ export default function TodoList({
     
     // Apply category filter
     if (selectedCategories.size > 0) {
-      filtered = filtered.filter(t => 
-        t.category && selectedCategories.has(t.category)
+      filtered = filtered.filter(t =>
+        t.category && selectedCategories.has(t.category as TodoCategory)
       );
     }
     
@@ -112,7 +112,7 @@ export default function TodoList({
           return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
         
         case 'priority':
-          const priorityOrder = { high: 0, medium: 1, low: 2 };
+          const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
           return priorityOrder[a.priority || 'medium'] - priorityOrder[b.priority || 'medium'];
         
         case 'created':

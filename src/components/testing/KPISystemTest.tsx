@@ -2,8 +2,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { 
-  useKPIs, 
+import {
+  useKPIs,
   getKPISystemHealth,
   formatCurrency,
   formatPercentage,
@@ -20,22 +20,23 @@ export function KPISystemTest() {
   const [testResults, setTestResults] = useState<any>({})
 
   // Test the useKPIs hook
-  const { 
-    kpis, 
-    loading, 
-    error, 
-    initialized, 
-    stats,
-    search 
-  } = useKPIs({ autoInitialize: true })
+  const {
+    kpis,
+    loading,
+    error
+  } = useKPIs()
+
+  const initialized = !loading && kpis.length > 0
 
   useEffect(() => {
-    runTests()
-  }, [initialized])
+    if (!loading) {
+      runTests()
+    }
+  }, [loading])
 
   const runTests = async () => {
     console.log('🧪 Running KPI System Tests...')
-    
+
     try {
       // Test 1: System Health Check
       const systemHealth = getKPISystemHealth()
@@ -50,41 +51,27 @@ export function KPISystemTest() {
       }
       console.log('✅ Test 2 - Formatters:', formatTests)
 
-      // Test 3: Validation Functions
+      // Test 3: Validation
       const validationTests = {
-        validCurrency: validateKPIValue(50000, 'currency'),
-        validPercentage: validateKPIValue(85, 'percentage'),
-        invalidPercentage: validateKPIValue(150, 'percentage')
+        validValue: validateKPIValue(85.5, 'percentage'),
+        invalidValue: validateKPIValue(-10, 'percentage')
       }
       console.log('✅ Test 3 - Validation:', validationTests)
 
-      // Test 4: Mapping Functions
+      // Test 4: Mappers
       const mappingTests = {
-        constructionIndustry: mapBusinessIndustryToKPIIndustry('construction company'),
-        healthIndustry: mapBusinessIndustryToKPIIndustry('medical clinic'),
-        revenueStage: mapRevenueToStage('1M-2.5M')
+        industry: mapBusinessIndustryToKPIIndustry('technology'),
+        stage: mapRevenueToStage('$1M-$5M')
       }
-      console.log('✅ Test 4 - Mapping:', mappingTests)
+      console.log('✅ Test 4 - Mappers:', mappingTests)
 
-      // Test 5: Enums and Constants
+      // Test 5: Enum values
       const enumTests = {
         businessFunctions: Object.values(BusinessFunction),
         industries: Object.values(Industry),
         stages: Object.values(BusinessStage)
       }
       console.log('✅ Test 5 - Enums:', enumTests)
-
-      // Test 6: Search functionality (when KPIs are loaded)
-      if (initialized && !loading) {
-        try {
-          const searchResults = await search('revenue', {
-            functions: [BusinessFunction.PROFIT]
-          })
-          console.log('✅ Test 6 - Search:', searchResults)
-        } catch (err) {
-          console.log('⚠️ Test 6 - Search: No data to search yet (Phase 1)')
-        }
-      }
 
       setTestResults({
         formatTests,
@@ -104,7 +91,7 @@ export function KPISystemTest() {
   return (
     <div className="p-6 bg-white rounded-lg shadow-lg border">
       <h2 className="text-2xl font-bold mb-4">🧪 KPI System Test Dashboard</h2>
-      
+
       {/* System Status */}
       <div className="mb-6">
         <h3 className="text-lg font-semibold mb-2">System Status</h3>
@@ -129,11 +116,8 @@ export function KPISystemTest() {
           </div>
           <div className="bg-gray-50 p-3 rounded">
             <div className="text-sm text-gray-600">Health</div>
-            <div className={`font-semibold ${
-              health?.status === 'healthy' ? 'text-green-600' : 
-              health?.status === 'degraded' ? 'text-yellow-600' : 'text-red-600'
-            }`}>
-              {health?.status || 'Unknown'}
+            <div className={`font-semibold ${health?.healthy ? 'text-green-600' : 'text-red-600'}`}>
+              {health?.healthy ? '✅ Healthy' : '⚠️ Unknown'}
             </div>
           </div>
         </div>
@@ -145,22 +129,22 @@ export function KPISystemTest() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-teal-50 p-3 rounded">
             <div className="text-sm text-teal-600">Total KPIs</div>
-            <div className="font-semibold text-teal-900">{stats.total}</div>
+            <div className="font-semibold text-teal-900">{kpis.length}</div>
           </div>
           <div className="bg-teal-50 p-3 rounded">
-            <div className="text-sm text-teal-600">Load Time</div>
+            <div className="text-sm text-teal-600">Health Total</div>
             <div className="font-semibold text-teal-900">
-              {stats.loadTime ? `${stats.loadTime}ms` : 'N/A'}
+              {health?.totalKPIs || 0}
             </div>
           </div>
           <div className="bg-teal-50 p-3 rounded">
-            <div className="text-sm text-teal-600">Cache Hit Rate</div>
-            <div className="font-semibold text-teal-900">{stats.cacheHitRate}</div>
+            <div className="text-sm text-teal-600">Essential KPIs</div>
+            <div className="font-semibold text-teal-900">{health?.essential || 0}</div>
           </div>
           <div className="bg-teal-50 p-3 rounded">
-            <div className="text-sm text-teal-600">Services</div>
-            <div className="font-semibold text-teal-900">
-              {health?.services ? Object.values(health.services).filter(Boolean).length : 0}/3
+            <div className="text-sm text-teal-600">Last Checked</div>
+            <div className="font-semibold text-teal-900 text-xs">
+              {health?.lastChecked ? new Date(health.lastChecked).toLocaleTimeString() : 'N/A'}
             </div>
           </div>
         </div>
@@ -170,62 +154,33 @@ export function KPISystemTest() {
       {testResults.formatTests && (
         <div className="mb-6">
           <h3 className="text-lg font-semibold mb-2">Test Results</h3>
-          <div className="space-y-3">
-            <div className="bg-green-50 p-3 rounded">
-              <div className="font-semibold text-green-800">✅ Formatters Working</div>
-              <div className="text-sm text-green-700">
-                Currency: {testResults.formatTests.currency} | 
-                Percentage: {testResults.formatTests.percentage} | 
-                Large Amount: {testResults.formatTests.currencyCompact}
+          <div className="bg-green-50 p-4 rounded">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <strong>Formatters:</strong>
+                <ul className="ml-4">
+                  <li>Currency: {testResults.formatTests?.currency}</li>
+                  <li>Percentage: {testResults.formatTests?.percentage}</li>
+                </ul>
               </div>
-            </div>
-            
-            <div className="bg-green-50 p-3 rounded">
-              <div className="font-semibold text-green-800">✅ Validation Working</div>
-              <div className="text-sm text-green-700">
-                Valid currency: {testResults.validationTests.validCurrency.isValid ? 'Pass' : 'Fail'} | 
-                Valid percentage: {testResults.validationTests.validPercentage.isValid ? 'Pass' : 'Fail'} | 
-                Invalid percentage detected: {!testResults.validationTests.invalidPercentage.isValid ? 'Pass' : 'Fail'}
-              </div>
-            </div>
-
-            <div className="bg-green-50 p-3 rounded">
-              <div className="font-semibold text-green-800">✅ Mapping Working</div>
-              <div className="text-sm text-green-700">
-                Construction → {testResults.mappingTests.constructionIndustry} | 
-                Medical → {testResults.mappingTests.healthIndustry} | 
-                Revenue Stage → {testResults.mappingTests.revenueStage}
+              <div>
+                <strong>Validation:</strong>
+                <ul className="ml-4">
+                  <li>Valid (85.5): {testResults.validationTests?.validValue?.isValid ? '✅' : '❌'}</li>
+                  <li>Invalid (-10): {testResults.validationTests?.invalidValue?.isValid ? '✅' : '❌'}</li>
+                </ul>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div className="flex gap-4">
-        <button
-          onClick={runTests}
-          className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
-          disabled={loading}
-        >
-          {loading ? 'Testing...' : 'Run Tests Again'}
-        </button>
-        
-        <button
-          onClick={() => {
-            console.log('📊 Current KPI Stats:', stats)
-            console.log('🏥 System Health:', health)
-            console.log('📦 Test Results:', testResults)
-          }}
-          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-        >
-          Log Full Status
-        </button>
-      </div>
-
-      <div className="mt-4 text-xs text-gray-500">
-        Last tested: {testResults.timestamp ? new Date(testResults.timestamp).toLocaleString() : 'Not yet tested'}
-      </div>
+      {/* Timestamp */}
+      {testResults.timestamp && (
+        <div className="text-xs text-gray-500 text-right">
+          Last run: {new Date(testResults.timestamp).toLocaleString()}
+        </div>
+      )}
     </div>
   )
 }

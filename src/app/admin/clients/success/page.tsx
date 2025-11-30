@@ -1,19 +1,19 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { CheckCircle, Copy, Check, ArrowLeft, Mail } from 'lucide-react'
 
-export default function ClientCreatedSuccessPage() {
+function ClientCreatedSuccessContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [copied, setCopied] = useState(false)
 
-  const email = searchParams.get('email') || ''
-  const password = searchParams.get('password') || ''
-  const name = searchParams.get('name') || ''
-  const business = searchParams.get('business') || ''
+  const email = searchParams?.get('email') || ''
+  const password = searchParams?.get('password') || ''
+  const name = searchParams?.get('name') || ''
+  const business = searchParams?.get('business') || ''
 
   useEffect(() => {
     // Redirect if no credentials
@@ -163,5 +163,20 @@ For security, please change your password after your first login.
         </div>
       </div>
     </div>
+  )
+}
+
+export default function ClientCreatedSuccessPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <ClientCreatedSuccessContent />
+    </Suspense>
   )
 }

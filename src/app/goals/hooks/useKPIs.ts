@@ -4,6 +4,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { KPIData } from '../types'
 import KPIService from '../services/kpi-service'
+import { createClient } from '@/lib/supabase/client'
 
 interface UseKPIsOptions {
   businessId?: string
@@ -133,7 +134,14 @@ export function useKPIs(options: UseKPIsOptions = {}) {
       setSaving(true)
       setError(null)
 
-      const result = await KPIService.saveUserKPIs(businessId, selectedKPIs)
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setError('User not authenticated')
+        return false
+      }
+
+      const result = await KPIService.saveUserKPIs(businessId, user.id, selectedKPIs)
 
       if (!result.success) {
         setError(result.error || 'Failed to save KPIs')

@@ -2,6 +2,8 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import type { WhatIfParameters } from '@/app/finances/forecast/types'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: Request) {
   const supabase = await createRouteHandlerClient()
 

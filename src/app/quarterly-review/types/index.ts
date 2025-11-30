@@ -7,25 +7,26 @@ export type ReviewType = 'quarterly' | 'annual' | 'mid-year';
 
 export type WorkshopStep =
   | 'prework'
-  | '1.1' | '1.2'
+  | '1.1' | '1.2' | '1.3'
   | '2.1' | '2.2' | '2.3'
   | '3.1' | '3.2' | '3.3'
-  | '4.1' | '4.2'
+  | '4.1' | '4.2' | '4.3' | '4.4'
   | 'complete';
 
 export const WORKSHOP_STEPS: WorkshopStep[] = [
   'prework',
-  '1.1', '1.2',  // 1.2 now includes Action Replay
+  '1.1', '1.2', '1.3',  // 1.3 is Action Replay
   '2.1', '2.2', '2.3',
   '3.1', '3.2', '3.3',
-  '4.1', '4.2',
+  '4.1', '4.2', '4.3', '4.4',
   'complete'
 ];
 
 export const STEP_LABELS: Record<WorkshopStep, string> = {
   'prework': 'Pre-Work Questionnaire',
   '1.1': 'Pre-Work Review',
-  '1.2': 'Quarter Performance & Action Replay',
+  '1.2': 'Quarter Performance',
+  '1.3': 'Action Replay',
   '2.1': 'Feedback Loop Framework',
   '2.2': 'Open Loops Audit',
   '2.3': 'Issues List (IDS)',
@@ -34,6 +35,8 @@ export const STEP_LABELS: Record<WorkshopStep, string> = {
   '3.3': 'Annual Target Confidence',
   '4.1': 'Quarterly Targets & Execution',
   '4.2': '90-Day Sprint',
+  '4.3': 'Sprint Rocks',
+  '4.4': 'Personal Commitments',
   'complete': 'Review Complete'
 };
 

@@ -1,16 +1,7 @@
 // src/lib/kpi/utils/validators.ts
 // Production-ready validation utilities for KPI data
 
-import type { KPI } from '../types'
-
-/**
- * Validation result interface
- */
-export interface ValidationResult {
-  isValid: boolean
-  errors: string[]
-  warnings?: string[]
-}
+import type { KPI, ValidationResult } from '../types'
 
 /**
  * Validate a KPI value
@@ -90,7 +81,7 @@ export function validateKPI(kpi: Partial<KPI>): ValidationResult {
   // Required fields
   if (!kpi.id) errors.push('KPI ID is required')
   if (!kpi.name) errors.push('KPI name is required')
-  if (!kpi.businessFunction) errors.push('Business function is required')
+  if (!kpi.function) errors.push('Business function is required')
   if (!kpi.tier) errors.push('KPI tier is required')
 
   // Field format validation
@@ -107,11 +98,11 @@ export function validateKPI(kpi: Partial<KPI>): ValidationResult {
   }
 
   // Arrays validation
-  if (kpi.applicableIndustries && kpi.applicableIndustries.length === 0) {
+  if (kpi.industries && kpi.industries.length === 0) {
     errors.push('At least one industry must be specified')
   }
 
-  if (kpi.applicableStages && kpi.applicableStages.length === 0) {
+  if (kpi.stages && kpi.stages.length === 0) {
     errors.push('At least one business stage must be specified')
   }
 

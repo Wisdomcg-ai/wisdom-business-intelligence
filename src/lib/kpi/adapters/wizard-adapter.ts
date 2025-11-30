@@ -45,9 +45,9 @@ export class WizardKPIAdapter {
       
       // Wizard-specific fields with intelligent defaults
       currentValue: this.getDefaultCurrentValue(kpi, businessProfile),
-      year1Target: this.getDefaultTarget(kpi, businessProfile, 1),
-      year2Target: this.getDefaultTarget(kpi, businessProfile, 2),
-      year3Target: this.getDefaultTarget(kpi, businessProfile, 3),
+      year1Target: this.getDefaultTarget(kpi, 1, businessProfile),
+      year2Target: this.getDefaultTarget(kpi, 2, businessProfile),
+      year3Target: this.getDefaultTarget(kpi, 3, businessProfile),
       
       // Classification flags
       isStandard: this.isStandardKPI(kpi),
@@ -233,7 +233,7 @@ export class WizardKPIAdapter {
   /**
    * Generate intelligent default targets
    */
-  private static getDefaultTarget(kpi: KPI, businessProfile?: BusinessProfile, year: number): number {
+  private static getDefaultTarget(kpi: KPI, year: number, businessProfile?: BusinessProfile): number {
     const currentValue = this.getDefaultCurrentValue(kpi, businessProfile)
     const growthRate = this.getGrowthRateForKPI(kpi, businessProfile, year)
     

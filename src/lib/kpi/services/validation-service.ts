@@ -47,7 +47,7 @@ export class ValidationService {
    * @param strict Whether to apply strict validation rules
    * @throws ValidationError if validation fails
    */
-  validateKPI(kpi: any, strict: boolean = false): asserts kpi is KPI {
+  validateKPI(kpi: KPI, strict: boolean = false): void {
     if (!FEATURE_FLAGS.ENABLE_VALIDATION) {
       return
     }
@@ -101,7 +101,7 @@ export class ValidationService {
    * @param wizardKPI WizardKPI object to validate
    * @throws ValidationError if validation fails
    */
-  validateWizardKPI(wizardKPI: any): asserts wizardKPI is WizardKPI {
+  validateWizardKPI(wizardKPI: WizardKPI): void {
     if (!FEATURE_FLAGS.ENABLE_VALIDATION) {
       return
     }
@@ -149,7 +149,7 @@ export class ValidationService {
    * @param profile BusinessProfile to validate
    * @throws ValidationError if validation fails
    */
-  validateBusinessProfile(profile: any): asserts profile is BusinessProfile {
+  validateBusinessProfile(profile: unknown): void {
     if (!FEATURE_FLAGS.ENABLE_VALIDATION) {
       return
     }
@@ -159,7 +159,9 @@ export class ValidationService {
         throw new ValidationError('Invalid BusinessProfile object structure')
       }
 
-      this.validateUserId(profile.userId)
+      if (profile.userId) {
+        this.validateUserId(profile.userId)
+      }
       this.validateIndustry(profile.industry)
       this.validateBusinessStage(profile.stage)
 
@@ -180,9 +182,10 @@ export class ValidationService {
       }
 
     } catch (error) {
+      const profileData = profile as BusinessProfile | undefined
       throw new ValidationError(
-        `BusinessProfile validation failed for user '${profile?.userId || 'unknown'}': ${error instanceof Error ? error.message : 'Unknown error'}`,
-        { profile, originalError: error }
+        `BusinessProfile validation failed for user '${profileData?.userId || 'unknown'}': ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { profile: profileData, originalError: error }
       )
     }
   }
@@ -269,7 +272,7 @@ export class ValidationService {
     this.validateString(plainName, 'plainName', 1, VALIDATION_RULES.MAX_KPI_NAME_LENGTH)
   }
 
-  private validateBusinessFunction(func: BusinessFunction): void {
+  validateBusinessFunction(func: BusinessFunction): void {
     if (!Object.values(BusinessFunction).includes(func)) {
       throw new ValidationError(`Invalid business function: ${func}`)
     }
@@ -279,7 +282,7 @@ export class ValidationService {
     this.validateString(category, 'category', 1, 100)
   }
 
-  private validateTier(tier: KPITier): void {
+  validateTier(tier: KPITier): void {
     if (!Object.values(KPITier).includes(tier)) {
       throw new ValidationError(`Invalid KPI tier: ${tier}`)
     }
@@ -293,7 +296,7 @@ export class ValidationService {
     industries.forEach(industry => this.validateIndustry(industry))
   }
 
-  private validateIndustry(industry: Industry): void {
+  validateIndustry(industry: Industry): void {
     if (!Object.values(Industry).includes(industry)) {
       throw new ValidationError(`Invalid industry: ${industry}`)
     }
@@ -307,7 +310,7 @@ export class ValidationService {
     stages.forEach(stage => this.validateBusinessStage(stage))
   }
 
-  private validateBusinessStage(stage: BusinessStage): void {
+  validateBusinessStage(stage: BusinessStage): void {
     if (!Object.values(BusinessStage).includes(stage)) {
       throw new ValidationError(`Invalid business stage: ${stage}`)
     }
@@ -315,8 +318,8 @@ export class ValidationService {
 
   private validateUnit(unit: string): void {
     this.validateString(unit, 'unit', 1, 50)
-    
-    if (!VALIDATION_RULES.VALID_UNITS.includes(unit)) {
+
+    if (!(VALIDATION_RULES.VALID_UNITS as readonly string[]).includes(unit)) {
       throw new ValidationError(`Invalid unit: ${unit}. Must be one of: ${VALIDATION_RULES.VALID_UNITS.join(', ')}`)
     }
   }
@@ -423,9 +426,10 @@ export class ValidationService {
     }
   }
 
-  private validateRequiredFields(obj: any, requiredFields: string[]): void {
+  private validateRequiredFields<T extends object>(obj: T, requiredFields: readonly string[]): void {
+    const record = obj as Record<string, unknown>
     requiredFields.forEach(field => {
-      if (!(field in obj) || obj[field] === undefined || obj[field] === null) {
+      if (!(field in record) || record[field] === undefined || record[field] === null) {
         throw new ValidationError(`Required field '${field}' is missing or null`)
       }
     })
@@ -515,15 +519,16 @@ export function createValidationService(): ValidationService {
 
 /**
  * Quick validation helper functions
+ * These functions validate and throw ValidationError if validation fails
  */
-export function validateKPI(kpi: any, strict?: boolean): asserts kpi is KPI {
-  getValidationService().validateKPI(kpi, strict)
+export function validateKPI(kpi: unknown, strict?: boolean): void {
+  getValidationService().validateKPI(kpi as KPI, strict)
 }
 
-export function validateWizardKPI(wizardKPI: any): asserts wizardKPI is WizardKPI {
-  getValidationService().validateWizardKPI(wizardKPI)
+export function validateWizardKPI(wizardKPI: unknown): void {
+  getValidationService().validateWizardKPI(wizardKPI as WizardKPI)
 }
 
-export function validateBusinessProfile(profile: any): asserts profile is BusinessProfile {
+export function validateBusinessProfile(profile: unknown): void {
   getValidationService().validateBusinessProfile(profile)
 }

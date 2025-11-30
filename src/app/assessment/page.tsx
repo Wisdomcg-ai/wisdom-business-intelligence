@@ -477,7 +477,7 @@ function AssessmentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const isNewAssessment = searchParams.get('new') === 'true';
+  const isNewAssessment = searchParams?.get('new') === 'true';
 
   // Load saved draft and check for existing assessments
   useEffect(() => {

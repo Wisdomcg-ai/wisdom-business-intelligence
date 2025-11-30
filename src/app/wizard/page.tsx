@@ -130,10 +130,12 @@ export default function WizardPage() {
     // Convert activities to ProcessStep format
     const steps = wizard.activities.map(activity => ({
       id: activity.id,
+      process_id: 'wizard-preview',
       swimlane_name: activity.swimlane,
       department: activity.swimlane,
       order_num: activity.orderNum,
       activity_name: activity.name,
+      action_name: activity.name,
       step_type: activity.type as 'action' | 'decision' | 'wait' | 'automation',
       description: '',
       business_purpose: '',
@@ -143,17 +145,20 @@ export default function WizardPage() {
       systems_used: [],
       documents_needed: [],
       quality_checks: '',
+      created_at: new Date().toISOString(),
     }));
 
     // Convert flows to ProcessFlow format
     const flows = wizard.flows.map(flow => ({
       id: flow.id,
+      process_id: 'wizard-preview',
       from_step_id: flow.fromId,
       to_step_id: flow.toId,
       condition_label: flow.label,
       condition_color: flow.color,
       flow_type: 'sequential' as const,
       notes: '',
+      created_at: new Date().toISOString(),
     }));
 
     // Calculate layout

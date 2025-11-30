@@ -1,42 +1,19 @@
-// Add date shortcut to input
-  const addDateToInput = (dateType: 'today' | 'this-week' | 'next-week' | 'backlog') => {
-    setSelectedDate(dateType);
-    let newInput = input.replace(/ today| tomorrow| this week| next week/gi, '').trim();
-    
-    switch (dateType) {
-      case 'today':
-        setInput(newInput + ' today');
-        break;
-      case 'this-week':
-        setInput(newInput + ' this week');
-        break;
-      case 'next-week':
-        setInput(newInput + ' next week');
-        break;
-      case 'backlog':
-        // Remove any date from input for backlog
-        setInput(newInput);
-        break;
-    }
-    inputRef.current?.focus();
-  };// QuickAdd.tsx - Natural language quick add input component
+// QuickAdd.tsx - Natural language quick add input component
 // Location: /src/components/todos/QuickAdd.tsx
 
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Plus, 
-  Command, 
-  Calendar, 
-  Hash, 
+import {
+  Plus,
+  Calendar,
+  Hash,
   AtSign,
   Repeat,
   Zap,
   HelpCircle,
   X
 } from 'lucide-react';
-import { parseTaskInput, validateParsedTask, getTaskDescription } from './utils/naturalLanguage';
+import { parseTaskInput, validateParsedTask } from './utils/naturalLanguage';
 import { ParsedTask } from './utils/types';
-import { CATEGORIES } from './utils/constants';
 import { toast } from 'sonner';
 
 interface QuickAddProps {
@@ -299,12 +276,10 @@ export default function QuickAdd({
                     <span className="text-red-600 font-medium">❗ Important</span>
                   </div>
                 )}
-                {preview.category && CATEGORIES[preview.category] && (
+                {preview.category && (
                   <div className="flex items-center gap-2">
                     <Hash className="w-4 h-4" />
-                    <span>
-                      {CATEGORIES[preview.category].emoji} {CATEGORIES[preview.category].label}
-                    </span>
+                    <span>{preview.category}</span>
                   </div>
                 )}
                 {preview.assigned_to && (

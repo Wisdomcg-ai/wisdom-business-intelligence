@@ -55,7 +55,7 @@ export interface UseAutoSaveOptions<T> {
   onDataRecovered?: (data: T) => void
 }
 
-export interface UseAutoSaveReturn {
+export interface UseAutoSaveReturn<T> {
   /** Whether there are unsaved changes */
   isDirty: boolean
   /** Mark the data as dirty (call this in onChange handlers) */
@@ -91,7 +91,7 @@ export function useAutoSave<T>({
   storageKey,
   onSaveComplete,
   onDataRecovered
-}: UseAutoSaveOptions<T>): UseAutoSaveReturn {
+}: UseAutoSaveOptions<T>): UseAutoSaveReturn<T> {
   // State
   const [isDirty, setIsDirty] = useState(false)
   const [isLoadComplete, setIsLoadComplete] = useState(false)

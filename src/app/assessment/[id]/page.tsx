@@ -60,10 +60,13 @@ export default function AssessmentResultsPage() {
 
   async function loadAssessment() {
     try {
+      const id = params?.id as string
+      if (!id) return
+
       const { data, error } = await supabase
         .from('assessments')
         .select('*')
-        .eq('id', params.id)
+        .eq('id', id)
         .single();
 
       if (error) throw error;

@@ -1,19 +1,47 @@
 // types.ts - Complete type definitions for the todo system
 // Location: /src/components/todos/utils/types.ts
 
-import { Database } from '@/types/supabase';
+// Base TodoItem type - defined locally since table may not be in database types
+export interface TodoItem {
+  id: string;
+  business_id: string;
+  title: string;
+  description: string | null;
+  assigned_to: string | null;
+  priority: string;
+  status: string;
+  due_date: string | null;
+  scheduled_date: string | null;
+  category: string | null;
+  effort_size: string | null;
+  is_published: boolean;
+  is_must: boolean;
+  is_top_three: boolean;
+  is_recurring?: boolean;
+  parent_task_id?: string | null;
+  recurrence_pattern?: string | null;
+  created_by: string;
+  tags: Record<string, unknown> | null;
+  order_index: number;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
-// Base types from your database
-export type TodoItem = Database['public']['Tables']['todo_items']['Row'];
-export type TodoInsert = Database['public']['Tables']['todo_items']['Insert'];
-export type TodoUpdate = Database['public']['Tables']['todo_items']['Update'];
+export type TodoInsert = Omit<TodoItem, 'id' | 'created_at' | 'updated_at'> & {
+  id?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type TodoUpdate = Partial<TodoItem>;
 
 // Enhanced todo with computed fields
-export interface EnhancedTodoItem extends TodoItem {
-  is_must?: boolean;
+export interface EnhancedTodoItem extends Omit<TodoItem, 'is_must'> {
+  is_must: boolean;
   must_level?: 1 | 2; // 1 = TRUE MUST (⭐), 2 = TOP 3 MUST (⭐⭐)
-  is_open_loop?: boolean;
-  days_in_loop?: number;
+  is_open_loop: boolean;
+  days_in_loop: number;
   recurrence_pattern?: string;
 }
 
@@ -54,13 +82,22 @@ export interface DailyMust {
   created_at: string;
 }
 
-// Morning Ritual
-export interface MorningRitualState {
+// Morning Ritual Steps (for wizard flow)
+export interface MorningRitualSteps {
   step: 'quick-wins' | 'review' | 'identify-musts' | 'select-top-3' | 'complete';
   quick_wins_completed: string[]; // todo IDs
   identified_musts: string[]; // todo IDs that are TRUE MUSTs
   selected_top_3: string[]; // todo IDs that are TOP 3 MUSTs
   date: string; // ISO date
+}
+
+// Morning Ritual Runtime State (for hook tracking)
+export interface MorningRitualState {
+  lastCompleted: string | null;
+  currentStreak: number;
+  totalCompleted: number;
+  todaysMust: string | null;
+  todaysTopThree: string[];
 }
 
 // Natural Language Parse Result
@@ -185,4 +222,17 @@ export interface ProductivityStats {
     best: number;
     last_broken: string | null;
   };
+}
+
+// Coach client tracking
+export interface CoachClient {
+  id: string;
+  business_id: string;
+  business_name: string;
+  owner_name: string;
+  last_activity: string | null;
+  total_tasks: number;
+  completed_tasks: number;
+  overdue_tasks: number;
+  musts_completed_this_week: number;
 }

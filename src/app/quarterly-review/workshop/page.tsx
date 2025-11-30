@@ -29,9 +29,9 @@ function ReviewContent() {
   const router = useRouter();
   const [showSidebar, setShowSidebar] = useState(false);
 
-  const reviewId = searchParams.get('id') || undefined;
-  const quarter = searchParams.get('quarter') ? parseInt(searchParams.get('quarter')!) as QuarterNumber : undefined;
-  const year = searchParams.get('year') ? parseInt(searchParams.get('year')!) : undefined;
+  const reviewId = searchParams?.get('id') || undefined;
+  const quarter = searchParams?.get('quarter') ? parseInt(searchParams?.get('quarter')!) as QuarterNumber : undefined;
+  const year = searchParams?.get('year') ? parseInt(searchParams?.get('year')!) : undefined;
 
   const {
     review,

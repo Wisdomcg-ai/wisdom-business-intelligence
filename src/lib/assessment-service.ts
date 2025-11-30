@@ -1,9 +1,8 @@
-import { createClient } from '@/lib/supabase/client'
-import { Database } from '@/types/database.types';
+import { createBrowserClient } from '@supabase/ssr';
 
 export interface AssessmentData {
   userId: string;
-  answers: Record<string, any>;
+  answers: Record<string, unknown>;
   totalScore: number;
   maxScore: number;
   completionPercentage: number;
@@ -12,9 +11,9 @@ export interface AssessmentData {
 
 export async function saveAssessment(data: AssessmentData): Promise<string> {
   const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   
   try {
     // Get the user's business ID

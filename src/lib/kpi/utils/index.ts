@@ -20,5 +20,10 @@ export {
   getPerformanceLevel
 } from './validators'
 
-// Re-export types
-export type { ValidationResult } from './validators'
+// Re-export all mappers
+export {
+  mapBusinessIndustryToKPIIndustry,
+  mapRevenueToStage
+} from './mappers'
+
+// Note: ValidationResult is exported from ../types to avoid duplicate exports

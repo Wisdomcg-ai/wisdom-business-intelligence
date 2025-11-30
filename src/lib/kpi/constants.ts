@@ -404,7 +404,7 @@ export const FEATURE_FLAGS = {
  * Helper function to get metadata by key
  */
 export function getBusinessFunctionMetadata(func: BusinessFunction) {
-  return BUSINESS_FUNCTION_METADATA[func]
+  return BUSINESS_FUNCTION_METADATA[func as keyof typeof BUSINESS_FUNCTION_METADATA] || null
 }
 
 export function getIndustryMetadata(industry: Industry) {
@@ -427,5 +427,5 @@ export function isValidKPIId(id: string): boolean {
 }
 
 export function isValidUnit(unit: string): boolean {
-  return VALIDATION_RULES.VALID_UNITS.includes(unit)
+  return (VALIDATION_RULES.VALID_UNITS as readonly string[]).includes(unit)
 }

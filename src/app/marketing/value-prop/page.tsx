@@ -141,7 +141,7 @@ export default function ValuePropositionPage() {
         body: JSON.stringify({
           fieldType,
           currentValue: formData,
-          businessContext
+          businessContext: businessContextData
         })
       });
 

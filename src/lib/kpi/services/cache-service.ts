@@ -18,7 +18,7 @@ import { CACHE_CONFIG, FEATURE_FLAGS } from '../constants'
  * - Performance metrics
  */
 export class CacheService {
-  private cache = new Map<string, CacheEntry>()
+  private cache = new Map<string, CacheEntry<unknown>>()
   private hitCount = 0
   private missCount = 0
   private cleanupTimer: NodeJS.Timeout | null = null
@@ -261,7 +261,7 @@ export class CacheService {
   /**
    * Check if cache entry is expired
    */
-  private isExpired(entry: CacheEntry): boolean {
+  private isExpired(entry: CacheEntry<unknown>): boolean {
     return Date.now() - entry.timestamp > entry.ttl
   }
 

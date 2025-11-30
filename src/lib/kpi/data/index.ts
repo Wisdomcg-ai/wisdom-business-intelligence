@@ -62,7 +62,7 @@ export const ALL_KPIS: KPIDefinition[] = [
  * Get all KPIs for a specific business function
  */
 export function getKPIsByFunction(businessFunction: BusinessFunction): KPIDefinition[] {
-  return ALL_KPIS.filter(kpi => kpi.businessFunction === businessFunction)
+  return ALL_KPIS.filter(kpi => kpi.function === businessFunction)
 }
 
 /**
@@ -158,8 +158,8 @@ export function validateKPIs(): {
     seenIds.add(kpi.id)
 
     // Check required fields
-    if (!kpi.businessFunction) {
-      errors.push(`KPI ${kpi.id} missing businessFunction`)
+    if (!kpi.function) {
+      errors.push(`KPI ${kpi.id} missing function`)
     }
     if (!kpi.name) {
       errors.push(`KPI at index ${index} missing name`)

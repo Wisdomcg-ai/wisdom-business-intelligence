@@ -32,7 +32,7 @@ import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year
 export default function CoachForecastPage() {
   const params = useParams()
   const router = useRouter()
-  const clientId = params.id as string
+  const clientId = params?.id as string
 
   const supabase = createClient()
   const [mounted, setMounted] = useState(false)

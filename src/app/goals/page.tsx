@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useStrategicPlanning, SaveStatus } from './hooks/useStrategicPlanning'
 import Step1GoalsAndKPIs from './components/Step1GoalsAndKPIs'
@@ -164,7 +164,7 @@ function getSaveStatusDisplay(status: SaveStatus, isDirty: boolean, lastSaved: D
   return { text: '', color: 'text-gray-500', icon: 'idle' }
 }
 
-export default function StrategicPlanningPage() {
+function StrategicPlanningContent() {
   const searchParams = useSearchParams()
   const { activeBusiness, viewerContext } = useBusinessContext()
 
@@ -177,7 +177,7 @@ export default function StrategicPlanningPage() {
     setMounted(true)
 
     // Check for step parameter in URL
-    const stepParam = searchParams.get('step')
+    const stepParam = searchParams?.get('step')
     if (stepParam) {
       const stepNum = parseInt(stepParam)
       if (stepNum >= 1 && stepNum <= 5) {
@@ -857,5 +857,17 @@ export default function StrategicPlanningPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function StrategicPlanningPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+      </div>
+    }>
+      <StrategicPlanningContent />
+    </Suspense>
   )
 }

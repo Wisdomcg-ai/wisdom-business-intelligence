@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -29,7 +29,7 @@ interface UnassignedClient {
   created_at: string
 }
 
-export default function ClientsListPage() {
+function ClientsListContent() {
   const searchParams = useSearchParams()
   const supabase = createClient()
 
@@ -41,7 +41,7 @@ export default function ClientsListPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(
-    (searchParams.get('filter') as StatusFilter) || 'all'
+    (searchParams?.get('filter') as StatusFilter) || 'all'
   )
   const [industryFilter, setIndustryFilter] = useState<string>('all')
   const [showFilters, setShowFilters] = useState(false)
@@ -423,5 +423,17 @@ export default function ClientsListPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function ClientsListPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      </div>
+    }>
+      <ClientsListContent />
+    </Suspense>
   )
 }

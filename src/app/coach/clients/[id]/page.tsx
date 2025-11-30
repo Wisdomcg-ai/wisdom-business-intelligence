@@ -85,7 +85,7 @@ export default function ClientFilePage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
-  const clientId = params.id as string
+  const clientId = params?.id as string
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -101,7 +101,7 @@ export default function ClientFilePage() {
   })
 
   const [activeTab, setActiveTab] = useState<TabId>(
-    (searchParams.get('tab') as TabId) || 'overview'
+    (searchParams?.get('tab') as TabId) || 'overview'
   )
   const [showMenu, setShowMenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -125,7 +125,7 @@ export default function ClientFilePage() {
   }, [clientId])
 
   useEffect(() => {
-    const tab = searchParams.get('tab') as TabId
+    const tab = searchParams?.get('tab') as TabId
     if (tab) setActiveTab(tab)
   }, [searchParams])
 

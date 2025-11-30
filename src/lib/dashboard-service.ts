@@ -1,5 +1,33 @@
-import { createClient } from '@/lib/supabase/client'
+import { createBrowserClient } from '@supabase/ssr'
 import { Database } from '@/types/database.types';
+
+export interface AssessmentSummary {
+  id: string;
+  created_at: string;
+  percentage: number;
+  health_status: string;
+  business_foundation_score: number;
+  strategic_wheel_score: number;
+  profitability_health_score: number;
+  business_engines_score: number;
+}
+
+export function getHealthStatusColor(status: string): string {
+  switch (status.toLowerCase()) {
+    case 'critical':
+      return 'text-red-600 bg-red-100';
+    case 'poor':
+      return 'text-orange-600 bg-orange-100';
+    case 'fair':
+      return 'text-yellow-600 bg-yellow-100';
+    case 'good':
+      return 'text-green-600 bg-green-100';
+    case 'excellent':
+      return 'text-teal-600 bg-teal-100';
+    default:
+      return 'text-gray-600 bg-gray-100';
+  }
+}
 
 export interface AssessmentData {
   userId: string;

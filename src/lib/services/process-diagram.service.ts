@@ -4,7 +4,9 @@
 // Paste this into: src/lib/services/process-diagram.service.ts
 // ============================================================================
 
-import { supabase } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
+
+const supabase = createClient();
 import {
   ProcessDiagram,
   ProcessStep,

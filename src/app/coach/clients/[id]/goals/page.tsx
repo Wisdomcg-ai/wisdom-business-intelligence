@@ -148,7 +148,7 @@ export default function CoachGoalsPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
-  const clientId = params.id as string
+  const clientId = params?.id as string
 
   // Verify coach access
   const [isCoach, setIsCoach] = useState<boolean | null>(null)
@@ -183,7 +183,7 @@ export default function CoachGoalsPage() {
       setMounted(true)
 
       // Check for step parameter in URL
-      const stepParam = searchParams.get('step')
+      const stepParam = searchParams?.get('step')
       if (stepParam) {
         const stepNum = parseInt(stepParam)
         if (stepNum >= 1 && stepNum <= 5) {

@@ -2457,13 +2457,18 @@ function OperationalPlanTab({
       const color = getColorForName(name)
       const initials = getInitials(name)
 
+      const now = new Date().toISOString()
       const newMember: TeamMember = {
         id: `role-${Date.now()}`,
         name,
         role: newPersonRole.trim() || undefined,
         type: newPersonType,
         initials,
-        color
+        color,
+        businessId: 'local', // Placeholder for locally created members
+        userId: 'local', // Placeholder for locally created members
+        createdAt: now,
+        updatedAt: now
       }
 
       const updatedMembers = [...teamMembers, newMember]

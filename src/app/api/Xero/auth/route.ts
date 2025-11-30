@@ -3,6 +3,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic'
+
 // Get environment variables
 const XERO_CLIENT_ID = process.env.XERO_CLIENT_ID!;
 const REDIRECT_URI = process.env.NODE_ENV === 'production'

@@ -1,7 +1,10 @@
 // /src/components/todos/utils/recurringTasks.ts
 // Utilities for managing recurring tasks
 
-import type { Todo } from './types'
+import type { TodoItem } from './types'
+
+// Alias for backward compatibility
+type Todo = TodoItem
 
 export interface RecurrencePattern {
   frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'
@@ -233,6 +236,15 @@ export function parseRecurrencePattern(text: string): RecurrencePattern | null {
 }
 
 /**
+ * Get human-readable description of a recurrence pattern (alias)
+ */
+export function getRecurrenceDescription(patternString: string): string {
+  const pattern = parseRecurrencePattern(patternString)
+  if (!pattern) return patternString
+  return formatRecurrencePattern(pattern)
+}
+
+/**
  * Format recurrence pattern for display
  */
 export function formatRecurrencePattern(pattern: RecurrencePattern): string {
@@ -280,5 +292,46 @@ function getOrdinalSuffix(day: number): string {
     case 2: return 'nd'
     case 3: return 'rd'
     default: return 'th'
+  }
+}
+
+/**
+ * Check if a task should recur (alias for shouldGenerateNextOccurrence)
+ */
+export function shouldTaskRecur(task: any): boolean {
+  if (!task.tags?.recurrence?.pattern) return false
+  if (task.status !== 'completed') return false
+  return true
+}
+
+/**
+ * Create the next recurrence of a task
+ */
+export function createNextRecurrence(task: any): Partial<any> | null {
+  const recurrence = task.tags?.recurrence
+  if (!recurrence?.pattern) return null
+
+  const pattern = parseRecurrencePattern(recurrence.pattern)
+  if (!pattern) return null
+
+  const lastDate = task.due_date ? new Date(task.due_date) : new Date()
+  const nextDate = getNextOccurrence(lastDate, pattern)
+
+  if (!nextDate) return null
+
+  return {
+    business_id: task.business_id,
+    title: task.title,
+    description: task.description,
+    assigned_to: task.assigned_to,
+    priority: task.priority,
+    status: 'pending',
+    due_date: nextDate.toISOString().split('T')[0],
+    category: task.category,
+    effort_size: task.effort_size,
+    is_published: task.is_published,
+    created_by: task.created_by,
+    tags: task.tags,
+    order_index: task.order_index
   }
 }

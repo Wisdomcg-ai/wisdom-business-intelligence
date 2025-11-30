@@ -35,7 +35,7 @@ import {
   Briefcase,
   Building,
   Truck,
-  Tool,
+  Wrench,
   Coffee,
   ShoppingBag,
   Monitor,
@@ -722,7 +722,7 @@ export const KPI_LIBRARY: KPI[] = [
     name: 'Job Completion Rate',
     plainName: 'Jobs Finished This Month',
     unit: '#',
-    icon: Tool,
+    icon: Wrench,
     function: 'DELIVER',
     category: 'Operations',
     description: 'Number of jobs completed per month',
@@ -1116,25 +1116,5 @@ export function mapRevenueToStage(revenue: string): BusinessStage {
   
   return revenueMap[revenue] || 'FOUNDATION'
 }
-// AT THE VERY BOTTOM OF kpi-definitions.ts - ADD THESE LINES:
-
-// Ensure all exports are available
-export {
-  ESSENTIAL_KPIS,
-  KPI_LIBRARY,
-  BUSINESS_FUNCTIONS,
-  getKPIsByFunction,
-  getKPIsByIndustry,
-  getKPIsByStage,
-  getKPIsByTier,
-  mapBusinessIndustryToKPIIndustry,
-  mapRevenueToStage
-}
-
-// Type exports
-export type {
-  KPI,
-  BusinessFunction,
-  Industry,
-  BusinessStage
-}
+// All types and constants are exported at declaration above
+// No additional exports needed

@@ -4,7 +4,7 @@
  * ESSENTIAL KPIs - The Core 10 Metrics Every Business Must Track
  * These are the foundational KPIs that apply to all businesses regardless of industry or stage
  * IDs now prefixed with function name (profit-, attract-, convert-, delight-, people-, systems-)
- * 
+ *
  * ✅ FIXED: All IDs now match their function property prefix
  * Use this for: Quick Start recommendations, Dashboard defaults, First-time users
  */

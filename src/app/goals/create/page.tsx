@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 
-export default function CreateGoalPage() {
+function CreateGoalContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const goalType = searchParams.get('type') || 'annual';
+  const goalType = searchParams?.get('type') || 'annual';
   const supabase = createClient();
   const { activeBusiness, isLoading: contextLoading } = useBusinessContext();
 
@@ -439,5 +439,17 @@ export default function CreateGoalPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function CreateGoalPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+      </div>
+    }>
+      <CreateGoalContent />
+    </Suspense>
   );
 }

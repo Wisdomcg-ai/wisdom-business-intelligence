@@ -400,14 +400,14 @@ export function useTodos({
       
       // Check if it's an open loop
       const isInProgress = todo.status === 'in-progress';
-      const isPastDue = todo.due_date && new Date(todo.due_date) < new Date() && todo.status !== 'completed';
+      const isPastDue = todo.due_date ? new Date(todo.due_date) < new Date() && todo.status !== 'completed' : false;
       const wasYesterdayMust = musts.some(m => {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = yesterday.toISOString().split('T')[0];
         return m.todo_id === todo.id && m.must_date === yesterdayStr;
       });
-      
+
       const isOpenLoop = isInProgress || (isPastDue && wasYesterdayMust);
       
       // Calculate days in loop

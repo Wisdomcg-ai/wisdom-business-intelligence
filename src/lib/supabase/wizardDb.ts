@@ -4,7 +4,7 @@
 // ============================================
 
 import { createClient } from '@/lib/supabase/client';
-import { ProcessDiagram, ProcessStep, ProcessDecision } from '@/lib/types/processWizard';
+import { ProcessDiagram, ProcessStep, ProcessDecision } from '@/types/wizard';
 
 /**
  * Create a new process diagram in Supabase

@@ -1,16 +1,16 @@
 'use client';
 
-import { createClientComponentClient } from './client';
+import { createClient } from './client';
 import {
   ProcessDiagram,
   ProcessStep,
   ProcessDecision,
   ConversationTurn,
   CoachSuggestion,
-} from '@/lib/types/wizard';
+} from '@/types/wizard';
 
 // Get singleton instance
-const supabase = createClientComponentClient();
+const supabase = createClient();
 
 // ========================================
 // TYPE DEFINITIONS FOR RESPONSES

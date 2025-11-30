@@ -107,11 +107,15 @@ export interface KPI {
  * Business profile for KPI recommendations
  */
 export interface BusinessProfile {
+  userId?: string
   industry: Industry
   stage: BusinessStage
   weakFunctions?: BusinessFunction[]
   preferredTiers?: KPITier[]
   maxKPIs?: number
+  revenue?: number
+  employees?: number
+  customNiche?: string
 }
 
 /**
@@ -170,6 +174,34 @@ export interface KPISearchResult {
 }
 
 /**
+ * Criteria for KPI selection/filtering
+ */
+export interface KPICriteria {
+  function?: BusinessFunction
+  functions?: BusinessFunction[]
+  industry?: Industry
+  stage?: BusinessStage
+  tier?: KPITier
+  tags?: string[]
+}
+
+/**
+ * Search filters for KPI queries
+ */
+export interface SearchFilters {
+  function?: BusinessFunction
+  functions?: BusinessFunction[]
+  industry?: Industry
+  industries?: Industry[]
+  stage?: BusinessStage
+  stages?: BusinessStage[]
+  tier?: KPITier
+  tiers?: KPITier[]
+  tags?: string[]
+  searchQuery?: string
+}
+
+/**
  * Service interfaces
  */
 export interface CacheEntry<T> {
@@ -181,7 +213,7 @@ export interface CacheEntry<T> {
 export interface ValidationResult {
   isValid: boolean
   errors: string[]
-  warnings: string[]
+  warnings?: string[]
 }
 
 /**
@@ -261,6 +293,22 @@ export const isKPITier = (value: string): value is KPITier => {
   return Object.values(KPITier).includes(value as KPITier)
 }
 
+export const isWizardKPI = (obj: unknown): obj is WizardKPI => {
+  return obj !== null &&
+    typeof obj === 'object' &&
+    typeof (obj as WizardKPI).id === 'string' &&
+    typeof (obj as WizardKPI).name === 'string' &&
+    typeof (obj as WizardKPI).friendlyName === 'string' &&
+    typeof (obj as WizardKPI).currentValue === 'number'
+}
+
+export const isBusinessProfile = (obj: unknown): obj is BusinessProfile => {
+  return obj !== null &&
+    typeof obj === 'object' &&
+    typeof (obj as BusinessProfile).industry === 'string' &&
+    typeof (obj as BusinessProfile).stage === 'string'
+}
+
 /**
  * Utility type for making certain properties optional
  */
@@ -284,3 +332,73 @@ export type KPIUnit = 'currency' | 'percentage' | 'number' | 'ratio' | 'score' |
 export type Priority = 'high' | 'medium' | 'low'
 
 export type SystemStatus = 'healthy' | 'degraded' | 'error'
+
+/**
+ * Custom error class for cache operations
+ */
+export class CacheError extends Error {
+  constructor(message: string, public details?: Record<string, unknown>) {
+    super(message)
+    this.name = 'CacheError'
+  }
+}
+
+/**
+ * Custom error class for KPI operations
+ */
+export class KPIError extends Error {
+  constructor(message: string, public code?: string, public details?: Record<string, unknown>) {
+    super(message)
+    this.name = 'KPIError'
+  }
+}
+
+/**
+ * Custom error class for validation operations
+ */
+export class ValidationError extends Error {
+  public field?: string
+  public details?: Record<string, unknown>
+
+  constructor(message: string, fieldOrDetails?: string | Record<string, unknown>, details?: Record<string, unknown>) {
+    super(message)
+    this.name = 'ValidationError'
+    if (typeof fieldOrDetails === 'string') {
+      this.field = fieldOrDetails
+      this.details = details
+    } else if (typeof fieldOrDetails === 'object') {
+      this.details = fieldOrDetails
+    }
+  }
+}
+
+/**
+ * KPIDefinition - A looser type for defining KPIs in data files
+ * Uses strings instead of enums for easier authoring of static data
+ */
+export interface KPIDefinition {
+  id: string
+  name: string
+  plainName: string
+  function: string              // String instead of BusinessFunction enum
+  category: string
+  tier: string                  // String instead of KPITier enum
+  industries: string[]          // Strings instead of Industry enum
+  stages: string[]              // Strings instead of BusinessStage enum
+  unit: string
+  frequency?: string
+  formula?: string
+  description: string
+  whyItMatters?: string
+  actionToTake?: string
+  benchmarks?: {
+    poor: number | string
+    average: number | string
+    good: number | string
+    excellent: number | string
+  }
+  icon: unknown                 // LucideIcon component
+  tags?: string[]
+  createdAt?: string
+  updatedAt?: string
+}

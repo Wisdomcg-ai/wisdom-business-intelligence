@@ -417,7 +417,7 @@ export class KPIService {
       throw new KPIError(
         'Failed to initialize KPI service',
         'INITIALIZATION_ERROR',
-        error instanceof Error ? error.message : 'Unknown error'
+        { originalError: error instanceof Error ? error.message : 'Unknown error' }
       )
     }
   }

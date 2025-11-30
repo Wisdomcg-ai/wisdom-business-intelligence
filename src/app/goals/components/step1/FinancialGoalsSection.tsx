@@ -36,7 +36,7 @@ export default function FinancialGoalsSection({
       Object.entries(values).forEach(([period, value]) => {
         if (period === 'current' || period === 'year1' || period === 'year2' || period === 'year3') {
           const isPercentage = metric === 'grossMargin' || metric === 'netMargin'
-          updateFinancialValue(metric as keyof FinancialData, period, value, isPercentage)
+          updateFinancialValue(metric as keyof FinancialData, period, value as number, isPercentage)
         }
       })
     })
@@ -44,7 +44,7 @@ export default function FinancialGoalsSection({
     Object.entries(calculatedCoreMetrics).forEach(([metric, values]) => {
       Object.entries(values).forEach(([period, value]) => {
         if (period === 'current' || period === 'year1' || period === 'year2' || period === 'year3') {
-          updateCoreMetric(metric as keyof CoreMetricsData, period, value)
+          updateCoreMetric(metric as keyof CoreMetricsData, period, value as number)
         }
       })
     })

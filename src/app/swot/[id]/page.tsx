@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Save, CheckCircle } from 'lucide-react'
 import Link from 'next/link'
 import { SwotGrid } from '@/components/swot/SwotGrid'
-import type { SwotCategory } from '@/lib/swot/types'
+import type { SwotCategory, SwotItem, SwotGridData } from '@/lib/swot/types'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 
 interface SwotAnalysis {
@@ -21,25 +21,10 @@ interface SwotAnalysis {
   updated_at: string
 }
 
-interface SwotItem {
-  id: string
-  category: 'strength' | 'weakness' | 'opportunity' | 'threat'
-  title: string
-  description: string | null
-  impact_level: number
-}
-
-interface SwotGridData {
-  strengths: SwotItem[]
-  weaknesses: SwotItem[]
-  opportunities: SwotItem[]
-  threats: SwotItem[]
-}
-
 export default function SwotDetailPage() {
   const router = useRouter()
   const params = useParams()
-  const swotId = params.id as string
+  const swotId = params?.id as string
   const supabase = createClient()
   const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
 
@@ -112,7 +97,9 @@ export default function SwotDetailPage() {
         threats: []
       }
 
-      itemsData.forEach((item: SwotItem) => {
+      // Cast database response to SwotItem[] (database schema matches the type)
+      const typedItems = itemsData as SwotItem[]
+      typedItems.forEach((item) => {
         switch (item.category) {
           case 'strength':
             grouped.strengths.push(item)
@@ -192,7 +179,7 @@ export default function SwotDetailPage() {
           opportunities: [...prevItems.opportunities],
           threats: [...prevItems.threats]
         }
-        newItems[categoryKey] = [...newItems[categoryKey], newItem]
+        newItems[categoryKey] = [...newItems[categoryKey], newItem as SwotItem]
         return newItems
       })
 

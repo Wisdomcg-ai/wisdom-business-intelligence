@@ -51,7 +51,7 @@ export function CoachSidebar({ clients = [], userName = 'Coach', onLogout }: Coa
     if (href === '/coach/dashboard') {
       return pathname === '/coach' || pathname === '/coach/dashboard'
     }
-    return pathname.startsWith(href)
+    return pathname?.startsWith(href) ?? false
   }
 
   const getStatusDot = (status: string) => {
@@ -131,7 +131,7 @@ export function CoachSidebar({ clients = [], userName = 'Coach', onLogout }: Coa
 
               {/* Client List */}
               {clients.slice(0, 8).map((client) => {
-                const clientActive = pathname.includes(`/coach/clients/${client.id}`)
+                const clientActive = pathname?.includes(`/coach/clients/${client.id}`) ?? false
                 return (
                   <Link
                     key={client.id}

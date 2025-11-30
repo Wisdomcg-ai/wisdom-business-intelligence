@@ -16,10 +16,9 @@ import {
   Calendar
 } from 'lucide-react';
 import { EnhancedTodoItem } from './utils/types';
-import { 
-  CATEGORIES, 
-  PRIORITIES, 
-  STATUSES, 
+import {
+  CATEGORIES,
+  STATUSES,
   MUST_LEVELS,
   OPEN_LOOP_AGING,
   EFFORT_SIZES,
@@ -59,10 +58,9 @@ export default function TodoItem({
   // Get display values with null checks
   const categoryKey = todo.category || 'Operations';
   const category = CATEGORIES[categoryKey as keyof typeof CATEGORIES] || CATEGORIES['Operations'];
-  const simplifiedPriority = PRIORITY_MAP[todo.priority || 'medium'];
-  const priority = PRIORITIES[simplifiedPriority];
-  const status = STATUSES[todo.status];
-  const effortSize = todo.effort_size ? EFFORT_SIZES[todo.effort_size] : null;
+  const priorityInfo = PRIORITY_MAP[todo.priority || 'medium'] || { label: 'Medium', color: 'text-yellow-600' };
+  const status = STATUSES[todo.status as keyof typeof STATUSES] || 'pending';
+  const effortSize = todo.effort_size ? EFFORT_SIZES[todo.effort_size as keyof typeof EFFORT_SIZES] : null;
   
   // Get open loop aging color
   const getOpenLoopIndicator = () => {
@@ -188,7 +186,7 @@ export default function TodoItem({
                 )}
                 
                 {/* Priority indicator */}
-                {simplifiedPriority === 'important' && (
+                {todo.priority === 'high' && (
                   <span className="text-red-500 text-sm font-medium">!</span>
                 )}
               </div>
@@ -270,7 +268,7 @@ export default function TodoItem({
                       className={`p-1 rounded hover:bg-gray-100 ${todo.must_level === 1 ? 'text-yellow-500' : 'text-gray-400'}`}
                       title="Mark as TRUE MUST"
                     >
-                      <Star className="w-4 h-4" fill={todo.must_level >= 1 ? 'currentColor' : 'none'} />
+                      <Star className="w-4 h-4" fill={(todo.must_level ?? 0) >= 1 ? 'currentColor' : 'none'} />
                     </button>
                     <button
                       onClick={(e) => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CalendarView, type CalendarSession } from '@/components/coach/schedule/CalendarView'
@@ -21,7 +21,7 @@ interface ClientOption {
   industry?: string
 }
 
-export default function SchedulePage() {
+function ScheduleContent() {
   const searchParams = useSearchParams()
   const supabase = createClient()
 
@@ -29,7 +29,7 @@ export default function SchedulePage() {
   const [sessions, setSessions] = useState<CalendarSession[]>([])
   const [clients, setClients] = useState<ClientOption[]>([])
   const [viewMode, setViewMode] = useState<ViewMode>(
-    (searchParams.get('view') as ViewMode) || 'week'
+    (searchParams?.get('view') as ViewMode) || 'week'
   )
   const [selectedDate, setSelectedDate] = useState(new Date())
 
@@ -348,5 +348,17 @@ export default function SchedulePage() {
         initialHour={scheduleInitialHour}
       />
     </div>
+  )
+}
+
+export default function SchedulePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      </div>
+    }>
+      <ScheduleContent />
+    </Suspense>
   )
 }

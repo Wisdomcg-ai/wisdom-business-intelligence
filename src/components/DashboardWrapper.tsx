@@ -252,9 +252,9 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
                 <div className="pb-2">
                   {items.map((item) => {
                     const Icon = item.icon;
-                    const isActive = pathname === item.href && !item.disabled;
-                    
-                    if (item.disabled) {
+                    const isActive = pathname === item.href && !('disabled' in item && item.disabled);
+
+                    if ('disabled' in item && item.disabled) {
                       return (
                         <div
                           key={item.name}

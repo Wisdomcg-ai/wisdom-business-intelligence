@@ -486,15 +486,16 @@ export default function Step4AnnualPlan({
 
   // Update quarterly target value
   const updateQuarterlyTarget = (metricKey: string, quarter: 'q1' | 'q2' | 'q3' | 'q4', value: string) => {
-    setQuarterlyTargets(prev => ({
-      ...prev,
+    const newTargets = {
+      ...quarterlyTargets,
       [metricKey]: {
-        q1: quarter === 'q1' ? value : (prev[metricKey]?.q1 || ''),
-        q2: quarter === 'q2' ? value : (prev[metricKey]?.q2 || ''),
-        q3: quarter === 'q3' ? value : (prev[metricKey]?.q3 || ''),
-        q4: quarter === 'q4' ? value : (prev[metricKey]?.q4 || '')
+        q1: quarter === 'q1' ? value : (quarterlyTargets[metricKey]?.q1 || ''),
+        q2: quarter === 'q2' ? value : (quarterlyTargets[metricKey]?.q2 || ''),
+        q3: quarter === 'q3' ? value : (quarterlyTargets[metricKey]?.q3 || ''),
+        q4: quarter === 'q4' ? value : (quarterlyTargets[metricKey]?.q4 || '')
       }
-    }))
+    }
+    setQuarterlyTargets(newTargets)
   }
 
   // Format currency for display
@@ -621,7 +622,7 @@ export default function Step4AnnualPlan({
                               <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isLocked ? 'bg-gray-50' : ''}`}>
                                 <input
                                   type="text"
-                                  value={quarterlyTargets['revenue']?.[q.id] ? formatDollar(parseFloat(quarterlyTargets['revenue'][q.id])) : ''}
+                                  value={quarterlyTargets['revenue']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] ? formatDollar(parseFloat(quarterlyTargets['revenue'][q.id as 'q1' | 'q2' | 'q3' | 'q4'])) : ''}
                                   onChange={(e) => updateQuarterlyTarget('revenue', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
                                   placeholder="$0"
                                   disabled={q.isLocked}
@@ -665,7 +666,7 @@ export default function Step4AnnualPlan({
                               <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isLocked ? 'bg-gray-50' : ''}`}>
                                 <input
                                   type="text"
-                                  value={quarterlyTargets['grossProfit']?.[q.id] ? formatDollar(parseFloat(quarterlyTargets['grossProfit'][q.id])) : ''}
+                                  value={quarterlyTargets['grossProfit']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] ? formatDollar(parseFloat(quarterlyTargets['grossProfit'][q.id as 'q1' | 'q2' | 'q3' | 'q4'])) : ''}
                                   onChange={(e) => updateQuarterlyTarget('grossProfit', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
                                   placeholder="$0"
                                   disabled={q.isLocked}

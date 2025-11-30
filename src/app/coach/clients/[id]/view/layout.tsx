@@ -11,7 +11,7 @@ interface ViewLayoutProps {
 
 export default function ViewLayout({ children, params }: ViewLayoutProps) {
   return (
-    <CoachViewLayout clientId={params.id}>
+    <CoachViewLayout clientId={params?.id}>
       {children}
     </CoachViewLayout>
   )

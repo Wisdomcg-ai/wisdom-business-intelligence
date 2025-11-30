@@ -1,6 +1,16 @@
-import { Database } from '@/types/database.types';
-
-type Assessment = Database['public']['Tables']['assessments']['Row'];
+// Assessment type - defined locally since table may not be in database types
+interface Assessment {
+  id: string;
+  business_profile_id: string;
+  business_foundation_score: number;
+  strategic_wheel_score: number;
+  profitability_health_score: number;
+  business_engines_score: number;
+  percentage: number;
+  health_status: string;
+  created_at: string;
+  answers: Record<string, unknown> | null;
+}
 
 export interface SectionScore {
   name: string;

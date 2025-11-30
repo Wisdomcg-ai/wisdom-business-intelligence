@@ -32,6 +32,31 @@ export * from './utils'
 // ==========================================
 
 /**
+ * Get KPI system health status
+ * Returns health information about the KPI system
+ */
+export const getKPISystemHealth = () => {
+  try {
+    const { getKPIStats } = require('./data/registry')
+    const stats = getKPIStats()
+    return {
+      healthy: true,
+      totalKPIs: stats?.total || 0,
+      essential: stats?.byTier?.ESSENTIAL || 0,
+      lastChecked: new Date().toISOString()
+    }
+  } catch (error) {
+    return {
+      healthy: false,
+      totalKPIs: 0,
+      essential: 0,
+      error: String(error),
+      lastChecked: new Date().toISOString()
+    }
+  }
+}
+
+/**
  * Initialize the KPI system
  * Call this on app startup if needed
  */

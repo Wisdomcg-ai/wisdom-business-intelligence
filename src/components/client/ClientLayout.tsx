@@ -169,7 +169,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
           {/* Navigation Tabs */}
           <div className="flex space-x-1 overflow-x-auto pb-px">
             {enabledTabs.map((tab) => {
-              const isActive = pathname === tab.href || pathname.startsWith(tab.href + '/')
+              const isActive = pathname === tab.href || pathname?.startsWith(tab.href + '/')
               const badgeCount = 'badge' in tab ? (tab as { badge?: number }).badge : undefined
               return (
                 <Link

@@ -98,7 +98,7 @@ export default function SessionDetailPage() {
   const params = useParams()
   const router = useRouter()
   const supabase = createClient()
-  const sessionId = params.id as string
+  const sessionId = params?.id as string
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)

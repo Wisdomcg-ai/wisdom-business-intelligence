@@ -52,7 +52,7 @@ export class PDFExportService {
     this.yPosition += 8
 
     this.doc.setFontSize(14)
-    this.doc.text(forecast.business_name || 'Business', this.pageWidth / 2, this.yPosition, { align: 'center' })
+    this.doc.text(forecast.name || 'Business Forecast', this.pageWidth / 2, this.yPosition, { align: 'center' })
     this.yPosition += 12
 
     // Metadata
@@ -178,7 +178,6 @@ export class PDFExportService {
 
     const assumptions = [
       `COGS Percentage: ${forecast.cogs_percentage || 0}%`,
-      `Growth Rate: ${forecast.growth_rate || 0}%`,
       `Scenario: ${this.data.activeScenario?.name || 'Baseline'}`,
       `Goal Source: ${forecast.goal_source || 'Manual Entry'}`
     ]
@@ -222,12 +221,13 @@ export class PDFExportService {
         { content: 'Revenue', colSpan: 5, styles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold' } }
       ])
       grouped.Revenue.forEach(line => {
+        const lineId = line.id || line.account_name
         tableData.push([
           `  ${line.account_name}`,
-          this.formatCurrency(quarters.Q1.revenue[line.id] || 0),
-          this.formatCurrency(quarters.Q2.revenue[line.id] || 0),
-          this.formatCurrency(quarters.Q3.revenue[line.id] || 0),
-          this.formatCurrency(quarters.Q4.revenue[line.id] || 0)
+          this.formatCurrency(quarters.Q1.revenue[lineId] || 0),
+          this.formatCurrency(quarters.Q2.revenue[lineId] || 0),
+          this.formatCurrency(quarters.Q3.revenue[lineId] || 0),
+          this.formatCurrency(quarters.Q4.revenue[lineId] || 0)
         ])
       })
       tableData.push([
@@ -245,12 +245,13 @@ export class PDFExportService {
         { content: 'Cost of Sales', colSpan: 5, styles: { fillColor: [239, 68, 68], textColor: 255, fontStyle: 'bold' } }
       ])
       grouped['Cost of Sales'].forEach(line => {
+        const lineId = line.id || line.account_name
         tableData.push([
           `  ${line.account_name}`,
-          this.formatCurrency(quarters.Q1.cogs[line.id] || 0),
-          this.formatCurrency(quarters.Q2.cogs[line.id] || 0),
-          this.formatCurrency(quarters.Q3.cogs[line.id] || 0),
-          this.formatCurrency(quarters.Q4.cogs[line.id] || 0)
+          this.formatCurrency(quarters.Q1.cogs[lineId] || 0),
+          this.formatCurrency(quarters.Q2.cogs[lineId] || 0),
+          this.formatCurrency(quarters.Q3.cogs[lineId] || 0),
+          this.formatCurrency(quarters.Q4.cogs[lineId] || 0)
         ])
       })
       tableData.push([
@@ -275,12 +276,13 @@ export class PDFExportService {
         { content: 'Operating Expenses', colSpan: 5, styles: { fillColor: [245, 158, 11], textColor: 255, fontStyle: 'bold' } }
       ])
       grouped['Operating Expenses'].forEach(line => {
+        const lineId = line.id || line.account_name
         tableData.push([
           `  ${line.account_name}`,
-          this.formatCurrency(quarters.Q1.opex[line.id] || 0),
-          this.formatCurrency(quarters.Q2.opex[line.id] || 0),
-          this.formatCurrency(quarters.Q3.opex[line.id] || 0),
-          this.formatCurrency(quarters.Q4.opex[line.id] || 0)
+          this.formatCurrency(quarters.Q1.opex[lineId] || 0),
+          this.formatCurrency(quarters.Q2.opex[lineId] || 0),
+          this.formatCurrency(quarters.Q3.opex[lineId] || 0),
+          this.formatCurrency(quarters.Q4.opex[lineId] || 0)
         ])
       })
       tableData.push([
@@ -377,8 +379,7 @@ export class PDFExportService {
 
     const operatingData = [
       ['COGS Percentage', `${forecast.cogs_percentage || 0}%`],
-      ['Growth Rate', `${forecast.growth_rate || 0}%`],
-      ['Seasonal Adjustment', `${forecast.seasonal_adjustment || 0}%`]
+      ['OpEx Variable', `${forecast.opex_variable_percentage || 0}%`]
     ]
 
     autoTable(this.doc, {
@@ -470,7 +471,7 @@ export class PDFExportService {
     }
   }
 
-  private getQuarterlyData(forecast: FinancialForecast, plLines: ForecastPLLine[]) {
+  private getQuarterlyData(forecast: FinancialForecast, plLines: PLLine[]) {
     const startDate = new Date(forecast.forecast_start_month)
     const startMonth = startDate.getMonth()
     const startYear = startDate.getFullYear()
@@ -483,6 +484,7 @@ export class PDFExportService {
     }
 
     plLines.forEach(line => {
+      const lineId = line.id || line.account_name
       for (let m = 0; m < 12; m++) {
         const month = (startMonth + m) % 12
         const year = startYear + Math.floor((startMonth + m) / 12)
@@ -493,13 +495,13 @@ export class PDFExportService {
         const qKey = `Q${quarter + 1}` as keyof typeof quarters
 
         if (line.category === 'Revenue') {
-          quarters[qKey].revenue[line.id] = (quarters[qKey].revenue[line.id] || 0) + value
+          quarters[qKey].revenue[lineId] = (quarters[qKey].revenue[lineId] || 0) + value
           quarters[qKey].totalRevenue += value
         } else if (line.category === 'Cost of Sales') {
-          quarters[qKey].cogs[line.id] = (quarters[qKey].cogs[line.id] || 0) + value
+          quarters[qKey].cogs[lineId] = (quarters[qKey].cogs[lineId] || 0) + value
           quarters[qKey].totalCOGS += value
         } else if (line.category === 'Operating Expenses') {
-          quarters[qKey].opex[line.id] = (quarters[qKey].opex[line.id] || 0) + value
+          quarters[qKey].opex[lineId] = (quarters[qKey].opex[lineId] || 0) + value
           quarters[qKey].totalOpEx += value
         }
       }
@@ -508,7 +510,7 @@ export class PDFExportService {
     return quarters
   }
 
-  private groupLinesByCategory(lines: ForecastPLLine[]) {
+  private groupLinesByCategory(lines: PLLine[]) {
     return {
       Revenue: lines.filter(l => l.category === 'Revenue'),
       'Cost of Sales': lines.filter(l => l.category === 'Cost of Sales'),
