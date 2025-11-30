@@ -16,10 +16,7 @@
   }
 }
 
-/* Base font size - larger for better readability */
-html {
-  font-size: 17px;
-}
+/* Base styles - font sizing handled by Tailwind config */
 
 body {
   color: rgb(var(--foreground-rgb));
@@ -88,19 +85,4 @@ p, li, span {
 /* Table improvements */
 table th {
   font-weight: 600;
-  font-size: 0.875rem;
-}
-
-table td {
-  font-size: 0.9375rem;
-}
-
-/* Form input improvements */
-input, select, textarea {
-  font-size: 1rem !important;
-}
-
-/* Button text */
-button {
-  font-size: 0.9375rem;
 }
