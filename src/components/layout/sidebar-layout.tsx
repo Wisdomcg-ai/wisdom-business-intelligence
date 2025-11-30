@@ -162,11 +162,12 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   const [userName, setUserName] = useState<string>('User Account')
   const [userEmail, setUserEmail] = useState<string>('user@example.com')
 
-  // Don't render client sidebar for coach routes, auth routes, or marketing pages
+  // Don't render client sidebar for coach routes, auth routes, marketing, or legal pages
   const isCoachRoute = pathname?.startsWith('/coach')
   const isAdminRoute = pathname?.startsWith('/admin')
   const isAuthRoute = pathname?.startsWith('/auth') || pathname?.startsWith('/login')
   const isHomePage = pathname === '/'
+  const isLegalPage = pathname === '/privacy' || pathname === '/terms'
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -249,8 +250,8 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
     }
   }
 
-  // For coach/admin/auth routes and home page, just render children without the client sidebar
-  if (isCoachRoute || isAdminRoute || isAuthRoute || isHomePage) {
+  // For coach/admin/auth routes, home page, and legal pages, just render children without the client sidebar
+  if (isCoachRoute || isAdminRoute || isAuthRoute || isHomePage || isLegalPage) {
     return <>{children}</>
   }
 

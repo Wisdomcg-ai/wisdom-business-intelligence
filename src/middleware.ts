@@ -70,8 +70,8 @@ export async function middleware(request: NextRequest) {
     '/admin/login',
     '/login'
   ]
-  // Check if it's a public route OR the home page (exact match for '/')
-  const isPublicRoute = pathname === '/' || publicRoutes.some(route => pathname.startsWith(route))
+  // Check if it's a public route OR the home page OR legal pages
+  const isPublicRoute = pathname === '/' || pathname === '/privacy' || pathname === '/terms' || publicRoutes.some(route => pathname.startsWith(route))
 
   // If user is not logged in and trying to access protected routes
   if (!user && !isPublicRoute) {
