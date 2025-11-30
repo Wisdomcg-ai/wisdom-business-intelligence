@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { BarChart3, Target, CheckCircle2, Users, Zap, ArrowRight, TrendingUp, Calendar, MessageCircle } from 'lucide-react'
+import { BarChart3, Target, CheckCircle2, Zap, ArrowRight, TrendingUp, Calendar, MessageCircle, Lightbulb, Compass, Play, Users } from 'lucide-react'
 
 export default function HomePage() {
   return (
@@ -40,11 +40,17 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center max-w-4xl mx-auto mb-12">
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight mb-6">
-              Your Business Command Center
-              <span className="block text-teal-600">From Vision to Weekly Execution</span>
+              Business Intelligence That Turns Data Into Decisions
+              <span className="block text-teal-600">— And Decisions Into Action</span>
             </h1>
-            <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-              Wisdom BI gives small business owners the structure to set clear goals, track what matters, and take action every week — with your coach by your side.
+            <p className="text-xl text-gray-600 mb-4 max-w-3xl mx-auto">
+              The all-in-one platform powered by the WISE Framework
+            </p>
+            <p className="text-lg text-teal-600 font-semibold mb-8">
+              Wisdom • Insights • Strategy • Execution
+            </p>
+            <p className="text-lg text-gray-500 mb-8 max-w-2xl mx-auto">
+              Transform your numbers into clarity, direction, and weekly action.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
@@ -74,39 +80,111 @@ export default function HomePage() {
       </section>
 
       {/* Value Prop Strip */}
-      <section className="py-12 bg-gray-50 border-y border-gray-100">
+      <section className="py-12 bg-gray-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
+              From Data to Decisions to Done.
+            </h2>
+            <p className="text-gray-400">
+              The only platform built for SMEs that connects data → insights → strategy → execution in one seamless system.
+            </p>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             <div className="text-center">
-              <div className="text-3xl font-bold text-teal-600">5</div>
-              <div className="text-sm text-gray-600">Business Stages</div>
+              <div className="text-3xl font-bold text-teal-400">5</div>
+              <div className="text-sm text-gray-400">Business Stages</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-teal-600">44</div>
-              <div className="text-sm text-gray-600">Business Builds</div>
+              <div className="text-3xl font-bold text-teal-400">44</div>
+              <div className="text-sm text-gray-400">Business Builds</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-teal-600">Weekly</div>
-              <div className="text-sm text-gray-600">Review & Planning</div>
+              <div className="text-3xl font-bold text-teal-400">Weekly</div>
+              <div className="text-sm text-gray-400">Execution Rhythm</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-teal-600">Direct</div>
-              <div className="text-sm text-gray-600">Coach Access</div>
+              <div className="text-3xl font-bold text-teal-400">Direct</div>
+              <div className="text-sm text-gray-400">Coach Connection</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* The WISE Framework */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+              The WISE Framework
+            </h2>
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+              Four pillars that turn business complexity into clarity.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {/* Wisdom */}
+            <div className="bg-gradient-to-br from-teal-50 to-white p-6 rounded-2xl border border-teal-100">
+              <div className="w-14 h-14 bg-teal-600 rounded-xl flex items-center justify-center mb-4">
+                <span className="text-2xl font-bold text-white">W</span>
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Wisdom</h3>
+              <p className="text-sm text-teal-600 font-medium mb-3">Know where you are</p>
+              <p className="text-gray-600 text-sm">
+                Complete your business assessment to identify your current stage (Foundation → Mastery) and the specific &quot;builds&quot; to focus on.
+              </p>
+            </div>
+
+            {/* Insights */}
+            <div className="bg-gradient-to-br from-blue-50 to-white p-6 rounded-2xl border border-blue-100">
+              <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center mb-4">
+                <span className="text-2xl font-bold text-white">I</span>
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Insights</h3>
+              <p className="text-sm text-blue-600 font-medium mb-3">See what matters</p>
+              <p className="text-gray-600 text-sm">
+                Track Revenue, Profit, and KPIs weekly. Connect Xero for automatic financial data. Spot trends before they become problems.
+              </p>
+            </div>
+
+            {/* Strategy */}
+            <div className="bg-gradient-to-br from-purple-50 to-white p-6 rounded-2xl border border-purple-100">
+              <div className="w-14 h-14 bg-purple-600 rounded-xl flex items-center justify-center mb-4">
+                <span className="text-2xl font-bold text-white">S</span>
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Strategy</h3>
+              <p className="text-sm text-purple-600 font-medium mb-3">Plan with purpose</p>
+              <p className="text-gray-600 text-sm">
+                Set annual goals, 90-day rocks, and weekly priorities. Build your financial forecast and one-page business plan.
+              </p>
+            </div>
+
+            {/* Execution */}
+            <div className="bg-gradient-to-br from-orange-50 to-white p-6 rounded-2xl border border-orange-100">
+              <div className="w-14 h-14 bg-orange-500 rounded-xl flex items-center justify-center mb-4">
+                <span className="text-2xl font-bold text-white">E</span>
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Execution</h3>
+              <p className="text-sm text-orange-600 font-medium mb-3">Take action every week</p>
+              <p className="text-gray-600 text-sm">
+                Weekly reviews, accountability tracking, and direct coach connection keep you moving forward consistently.
+              </p>
             </div>
           </div>
         </div>
       </section>
 
       {/* The Wisdom Roadmap Section */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
         <div className="max-w-7xl mx-auto">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
-              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-6">
-                The Wisdom Roadmap
+              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+                Your Stage-by-Stage Guide to Business Freedom
               </h2>
               <p className="text-lg text-gray-600 mb-6">
-                Know exactly where you are — and what&apos;s next. Our 5-stage roadmap shows your current level and the specific &quot;builds&quot; to complete at each stage.
+                The Wisdom Roadmap shows exactly where you are and what to build next — from $0 to $10M+.
               </p>
               <ul className="space-y-4">
                 <li className="flex items-start gap-3">
@@ -162,119 +240,68 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Key Features */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
+      {/* Feature Showcase - 3 Screenshots */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-              Everything You Need to Run Your Business
+              Everything You Need in One Platform
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              From annual goals to weekly priorities — all connected, all in one place.
+              From insights to strategy to execution — all connected.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-              <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center mb-4">
-                <Target className="w-6 h-6 text-teal-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Annual & 90-Day Goals</h3>
-              <p className="text-gray-600">
-                Set your annual targets, break them into quarterly rocks, and track progress with time-based indicators showing days remaining.
-              </p>
-            </div>
-
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-              <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center mb-4">
-                <BarChart3 className="w-6 h-6 text-teal-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Business Dashboard</h3>
-              <p className="text-gray-600">
-                Track Revenue, Gross Profit, and Net Profit against quarterly targets. Enter weekly numbers and see immediately if you&apos;re on pace.
-              </p>
-            </div>
-
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-              <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center mb-4">
-                <TrendingUp className="w-6 h-6 text-teal-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Financial Forecasting</h3>
-              <p className="text-gray-600">
-                Build a 12-month P&L forecast in 4 simple steps. Connect Xero to pull actuals automatically and compare forecast vs actual monthly.
-              </p>
-            </div>
-
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-              <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center mb-4">
-                <Calendar className="w-6 h-6 text-teal-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Weekly Review</h3>
-              <p className="text-gray-600">
-                Structured weekly reflection: Wins, Challenges, Key Learnings. Review last week&apos;s goals, plan next week&apos;s priorities.
-              </p>
-            </div>
-
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-              <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center mb-4">
-                <MessageCircle className="w-6 h-6 text-teal-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Coach Connection</h3>
-              <p className="text-gray-600">
-                Direct messaging with your coach built right in. No separate apps or emails. Get support when you need it.
-              </p>
-            </div>
-
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-              <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center mb-4">
-                <Zap className="w-6 h-6 text-teal-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Xero Integration</h3>
-              <p className="text-gray-600">
-                Connect your accounting software to automatically sync financial data. See real numbers, not guesswork.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Business Dashboard Screenshot */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div className="order-2 lg:order-1 relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-teal-500/10 to-emerald-500/10 rounded-2xl blur-2xl"></div>
-              <div className="relative bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+          <div className="grid md:grid-cols-3 gap-8">
+            {/* Insights Dashboard */}
+            <div className="group">
+              <div className="relative mb-4 overflow-hidden rounded-xl border border-gray-200 shadow-sm group-hover:shadow-lg transition-shadow">
                 <Image
                   src="/Images/screenshot6.png"
-                  alt="Business Dashboard - Track your weekly progress against targets"
-                  width={800}
-                  height={600}
+                  alt="Business Dashboard - See your entire business health at a glance"
+                  width={400}
+                  height={300}
                   className="w-full h-auto"
                 />
               </div>
-            </div>
-            <div className="order-1 lg:order-2">
-              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-6">
-                Track What Matters — Weekly
-              </h2>
-              <p className="text-lg text-gray-600 mb-6">
-                Your Business Dashboard shows quarterly progress at a glance. Revenue, Gross Profit, Net Profit — all tracked against your targets with clear &quot;on pace&quot; or &quot;behind&quot; indicators.
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Insights Dashboard</h3>
+              <p className="text-gray-600">
+                See your entire business health at a glance. Revenue, Gross Profit, Net Profit — tracked weekly against your targets.
               </p>
-              <ul className="space-y-3">
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-teal-600" />
-                  <span className="text-gray-700">Q2 Progress with week-by-week tracking</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-teal-600" />
-                  <span className="text-gray-700">Financial goals + core business metrics</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-teal-600" />
-                  <span className="text-gray-700">Manage KPIs and update actuals in real-time</span>
-                </li>
-              </ul>
+            </div>
+
+            {/* Strategy & Goals */}
+            <div className="group">
+              <div className="relative mb-4 overflow-hidden rounded-xl border border-gray-200 shadow-sm group-hover:shadow-lg transition-shadow">
+                <Image
+                  src="/Images/screenshot1.png"
+                  alt="Strategy & Goals - Set annual targets and quarterly rocks"
+                  width={400}
+                  height={300}
+                  className="w-full h-auto"
+                />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Strategy & Goals</h3>
+              <p className="text-gray-600">
+                Set annual targets, break them into quarterly rocks, and track progress with time-based indicators showing days remaining.
+              </p>
+            </div>
+
+            {/* Financial Forecast */}
+            <div className="group">
+              <div className="relative mb-4 overflow-hidden rounded-xl border border-gray-200 shadow-sm group-hover:shadow-lg transition-shadow">
+                <Image
+                  src="/Images/screenshot4.png"
+                  alt="Financial Forecast - Build your 12-month P&L forecast"
+                  width={400}
+                  height={300}
+                  className="w-full h-auto"
+                />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Financial Forecast</h3>
+              <p className="text-gray-600">
+                Build your 12-month P&L forecast in 4 guided steps. Connect Xero to sync actuals automatically.
+              </p>
             </div>
           </div>
         </div>
@@ -285,11 +312,8 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-              How It Works
+              Get Started in Three Steps
             </h2>
-            <p className="text-xl text-gray-600">
-              Get started in three simple steps
-            </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
@@ -297,9 +321,9 @@ export default function HomePage() {
               <div className="w-16 h-16 bg-teal-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-6">
                 1
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Assess Your Business</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Assess</h3>
               <p className="text-gray-600">
-                Complete your Business Profile and our 54-question assessment. We&apos;ll identify your current stage and priority areas.
+                Complete your Business Profile and 54-question assessment. We&apos;ll identify your stage and priorities.
               </p>
             </div>
 
@@ -307,9 +331,9 @@ export default function HomePage() {
               <div className="w-16 h-16 bg-teal-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-6">
                 2
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Set Your Goals</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Plan</h3>
               <p className="text-gray-600">
-                Define your annual targets, quarterly rocks, and weekly priorities. Build your financial forecast and one-page plan.
+                Set your annual goals, quarterly rocks, and financial forecast. Build your one-page plan.
               </p>
             </div>
 
@@ -317,51 +341,50 @@ export default function HomePage() {
               <div className="w-16 h-16 bg-teal-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-6">
                 3
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">Execute Weekly</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Execute</h3>
               <p className="text-gray-600">
-                Track your numbers, complete weekly reviews, and stay connected with your coach. Take action every week.
+                Track your numbers weekly. Complete reviews. Stay connected with your coach.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Financial Forecast Screenshot */}
+      {/* Coach Connection Section */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-6">
-                Financial Forecasting Made Simple
-              </h2>
-              <p className="text-lg text-gray-600 mb-6">
-                Build your 12-month forecast in 4 guided steps. Set revenue goals, allocate distribution, add costs, and review your projections. Connect Xero to automatically sync actuals.
-              </p>
-              <ul className="space-y-3">
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-teal-600" />
-                  <span className="text-gray-700">Step-by-step forecast wizard</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-teal-600" />
-                  <span className="text-gray-700">Automatic Xero sync for actuals</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-teal-600" />
-                  <span className="text-gray-700">P&L forecast with monthly breakdown</span>
-                </li>
-              </ul>
-            </div>
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-teal-500/10 to-emerald-500/10 rounded-2xl blur-2xl"></div>
-              <div className="relative bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
-                <Image
-                  src="/Images/screenshot4.png"
-                  alt="Financial Forecast - Build your 12-month P&L forecast"
-                  width={800}
-                  height={600}
-                  className="w-full h-auto"
-                />
+          <div className="bg-gradient-to-br from-teal-600 to-teal-700 rounded-3xl p-8 md:p-12 lg:p-16">
+            <div className="grid lg:grid-cols-2 gap-12 items-center">
+              <div>
+                <div className="inline-flex items-center gap-2 bg-white/20 text-white px-4 py-2 rounded-full text-sm font-medium mb-6">
+                  <MessageCircle className="w-4 h-4" />
+                  Built-In Coach Connection
+                </div>
+                <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
+                  Your Coach, Right Inside the Platform
+                </h2>
+                <p className="text-xl text-teal-100 mb-6">
+                  Wisdom BI isn&apos;t just software — it&apos;s a complete business operating system with your coach alongside every step.
+                </p>
+                <ul className="space-y-3">
+                  <li className="flex items-center gap-3 text-teal-100">
+                    <CheckCircle2 className="w-5 h-5 text-teal-300" />
+                    Direct messaging — no separate apps or emails
+                  </li>
+                  <li className="flex items-center gap-3 text-teal-100">
+                    <CheckCircle2 className="w-5 h-5 text-teal-300" />
+                    Session notes and action tracking
+                  </li>
+                  <li className="flex items-center gap-3 text-teal-100">
+                    <CheckCircle2 className="w-5 h-5 text-teal-300" />
+                    Weekly accountability and support
+                  </li>
+                </ul>
+              </div>
+              <div className="hidden lg:flex items-center justify-center">
+                <div className="w-48 h-48 bg-white/10 rounded-full flex items-center justify-center">
+                  <Users className="w-24 h-24 text-white/80" />
+                </div>
               </div>
             </div>
           </div>
@@ -369,16 +392,19 @@ export default function HomePage() {
       </section>
 
       {/* Brand Story */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-teal-600">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-900">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
-            Built by Coaches, for Coaches and Their Clients
+            Built by Wisdom Consulting Group
           </h2>
-          <p className="text-xl text-teal-100 mb-8">
-            Wisdom BI was born from years of coaching small business owners. We saw the same challenges again and again: scattered data, unclear priorities, and no single source of truth. So we built one.
+          <p className="text-xl text-gray-300 mb-8">
+            After coaching over 1,000 businesses, we saw the same pattern — owners drowning in data and ideas but lacking clarity, focus, and execution.
           </p>
-          <p className="text-lg text-teal-100">
-            This isn&apos;t just software — it&apos;s a complete business operating system that connects your vision to your weekly actions, with your coach alongside every step.
+          <p className="text-lg text-gray-400 mb-8">
+            So we built Wisdom BI, powered by the WISE Framework, to close the gap between knowing and doing.
+          </p>
+          <p className="text-xl text-teal-400 font-semibold">
+            You don&apos;t just see your numbers. You finally know what to do with them.
           </p>
         </div>
       </section>
@@ -387,10 +413,10 @@ export default function HomePage() {
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-6">
-            Ready to Take Control of Your Business?
+            Ready to Build a Business That Runs on Clarity?
           </h2>
           <p className="text-xl text-gray-600 mb-8">
-            Join business owners who use Wisdom BI to turn their goals into action — every single week.
+            Join business owners who use Wisdom BI to turn goals into action — every single week.
           </p>
           <Link
             href="/auth/login"
@@ -402,7 +428,7 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 px-4 sm:px-6 lg:px-8 bg-gray-900">
+      <footer className="py-12 px-4 sm:px-6 lg:px-8 bg-gray-900 border-t border-gray-800">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-2">
