@@ -29,7 +29,6 @@ import {
   LineChart,
   MessageCircle,
   FileQuestion,
-  FolderOpen,
   Compass,
   Award,
   Network,
@@ -39,6 +38,8 @@ import {
   ChevronDown,
   LogOut,
   User,
+  Gauge,
+  Briefcase,
 } from 'lucide-react'
 
 interface NavItem {
@@ -68,27 +69,21 @@ interface BusinessData {
 const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
   const navigation: NavSection[] = [
     {
-      title: 'DASHBOARD',
+      title: 'HOME',
       defaultOpen: true,
-      items: [{ label: 'Home', href: '/dashboard', icon: LayoutDashboard }],
+      items: [{ label: 'Command Centre', href: '/dashboard', icon: Gauge }],
     },
     {
-      title: 'START HERE',
+      title: 'SETUP',
       defaultOpen: true,
       items: [
         { label: 'Business Profile', href: '/business-profile', icon: Building2 },
-        { label: 'Business Assessment', href: '/assessment', icon: ClipboardCheck },
+        { label: 'Assessment', href: '/assessment', icon: ClipboardCheck },
+        { label: 'Roadmap', href: '/business-roadmap', icon: Compass },
       ],
     },
     {
-      title: 'ROADMAP',
-      defaultOpen: true,
-      items: [
-        { label: 'Business Roadmap', href: '/business-roadmap', icon: Compass },
-      ],
-    },
-    {
-      title: 'BUSINESS PLAN',
+      title: 'PLAN',
       defaultOpen: true,
       items: [
         { label: 'Vision, Mission & Values', href: '/vision-mission', icon: Target },
@@ -102,33 +97,26 @@ const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
       defaultOpen: true,
       items: [
         { label: 'Financial Forecast', href: '/finances/forecast', icon: TrendingUp },
-        { label: 'Budget vs Actual', href: '/finances/budget', icon: FileText },
-        { label: '13-Week Cashflow', href: '/finances/cashflow', icon: Banknote, disabled: true },
+        { label: 'Budget vs Actual', href: '/finances/budget', icon: Banknote },
       ],
     },
     {
       title: 'EXECUTE',
       defaultOpen: true,
       items: [
-        { label: 'Business Dashboard', href: '/business-dashboard', icon: BarChart3 },
-        { label: 'Issues List', href: '/issues-list', icon: AlertCircle },
-      ],
-    },
-    {
-      title: 'PRODUCTIVITY',
-      defaultOpen: true,
-      items: [
-        { label: 'Open Loops', href: '/open-loops', icon: Layers },
-        { label: 'To-Do', href: '/todo', icon: CheckSquare },
-        { label: 'Stop Doing', href: '/stop-doing', icon: XCircle },
-      ],
-    },
-    {
-      title: 'REVIEWS',
-      defaultOpen: true,
-      items: [
+        { label: 'KPI Dashboard', href: '/business-dashboard', icon: BarChart3 },
         { label: 'Weekly Review', href: '/reviews/weekly', icon: Calendar },
-        { label: 'Quarterly Review', href: '/quarterly-review', icon: CalendarCheck },
+        { label: 'Issues List', href: '/issues-list', icon: AlertCircle },
+        {
+          label: 'Productivity',
+          href: '/productivity',
+          icon: Briefcase,
+          children: [
+            { label: 'Open Loops', href: '/open-loops', icon: Layers },
+            { label: 'To-Do', href: '/todo', icon: CheckSquare },
+            { label: 'Stop Doing', href: '/stop-doing', icon: XCircle },
+          ],
+        },
       ],
     },
     {
@@ -161,9 +149,16 @@ const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
           href: '/engines/systems',
           icon: Settings,
           children: [
-            { label: 'Systems & Processes', href: '/systems/processes', icon: Settings, disabled: true },
+            { label: 'Systems & Processes', href: '/systems/processes', icon: Settings },
           ],
         },
+      ],
+    },
+    {
+      title: 'REVIEW',
+      defaultOpen: true,
+      items: [
+        { label: 'Quarterly Review', href: '/quarterly-review', icon: CalendarCheck },
       ],
     },
   ]
@@ -186,7 +181,6 @@ const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
       items: [
         { label: 'Messages', href: '/messages', icon: MessageCircle },
         { label: 'Session Notes', href: '/sessions', icon: FileText },
-        { label: 'Resources', href: '/coaching/resources', icon: FolderOpen, disabled: true },
       ],
     })
   }
@@ -201,7 +195,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
 
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [expandedSections, setExpandedSections] = useState<string[]>([
-    'DASHBOARD',
+    'HOME',
   ])
   const [expandedSubItems, setExpandedSubItems] = useState<string[]>([])
   const [navigation, setNavigation] = useState<NavSection[]>([])
