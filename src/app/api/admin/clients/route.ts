@@ -387,15 +387,41 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Client ID is required' }, { status: 400 })
     }
 
-    // Get user_id from user_roles (owner of this business)
-    const { data: userRole } = await supabase
+    // Collect all user IDs to delete (from multiple sources)
+    const userIdsToDelete: Set<string> = new Set()
+
+    // Method 1: Get user_id from user_roles (owner of this business)
+    const { data: userRoles } = await supabase
       .from('user_roles')
       .select('user_id')
       .eq('business_id', clientId)
-      .eq('role', 'owner')
+
+    userRoles?.forEach(r => {
+      if (r.user_id) userIdsToDelete.add(r.user_id)
+    })
+
+    // Method 2: Get owner_id directly from business record
+    const { data: business } = await supabase
+      .from('businesses')
+      .select('owner_id')
+      .eq('id', clientId)
       .single()
 
-    const ownerUserId = userRole?.user_id
+    if (business?.owner_id) {
+      userIdsToDelete.add(business.owner_id)
+    }
+
+    // Method 3: Get users from user_permissions for this business
+    const { data: userPerms } = await supabase
+      .from('user_permissions')
+      .select('user_id')
+      .eq('business_id', clientId)
+
+    userPerms?.forEach(p => {
+      if (p.user_id) userIdsToDelete.add(p.user_id)
+    })
+
+    console.log('[Admin] Users to delete:', Array.from(userIdsToDelete))
 
     // Delete in order to handle foreign key constraints
     // 1. Delete user_permissions
@@ -439,13 +465,22 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Failed to delete client business' }, { status: 500 })
     }
 
-    // 12. Delete system_roles and auth user
-    if (ownerUserId) {
-      await supabase.from('system_roles').delete().eq('user_id', ownerUserId)
+    // 12. Delete all associated users
+    for (const userId of userIdsToDelete) {
+      console.log('[Admin] Deleting user:', userId)
 
-      // 13. Delete auth user using Admin API
+      // Delete business_profiles for this user
+      await supabase.from('business_profiles').delete().eq('user_id', userId)
+
+      // Delete assessments for this user
+      await supabase.from('assessments').delete().eq('user_id', userId)
+
+      // Delete system_roles for this user
+      await supabase.from('system_roles').delete().eq('user_id', userId)
+
+      // Delete auth user using Admin API
       const authResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${ownerUserId}`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${userId}`,
         {
           method: 'DELETE',
           headers: {
@@ -456,12 +491,11 @@ export async function DELETE(request: Request) {
       )
 
       if (!authResponse.ok) {
-        console.error('Failed to delete auth user, but business data was deleted')
+        const errorText = await authResponse.text()
+        console.error('[Admin] Failed to delete auth user:', userId, errorText)
       } else {
-        console.log('[Admin] Auth user deleted:', ownerUserId)
+        console.log('[Admin] Auth user deleted:', userId)
       }
-    } else {
-      console.warn('[Admin] No owner user found for business, skipping auth user deletion')
     }
 
     console.log('[Admin] Client deleted:', clientId)
