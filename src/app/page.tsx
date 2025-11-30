@@ -123,52 +123,52 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {/* Wisdom */}
-            <div className="bg-gradient-to-br from-teal-50 to-white p-6 rounded-2xl border border-teal-100">
-              <div className="w-14 h-14 bg-teal-600 rounded-xl flex items-center justify-center mb-4">
-                <span className="text-2xl font-bold text-white">W</span>
+            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-teal-600 rounded-lg flex items-center justify-center mb-4">
+                <span className="text-xl font-bold text-white">W</span>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Wisdom</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">Wisdom</h3>
               <p className="text-sm text-teal-600 font-medium mb-3">Know where you are</p>
-              <p className="text-gray-600 text-sm">
-                Complete your business assessment to identify your current stage (Foundation → Mastery) and the specific &quot;builds&quot; to focus on.
+              <p className="text-gray-600">
+                Complete your business assessment to identify your current stage and the specific builds to focus on.
               </p>
             </div>
 
             {/* Insights */}
-            <div className="bg-gradient-to-br from-blue-50 to-white p-6 rounded-2xl border border-blue-100">
-              <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center mb-4">
-                <span className="text-2xl font-bold text-white">I</span>
+            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-teal-600 rounded-lg flex items-center justify-center mb-4">
+                <span className="text-xl font-bold text-white">I</span>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Insights</h3>
-              <p className="text-sm text-blue-600 font-medium mb-3">See what matters</p>
-              <p className="text-gray-600 text-sm">
-                Track Revenue, Profit, and KPIs weekly. Connect Xero for automatic financial data. Spot trends before they become problems.
+              <h3 className="text-lg font-bold text-gray-900 mb-1">Insights</h3>
+              <p className="text-sm text-teal-600 font-medium mb-3">See what matters</p>
+              <p className="text-gray-600">
+                Track Revenue, Profit, and KPIs weekly. Connect Xero for automatic financial data.
               </p>
             </div>
 
             {/* Strategy */}
-            <div className="bg-gradient-to-br from-purple-50 to-white p-6 rounded-2xl border border-purple-100">
-              <div className="w-14 h-14 bg-purple-600 rounded-xl flex items-center justify-center mb-4">
-                <span className="text-2xl font-bold text-white">S</span>
+            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-teal-600 rounded-lg flex items-center justify-center mb-4">
+                <span className="text-xl font-bold text-white">S</span>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Strategy</h3>
-              <p className="text-sm text-purple-600 font-medium mb-3">Plan with purpose</p>
-              <p className="text-gray-600 text-sm">
-                Set annual goals, 90-day rocks, and weekly priorities. Build your financial forecast and one-page business plan.
+              <h3 className="text-lg font-bold text-gray-900 mb-1">Strategy</h3>
+              <p className="text-sm text-teal-600 font-medium mb-3">Plan with purpose</p>
+              <p className="text-gray-600">
+                Set annual goals, 90-day rocks, and weekly priorities. Build your financial forecast.
               </p>
             </div>
 
             {/* Execution */}
-            <div className="bg-gradient-to-br from-orange-50 to-white p-6 rounded-2xl border border-orange-100">
-              <div className="w-14 h-14 bg-orange-500 rounded-xl flex items-center justify-center mb-4">
-                <span className="text-2xl font-bold text-white">E</span>
+            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-teal-600 rounded-lg flex items-center justify-center mb-4">
+                <span className="text-xl font-bold text-white">E</span>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Execution</h3>
-              <p className="text-sm text-orange-600 font-medium mb-3">Take action every week</p>
-              <p className="text-gray-600 text-sm">
-                Weekly reviews, accountability tracking, and direct coach connection keep you moving forward consistently.
+              <h3 className="text-lg font-bold text-gray-900 mb-1">Execution</h3>
+              <p className="text-sm text-teal-600 font-medium mb-3">Take action every week</p>
+              <p className="text-gray-600">
+                Weekly reviews, accountability tracking, and direct coach connection.
               </p>
             </div>
           </div>
