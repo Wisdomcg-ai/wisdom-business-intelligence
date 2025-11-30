@@ -59,3 +59,48 @@ p, li, span {
 .text-gray-600 {
   color: rgb(75, 85, 99) !important; /* Darker than default */
 }
+
+/* Standard wide container for app pages */
+.app-container {
+  max-width: 1800px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+/* Page header styling */
+.page-header {
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgb(229, 231, 235);
+  background-color: white;
+}
+
+/* Card styling improvements */
+.card {
+  background-color: white;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(229, 231, 235);
+  padding: 1.5rem;
+}
+
+/* Table improvements */
+table th {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+table td {
+  font-size: 0.9375rem;
+}
+
+/* Form input improvements */
+input, select, textarea {
+  font-size: 1rem !important;
+}
+
+/* Button text */
+button {
+  font-size: 0.9375rem;
+}

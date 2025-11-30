@@ -167,7 +167,7 @@ export default function StopDoingPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
+    <div className="max-w-[1600px] mx-auto px-6 py-6">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between">

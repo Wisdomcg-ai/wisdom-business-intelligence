@@ -595,7 +595,7 @@ export default function OnePagePlan() {
   return (
     <div className="min-h-screen bg-slate-50 py-8">
       {/* Navigation - Hidden when printing */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6 print:hidden">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 mb-6 print:hidden">
         <div className="flex items-center justify-between">
           <button
             onClick={() => router.push('/dashboard')}
@@ -628,7 +628,7 @@ export default function OnePagePlan() {
         const health = calculatePlanHealth(data)
         const insights = generateCoachingInsights(data)
         return (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6 print:hidden">
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 mb-6 print:hidden">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <div className="flex items-start gap-6">
                 {/* Health Score */}
@@ -741,7 +741,7 @@ export default function OnePagePlan() {
       })()}
 
       {/* One Page Plan - Printable */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white shadow-lg rounded-lg print:shadow-none print:rounded-none">
           {/* Header */}
           <div className="border-b-4 border-gray-900 p-6 print:p-4">

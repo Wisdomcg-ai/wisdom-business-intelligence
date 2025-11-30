@@ -422,7 +422,7 @@ export default function EnhancedBusinessProfile() {
       {/* Toast Notifications */}
       <Toaster position="top-right" />
 
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-[1600px] mx-auto">
         {/* Header */}
         <div className="mb-8">
           <button

@@ -78,7 +78,7 @@ export default function BusinessDashboardPage() {
   }
 
   if (!mounted) {
-    return <div className="p-8"><div className="max-w-7xl mx-auto"><div className="h-8 bg-gray-200 rounded"></div></div></div>
+    return <div className="p-8"><div className="max-w-[1600px] mx-auto"><div className="h-8 bg-gray-200 rounded"></div></div></div>
   }
 
   if (isLoading) {
@@ -135,7 +135,7 @@ export default function BusinessDashboardPage() {
           -moz-appearance: textfield;
         }
       `}</style>
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-[1600px] mx-auto">
         {/* Header */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">

@@ -151,7 +151,8 @@ export default function OpenLoopsPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-6">
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-[1600px] mx-auto px-6 py-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Open Loops</h1>
@@ -196,10 +197,11 @@ export default function OpenLoopsPage() {
             <span className="font-bold text-yellow-700">{stats.onHold}</span>
           </div>
         </div>
+        </div>
       </div>
 
       {/* Main Content */}
-      <div className="p-6">
+      <div className="max-w-[1600px] mx-auto px-6 py-6">
         {/* Error Message */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">

@@ -336,7 +336,7 @@ function StrategicPlanningContent() {
     return (
       <div className="min-h-screen bg-slate-50">
         <div className="bg-white border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">Strategic Planning Wizard</h1>
@@ -392,7 +392,7 @@ function StrategicPlanningContent() {
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <div className="bg-white border-b">
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Strategic Planning Wizard</h1>
@@ -465,7 +465,7 @@ function StrategicPlanningContent() {
 
       {/* SWOT Integration - Expandable Inline Summary */}
       <div className="bg-teal-50 border-b-2 border-teal-200">
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
           <button
             onClick={() => setShowSwotSummary(!showSwotSummary)}
             className="w-full py-4 flex items-center justify-between hover:bg-teal-100/50 transition-colors rounded-lg"
@@ -621,7 +621,7 @@ function StrategicPlanningContent() {
 
       {/* Step Navigation */}
       <div className="bg-white border-b sticky top-0 z-40">
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between overflow-x-auto py-3">
             {STEPS.map((step, index) => {
               const isActive = currentStep === step.num
@@ -655,7 +655,7 @@ function StrategicPlanningContent() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Step Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
@@ -850,7 +850,7 @@ function StrategicPlanningContent() {
 
       {/* Footer */}
       <div className="bg-slate-50 border-t mt-12 py-8">
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <p className="text-sm text-gray-600">
             Need help? Contact your coaching team or check our guidance resources
           </p>
