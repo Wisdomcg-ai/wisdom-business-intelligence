@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
 import {
   sendEmail,
   sendClientInvitation,
@@ -10,7 +10,7 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    const supabase = await createRouteHandlerClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
