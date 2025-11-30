@@ -277,7 +277,9 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) =>
-      prev.includes(section) ? [] : [section]
+      prev.includes(section)
+        ? prev.filter((s) => s !== section)
+        : [...prev, section]
     )
   }
 
