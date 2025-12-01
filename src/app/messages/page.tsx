@@ -13,8 +13,10 @@ import {
   X,
   FileText,
   Image as ImageIcon,
-  Download
+  Download,
+  Mail
 } from 'lucide-react'
+import Link from 'next/link'
 import { uploadMessageAttachment, formatFileSize, isAllowedFileType } from '@/lib/services/messageAttachments'
 
 interface Message {
@@ -303,13 +305,26 @@ export default function MessagesPage() {
               </div>
             ) : messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
-                <MessageSquare className="w-16 h-16 text-gray-300 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Messages Yet</h3>
-                <p className="text-gray-600 max-w-md">
+                <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mb-4">
+                  <MessageSquare className="w-8 h-8 text-teal-600" />
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  {coachId ? 'No Messages Yet' : 'No Coach Assigned'}
+                </h3>
+                <p className="text-gray-600 max-w-md mb-6">
                   {coachId
                     ? 'Start a conversation with your coach. Ask questions, share updates, or request guidance.'
                     : 'Once a coach is assigned to you, you can start chatting here.'}
                 </p>
+                {!coachId && (
+                  <Link
+                    href="/help"
+                    className="inline-flex items-center gap-2 bg-teal-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-teal-700 transition-colors"
+                  >
+                    <Mail className="w-5 h-5" />
+                    Contact Support
+                  </Link>
+                )}
               </div>
             ) : (
               <>

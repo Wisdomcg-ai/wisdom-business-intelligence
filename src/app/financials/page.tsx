@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { DollarSign, TrendingUp, TrendingDown, Activity } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, Activity, Link2 } from 'lucide-react';
+import Link from 'next/link';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 
 export default function FinancialsPage() {
@@ -153,8 +154,21 @@ export default function FinancialsPage() {
           </div>
         </div>
       ) : (
-        <div className="text-center py-12 text-gray-500">
-          No financial data available. Connect and sync with Xero first.
+        <div className="text-center py-16">
+          <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <DollarSign className="w-8 h-8 text-teal-600" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">No Financial Data Yet</h3>
+          <p className="text-gray-500 mb-6 max-w-md mx-auto">
+            Connect your Xero account to automatically sync your financial data and see real-time metrics here.
+          </p>
+          <Link
+            href="/xero-connect"
+            className="inline-flex items-center gap-2 bg-teal-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-teal-700 transition-colors"
+          >
+            <Link2 className="w-5 h-5" />
+            Connect Xero
+          </Link>
         </div>
       )}
     </div>

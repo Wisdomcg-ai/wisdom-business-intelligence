@@ -1,6 +1,7 @@
 'use client'
 
-import { MessageCircle, ChevronRight } from 'lucide-react'
+import { MessageCircle, ChevronRight, Mail, UserX } from 'lucide-react'
+import Link from 'next/link'
 
 interface CoachMessagesCardProps {
   onOpenChat: () => void
@@ -8,6 +9,7 @@ interface CoachMessagesCardProps {
   lastMessagePreview?: string
   lastMessageTime?: string
   coachName?: string
+  hasCoach?: boolean
 }
 
 export default function CoachMessagesCard({
@@ -15,7 +17,8 @@ export default function CoachMessagesCard({
   unreadCount,
   lastMessagePreview,
   lastMessageTime,
-  coachName = 'Your Coach'
+  coachName = 'Your Coach',
+  hasCoach = true
 }: CoachMessagesCardProps) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -45,45 +48,72 @@ export default function CoachMessagesCard({
 
       {/* Content */}
       <div className="p-5">
-        {/* Last Message Preview */}
-        {lastMessagePreview ? (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-gray-500 mb-1">
-                  {coachName}
-                </p>
-                <p className="text-sm text-gray-700 truncate">
-                  {lastMessagePreview}
+        {!hasCoach ? (
+          // No coach assigned state
+          <>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-3">
+                <UserX className="h-5 w-5 text-amber-600 flex-shrink-0" />
+                <p className="text-sm text-amber-800">
+                  No coach assigned yet. Contact support to get matched with a coach.
                 </p>
               </div>
-              {lastMessageTime && (
-                <span className="text-xs text-gray-400 flex-shrink-0">
-                  {lastMessageTime}
-                </span>
-              )}
             </div>
-          </div>
+            <Link
+              href="/help"
+              className="w-full flex items-center justify-between px-5 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium group"
+            >
+              <span className="flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                Contact Support
+              </span>
+              <ChevronRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
+            </Link>
+          </>
         ) : (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-            <p className="text-sm text-gray-500 text-center">
-              No messages yet. Start a conversation with your coach.
-            </p>
-          </div>
-        )}
+          // Coach assigned state
+          <>
+            {/* Last Message Preview */}
+            {lastMessagePreview ? (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-gray-500 mb-1">
+                      {coachName}
+                    </p>
+                    <p className="text-sm text-gray-700 truncate">
+                      {lastMessagePreview}
+                    </p>
+                  </div>
+                  {lastMessageTime && (
+                    <span className="text-xs text-gray-400 flex-shrink-0">
+                      {lastMessageTime}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-gray-500 text-center">
+                  No messages yet. Start a conversation with your coach.
+                </p>
+              </div>
+            )}
 
-        {/* Open Chat Button */}
-        <button
-          type="button"
-          onClick={onOpenChat}
-          className="w-full flex items-center justify-between px-5 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium group"
-        >
-          <span className="flex items-center gap-2">
-            <MessageCircle className="h-5 w-5" />
-            {unreadCount > 0 ? 'View Messages' : 'Message Your Coach'}
-          </span>
-          <ChevronRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
-        </button>
+            {/* Open Chat Button */}
+            <button
+              type="button"
+              onClick={onOpenChat}
+              className="w-full flex items-center justify-between px-5 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium group"
+            >
+              <span className="flex items-center gap-2">
+                <MessageCircle className="h-5 w-5" />
+                {unreadCount > 0 ? 'View Messages' : 'Message Your Coach'}
+              </span>
+              <ChevronRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

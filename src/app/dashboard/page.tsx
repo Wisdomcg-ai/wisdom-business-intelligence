@@ -229,6 +229,7 @@ export default function DashboardPage() {
             unreadCount={unreadCount}
             lastMessagePreview={lastMessage?.preview}
             lastMessageTime={lastMessage?.time}
+            hasCoach={!!coachId}
           />
         </div>
 
