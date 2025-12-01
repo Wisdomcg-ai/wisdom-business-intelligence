@@ -56,20 +56,15 @@ export default function LoginPage() {
         }
       } else {
         // Sign in existing user
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        const { error: signInError } = await supabase.auth.signInWithPassword({
           email: formData.email,
           password: formData.password
         })
 
         if (signInError) throw signInError
 
-        // Check if user needs to change password
-        if (signInData.user?.user_metadata?.must_change_password) {
-          router.push('/change-password')
-        } else {
-          // Redirect to dashboard
-          router.push('/dashboard')
-        }
+        // Redirect to dashboard
+        router.push('/dashboard')
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred. Please try again.')
@@ -180,6 +175,13 @@ export default function LoginPage() {
               <p className="text-xs text-gray-500 mt-1">
                 Password must be at least 6 characters
               </p>
+            )}
+            {!isSignUp && (
+              <div className="text-right mt-1">
+                <a href="/auth/reset-password" className="text-sm text-teal-600 hover:text-teal-700">
+                  Forgot password?
+                </a>
+              </div>
             )}
           </div>
 

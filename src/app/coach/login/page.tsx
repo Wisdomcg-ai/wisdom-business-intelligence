@@ -113,6 +113,11 @@ export default function CoachLogin() {
                   disabled={loading}
                 />
               </div>
+              <div className="text-right mt-1">
+                <a href="/auth/reset-password" className="text-sm text-indigo-600 hover:text-indigo-700">
+                  Forgot password?
+                </a>
+              </div>
             </div>
 
             {/* Login Button */}

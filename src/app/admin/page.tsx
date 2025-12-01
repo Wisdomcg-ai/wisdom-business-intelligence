@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Clock,
   Search,
+  Eye,
   Edit,
   Trash2,
   RefreshCw,
@@ -28,7 +29,9 @@ import {
   Copy,
   Check,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Key,
+  Send
 } from 'lucide-react'
 
 interface Business {
@@ -47,6 +50,14 @@ interface Coach {
   first_name: string | null
   last_name: string | null
   phone: string | null
+}
+
+interface User {
+  id: string
+  email: string
+  first_name: string | null
+  last_name: string | null
+  system_role: string | null
 }
 
 interface Stats {
@@ -76,7 +87,7 @@ export default function AdminDashboard() {
   const [filterCoach, setFilterCoach] = useState<string>('all')
   const [userName, setUserName] = useState<string>('')
   const [assigningCoach, setAssigningCoach] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'clients' | 'coaches'>('clients')
+  const [activeTab, setActiveTab] = useState<'clients' | 'coaches' | 'users'>('clients')
   const [showAddCoachModal, setShowAddCoachModal] = useState(false)
   const [addingCoach, setAddingCoach] = useState(false)
   const [newCoach, setNewCoach] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '' })
@@ -89,6 +100,14 @@ export default function AdminDashboard() {
   const [editCoachError, setEditCoachError] = useState<string | null>(null)
   const [deletingClient, setDeletingClient] = useState<string | null>(null)
   const [togglingStatus, setTogglingStatus] = useState<string | null>(null)
+
+  // Users tab state
+  const [allUsers, setAllUsers] = useState<User[]>([])
+  const [userSearchTerm, setUserSearchTerm] = useState('')
+  const [resetPasswordModal, setResetPasswordModal] = useState<User | null>(null)
+  const [resettingPassword, setResettingPassword] = useState(false)
+  const [resetResult, setResetResult] = useState<{ type: 'email' | 'password', password?: string } | null>(null)
+  const [resetError, setResetError] = useState<string | null>(null)
 
   useEffect(() => {
     checkAuthAndLoadData()
@@ -116,9 +135,66 @@ export default function AdminDashboard() {
       : user.email?.split('@')[0] || 'Admin'
     setUserName(name)
 
-    // Load clients and coaches
-    await Promise.all([loadClients(), loadCoaches()])
+    // Load clients, coaches, and users
+    await Promise.all([loadClients(), loadCoaches(), loadUsers()])
     setLoading(false)
+  }
+
+  async function loadUsers() {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, first_name, last_name, system_role')
+      .order('email')
+
+    if (error) {
+      console.error('Error loading users:', error)
+      return
+    }
+
+    setAllUsers(data || [])
+  }
+
+  async function handleResetPassword(action: 'send_email' | 'generate') {
+    if (!resetPasswordModal) return
+
+    setResettingPassword(true)
+    setResetError(null)
+    setResetResult(null)
+
+    try {
+      const response = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: resetPasswordModal.id,
+          email: resetPasswordModal.email,
+          action: action === 'send_email' ? 'send_email' : 'generate'
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to reset password')
+      }
+
+      if (data.method === 'email') {
+        setResetResult({ type: 'email' })
+      } else {
+        setResetResult({ type: 'password', password: data.tempPassword })
+      }
+    } catch (error) {
+      setResetError(error instanceof Error ? error.message : 'Failed to reset password')
+    } finally {
+      setResettingPassword(false)
+    }
+  }
+
+  function closeResetModal() {
+    setResetPasswordModal(null)
+    setResetResult(null)
+    setResetError(null)
+    setCopiedPassword(false)
   }
 
   async function loadCoaches() {
@@ -473,6 +549,19 @@ export default function AdminDashboard() {
                 Coaches ({coaches.length})
               </div>
             </button>
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                activeTab === 'users'
+                  ? 'bg-teal-100 text-teal-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4" />
+                Password Reset
+              </div>
+            </button>
           </div>
         </div>
       </div>
@@ -668,6 +757,20 @@ export default function AdminDashboard() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={`/admin/clients/${client.id}`}
+                          className="text-teal-600 hover:text-teal-700"
+                          title="View"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Link>
+                        <Link
+                          href={`/admin/clients/${client.id}/edit`}
+                          className="text-gray-600 hover:text-gray-700"
+                          title="Edit"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Link>
                         <button
                           onClick={() => toggleClientStatus(client.id, client.status)}
                           disabled={togglingStatus === client.id}
@@ -707,7 +810,7 @@ export default function AdminDashboard() {
           </table>
         </div>
           </>
-        ) : (
+        ) : activeTab === 'coaches' ? (
           /* Coaches Tab */
           <div className="space-y-6">
             {/* Coaches Header */}
@@ -792,8 +895,233 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
-        )}
+        ) : activeTab === 'users' ? (
+          /* Users/Password Reset Tab */
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Password Reset</h2>
+              <p className="text-sm text-gray-500">Search for a user and reset their password</p>
+            </div>
+
+            {/* Search */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="relative max-w-md">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={userSearchTerm}
+                  onChange={(e) => setUserSearchTerm(e.target.value)}
+                  placeholder="Search by email or name..."
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Results */}
+              {userSearchTerm.length >= 2 && (
+                <div className="mt-4 border-t pt-4">
+                  <p className="text-sm text-gray-500 mb-3">
+                    {allUsers.filter(u =>
+                      u.email.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+                      u.first_name?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+                      u.last_name?.toLowerCase().includes(userSearchTerm.toLowerCase())
+                    ).length} users found
+                  </p>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {allUsers
+                      .filter(u =>
+                        u.email.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+                        u.first_name?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+                        u.last_name?.toLowerCase().includes(userSearchTerm.toLowerCase())
+                      )
+                      .slice(0, 20)
+                      .map(user => (
+                        <div
+                          key={user.id}
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
+                              <span className="text-teal-700 font-medium text-sm">
+                                {user.first_name?.[0] || user.email[0].toUpperCase()}
+                                {user.last_name?.[0] || ''}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {user.first_name && user.last_name
+                                  ? `${user.first_name} ${user.last_name}`
+                                  : user.email.split('@')[0]}
+                              </p>
+                              <p className="text-sm text-gray-500">{user.email}</p>
+                            </div>
+                            {user.system_role && (
+                              <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                user.system_role === 'super_admin'
+                                  ? 'bg-purple-100 text-purple-700'
+                                  : user.system_role === 'coach'
+                                  ? 'bg-indigo-100 text-indigo-700'
+                                  : 'bg-gray-100 text-gray-700'
+                              }`}>
+                                {user.system_role}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => setResetPasswordModal(user)}
+                            className="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-2"
+                          >
+                            <Key className="w-4 h-4" />
+                            Reset Password
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {userSearchTerm.length > 0 && userSearchTerm.length < 2 && (
+                <p className="mt-4 text-sm text-gray-500">Type at least 2 characters to search...</p>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
+
+      {/* Reset Password Modal */}
+      {resetPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={closeResetModal} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-gray-900">Reset Password</h2>
+              <button onClick={closeResetModal} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {resetResult ? (
+              /* Success State */
+              <div className="text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="w-8 h-8 text-green-600" />
+                </div>
+                {resetResult.type === 'email' ? (
+                  <>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Reset Email Sent!</h3>
+                    <p className="text-gray-600 mb-4">
+                      A password reset link has been sent to <strong>{resetPasswordModal.email}</strong>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Password Reset!</h3>
+                    <p className="text-sm text-gray-500 mb-4">
+                      Share these credentials with the user:
+                    </p>
+                    <div className="bg-gray-50 rounded-lg p-4 text-left mb-4">
+                      <div className="mb-2">
+                        <span className="text-xs text-gray-500">Email:</span>
+                        <p className="font-medium">{resetPasswordModal.email}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500">New Password:</span>
+                        <div className="flex items-center gap-2">
+                          <code className="font-mono bg-white px-2 py-1 rounded border text-sm flex-1">
+                            {resetResult.password}
+                          </code>
+                          <button
+                            onClick={() => {
+                              if (resetResult.password) {
+                                navigator.clipboard.writeText(resetResult.password)
+                                setCopiedPassword(true)
+                                setTimeout(() => setCopiedPassword(false), 2000)
+                              }
+                            }}
+                            className="p-2 text-gray-500 hover:text-teal-600 transition-colors"
+                          >
+                            {copiedPassword ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-4">
+                      They should change their password after logging in.
+                    </p>
+                  </>
+                )}
+                <button
+                  onClick={closeResetModal}
+                  className="w-full bg-teal-600 text-white py-2 rounded-lg font-medium hover:bg-teal-700 transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              /* Selection State */
+              <div>
+                <div className="mb-6">
+                  <p className="text-gray-600 mb-2">Resetting password for:</p>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="font-medium text-gray-900">
+                      {resetPasswordModal.first_name && resetPasswordModal.last_name
+                        ? `${resetPasswordModal.first_name} ${resetPasswordModal.last_name}`
+                        : resetPasswordModal.email.split('@')[0]}
+                    </p>
+                    <p className="text-sm text-gray-500">{resetPasswordModal.email}</p>
+                  </div>
+                </div>
+
+                {resetError && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-700">{resetError}</p>
+                  </div>
+                )}
+
+                <p className="text-sm text-gray-600 mb-4">Choose how to reset the password:</p>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={() => handleResetPassword('send_email')}
+                    disabled={resettingPassword}
+                    className="w-full flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-colors disabled:opacity-50"
+                  >
+                    <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
+                      <Send className="w-5 h-5 text-teal-600" />
+                    </div>
+                    <div className="text-left flex-1">
+                      <p className="font-medium text-gray-900">Send Reset Email</p>
+                      <p className="text-sm text-gray-500">User will receive an email with a reset link</p>
+                    </div>
+                    {resettingPassword && <Loader2 className="w-5 h-5 animate-spin text-teal-600" />}
+                  </button>
+
+                  <button
+                    onClick={() => handleResetPassword('generate')}
+                    disabled={resettingPassword}
+                    className="w-full flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-colors disabled:opacity-50"
+                  >
+                    <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                      <Key className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div className="text-left flex-1">
+                      <p className="font-medium text-gray-900">Generate Temporary Password</p>
+                      <p className="text-sm text-gray-500">Get a password to share with the user directly</p>
+                    </div>
+                    {resettingPassword && <Loader2 className="w-5 h-5 animate-spin text-teal-600" />}
+                  </button>
+                </div>
+
+                <button
+                  onClick={closeResetModal}
+                  className="w-full mt-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Add Coach Modal */}
       {showAddCoachModal && (

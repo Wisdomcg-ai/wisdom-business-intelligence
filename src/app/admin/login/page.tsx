@@ -119,6 +119,11 @@ export default function AdminLogin() {
                   disabled={loading}
                 />
               </div>
+              <div className="text-right mt-1">
+                <a href="/auth/reset-password" className="text-sm text-teal-600 hover:text-teal-700">
+                  Forgot password?
+                </a>
+              </div>
             </div>
 
             {/* Login Button */}
