@@ -22,25 +22,33 @@ export async function getUserSystemRole(): Promise<SystemRole | null> {
 
   console.log('[Auth] Checking role for user:', user.id)
 
-  const { data, error } = await supabase
+  // First try the system_roles table
+  const { data: roleData, error: roleError } = await supabase
     .from('system_roles')
     .select('role')
     .eq('user_id', user.id)
     .single()
 
-  if (error) {
-    console.log('[Auth] Error fetching role:', error.message)
-    // If table doesn't exist or no row found, default to client
-    return 'client'
+  if (!roleError && roleData?.role) {
+    console.log('[Auth] Found role in system_roles:', roleData.role)
+    return roleData.role as SystemRole
   }
 
-  if (!data) {
-    console.log('[Auth] No role data found, defaulting to client')
-    return 'client'
+  // Fallback: check the users table system_role column
+  const { data: userData, error: userError } = await supabase
+    .from('users')
+    .select('system_role')
+    .eq('id', user.id)
+    .single()
+
+  if (!userError && userData?.system_role) {
+    console.log('[Auth] Found role in users table:', userData.system_role)
+    return userData.system_role as SystemRole
   }
 
-  console.log('[Auth] Found role:', data.role)
-  return data.role as SystemRole
+  // Default to client if no role found anywhere
+  console.log('[Auth] No role found, defaulting to client')
+  return 'client'
 }
 
 /**
