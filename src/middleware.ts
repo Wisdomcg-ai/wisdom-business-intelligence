@@ -80,9 +80,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth/login', request.url))
   }
 
-  // If user is logged in and trying to access auth pages
+  // If user is logged in and trying to access auth pages (except callback which needs to run)
   if (user && pathname.startsWith('/auth')) {
-    // Redirect to dashboard instead of goals
+    // Allow /auth/callback to run - it handles redirects after magic link
+    if (pathname === '/auth/callback') {
+      return response
+    }
+    // Redirect other auth pages to dashboard
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 

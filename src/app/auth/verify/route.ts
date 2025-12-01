@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { createRouteHandlerClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
@@ -8,6 +7,7 @@ export async function GET(request: NextRequest) {
   const email = requestUrl.searchParams.get('email')
 
   if (!token || !email) {
+    console.error('[Auth Verify] Missing token or email')
     return NextResponse.redirect(
       new URL('/auth/login?error=invalid_link', request.url)
     )
@@ -62,25 +62,6 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Generate a magic link for sign-in using Supabase
-    const supabase = await createRouteHandlerClient()
-
-    // Use generateLink to create a magic link
-    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-      type: 'magiclink',
-      email: email,
-      options: {
-        redirectTo: `${requestUrl.origin}/auth/callback`
-      }
-    })
-
-    if (linkError || !linkData?.properties?.hashed_token) {
-      console.error('[Auth Verify] Failed to generate magic link:', linkError)
-      return NextResponse.redirect(
-        new URL('/auth/login?error=verification_failed', request.url)
-      )
-    }
-
     // Clear the magic token from user metadata (one-time use)
     await fetch(
       `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${user.id}`,
@@ -101,13 +82,62 @@ export async function GET(request: NextRequest) {
       }
     )
 
-    // Verify the token with Supabase to create a session
-    const verifyUrl = new URL(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/verify`)
-    verifyUrl.searchParams.set('token', linkData.properties.hashed_token)
-    verifyUrl.searchParams.set('type', 'magiclink')
-    verifyUrl.searchParams.set('redirect_to', `${requestUrl.origin}/change-password`)
+    // Generate a magic link and get the session directly
+    const generateLinkResponse = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/generate_link`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+          'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+        },
+        body: JSON.stringify({
+          type: 'magiclink',
+          email: email,
+          options: {
+            redirect_to: `${requestUrl.origin}/change-password`
+          }
+        })
+      }
+    )
 
-    return NextResponse.redirect(verifyUrl.toString())
+    if (!generateLinkResponse.ok) {
+      console.error('[Auth Verify] Failed to generate link')
+      return NextResponse.redirect(
+        new URL('/auth/login?error=verification_failed', request.url)
+      )
+    }
+
+    const linkData = await generateLinkResponse.json()
+
+    // The action_link contains the full URL with token
+    // Redirect must go to /auth/callback to exchange code for session
+    // The callback will then redirect to /change-password based on must_change_password flag
+    if (linkData.action_link) {
+      // Parse the action link to modify the redirect to go through our callback
+      const actionUrl = new URL(linkData.action_link)
+      actionUrl.searchParams.set('redirect_to', `${requestUrl.origin}/auth/callback`)
+
+      console.log('[Auth Verify] Redirecting to action link:', actionUrl.toString())
+      return NextResponse.redirect(actionUrl.toString())
+    }
+
+    // Fallback: If we have hashed_token, use verify endpoint
+    if (linkData.hashed_token) {
+      const verifyUrl = new URL(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/verify`)
+      verifyUrl.searchParams.set('token', linkData.hashed_token)
+      verifyUrl.searchParams.set('type', 'magiclink')
+      verifyUrl.searchParams.set('redirect_to', `${requestUrl.origin}/auth/callback`)
+
+      console.log('[Auth Verify] Redirecting to verify endpoint')
+      return NextResponse.redirect(verifyUrl.toString())
+    }
+
+    console.error('[Auth Verify] No action_link or hashed_token in response')
+    return NextResponse.redirect(
+      new URL('/auth/login?error=verification_failed', request.url)
+    )
 
   } catch (error) {
     console.error('[Auth Verify] Error:', error)
