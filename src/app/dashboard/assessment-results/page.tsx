@@ -45,41 +45,50 @@ function AssessmentResultsContent() {
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [completingOnboarding, setCompletingOnboarding] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const assessmentId = searchParams?.get('id');
-
-  // Complete onboarding and go to dashboard
-  async function completeOnboardingAndContinue() {
-    setCompletingOnboarding(true);
-    try {
-      const supabase = createClient();
-
-      // Clear onboarding step (marks onboarding as complete)
-      await supabase.auth.updateUser({
-        data: {
-          onboarding_step: null,
-          onboarding_completed: true
-        }
-      });
-
-      router.push('/dashboard');
-    } catch (err) {
-      console.error('Error completing onboarding:', err);
-      // Still redirect even if metadata update fails
-      router.push('/dashboard');
-    }
-  }
 
   useEffect(() => {
     if (assessmentId) {
       loadAssessment();
     } else {
-      setError('No assessment ID provided');
-      setLoading(false);
+      // No ID provided - try to load the user's latest assessment
+      loadLatestAssessment();
     }
   }, [assessmentId]);
+
+  async function loadLatestAssessment() {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push('/auth/login');
+        return;
+      }
+
+      const { data: assessments, error: dbError } = await supabase
+        .from('assessments')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (dbError || !assessments || assessments.length === 0) {
+        // No completed assessment - redirect to assessment page
+        router.push('/assessment');
+        return;
+      }
+
+      // Redirect to this page with the ID
+      router.replace(`/dashboard/assessment-results?id=${assessments[0].id}`);
+    } catch (error) {
+      console.error('Error loading latest assessment:', error);
+      router.push('/dashboard');
+    }
+  }
 
   async function loadAssessment() {
     try {
@@ -598,11 +607,10 @@ function AssessmentResultsContent() {
 
           <div className="mt-6 pt-6 border-t border-white/20">
             <button
-              onClick={completeOnboardingAndContinue}
-              disabled={completingOnboarding}
-              className="w-full md:w-auto px-8 py-3 bg-white text-teal-600 rounded-lg font-semibold hover:bg-teal-50 transition-colors disabled:opacity-70"
+              onClick={() => router.push('/dashboard')}
+              className="w-full md:w-auto px-8 py-3 bg-white text-teal-600 rounded-lg font-semibold hover:bg-teal-50 transition-colors"
             >
-              {completingOnboarding ? 'Loading...' : 'Continue to Dashboard'}
+              Continue to Dashboard
             </button>
           </div>
         </div>
