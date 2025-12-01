@@ -14,18 +14,6 @@ function generateSecurePassword(length = 16): string {
   return password
 }
 
-// Generate a secure magic link token
-function generateMagicToken(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz0123456789'
-  let token = ''
-  const array = new Uint32Array(32)
-  crypto.getRandomValues(array)
-  for (let i = 0; i < 32; i++) {
-    token += chars[array[i] % chars.length]
-  }
-  return token
-}
-
 export async function POST(request: Request) {
   const supabase = await createRouteHandlerClient()
 
@@ -121,13 +109,10 @@ export async function POST(request: Request) {
       }
     }
 
-    // Generate secure password and magic token
+    // Generate secure password for the user
     const generatedPassword = generateSecurePassword()
-    const magicToken = generateMagicToken()
-    const tokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
 
     // STEP 1: Create user in Supabase Auth using Admin API
-    // Create auth user
     const authResponse = await fetch(
       `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users`,
       {
@@ -144,10 +129,7 @@ export async function POST(request: Request) {
           user_metadata: {
             first_name: firstName,
             last_name: lastName,
-            must_change_password: true,
-            magic_token: magicToken,
-            magic_token_expiry: tokenExpiry,
-            onboarding_step: 'password' // Track onboarding progress
+            must_change_password: true // Flag to redirect to password change on first login
           }
         })
       }
@@ -255,21 +237,21 @@ export async function POST(request: Request) {
       console.error('Onboarding tracking error:', onboardingError)
     }
 
-    // STEP 7: Send invitation email to client
+    // STEP 7: Send invitation email to client with login credentials
     const coachName = user.user_metadata?.first_name && user.user_metadata?.last_name
       ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
       : user.email?.split('@')[0] || 'Your Coach'
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
-    const magicLinkUrl = `${baseUrl}/auth/verify?token=${magicToken}&email=${encodeURIComponent(email)}`
+    const loginUrl = `${baseUrl}/auth/login`
 
     const emailResult = await sendClientInvitation({
       to: email,
       clientName: firstName,
       coachName,
       businessName,
-      loginUrl: magicLinkUrl, // Now a magic link that auto-signs in
-      tempPassword: undefined // No longer sending password in email
+      loginUrl: loginUrl,
+      tempPassword: generatedPassword // Send temporary password in email
     })
 
     if (!emailResult.success) {
