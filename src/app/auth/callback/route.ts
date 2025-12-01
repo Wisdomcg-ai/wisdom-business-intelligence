@@ -8,39 +8,54 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createRouteHandlerClient();
   let redirectPath = '/dashboard';
-  let user = null;
 
+  // Step 1: Establish the session
   if (code) {
-    // Exchange the code for a session (OAuth flow)
-    const { data } = await supabase.auth.exchangeCodeForSession(code);
-    user = data?.user;
-  } else {
-    // Magic link flow - session is already set via cookies
-    // Just get the current user
-    const { data } = await supabase.auth.getUser();
-    user = data?.user;
+    // Exchange the code for a session (PKCE flow from magic link)
+    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+    if (exchangeError) {
+      console.error('[Auth Callback] Code exchange error:', exchangeError);
+      return NextResponse.redirect(new URL('/auth/login?error=session_error', request.url));
+    }
   }
 
-  // Check if user needs to complete onboarding
-  if (user) {
-    const onboardingStep = user.user_metadata?.onboarding_step;
-    const mustChangePassword = user.user_metadata?.must_change_password;
+  // Step 2: Get fresh user data (metadata may have been stale in exchange response)
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-    console.log('[Auth Callback] User metadata:', {
-      mustChangePassword,
-      onboardingStep,
-      email: user.email
-    });
+  console.log('[Auth Callback] User fetched:', {
+    hasUser: !!user,
+    userId: user?.id,
+    email: user?.email,
+    error: userError?.message
+  });
 
-    if (mustChangePassword) {
-      redirectPath = '/change-password';
-    } else if (onboardingStep === 'business-profile') {
-      redirectPath = '/business-profile';
-    } else if (onboardingStep === 'assessment') {
-      redirectPath = '/assessment';
-    } else if (onboardingStep === 'results') {
-      redirectPath = '/dashboard/assessment-results';
-    }
+  if (!user) {
+    console.error('[Auth Callback] No user after session:', userError);
+    return NextResponse.redirect(new URL('/auth/login?error=no_user', request.url));
+  }
+
+  // Step 3: Check onboarding state from fresh user metadata
+  const mustChangePassword = user.user_metadata?.must_change_password;
+  const onboardingStep = user.user_metadata?.onboarding_step;
+  const onboardingCompleted = user.user_metadata?.onboarding_completed;
+
+  console.log('[Auth Callback] User metadata:', {
+    mustChangePassword,
+    onboardingStep,
+    onboardingCompleted,
+    email: user.email,
+    allMetadata: user.user_metadata
+  });
+
+  // Determine redirect based on onboarding state
+  if (mustChangePassword === true) {
+    redirectPath = '/change-password';
+  } else if (onboardingStep === 'business-profile') {
+    redirectPath = '/business-profile';
+  } else if (onboardingStep === 'assessment') {
+    redirectPath = '/assessment';
+  } else if (onboardingStep === 'results') {
+    redirectPath = '/dashboard/assessment-results';
   }
 
   console.log('[Auth Callback] Redirecting to:', redirectPath);
