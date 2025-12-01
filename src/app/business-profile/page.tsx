@@ -404,22 +404,6 @@ export default function EnhancedBusinessProfile() {
     }
   }
 
-  // Navigate to assessment and update onboarding step
-  const navigateToAssessment = async () => {
-    // Update onboarding step in user metadata
-    const { error } = await supabase.auth.updateUser({
-      data: {
-        onboarding_step: 'assessment'
-      }
-    })
-
-    if (error) {
-      console.error('Failed to update onboarding step:', error)
-    }
-
-    router.push('/assessment')
-  }
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 p-8 flex items-center justify-center">
@@ -570,7 +554,21 @@ export default function EnhancedBusinessProfile() {
                     Great! Now let's complete your business assessment to unlock personalized insights and recommendations.
                   </p>
                   <button
-                    onClick={navigateToAssessment}
+                    onClick={async () => {
+                      // Ensure profile is saved as complete before navigating
+                      if (businessId && profileId) {
+                        setSaveStatus('saving')
+                        const { success } = await BusinessProfileService.saveBusinessProfile(
+                          businessId,
+                          profileId,
+                          { ...business, profile_completed: true }
+                        )
+                        if (success) {
+                          setSaveStatus('saved')
+                        }
+                      }
+                      router.push('/assessment')
+                    }}
                     className="px-6 py-2.5 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors shadow-sm"
                   >
                     Start Assessment →
@@ -1825,11 +1823,11 @@ export default function EnhancedBusinessProfile() {
 
             {currentStep === STEPS.length && (
               <button
-                onClick={navigateToAssessment}
+                onClick={() => router.push('/dashboard')}
                 className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white hover:bg-teal-700 rounded-lg font-semibold transition-colors shadow-sm"
               >
-                Continue to Assessment
-                <ArrowRight className="w-5 h-5" />
+                Complete Profile
+                <CheckCircle className="w-5 h-5" />
               </button>
             )}
           </div>
