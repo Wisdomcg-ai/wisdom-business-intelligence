@@ -61,10 +61,10 @@ export default function OnboardingChecklist({ onDismiss, compact = false }: Onbo
 
       // Check all completion statuses in parallel
       const [profileResult, assessmentResult, visionResult, swotResult, goalsResult] = await Promise.all([
-        // 1. Business Profile
+        // 1. Business Profile - get full profile to calculate completion
         supabase
           .from('business_profiles')
-          .select('profile_completed')
+          .select('name, industry, annual_revenue, employee_count, years_in_operation, owner_info')
           .eq('user_id', user.id)
           .maybeSingle(),
 
@@ -83,10 +83,10 @@ export default function OnboardingChecklist({ onDismiss, compact = false }: Onbo
           .eq('user_id', user.id)
           .maybeSingle(),
 
-        // 4. SWOT Analysis (check if any items exist for current quarter)
+        // 4. SWOT Analysis - check if actual swot_items exist (not just empty analysis)
         supabase
           .from('swot_analyses')
-          .select('id')
+          .select('id, swot_items(id)')
           .eq('created_by', user.id)
           .limit(1),
 
@@ -99,7 +99,20 @@ export default function OnboardingChecklist({ onDismiss, compact = false }: Onbo
       ])
 
       // Determine completion status
-      const profile = profileResult.data?.profile_completed === true
+
+      // Profile: Check if required fields are filled (simplified version of calculateCompletion)
+      let profile = false
+      if (profileResult.data) {
+        const p = profileResult.data
+        const requiredFields = [p.name, p.industry, p.annual_revenue, p.employee_count, p.years_in_operation]
+        const filledRequired = requiredFields.filter(f => f !== null && f !== undefined && f !== '').length
+        // Also check owner_info has owner name
+        const ownerInfo = p.owner_info as any
+        const hasOwnerName = ownerInfo?.owner_name?.trim()
+        // Profile is complete if all 5 required fields + owner name are filled
+        profile = filledRequired >= 5 && hasOwnerName
+      }
+
       const assessment = (assessmentResult.data?.length || 0) > 0
 
       // Vision/Mission: check if object has meaningful content
@@ -109,7 +122,13 @@ export default function OnboardingChecklist({ onDismiss, compact = false }: Onbo
         visionMission = !!(vm.vision?.trim() || vm.mission?.trim() || (vm.values && vm.values.length > 0))
       }
 
-      const swot = (swotResult.data?.length || 0) > 0
+      // SWOT: Check if analysis exists AND has at least one item
+      let swot = false
+      if (swotResult.data && swotResult.data.length > 0) {
+        const analysis = swotResult.data[0] as any
+        swot = analysis.swot_items && analysis.swot_items.length > 0
+      }
+
       const goals = (goalsResult.data?.length || 0) > 0
 
       setCompletionStatus({
