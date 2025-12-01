@@ -17,6 +17,7 @@ import {
   SessionActionsCard
 } from './components'
 import { getQuarterDisplayName } from './utils/formatters'
+import OnboardingChecklist from '@/components/onboarding/OnboardingChecklist'
 
 export default function DashboardPage() {
   const supabase = createClient()
@@ -26,6 +27,7 @@ export default function DashboardPage() {
   const [messagesBusinessId, setMessagesBusinessId] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
   const [lastMessage, setLastMessage] = useState<{ preview: string; time: string } | null>(null)
+  const [showOnboarding, setShowOnboarding] = useState(true)
 
   // Update last login timestamp when dashboard loads
   useEffect(() => {
@@ -174,6 +176,13 @@ export default function DashboardPage() {
           insight={data.insight}
           onRefresh={refresh}
         />
+
+        {/* Onboarding Checklist - shows until all steps complete */}
+        {showOnboarding && (
+          <OnboardingChecklist
+            onDismiss={() => setShowOnboarding(false)}
+          />
+        )}
 
         {/* Actions from Coaching Session */}
         <SessionActionsCard userId={userId} />
