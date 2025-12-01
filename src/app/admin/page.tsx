@@ -50,6 +50,7 @@ interface Coach {
   first_name: string | null
   last_name: string | null
   phone: string | null
+  system_role?: string
 }
 
 interface User {
@@ -198,11 +199,11 @@ export default function AdminDashboard() {
   }
 
   async function loadCoaches() {
-    // Load all users with coach role
+    // Load all users with coach or super_admin role (admins can also coach)
     const { data, error } = await supabase
       .from('users')
-      .select('id, email, first_name, last_name, phone')
-      .eq('system_role', 'coach')
+      .select('id, email, first_name, last_name, phone, system_role')
+      .in('system_role', ['coach', 'super_admin'])
       .order('first_name')
 
     if (error) {
@@ -666,6 +667,7 @@ export default function AdminDashboard() {
                 {coaches.map(coach => (
                   <option key={coach.id} value={coach.id}>
                     {coach.first_name ? `${coach.first_name} ${coach.last_name || ''}`.trim() : coach.email.split('@')[0]}
+                    {coach.system_role === 'super_admin' ? ' (Admin)' : ''}
                   </option>
                 ))}
               </select>
@@ -745,6 +747,7 @@ export default function AdminDashboard() {
                         {coaches.map(coach => (
                           <option key={coach.id} value={coach.id}>
                             {coach.first_name ? `${coach.first_name} ${coach.last_name || ''}`.trim() : coach.email.split('@')[0]}
+                            {coach.system_role === 'super_admin' ? ' (Admin)' : ''}
                           </option>
                         ))}
                       </select>

@@ -37,7 +37,18 @@ export default function CoachLogin() {
         return
       }
 
-      // Skip role check for now - just redirect to dashboard
+      // Check if user has coach or super_admin role
+      const role = await getUserSystemRole()
+      console.log('[CoachLogin] User role:', role)
+
+      if (role !== 'coach' && role !== 'super_admin') {
+        // Not authorized for coach portal - sign them out
+        await supabase.auth.signOut()
+        setError('Access denied. Coach or Admin privileges required.')
+        setLoading(false)
+        return
+      }
+
       console.log('[CoachLogin] Login successful! Redirecting...')
       router.push('/coach/dashboard')
 

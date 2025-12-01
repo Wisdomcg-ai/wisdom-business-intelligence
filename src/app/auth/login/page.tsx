@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, Mail, Lock, Building2, AlertCircle } from 'lucide-react'
+import { getUserSystemRole } from '@/lib/auth/roles'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -63,8 +64,19 @@ export default function LoginPage() {
 
         if (signInError) throw signInError
 
-        // Redirect to dashboard
-        router.push('/dashboard')
+        // Check user's role and redirect appropriately
+        const role = await getUserSystemRole()
+
+        if (role === 'super_admin') {
+          // Admins should use admin portal
+          router.push('/admin')
+        } else if (role === 'coach') {
+          // Coaches should use coach portal
+          router.push('/coach/dashboard')
+        } else {
+          // Clients go to client dashboard
+          router.push('/dashboard')
+        }
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred. Please try again.')
