@@ -5,6 +5,7 @@ import {
   Clock, DollarSign, ListChecks, Target,
   ChevronRight, ChevronLeft, Check, Loader2
 } from 'lucide-react'
+import { JargonTooltip } from '@/components/ui/Tooltip'
 import { useStopDoingList } from './hooks/useStopDoingList'
 import Step1TimeLog from './components/Step1TimeLog'
 import Step2HourlyRate from './components/Step2HourlyRate'
@@ -172,7 +173,9 @@ export default function StopDoingPage() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Stop Doing List</h1>
+              <h1 className="text-3xl font-bold text-gray-900">
+                <JargonTooltip term="stopDoing">Stop Doing List</JargonTooltip>
+              </h1>
               <p className="text-gray-600 mt-1">
                 Identify and eliminate low-value activities to reclaim your time
               </p>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Plus, Check, Trash2, ChevronDown } from 'lucide-react';
+import { JargonTooltip } from '@/components/ui/Tooltip';
 import {
   getOpenLoops,
   createOpenLoop,
@@ -155,7 +156,9 @@ export default function OpenLoopsPage() {
         <div className="max-w-[1600px] mx-auto px-6 py-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Open Loops</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              <JargonTooltip term="openLoops">Open Loops</JargonTooltip>
+            </h1>
             <p className="text-sm text-gray-600 mt-1">Your in-progress projects and initiatives</p>
           </div>
           <button

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Rocket, AlertTriangle, CheckCircle2, ArrowRight } from 'lucide-react'
 import type { Rock } from '../types'
 import { getQuarterDisplayName } from '../utils/formatters'
+import { JargonTooltip } from '@/components/ui/Tooltip'
 
 interface RocksCardProps {
   rocks: Rock[]
@@ -46,7 +47,9 @@ export default function RocksCard({
               <Rocket className="h-4 w-4 text-gray-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Quarterly Rocks</h3>
+              <h3 className="font-semibold text-gray-900">
+                <JargonTooltip term="rocks">Quarterly Rocks</JargonTooltip>
+              </h3>
               <p className="text-xs text-gray-500">{getQuarterDisplayName(currentQuarter)}</p>
             </div>
           </div>
