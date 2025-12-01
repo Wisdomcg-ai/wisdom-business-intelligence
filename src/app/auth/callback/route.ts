@@ -19,10 +19,10 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Step 2: Get fresh user data (metadata may have been stale in exchange response)
+  // Step 2: Get user from session
   const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-  console.log('[Auth Callback] User fetched:', {
+  console.log('[Auth Callback] Session user:', {
     hasUser: !!user,
     userId: user?.id,
     email: user?.email,
@@ -34,21 +34,56 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth/login?error=no_user', request.url));
   }
 
-  // Step 3: Check onboarding state from fresh user metadata
-  const mustChangePassword = user.user_metadata?.must_change_password;
-  const onboardingStep = user.user_metadata?.onboarding_step;
-  const onboardingCompleted = user.user_metadata?.onboarding_completed;
+  // Step 3: Fetch user metadata directly from Admin API (more reliable than session cache)
+  let mustChangePassword = user.user_metadata?.must_change_password;
+  let onboardingStep = user.user_metadata?.onboarding_step;
+  let onboardingCompleted = user.user_metadata?.onboarding_completed;
 
-  console.log('[Auth Callback] User metadata:', {
+  console.log('[Auth Callback] Session metadata:', {
     mustChangePassword,
     onboardingStep,
-    onboardingCompleted,
-    email: user.email,
-    allMetadata: user.user_metadata
+    onboardingCompleted
   });
 
+  // If session metadata is missing key flags, fetch directly from Admin API
+  if (mustChangePassword === undefined && onboardingStep === undefined) {
+    console.log('[Auth Callback] Session metadata incomplete, fetching from Admin API...');
+
+    try {
+      const adminResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${user.id}`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+            'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+          }
+        }
+      );
+
+      if (adminResponse.ok) {
+        const adminUser = await adminResponse.json();
+        mustChangePassword = adminUser.user_metadata?.must_change_password;
+        onboardingStep = adminUser.user_metadata?.onboarding_step;
+        onboardingCompleted = adminUser.user_metadata?.onboarding_completed;
+
+        console.log('[Auth Callback] Admin API metadata:', {
+          mustChangePassword,
+          onboardingStep,
+          onboardingCompleted,
+          fullMetadata: adminUser.user_metadata
+        });
+      } else {
+        console.error('[Auth Callback] Admin API fetch failed:', await adminResponse.text());
+      }
+    } catch (err) {
+      console.error('[Auth Callback] Admin API error:', err);
+    }
+  }
+
   // Determine redirect based on onboarding state
-  if (mustChangePassword === true) {
+  // Check for truthy value (handles both boolean true and string "true")
+  if (mustChangePassword === true || mustChangePassword === 'true') {
     redirectPath = '/change-password';
   } else if (onboardingStep === 'business-profile') {
     redirectPath = '/business-profile';
@@ -58,7 +93,7 @@ export async function GET(request: NextRequest) {
     redirectPath = '/dashboard/assessment-results';
   }
 
-  console.log('[Auth Callback] Redirecting to:', redirectPath);
+  console.log('[Auth Callback] Final redirect:', redirectPath);
 
   // URL to redirect to after sign in process completes
   return NextResponse.redirect(new URL(redirectPath, request.url));
