@@ -30,10 +30,11 @@ interface ChecklistItem {
 
 interface OnboardingChecklistProps {
   onDismiss?: () => void
+  onComplete?: (isComplete: boolean) => void
   compact?: boolean
 }
 
-export default function OnboardingChecklist({ onDismiss, compact = false }: OnboardingChecklistProps) {
+export default function OnboardingChecklist({ onDismiss, onComplete, compact = false }: OnboardingChecklistProps) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -131,6 +132,8 @@ export default function OnboardingChecklist({ onDismiss, compact = false }: Onbo
 
       const goals = (goalsResult.data?.length || 0) > 0
 
+      const allComplete = profile && assessment && visionMission && swot && goals
+
       setCompletionStatus({
         profile,
         assessment,
@@ -138,6 +141,9 @@ export default function OnboardingChecklist({ onDismiss, compact = false }: Onbo
         swot,
         goals
       })
+
+      // Notify parent of completion status
+      onComplete?.(allComplete)
     } catch (error) {
       console.error('Error checking onboarding status:', error)
     } finally {

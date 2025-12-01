@@ -28,6 +28,7 @@ export default function DashboardPage() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [lastMessage, setLastMessage] = useState<{ preview: string; time: string } | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(true)
+  const [onboardingComplete, setOnboardingComplete] = useState(false)
 
   // Update last login timestamp when dashboard loads
   useEffect(() => {
@@ -168,6 +169,49 @@ export default function DashboardPage() {
     )
   }
 
+  // Show onboarding-only view until setup is complete
+  if (!onboardingComplete && showOnboarding) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <div className="max-w-2xl mx-auto p-6 pt-12">
+          {/* Welcome Header */}
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to Your Dashboard</h1>
+            <p className="text-gray-600">
+              Complete these steps to set up your business intelligence and unlock your personalized dashboard.
+            </p>
+          </div>
+
+          {/* Onboarding Checklist */}
+          <OnboardingChecklist
+            onDismiss={() => setShowOnboarding(false)}
+            onComplete={(complete) => setOnboardingComplete(complete)}
+          />
+
+          {/* Coach Messages - always show so they can communicate */}
+          <div className="mt-8">
+            <CoachMessagesCard
+              onOpenChat={() => setIsChatOpen(true)}
+              unreadCount={unreadCount}
+              lastMessagePreview={lastMessage?.preview}
+              lastMessageTime={lastMessage?.time}
+              hasCoach={!!coachId}
+            />
+          </div>
+
+          {/* Chat Drawer */}
+          <ChatDrawer
+            isOpen={isChatOpen}
+            onClose={handleChatClose}
+            businessId={messagesBusinessId}
+            userId={userId}
+            coachId={coachId}
+          />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-[1600px] mx-auto p-6 space-y-6">
@@ -176,13 +220,6 @@ export default function DashboardPage() {
           insight={data.insight}
           onRefresh={refresh}
         />
-
-        {/* Onboarding Checklist - shows until all steps complete */}
-        {showOnboarding && (
-          <OnboardingChecklist
-            onDismiss={() => setShowOnboarding(false)}
-          />
-        )}
 
         {/* Actions from Coaching Session */}
         <SessionActionsCard userId={userId} />
