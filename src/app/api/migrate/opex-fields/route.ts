@@ -1,13 +1,36 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { createRouteHandlerClient } from '@/lib/supabase/server'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-)
+// PROTECTED: Requires super_admin role
+// Migration for OPEX fields
 
 export async function POST() {
   try {
+    // Verify user is authenticated and is super_admin
+    const authSupabase = await createRouteHandlerClient()
+    const { data: { user } } = await authSupabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: userData } = await authSupabase
+      .from('users')
+      .select('system_role')
+      .eq('id', user.id)
+      .single()
+
+    if (userData?.system_role !== 'super_admin') {
+      return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 })
+    }
+
+    // Create service role client for migrations
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
     // Run the migration SQL
     const { error } = await supabase.rpc('exec', {
       sql: `

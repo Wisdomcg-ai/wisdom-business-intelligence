@@ -64,6 +64,20 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'custom':
+        // Custom emails require admin privileges to prevent abuse
+        const { data: adminCheck } = await supabase
+          .from('users')
+          .select('system_role')
+          .eq('id', user.id)
+          .single();
+
+        if (adminCheck?.system_role !== 'super_admin') {
+          return NextResponse.json(
+            { error: 'Custom emails require admin privileges' },
+            { status: 403 }
+          );
+        }
+
         result = await sendEmail({
           to: params.to,
           subject: params.subject,

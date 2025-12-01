@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
+// PROTECTED: Requires super_admin role
+// Debug tool for comparing Xero data
 
 // Expected data from Xero spreadsheet
 const xeroData: Record<string, Record<string, number>> = {
@@ -37,6 +36,30 @@ const xeroData: Record<string, Record<string, number>> = {
 
 export async function GET() {
   try {
+    // Verify user is authenticated and is super_admin
+    const authSupabase = await createRouteHandlerClient();
+    const { data: { user } } = await authSupabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { data: userData } = await authSupabase
+      .from('users')
+      .select('system_role')
+      .eq('id', user.id)
+      .single();
+
+    if (userData?.system_role !== 'super_admin') {
+      return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
+    }
+
+    // Create service role client for data access
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
     // Get forecast
     const { data: forecasts } = await supabase
       .from('financial_forecasts')
