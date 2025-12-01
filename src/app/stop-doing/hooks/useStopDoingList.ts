@@ -53,6 +53,7 @@ export function useStopDoingList(overrideBusinessId?: string) {
   // Auto-save refs
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isSavingRef = useRef(false)
+  const saveHourlyRateRef = useRef<() => Promise<void>>(() => Promise.resolve())
 
   // Step 1: Time Logs
   const [timeLogs, setTimeLogs] = useState<TimeLog[]>([])
@@ -515,6 +516,13 @@ export function useStopDoingList(overrideBusinessId?: string) {
   }, [activities, stopDoingItems, businessId, userId, createStopDoingItemFromActivity])
 
   // ============================================
+  // Keep saveHourlyRateRef updated
+  // ============================================
+  useEffect(() => {
+    saveHourlyRateRef.current = saveHourlyRate
+  }, [saveHourlyRate])
+
+  // ============================================
   // Auto-save Effect
   // ============================================
   useEffect(() => {
@@ -524,10 +532,12 @@ export function useStopDoingList(overrideBusinessId?: string) {
       clearTimeout(saveTimeoutRef.current)
     }
 
+    // Use ref to get latest saveHourlyRate function
+    // This prevents the effect from re-running when saveHourlyRate changes
     saveTimeoutRef.current = setTimeout(async () => {
       // Auto-save hourly rate if it has changed
       if (hourlyRate?.calculated_hourly_rate !== calculatedHourlyRate) {
-        await saveHourlyRate()
+        await saveHourlyRateRef.current()
       }
     }, 2000)
 
@@ -536,7 +546,7 @@ export function useStopDoingList(overrideBusinessId?: string) {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [isLoadComplete, isDirty, businessId, userId, calculatedHourlyRate, hourlyRate, saveHourlyRate])
+  }, [isLoadComplete, isDirty, businessId, userId, calculatedHourlyRate, hourlyRate])
 
   // Reset saved status after 3 seconds
   useEffect(() => {
