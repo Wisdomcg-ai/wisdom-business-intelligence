@@ -150,7 +150,24 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       let visionMission = false
       if (visionResult.data?.vision_mission) {
         const vm = visionResult.data.vision_mission as any
-        visionMission = !!(vm.vision?.trim() || vm.mission?.trim() || (vm.values && vm.values.length > 0))
+        // Check for vision, mission, OR core_values (the actual field name)
+        const hasVision = vm.vision?.trim()
+        const hasMission = vm.mission?.trim()
+        const hasValues = (vm.values && vm.values.length > 0) || (vm.core_values && vm.core_values.filter((v: string) => v?.trim()).length > 0)
+        visionMission = !!(hasVision || hasMission || hasValues)
+
+        console.log('[Onboarding] Vision/Mission check:', {
+          vision: vm.vision,
+          mission: vm.mission,
+          values: vm.values,
+          core_values: vm.core_values,
+          hasVision: !!hasVision,
+          hasMission: !!hasMission,
+          hasValues: !!hasValues,
+          isComplete: visionMission
+        })
+      } else {
+        console.log('[Onboarding] No vision/mission data found', visionResult.error)
       }
 
       // SWOT: Check if analysis exists AND has at least one item
