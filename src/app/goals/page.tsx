@@ -402,14 +402,28 @@ function StrategicPlanningContent() {
   const step2Complete = (strategicIdeas?.length || 0) > 0
   // Step 3: 8-20 prioritized initiatives selected
   const step3Complete = (twelveMonthInitiatives?.length || 0) >= 8 && (twelveMonthInitiatives?.length || 0) <= 20
-  // Step 4: All UNLOCKED quarters have at least 1 initiative
+  // Step 4: Quarterly targets + initiatives for unlocked quarters
   // (Locked quarters = past + current, can't add initiatives to them mid-year)
   const planYear = determinePlanYear(yearType)
   const quarters = calculateQuarters(yearType, planYear)
   const unlockedQuarters = quarters.filter(q => !q.isLocked)
-  const step4Complete = unlockedQuarters.length > 0
+
+  // Check if at least 1 quarterly target is set for any unlocked quarter
+  const hasAnyQuarterlyTarget = unlockedQuarters.some(q => {
+    const qId = q.id as 'q1' | 'q2' | 'q3' | 'q4'
+    return Object.values(quarterlyTargets || {}).some(metric => {
+      const value = parseFloat(metric?.[qId] || '0')
+      return value > 0
+    })
+  })
+
+  // Check if all unlocked quarters have at least 1 initiative
+  const allUnlockedHaveInitiatives = unlockedQuarters.length > 0
     ? unlockedQuarters.every(q => (safeAnnualPlan[q.id as keyof typeof safeAnnualPlan]?.length || 0) > 0)
-    : false // If all quarters are locked (shouldn't happen), require at least something
+    : false
+
+  // Step 4 complete = quarterly targets set + all unlocked quarters have initiatives
+  const step4Complete = hasAnyQuarterlyTarget && allUnlockedHaveInitiatives
   // Step 5: Sprint focus defined + at least 1 key action
   const step5Complete = (sprintFocus?.length || 0) > 0 && (sprintKeyActions?.length || 0) >= 1
 
@@ -461,10 +475,13 @@ function StrategicPlanningContent() {
         if (count3 > 20) return `Remove ${count3 - 20} initiatives (max 20 allowed)`
         return 'Select 8-20 initiatives'
       case 4:
+        const missing4 = []
+        if (!hasAnyQuarterlyTarget) missing4.push('set at least 1 quarterly target')
         const emptyQuarters = unlockedQuarters
           .filter(q => (safeAnnualPlan[q.id as keyof typeof safeAnnualPlan]?.length || 0) === 0)
           .map(q => q.label)
-        return `Assign initiatives to: ${emptyQuarters.join(', ')}`
+        if (emptyQuarters.length > 0) missing4.push(`assign initiatives to ${emptyQuarters.join(', ')}`)
+        return missing4.length > 0 ? `Need to: ${missing4.join(' and ')}` : 'Complete Step 4'
       case 5:
         const missing5 = []
         if ((sprintFocus?.length || 0) === 0) missing5.push('sprint focus')
@@ -747,12 +764,15 @@ function StrategicPlanningContent() {
                   case 2: return '1+ strategic idea'
                   case 3: return '8-20 initiatives'
                   case 4:
-                    // Show which quarters need initiatives
+                    // Show what's still needed
+                    const needs = []
+                    if (!hasAnyQuarterlyTarget) needs.push('targets')
                     const needsInitiatives = unlockedQuarters.filter(
                       q => (safeAnnualPlan[q.id as keyof typeof safeAnnualPlan]?.length || 0) === 0
                     )
-                    if (needsInitiatives.length === 0) return '✓ All quarters set'
-                    return `Add to ${needsInitiatives.map(q => q.label).join(', ')}`
+                    if (needsInitiatives.length > 0) needs.push(needsInitiatives.map(q => q.label).join('+'))
+                    if (needs.length === 0) return '✓ Complete'
+                    return `Need: ${needs.join(', ')}`
                   case 5: return 'Sprint focus + actions'
                   default: return ''
                 }

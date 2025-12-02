@@ -502,27 +502,113 @@ export default function Step4AnnualPlan({
     return { total, annual, variance, isValid }
   }
 
+  // Calculate section completion status
+  const unlockedQuarters = QUARTERS.filter(q => !q.isLocked)
+
+  // Section 1: At least 1 quarterly target set for any unlocked quarter
+  const hasAnyQuarterlyTarget = unlockedQuarters.some(q => {
+    const qId = q.id as 'q1' | 'q2' | 'q3' | 'q4'
+    return Object.values(quarterlyTargets).some(metric => {
+      const value = parseFloat(metric?.[qId] || '0')
+      return value > 0
+    })
+  })
+
+  // Section 2: All unlocked quarters have at least 1 initiative
+  const allUnlockedHaveInitiatives = unlockedQuarters.every(
+    q => (annualPlanByQuarter[q.id] || []).length > 0
+  )
+
+  // Count initiatives per unlocked quarter for checklist
+  const quarterInitiativeCounts = unlockedQuarters.map(q => ({
+    label: q.label,
+    count: (annualPlanByQuarter[q.id] || []).length,
+    hasInitiatives: (annualPlanByQuarter[q.id] || []).length > 0
+  }))
+
   return (
     <div className="space-y-6">
       {/* Task Banner */}
       <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-4 text-white">
         <p className="text-base font-medium">
-          📋 <strong>YOUR TASK:</strong> Set quarterly targets, then assign initiatives to each quarter
+          📋 <strong>YOUR TASK:</strong> Complete both sections below to finish Step 4
         </p>
         <p className="text-sm text-teal-100 mt-1">
-          Work through both sections below: first break down your Year 1 targets by quarter, then assign initiatives.
+          Set your quarterly targets, then assign initiatives to each planning quarter.
         </p>
+      </div>
+
+      {/* Requirements Checklist */}
+      <div className={`rounded-lg border-2 p-4 ${
+        hasAnyQuarterlyTarget && allUnlockedHaveInitiatives
+          ? 'bg-green-50 border-green-300'
+          : 'bg-amber-50 border-amber-200'
+      }`}>
+        <h4 className={`text-sm font-bold mb-3 ${
+          hasAnyQuarterlyTarget && allUnlockedHaveInitiatives
+            ? 'text-green-800'
+            : 'text-amber-800'
+        }`}>
+          {hasAnyQuarterlyTarget && allUnlockedHaveInitiatives
+            ? '✓ Step 4 Requirements Complete!'
+            : 'Step 4 Requirements'
+          }
+        </h4>
+        <div className="space-y-2">
+          {/* Section 1 Requirement */}
+          <div className="flex items-center gap-2">
+            <div className={`w-5 h-5 rounded flex items-center justify-center ${
+              hasAnyQuarterlyTarget ? 'bg-green-500' : 'bg-gray-300'
+            }`}>
+              {hasAnyQuarterlyTarget ? (
+                <Check className="w-3 h-3 text-white" />
+              ) : (
+                <span className="text-white text-xs font-bold">1</span>
+              )}
+            </div>
+            <span className={`text-sm ${hasAnyQuarterlyTarget ? 'text-green-700 line-through' : 'text-gray-700'}`}>
+              Set at least 1 quarterly target (Section 1)
+            </span>
+          </div>
+
+          {/* Section 2 Requirements - one per unlocked quarter */}
+          {quarterInitiativeCounts.map((q, idx) => (
+            <div key={q.label} className="flex items-center gap-2">
+              <div className={`w-5 h-5 rounded flex items-center justify-center ${
+                q.hasInitiatives ? 'bg-green-500' : 'bg-gray-300'
+              }`}>
+                {q.hasInitiatives ? (
+                  <Check className="w-3 h-3 text-white" />
+                ) : (
+                  <span className="text-white text-xs font-bold">{idx + 2}</span>
+                )}
+              </div>
+              <span className={`text-sm ${q.hasInitiatives ? 'text-green-700 line-through' : 'text-gray-700'}`}>
+                Assign initiatives to {q.label} {q.count > 0 && `(${q.count} assigned)`}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* SECTION 1: Quarterly Targets */}
       {financialData && (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-teal-600 text-white font-bold text-sm">1</div>
-            <div>
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm ${
+              hasAnyQuarterlyTarget ? 'bg-green-500 text-white' : 'bg-teal-600 text-white'
+            }`}>
+              {hasAnyQuarterlyTarget ? <Check className="w-5 h-5" /> : '1'}
+            </div>
+            <div className="flex-1">
               <h3 className="text-lg font-bold text-slate-900">Quarterly Targets</h3>
               <p className="text-sm text-slate-600">Break down your Year 1 targets across quarters</p>
             </div>
+            {hasAnyQuarterlyTarget && (
+              <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded">
+                ✓ Complete
+              </span>
+            )}
           </div>
         <div className="bg-white rounded-lg shadow-sm border border-slate-200">
           <div className="p-6">
@@ -1102,12 +1188,21 @@ export default function Step4AnnualPlan({
       {/* SECTION 2: Quarterly Execution Plan */}
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-600 text-white font-bold text-sm">2</div>
-          <div>
+          <div className={`flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm ${
+            allUnlockedHaveInitiatives ? 'bg-green-500 text-white' : 'bg-slate-600 text-white'
+          }`}>
+            {allUnlockedHaveInitiatives ? <Check className="w-5 h-5" /> : '2'}
+          </div>
+          <div className="flex-1">
             <h3 className="text-lg font-bold text-slate-900">Quarterly Execution Plan</h3>
             <p className="text-sm text-slate-600">Assign initiatives to quarters (Max {MAX_PER_QUARTER} per quarter)</p>
           </div>
-          <div className="relative group ml-2">
+          {allUnlockedHaveInitiatives && (
+            <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded">
+              ✓ Complete
+            </span>
+          )}
+          <div className="relative group">
             <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
             <span className="absolute left-6 top-0 w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
               Limiting to {MAX_PER_QUARTER} initiatives per quarter ensures your team can focus and execute effectively. Trying to do too much leads to nothing getting done well.
