@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   Target, Calendar, Briefcase, Users, Plus, Trash2, Edit2, ChevronDown, ChevronUp,
-  Clock, CheckCircle2, AlertCircle, Flag, TrendingUp, GripVertical, UserPlus, X
+  Clock, CheckCircle2, AlertCircle, Flag, TrendingUp, GripVertical, UserPlus, X, Check
 } from 'lucide-react'
 import {
   StrategicInitiative,
@@ -36,6 +36,10 @@ interface Step5Props {
   businessId: string
   operationalActivities?: OperationalActivity[]
   setOperationalActivities?: (activities: OperationalActivity[]) => void
+  // Completion tracking
+  planningQuarterLabel?: string
+  planningQuarterInitiatives?: number
+  hasOperationalActivities?: boolean
 }
 
 export default function Step5SprintPlanning({
@@ -48,7 +52,10 @@ export default function Step5SprintPlanning({
   yearType,
   businessId,
   operationalActivities,
-  setOperationalActivities
+  setOperationalActivities,
+  planningQuarterLabel = 'Q3',
+  planningQuarterInitiatives = 0,
+  hasOperationalActivities = false
 }: Step5Props) {
   const [activeTab, setActiveTab] = useState<'monthly' | 'initiatives' | 'operational'>('monthly')
 
@@ -372,11 +379,62 @@ export default function Step5SprintPlanning({
       {/* Task Banner */}
       <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-4 text-white">
         <p className="text-base font-medium">
-          📋 <strong>YOUR TASK:</strong> Plan your next 90 days - set a focus and define key actions for {currentQuarter.label}
+          📋 <strong>YOUR TASK:</strong> Plan your next 90 days - review initiatives and define operational activities
         </p>
         <p className="text-sm text-teal-100 mt-1">
           {currentQuarter.label} • {currentQuarter.months} • {yearType} {planYear}
         </p>
+      </div>
+
+      {/* Requirements Checklist */}
+      <div className={`rounded-lg border-2 p-4 ${
+        planningQuarterInitiatives > 0 && hasOperationalActivities
+          ? 'bg-green-50 border-green-300'
+          : 'bg-amber-50 border-amber-200'
+      }`}>
+        <h4 className={`text-sm font-bold mb-3 ${
+          planningQuarterInitiatives > 0 && hasOperationalActivities
+            ? 'text-green-800'
+            : 'text-amber-800'
+        }`}>
+          {planningQuarterInitiatives > 0 && hasOperationalActivities
+            ? '✓ Step 5 Requirements Complete!'
+            : 'Step 5 Requirements'
+          }
+        </h4>
+        <div className="space-y-2">
+          {/* Requirement 1: Initiatives for planning quarter */}
+          <div className="flex items-center gap-2">
+            <div className={`w-5 h-5 rounded flex items-center justify-center ${
+              planningQuarterInitiatives > 0 ? 'bg-green-500' : 'bg-gray-300'
+            }`}>
+              {planningQuarterInitiatives > 0 ? (
+                <Check className="w-3 h-3 text-white" />
+              ) : (
+                <span className="text-white text-xs font-bold">1</span>
+              )}
+            </div>
+            <span className={`text-sm ${planningQuarterInitiatives > 0 ? 'text-green-700 line-through' : 'text-gray-700'}`}>
+              Have initiatives for {planningQuarterLabel} {planningQuarterInitiatives > 0 && `(${planningQuarterInitiatives} assigned)`}
+            </span>
+          </div>
+
+          {/* Requirement 2: Operational activities */}
+          <div className="flex items-center gap-2">
+            <div className={`w-5 h-5 rounded flex items-center justify-center ${
+              hasOperationalActivities ? 'bg-green-500' : 'bg-gray-300'
+            }`}>
+              {hasOperationalActivities ? (
+                <Check className="w-3 h-3 text-white" />
+              ) : (
+                <span className="text-white text-xs font-bold">2</span>
+              )}
+            </div>
+            <span className={`text-sm ${hasOperationalActivities ? 'text-green-700 line-through' : 'text-gray-700'}`}>
+              Add at least 1 operational activity (Operational tab)
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Tab Navigation - Enhanced Design */}

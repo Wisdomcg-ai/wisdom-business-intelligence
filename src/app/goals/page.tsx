@@ -424,8 +424,16 @@ function StrategicPlanningContent() {
 
   // Step 4 complete = quarterly targets set + all unlocked quarters have initiatives
   const step4Complete = hasAnyQuarterlyTarget && allUnlockedHaveInitiatives
-  // Step 5: Sprint focus defined + at least 1 key action
-  const step5Complete = (sprintFocus?.length || 0) > 0 && (sprintKeyActions?.length || 0) >= 1
+
+  // Step 5: Planning quarter has initiatives + at least 1 operational activity
+  // Find the planning quarter (next quarter)
+  const planningQuarter = quarters.find(q => q.isNextQuarter) || quarters.find(q => !q.isLocked)
+  const planningQuarterKey = planningQuarter?.id as 'q1' | 'q2' | 'q3' | 'q4' | undefined
+  const planningQuarterInitiatives = planningQuarterKey ? (safeAnnualPlan[planningQuarterKey]?.length || 0) : 0
+  const hasOperationalActivities = (operationalActivities?.length || 0) > 0
+
+  // Step 5 complete = has initiatives for planning quarter + has operational activities
+  const step5Complete = planningQuarterInitiatives > 0 && hasOperationalActivities
 
   const stepCompletion = [step1Complete, step2Complete, step3Complete, step4Complete, step5Complete]
   const completedCount = stepCompletion.filter(Boolean).length
@@ -484,9 +492,9 @@ function StrategicPlanningContent() {
         return missing4.length > 0 ? `Need to: ${missing4.join(' and ')}` : 'Complete Step 4'
       case 5:
         const missing5 = []
-        if ((sprintFocus?.length || 0) === 0) missing5.push('sprint focus')
-        if ((sprintKeyActions?.length || 0) < 1) missing5.push('at least 1 key action')
-        return `Define your ${missing5.join(' and ')}`
+        if (planningQuarterInitiatives === 0) missing5.push(`initiatives in ${planningQuarter?.label || 'planning quarter'}`)
+        if (!hasOperationalActivities) missing5.push('at least 1 operational activity')
+        return missing5.length > 0 ? `Add: ${missing5.join(' and ')}` : 'Complete Step 5'
       default:
         return 'Complete this step before continuing'
     }
@@ -773,7 +781,11 @@ function StrategicPlanningContent() {
                     if (needsInitiatives.length > 0) needs.push(needsInitiatives.map(q => q.label).join('+'))
                     if (needs.length === 0) return '✓ Complete'
                     return `Need: ${needs.join(', ')}`
-                  case 5: return 'Sprint focus + actions'
+                  case 5:
+                    const needs5 = []
+                    if (planningQuarterInitiatives === 0) needs5.push('initiatives')
+                    if (!hasOperationalActivities) needs5.push('activities')
+                    return needs5.length === 0 ? '✓ Complete' : `Need: ${needs5.join(', ')}`
                   default: return ''
                 }
               }
@@ -961,6 +973,9 @@ function StrategicPlanningContent() {
                 businessId={businessId}
                 operationalActivities={operationalActivities}
                 setOperationalActivities={setOperationalActivities}
+                planningQuarterLabel={planningQuarter?.label || 'Q3'}
+                planningQuarterInitiatives={planningQuarterInitiatives}
+                hasOperationalActivities={hasOperationalActivities}
               />
             </div>
           )}
@@ -1142,8 +1157,8 @@ function StrategicPlanningContent() {
                     </p>
                     <p className={`text-xs mt-0.5 ${step5Complete ? 'text-green-700' : 'text-amber-700'}`}>
                       {step5Complete
-                        ? `Sprint focus defined with ${sprintKeyActions?.length || 0} key actions`
-                        : 'Define sprint focus and at least 1 key action'
+                        ? `${planningQuarterInitiatives} initiatives + ${operationalActivities?.length || 0} operational activities`
+                        : `Add initiatives to ${planningQuarter?.label || 'planning quarter'} + operational activities`
                       }
                     </p>
                   </div>
