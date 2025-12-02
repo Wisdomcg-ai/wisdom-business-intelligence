@@ -70,7 +70,7 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       console.log('[Onboarding] Business lookup:', { businessId: business?.id, businessName: business?.name, error: businessError?.message })
 
       // Check all completion statuses in parallel
-      const [profileResult, assessmentResult, visionResult, swotResult, financialGoalsResult, initiativesResult, sprintActionsResult] = await Promise.all([
+      const [profileResult, assessmentResult, visionResult, swotResult, financialGoalsResult, initiativesResult, quarterlyTargetsResult, operationalActivitiesResult] = await Promise.all([
         // 1. Business Profile - get full profile to calculate completion
         // Try by business_id first (preferred), fallback to user_id
         business?.id
@@ -109,10 +109,10 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
           .limit(1),
 
         // 5. Strategic Plan - check all 5 steps of the wizard
-        // Step 1: Financial goals (Year 1 revenue target)
+        // Step 1: Financial goals (all 3 years)
         supabase
           .from('business_financial_goals')
-          .select('revenue_year1')
+          .select('revenue_year1, revenue_year2, revenue_year3')
           .eq('user_id', user.id)
           .maybeSingle(),
 
@@ -122,9 +122,15 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
           .select('id, step_type')
           .eq('user_id', user.id),
 
-        // Step 5: Sprint key actions
+        // Step 4: Quarterly targets
         supabase
-          .from('sprint_actions')
+          .from('quarterly_targets')
+          .select('metric, q1, q2, q3, q4')
+          .eq('user_id', user.id),
+
+        // Step 5: Operational activities
+        supabase
+          .from('operational_activities')
           .select('id')
           .eq('user_id', user.id)
           .limit(1)
@@ -204,40 +210,48 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       // Strategic Plan: Check all 5 steps of the wizard
       let goals = false
       const initiatives = initiativesResult.data || []
+      const quarterlyTargets = quarterlyTargetsResult.data || []
 
-      // Step 1: Financial goals - Year 1 revenue target set
-      const hasFinancialGoals = financialGoalsResult.data?.revenue_year1 && financialGoalsResult.data.revenue_year1 > 0
+      // Step 1: Financial goals - All 3 years of revenue targets set
+      const fg = financialGoalsResult.data
+      const hasYear1 = fg?.revenue_year1 && fg.revenue_year1 > 0
+      const hasYear2 = fg?.revenue_year2 && fg.revenue_year2 > 0
+      const hasYear3 = fg?.revenue_year3 && fg.revenue_year3 > 0
+      const hasFinancialGoals = !!(hasYear1 && hasYear2 && hasYear3)
 
-      // Step 2-3: Has 8-20 prioritized initiatives (twelve_month step_type)
+      // Step 2: At least 1 strategic idea
+      const strategicIdeas = initiatives.filter((i: any) => i.step_type === 'strategic_ideas')
+      const hasStrategicIdeas = strategicIdeas.length > 0
+
+      // Step 3: Has 8-20 prioritized initiatives (twelve_month step_type)
       const twelveMonthInitiatives = initiatives.filter((i: any) => i.step_type === 'twelve_month')
       const hasPrioritizedInitiatives = twelveMonthInitiatives.length >= 8 && twelveMonthInitiatives.length <= 20
 
-      // Step 4: All 4 quarters have at least 1 initiative
-      const q1Initiatives = initiatives.filter((i: any) => i.step_type === 'q1')
-      const q2Initiatives = initiatives.filter((i: any) => i.step_type === 'q2')
+      // Step 4: Quarterly targets set + Q3 & Q4 have initiatives
+      // (Q1 & Q2 are typically locked for FY planning mid-year)
+      const hasQuarterlyTargets = quarterlyTargets.some((qt: any) => {
+        const q3Val = parseFloat(qt.q3 || '0')
+        const q4Val = parseFloat(qt.q4 || '0')
+        return q3Val > 0 || q4Val > 0
+      })
       const q3Initiatives = initiatives.filter((i: any) => i.step_type === 'q3')
       const q4Initiatives = initiatives.filter((i: any) => i.step_type === 'q4')
-      const hasAllQuarters = q1Initiatives.length > 0 && q2Initiatives.length > 0 && q3Initiatives.length > 0 && q4Initiatives.length > 0
+      const hasUnlockedQuarters = q3Initiatives.length > 0 && q4Initiatives.length > 0
 
-      // Step 5: Sprint focus defined AND at least 1 sprint action
-      const sprintInitiatives = initiatives.filter((i: any) => i.step_type === 'sprint')
-      const hasSprintFocus = sprintInitiatives.length > 0
-      const hasSprintActions = (sprintActionsResult.data?.length || 0) > 0
+      // Step 5: Planning quarter has initiatives + operational activities defined
+      const hasOperationalActivities = (operationalActivitiesResult.data?.length || 0) > 0
 
-      goals = !!(hasFinancialGoals && hasPrioritizedInitiatives && hasAllQuarters && hasSprintFocus && hasSprintActions)
+      goals = !!(hasFinancialGoals && hasStrategicIdeas && hasPrioritizedInitiatives && hasQuarterlyTargets && hasUnlockedQuarters && hasOperationalActivities)
 
       console.log('[Onboarding] Strategic Plan check:', {
-        hasFinancialGoals,
-        twelveMonthCount: twelveMonthInitiatives.length,
-        hasPrioritizedInitiatives,
-        q1Count: q1Initiatives.length,
-        q2Count: q2Initiatives.length,
+        hasYear1, hasYear2, hasYear3, hasFinancialGoals,
+        strategicIdeasCount: strategicIdeas.length, hasStrategicIdeas,
+        twelveMonthCount: twelveMonthInitiatives.length, hasPrioritizedInitiatives,
+        hasQuarterlyTargets,
         q3Count: q3Initiatives.length,
         q4Count: q4Initiatives.length,
-        hasAllQuarters,
-        sprintCount: sprintInitiatives.length,
-        hasSprintFocus,
-        hasSprintActions,
+        hasUnlockedQuarters,
+        hasOperationalActivities,
         isComplete: goals
       })
 
