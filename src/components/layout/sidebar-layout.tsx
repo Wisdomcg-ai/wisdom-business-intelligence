@@ -79,17 +79,17 @@ const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
       items: [
         { label: 'Business Profile', href: '/business-profile', icon: Building2 },
         { label: 'Assessment', href: '/assessment', icon: ClipboardCheck },
+        { label: 'Roadmap', href: '/business-roadmap', icon: Compass },
       ],
     },
     {
-      title: 'BUSINESS PLAN',
+      title: 'PLAN',
       defaultOpen: true,
       items: [
         { label: 'Vision, Mission & Values', href: '/vision-mission', icon: Target },
         { label: 'SWOT Analysis', href: '/swot', icon: FileText },
         { label: 'Goals & Targets', href: '/goals', icon: Award },
         { label: 'One-Page Plan', href: '/one-page-plan', icon: FileText },
-        { label: 'Business Roadmap', href: '/business-roadmap', icon: Compass },
       ],
     },
     {

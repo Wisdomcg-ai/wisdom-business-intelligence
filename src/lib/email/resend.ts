@@ -1,14 +1,7 @@
 import { Resend } from 'resend';
 
-// Lazy-initialize Resend client (only at runtime, not build time)
-let resendClient: Resend | null = null;
-
-function getResendClient(): Resend {
-  if (!resendClient) {
-    resendClient = new Resend(process.env.RESEND_API_KEY);
-  }
-  return resendClient;
-}
+// Initialize Resend client
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Default from address - update this to your verified domain
 const DEFAULT_FROM = 'Wisdom BI <noreply@mail.wisdombi.ai>';
@@ -32,7 +25,6 @@ export interface EmailResult {
  */
 export async function sendEmail(options: SendEmailOptions): Promise<EmailResult> {
   try {
-    const resend = getResendClient();
     const { data, error } = await resend.emails.send({
       from: options.from || DEFAULT_FROM,
       to: options.to,
@@ -70,9 +62,6 @@ export async function sendClientInvitation(params: {
 }): Promise<EmailResult> {
   const { to, clientName, coachName, businessName, loginUrl, tempPassword } = params;
 
-  // loginUrl is now a magic link that goes directly to /auth/verify
-  const authLoginUrl = loginUrl;
-
   const html = `
     <!DOCTYPE html>
     <html>
@@ -80,91 +69,62 @@ export async function sendClientInvitation(params: {
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 0; background-color: #f9fafb;">
-      <div style="background-color: #ffffff; margin: 20px; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
-
-        <!-- Header -->
-        <div style="background: linear-gradient(135deg, #0d9488, #14b8a6); padding: 40px 20px; text-align: center;">
-          <div style="display: inline-block; width: 60px; height: 60px; background: rgba(255,255,255,0.2); border-radius: 16px; line-height: 60px; margin-bottom: 16px;">
-            <span style="color: white; font-size: 28px; font-weight: bold;">W</span>
-          </div>
-          <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 600;">Welcome to Wisdom BI</h1>
-          <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 16px;">Let's get started</p>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <div style="display: inline-block; width: 50px; height: 50px; background: linear-gradient(135deg, #14b8a6, #0d9488); border-radius: 12px; line-height: 50px;">
+          <span style="color: white; font-size: 24px; font-weight: bold;">W</span>
         </div>
-
-        <!-- Content -->
-        <div style="padding: 32px 24px;">
-          <p style="font-size: 18px; color: #1f2937; margin: 0 0 16px 0;">Hi ${clientName},</p>
-
-          <p style="color: #4b5563; margin: 0 0 24px 0;">
-            Great news! <strong>${coachName}</strong> has set up your <strong>${businessName}</strong> dashboard on Wisdom BI.
-            You now have a dedicated space to track your goals, monitor progress, and stay aligned with your coach.
-          </p>
-
-          <!-- Credentials Box -->
-          ${tempPassword ? `
-          <div style="background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0;">
-            <p style="margin: 0 0 16px 0; font-size: 14px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Your Login Details</p>
-
-            <div style="margin-bottom: 12px;">
-              <p style="margin: 0 0 4px 0; font-size: 12px; color: #94a3b8; font-weight: 500;">EMAIL</p>
-              <p style="margin: 0; font-size: 16px; color: #1e293b; font-family: monospace; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid #e2e8f0;">${to}</p>
-            </div>
-
-            <div>
-              <p style="margin: 0 0 4px 0; font-size: 12px; color: #94a3b8; font-weight: 500;">TEMPORARY PASSWORD</p>
-              <p style="margin: 0; font-size: 16px; color: #1e293b; font-family: monospace; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid #e2e8f0;">${tempPassword}</p>
-            </div>
-          </div>
-          ` : ''}
-
-          <!-- CTA Button -->
-          <div style="text-align: center; margin: 32px 0;">
-            <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
-              <tr>
-                <td style="background-color: #0d9488; border-radius: 10px; padding: 16px 48px;">
-                  <a href="${authLoginUrl}" style="color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; display: inline-block;">
-                    Get Started
-                  </a>
-                </td>
-              </tr>
-            </table>
-          </div>
-
-          <!-- Security Note -->
-          <p style="text-align: center; color: #64748b; font-size: 13px; margin: 0 0 24px 0;">
-            Click the button above to set up your account. This link expires in 7 days.
-          </p>
-
-          <!-- What's Next -->
-          <div style="background: #f0fdfa; border-radius: 10px; padding: 20px; margin-top: 24px;">
-            <p style="margin: 0 0 12px 0; font-weight: 600; color: #0d9488; font-size: 14px;">What you can do:</p>
-            <ul style="margin: 0; padding-left: 20px; color: #4b5563; font-size: 14px;">
-              <li style="margin-bottom: 6px;">Set and track your quarterly goals</li>
-              <li style="margin-bottom: 6px;">Monitor your key business metrics</li>
-              <li style="margin-bottom: 6px;">Communicate directly with your coach</li>
-              <li>Review your progress anytime</li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- Footer -->
-        <div style="background: #f8fafc; padding: 24px; text-align: center; border-top: 1px solid #e2e8f0;">
-          <p style="margin: 0 0 8px 0; color: #64748b; font-size: 13px;">
-            Questions? Just reply to this email.
-          </p>
-          <p style="margin: 0; color: #94a3b8; font-size: 12px;">
-            Wisdom Business Intelligence
-          </p>
-        </div>
+        <h1 style="color: #0d9488; margin: 10px 0 0 0;">Wisdom BI</h1>
       </div>
+
+      <h2 style="color: #1f2937;">Welcome to Your Business Intelligence Platform</h2>
+
+      <p>Hi ${clientName},</p>
+
+      <p><strong>${coachName}</strong> has invited you to join <strong>${businessName}</strong> on Wisdom BI - your dedicated platform for tracking business goals, metrics, and growth.</p>
+
+      <div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <p style="margin: 0 0 10px 0;"><strong>What you can do:</strong></p>
+        <ul style="margin: 0; padding-left: 20px;">
+          <li>Track your annual and quarterly goals</li>
+          <li>Monitor key business metrics</li>
+          <li>Communicate with your coach</li>
+          <li>Complete weekly reviews</li>
+          <li>Access your one-page business plan</li>
+        </ul>
+      </div>
+
+      ${tempPassword ? `
+      <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <p style="margin: 0 0 10px 0;"><strong>Your temporary password:</strong></p>
+        <code style="background: #fff; padding: 8px 16px; border-radius: 4px; font-size: 16px; display: inline-block;">${tempPassword}</code>
+        <p style="margin: 10px 0 0 0; font-size: 14px; color: #92400e;">Please change this after your first login.</p>
+      </div>
+      ` : ''}
+
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${loginUrl}" style="display: inline-block; background: #0d9488; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+          Get Started
+        </a>
+      </div>
+
+      <p style="color: #6b7280; font-size: 14px;">
+        If you have any questions, simply reply to this email or reach out to your coach directly through the platform.
+      </p>
+
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+
+      <p style="color: #9ca3af; font-size: 12px; text-align: center;">
+        Wisdom Business Intelligence<br>
+        This email was sent to ${to}
+      </p>
     </body>
     </html>
   `;
 
   return sendEmail({
     to,
-    subject: `Welcome to Wisdom BI, ${clientName}`,
+    subject: `${coachName} invited you to ${businessName} on Wisdom BI`,
     html,
     replyTo: undefined, // Could add coach's email here
   });
@@ -348,4 +308,4 @@ export async function sendMessageNotification(params: {
   });
 }
 
-export { getResendClient };
+export { resend };

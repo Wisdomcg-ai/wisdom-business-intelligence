@@ -79,7 +79,6 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
   // Auto-save refs
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isSavingRef = useRef(false)
-  const saveAllDataRef = useRef<() => Promise<boolean>>(() => Promise.resolve(false))
 
   // Mark data as dirty and trigger auto-save
   const markDirty = useCallback(() => {
@@ -505,11 +504,6 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
     isLoadComplete
   ])
 
-  // Keep saveAllDataRef updated with the latest saveAllData function
-  useEffect(() => {
-    saveAllDataRef.current = saveAllData
-  }, [saveAllData])
-
   // Load data from Supabase on mount
   useEffect(() => {
     const loadData = async () => {
@@ -726,11 +720,10 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       clearTimeout(saveTimeoutRef.current)
     }
 
-    // Set new debounced save - use ref to get the latest saveAllData function
-    // This prevents the effect from re-running when saveAllData changes
+    // Set new debounced save
     saveTimeoutRef.current = setTimeout(() => {
       console.log('[AutoSave] Executing auto-save...')
-      saveAllDataRef.current()
+      saveAllData()
     }, 2000)
 
     // Cleanup timeout on unmount or dependency change
@@ -739,7 +732,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [isLoadComplete, isDirty, businessId, userId])
+  }, [isLoadComplete, isDirty, businessId, userId, saveAllData])
 
   // Reset saved status after 3 seconds
   useEffect(() => {
