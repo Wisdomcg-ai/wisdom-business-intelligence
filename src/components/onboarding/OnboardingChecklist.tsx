@@ -61,11 +61,13 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       if (!user) return
 
       // First get the user's business to find the business_id and name
-      const { data: business } = await supabase
+      const { data: business, error: businessError } = await supabase
         .from('businesses')
         .select('id, name')
         .eq('owner_id', user.id)
         .maybeSingle()
+
+      console.log('[Onboarding] Business lookup:', { businessId: business?.id, businessName: business?.name, error: businessError?.message })
 
       // Check all completion statuses in parallel
       const [profileResult, assessmentResult, visionResult, swotResult, goalsResult] = await Promise.all([
