@@ -99,11 +99,18 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
           .maybeSingle(),
 
         // 4. SWOT Analysis - check if actual swot_items exist (not just empty analysis)
-        supabase
-          .from('swot_analyses')
-          .select('id, swot_items(id)')
-          .eq('created_by', user.id)
-          .limit(1),
+        // Query by business_id (preferred) or created_by as fallback
+        business?.id
+          ? supabase
+              .from('swot_analyses')
+              .select('id, swot_items(id)')
+              .eq('business_id', business.id)
+              .limit(1)
+          : supabase
+              .from('swot_analyses')
+              .select('id, swot_items(id)')
+              .eq('created_by', user.id)
+              .limit(1),
 
         // 5. Goals (check strategic_initiatives or goals table)
         supabase
@@ -150,16 +157,15 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       let visionMission = false
       if (visionResult.data?.vision_mission) {
         const vm = visionResult.data.vision_mission as any
-        // Check for vision, mission, OR core_values (the actual field name)
-        const hasVision = vm.vision?.trim()
-        const hasMission = vm.mission?.trim()
-        const hasValues = (vm.values && vm.values.length > 0) || (vm.core_values && vm.core_values.filter((v: string) => v?.trim()).length > 0)
+        // The page uses vision_statement and mission_statement (not vision/mission)
+        const hasVision = vm.vision_statement?.trim() || vm.vision?.trim()
+        const hasMission = vm.mission_statement?.trim() || vm.mission?.trim()
+        const hasValues = (vm.core_values && vm.core_values.filter((v: string) => v?.trim()).length > 0) || (vm.values && vm.values.length > 0)
         visionMission = !!(hasVision || hasMission || hasValues)
 
         console.log('[Onboarding] Vision/Mission check:', {
-          vision: vm.vision,
-          mission: vm.mission,
-          values: vm.values,
+          vision_statement: vm.vision_statement,
+          mission_statement: vm.mission_statement,
           core_values: vm.core_values,
           hasVision: !!hasVision,
           hasMission: !!hasMission,
@@ -175,6 +181,14 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       if (swotResult.data && swotResult.data.length > 0) {
         const analysis = swotResult.data[0] as any
         swot = analysis.swot_items && analysis.swot_items.length > 0
+        console.log('[Onboarding] SWOT check:', {
+          hasAnalysis: true,
+          analysisId: analysis.id,
+          swotItemsCount: analysis.swot_items?.length || 0,
+          isComplete: swot
+        })
+      } else {
+        console.log('[Onboarding] No SWOT data found', swotResult.error)
       }
 
       const goals = (goalsResult.data?.length || 0) > 0
