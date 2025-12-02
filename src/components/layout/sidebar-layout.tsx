@@ -23,7 +23,6 @@ import {
   Users,
   Building2,
   Settings,
-  Zap,
   HelpCircle,
   MessageSquare,
   LineChart,
@@ -477,28 +476,12 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
 
                   <div className="py-1">
                     <Link
-                      href="/settings/account"
+                      href="/settings"
                       className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                       onClick={() => setUserMenuOpen(false)}
                     >
                       <Settings className="h-4 w-4 mr-3" />
-                      Account Settings
-                    </Link>
-                    <Link
-                      href="/settings/team"
-                      className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                      onClick={() => setUserMenuOpen(false)}
-                    >
-                      <Users className="h-4 w-4 mr-3" />
-                      Add Team Members
-                    </Link>
-                    <Link
-                      href="/integrations"
-                      className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                      onClick={() => setUserMenuOpen(false)}
-                    >
-                      <Zap className="h-4 w-4 mr-3" />
-                      Integrations
+                      Settings
                     </Link>
                     <Link
                       href="/help"
