@@ -60,14 +60,28 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
+      // First get the user's business to find the business_id
+      const { data: business } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('owner_id', user.id)
+        .maybeSingle()
+
       // Check all completion statuses in parallel
       const [profileResult, assessmentResult, visionResult, swotResult, goalsResult] = await Promise.all([
         // 1. Business Profile - get full profile to calculate completion
-        supabase
-          .from('business_profiles')
-          .select('name, industry, annual_revenue, employee_count, years_in_operation, owner_info')
-          .eq('user_id', user.id)
-          .maybeSingle(),
+        // Try by business_id first (preferred), fallback to user_id
+        business?.id
+          ? supabase
+              .from('business_profiles')
+              .select('name, industry, annual_revenue, employee_count, years_in_operation, owner_info')
+              .eq('business_id', business.id)
+              .maybeSingle()
+          : supabase
+              .from('business_profiles')
+              .select('name, industry, annual_revenue, employee_count, years_in_operation, owner_info')
+              .eq('user_id', user.id)
+              .maybeSingle(),
 
         // 2. Assessment
         supabase
@@ -112,6 +126,20 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
         const hasOwnerName = ownerInfo?.owner_name?.trim()
         // Profile is complete if all 5 required fields + owner name are filled
         profile = filledRequired >= 5 && hasOwnerName
+
+        console.log('[Onboarding] Profile check:', {
+          name: p.name,
+          industry: p.industry,
+          annual_revenue: p.annual_revenue,
+          employee_count: p.employee_count,
+          years_in_operation: p.years_in_operation,
+          owner_name: ownerInfo?.owner_name,
+          filledRequired,
+          hasOwnerName: !!hasOwnerName,
+          isComplete: profile
+        })
+      } else {
+        console.log('[Onboarding] No profile data found', profileResult.error)
       }
 
       const assessment = (assessmentResult.data?.length || 0) > 0
