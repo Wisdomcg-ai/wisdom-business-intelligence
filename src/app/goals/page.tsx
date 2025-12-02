@@ -13,6 +13,7 @@ import { Target, Calendar, Brain, Rocket, ChevronLeft, ChevronRight, CheckCircle
 import Link from 'next/link'
 import { createBrowserClient } from '@supabase/ssr'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
+import { calculateQuarters, determinePlanYear } from './utils/quarters'
 
 type StepNumber = 1 | 2 | 3 | 4 | 5
 
@@ -33,33 +34,36 @@ interface SwotItem {
   likelihood?: number
 }
 
-// Helper to get the current planning quarter label
-function getCurrentPlanningQuarter(yearType: 'CY' | 'FY'): { quarter: string; label: string } {
+// Helper to get the NEXT (planning) quarter label
+// We always plan for the NEXT quarter, not the current one
+function getPlanningQuarter(yearType: 'CY' | 'FY'): { quarter: string; label: string } {
   const today = new Date()
   const month = today.getMonth() // 0-11
 
   let currentQuarter: string
+  let nextQuarter: string
+
   if (yearType === 'CY') {
     // Calendar Year: Q1=Jan-Mar, Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec
-    if (month < 3) currentQuarter = 'Q1'
-    else if (month < 6) currentQuarter = 'Q2'
-    else if (month < 9) currentQuarter = 'Q3'
-    else currentQuarter = 'Q4'
+    if (month < 3) { currentQuarter = 'Q1'; nextQuarter = 'Q2' }
+    else if (month < 6) { currentQuarter = 'Q2'; nextQuarter = 'Q3' }
+    else if (month < 9) { currentQuarter = 'Q3'; nextQuarter = 'Q4' }
+    else { currentQuarter = 'Q4'; nextQuarter = 'Q1' }
   } else {
     // Fiscal Year (Jul-Jun): Q1=Jul-Sep, Q2=Oct-Dec, Q3=Jan-Mar, Q4=Apr-Jun
-    if (month >= 6 && month < 9) currentQuarter = 'Q1'
-    else if (month >= 9 || month < 0) currentQuarter = 'Q2'
-    else if (month < 3) currentQuarter = 'Q3'
-    else currentQuarter = 'Q4'
+    if (month >= 6 && month < 9) { currentQuarter = 'Q1'; nextQuarter = 'Q2' }
+    else if (month >= 9 && month < 12) { currentQuarter = 'Q2'; nextQuarter = 'Q3' }
+    else if (month < 3) { currentQuarter = 'Q3'; nextQuarter = 'Q4' }
+    else { currentQuarter = 'Q4'; nextQuarter = 'Q1' }
   }
 
-  // Planning quarter is usually current or next quarter
-  // For simplicity, we'll show the current quarter in the label
-  return { quarter: currentQuarter, label: `${currentQuarter} Execution Plan` }
+  // Always show the NEXT quarter for planning purposes
+  // Users should be planning ahead, not for the quarter they're already in
+  return { quarter: nextQuarter, label: `${nextQuarter} Execution Plan` }
 }
 
 const getSteps = (yearType: 'CY' | 'FY' = 'CY'): StepInfo[] => {
-  const planningQuarter = getCurrentPlanningQuarter(yearType)
+  const planningQuarter = getPlanningQuarter(yearType)
 
   return [
     {
@@ -384,17 +388,22 @@ function StrategicPlanningContent() {
 
   // Calculate progress with safe defaults
   const safeAnnualPlan = annualPlanByQuarter || { q1: [], q2: [], q3: [], q4: [] }
-  // Step 1: Financial goals set (Year 1 revenue target > 0) - KPIs are optional
-  const step1Complete = (financialData?.revenue?.year1 || 0) > 0
+  // Step 1: Financial goals set for ALL 3 years (3yr, 2yr, 1yr) - KPIs are optional
+  const step1Complete = (financialData?.revenue?.year3 || 0) > 0 &&
+                        (financialData?.revenue?.year2 || 0) > 0 &&
+                        (financialData?.revenue?.year1 || 0) > 0
   // Step 2: At least 1 strategic idea captured
   const step2Complete = (strategicIdeas?.length || 0) > 0
   // Step 3: 8-20 prioritized initiatives selected
   const step3Complete = (twelveMonthInitiatives?.length || 0) >= 8 && (twelveMonthInitiatives?.length || 0) <= 20
-  // Step 4: All 4 quarters have at least 1 initiative
-  const step4Complete = (safeAnnualPlan.q1?.length || 0) > 0 &&
-                        (safeAnnualPlan.q2?.length || 0) > 0 &&
-                        (safeAnnualPlan.q3?.length || 0) > 0 &&
-                        (safeAnnualPlan.q4?.length || 0) > 0
+  // Step 4: All UNLOCKED quarters have at least 1 initiative
+  // (Locked quarters = past + current, can't add initiatives to them mid-year)
+  const planYear = determinePlanYear(yearType)
+  const quarters = calculateQuarters(yearType, planYear)
+  const unlockedQuarters = quarters.filter(q => !q.isLocked)
+  const step4Complete = unlockedQuarters.length > 0
+    ? unlockedQuarters.every(q => (safeAnnualPlan[q.id as keyof typeof safeAnnualPlan]?.length || 0) > 0)
+    : false // If all quarters are locked (shouldn't happen), require at least something
   // Step 5: Sprint focus defined + at least 1 key action
   const step5Complete = (sprintFocus?.length || 0) > 0 && (sprintKeyActions?.length || 0) >= 1
 
