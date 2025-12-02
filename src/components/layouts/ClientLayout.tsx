@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ClientSidebar } from './ClientSidebar'
 import { Loader2 } from 'lucide-react'
+
+const SIDEBAR_STORAGE_KEY = 'sidebar-expanded'
 
 interface ClientLayoutProps {
   children: React.ReactNode
@@ -18,6 +20,42 @@ export function ClientLayout({ children }: ClientLayoutProps) {
   const [userName, setUserName] = useState('')
   const [businessName, setBusinessName] = useState('')
   const [coach, setCoach] = useState<{ name: string; email?: string } | undefined>()
+  const [sidebarExpanded, setSidebarExpanded] = useState(true)
+  const [sidebarInitialized, setSidebarInitialized] = useState(false)
+
+  // Initialize sidebar based on screen size and stored preference
+  useEffect(() => {
+    const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY)
+    const isDesktop = window.innerWidth >= 1024
+
+    if (stored !== null) {
+      setSidebarExpanded(stored === 'true')
+    } else {
+      setSidebarExpanded(isDesktop)
+    }
+    setSidebarInitialized(true)
+  }, [])
+
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY)
+      if (stored === null) {
+        setSidebarExpanded(window.innerWidth >= 1024)
+      }
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarExpanded(prev => {
+      const newValue = !prev
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(newValue))
+      return newValue
+    })
+  }, [])
 
   useEffect(() => {
     checkAuthAndLoadData()
@@ -97,7 +135,7 @@ export function ClientLayout({ children }: ClientLayoutProps) {
     router.push('/login')
   }
 
-  if (loading) {
+  if (loading || !sidebarInitialized) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -116,10 +154,12 @@ export function ClientLayout({ children }: ClientLayoutProps) {
         userName={userName}
         coach={coach}
         onLogout={handleLogout}
+        isExpanded={sidebarExpanded}
+        onToggle={toggleSidebar}
       />
 
       {/* Main Content */}
-      <div className="pl-64">
+      <div className={`${sidebarExpanded ? 'pl-64' : 'pl-[72px]'} transition-all duration-300`}>
         <main className="min-h-screen">
           {children}
         </main>
