@@ -381,11 +381,19 @@ function StrategicPlanningContent() {
 
   // Calculate progress with safe defaults
   const safeAnnualPlan = annualPlanByQuarter || { q1: [], q2: [], q3: [], q4: [] }
-  const step1Complete = (financialData?.revenue?.year1 || 0) > 0 && (kpis?.length || 0) > 0
+  // Step 1: Financial goals set (Year 1 revenue target > 0) - KPIs are optional
+  const step1Complete = (financialData?.revenue?.year1 || 0) > 0
+  // Step 2: At least 1 strategic idea captured
   const step2Complete = (strategicIdeas?.length || 0) > 0
-  const step3Complete = (twelveMonthInitiatives?.length || 0) >= 12 && (twelveMonthInitiatives?.length || 0) <= 20
-  const step4Complete = Object.values(safeAnnualPlan).some(q => (q?.length || 0) > 0)
-  const step5Complete = (sprintFocus?.length || 0) > 0 && (sprintKeyActions?.length || 0) >= 3
+  // Step 3: 8-20 prioritized initiatives selected
+  const step3Complete = (twelveMonthInitiatives?.length || 0) >= 8 && (twelveMonthInitiatives?.length || 0) <= 20
+  // Step 4: All 4 quarters have at least 1 initiative
+  const step4Complete = (safeAnnualPlan.q1?.length || 0) > 0 &&
+                        (safeAnnualPlan.q2?.length || 0) > 0 &&
+                        (safeAnnualPlan.q3?.length || 0) > 0 &&
+                        (safeAnnualPlan.q4?.length || 0) > 0
+  // Step 5: Sprint focus defined + at least 1 key action
+  const step5Complete = (sprintFocus?.length || 0) > 0 && (sprintKeyActions?.length || 0) >= 1
 
   const stepCompletion = [step1Complete, step2Complete, step3Complete, step4Complete, step5Complete]
   const completedCount = stepCompletion.filter(Boolean).length
@@ -665,18 +673,25 @@ function StrategicPlanningContent() {
                     onClick={() => setCurrentStep(step.num)}
                     className={`flex items-center space-x-2 px-3 py-2 rounded-lg whitespace-nowrap transition-all ${
                       isActive
-                        ? 'bg-teal-100 text-teal-800 font-medium'
+                        ? 'bg-teal-100 text-teal-800 font-medium ring-2 ring-teal-400'
                         : isComplete
-                        ? 'bg-amber-100 text-amber-800'
+                        ? 'bg-green-50 text-green-700 border border-green-200'
                         : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
-                    <Icon className="w-4 h-4" />
+                    {isComplete && !isActive ? (
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                    ) : (
+                      <Icon className="w-4 h-4" />
+                    )}
                     <span className="text-sm hidden sm:inline">{step.label}</span>
+                    {isComplete && !isActive && (
+                      <span className="ml-1 text-xs text-green-600 font-medium hidden lg:inline">✓</span>
+                    )}
                   </button>
 
                   {index < dynamicSteps.length - 1 && (
-                    <div className="hidden sm:block mx-2 w-8 h-0.5 bg-gray-300" />
+                    <div className={`hidden sm:block mx-2 w-8 h-0.5 ${isComplete ? 'bg-green-400' : 'bg-gray-300'}`} />
                   )}
                 </div>
               )
