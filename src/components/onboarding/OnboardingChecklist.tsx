@@ -101,18 +101,12 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
           .maybeSingle(),
 
         // 4. SWOT Analysis - check if actual swot_items exist (not just empty analysis)
-        // Query by business_id (preferred) or created_by as fallback
-        business?.id
-          ? supabase
-              .from('swot_analyses')
-              .select('id, swot_items(id)')
-              .eq('business_id', business.id)
-              .limit(1)
-          : supabase
-              .from('swot_analyses')
-              .select('id, swot_items(id)')
-              .eq('created_by', user.id)
-              .limit(1),
+        // NOTE: SWOT page stores user.id as business_id (not the actual business.id)
+        supabase
+          .from('swot_analyses')
+          .select('id, swot_items(id)')
+          .eq('business_id', user.id)
+          .limit(1),
 
         // 5. Goals (check strategic_initiatives or goals table)
         supabase
