@@ -1553,14 +1553,45 @@ export default function Step4AnnualPlan({
               </div>
             )}
 
-            {/* Completion Message */}
-            {twelveMonthInitiatives.length > 0 && unassignedInitiatives.length === 0 && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mt-4">
-                <p className="text-sm text-emerald-800">
-                  ✓ All initiatives distributed across quarters! Make sure everyone is assigned.
-                </p>
-              </div>
-            )}
+            {/* Completion Messages */}
+            {(() => {
+              // Check if all unlocked quarters have at least 1 initiative
+              const unlockedQuarters = QUARTERS.filter(q => !q.isLocked)
+              const allUnlockedHaveInitiatives = unlockedQuarters.every(
+                q => (annualPlanByQuarter[q.id] || []).length > 0
+              )
+              const allDistributed = twelveMonthInitiatives.length > 0 && unassignedInitiatives.length === 0
+
+              if (allUnlockedHaveInitiatives && allDistributed) {
+                return (
+                  <div className="bg-emerald-50 border-2 border-emerald-300 rounded-lg p-4 mt-4">
+                    <p className="text-base font-semibold text-emerald-800">
+                      ✓ Step 4 Complete! All unlocked quarters have initiatives assigned.
+                    </p>
+                    <p className="text-sm text-emerald-700 mt-1">
+                      You can proceed to Step 5 to define your sprint focus and key actions.
+                    </p>
+                  </div>
+                )
+              } else if (allUnlockedHaveInitiatives) {
+                return (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mt-4">
+                    <p className="text-sm text-emerald-800">
+                      ✓ Minimum requirement met! You can proceed, or continue assigning remaining initiatives.
+                    </p>
+                  </div>
+                )
+              } else if (allDistributed) {
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4">
+                    <p className="text-sm text-amber-800">
+                      All initiatives distributed, but some unlocked quarters are empty. Add at least 1 initiative to each unlocked quarter.
+                    </p>
+                  </div>
+                )
+              }
+              return null
+            })()}
           </div>
         </div>
       </div>

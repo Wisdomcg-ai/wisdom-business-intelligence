@@ -746,7 +746,13 @@ function StrategicPlanningContent() {
                   case 1: return '3yr/2yr/1yr revenue'
                   case 2: return '1+ strategic idea'
                   case 3: return '8-20 initiatives'
-                  case 4: return 'Assign to quarters'
+                  case 4:
+                    // Show which quarters need initiatives
+                    const needsInitiatives = unlockedQuarters.filter(
+                      q => (safeAnnualPlan[q.id as keyof typeof safeAnnualPlan]?.length || 0) === 0
+                    )
+                    if (needsInitiatives.length === 0) return '✓ All quarters set'
+                    return `Add to ${needsInitiatives.map(q => q.label).join(', ')}`
                   case 5: return 'Sprint focus + actions'
                   default: return ''
                 }
