@@ -252,10 +252,13 @@ export default function Step2StrategicIdeas({
 
   return (
     <div className="space-y-6">
-      {/* Intro Text */}
-      <div className="bg-gradient-to-r from-teal-50 to-slate-50 border border-teal-200 rounded-lg p-5">
-        <p className="text-base text-gray-800 leading-relaxed">
-          <strong className="text-teal-700">Brainstorm ALL your strategic ideas here.</strong> Don't filter yet - capture everything that could move your business forward. We'll prioritize in the next step.
+      {/* Task Banner */}
+      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-4 text-white">
+        <p className="text-base font-medium">
+          📋 <strong>YOUR TASK:</strong> Brainstorm ALL ideas that could help achieve your targets - don't filter yet
+        </p>
+        <p className="text-sm text-teal-100 mt-1">
+          Capture everything that could move your business forward. We'll prioritize in the next step.
         </p>
       </div>
 

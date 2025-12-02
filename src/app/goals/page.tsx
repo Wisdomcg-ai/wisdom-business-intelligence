@@ -274,6 +274,7 @@ function StrategicPlanningContent() {
   const [showKPIModal, setShowKPIModal] = useState(false)
   const [showStepHelp, setShowStepHelp] = useState(false)
   const [showSwotSummary, setShowSwotSummary] = useState(false)
+  const [showValidationWarning, setShowValidationWarning] = useState(false)
   const [swotItems, setSwotItems] = useState<SwotItem[]>([])
   const [loadingSwot, setLoadingSwot] = useState(false)
 
@@ -436,6 +437,55 @@ function StrategicPlanningContent() {
   const currentStepInfo = dynamicSteps.find(s => s.num === currentStep)!
   const canGoPrevious = currentStep > 1
   const canGoNext = currentStep < 5
+  const currentStepComplete = stepCompletion[currentStep - 1]
+
+  // Get validation message for incomplete step
+  const getValidationMessage = (stepNum: number): string => {
+    switch (stepNum) {
+      case 1:
+        const missing1 = []
+        if ((financialData?.revenue?.year3 || 0) === 0) missing1.push('Year 3')
+        if ((financialData?.revenue?.year2 || 0) === 0) missing1.push('Year 2')
+        if ((financialData?.revenue?.year1 || 0) === 0) missing1.push('Year 1')
+        return `Set revenue targets for: ${missing1.join(', ')}`
+      case 2:
+        return 'Add at least 1 strategic idea before continuing'
+      case 3:
+        const count3 = twelveMonthInitiatives?.length || 0
+        if (count3 < 8) return `Select at least ${8 - count3} more initiatives (need 8-20 total)`
+        if (count3 > 20) return `Remove ${count3 - 20} initiatives (max 20 allowed)`
+        return 'Select 8-20 initiatives'
+      case 4:
+        const emptyQuarters = unlockedQuarters
+          .filter(q => (safeAnnualPlan[q.id as keyof typeof safeAnnualPlan]?.length || 0) === 0)
+          .map(q => q.label)
+        return `Assign initiatives to: ${emptyQuarters.join(', ')}`
+      case 5:
+        const missing5 = []
+        if ((sprintFocus?.length || 0) === 0) missing5.push('sprint focus')
+        if ((sprintKeyActions?.length || 0) < 1) missing5.push('at least 1 key action')
+        return `Define your ${missing5.join(' and ')}`
+      default:
+        return 'Complete this step before continuing'
+    }
+  }
+
+  // Handle next button click with validation
+  const handleNextClick = () => {
+    if (!currentStepComplete) {
+      setShowValidationWarning(true)
+      // Auto-hide after 5 seconds
+      setTimeout(() => setShowValidationWarning(false), 5000)
+      return
+    }
+    setShowValidationWarning(false)
+    setCurrentStep((prev) => Math.min(5, prev + 1) as StepNumber)
+  }
+
+  // Hide validation warning when step changes
+  useEffect(() => {
+    setShowValidationWarning(false)
+  }, [currentStep])
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -448,28 +498,41 @@ function StrategicPlanningContent() {
               <p className="text-base text-gray-600 mt-1">Build your 3-year roadmap, step by step</p>
             </div>
             <div className="flex items-center space-x-4">
-              {/* Auto-save status indicator */}
-              <div className="flex items-center gap-2">
-                {saveStatus === 'saving' && (
-                  <Loader2 className="animate-spin h-4 w-4 text-amber-600" />
-                )}
-                {saveStatus === 'saved' && (
-                  <Cloud className="h-4 w-4 text-green-600" />
-                )}
-                {saveStatus === 'error' && (
-                  <CloudOff className="h-4 w-4 text-red-600" />
-                )}
-                {saveStatus === 'idle' && isDirty && (
-                  <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                )}
-                {saveStatus === 'idle' && !isDirty && lastSaved && (
-                  <Cloud className="h-4 w-4 text-gray-400" />
-                )}
-                {statusDisplay.text && (
-                  <span className={`text-xs font-medium ${statusDisplay.color}`}>
-                    {statusDisplay.text}
-                  </span>
-                )}
+              {/* Auto-save status indicator - Enhanced */}
+              <div className="relative group">
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${
+                  saveStatus === 'saving' ? 'bg-amber-50 border-amber-200' :
+                  saveStatus === 'saved' ? 'bg-green-50 border-green-200' :
+                  saveStatus === 'error' ? 'bg-red-50 border-red-200' :
+                  isDirty ? 'bg-amber-50 border-amber-200' :
+                  'bg-gray-50 border-gray-200'
+                }`}>
+                  {saveStatus === 'saving' && (
+                    <Loader2 className="animate-spin h-4 w-4 text-amber-600" />
+                  )}
+                  {saveStatus === 'saved' && (
+                    <Cloud className="h-4 w-4 text-green-600" />
+                  )}
+                  {saveStatus === 'error' && (
+                    <CloudOff className="h-4 w-4 text-red-600" />
+                  )}
+                  {saveStatus === 'idle' && isDirty && (
+                    <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                  )}
+                  {saveStatus === 'idle' && !isDirty && lastSaved && (
+                    <Cloud className="h-4 w-4 text-gray-400" />
+                  )}
+                  {statusDisplay.text && (
+                    <span className={`text-xs font-medium ${statusDisplay.color}`}>
+                      {statusDisplay.text}
+                    </span>
+                  )}
+                </div>
+                {/* Tooltip explaining auto-save */}
+                <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
+                  <p className="font-semibold mb-1">Auto-Save Enabled</p>
+                  <p className="text-slate-300">Your progress is automatically saved as you make changes. No need to manually save unless you want to force a sync.</p>
+                </div>
               </div>
               {/* Manual save button (as fallback) */}
               <button
@@ -677,11 +740,23 @@ function StrategicPlanningContent() {
               const isComplete = stepCompletion[step.num - 1]
               const Icon = step.icon
 
+              // Get requirement hint for each step
+              const getRequirementHint = (stepNum: number): string => {
+                switch (stepNum) {
+                  case 1: return '3yr/2yr/1yr revenue'
+                  case 2: return '1+ strategic idea'
+                  case 3: return '8-20 initiatives'
+                  case 4: return 'Assign to quarters'
+                  case 5: return 'Sprint focus + actions'
+                  default: return ''
+                }
+              }
+
               return (
                 <div key={step.num} className="flex items-center">
                   <button
                     onClick={() => setCurrentStep(step.num)}
-                    className={`flex items-center space-x-2 px-3 py-2 rounded-lg whitespace-nowrap transition-all ${
+                    className={`flex flex-col items-center px-3 py-2 rounded-lg whitespace-nowrap transition-all min-w-[100px] ${
                       isActive
                         ? 'bg-teal-100 text-teal-800 font-medium ring-2 ring-teal-400'
                         : isComplete
@@ -689,15 +764,27 @@ function StrategicPlanningContent() {
                         : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
-                    {isComplete && !isActive ? (
-                      <CheckCircle className="w-4 h-4 text-green-600" />
-                    ) : (
-                      <Icon className="w-4 h-4" />
-                    )}
-                    <span className="text-sm hidden sm:inline">{step.label}</span>
-                    {isComplete && !isActive && (
-                      <span className="ml-1 text-xs text-green-600 font-medium hidden lg:inline">✓</span>
-                    )}
+                    <div className="flex items-center space-x-2">
+                      {isComplete && !isActive ? (
+                        <CheckCircle className="w-4 h-4 text-green-600" />
+                      ) : (
+                        <Icon className="w-4 h-4" />
+                      )}
+                      <span className="text-sm hidden sm:inline">{step.label}</span>
+                      {isComplete && !isActive && (
+                        <span className="ml-1 text-xs text-green-600 font-medium hidden lg:inline">✓</span>
+                      )}
+                    </div>
+                    {/* Requirement hint subtitle */}
+                    <span className={`text-xs mt-1 hidden md:inline ${
+                      isComplete
+                        ? 'text-green-600'
+                        : isActive
+                        ? 'text-teal-600'
+                        : 'text-gray-400'
+                    }`}>
+                      {isComplete ? '✓ Complete' : getRequirementHint(step.num)}
+                    </span>
                   </button>
 
                   {index < dynamicSteps.length - 1 && (
@@ -853,6 +940,23 @@ function StrategicPlanningContent() {
           )}
         </div>
 
+        {/* Validation Warning */}
+        {showValidationWarning && !currentStepComplete && (
+          <div className="mt-6 p-4 bg-amber-50 border-2 border-amber-300 rounded-lg flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="font-semibold text-amber-900">Complete this step to continue</h4>
+              <p className="text-sm text-amber-800 mt-1">{getValidationMessage(currentStep)}</p>
+            </div>
+            <button
+              onClick={() => setShowValidationWarning(false)}
+              className="text-amber-600 hover:text-amber-800"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Navigation Buttons */}
         <div className="flex items-center justify-between mt-8">
           <button
@@ -868,36 +972,169 @@ function StrategicPlanningContent() {
             <span>Previous</span>
           </button>
 
-          <div className="text-sm text-gray-600">
-            Step {currentStep} of {dynamicSteps.length}
+          <div className="flex flex-col items-center">
+            <span className="text-sm text-gray-600">
+              Step {currentStep} of {dynamicSteps.length}
+            </span>
+            {!currentStepComplete && canGoNext && (
+              <span className="text-xs text-amber-600 mt-1">
+                Complete to unlock next step
+              </span>
+            )}
           </div>
 
           <button
-            onClick={() => setCurrentStep((prev) => Math.min(6, prev + 1) as StepNumber)}
+            onClick={handleNextClick}
             disabled={!canGoNext}
             className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-              canGoNext
+              !canGoNext
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : currentStepComplete
                 ? 'bg-teal-600 text-white hover:bg-teal-700'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-amber-500 text-white hover:bg-amber-600'
             }`}
           >
-            <span>Next</span>
+            <span>{currentStepComplete ? 'Next' : 'Complete to Continue'}</span>
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Completion Message */}
-        {currentStep === 5 && step5Complete && (
-          <div className="mt-8 p-6 bg-green-50 border-2 border-green-200 rounded-lg">
-            <div className="flex items-start gap-3">
-              <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-lg font-semibold text-green-900 mb-2">
-                  🎉 Your Strategic Plan is Ready!
-                </h3>
-                <p className="text-base text-green-800">
-                  You've completed all 5 steps and have a clear roadmap for the next 90 days and beyond. Time to execute!
-                </p>
+        {/* Completion Summary - Show on Step 5 */}
+        {currentStep === 5 && (
+          <div className="mt-8 space-y-4">
+            {/* Full Completion Message */}
+            {step1Complete && step2Complete && step3Complete && step4Complete && step5Complete && (
+              <div className="p-6 bg-green-50 border-2 border-green-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-green-900 mb-2">
+                      Your Strategic Plan is Complete!
+                    </h3>
+                    <p className="text-base text-green-800">
+                      You've completed all 5 steps and have a clear roadmap for the next 90 days and beyond. Time to execute!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Step Completion Summary */}
+            <div className="p-6 bg-slate-50 border border-slate-200 rounded-lg">
+              <h3 className="text-sm font-bold text-slate-900 mb-4 uppercase tracking-wide">Strategic Plan Summary</h3>
+              <div className="space-y-3">
+                {/* Step 1 Summary */}
+                <div className={`flex items-start gap-3 p-3 rounded-lg ${step1Complete ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+                  {step1Complete ? (
+                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1">
+                    <p className={`text-sm font-semibold ${step1Complete ? 'text-green-900' : 'text-amber-900'}`}>
+                      Step 1: 3-Year Goals & KPIs
+                    </p>
+                    <p className={`text-xs mt-0.5 ${step1Complete ? 'text-green-700' : 'text-amber-700'}`}>
+                      {step1Complete
+                        ? `Revenue targets set: Year 3 (${financialData?.revenue?.year3?.toLocaleString() || 0}), Year 2 (${financialData?.revenue?.year2?.toLocaleString() || 0}), Year 1 (${financialData?.revenue?.year1?.toLocaleString() || 0})`
+                        : 'Set 3-year, 2-year, and 1-year revenue targets'
+                      }
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 2 Summary */}
+                <div className={`flex items-start gap-3 p-3 rounded-lg ${step2Complete ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+                  {step2Complete ? (
+                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1">
+                    <p className={`text-sm font-semibold ${step2Complete ? 'text-green-900' : 'text-amber-900'}`}>
+                      Step 2: Strategic Ideas
+                    </p>
+                    <p className={`text-xs mt-0.5 ${step2Complete ? 'text-green-700' : 'text-amber-700'}`}>
+                      {step2Complete
+                        ? `${strategicIdeas?.length || 0} strategic ideas captured`
+                        : 'Add at least 1 strategic idea'
+                      }
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 3 Summary */}
+                <div className={`flex items-start gap-3 p-3 rounded-lg ${step3Complete ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+                  {step3Complete ? (
+                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1">
+                    <p className={`text-sm font-semibold ${step3Complete ? 'text-green-900' : 'text-amber-900'}`}>
+                      Step 3: Prioritize Initiatives
+                    </p>
+                    <p className={`text-xs mt-0.5 ${step3Complete ? 'text-green-700' : 'text-amber-700'}`}>
+                      {step3Complete
+                        ? `${twelveMonthInitiatives?.length || 0} initiatives prioritized for Year 1`
+                        : `Select 8-20 initiatives (currently ${twelveMonthInitiatives?.length || 0})`
+                      }
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 4 Summary */}
+                <div className={`flex items-start gap-3 p-3 rounded-lg ${step4Complete ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+                  {step4Complete ? (
+                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1">
+                    <p className={`text-sm font-semibold ${step4Complete ? 'text-green-900' : 'text-amber-900'}`}>
+                      Step 4: Annual Plan
+                    </p>
+                    <p className={`text-xs mt-0.5 ${step4Complete ? 'text-green-700' : 'text-amber-700'}`}>
+                      {step4Complete
+                        ? `Initiatives distributed across ${unlockedQuarters.length} quarters`
+                        : `Assign initiatives to unlocked quarters (${unlockedQuarters.filter(q => (safeAnnualPlan[q.id as keyof typeof safeAnnualPlan]?.length || 0) > 0).length}/${unlockedQuarters.length} done)`
+                      }
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 5 Summary */}
+                <div className={`flex items-start gap-3 p-3 rounded-lg ${step5Complete ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+                  {step5Complete ? (
+                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1">
+                    <p className={`text-sm font-semibold ${step5Complete ? 'text-green-900' : 'text-amber-900'}`}>
+                      Step 5: Sprint Planning
+                    </p>
+                    <p className={`text-xs mt-0.5 ${step5Complete ? 'text-green-700' : 'text-amber-700'}`}>
+                      {step5Complete
+                        ? `Sprint focus defined with ${sprintKeyActions?.length || 0} key actions`
+                        : 'Define sprint focus and at least 1 key action'
+                      }
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Stats */}
+              <div className="mt-4 pt-4 border-t border-slate-200 flex items-center justify-between">
+                <span className="text-sm text-slate-600">
+                  Overall Progress: <span className="font-bold text-slate-900">{completedCount}/5 steps</span>
+                </span>
+                <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-300 ${completedCount === 5 ? 'bg-green-500' : 'bg-teal-500'}`}
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
               </div>
             </div>
           </div>

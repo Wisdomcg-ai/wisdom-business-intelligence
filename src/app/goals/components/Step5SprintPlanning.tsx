@@ -369,20 +369,14 @@ export default function Step5SprintPlanning({
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="bg-gradient-to-r from-slate-50 to-slate-100 rounded-lg border border-[#8E9AAF] p-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-[#3E3F57] mb-2">90-Day Execution Plan</h2>
-            <p className="text-gray-600">
-              {currentQuarter.label} • {currentQuarter.months} • {yearType} {planYear}
-            </p>
-          </div>
-          <div className="text-right">
-            <div className="text-sm text-gray-600 mb-1">Quarter</div>
-            <div className="text-3xl font-bold text-[#4C5D75]">{currentQuarter.label}</div>
-          </div>
-        </div>
+      {/* Task Banner */}
+      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-4 text-white">
+        <p className="text-base font-medium">
+          📋 <strong>YOUR TASK:</strong> Plan your next 90 days - set a focus and define key actions for {currentQuarter.label}
+        </p>
+        <p className="text-sm text-teal-100 mt-1">
+          {currentQuarter.label} • {currentQuarter.months} • {yearType} {planYear}
+        </p>
       </div>
 
       {/* Tab Navigation - Enhanced Design */}

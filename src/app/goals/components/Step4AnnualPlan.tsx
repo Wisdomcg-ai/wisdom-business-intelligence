@@ -1,11 +1,11 @@
 'use client'
 
 import { StrategicInitiative, FinancialData, KPIData, YearType } from '../types'
-import { ChevronDown, ChevronUp, AlertCircle, GripVertical, TrendingUp, X, UserPlus, AlertTriangle, Check, Target as TargetIcon, Lightbulb, Calendar, HelpCircle } from 'lucide-react'
+import { ChevronDown, ChevronUp, AlertCircle, GripVertical, TrendingUp, X, UserPlus, Check, HelpCircle } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatDollar, parseDollarInput } from '../utils/formatting'
-import { calculateQuarters, determinePlanYear, QuarterInfo as QuarterInfoType } from '../utils/quarters'
+import { calculateQuarters, determinePlanYear } from '../utils/quarters'
 import { TeamMember, getInitials, getColorForName } from '../utils/team'
 
 interface Step4Props {
@@ -50,40 +50,12 @@ export default function Step4AnnualPlan({
   } | null>(null)
 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
-  const [isLoadingTeam, setIsLoadingTeam] = useState(true)
   const [showAssignmentFor, setShowAssignmentFor] = useState<string | null>(null)
   const [showAddNewPerson, setShowAddNewPerson] = useState(false)
   const [newPersonName, setNewPersonName] = useState('')
   const [newPersonRole, setNewPersonRole] = useState('')
   const [isSavingNewPerson, setIsSavingNewPerson] = useState(false)
 
-  // Tab navigation state
-  const [activeTab, setActiveTab] = useState<'targets' | 'execution'>('targets')
-
-  // Tab configuration
-  const tabs = useMemo(() => [
-    {
-      id: 'targets' as const,
-      label: 'Quarterly Targets',
-      icon: TargetIcon,
-      description: 'Break down your Year 1 targets across quarters',
-      color: 'from-teal-600 to-teal-700',
-      bgColor: 'bg-teal-50',
-      borderColor: 'border-teal-500',
-      textColor: 'text-teal-700'
-    },
-    {
-      id: 'execution' as const,
-      label: 'Quarterly Execution Plan',
-      icon: Calendar,
-      description: `Assign initiatives to quarters (Max ${MAX_PER_QUARTER} per quarter)`,
-      tooltip: `Limiting to ${MAX_PER_QUARTER} initiatives per quarter ensures your team can focus and execute effectively. Trying to do too much leads to nothing getting done well.`,
-      color: 'from-slate-600 to-slate-700',
-      bgColor: 'bg-slate-50',
-      borderColor: 'border-slate-500',
-      textColor: 'text-slate-700'
-    }
-  ], [])
 
   // Load team members from Supabase or localStorage
   useEffect(() => {
@@ -149,7 +121,6 @@ export default function Step4AnnualPlan({
           console.log('[Annual Plan] ✅ Loaded team members:', members.map(m => ({ id: m.id, name: m.name })))
           if (members.length > 0) {
             setTeamMembers(members)
-            setIsLoadingTeam(false)
             return
           }
         }
@@ -174,7 +145,6 @@ export default function Step4AnnualPlan({
       setTeamMembers(defaultMembers)
       saveToLocalStorage(defaultMembers)
     }
-    setIsLoadingTeam(false)
   }
 
   const saveToLocalStorage = (members: TeamMember[]) => {
@@ -534,63 +504,26 @@ export default function Step4AnnualPlan({
 
   return (
     <div className="space-y-6">
-      {/* Key Question - Above tabs for context */}
-      <div className="bg-gradient-to-r from-teal-50 to-slate-50 border border-teal-200 rounded-lg p-5">
-        <p className="text-base text-gray-800 leading-relaxed">
-          <Lightbulb className="w-5 h-5 inline mr-2 text-teal-600" />
-          <strong className="text-teal-700">Key Question:</strong> "What are the key initiatives or projects you must implement to help you meet or exceed these targets?"
+      {/* Task Banner */}
+      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-4 text-white">
+        <p className="text-base font-medium">
+          📋 <strong>YOUR TASK:</strong> Set quarterly targets, then assign initiatives to each quarter
+        </p>
+        <p className="text-sm text-teal-100 mt-1">
+          Work through both sections below: first break down your Year 1 targets by quarter, then assign initiatives.
         </p>
       </div>
 
-      {/* Enhanced Tab Navigation */}
-      <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-gray-200">
-          {tabs.map(tab => {
-            const Icon = tab.icon
-            const isActive = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`group relative p-6 transition-all duration-200 ${
-                  isActive
-                    ? `bg-gradient-to-br ${tab.color} text-white shadow-lg transform scale-[1.02]`
-                    : `bg-white hover:${tab.bgColor} text-gray-700 hover:shadow-md`
-                }`}
-              >
-                <div className="flex flex-col items-center text-center space-y-3">
-                  <div className={`p-3 rounded-xl ${
-                    isActive ? 'bg-white/20' : 'bg-gray-100 group-hover:bg-gray-200'
-                  } transition-colors`}>
-                    <Icon className={`w-6 h-6 ${isActive ? 'text-white' : 'text-gray-600'}`} />
-                  </div>
-                  <div>
-                    <h3 className={`text-base font-bold ${isActive ? 'text-white' : 'text-gray-900'}`}>
-                      {tab.label}
-                    </h3>
-                    <p className={`text-sm mt-1 ${
-                      isActive ? 'text-white/90' : 'text-gray-600 group-hover:text-gray-700'
-                    }`}>
-                      {tab.description}
-                      {(tab as any).tooltip && (
-                        <span className="relative group/tip inline-block ml-1">
-                          <HelpCircle className={`w-4 h-4 inline cursor-help ${isActive ? 'text-white/70' : 'text-gray-400'}`} />
-                          <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all z-50 pointer-events-none">
-                            {(tab as any).tooltip}
-                          </span>
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Tab Content */}
-      {activeTab === 'targets' && financialData && (
+      {/* SECTION 1: Quarterly Targets */}
+      {financialData && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-teal-600 text-white font-bold text-sm">1</div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Quarterly Targets</h3>
+              <p className="text-sm text-slate-600">Break down your Year 1 targets across quarters</p>
+            </div>
+          </div>
         <div className="bg-white rounded-lg shadow-sm border border-slate-200">
           <div className="p-6">
             <div className="space-y-6">
@@ -1163,12 +1096,85 @@ export default function Step4AnnualPlan({
             </div>
           </div>
         </div>
+        </div>
       )}
 
-      {/* Quarterly Execution Plan Content */}
-      {activeTab === 'execution' && (
+      {/* SECTION 2: Quarterly Execution Plan */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-600 text-white font-bold text-sm">2</div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Quarterly Execution Plan</h3>
+            <p className="text-sm text-slate-600">Assign initiatives to quarters (Max {MAX_PER_QUARTER} per quarter)</p>
+          </div>
+          <div className="relative group ml-2">
+            <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
+            <span className="absolute left-6 top-0 w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
+              Limiting to {MAX_PER_QUARTER} initiatives per quarter ensures your team can focus and execute effectively. Trying to do too much leads to nothing getting done well.
+            </span>
+          </div>
+        </div>
         <div className="bg-white rounded-lg shadow-sm border border-slate-200">
           <div className="p-6">
+            {/* Quarter Status Summary Bar */}
+            {twelveMonthInitiatives.length > 0 && (
+              <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <h4 className="text-sm font-semibold text-slate-700 mb-3">Quarter Status Overview</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {QUARTERS.map((quarter) => {
+                    const items = annualPlanByQuarter[quarter.id] || []
+                    const assignedCount = items.filter(i => i.assignedTo).length
+                    const isComplete = items.length > 0 && assignedCount === items.length
+                    const isEmpty = items.length === 0
+                    const isFull = items.length >= MAX_PER_QUARTER
+
+                    return (
+                      <div
+                        key={quarter.id}
+                        className={`p-3 rounded-lg border-2 ${
+                          quarter.isLocked
+                            ? 'bg-gray-100 border-gray-300 opacity-60'
+                            : isEmpty
+                            ? 'bg-amber-50 border-amber-200'
+                            : isComplete
+                            ? 'bg-green-50 border-green-300'
+                            : 'bg-teal-50 border-teal-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-bold text-slate-900">{quarter.label}</span>
+                          {quarter.isLocked && (
+                            <span className="text-[9px] px-1.5 py-0.5 bg-gray-400 text-white rounded font-semibold">LOCKED</span>
+                          )}
+                          {quarter.isNextQuarter && (
+                            <span className="text-[9px] px-1.5 py-0.5 bg-teal-500 text-white rounded font-semibold">PLAN NOW</span>
+                          )}
+                          {!quarter.isLocked && !quarter.isNextQuarter && isComplete && (
+                            <Check className="w-4 h-4 text-green-600" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className={`font-medium ${
+                            isEmpty ? 'text-amber-700' : isComplete ? 'text-green-700' : 'text-slate-600'
+                          }`}>
+                            {items.length}/{MAX_PER_QUARTER} initiatives
+                          </span>
+                          {items.length > 0 && (
+                            <span className={`${assignedCount === items.length ? 'text-green-600' : 'text-amber-600'}`}>
+                              • {assignedCount}/{items.length} assigned
+                            </span>
+                          )}
+                        </div>
+                        {isEmpty && !quarter.isLocked && (
+                          <p className="text-[10px] text-amber-600 mt-1">Needs initiatives</p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Batch Actions */}
             {twelveMonthInitiatives.length > 0 && (
               <div className="flex items-center justify-end gap-2 mb-4">
@@ -1557,7 +1563,7 @@ export default function Step4AnnualPlan({
             )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

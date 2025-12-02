@@ -1,7 +1,7 @@
 'use client'
 
 import { StrategicInitiative, InitiativeCategory } from '../types'
-import { AlertCircle, Check, GripVertical, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertCircle, Check, GripVertical, X, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { useRoadmapProgress } from '@/app/business-roadmap/hooks/useRoadmapProgress'
 import { STAGES } from '@/app/business-roadmap/data'
@@ -201,21 +201,14 @@ export default function Step3PrioritizeInitiatives({
 
   return (
     <div className="space-y-6">
-      {/* Intro with Drag Instructions */}
-      <div className="bg-gradient-to-r from-slate-50 to-teal-50 border border-slate-200 rounded-lg p-5">
-        <div className="flex items-start gap-4">
-          <div className="p-2 bg-teal-100 rounded-lg">
-            <GripVertical className="w-6 h-6 text-teal-600" />
-          </div>
-          <div>
-            <p className="text-base text-gray-800 font-medium mb-1">
-              Drag initiatives from left to right to select your Year 1 priorities
-            </p>
-            <p className="text-sm text-gray-600">
-              Choose 8-20 initiatives that will have the biggest impact on your 3-year goals. You can reorder them by dragging within the priority list.
-            </p>
-          </div>
-        </div>
+      {/* Task Banner */}
+      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-4 text-white">
+        <p className="text-base font-medium">
+          📋 <strong>YOUR TASK:</strong> Drag 8-20 initiatives from left → right to select your Year 1 priorities
+        </p>
+        <p className="text-sm text-teal-100 mt-1">
+          Choose initiatives that will have the biggest impact on your 3-year goals. You can reorder by dragging within the priority list.
+        </p>
       </div>
 
       {/* Header with Selection Status */}
@@ -262,7 +255,13 @@ export default function Step3PrioritizeInitiatives({
       </div>
 
       {/* Two Column Layout: Category List (Left) | Priority List (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr,auto,1fr] gap-4 lg:gap-2">
+        {/* Visual Flow Indicator - Mobile (Hidden on Desktop) */}
+        <div className="flex items-center justify-center gap-2 lg:hidden py-3 bg-teal-50 rounded-lg border border-teal-200">
+          <span className="text-sm font-medium text-teal-700">Available</span>
+          <ArrowRight className="w-5 h-5 text-teal-600" />
+          <span className="text-sm font-medium text-teal-700">Your Priorities</span>
+        </div>
         {/* LEFT: Single Column Category List */}
         <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden">
           <div className="px-4 py-3 bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10">
@@ -352,6 +351,16 @@ export default function Step3PrioritizeInitiatives({
           )}
         </div>
 
+        {/* CENTER: Arrow Indicator (Desktop Only) */}
+        <div className="hidden lg:flex flex-col items-center justify-center py-20">
+          <div className="flex flex-col items-center gap-2 text-teal-600">
+            <ArrowRight className="w-8 h-8 animate-pulse" />
+            <span className="text-xs font-semibold uppercase tracking-wide writing-mode-vertical rotate-180" style={{ writingMode: 'vertical-rl' }}>
+              Drag to add
+            </span>
+          </div>
+        </div>
+
         {/* RIGHT: Priority List */}
         <div className="space-y-4">
           <div
@@ -368,11 +377,25 @@ export default function Step3PrioritizeInitiatives({
 
             <div className="p-4">
               {selectedCount === 0 ? (
-                <div className="flex items-center justify-center h-[400px] border-2 border-dashed border-teal-300 rounded-lg bg-teal-50/50">
-                  <div className="text-center text-gray-400">
-                    <GripVertical className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm font-medium">Drag initiatives here</p>
-                    <p className="text-xs mt-1">from the category list on the left</p>
+                <div className={`flex items-center justify-center h-[400px] border-2 border-dashed rounded-lg transition-all ${
+                  draggedInitiative
+                    ? 'border-teal-500 bg-teal-100 scale-[1.02]'
+                    : 'border-teal-300 bg-teal-50/50'
+                }`}>
+                  <div className="text-center">
+                    <div className={`flex items-center justify-center gap-3 mb-4 ${draggedInitiative ? 'text-teal-600' : 'text-gray-400'}`}>
+                      <ArrowRight className={`w-8 h-8 ${draggedInitiative ? 'animate-bounce' : 'animate-pulse'}`} />
+                    </div>
+                    <p className={`text-base font-semibold ${draggedInitiative ? 'text-teal-700' : 'text-gray-600'}`}>
+                      {draggedInitiative ? 'Drop here to add!' : 'Drag initiatives here'}
+                    </p>
+                    <p className={`text-sm mt-1 ${draggedInitiative ? 'text-teal-600' : 'text-gray-400'}`}>
+                      {draggedInitiative ? 'Release to add to your Year 1 priorities' : 'Select 8-20 initiatives from the left'}
+                    </p>
+                    <div className="mt-4 flex items-center justify-center gap-2 text-xs text-gray-400">
+                      <span className="w-2 h-2 rounded-full bg-teal-400 animate-ping"></span>
+                      <span>Drag & drop to select</span>
+                    </div>
                   </div>
                 </div>
               ) : (

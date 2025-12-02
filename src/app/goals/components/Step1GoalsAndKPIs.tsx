@@ -43,6 +43,16 @@ export default function Step1GoalsAndKPIs({
 }: Step1Props) {
   return (
     <div className="space-y-6">
+      {/* Task Banner */}
+      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-4 text-white">
+        <p className="text-base font-medium">
+          📋 <strong>YOUR TASK:</strong> Set your 3-year, 2-year, and 1-year financial targets
+        </p>
+        <p className="text-sm text-teal-100 mt-1">
+          Start with your 3-year vision, then work backwards to define Year 2 milestones and Year 1 targets.
+        </p>
+      </div>
+
       {/* Year Type & Industry Selector */}
       <div className="bg-gradient-to-r from-teal-50 to-teal-100 rounded-lg border border-teal-200 p-4">
         <div className="flex items-center justify-between flex-wrap gap-4">
