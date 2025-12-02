@@ -382,9 +382,6 @@ function StrategicPlanningContent() {
     )
   }
 
-  // Get dynamic steps based on year type - MUST be before any early returns (hooks rule)
-  const dynamicSteps = useMemo(() => getSteps(yearType), [yearType])
-
   // Calculate progress with safe defaults
   const safeAnnualPlan = annualPlanByQuarter || { q1: [], q2: [], q3: [], q4: [] }
   // Step 1: Financial goals set (Year 1 revenue target > 0) - KPIs are optional
