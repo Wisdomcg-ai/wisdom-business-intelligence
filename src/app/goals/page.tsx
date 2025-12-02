@@ -360,6 +360,9 @@ function StrategicPlanningContent() {
   const topOpportunities = getTopItemsByCategory('opportunity')
   const topThreats = getTopItemsByCategory('threat')
 
+  // Get dynamic steps based on year type - MUST be before any early returns (hooks rule)
+  const dynamicSteps = useMemo(() => getSteps(yearType), [yearType])
+
   // HYDRATION FIX: Show skeleton before mounting
   if (!mounted) {
     return (
@@ -378,6 +381,9 @@ function StrategicPlanningContent() {
       </div>
     )
   }
+
+  // Get dynamic steps based on year type - MUST be before any early returns (hooks rule)
+  const dynamicSteps = useMemo(() => getSteps(yearType), [yearType])
 
   // Calculate progress with safe defaults
   const safeAnnualPlan = annualPlanByQuarter || { q1: [], q2: [], q3: [], q4: [] }
@@ -421,8 +427,6 @@ function StrategicPlanningContent() {
     )
   }
 
-  // Get dynamic steps based on year type
-  const dynamicSteps = useMemo(() => getSteps(yearType), [yearType])
   const currentStepInfo = dynamicSteps.find(s => s.num === currentStep)!
   const canGoPrevious = currentStep > 1
   const canGoNext = currentStep < 5
