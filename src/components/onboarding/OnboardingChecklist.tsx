@@ -70,7 +70,7 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       console.log('[Onboarding] Business lookup:', { businessId: business?.id, businessName: business?.name, error: businessError?.message })
 
       // Check all completion statuses in parallel
-      const [profileResult, assessmentResult, visionResult, swotResult, financialGoalsResult, initiativesResult, quarterlyTargetsResult, operationalActivitiesResult] = await Promise.all([
+      const [profileResult, assessmentResult, visionResult, swotResult, financialGoalsResult, initiativesResult, operationalActivitiesResult] = await Promise.all([
         // 1. Business Profile - get full profile to calculate completion
         // Try by business_id first (preferred), fallback to user_id
         business?.id
@@ -109,10 +109,10 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
           .limit(1),
 
         // 5. Strategic Plan - check all 5 steps of the wizard
-        // Step 1: Financial goals (all 3 years)
+        // Step 1: Financial goals (all 3 years) + quarterly_targets (stored as JSONB)
         supabase
           .from('business_financial_goals')
-          .select('revenue_year1, revenue_year2, revenue_year3')
+          .select('revenue_year1, revenue_year2, revenue_year3, quarterly_targets')
           .eq('user_id', user.id)
           .maybeSingle(),
 
@@ -120,12 +120,6 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
         supabase
           .from('strategic_initiatives')
           .select('id, step_type')
-          .eq('user_id', user.id),
-
-        // Step 4: Quarterly targets
-        supabase
-          .from('quarterly_targets')
-          .select('metric, q1, q2, q3, q4')
           .eq('user_id', user.id),
 
         // Step 5: Operational activities
@@ -210,10 +204,9 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       // Strategic Plan: Check all 5 steps of the wizard
       let goals = false
       const initiatives = initiativesResult.data || []
-      const quarterlyTargets = quarterlyTargetsResult.data || []
+      const fg = financialGoalsResult.data
 
       // Step 1: Financial goals - All 3 years of revenue targets set
-      const fg = financialGoalsResult.data
       const hasYear1 = fg?.revenue_year1 && fg.revenue_year1 > 0
       const hasYear2 = fg?.revenue_year2 && fg.revenue_year2 > 0
       const hasYear3 = fg?.revenue_year3 && fg.revenue_year3 > 0
@@ -227,11 +220,12 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       const twelveMonthInitiatives = initiatives.filter((i: any) => i.step_type === 'twelve_month')
       const hasPrioritizedInitiatives = twelveMonthInitiatives.length >= 8 && twelveMonthInitiatives.length <= 20
 
-      // Step 4: Quarterly targets set + Q3 & Q4 have initiatives
-      // (Q1 & Q2 are typically locked for FY planning mid-year)
-      const hasQuarterlyTargets = quarterlyTargets.some((qt: any) => {
-        const q3Val = parseFloat(qt.q3 || '0')
-        const q4Val = parseFloat(qt.q4 || '0')
+      // Step 4: Quarterly targets set (from JSONB column) + Q3 & Q4 have initiatives
+      // quarterly_targets is stored as JSONB: { revenue: { q1, q2, q3, q4 }, ... }
+      const quarterlyTargets = fg?.quarterly_targets as Record<string, { q1: string; q2: string; q3: string; q4: string }> | null
+      const hasQuarterlyTargets = quarterlyTargets && Object.values(quarterlyTargets).some((metric: any) => {
+        const q3Val = parseFloat(metric?.q3 || '0')
+        const q4Val = parseFloat(metric?.q4 || '0')
         return q3Val > 0 || q4Val > 0
       })
       const q3Initiatives = initiatives.filter((i: any) => i.step_type === 'q3')
