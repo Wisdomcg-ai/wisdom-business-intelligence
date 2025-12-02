@@ -70,7 +70,7 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       console.log('[Onboarding] Business lookup:', { businessId: business?.id, businessName: business?.name, error: businessError?.message })
 
       // Check all completion statuses in parallel
-      const [profileResult, assessmentResult, visionResult, swotResult, goalsResult] = await Promise.all([
+      const [profileResult, assessmentResult, visionResult, swotResult, financialGoalsResult, initiativesResult, sprintActionsResult] = await Promise.all([
         // 1. Business Profile - get full profile to calculate completion
         // Try by business_id first (preferred), fallback to user_id
         business?.id
@@ -108,9 +108,23 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
           .eq('business_id', user.id)
           .limit(1),
 
-        // 5. Goals (check strategic_initiatives or goals table)
+        // 5. Strategic Plan - check all 5 steps of the wizard
+        // Step 1: Financial goals (Year 1 revenue target)
+        supabase
+          .from('business_financial_goals')
+          .select('revenue_year1')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+
+        // Steps 2-5: Strategic initiatives by step_type
         supabase
           .from('strategic_initiatives')
+          .select('id, step_type')
+          .eq('user_id', user.id),
+
+        // Step 5: Sprint key actions
+        supabase
+          .from('sprint_actions')
           .select('id')
           .eq('user_id', user.id)
           .limit(1)
@@ -187,7 +201,45 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
         console.log('[Onboarding] No SWOT data found', swotResult.error)
       }
 
-      const goals = (goalsResult.data?.length || 0) > 0
+      // Strategic Plan: Check all 5 steps of the wizard
+      let goals = false
+      const initiatives = initiativesResult.data || []
+
+      // Step 1: Financial goals - Year 1 revenue target set
+      const hasFinancialGoals = financialGoalsResult.data?.revenue_year1 && financialGoalsResult.data.revenue_year1 > 0
+
+      // Step 2-3: Has 8-20 prioritized initiatives (twelve_month step_type)
+      const twelveMonthInitiatives = initiatives.filter((i: any) => i.step_type === 'twelve_month')
+      const hasPrioritizedInitiatives = twelveMonthInitiatives.length >= 8 && twelveMonthInitiatives.length <= 20
+
+      // Step 4: All 4 quarters have at least 1 initiative
+      const q1Initiatives = initiatives.filter((i: any) => i.step_type === 'q1')
+      const q2Initiatives = initiatives.filter((i: any) => i.step_type === 'q2')
+      const q3Initiatives = initiatives.filter((i: any) => i.step_type === 'q3')
+      const q4Initiatives = initiatives.filter((i: any) => i.step_type === 'q4')
+      const hasAllQuarters = q1Initiatives.length > 0 && q2Initiatives.length > 0 && q3Initiatives.length > 0 && q4Initiatives.length > 0
+
+      // Step 5: Sprint focus defined AND at least 1 sprint action
+      const sprintInitiatives = initiatives.filter((i: any) => i.step_type === 'sprint')
+      const hasSprintFocus = sprintInitiatives.length > 0
+      const hasSprintActions = (sprintActionsResult.data?.length || 0) > 0
+
+      goals = !!(hasFinancialGoals && hasPrioritizedInitiatives && hasAllQuarters && hasSprintFocus && hasSprintActions)
+
+      console.log('[Onboarding] Strategic Plan check:', {
+        hasFinancialGoals,
+        twelveMonthCount: twelveMonthInitiatives.length,
+        hasPrioritizedInitiatives,
+        q1Count: q1Initiatives.length,
+        q2Count: q2Initiatives.length,
+        q3Count: q3Initiatives.length,
+        q4Count: q4Initiatives.length,
+        hasAllQuarters,
+        sprintCount: sprintInitiatives.length,
+        hasSprintFocus,
+        hasSprintActions,
+        isComplete: goals
+      })
 
       const allComplete = profile && assessment && visionMission && swot && goals
 
@@ -243,8 +295,8 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
     },
     {
       id: 'goals',
-      title: 'Set Annual Goals',
-      description: 'Define your targets',
+      title: 'Complete Strategic Plan',
+      description: 'Set 3-year goals and plan your 90-day sprint',
       href: '/goals',
       icon: Award,
       isComplete: completionStatus.goals
