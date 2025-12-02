@@ -29,6 +29,15 @@ function getCurrentQuarter(): 'q1' | 'q2' | 'q3' | 'q4' {
 }
 
 /**
+ * Get the next quarter (planning quarter)
+ */
+function getNextQuarter(current: 'q1' | 'q2' | 'q3' | 'q4'): 'q1' | 'q2' | 'q3' | 'q4' {
+  const quarterOrder: ('q1' | 'q2' | 'q3' | 'q4')[] = ['q1', 'q2', 'q3', 'q4']
+  const currentIndex = quarterOrder.indexOf(current)
+  return quarterOrder[(currentIndex + 1) % 4]
+}
+
+/**
  * Get the end date of the current quarter (Australian FY)
  */
 function getQuarterEndDate(): Date {
@@ -397,17 +406,34 @@ export function useDashboardData(): UseDashboardDataReturn {
       setBusinessId(bId)
 
       const currentQuarter = getCurrentQuarter()
+      const planningQuarter = getNextQuarter(currentQuarter)
       const quarterDaysRemaining = daysBetween(new Date(), getQuarterEndDate())
       const yearDaysRemaining = daysBetween(new Date(), getFYEndDate())
 
       const teamMap = await buildTeamMembersMap(bId)
 
-      const [annualGoals, quarterlyGoals, rocks, weeklyGoals] = await Promise.all([
+      // First try to load current quarter data
+      const [annualGoals, currentQuarterGoals, currentQuarterRocks, weeklyGoals] = await Promise.all([
         loadAnnualGoals(bId),
         loadQuarterlyGoals(bId, currentQuarter),
         loadRocks(bId, currentQuarter, teamMap),
         loadWeeklyGoals(bId, user.id)
       ])
+
+      // If current quarter has no rocks, check the planning quarter (next quarter)
+      // This handles the case where users plan ahead for the next quarter
+      let displayQuarter = currentQuarter
+      let quarterlyGoals = currentQuarterGoals
+      let rocks = currentQuarterRocks
+
+      if (currentQuarterRocks.length === 0) {
+        const planningQuarterRocks = await loadRocks(bId, planningQuarter, teamMap)
+        if (planningQuarterRocks.length > 0) {
+          displayQuarter = planningQuarter
+          rocks = planningQuarterRocks
+          quarterlyGoals = await loadQuarterlyGoals(bId, planningQuarter)
+        }
+      }
 
       // Calculate smart data
       const rocksNeedingAttention = rocks.filter(
@@ -430,7 +456,7 @@ export function useDashboardData(): UseDashboardDataReturn {
       const elapsedFYDays = daysBetween(fyStart, now)
       const annualProgress = Math.round((elapsedFYDays / totalFYDays) * 100)
 
-      const quarterStart = getQuarterStartDate(currentQuarter)
+      const quarterStart = getQuarterStartDate(displayQuarter)
       const totalQuarterDays = daysBetween(quarterStart, getQuarterEndDate())
       const elapsedQuarterDays = daysBetween(quarterStart, now)
       const quarterlyProgress = Math.round((elapsedQuarterDays / totalQuarterDays) * 100)
@@ -438,7 +464,7 @@ export function useDashboardData(): UseDashboardDataReturn {
       setData({
         annualGoals,
         quarterlyGoals,
-        currentQuarter,
+        currentQuarter: displayQuarter,
         rocks,
         weeklyGoals,
         insight,
@@ -448,7 +474,8 @@ export function useDashboardData(): UseDashboardDataReturn {
         annualProgress,
         quarterlyProgress,
         rocksNeedingAttention,
-        rocksOnTrack
+        rocksOnTrack,
+        isShowingPlanningQuarter: displayQuarter !== currentQuarter
       })
 
       setIsLoading(false)

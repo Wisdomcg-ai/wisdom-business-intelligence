@@ -16,6 +16,7 @@ interface GoalsCardProps {
   subtitle?: string
   daysRemaining?: number
   timeProgress?: number
+  isShowingPlanningQuarter?: boolean
 }
 
 export default function GoalsCard({
@@ -27,7 +28,8 @@ export default function GoalsCard({
   emptyStateHref,
   subtitle,
   daysRemaining,
-  timeProgress = 0
+  timeProgress = 0,
+  isShowingPlanningQuarter
 }: GoalsCardProps) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -40,10 +42,19 @@ export default function GoalsCard({
             </div>
             <div>
               <h3 className="font-semibold text-gray-900">{title}</h3>
-              {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
+              {subtitle && (
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-gray-500">{subtitle}</p>
+                  {isShowingPlanningQuarter && (
+                    <span className="text-[10px] font-medium text-teal-700 bg-teal-100 px-1.5 py-0.5 rounded">
+                      Planning
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
-          {daysRemaining !== undefined && (
+          {daysRemaining !== undefined && !isShowingPlanningQuarter && (
             <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded">
               {daysRemaining}d left
             </span>

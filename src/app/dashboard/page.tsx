@@ -247,6 +247,7 @@ export default function DashboardPage() {
             emptyStateHref="/goals?step=4"
             daysRemaining={data.quarterDaysRemaining}
             timeProgress={data.quarterlyProgress}
+            isShowingPlanningQuarter={data.isShowingPlanningQuarter}
           />
 
           <RocksCard
@@ -255,6 +256,7 @@ export default function DashboardPage() {
             rocksNeedingAttention={data.rocksNeedingAttention}
             rocksOnTrack={data.rocksOnTrack}
             quarterDaysRemaining={data.quarterDaysRemaining}
+            isShowingPlanningQuarter={data.isShowingPlanningQuarter}
           />
         </div>
 

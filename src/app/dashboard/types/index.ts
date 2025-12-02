@@ -59,6 +59,8 @@ export interface DashboardData {
   quarterlyProgress?: number
   rocksNeedingAttention?: Rock[]
   rocksOnTrack?: Rock[]
+  // True when showing planning quarter data instead of current quarter
+  isShowingPlanningQuarter?: boolean
 }
 
 export interface DashboardError {

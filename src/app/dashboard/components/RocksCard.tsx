@@ -12,6 +12,7 @@ interface RocksCardProps {
   rocksNeedingAttention?: Rock[]
   rocksOnTrack?: Rock[]
   quarterDaysRemaining?: number
+  isShowingPlanningQuarter?: boolean
 }
 
 function getStatusStyle(status: string, progress: number) {
@@ -32,7 +33,8 @@ export default function RocksCard({
   currentQuarter,
   rocksNeedingAttention = [],
   rocksOnTrack = [],
-  quarterDaysRemaining
+  quarterDaysRemaining,
+  isShowingPlanningQuarter
 }: RocksCardProps) {
   const hasAttention = rocksNeedingAttention.length > 0
   const attentionRock = rocksNeedingAttention[0]
@@ -50,10 +52,17 @@ export default function RocksCard({
               <h3 className="font-semibold text-gray-900">
                 <JargonTooltip term="rocks">Quarterly Rocks</JargonTooltip>
               </h3>
-              <p className="text-xs text-gray-500">{getQuarterDisplayName(currentQuarter)}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-gray-500">{getQuarterDisplayName(currentQuarter)}</p>
+                {isShowingPlanningQuarter && (
+                  <span className="text-[10px] font-medium text-teal-700 bg-teal-100 px-1.5 py-0.5 rounded">
+                    Planning
+                  </span>
+                )}
+              </div>
             </div>
           </div>
-          {quarterDaysRemaining !== undefined && (
+          {quarterDaysRemaining !== undefined && !isShowingPlanningQuarter && (
             <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded">
               {quarterDaysRemaining}d left
             </span>
