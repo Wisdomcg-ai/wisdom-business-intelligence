@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useStrategicPlanning, SaveStatus } from './hooks/useStrategicPlanning'
 import Step1GoalsAndKPIs from './components/Step1GoalsAndKPIs'
@@ -33,43 +33,72 @@ interface SwotItem {
   likelihood?: number
 }
 
-const STEPS: StepInfo[] = [
-  {
-    num: 1,
-    label: '3yr Goals & KPIs',
-    title: 'Set Your 3-Year Goals & KPIs',
-    icon: Target,
-    description: 'Define financial targets and key performance indicators'
-  },
-  {
-    num: 2,
-    label: 'Strategic Ideas',
-    title: 'Capture Strategic Ideas',
-    icon: Brain,
-    description: 'Capture ideas and review roadmap suggestions by business engine'
-  },
-  {
-    num: 3,
-    label: 'Prioritize',
-    title: 'Prioritize Your Initiatives',
-    icon: CheckCircle,
-    description: 'Select and order your top 12-20 initiatives for the year'
-  },
-  {
-    num: 4,
-    label: 'Annual Plan',
-    title: 'Distribute Across Quarters',
-    icon: Calendar,
-    description: 'Plan Q1, Q2, Q3, Q4 execution'
-  },
-  {
-    num: 5,
-    label: '90-Day Sprint',
-    title: 'Define Your 90-Day Sprint',
-    icon: Rocket,
-    description: 'Focus on Q1 with specific actions'
+// Helper to get the current planning quarter label
+function getCurrentPlanningQuarter(yearType: 'CY' | 'FY'): { quarter: string; label: string } {
+  const today = new Date()
+  const month = today.getMonth() // 0-11
+
+  let currentQuarter: string
+  if (yearType === 'CY') {
+    // Calendar Year: Q1=Jan-Mar, Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec
+    if (month < 3) currentQuarter = 'Q1'
+    else if (month < 6) currentQuarter = 'Q2'
+    else if (month < 9) currentQuarter = 'Q3'
+    else currentQuarter = 'Q4'
+  } else {
+    // Fiscal Year (Jul-Jun): Q1=Jul-Sep, Q2=Oct-Dec, Q3=Jan-Mar, Q4=Apr-Jun
+    if (month >= 6 && month < 9) currentQuarter = 'Q1'
+    else if (month >= 9 || month < 0) currentQuarter = 'Q2'
+    else if (month < 3) currentQuarter = 'Q3'
+    else currentQuarter = 'Q4'
   }
-]
+
+  // Planning quarter is usually current or next quarter
+  // For simplicity, we'll show the current quarter in the label
+  return { quarter: currentQuarter, label: `${currentQuarter} Execution Plan` }
+}
+
+const getSteps = (yearType: 'CY' | 'FY' = 'CY'): StepInfo[] => {
+  const planningQuarter = getCurrentPlanningQuarter(yearType)
+
+  return [
+    {
+      num: 1,
+      label: '3yr Goals & KPIs',
+      title: 'Set Your 3-Year Goals & KPIs',
+      icon: Target,
+      description: 'Define financial targets and key performance indicators'
+    },
+    {
+      num: 2,
+      label: 'Strategic Ideas',
+      title: 'Capture Strategic Ideas',
+      icon: Brain,
+      description: 'Capture ideas and review roadmap suggestions by business engine'
+    },
+    {
+      num: 3,
+      label: 'Prioritize',
+      title: 'Prioritize Your Initiatives',
+      icon: CheckCircle,
+      description: 'Select and order your top 8-20 initiatives for the year'
+    },
+    {
+      num: 4,
+      label: 'Annual Plan',
+      title: 'Distribute Across Quarters',
+      icon: Calendar,
+      description: 'Plan Q1, Q2, Q3, Q4 execution'
+    },
+    {
+      num: 5,
+      label: planningQuarter.label,
+      title: `Define Your ${planningQuarter.quarter} Sprint`,
+      icon: Rocket,
+      description: `Focus on ${planningQuarter.quarter} with specific actions and accountability`
+    }
+  ]
+}
 
 // Coaching help content for each step
 const STEP_COACHING: Record<StepNumber, { questions: string[]; tips: string[] }> = {
@@ -384,7 +413,9 @@ function StrategicPlanningContent() {
     )
   }
 
-  const currentStepInfo = STEPS.find(s => s.num === currentStep)!
+  // Get dynamic steps based on year type
+  const dynamicSteps = useMemo(() => getSteps(yearType), [yearType])
+  const currentStepInfo = dynamicSteps.find(s => s.num === currentStep)!
   const canGoPrevious = currentStep > 1
   const canGoNext = currentStep < 5
 
@@ -623,7 +654,7 @@ function StrategicPlanningContent() {
       <div className="bg-white border-b sticky top-0 z-40">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between overflow-x-auto py-3">
-            {STEPS.map((step, index) => {
+            {dynamicSteps.map((step, index) => {
               const isActive = currentStep === step.num
               const isComplete = stepCompletion[step.num - 1]
               const Icon = step.icon
@@ -644,7 +675,7 @@ function StrategicPlanningContent() {
                     <span className="text-sm hidden sm:inline">{step.label}</span>
                   </button>
 
-                  {index < STEPS.length - 1 && (
+                  {index < dynamicSteps.length - 1 && (
                     <div className="hidden sm:block mx-2 w-8 h-0.5 bg-gray-300" />
                   )}
                 </div>
@@ -813,7 +844,7 @@ function StrategicPlanningContent() {
           </button>
 
           <div className="text-sm text-gray-600">
-            Step {currentStep} of {STEPS.length}
+            Step {currentStep} of {dynamicSteps.length}
           </div>
 
           <button

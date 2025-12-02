@@ -1,7 +1,7 @@
 'use client'
 
 import { StrategicInitiative, FinancialData, KPIData, YearType } from '../types'
-import { ChevronDown, ChevronUp, AlertCircle, GripVertical, TrendingUp, X, UserPlus, AlertTriangle, Check, Target as TargetIcon, Lightbulb, Calendar } from 'lucide-react'
+import { ChevronDown, ChevronUp, AlertCircle, GripVertical, TrendingUp, X, UserPlus, AlertTriangle, Check, Target as TargetIcon, Lightbulb, Calendar, HelpCircle } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatDollar, parseDollarInput } from '../utils/formatting'
@@ -77,6 +77,7 @@ export default function Step4AnnualPlan({
       label: 'Quarterly Execution Plan',
       icon: Calendar,
       description: `Assign initiatives to quarters (Max ${MAX_PER_QUARTER} per quarter)`,
+      tooltip: `Limiting to ${MAX_PER_QUARTER} initiatives per quarter ensures your team can focus and execute effectively. Trying to do too much leads to nothing getting done well.`,
       color: 'from-slate-600 to-slate-700',
       bgColor: 'bg-slate-50',
       borderColor: 'border-slate-500',
@@ -533,6 +534,14 @@ export default function Step4AnnualPlan({
 
   return (
     <div className="space-y-6">
+      {/* Key Question - Above tabs for context */}
+      <div className="bg-gradient-to-r from-teal-50 to-slate-50 border border-teal-200 rounded-lg p-5">
+        <p className="text-base text-gray-800 leading-relaxed">
+          <Lightbulb className="w-5 h-5 inline mr-2 text-teal-600" />
+          <strong className="text-teal-700">Key Question:</strong> "What are the key initiatives or projects you must implement to help you meet or exceed these targets?"
+        </p>
+      </div>
+
       {/* Enhanced Tab Navigation */}
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-gray-200">
@@ -563,6 +572,14 @@ export default function Step4AnnualPlan({
                       isActive ? 'text-white/90' : 'text-gray-600 group-hover:text-gray-700'
                     }`}>
                       {tab.description}
+                      {(tab as any).tooltip && (
+                        <span className="relative group/tip inline-block ml-1">
+                          <HelpCircle className={`w-4 h-4 inline cursor-help ${isActive ? 'text-white/70' : 'text-gray-400'}`} />
+                          <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all z-50 pointer-events-none">
+                            {(tab as any).tooltip}
+                          </span>
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1148,16 +1165,6 @@ export default function Step4AnnualPlan({
         </div>
       )}
 
-      {/* Key Question - Transition between sections */}
-      {activeTab === 'execution' && (
-        <div className="bg-teal-50 border-2 border-teal-300 rounded-lg p-8">
-          <p className="text-xl text-slate-900 font-semibold leading-relaxed">
-            <Lightbulb className="w-8 h-8 inline mr-3 text-teal-600" />
-            <strong className="text-teal-900">Key Question:</strong> "What are the key initiatives or projects you must implement to help you meet or exceed these targets?"
-          </p>
-        </div>
-      )}
-
       {/* Quarterly Execution Plan Content */}
       {activeTab === 'execution' && (
         <div className="bg-white rounded-lg shadow-sm border border-slate-200">
@@ -1233,8 +1240,8 @@ export default function Step4AnnualPlan({
                               onDragStart={() => handleDragStart(initiative.id, 'unassigned')}
                               className={`group flex items-start gap-2 p-3 rounded-lg border-2 cursor-move transition-all ${
                                 isUserIdea
-                                  ? 'bg-[#948687]/30 border-[#948687]/80 hover:bg-[#948687]/40 hover:shadow-md'
-                                  : 'bg-[#4C5D75] border-[#4C5D75] shadow-md'
+                                  ? 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-md'
+                                  : 'bg-teal-600 border-teal-600 shadow-md hover:bg-teal-700'
                               }`}
                             >
                               <GripVertical className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
@@ -1256,8 +1263,8 @@ export default function Step4AnnualPlan({
                                 )}
                                 <span className={`inline-block mt-2 px-2 py-0.5 text-[10px] rounded font-semibold ${
                                   isUserIdea
-                                    ? 'bg-[#3E3F57] text-white'
-                                    : 'bg-[#948687] text-white'
+                                    ? 'bg-slate-800 text-white'
+                                    : 'bg-teal-800 text-white'
                                 }`}>
                                   {isUserIdea ? 'YOUR IDEA' : 'ROADMAP'}
                                 </span>

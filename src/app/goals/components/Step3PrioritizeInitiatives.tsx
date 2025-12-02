@@ -88,7 +88,7 @@ export default function Step3PrioritizeInitiatives({
 
   const selectedCount = twelveMonthInitiatives.length
   const isOverLimit = selectedCount > 20
-  const isInRange = selectedCount >= 12 && selectedCount <= 20
+  const isInRange = selectedCount >= 8 && selectedCount <= 20
 
   // Available initiatives (exclude already selected)
   const availableInitiatives = useMemo(() => {
@@ -201,16 +201,33 @@ export default function Step3PrioritizeInitiatives({
 
   return (
     <div className="space-y-6">
+      {/* Intro with Drag Instructions */}
+      <div className="bg-gradient-to-r from-slate-50 to-teal-50 border border-slate-200 rounded-lg p-5">
+        <div className="flex items-start gap-4">
+          <div className="p-2 bg-teal-100 rounded-lg">
+            <GripVertical className="w-6 h-6 text-teal-600" />
+          </div>
+          <div>
+            <p className="text-base text-gray-800 font-medium mb-1">
+              Drag initiatives from left to right to select your Year 1 priorities
+            </p>
+            <p className="text-sm text-gray-600">
+              Choose 8-20 initiatives that will have the biggest impact on your 3-year goals. You can reorder them by dragging within the priority list.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Header with Selection Status */}
       <div className="bg-gradient-to-r from-teal-50 to-slate-50 border-2 border-teal-200 rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div>
               <p className="text-sm font-semibold text-gray-900">
-                Selected: <span className={`text-lg ${selectedCount === 0 ? 'text-gray-500' : isInRange ? 'text-green-600' : isOverLimit ? 'text-red-600' : 'text-amber-600'}`}>{selectedCount}</span> <span className="text-gray-600">of 12-20 initiatives</span>
+                Selected: <span className={`text-lg ${selectedCount === 0 ? 'text-gray-500' : isInRange ? 'text-green-600' : isOverLimit ? 'text-red-600' : 'text-amber-600'}`}>{selectedCount}</span> <span className="text-gray-600">of 8-20 initiatives</span>
               </p>
               <p className="text-xs text-gray-600 mt-1">
-                Aim for 12-20 strategic initiatives for Year 1
+                8-20 initiatives keeps you focused without spreading too thin
               </p>
             </div>
             {isInRange && (
@@ -225,10 +242,10 @@ export default function Step3PrioritizeInitiatives({
                 <span className="text-sm font-medium text-red-700">Remove {selectedCount - 20}</span>
               </div>
             )}
-            {selectedCount > 0 && selectedCount < 12 && (
+            {selectedCount > 0 && selectedCount < 8 && (
               <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-100 border border-amber-300 rounded-full">
                 <AlertCircle className="w-4 h-4 text-amber-700" />
-                <span className="text-sm font-medium text-amber-700">Add {12 - selectedCount} more</span>
+                <span className="text-sm font-medium text-amber-700">Add {8 - selectedCount} more</span>
               </div>
             )}
           </div>

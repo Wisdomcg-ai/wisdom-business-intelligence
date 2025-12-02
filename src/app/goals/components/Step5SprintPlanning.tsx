@@ -587,6 +587,16 @@ function MonthlyGoalsTab({
 
   return (
     <div className="space-y-6">
+      {/* Intro Text */}
+      <div className="bg-gradient-to-r from-teal-50 to-slate-50 border border-teal-200 rounded-lg p-5">
+        <p className="text-base text-gray-800 leading-relaxed">
+          <strong className="text-teal-700">Your {currentQuarter.label} Sprint</strong> - This is where strategy meets execution. Break down your quarterly targets into monthly goals and define the specific actions that will drive results.
+        </p>
+        <p className="text-sm text-gray-600 mt-2">
+          The initiatives below were assigned to {currentQuarter.label} in your Annual Plan.
+        </p>
+      </div>
+
       <div>
         <h3 className="text-xl font-bold text-gray-900 mb-2">Monthly Targets - {currentQuarter.label}</h3>
         <p className="text-sm text-gray-600">
@@ -1690,8 +1700,8 @@ function InitiativeCard({
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               <span className={`inline-block px-2 py-0.5 text-[10px] rounded font-semibold ${
                 isUserIdea
-                  ? 'bg-[#3E3F57] text-white'
-                  : 'bg-[#4C5D75]/85 text-white'
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-teal-600 text-white'
               }`}>
                 {isUserIdea ? 'YOUR IDEA' : 'ROADMAP'}
               </span>

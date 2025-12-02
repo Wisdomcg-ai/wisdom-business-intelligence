@@ -1,7 +1,7 @@
 'use client'
 
 import { StrategicInitiative, InitiativeCategory } from '../types'
-import { Plus, X, ChevronDown, ChevronUp, CheckCircle, Square, CheckSquare } from 'lucide-react'
+import { Plus, X, ChevronDown, ChevronUp, CheckCircle, Square, CheckSquare, HelpCircle } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { useRoadmapProgress } from '@/app/business-roadmap/hooks/useRoadmapProgress'
 import { STAGES } from '@/app/business-roadmap/data'
@@ -252,6 +252,13 @@ export default function Step2StrategicIdeas({
 
   return (
     <div className="space-y-6">
+      {/* Intro Text */}
+      <div className="bg-gradient-to-r from-teal-50 to-slate-50 border border-teal-200 rounded-lg p-5">
+        <p className="text-base text-gray-800 leading-relaxed">
+          <strong className="text-teal-700">Brainstorm ALL your strategic ideas here.</strong> Don't filter yet - capture everything that could move your business forward. We'll prioritize in the next step.
+        </p>
+      </div>
+
       {/* Add New Idea Form */}
       <div className="bg-white border-2 border-teal-200 rounded-lg p-6">
         <h3 className="text-lg font-bold text-gray-900 mb-4">Add Strategic Idea</h3>
@@ -293,8 +300,15 @@ export default function Step2StrategicIdeas({
           {/* Engine Selection + Add Button */}
           <div className="flex items-end gap-3">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
                 Business Engine <span className="text-red-500">*</span>
+                <div className="relative group">
+                  <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
+                  <div className="absolute left-6 bottom-0 w-72 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                    <strong className="block mb-1">Business Engines</strong>
+                    Your business runs on 8 key engines: Attract (marketing), Convert (sales), Deliver (service), People, Systems, Finance, Leadership, and Time. Categorizing ideas helps you see which areas need the most attention.
+                  </div>
+                </div>
               </label>
               <select
                 value={newEngine}

@@ -2,6 +2,7 @@
 
 import { FinancialData, CoreMetricsData, KPIData, YearType } from '../types'
 import { FinancialGoalsSection, CoreMetricsSection, KPISection } from './step1'
+import { HelpCircle } from 'lucide-react'
 
 interface Step1Props {
   financialData: FinancialData
@@ -72,6 +73,14 @@ export default function Step1GoalsAndKPIs({
         </div>
       </div>
 
+      {/* Required Section Header */}
+      <div className="flex items-center gap-2">
+        <span className="px-3 py-1 bg-teal-600 text-white text-xs font-bold rounded-full uppercase tracking-wide">
+          Required
+        </span>
+        <span className="text-sm text-gray-600">Set your financial targets to drive your strategic plan</span>
+      </div>
+
       {/* Financial Goals Section */}
       <FinancialGoalsSection
         financialData={financialData}
@@ -83,6 +92,20 @@ export default function Step1GoalsAndKPIs({
         coreMetrics={coreMetrics}
         updateCoreMetric={updateCoreMetric}
       />
+
+      {/* Optional Section Header */}
+      <div className="flex items-center gap-2 mt-8">
+        <span className="px-3 py-1 bg-slate-500 text-white text-xs font-bold rounded-full uppercase tracking-wide">
+          Optional
+        </span>
+        <span className="text-sm text-gray-600">Track additional metrics for deeper insights</span>
+        <div className="relative group">
+          <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
+          <div className="absolute left-6 top-0 w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+            Core Metrics and KPIs are optional but recommended. They help track progress beyond just financial targets and give you a more complete picture of your business health.
+          </div>
+        </div>
+      </div>
 
       {/* Core Business Metrics Section */}
       <CoreMetricsSection
