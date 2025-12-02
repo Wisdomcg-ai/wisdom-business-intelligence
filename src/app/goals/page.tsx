@@ -342,6 +342,11 @@ function StrategicPlanningContent() {
     loadSwotData()
   }, [ownerUserId, businessId, mounted])
 
+  // Hide validation warning when step changes (must be before early returns)
+  useEffect(() => {
+    setShowValidationWarning(false)
+  }, [currentStep])
+
   const toggleSection = (section: string) => {
     const newCollapsed = new Set(collapsedSections)
     if (newCollapsed.has(section)) {
@@ -481,11 +486,6 @@ function StrategicPlanningContent() {
     setShowValidationWarning(false)
     setCurrentStep((prev) => Math.min(5, prev + 1) as StepNumber)
   }
-
-  // Hide validation warning when step changes
-  useEffect(() => {
-    setShowValidationWarning(false)
-  }, [currentStep])
 
   return (
     <div className="min-h-screen bg-slate-50">
