@@ -60,10 +60,10 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // First get the user's business to find the business_id
+      // First get the user's business to find the business_id and name
       const { data: business } = await supabase
         .from('businesses')
-        .select('id')
+        .select('id, name')
         .eq('owner_id', user.id)
         .maybeSingle()
 
@@ -74,12 +74,12 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
         business?.id
           ? supabase
               .from('business_profiles')
-              .select('name, industry, annual_revenue, employee_count, years_in_operation, owner_info')
+              .select('industry, annual_revenue, employee_count, years_in_operation, owner_info')
               .eq('business_id', business.id)
               .maybeSingle()
           : supabase
               .from('business_profiles')
-              .select('name, industry, annual_revenue, employee_count, years_in_operation, owner_info')
+              .select('industry, annual_revenue, employee_count, years_in_operation, owner_info')
               .eq('user_id', user.id)
               .maybeSingle(),
 
@@ -119,16 +119,18 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       let profile = false
       if (profileResult.data) {
         const p = profileResult.data
-        const requiredFields = [p.name, p.industry, p.annual_revenue, p.employee_count, p.years_in_operation]
+        // Name comes from businesses table, other fields from business_profiles
+        const businessName = business?.name
+        const requiredFields = [businessName, p.industry, p.annual_revenue, p.employee_count, p.years_in_operation]
         const filledRequired = requiredFields.filter(f => f !== null && f !== undefined && f !== '').length
         // Also check owner_info has owner name
         const ownerInfo = p.owner_info as any
         const hasOwnerName = ownerInfo?.owner_name?.trim()
         // Profile is complete if all 5 required fields + owner name are filled
-        profile = filledRequired >= 5 && hasOwnerName
+        profile = filledRequired >= 5 && !!hasOwnerName
 
         console.log('[Onboarding] Profile check:', {
-          name: p.name,
+          name: businessName,
           industry: p.industry,
           annual_revenue: p.annual_revenue,
           employee_count: p.employee_count,
