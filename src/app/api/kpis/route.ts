@@ -76,19 +76,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // First, delete existing KPIs for this business (replace strategy)
-    const { error: deleteError } = await supabase
+    // Get current KPI IDs for this business
+    const { data: existingKpis } = await supabase
       .from('business_kpis')
-      .delete()
+      .select('kpi_id')
       .eq('business_id', businessId)
 
-    if (deleteError) {
-      console.error('Error deleting existing KPIs:', deleteError)
-      // Continue anyway - might be first time saving
-    }
+    const existingKpiIds = new Set(existingKpis?.map(k => k.kpi_id) || [])
+    const newKpiIds = new Set(kpis.map((k: any) => k.kpi_id))
 
-    // Prepare KPIs for insertion
-    const kpisToInsert = kpis.map(kpi => ({
+    // Prepare KPIs for upsert (insert or update)
+    const kpisToUpsert = kpis.map((kpi: any) => ({
       business_id: businessId,
       kpi_id: kpi.kpi_id,
       name: kpi.name,
@@ -98,28 +96,46 @@ export async function POST(request: NextRequest) {
       frequency: kpi.frequency,
       unit: kpi.unit,
       target_value: kpi.target_benchmark || null,
-      current_value: null, // Will be updated when they start tracking
       why_it_matters: kpi.why_it_matters,
       what_to_do: kpi.what_to_do,
       is_universal: kpi.is_universal || false,
       is_active: true,
-      created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }))
 
-    // Insert new KPIs
-    const { data: insertedKpis, error: insertError } = await supabase
+    // Upsert KPIs (insert new ones, update existing ones)
+    const { data: upsertedKpis, error: upsertError } = await supabase
       .from('business_kpis')
-      .insert(kpisToInsert)
+      .upsert(kpisToUpsert, {
+        onConflict: 'business_id,kpi_id',
+        ignoreDuplicates: false
+      })
       .select()
 
-    if (insertError) {
-      console.error('Error inserting KPIs:', insertError)
+    if (upsertError) {
+      console.error('Error upserting KPIs:', upsertError)
       return NextResponse.json(
-        { error: 'Failed to save KPIs', details: insertError.message },
+        { error: 'Failed to save KPIs', details: upsertError.message },
         { status: 500 }
       )
     }
+
+    // Only delete KPIs that were removed (not in new selection)
+    const kpisToRemove = [...existingKpiIds].filter(id => !newKpiIds.has(id))
+    if (kpisToRemove.length > 0) {
+      const { error: deleteError } = await supabase
+        .from('business_kpis')
+        .delete()
+        .eq('business_id', businessId)
+        .in('kpi_id', kpisToRemove)
+
+      if (deleteError) {
+        console.error('Error removing deselected KPIs:', deleteError)
+        // Non-fatal - the new KPIs are already saved
+      }
+    }
+
+    const insertedKpis = upsertedKpis
 
     // Log the save action (optional - for tracking)
     await supabase

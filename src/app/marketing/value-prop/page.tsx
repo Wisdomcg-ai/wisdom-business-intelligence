@@ -106,14 +106,18 @@ export default function ValuePropositionPage() {
       setSaving(true);
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) return;
+
+      // Use activeBusiness ownerId if viewing as coach, otherwise current user
+      // This ensures data saves to the correct user (client, not coach)
+      const targetUserId = activeBusiness?.ownerId || user.id;
 
       // Upsert to marketing_data table
       const { error } = await supabase
         .from('marketing_data')
         .upsert({
-          user_id: user.id,
+          user_id: targetUserId,
           value_proposition: formData,
           updated_at: new Date().toISOString()
         }, {

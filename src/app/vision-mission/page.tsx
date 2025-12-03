@@ -189,10 +189,14 @@ export default function VisionMissionPage() {
         return;
       }
 
+      // Use activeBusiness ownerId if viewing as coach, otherwise current user
+      // This ensures data saves to the correct user (client, not coach)
+      const targetUserId = activeBusiness?.ownerId || user.id;
+
       const { error } = await supabase
         .from('strategy_data')
         .upsert({
-          user_id: user.id,
+          user_id: targetUserId,
           vision_mission: dataToSave,
           updated_at: new Date().toISOString()
         }, {
