@@ -73,12 +73,13 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       const [profileResult, assessmentResult, visionResult, swotResult, financialGoalsResult, initiativesResult, operationalActivitiesResult] = await Promise.all([
         // 1. Business Profile - get full profile to calculate completion
         // Always query by user_id for consistency with BusinessProfileService
-        // This ensures RLS policies work correctly (user_id = auth.uid())
+        // Use limit(1) instead of maybeSingle() to handle multiple profiles gracefully
         supabase
           .from('business_profiles')
           .select('industry, annual_revenue, employee_count, years_in_operation, owner_info')
           .eq('user_id', user.id)
-          .maybeSingle(),
+          .order('created_at', { ascending: true })
+          .limit(1),
 
         // 2. Assessment
         supabase
@@ -129,8 +130,9 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
 
       // Profile: Check if required fields are filled (simplified version of calculateCompletion)
       let profile = false
-      if (profileResult.data) {
-        const p = profileResult.data
+      const profileData = profileResult.data?.[0]
+      if (profileData) {
+        const p = profileData
         // Name comes from businesses table, other fields from business_profiles
         const businessName = business?.name
         const requiredFields = [businessName, p.industry, p.annual_revenue, p.employee_count, p.years_in_operation]
