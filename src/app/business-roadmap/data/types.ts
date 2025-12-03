@@ -33,6 +33,7 @@ export interface EngineData {
   id: string
   name: string
   subtitle: string
+  description: string
   icon: string
   color: string
   bgColor: string

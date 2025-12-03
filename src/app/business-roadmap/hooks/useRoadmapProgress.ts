@@ -20,9 +20,12 @@ export interface PriorityBuild {
 
 export function useRoadmapProgress(overrideBusinessId?: string) {
   const [completedBuilds, setCompletedBuilds] = useState<Set<string>>(new Set())
+  const [completionChecks, setCompletionChecks] = useState<Record<string, Record<string, boolean>>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [businessId, setBusinessId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'full' | 'focus'>('full')
+  const [hasSeenIntro, setHasSeenIntro] = useState(false)
 
   // Stage state
   const [currentStageId, setCurrentStageId] = useState<StageId>('foundation')
@@ -111,7 +114,7 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
       // Load roadmap progress
       const { data, error } = await supabase
         .from('roadmap_progress')
-        .select('completed_builds')
+        .select('completed_builds, completion_checks, view_mode, has_seen_intro')
         .eq('user_id', user.id)
         .maybeSingle()
 
@@ -120,6 +123,20 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
       } else if (data) {
         const builds = data.completed_builds as string[]
         setCompletedBuilds(new Set(builds))
+
+        // Load completion checks
+        if (data.completion_checks) {
+          setCompletionChecks(data.completion_checks as Record<string, Record<string, boolean>>)
+        }
+
+        // Load view preferences
+        if (data.view_mode) {
+          setViewMode(data.view_mode as 'full' | 'focus')
+        }
+        if (data.has_seen_intro !== null) {
+          setHasSeenIntro(data.has_seen_intro)
+        }
+
         console.log('✅ Loaded roadmap progress:', builds.length, 'builds completed')
       } else {
         console.log('No existing progress found, starting fresh')
@@ -131,8 +148,12 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
     }
   }
 
-  // Save completed builds to database
-  const saveProgress = async (builds: Set<string>) => {
+  // Save progress to database (builds, checks, and preferences)
+  const saveProgress = async (
+    builds?: Set<string>,
+    checks?: Record<string, Record<string, boolean>>,
+    preferences?: { viewMode?: 'full' | 'focus'; hasSeenIntro?: boolean }
+  ) => {
     setIsSaving(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -142,22 +163,35 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
         return
       }
 
-      const buildsArray = Array.from(builds)
+      const updateData: Record<string, any> = {
+        user_id: user.id,
+        updated_at: new Date().toISOString()
+      }
+
+      if (builds) {
+        updateData.completed_builds = Array.from(builds)
+      }
+      if (checks) {
+        updateData.completion_checks = checks
+      }
+      if (preferences?.viewMode) {
+        updateData.view_mode = preferences.viewMode
+      }
+      if (preferences?.hasSeenIntro !== undefined) {
+        updateData.has_seen_intro = preferences.hasSeenIntro
+      }
 
       // Upsert (insert or update)
       const { error } = await supabase
         .from('roadmap_progress')
-        .upsert({
-          user_id: user.id,
-          completed_builds: buildsArray
-        }, {
+        .upsert(updateData, {
           onConflict: 'user_id'
         })
 
       if (error) {
         console.error('Error saving roadmap progress:', error)
       } else {
-        console.log('✅ Saved roadmap progress:', buildsArray.length, 'builds')
+        console.log('✅ Saved roadmap progress')
       }
     } catch (error) {
       console.error('Error in saveProgress:', error)
@@ -165,6 +199,35 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
       setIsSaving(false)
     }
   }
+
+  // Save completion checks for a specific build
+  const saveCompletionChecks = useCallback((buildName: string, answers: Record<string, boolean>) => {
+    setCompletionChecks(prev => {
+      const newChecks = { ...prev, [buildName]: answers }
+      saveProgress(undefined, newChecks)
+      return newChecks
+    })
+  }, [])
+
+  // Get completion checks for a build
+  const getCompletionChecks = useCallback((buildName: string): Record<string, boolean> => {
+    return completionChecks[buildName] || {}
+  }, [completionChecks])
+
+  // Toggle view mode
+  const toggleViewMode = useCallback(() => {
+    setViewMode(prev => {
+      const newMode = prev === 'full' ? 'focus' : 'full'
+      saveProgress(undefined, undefined, { viewMode: newMode })
+      return newMode
+    })
+  }, [])
+
+  // Mark intro as seen
+  const dismissIntro = useCallback(() => {
+    setHasSeenIntro(true)
+    saveProgress(undefined, undefined, { hasSeenIntro: true })
+  }, [])
 
   // Toggle a build's completion status
   const toggleBuild = useCallback((buildName: string) => {
@@ -258,7 +321,7 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
     isComplete,
     getStats,
 
-    // New stage-related
+    // Stage-related
     businessId,
     currentStageId,
     currentStageInfo,
@@ -268,5 +331,16 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
     getStageStats,
     isStageRelevant,
     dismissStageChange,
+
+    // Completion checks (saved to DB)
+    completionChecks,
+    saveCompletionChecks,
+    getCompletionChecks,
+
+    // View preferences
+    viewMode,
+    toggleViewMode,
+    hasSeenIntro,
+    dismissIntro,
   }
 }
