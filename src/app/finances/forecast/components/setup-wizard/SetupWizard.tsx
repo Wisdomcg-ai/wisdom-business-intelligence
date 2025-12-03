@@ -43,6 +43,16 @@ interface SetupWizardProps {
     cogsPercentage: number
     teamMembers: any[]
     opexCategories: any[]
+    fiveWaysData?: {
+      leads: { current: number; target: number }
+      conversionRate: { current: number; target: number }
+      transactions: { current: number; target: number }
+      avgSaleValue: { current: number; target: number }
+      margin: { current: number; target: number }
+      calculatedRevenue: number
+      calculatedGrossProfit: number
+      industryId?: string
+    }
   }) => Promise<void>
 }
 
@@ -171,6 +181,18 @@ export default function SetupWizard({
   const handleGenerate = useCallback(async () => {
     setIsGenerating(true)
     try {
+      // Prepare 5 Ways data for saving
+      const fiveWaysForSave = wizardData.fiveWaysData ? {
+        leads: { current: wizardData.fiveWaysData.leads.current, target: wizardData.fiveWaysData.leads.target },
+        conversionRate: { current: wizardData.fiveWaysData.conversionRate.current, target: wizardData.fiveWaysData.conversionRate.target },
+        transactions: { current: wizardData.fiveWaysData.transactions.current, target: wizardData.fiveWaysData.transactions.target },
+        avgSaleValue: { current: wizardData.fiveWaysData.avgSaleValue.current, target: wizardData.fiveWaysData.avgSaleValue.target },
+        margin: { current: wizardData.fiveWaysData.margin.current, target: wizardData.fiveWaysData.margin.target },
+        calculatedRevenue: wizardData.fiveWaysData.calculatedRevenue,
+        calculatedGrossProfit: wizardData.fiveWaysData.calculatedGrossProfit,
+        industryId: wizardData.industryId
+      } : undefined
+
       await onGenerateForecast({
         revenueGoal: wizardData.revenueGoal,
         grossProfitGoal: wizardData.grossProfitGoal,
@@ -178,7 +200,8 @@ export default function SetupWizard({
         distributionMethod: wizardData.distributionMethod,
         cogsPercentage: wizardData.cogsPercentage / 100,
         teamMembers: wizardData.teamMembers,
-        opexCategories: wizardData.opexCategories
+        opexCategories: wizardData.opexCategories,
+        fiveWaysData: fiveWaysForSave
       })
       onClose()
     } catch (error) {

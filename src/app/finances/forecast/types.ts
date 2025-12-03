@@ -171,6 +171,18 @@ export interface FinancialForecast {
   opex_variable_percentage?: number // e.g., 0.05 = 5% of revenue
   opex_other?: number // Annual other/seasonal costs
 
+  // 5 Ways / Business Engines data
+  five_ways_data?: {
+    leads: { current: number; target: number }
+    conversionRate: { current: number; target: number }
+    transactions: { current: number; target: number }
+    avgSaleValue: { current: number; target: number }
+    margin: { current: number; target: number }
+    calculatedRevenue: number
+    calculatedGrossProfit: number
+    industryId?: string
+  }
+
   // Payroll settings
   payroll_frequency?: PayrollFrequency // Default: 'fortnightly'
   pay_day?: PayDay // Day of week for pay runs (only for weekly/fortnightly)

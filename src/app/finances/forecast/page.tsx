@@ -530,6 +530,16 @@ export default function FinancialForecastPage() {
     cogsPercentage: number
     teamMembers: any[]
     opexCategories: any[]
+    fiveWaysData?: {
+      leads: { current: number; target: number }
+      conversionRate: { current: number; target: number }
+      transactions: { current: number; target: number }
+      avgSaleValue: { current: number; target: number }
+      margin: { current: number; target: number }
+      calculatedRevenue: number
+      calculatedGrossProfit: number
+      industryId?: string
+    }
   }) => {
     if (!forecast?.id) return
 
@@ -545,6 +555,7 @@ export default function FinancialForecastPage() {
           revenue_distribution_method: data.distributionMethod,
           cogs_percentage: data.cogsPercentage,
           goal_source: 'manual',
+          five_ways_data: data.fiveWaysData || null,
           updated_at: new Date().toISOString()
         })
         .eq('id', forecast.id)
