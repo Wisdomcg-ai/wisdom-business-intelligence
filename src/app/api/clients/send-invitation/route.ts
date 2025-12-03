@@ -55,29 +55,24 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    // Get the client user's email and name from auth
-    const { data: ownerData, error: ownerError } = await supabase
+    // Get the client user's email and name
+    // First try custom users table, then fall back to Supabase Auth admin API
+    let clientEmail: string
+    let clientName: string
+
+    const { data: ownerData } = await supabase
       .from('users')
       .select('email, first_name, last_name')
       .eq('id', business.owner_id)
-      .single()
+      .maybeSingle()
 
-    if (ownerError || !ownerData) {
-      // Try to get from user_roles
-      const { data: userRoleData } = await supabase
-        .from('user_roles')
-        .select('user_id')
-        .eq('business_id', businessId)
-        .eq('role', 'owner')
-        .single()
-
-      if (!userRoleData) {
-        return NextResponse.json({ error: 'Could not find client user' }, { status: 404 })
-      }
-
-      // Get user info via auth admin API
+    if (ownerData?.email) {
+      clientEmail = ownerData.email
+      clientName = ownerData.first_name || ownerData.email.split('@')[0] || 'there'
+    } else {
+      // Fall back to Supabase Auth admin API
       const authResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${userRoleData.user_id}`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${business.owner_id}`,
         {
           headers: {
             'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
@@ -87,66 +82,29 @@ export async function POST(request: Request) {
       )
 
       if (!authResponse.ok) {
-        return NextResponse.json({ error: 'Could not retrieve user information' }, { status: 500 })
+        console.error('[Send Invitation] Auth API error:', authResponse.status, await authResponse.text())
+        return NextResponse.json({ error: 'Could not find client user. Owner ID may be invalid.' }, { status: 404 })
       }
 
       const authUser = await authResponse.json()
-
-      // Get coach name
-      const coachName = user.user_metadata?.first_name && user.user_metadata?.last_name
-        ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
-        : user.email?.split('@')[0] || 'Your Coach'
-
-      const loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
-      const clientName = authUser.user_metadata?.first_name || authUser.email?.split('@')[0] || 'there'
-
-      // Send the invitation email
-      const emailResult = await sendClientInvitation({
-        to: authUser.email,
-        clientName,
-        coachName,
-        businessName: business.business_name,
-        loginUrl: `${loginUrl}/login`,
-        tempPassword: business.temp_password
-      })
-
-      if (!emailResult.success) {
-        console.error('[Send Invitation] Failed to send email:', emailResult.error)
-        return NextResponse.json({
-          error: `Failed to send invitation email: ${emailResult.error}`
-        }, { status: 500 })
-      }
-
-      // Update business to mark invitation as sent and clear temp password
-      await supabase
-        .from('businesses')
-        .update({
-          invitation_sent: true,
-          invitation_sent_at: new Date().toISOString(),
-          temp_password: null
-        })
-        .eq('id', businessId)
-
-      console.log('[Send Invitation] Email sent successfully:', emailResult.id)
-
-      return NextResponse.json({
-        success: true,
-        message: 'Invitation email sent successfully',
-        emailId: emailResult.id
-      })
+      clientEmail = authUser.email
+      clientName = authUser.user_metadata?.first_name || authUser.email?.split('@')[0] || 'there'
     }
 
-    // We have ownerData - use it
+    if (!clientEmail) {
+      return NextResponse.json({ error: 'Could not determine client email address' }, { status: 404 })
+    }
+
+    // Get coach name
     const coachName = user.user_metadata?.first_name && user.user_metadata?.last_name
       ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
       : user.email?.split('@')[0] || 'Your Coach'
 
     const loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
-    const clientName = ownerData.first_name || ownerData.email?.split('@')[0] || 'there'
 
     // Send the invitation email
     const emailResult = await sendClientInvitation({
-      to: ownerData.email,
+      to: clientEmail,
       clientName,
       coachName,
       businessName: business.business_name,
