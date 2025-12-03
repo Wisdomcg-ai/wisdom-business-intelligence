@@ -1,16 +1,15 @@
 'use client'
 
-import { Settings, TrendingUp, Users, Clock } from 'lucide-react'
+import { TrendingUp, Users, Clock } from 'lucide-react'
 
-export type ForecastTab = 'assumptions' | 'pl' | 'payroll' | 'versions'
+export type ForecastTab = 'pl' | 'payroll' | 'versions'
 
 interface ForecastTabsProps {
   activeTab: ForecastTab
   onTabChange: (tab: ForecastTab) => void
 }
 
-const tabs: { id: ForecastTab; label: string; icon: typeof Settings }[] = [
-  { id: 'assumptions', label: 'Goals & Assumptions', icon: Settings },
+const tabs: { id: ForecastTab; label: string; icon: typeof TrendingUp }[] = [
   { id: 'pl', label: 'P&L Forecast', icon: TrendingUp },
   { id: 'payroll', label: 'Payroll & Staff', icon: Users },
   { id: 'versions', label: 'Versions', icon: Clock }

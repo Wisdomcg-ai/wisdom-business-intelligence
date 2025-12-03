@@ -13,7 +13,6 @@ import { ForecastingEngine } from '@/app/finances/forecast/services/forecasting-
 import type { FinancialForecast, PLLine, ForecastEmployee, XeroConnection, DistributionMethod, ForecastMethod } from '@/app/finances/forecast/types'
 import PLForecastTable from '@/app/finances/forecast/components/PLForecastTable'
 import PayrollTable from '@/app/finances/forecast/components/PayrollTable'
-import ForecastWizard from '@/app/finances/forecast/components/ForecastWizard'
 import CompletenessChecker from '@/app/finances/forecast/components/CompletenessChecker'
 import ExportControls from '@/app/finances/forecast/components/ExportControls'
 import { LoadingState } from '@/app/finances/forecast/components/LoadingState'
@@ -50,11 +49,11 @@ export default function CoachForecastPage() {
   const [activeTab, setActiveTab] = useState<ForecastTab>(() => {
     if (typeof window !== 'undefined') {
       const savedTab = localStorage.getItem('forecast-active-tab')
-      if (savedTab && ['assumptions', 'pl', 'payroll', 'versions'].includes(savedTab)) {
+      if (savedTab && ['pl', 'payroll', 'versions'].includes(savedTab)) {
         return savedTab as ForecastTab
       }
     }
-    return 'assumptions'
+    return 'pl'
   })
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -610,17 +609,6 @@ export default function CoachForecastPage() {
           <ForecastTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
           {/* Content */}
-          {activeTab === 'assumptions' && (
-            <ForecastWizard
-              forecast={forecast}
-              plLines={plLines}
-              onSave={handleSaveAssumptions}
-              onImportFromAnnualPlan={handleImportGoalsFromAnnualPlan}
-              onApplyBulkOpExIncrease={handleBulkOpExIncrease}
-              isSaving={isSaving}
-            />
-          )}
-
           {activeTab === 'pl' && (
             <PLForecastTable
               forecast={forecast}

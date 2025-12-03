@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
-import { Loader2, Save } from 'lucide-react'
+import { Loader2, Save, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import ForecastService from './services/forecast-service'
 import './forecast-styles.css'
@@ -12,7 +12,7 @@ import { ForecastingEngine } from './services/forecasting-engine'
 import type { FinancialForecast, PLLine, ForecastEmployee, XeroConnection, DistributionMethod, ForecastMethod } from './types'
 import PLForecastTable from './components/PLForecastTable'
 import PayrollTable from './components/PayrollTable'
-import ForecastWizard from './components/ForecastWizard'
+import { SetupWizard } from './components/setup-wizard'
 import CompletenessChecker from './components/CompletenessChecker'
 import ExportControls from './components/ExportControls'
 import { LoadingState } from './components/LoadingState'
@@ -47,16 +47,19 @@ export default function FinancialForecastPage() {
     // Remember last active tab from localStorage
     if (typeof window !== 'undefined') {
       const savedTab = localStorage.getItem('forecast-active-tab')
-      if (savedTab && ['assumptions', 'pl', 'payroll', 'versions'].includes(savedTab)) {
+      if (savedTab && ['pl', 'payroll', 'versions'].includes(savedTab)) {
         return savedTab as ForecastTab
       }
     }
-    return 'assumptions'
+    return 'pl'
   })
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [showCSVImport, setShowCSVImport] = useState(false)
+  const [showSetupWizard, setShowSetupWizard] = useState(false)
+  const [skipWelcome, setSkipWelcome] = useState(false)
+  const [businessIndustry, setBusinessIndustry] = useState<string | undefined>()
 
   // Xero sync hook
   const {
@@ -218,6 +221,17 @@ export default function FinancialForecastPage() {
       // Load Xero connection
       const xeroConn = await ForecastService.getXeroConnection(bizId)
       setXeroConnection(xeroConn)
+
+      // Load business profile for industry
+      const { data: businessProfile } = await supabase
+        .from('business_profiles')
+        .select('industry')
+        .eq('business_id', bizId)
+        .maybeSingle()
+
+      if (businessProfile?.industry) {
+        setBusinessIndustry(businessProfile.industry)
+      }
 
       setIsLoading(false)
 
@@ -507,6 +521,89 @@ export default function FinancialForecastPage() {
     setIsSaving(false)
   }
 
+  // Handle generate from new setup wizard
+  const handleGenerateFromSetupWizard = async (data: {
+    revenueGoal: number
+    grossProfitGoal: number
+    netProfitGoal: number
+    distributionMethod: DistributionMethod
+    cogsPercentage: number
+    teamMembers: any[]
+    opexCategories: any[]
+  }) => {
+    if (!forecast?.id) return
+
+    setIsSaving(true)
+    try {
+      // 1. Save assumptions to database
+      const { error: saveError } = await supabase
+        .from('financial_forecasts')
+        .update({
+          revenue_goal: data.revenueGoal,
+          gross_profit_goal: data.grossProfitGoal,
+          net_profit_goal: data.netProfitGoal,
+          revenue_distribution_method: data.distributionMethod,
+          cogs_percentage: data.cogsPercentage,
+          goal_source: 'manual',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', forecast.id)
+
+      if (saveError) {
+        console.error('[Forecast] Error saving assumptions:', saveError)
+        toast.error('Error saving assumptions: ' + saveError.message)
+        setIsSaving(false)
+        return
+      }
+
+      // Update local forecast state
+      const updatedForecast: FinancialForecast = {
+        ...forecast,
+        revenue_goal: data.revenueGoal,
+        gross_profit_goal: data.grossProfitGoal,
+        net_profit_goal: data.netProfitGoal,
+        revenue_distribution_method: data.distributionMethod,
+        cogs_percentage: data.cogsPercentage,
+        goal_source: 'manual' as const
+      }
+      setForecast(updatedForecast)
+
+      // 2. Calculate OpEx budget from team wages and categories
+      const opexBudget = data.grossProfitGoal - data.netProfitGoal
+
+      console.log('[Forecast] Generating forecast from setup wizard...')
+
+      // 3. Generate forecast P&L lines
+      const { lines } = await ForecastGenerator.generateForecast({
+        forecast: updatedForecast,
+        revenueGoal: data.revenueGoal,
+        cogsPercentage: data.cogsPercentage,
+        opexBudget,
+        distributionMethod: data.distributionMethod,
+        existingLines: plLines
+      })
+
+      console.log('[Forecast] Generated lines:', lines.length)
+
+      // 4. Save generated P&L lines
+      const saveResult = await ForecastService.savePLLines(forecast.id, lines)
+
+      if (saveResult.success) {
+        setPlLines(lines)
+        console.log('[Forecast] Forecast generated and saved successfully')
+        toast.success('Forecast generated! Your financial plan is ready.')
+        setActiveTab('pl')
+      } else {
+        console.error('[Forecast] Error saving generated lines:', saveResult.error)
+        toast.error('Error saving forecast: ' + saveResult.error)
+      }
+    } catch (err) {
+      console.error('[Forecast] Error:', err)
+      toast.error('Error generating forecast')
+    }
+    setIsSaving(false)
+  }
+
   if (!mounted || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -555,6 +652,91 @@ export default function FinancialForecastPage() {
     )
   }
 
+  // Check if this is a new/empty forecast (no forecast values set)
+  const isNewForecast = plLines.length === 0 || plLines.every(line => {
+    const forecastMonths = Object.keys(line.forecast_months || {})
+    return forecastMonths.length === 0 || forecastMonths.every(key => !line.forecast_months[key])
+  })
+
+  // Show welcome screen for new forecasts
+  if (isNewForecast && !showSetupWizard && !skipWelcome) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-8">
+        <div className="max-w-2xl mx-auto pt-12">
+          <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
+            <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Sparkles className="w-8 h-8 text-teal-600" />
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-3">
+              Build Your FY{forecast.fiscal_year} Forecast
+            </h1>
+            <p className="text-gray-600 mb-8 max-w-md mx-auto">
+              Let's create a financial forecast that helps you understand how your assumptions drive your numbers.
+            </p>
+
+            <div className="space-y-4">
+              <button
+                onClick={() => setShowSetupWizard(true)}
+                className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-colors font-semibold text-lg"
+              >
+                <Sparkles className="w-5 h-5" />
+                Use Setup Wizard
+                <span className="text-teal-200 text-sm font-normal">(Recommended)</span>
+              </button>
+
+              <button
+                onClick={() => setSkipWelcome(true)}
+                className="w-full px-6 py-3 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors font-medium"
+              >
+                Start from scratch
+              </button>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-gray-100">
+              <p className="text-sm text-gray-500">
+                The Setup Wizard will guide you through setting goals, analysing prior year data, planning your team, and building revenue drivers.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Setup Wizard Modal */}
+        <SetupWizard
+          isOpen={showSetupWizard}
+          onClose={() => setShowSetupWizard(false)}
+          forecast={forecast}
+          plLines={plLines}
+          xeroConnection={xeroConnection}
+          businessIndustry={businessIndustry}
+          onImportFromAnnualPlan={handleImportGoalsFromAnnualPlan}
+          onOpenCSVImport={() => {
+            setShowSetupWizard(false)
+            setShowCSVImport(true)
+          }}
+          onConnectXero={() => {
+            setShowSetupWizard(false)
+            handleConnectXero()
+          }}
+          onGenerateForecast={handleGenerateFromSetupWizard}
+        />
+
+        {/* CSV Import */}
+        {showCSVImport && forecast && (
+          <CSVImportWizard
+            isOpen={showCSVImport}
+            onClose={() => setShowCSVImport(false)}
+            forecast={forecast}
+            onImportComplete={() => {
+              setShowCSVImport(false)
+              // Reload data after import
+              loadInitialData()
+            }}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="min-h-screen bg-slate-50 p-8">
@@ -581,6 +763,15 @@ export default function FinancialForecastPage() {
               <p className="text-gray-600">{forecast.name}</p>
             </div>
             <div className="flex items-center space-x-3">
+              {/* Setup Wizard Button */}
+              <button
+                onClick={() => setShowSetupWizard(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-all shadow-sm"
+              >
+                <Sparkles className="w-4 h-4" />
+                Setup Wizard
+              </button>
+
               {/* Save Button */}
               <button
                 onClick={() => handleSavePLLines(plLines)}
@@ -647,17 +838,6 @@ export default function FinancialForecastPage() {
         <ForecastTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
         {/* Content */}
-        {activeTab === 'assumptions' && (
-          <ForecastWizard
-            forecast={forecast}
-            plLines={plLines}
-            onSave={handleSaveAssumptions}
-            onImportFromAnnualPlan={handleImportGoalsFromAnnualPlan}
-            onApplyBulkOpExIncrease={handleBulkOpExIncrease}
-            isSaving={isSaving}
-          />
-        )}
-
         {activeTab === 'pl' && (
           <PLForecastTable
             forecast={forecast}
@@ -732,6 +912,28 @@ export default function FinancialForecastPage() {
           currentVersionName={forecast.name}
           onSaveAsNew={handleSaveAsNewVersion}
           onOverwrite={handleOverwriteVersion}
+        />
+      )}
+
+      {/* New Setup Wizard */}
+      {forecast && (
+        <SetupWizard
+          isOpen={showSetupWizard}
+          onClose={() => setShowSetupWizard(false)}
+          forecast={forecast}
+          plLines={plLines}
+          xeroConnection={xeroConnection}
+          businessIndustry={businessIndustry}
+          onImportFromAnnualPlan={handleImportGoalsFromAnnualPlan}
+          onOpenCSVImport={() => {
+            setShowSetupWizard(false)
+            setShowCSVImport(true)
+          }}
+          onConnectXero={() => {
+            setShowSetupWizard(false)
+            handleConnectXero()
+          }}
+          onGenerateForecast={handleGenerateFromSetupWizard}
         />
       )}
 
