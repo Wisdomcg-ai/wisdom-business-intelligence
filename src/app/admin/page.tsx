@@ -42,6 +42,8 @@ interface Business {
   status: string
   created_at: string
   onboarding_completed: boolean
+  invitation_sent: boolean | null
+  temp_password: string | null
 }
 
 interface Coach {
@@ -101,6 +103,7 @@ export default function AdminDashboard() {
   const [editCoachError, setEditCoachError] = useState<string | null>(null)
   const [deletingClient, setDeletingClient] = useState<string | null>(null)
   const [togglingStatus, setTogglingStatus] = useState<string | null>(null)
+  const [sendingInvitation, setSendingInvitation] = useState<string | null>(null)
 
   // Users tab state
   const [allUsers, setAllUsers] = useState<User[]>([])
@@ -429,6 +432,37 @@ export default function AdminDashboard() {
       alert(error instanceof Error ? error.message : 'Failed to delete client')
     } finally {
       setDeletingClient(null)
+    }
+  }
+
+  async function sendInvitation(clientId: string, clientName: string) {
+    setSendingInvitation(clientId)
+
+    try {
+      const response = await fetch('/api/clients/send-invitation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessId: clientId })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send invitation')
+      }
+
+      alert(`Invitation email sent to ${clientName}!`)
+
+      // Update local state
+      setClients(prev => prev.map(c =>
+        c.id === clientId ? { ...c, invitation_sent: true, temp_password: null } : c
+      ))
+
+    } catch (error) {
+      console.error('Error sending invitation:', error)
+      alert(error instanceof Error ? error.message : 'Failed to send invitation')
+    } finally {
+      setSendingInvitation(null)
     }
   }
 
@@ -792,6 +826,21 @@ export default function AdminDashboard() {
                             <ToggleLeft className="w-4 h-4" />
                           )}
                         </button>
+                        {/* Send Invitation - only show if invitation not sent and has temp password */}
+                        {!client.invitation_sent && client.temp_password && (
+                          <button
+                            onClick={() => sendInvitation(client.id, client.business_name)}
+                            disabled={sendingInvitation === client.id}
+                            className="text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                            title="Send Invitation Email"
+                          >
+                            {sendingInvitation === client.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Send className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
                         <button
                           onClick={() => deleteClient(client.id, client.business_name)}
                           disabled={deletingClient === client.id}
