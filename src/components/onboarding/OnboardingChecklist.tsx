@@ -61,12 +61,15 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       if (!user) return
 
       // First get the user's business to find the business_id and name
-      const { data: business, error: businessError } = await supabase
+      // Use limit(1) instead of maybeSingle() to handle users with multiple businesses
+      const { data: businesses, error: businessError } = await supabase
         .from('businesses')
         .select('id, name')
         .eq('owner_id', user.id)
-        .maybeSingle()
+        .order('created_at', { ascending: true })
+        .limit(1)
 
+      const business = businesses?.[0]
       console.log('[Onboarding] Business lookup:', { businessId: business?.id, businessName: business?.name, error: businessError?.message })
 
       // Check all completion statuses in parallel
