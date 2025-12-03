@@ -795,18 +795,11 @@ export default function AdminDashboard() {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end gap-2">
                         <Link
-                          href={`/admin/clients/${client.id}`}
+                          href={`/coach/clients/${client.id}`}
                           className="text-teal-600 hover:text-teal-700"
-                          title="View"
+                          title="View Client File"
                         >
                           <Eye className="w-4 h-4" />
-                        </Link>
-                        <Link
-                          href={`/admin/clients/${client.id}/edit`}
-                          className="text-gray-600 hover:text-gray-700"
-                          title="Edit"
-                        >
-                          <Edit className="w-4 h-4" />
                         </Link>
                         <button
                           onClick={() => toggleClientStatus(client.id, client.status)}
