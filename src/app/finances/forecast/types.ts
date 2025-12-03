@@ -183,6 +183,27 @@ export interface FinancialForecast {
     industryId?: string
   }
 
+  // Industry selection for 5 Ways
+  industry_id?: string
+
+  // Wizard OpEx categories from Step 4
+  wizard_opex_categories?: {
+    id: string
+    name: string
+    priorYearAmount: number
+    forecastAmount: number
+    method: string
+    methodValue?: number
+    notes?: string
+  }[]
+
+  // Wizard team summary from Step 3
+  wizard_team_summary?: {
+    totalWagesCOGS: number
+    totalWagesOpEx: number
+    teamCount: number
+  }
+
   // Payroll settings
   payroll_frequency?: PayrollFrequency // Default: 'fortnightly'
   pay_day?: PayDay // Day of week for pay runs (only for weekly/fortnightly)

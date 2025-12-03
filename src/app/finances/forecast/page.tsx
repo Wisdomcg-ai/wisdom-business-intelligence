@@ -545,7 +545,15 @@ export default function FinancialForecastPage() {
 
     setIsSaving(true)
     try {
-      // 1. Save assumptions to database
+      // Calculate team wage totals
+      const totalWagesCOGS = data.teamMembers
+        .filter((m: any) => m.classification === 'cogs')
+        .reduce((sum: number, m: any) => sum + (m.annualSalary || 0), 0)
+      const totalWagesOpEx = data.teamMembers
+        .filter((m: any) => m.classification === 'opex')
+        .reduce((sum: number, m: any) => sum + (m.annualSalary || 0), 0)
+
+      // 1. Save all wizard data to financial_forecasts table
       const { error: saveError } = await supabase
         .from('financial_forecasts')
         .update({
@@ -556,6 +564,13 @@ export default function FinancialForecastPage() {
           cogs_percentage: data.cogsPercentage,
           goal_source: 'manual',
           five_ways_data: data.fiveWaysData || null,
+          industry_id: data.fiveWaysData?.industryId || null,
+          wizard_opex_categories: data.opexCategories.length > 0 ? data.opexCategories : null,
+          wizard_team_summary: {
+            totalWagesCOGS,
+            totalWagesOpEx,
+            teamCount: data.teamMembers.length
+          },
           updated_at: new Date().toISOString()
         })
         .eq('id', forecast.id)
@@ -567,6 +582,41 @@ export default function FinancialForecastPage() {
         return
       }
 
+      // 2. Save team members to forecast_employees table
+      if (data.teamMembers.length > 0) {
+        // First delete existing wizard-created employees
+        await supabase
+          .from('forecast_employees')
+          .delete()
+          .eq('forecast_id', forecast.id)
+          .eq('is_planned_hire', true)
+
+        // Insert new team members
+        const employeesToInsert = data.teamMembers.map((member: any) => ({
+          forecast_id: forecast.id,
+          employee_name: member.name,
+          position: member.position,
+          classification: member.classification,
+          annual_salary: member.annualSalary,
+          start_date: member.startMonth ? `${member.startMonth}-01` : null,
+          end_date: member.endMonth ? `${member.endMonth}-01` : null,
+          is_planned_hire: member.isNew || true,
+          notes: member.notes || null,
+          is_active: true
+        }))
+
+        const { error: employeeError } = await supabase
+          .from('forecast_employees')
+          .insert(employeesToInsert)
+
+        if (employeeError) {
+          console.error('[Forecast] Error saving team members:', employeeError)
+          // Don't fail the whole operation, just log it
+        } else {
+          console.log('[Forecast] Saved', employeesToInsert.length, 'team members')
+        }
+      }
+
       // Update local forecast state
       const updatedForecast: FinancialForecast = {
         ...forecast,
@@ -575,16 +625,19 @@ export default function FinancialForecastPage() {
         net_profit_goal: data.netProfitGoal,
         revenue_distribution_method: data.distributionMethod,
         cogs_percentage: data.cogsPercentage,
-        goal_source: 'manual' as const
+        goal_source: 'manual' as const,
+        industry_id: data.fiveWaysData?.industryId,
+        wizard_opex_categories: data.opexCategories,
+        wizard_team_summary: { totalWagesCOGS, totalWagesOpEx, teamCount: data.teamMembers.length }
       }
       setForecast(updatedForecast)
 
-      // 2. Calculate OpEx budget from team wages and categories
+      // 3. Calculate OpEx budget from team wages and categories
       const opexBudget = data.grossProfitGoal - data.netProfitGoal
 
       console.log('[Forecast] Generating forecast from setup wizard...')
 
-      // 3. Generate forecast P&L lines
+      // 4. Generate forecast P&L lines
       const { lines } = await ForecastGenerator.generateForecast({
         forecast: updatedForecast,
         revenueGoal: data.revenueGoal,
@@ -596,7 +649,7 @@ export default function FinancialForecastPage() {
 
       console.log('[Forecast] Generated lines:', lines.length)
 
-      // 4. Save generated P&L lines
+      // 5. Save generated P&L lines
       const saveResult = await ForecastService.savePLLines(forecast.id, lines)
 
       if (saveResult.success) {
