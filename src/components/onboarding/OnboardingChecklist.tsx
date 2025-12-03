@@ -130,6 +130,11 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
 
       // Profile: Check if required fields are filled (simplified version of calculateCompletion)
       let profile = false
+      console.log('[Onboarding] Profile query result:', {
+        data: profileResult.data,
+        error: profileResult.error,
+        userId: user.id
+      })
       const profileData = profileResult.data?.[0]
       if (profileData) {
         const p = profileData
