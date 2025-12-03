@@ -72,18 +72,13 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       // Check all completion statuses in parallel
       const [profileResult, assessmentResult, visionResult, swotResult, financialGoalsResult, initiativesResult, operationalActivitiesResult] = await Promise.all([
         // 1. Business Profile - get full profile to calculate completion
-        // Try by business_id first (preferred), fallback to user_id
-        business?.id
-          ? supabase
-              .from('business_profiles')
-              .select('industry, annual_revenue, employee_count, years_in_operation, owner_info')
-              .eq('business_id', business.id)
-              .maybeSingle()
-          : supabase
-              .from('business_profiles')
-              .select('industry, annual_revenue, employee_count, years_in_operation, owner_info')
-              .eq('user_id', user.id)
-              .maybeSingle(),
+        // Always query by user_id for consistency with BusinessProfileService
+        // This ensures RLS policies work correctly (user_id = auth.uid())
+        supabase
+          .from('business_profiles')
+          .select('industry, annual_revenue, employee_count, years_in_operation, owner_info')
+          .eq('user_id', user.id)
+          .maybeSingle(),
 
         // 2. Assessment
         supabase
