@@ -272,7 +272,9 @@ export class BusinessProfileService {
       if (data.years_in_operation !== undefined) profileData.years_in_operation = data.years_in_operation
       if (data.employee_count !== undefined) profileData.employee_count = data.employee_count
       if (data.annual_revenue !== undefined) profileData.annual_revenue = data.annual_revenue
+      if (data.gross_profit !== undefined) profileData.gross_profit = data.gross_profit
       if (data.gross_profit_margin !== undefined) profileData.gross_profit_margin = data.gross_profit_margin
+      if (data.net_profit !== undefined) profileData.net_profit = data.net_profit
       if (data.net_profit_margin !== undefined) profileData.net_profit_margin = data.net_profit_margin
       if (data.cash_in_bank !== undefined) profileData.cash_in_bank = data.cash_in_bank
       if (data.owner_info !== undefined) profileData.owner_info = data.owner_info

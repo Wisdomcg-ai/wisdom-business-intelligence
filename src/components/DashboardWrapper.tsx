@@ -100,7 +100,7 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
         .from('business_profiles')
         .select('*')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (profile) {
         setBusinessData(prev => ({

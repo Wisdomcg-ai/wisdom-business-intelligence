@@ -83,12 +83,12 @@ export default function ClientDashboardNew() {
         : user.email?.split('@')[0] || 'User'
       setUserName(name)
 
-      // Get business info
+      // Get business info - use maybeSingle to avoid 406 errors for users without businesses
       const { data: businessUser } = await supabase
         .from('business_users')
         .select('business_id')
         .eq('user_id', user.id)
-        .single()
+        .maybeSingle()
 
       if (!businessUser) {
         setLoading(false)
@@ -102,7 +102,7 @@ export default function ClientDashboardNew() {
         .from('businesses')
         .select('business_name, assigned_coach_id')
         .eq('id', businessId)
-        .single()
+        .maybeSingle()
 
       if (business) {
         setBusinessName(business.business_name || 'My Business')
@@ -113,7 +113,7 @@ export default function ClientDashboardNew() {
             .from('users')
             .select('*')
             .eq('id', business.assigned_coach_id)
-            .single()
+            .maybeSingle()
 
           if (coachData) {
             setCoach({

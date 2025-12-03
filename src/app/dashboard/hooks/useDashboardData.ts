@@ -255,7 +255,7 @@ export function useDashboardData(): UseDashboardDataReturn {
       .from('business_profiles')
       .select('owner_info, key_roles')
       .eq('id', bId)
-      .single()
+      .maybeSingle()
 
     if (!profile) return map
 
@@ -281,7 +281,7 @@ export function useDashboardData(): UseDashboardDataReturn {
       .from('business_financial_goals')
       .select('revenue_year1, gross_profit_year1, net_profit_year1')
       .eq('business_id', bId)
-      .single()
+      .maybeSingle()
 
     if (error || !data) return null
 
@@ -299,7 +299,7 @@ export function useDashboardData(): UseDashboardDataReturn {
       .from('business_financial_goals')
       .select('quarterly_targets')
       .eq('business_id', bId)
-      .single()
+      .maybeSingle()
 
     if (error || !data?.quarterly_targets) return null
 
@@ -342,7 +342,7 @@ export function useDashboardData(): UseDashboardDataReturn {
       .eq('user_id', uId)
       .order('week_start_date', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (error || !data?.next_week_goals) return []
 
@@ -386,7 +386,7 @@ export function useDashboardData(): UseDashboardDataReturn {
           .from('business_profiles')
           .select('id')
           .eq('business_id', activeBusiness.id)
-          .single()
+          .maybeSingle()
 
         if (profile?.id) {
           bId = profile.id
@@ -395,13 +395,20 @@ export function useDashboardData(): UseDashboardDataReturn {
           bId = activeBusiness.id // Fallback
         }
       } else {
+        // Use maybeSingle() to avoid 406 errors for users without business profiles (e.g., coaches)
         const { data: profile } = await supabase
           .from('business_profiles')
           .select('id')
           .eq('user_id', user.id)
-          .single()
+          .maybeSingle()
 
-        bId = profile?.id || user.id
+        if (!profile?.id) {
+          // User has no business profile - likely a coach or admin viewing without context
+          console.log('[Dashboard] No business found for user')
+          setIsLoading(false)
+          return
+        }
+        bId = profile.id
       }
       setBusinessId(bId)
 
