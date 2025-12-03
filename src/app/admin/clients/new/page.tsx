@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, UserPlus, Loader2 } from 'lucide-react'
+import { ArrowLeft, UserPlus, Loader2, Mail, MailX } from 'lucide-react'
 
 interface ClientFormData {
   businessName: string
@@ -12,6 +12,7 @@ interface ClientFormData {
   email: string
   position: string
   accessLevel: 'full' | 'view_only' | 'limited'
+  sendInvitation: boolean
 }
 
 export default function NewClientPage() {
@@ -26,7 +27,8 @@ export default function NewClientPage() {
     lastName: '',
     email: '',
     position: 'Owner',
-    accessLevel: 'full'
+    accessLevel: 'full',
+    sendInvitation: true
   })
 
   const updateField = (field: keyof ClientFormData, value: any) => {
@@ -70,7 +72,9 @@ export default function NewClientPage() {
         email: data.user.email,
         password: data.user.temporaryPassword,
         name: `${formData.firstName} ${formData.lastName}`,
-        business: formData.businessName
+        business: formData.businessName,
+        emailSent: data.emailSent ? 'true' : 'false',
+        invitationDeferred: data.invitationDeferred ? 'true' : 'false'
       })
       router.push(`/admin/clients/success?${params.toString()}`)
 
@@ -210,13 +214,56 @@ export default function NewClientPage() {
               </select>
             </div>
 
+            {/* Send Invitation Toggle */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  onClick={() => updateField('sendInvitation', !formData.sendInvitation)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 ${
+                    formData.sendInvitation ? 'bg-teal-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      formData.sendInvitation ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    {formData.sendInvitation ? (
+                      <Mail className="w-4 h-4 text-teal-600" />
+                    ) : (
+                      <MailX className="w-4 h-4 text-gray-400" />
+                    )}
+                    <label className="text-sm font-medium text-gray-900">
+                      {formData.sendInvitation ? 'Send invitation email now' : 'Don\'t send invitation email'}
+                    </label>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {formData.sendInvitation
+                      ? 'The client will receive an email with their login credentials immediately.'
+                      : 'Account will be created but no email sent. You can send the invitation later from the client list.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Info Box */}
-            <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
-              <p className="text-sm font-medium text-teal-900 mb-2">What happens next:</p>
-              <ul className="text-sm text-teal-800 space-y-1">
+            <div className={`rounded-lg p-4 ${formData.sendInvitation ? 'bg-teal-50 border border-teal-200' : 'bg-amber-50 border border-amber-200'}`}>
+              <p className={`text-sm font-medium mb-2 ${formData.sendInvitation ? 'text-teal-900' : 'text-amber-900'}`}>What happens next:</p>
+              <ul className={`text-sm space-y-1 ${formData.sendInvitation ? 'text-teal-800' : 'text-amber-800'}`}>
                 <li>✓ Account created with temporary password</li>
                 <li>✓ Client can log in immediately</li>
-                <li>✓ Password will be shown after creation (share with client)</li>
+                {formData.sendInvitation ? (
+                  <li>✓ Client will receive email with login credentials</li>
+                ) : (
+                  <>
+                    <li>✓ Password will be shown after creation (copy it!)</li>
+                    <li>⚠ No email sent - you'll need to share credentials manually or send invitation later</li>
+                  </>
+                )}
               </ul>
             </div>
           </div>

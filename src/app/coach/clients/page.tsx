@@ -16,7 +16,10 @@ import {
   Loader2,
   X,
   UserCheck,
-  AlertCircle
+  AlertCircle,
+  Mail,
+  Send,
+  CheckCircle
 } from 'lucide-react'
 
 type ViewMode = 'grid' | 'list'
@@ -29,6 +32,13 @@ interface UnassignedClient {
   created_at: string
 }
 
+interface PendingInvitationClient {
+  id: string
+  business_name: string
+  invitation_sent: boolean
+  created_at: string
+}
+
 function ClientsListContent() {
   const searchParams = useSearchParams()
   const supabase = createClient()
@@ -36,7 +46,11 @@ function ClientsListContent() {
   const [loading, setLoading] = useState(true)
   const [clients, setClients] = useState<ClientCardData[]>([])
   const [unassignedClients, setUnassignedClients] = useState<UnassignedClient[]>([])
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitationClient[]>([])
   const [claimingId, setClaimingId] = useState<string | null>(null)
+  const [sendingInvitationId, setSendingInvitationId] = useState<string | null>(null)
+  const [invitationSuccess, setInvitationSuccess] = useState<string | null>(null)
+  const [invitationError, setInvitationError] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [searchQuery, setSearchQuery] = useState('')
@@ -93,6 +107,17 @@ function ClientsListContent() {
         .order('created_at', { ascending: false })
 
       setUnassignedClients(unassigned || [])
+
+      // Load clients with pending invitations (assigned to this coach)
+      const { data: pendingInvites } = await supabase
+        .from('businesses')
+        .select('id, business_name, invitation_sent, created_at')
+        .eq('assigned_coach_id', user.id)
+        .eq('invitation_sent', false)
+        .not('temp_password', 'is', null)
+        .order('created_at', { ascending: false })
+
+      setPendingInvitations(pendingInvites || [])
     } catch (error) {
       console.error('Error loading clients:', error)
     } finally {
@@ -117,6 +142,40 @@ function ClientsListContent() {
     }
 
     setClaimingId(null)
+  }
+
+  async function sendInvitation(businessId: string, businessName: string) {
+    setSendingInvitationId(businessId)
+    setInvitationError(null)
+    setInvitationSuccess(null)
+
+    try {
+      const response = await fetch('/api/clients/send-invitation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessId })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send invitation')
+      }
+
+      setInvitationSuccess(businessName)
+      // Reload to refresh the pending invitations list
+      await loadClients()
+
+      // Clear success message after 5 seconds
+      setTimeout(() => setInvitationSuccess(null), 5000)
+    } catch (error) {
+      console.error('Error sending invitation:', error)
+      setInvitationError(error instanceof Error ? error.message : 'Failed to send invitation')
+      // Clear error message after 5 seconds
+      setTimeout(() => setInvitationError(null), 5000)
+    } finally {
+      setSendingInvitationId(null)
+    }
   }
 
   // Get unique industries for filter
@@ -212,6 +271,71 @@ function ClientsListContent() {
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Invitations Alert */}
+      {pendingInvitations.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <Mail className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <h3 className="font-semibold text-blue-800">
+                {pendingInvitations.length} Pending Invitation{pendingInvitations.length > 1 ? 's' : ''}
+              </h3>
+              <p className="text-sm text-blue-700 mt-1">
+                These clients have accounts but haven&apos;t received their login credentials yet.
+              </p>
+              <div className="mt-3 space-y-2">
+                {pendingInvitations.map(client => (
+                  <div
+                    key={client.id}
+                    className="flex items-center justify-between bg-white rounded-lg px-4 py-3 border border-blue-200"
+                  >
+                    <div>
+                      <p className="font-medium text-gray-900">{client.business_name || 'Unnamed Business'}</p>
+                      <p className="text-sm text-gray-500">
+                        Added {new Date(client.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => sendInvitation(client.id, client.business_name)}
+                      disabled={sendingInvitationId === client.id}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    >
+                      {sendingInvitationId === client.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Send className="w-4 h-4" />
+                      )}
+                      Send Invitation
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invitation Success/Error Messages */}
+      {invitationSuccess && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <CheckCircle className="w-5 h-5 text-green-600" />
+            <p className="text-green-800">
+              Invitation email sent successfully to <strong>{invitationSuccess}</strong>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {invitationError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600" />
+            <p className="text-red-800">{invitationError}</p>
           </div>
         </div>
       )}

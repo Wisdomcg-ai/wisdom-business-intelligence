@@ -63,7 +63,8 @@ export async function POST(request: Request) {
       lastName,
       email,
       position,
-      accessLevel
+      accessLevel,
+      sendInvitation = true // New: default to true for backwards compatibility
     } = body
 
     // Validate required fields
@@ -162,7 +163,9 @@ export async function POST(request: Request) {
         business_name: businessName,
         assigned_coach_id: user.id, // Assign to current admin (who is also the coach)
         enabled_modules: permissions,
-        status: 'active'
+        status: 'active',
+        invitation_sent: false, // Track invitation status
+        temp_password: sendInvitation ? null : generatedPassword // Store password if not sending now
       })
       .select()
       .single()
@@ -237,27 +240,46 @@ export async function POST(request: Request) {
       console.error('Onboarding tracking error:', onboardingError)
     }
 
-    // STEP 7: Send invitation email to client
-    const coachName = user.user_metadata?.first_name && user.user_metadata?.last_name
-      ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
-      : user.email?.split('@')[0] || 'Your Coach'
+    // STEP 7: Send invitation email to client (if requested)
+    let emailSent = false
+    let emailError: string | undefined
 
-    const loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+    if (sendInvitation) {
+      const coachName = user.user_metadata?.first_name && user.user_metadata?.last_name
+        ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
+        : user.email?.split('@')[0] || 'Your Coach'
 
-    const emailResult = await sendClientInvitation({
-      to: email,
-      clientName: firstName,
-      coachName,
-      businessName,
-      loginUrl: `${loginUrl}/login`,
-      tempPassword: generatedPassword
-    })
+      const loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
 
-    if (!emailResult.success) {
-      console.error('Failed to send invitation email:', emailResult.error)
-      // Don't fail the request - client was created successfully
+      const emailResult = await sendClientInvitation({
+        to: email,
+        clientName: firstName,
+        coachName,
+        businessName,
+        loginUrl: `${loginUrl}/login`,
+        tempPassword: generatedPassword
+      })
+
+      emailSent = emailResult.success
+      emailError = emailResult.error
+
+      if (!emailResult.success) {
+        console.error('Failed to send invitation email:', emailResult.error)
+        // Don't fail the request - client was created successfully
+      } else {
+        console.log('[Admin Client Create] Invitation email sent:', emailResult.id)
+        // Update business record to mark invitation as sent
+        await supabase
+          .from('businesses')
+          .update({
+            invitation_sent: true,
+            invitation_sent_at: new Date().toISOString(),
+            temp_password: null // Clear stored password after sending
+          })
+          .eq('id', business.id)
+      }
     } else {
-      console.log('[Admin Client Create] Invitation email sent:', emailResult.id)
+      console.log('[Admin Client Create] Invitation deferred - credentials stored for later')
     }
 
     // Return success with password (only for admin to see)
@@ -271,8 +293,9 @@ export async function POST(request: Request) {
         email,
         temporaryPassword: generatedPassword // Return this so admin can manually send if needed
       },
-      emailSent: emailResult.success,
-      emailError: emailResult.success ? undefined : emailResult.error
+      emailSent,
+      invitationDeferred: !sendInvitation,
+      emailError
     })
 
   } catch (error) {

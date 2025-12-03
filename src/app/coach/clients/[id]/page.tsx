@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ClientFileTabs, type TabId } from '@/components/coach/ClientFileTabs'
 import { OverviewTab } from '@/components/coach/tabs/OverviewTab'
 import { ProfileTab } from '@/components/coach/tabs/ProfileTab'
+import { TeamTab } from '@/components/coach/tabs/TeamTab'
 import {
   ArrowLeft,
   Building2,
@@ -535,6 +536,13 @@ export default function ClientFilePage() {
             totalCustomers={business.total_customers || undefined}
             notes={business.notes || undefined}
             onSave={handleSaveProfile}
+          />
+        )}
+
+        {activeTab === 'team' && (
+          <TeamTab
+            clientId={clientId}
+            businessName={business.business_name}
           />
         )}
 

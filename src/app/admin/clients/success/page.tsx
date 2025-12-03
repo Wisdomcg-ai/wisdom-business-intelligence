@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { CheckCircle, Copy, Check, ArrowLeft, Mail } from 'lucide-react'
+import { CheckCircle, Copy, Check, ArrowLeft, Mail, AlertTriangle } from 'lucide-react'
 
 function ClientCreatedSuccessContent() {
   const searchParams = useSearchParams()
@@ -14,6 +14,8 @@ function ClientCreatedSuccessContent() {
   const password = searchParams?.get('password') || ''
   const name = searchParams?.get('name') || ''
   const business = searchParams?.get('business') || ''
+  const emailSent = searchParams?.get('emailSent') === 'true'
+  const invitationDeferred = searchParams?.get('invitationDeferred') === 'true'
 
   useEffect(() => {
     // Redirect if no credentials
@@ -83,6 +85,33 @@ For security, please change your password after your first login.
             </div>
           </div>
         </div>
+
+        {/* Email Status Notice */}
+        {invitationDeferred ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-semibold text-amber-900">Invitation Not Sent</h4>
+                <p className="text-sm text-amber-800 mt-1">
+                  No email was sent to the client. You must share the credentials below manually or send the invitation later from the client list.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : emailSent ? (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <Mail className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-semibold text-blue-900">Invitation Email Sent</h4>
+                <p className="text-sm text-blue-800 mt-1">
+                  An email with login credentials has been sent to {email}. The credentials below are also available if you need to share them another way.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {/* Login Credentials */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
