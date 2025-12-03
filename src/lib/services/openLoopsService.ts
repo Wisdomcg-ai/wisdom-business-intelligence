@@ -105,17 +105,17 @@ export async function getAllLoops(overrideUserId?: string) {
 }
 
 // Create a new open loop
-export async function createOpenLoop(input: CreateOpenLoopInput) {
+export async function createOpenLoop(input: CreateOpenLoopInput, overrideUserId?: string) {
   try {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    const userId = await getEffectiveUserId(overrideUserId);
+    if (!userId) throw new Error('Not authenticated');
 
     const { data, error } = await supabase
       .from('open_loops')
       .insert([
         {
-          user_id: user.id,
+          user_id: userId,
           ...input,
           archived: false
         }

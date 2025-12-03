@@ -118,17 +118,17 @@ export async function getSolvedIssues(overrideUserId?: string) {
 }
 
 // Create a new issue
-export async function createIssue(input: CreateIssueInput) {
+export async function createIssue(input: CreateIssueInput, overrideUserId?: string) {
   try {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    const userId = await getEffectiveUserId(overrideUserId);
+    if (!userId) throw new Error('Not authenticated');
 
     const { data, error } = await supabase
       .from('issues_list')
       .insert([
         {
-          user_id: user.id,
+          user_id: userId,
           ...input,
           archived: false
         }

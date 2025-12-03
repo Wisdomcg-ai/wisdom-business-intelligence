@@ -67,12 +67,14 @@ export default function OpenLoopsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    
+
     try {
+      // Pass ownerId when viewing as coach to create in client's account
+      const overrideUserId = activeBusiness?.ownerId;
       if (editingId) {
         await updateOpenLoop(editingId, formData);
       } else {
-        await createOpenLoop(formData);
+        await createOpenLoop(formData, overrideUserId);
       }
 
       setFormData({

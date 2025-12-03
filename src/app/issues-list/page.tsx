@@ -95,10 +95,12 @@ export default function IssuesListPage() {
     e.preventDefault();
 
     try {
+      // Pass ownerId when viewing as coach to create in client's account
+      const overrideUserId = activeBusiness?.ownerId;
       if (editingId) {
         await updateIssue(editingId, formData);
       } else {
-        await createIssue(formData);
+        await createIssue(formData, overrideUserId);
       }
 
       setFormData({
