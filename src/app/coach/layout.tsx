@@ -1,9 +1,9 @@
-import { CoachLayout } from '@/components/layouts/CoachLayout'
+import CoachLayoutNew from '@/components/layouts/CoachLayoutNew'
 
 export default function CoachRootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  return <CoachLayout>{children}</CoachLayout>
+  return <CoachLayoutNew>{children}</CoachLayoutNew>
 }

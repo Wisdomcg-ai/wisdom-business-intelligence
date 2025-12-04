@@ -98,8 +98,15 @@ export default function ClientFilePage() {
     unreadMessages: 0,
     activeGoals: 0,
     completedGoals: 0,
-    goalsProgress: 0
+    goalsProgress: 0,
+    healthScore: null as number | null
   })
+  const [recentActivity, setRecentActivity] = useState<Array<{
+    id: string
+    type: 'session' | 'action' | 'message' | 'goal'
+    title: string
+    timestamp: string
+  }>>([])
 
   const [activeTab, setActiveTab] = useState<TabId>(
     (searchParams?.get('tab') as TabId) || 'overview'
@@ -181,14 +188,368 @@ export default function ClientFilePage() {
         setBusinessProfile(profileData as BusinessProfileData)
       }
 
-      // Stats - these tables may not exist yet, use defaults
+      // Load stats from database - wrap each query in try/catch for resilience
+      const ownerId = businessData.owner_id
+      let activeGoals = 0
+      let completedGoals = 0
+      let pendingActions = 0
+      let overdueActions = 0
+      let unreadMessages = 0
+      let healthScore: number | null = null
+
+      console.log('[ClientPage] Loading stats - business:', clientId, 'owner:', ownerId)
+
+      // Store businessProfileId at higher scope for activity queries
+      let businessProfileId: string | null = null
+
+      // Only query user-specific data if we have an owner_id
+      if (ownerId) {
+        // Get latest assessment score for health (use same columns as dashboard)
+        try {
+          const { data: assessmentData, error: assessmentError } = await supabase
+            .from('assessments')
+            .select('percentage, total_score, total_max')
+            .eq('user_id', ownerId)
+            .eq('status', 'completed')
+            .order('created_at', { ascending: false })
+            .limit(1)
+
+          console.log('[ClientPage] Assessment:', { data: assessmentData, error: assessmentError?.message })
+          if (!assessmentError && assessmentData?.[0]) {
+            // Use percentage if available, otherwise calculate from total_score/total_max
+            healthScore = assessmentData[0].percentage ??
+              Math.round((assessmentData[0].total_score / (assessmentData[0].total_max || 300)) * 100)
+          }
+        } catch (e) {
+          console.log('Could not load assessment data:', e)
+        }
+
+        // Get business_profiles.id for goals queries
+        try {
+          const { data: bpData, error: bpError } = await supabase
+            .from('business_profiles')
+            .select('id')
+            .eq('user_id', ownerId)
+            .limit(1)
+
+          console.log('[ClientPage] Business profile:', { data: bpData, error: bpError?.message })
+
+          if (!bpError && bpData?.[0]?.id) {
+            businessProfileId = bpData[0].id
+
+            // Count strategic initiatives as goals
+            const { data: initiatives, error: initError } = await supabase
+              .from('strategic_initiatives')
+              .select('id, status')
+              .eq('business_id', businessProfileId)
+              .in('step_type', ['twelve_month', 'q1', 'q2', 'q3', 'q4'])
+
+            console.log('[ClientPage] Initiatives:', { count: initiatives?.length, error: initError?.message, data: initiatives })
+
+            if (!initError && initiatives) {
+              // status can be: 'not_started', 'in_progress', 'completed', 'blocked'
+              completedGoals = initiatives.filter((i: any) => i.status === 'completed').length
+              activeGoals = initiatives.filter((i: any) => i.status !== 'completed').length
+            }
+          }
+        } catch (e) {
+          console.log('Could not load goals data:', e)
+        }
+      } else {
+        console.log('[ClientPage] No owner_id, skipping user queries')
+      }
+
+      // Get pending/overdue actions (uses clientId, not ownerId)
+      // Note: action_items table may not exist yet
+      try {
+        const { data: actionsData, error: actionsError } = await supabase
+          .from('action_items')
+          .select('id, status, due_date')
+          .eq('business_id', clientId)
+          .in('status', ['pending', 'in_progress'])
+
+        if (!actionsError && actionsData) {
+          const now = new Date()
+          pendingActions = actionsData.length
+          overdueActions = actionsData.filter((a: any) =>
+            a.due_date && new Date(a.due_date) < now
+          ).length
+        }
+      } catch (e) {
+        // Table may not exist - ignore
+      }
+
+      // Messages table doesn't exist yet - skip query to avoid 400 errors
+      // TODO: Uncomment when messages table is created
+      // try {
+      //   const { data: messagesData, error: messagesError } = await supabase
+      //     .from('messages')
+      //     .select('id')
+      //     .eq('business_id', clientId)
+      //     .eq('is_read', false)
+      //   if (!messagesError && messagesData) {
+      //     unreadMessages = messagesData.length
+      //   }
+      // } catch (e) { }
+
+      const totalGoals = activeGoals + completedGoals
+      const goalsProgress = totalGoals > 0 ? Math.round((completedGoals / totalGoals) * 100) : 0
+
+      // Fetch recent activity for this client - comprehensive tracking
+      const activities: Array<{ id: string; type: 'session' | 'action' | 'message' | 'goal'; title: string; timestamp: string }> = []
+
+      if (ownerId) {
+        // Get recent weekly reviews
+        try {
+          const { data: reviews } = await supabase
+            .from('weekly_reviews')
+            .select('id, completed_at, created_at')
+            .eq('business_id', clientId)
+            .order('created_at', { ascending: false })
+            .limit(5)
+
+          reviews?.forEach(r => {
+            const timestamp = r.completed_at || r.created_at
+            if (timestamp) {
+              activities.push({
+                id: `review-${r.id}`,
+                type: 'session',
+                title: r.completed_at ? 'Completed weekly review' : 'Started weekly review',
+                timestamp
+              })
+            }
+          })
+        } catch (e) { /* Ignore */ }
+
+        // Get recent assessments
+        try {
+          const { data: assessments } = await supabase
+            .from('assessments')
+            .select('id, created_at, percentage')
+            .eq('user_id', ownerId)
+            .eq('status', 'completed')
+            .order('created_at', { ascending: false })
+            .limit(3)
+
+          assessments?.forEach(a => {
+            activities.push({
+              id: `assessment-${a.id}`,
+              type: 'goal',
+              title: `Completed assessment (${a.percentage}%)`,
+              timestamp: a.created_at
+            })
+          })
+        } catch (e) { /* Ignore */ }
+
+        // Get recent open loops (created or updated)
+        try {
+          const { data: loops } = await supabase
+            .from('open_loops')
+            .select('id, title, created_at, updated_at, archived')
+            .eq('user_id', ownerId)
+            .order('updated_at', { ascending: false })
+            .limit(5)
+
+          loops?.forEach(l => {
+            activities.push({
+              id: `loop-${l.id}`,
+              type: 'action',
+              title: l.archived ? `Completed: ${l.title}` : `Open loop: ${l.title}`,
+              timestamp: l.updated_at || l.created_at
+            })
+          })
+        } catch (e) { /* Ignore */ }
+
+        // Get recent issues
+        try {
+          const { data: issues } = await supabase
+            .from('issues_list')
+            .select('id, title, created_at, updated_at, status')
+            .eq('user_id', ownerId)
+            .order('updated_at', { ascending: false })
+            .limit(5)
+
+          issues?.forEach(i => {
+            const issueTitle = i.title?.substring(0, 50) || 'Issue'
+            activities.push({
+              id: `issue-${i.id}`,
+              type: 'action',
+              title: i.status === 'solved' ? `Solved: ${issueTitle}` : `Issue: ${issueTitle}`,
+              timestamp: i.updated_at || i.created_at
+            })
+          })
+        } catch (e) { /* Ignore */ }
+
+        // Get recent strategic initiatives updates
+        if (businessProfileId) {
+          try {
+            const { data: initiatives } = await supabase
+              .from('strategic_initiatives')
+              .select('id, title, created_at, updated_at, status')
+              .eq('business_id', businessProfileId)
+              .order('updated_at', { ascending: false })
+              .limit(5)
+
+            initiatives?.forEach(i => {
+              if (i.updated_at && i.updated_at !== i.created_at) {
+                activities.push({
+                  id: `init-${i.id}`,
+                  type: 'goal',
+                  title: `Updated: ${i.title?.substring(0, 40) || 'Initiative'}`,
+                  timestamp: i.updated_at
+                })
+              }
+            })
+          } catch (e) { /* Ignore */ }
+        }
+
+        // stop_doing_list table doesn't exist yet - skip to avoid 404 errors
+        // TODO: Uncomment when stop_doing_list table is created
+        // try {
+        //   const { data: stopItems } = await supabase
+        //     .from('stop_doing_list')
+        //     .select('id, item, created_at')
+        //     .eq('user_id', ownerId)
+        //     .order('created_at', { ascending: false })
+        //     .limit(3)
+        //   stopItems?.forEach(s => {
+        //     activities.push({
+        //       id: `stop-${s.id}`,
+        //       type: 'action',
+        //       title: `Added to stop doing: ${s.item?.substring(0, 40) || 'Item'}`,
+        //       timestamp: s.created_at
+        //     })
+        //   })
+        // } catch (e) { /* Ignore */ }
+
+        // Get business profile updates (dashboard stats)
+        if (businessProfileId) {
+          try {
+            const { data: profile, error: profileError } = await supabase
+              .from('business_profiles')
+              .select('id, updated_at, created_at')
+              .eq('id', businessProfileId)
+              .limit(1)
+
+            console.log('[ClientPage] Business profile update check:', {
+              profile: profile?.[0],
+              error: profileError?.message,
+              hasUpdate: profile?.[0]?.updated_at !== profile?.[0]?.created_at
+            })
+
+            if (profile?.[0]?.updated_at && profile[0].updated_at !== profile[0].created_at) {
+              activities.push({
+                id: `profile-${profile[0].id}`,
+                type: 'goal',
+                title: 'Updated business dashboard',
+                timestamp: profile[0].updated_at
+              })
+            }
+          } catch (e) { /* Ignore */ }
+        }
+
+        // Get SWOT analysis updates (business_id = user_id in this table)
+        try {
+          const { data: swot } = await supabase
+            .from('swot_analyses')
+            .select('id, updated_at, created_at')
+            .eq('business_id', ownerId)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+
+          if (swot?.[0]?.updated_at && swot[0].updated_at !== swot[0].created_at) {
+            activities.push({
+              id: `swot-${swot[0].id}`,
+              type: 'goal',
+              title: 'Updated SWOT analysis',
+              timestamp: swot[0].updated_at
+            })
+          }
+        } catch (e) { /* Ignore */ }
+
+        // Get Vision targets updates
+        try {
+          const { data: vision } = await supabase
+            .from('vision_targets')
+            .select('id, updated_at, created_at')
+            .eq('user_id', ownerId)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+
+          if (vision?.[0]?.updated_at && vision[0].updated_at !== vision[0].created_at) {
+            activities.push({
+              id: `vision-${vision[0].id}`,
+              type: 'goal',
+              title: 'Updated Vision targets',
+              timestamp: vision[0].updated_at
+            })
+          }
+        } catch (e) { /* Ignore */ }
+
+        // Financial Forecast updates - disabled until RLS policy is fixed
+        // TODO: Run the RLS fix migration then uncomment this
+        // if (businessProfileId) {
+        //   try {
+        //     const { data: forecasts } = await supabase
+        //       .from('financial_forecasts')
+        //       .select('id, updated_at, created_at')
+        //       .eq('business_id', businessProfileId)
+        //       .order('updated_at', { ascending: false })
+        //       .limit(1)
+        //     if (forecasts?.[0]?.updated_at && forecasts[0].updated_at !== forecasts[0].created_at) {
+        //       activities.push({
+        //         id: `forecast-${forecasts[0].id}`,
+        //         type: 'goal',
+        //         title: 'Updated financial forecast',
+        //         timestamp: forecasts[0].updated_at
+        //       })
+        //     }
+        //   } catch (e) { /* Ignore */ }
+        // }
+
+        // Get recent weekly metrics snapshots (business dashboard updates)
+        if (businessProfileId) {
+          try {
+            const { data: snapshots, error: snapshotsError } = await supabase
+              .from('weekly_metrics_snapshots')
+              .select('id, week_ending_date, updated_at, created_at')
+              .eq('business_id', businessProfileId)
+              .order('updated_at', { ascending: false })
+              .limit(5)
+
+            console.log('[ClientPage] Weekly metrics snapshots:', { count: snapshots?.length, error: snapshotsError?.message })
+
+            snapshots?.forEach(s => {
+              // Only show if it was updated (has actual data entered)
+              if (s.updated_at && s.updated_at !== s.created_at) {
+                activities.push({
+                  id: `metrics-${s.id}`,
+                  type: 'goal',
+                  title: `Updated dashboard metrics (week ${s.week_ending_date})`,
+                  timestamp: s.updated_at
+                })
+              }
+            })
+          } catch (e) { /* Ignore */ }
+        }
+      }
+
+      // Sort all activities by timestamp (most recent first) and take top 10
+      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      const recentActivities = activities.slice(0, 10)
+      setRecentActivity(recentActivities)
+      console.log('[ClientPage] Recent activity:', recentActivities.length, 'items')
+
+      console.log('[ClientPage] Final stats:', { activeGoals, completedGoals, goalsProgress, healthScore, pendingActions, activityCount: activities.length })
+
       setStats({
-        pendingActions: 0,
-        overdueActions: 0,
-        unreadMessages: 0,
-        activeGoals: 0,
-        completedGoals: 0,
-        goalsProgress: 0
+        pendingActions,
+        overdueActions,
+        unreadMessages,
+        activeGoals,
+        completedGoals,
+        goalsProgress,
+        healthScore
       })
 
     } catch (err) {
@@ -514,13 +875,14 @@ export default function ClientFilePage() {
             <OverviewTab
               clientId={clientId}
               businessName={business.business_name}
-              healthScore={business.health_score || undefined}
-              goalsProgress={stats.goalsProgress || undefined}
+              healthScore={stats.healthScore ?? undefined}
+              goalsProgress={stats.goalsProgress}
               activeGoals={stats.activeGoals}
               completedGoals={stats.completedGoals}
               pendingActions={stats.pendingActions}
               overdueActions={stats.overdueActions}
               unreadMessages={stats.unreadMessages}
+              recentActivity={recentActivity}
             />
           </div>
         )}

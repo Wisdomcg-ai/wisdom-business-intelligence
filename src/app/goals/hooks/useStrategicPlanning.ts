@@ -544,22 +544,47 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           }
 
           // CRITICAL: Get business_profiles.id - this is what Goals data uses!
+          // Try lookup by business_id first (preferred)
           const { data: profile, error: profileError } = await supabase
             .from('business_profiles')
             .select('id, industry')
             .eq('business_id', overrideBusinessId)
             .single()
 
-          console.log(`[Strategic Planning] 🔍 Profile lookup:`, { profile_id: profile?.id, industry: profile?.industry, error: profileError?.message })
+          console.log(`[Strategic Planning] 🔍 Profile lookup by business_id:`, { profile_id: profile?.id, industry: profile?.industry, error: profileError?.message })
 
           if (profile?.id) {
             bizId = profile.id
             if (profile.industry) {
               setIndustry(profile.industry)
             }
+          } else if (business?.owner_id) {
+            // FALLBACK: Try lookup by user_id (owner_id) if business_id lookup failed
+            // This handles cases where business_profiles.business_id is not set
+            console.log(`[Strategic Planning] 🔄 Trying fallback lookup by user_id: ${business.owner_id}`)
+
+            const { data: profileByUser, error: profileByUserError } = await supabase
+              .from('business_profiles')
+              .select('id, industry')
+              .eq('user_id', business.owner_id)
+              .single()
+
+            console.log(`[Strategic Planning] 🔍 Profile lookup by user_id:`, { profile_id: profileByUser?.id, industry: profileByUser?.industry, error: profileByUserError?.message })
+
+            if (profileByUser?.id) {
+              bizId = profileByUser.id
+              if (profileByUser.industry) {
+                setIndustry(profileByUser.industry)
+              }
+              console.log(`[Strategic Planning] ✅ Found profile via user_id fallback: ${bizId}`)
+            } else {
+              // Last resort fallback - this likely means no profile exists at all
+              console.warn(`[Strategic Planning] ⚠️ No business_profiles found by business_id or user_id, using businesses.id as fallback`)
+              bizId = overrideBusinessId
+            }
           } else {
-            // Fallback to the businesses.id if no profile found
-            console.warn(`[Strategic Planning] ⚠️ No business_profiles found for business_id: ${overrideBusinessId}, using fallback`)
+            // No owner_id available, use businesses.id as fallback
+            console.warn(`[Strategic Planning] ⚠️ No business_profiles found and no owner_id available, using fallback`)
             bizId = overrideBusinessId
           }
 

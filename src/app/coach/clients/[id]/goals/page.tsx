@@ -267,7 +267,7 @@ export default function CoachGoalsPage() {
         console.log('[Coach Goals] Loading SWOT data for business_id:', swotBusinessId)
 
         // Get the most recent SWOT analysis
-        const { data: analysis, error: analysisError } = await supabase
+        const { data: analyses, error: analysisError } = await supabase
           .from('swot_analyses')
           .select('id')
           .eq('business_id', swotBusinessId)
@@ -275,10 +275,11 @@ export default function CoachGoalsPage() {
           .order('year', { ascending: false })
           .order('quarter', { ascending: false })
           .limit(1)
-          .single()
+
+        const analysis = analyses?.[0]
 
         if (analysisError || !analysis) {
-          console.log('[Coach Goals] No SWOT analysis found:', analysisError?.message)
+          console.log('[Coach Goals] No SWOT analysis found for business_id:', swotBusinessId)
           setSwotItems([])
           return
         }

@@ -67,16 +67,32 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
           .from('business_profiles')
           .select('annual_revenue')
           .eq('id', overrideBusinessId)
-          .single()
+          .maybeSingle()
         profileRevenue = profile?.annual_revenue || null
       } else if (activeBusiness?.id) {
         // Coach view: activeBusiness.id is businesses.id
         // Need to get the corresponding business_profiles.id
-        const { data: profile } = await supabase
+        // First try by business_id, then fall back to owner's user_id
+        let profile = null
+
+        const { data: profileByBiz } = await supabase
           .from('business_profiles')
           .select('id, annual_revenue')
           .eq('business_id', activeBusiness.id)
-          .single()
+          .limit(1)
+
+        if (profileByBiz?.[0]) {
+          profile = profileByBiz[0]
+        } else if (activeBusiness.ownerId) {
+          // Fallback: lookup by owner's user_id
+          const { data: profileByUser } = await supabase
+            .from('business_profiles')
+            .select('id, annual_revenue')
+            .eq('user_id', activeBusiness.ownerId)
+            .order('created_at', { ascending: true })
+            .limit(1)
+          profile = profileByUser?.[0] || null
+        }
 
         if (profile?.id) {
           bizId = profile.id
@@ -87,11 +103,13 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
         }
       } else {
         // Get user's own business profile
-        const { data: profile } = await supabase
+        const { data: profiles } = await supabase
           .from('business_profiles')
           .select('id, annual_revenue')
           .eq('user_id', user.id)
-          .single()
+          .order('created_at', { ascending: true })
+          .limit(1)
+        const profile = profiles?.[0] || null
         bizId = profile?.id || null
         profileRevenue = profile?.annual_revenue || null
       }

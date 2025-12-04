@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { DashboardStats } from '@/components/coach/DashboardStats'
 import { ClientOverviewTable, type ClientMetrics } from '@/components/coach/ClientOverviewTable'
 import { ActivityFeed, type ActivityItem } from '@/components/coach/ActivityFeed'
-import { Loader2, AlertTriangle, ChevronRight, RefreshCw } from 'lucide-react'
+import { StatsCard } from '@/components/admin/StatsCard'
+import { Loader2, AlertTriangle, RefreshCw, Users, Calendar, ListChecks, MessageSquare, Building2, Plus, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
 
 // Stage calculation from revenue (matching stage-service.ts)
@@ -338,87 +338,193 @@ export default function CoachDashboardPage() {
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
-          <p className="text-gray-500">Loading dashboard...</p>
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 text-teal-500 animate-spin" />
+          <p className="text-slate-500 text-sm">Loading dashboard...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-8">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Command Center</h1>
-          <p className="text-gray-500 mt-1">Monitor and manage all your coaching clients</p>
+          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+          <p className="text-slate-500 mt-1">Overview of your coaching clients</p>
         </div>
-        <button
-          onClick={() => loadDashboardData(true)}
-          disabled={refreshing}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => loadDashboardData(true)}
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+          <Link
+            href="/coach/clients/new"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white font-medium rounded-xl hover:bg-teal-700 transition-colors shadow-lg shadow-teal-500/20"
+          >
+            <Plus className="w-4 h-4" />
+            Add Client
+          </Link>
+        </div>
       </div>
 
-      {/* Stats Row */}
-      <DashboardStats
-        activeClients={stats.activeClients}
-        sessionsThisWeek={stats.sessionsThisWeek}
-        pendingActions={stats.pendingActions}
-        unreadMessages={stats.unreadMessages}
-      />
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatsCard
+          title="Active Clients"
+          value={stats.activeClients}
+          icon={Building2}
+          iconColor="teal"
+          onClick={() => window.location.href = '/coach/clients'}
+        />
+        <StatsCard
+          title="Pending Actions"
+          value={stats.pendingActions}
+          icon={ListChecks}
+          iconColor="amber"
+          subtitle="Open loops & issues"
+          onClick={() => window.location.href = '/coach/actions'}
+        />
+        <StatsCard
+          title="Sessions This Week"
+          value={stats.sessionsThisWeek}
+          icon={Calendar}
+          iconColor="purple"
+          onClick={() => window.location.href = '/coach/schedule'}
+        />
+        <StatsCard
+          title="Unread Messages"
+          value={stats.unreadMessages}
+          icon={MessageSquare}
+          iconColor="blue"
+          onClick={() => window.location.href = '/coach/messages'}
+        />
+      </div>
 
-      {/* Clients Needing Attention Alert */}
+      {/* Needs Attention Card */}
       {clientsNeedingAttention.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <div className="flex items-start gap-3">
-            <div className="bg-amber-100 p-2 rounded-lg">
-              <AlertTriangle className="w-5 h-5 text-amber-600" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-amber-900">
-                {clientsNeedingAttention.length} client{clientsNeedingAttention.length !== 1 ? 's' : ''} need attention
-              </h3>
-              <div className="mt-2 space-y-2">
-                {clientsNeedingAttention.slice(0, 3).map((client) => (
-                  <div key={client.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2">
-                    <div>
-                      <span className="font-medium text-gray-900">{client.name}</span>
-                      <span className="text-gray-500 text-sm ml-2">- {client.reason}</span>
-                    </div>
-                    <Link
-                      href={`/coach/clients/${client.id}/view/dashboard`}
-                      className="text-amber-600 hover:text-amber-700 text-sm font-medium flex items-center"
-                    >
-                      View <ChevronRight className="w-4 h-4" />
-                    </Link>
-                  </div>
-                ))}
-                {clientsNeedingAttention.length > 3 && (
-                  <p className="text-sm text-amber-700">
-                    And {clientsNeedingAttention.length - 3} more...
-                  </p>
-                )}
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-slate-900">Needs Attention</h2>
+                <p className="text-sm text-slate-500">{clientsNeedingAttention.length} clients need your attention</p>
               </div>
             </div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {clientsNeedingAttention.slice(0, 5).map((client) => (
+              <div key={client.id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
+                    <Building2 className="w-5 h-5 text-slate-500" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-slate-900">{client.name}</p>
+                    <p className="text-sm text-amber-600">{client.reason}</p>
+                  </div>
+                </div>
+                <Link
+                  href={`/coach/clients/${client.id}`}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 font-medium text-sm rounded-lg hover:bg-amber-200 transition-colors"
+                >
+                  View
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
       {/* Client Overview Table */}
-      <ClientOverviewTable clients={clientMetrics} isLoading={refreshing} />
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100">
+          <h2 className="font-semibold text-slate-900">Client Overview</h2>
+          <p className="text-sm text-slate-500 mt-1">Quick view of all your clients' status</p>
+        </div>
+        <ClientOverviewTable clients={clientMetrics} isLoading={refreshing} />
+      </div>
 
       {/* Activity Feed */}
       {activities.length > 0 && (
-        <div className="mt-6">
-          <ActivityFeed activities={activities} />
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100">
+            <h2 className="font-semibold text-slate-900">Recent Activity</h2>
+            <p className="text-sm text-slate-500 mt-1">Latest updates from your clients</p>
+          </div>
+          <div className="p-6">
+            <ActivityFeed activities={activities} />
+          </div>
         </div>
       )}
+
+      {/* Quick Actions Card */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6">
+        <h2 className="font-semibold text-slate-900 mb-4">Quick Actions</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Link
+            href="/coach/clients/new"
+            className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50 transition-all"
+          >
+            <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center group-hover:bg-teal-500 transition-colors">
+              <Plus className="w-6 h-6 text-teal-600 group-hover:text-white transition-colors" />
+            </div>
+            <div>
+              <p className="font-medium text-slate-900">Add Client</p>
+              <p className="text-sm text-slate-500">Onboard new business</p>
+            </div>
+          </Link>
+
+          <Link
+            href="/coach/schedule"
+            className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-purple-500 hover:bg-purple-50 transition-all"
+          >
+            <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center group-hover:bg-purple-500 transition-colors">
+              <Calendar className="w-6 h-6 text-purple-600 group-hover:text-white transition-colors" />
+            </div>
+            <div>
+              <p className="font-medium text-slate-900">Schedule Session</p>
+              <p className="text-sm text-slate-500">Book coaching call</p>
+            </div>
+          </Link>
+
+          <Link
+            href="/coach/messages"
+            className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50 transition-all"
+          >
+            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-500 transition-colors">
+              <MessageSquare className="w-6 h-6 text-blue-600 group-hover:text-white transition-colors" />
+            </div>
+            <div>
+              <p className="font-medium text-slate-900">Messages</p>
+              <p className="text-sm text-slate-500">Client conversations</p>
+            </div>
+          </Link>
+
+          <Link
+            href="/coach/reports"
+            className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 transition-all"
+          >
+            <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center group-hover:bg-indigo-500 transition-colors">
+              <Users className="w-6 h-6 text-indigo-600 group-hover:text-white transition-colors" />
+            </div>
+            <div>
+              <p className="font-medium text-slate-900">Reports</p>
+              <p className="text-sm text-slate-500">Analytics & insights</p>
+            </div>
+          </Link>
+        </div>
+      </div>
     </div>
   )
 }

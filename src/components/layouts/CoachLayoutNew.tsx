@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, createContext, useContext, ReactNode } from 'react'
+import { useState, useEffect, createContext, useContext, ReactNode, useMemo } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -8,66 +8,92 @@ import { getUserSystemRole } from '@/lib/auth/roles'
 import {
   LayoutDashboard,
   Users,
-  Briefcase,
+  MessageSquare,
+  Calendar,
+  ListChecks,
+  BarChart3,
   Settings,
   LogOut,
   ChevronDown,
+  Building2,
   Bell,
   Search,
   Menu,
   X,
-  Building2,
+  Briefcase,
   Shield,
   HelpCircle,
-  ExternalLink
+  ExternalLink,
+  UserPlus
 } from 'lucide-react'
+import { useUnreadMessages } from '@/hooks/useUnreadMessages'
 
-// Context for admin data sharing
-interface AdminContextType {
+// Context for coach data sharing
+interface CoachContextType {
   user: { name: string; email: string; initials: string } | null
+  clients: Client[]
   refreshData: () => void
 }
 
-const AdminContext = createContext<AdminContextType>({ user: null, refreshData: () => {} })
-export const useAdmin = () => useContext(AdminContext)
+interface Client {
+  id: string
+  business_name: string
+  status: string
+}
 
-interface AdminLayoutProps {
+const CoachContext = createContext<CoachContextType>({ user: null, clients: [], refreshData: () => {} })
+export const useCoach = () => useContext(CoachContext)
+
+interface CoachLayoutNewProps {
   children: ReactNode
 }
 
 const navigation = [
   {
     name: 'Dashboard',
-    href: '/admin',
+    href: '/coach/dashboard',
     icon: LayoutDashboard,
     description: 'Overview & quick actions'
   },
   {
     name: 'Clients',
-    href: '/admin/clients',
+    href: '/coach/clients',
     icon: Building2,
-    description: 'Manage client businesses'
+    description: 'Manage your clients'
   },
   {
-    name: 'Coaches',
-    href: '/admin/coaches',
-    icon: Briefcase,
-    description: 'Manage coaching team'
+    name: 'Schedule',
+    href: '/coach/schedule',
+    icon: Calendar,
+    description: 'Sessions & calendar'
   },
   {
-    name: 'All Users',
-    href: '/admin/users',
-    icon: Users,
-    description: 'User accounts & passwords'
+    name: 'Messages',
+    href: '/coach/messages',
+    icon: MessageSquare,
+    description: 'Client conversations',
+    badge: true // Will show unread count
+  },
+  {
+    name: 'Actions',
+    href: '/coach/actions',
+    icon: ListChecks,
+    description: 'Track action items'
+  },
+  {
+    name: 'Reports',
+    href: '/coach/reports',
+    icon: BarChart3,
+    description: 'Analytics & insights'
   },
 ]
 
 const secondaryNavigation = [
-  { name: 'Settings', href: '/admin/settings', icon: Settings },
-  { name: 'Help', href: '/admin/help', icon: HelpCircle },
+  { name: 'Settings', href: '/coach/settings', icon: Settings },
+  { name: 'Help', href: '/coach/help', icon: HelpCircle },
 ]
 
-export default function AdminLayout({ children }: AdminLayoutProps) {
+export default function CoachLayoutNew({ children }: CoachLayoutNewProps) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
@@ -75,11 +101,24 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState<{ name: string; email: string; initials: string } | null>(null)
+  const [clients, setClients] = useState<Client[]>([])
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [clientsExpanded, setClientsExpanded] = useState(true)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+
+  // Get unread message count
+  const { unreadCount } = useUnreadMessages({ role: 'coach' })
+
+  // Check if we're on login page
+  const isPublicPage = pathname === '/coach/login'
 
   useEffect(() => {
-    checkAuth()
-  }, [])
+    if (!isPublicPage) {
+      checkAuth()
+    } else {
+      setLoading(false)
+    }
+  }, [isPublicPage])
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
@@ -98,45 +137,89 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   }, [showUserMenu])
 
   async function checkAuth() {
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-    if (!authUser) {
-      router.push('/admin/login')
-      return
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser) {
+        router.push('/coach/login')
+        return
+      }
+
+      const role = await getUserSystemRole()
+      if (role !== 'coach' && role !== 'super_admin') {
+        router.push('/login')
+        return
+      }
+
+      setIsSuperAdmin(role === 'super_admin')
+
+      const firstName = authUser.user_metadata?.first_name || ''
+      const lastName = authUser.user_metadata?.last_name || ''
+      const name = firstName ? `${firstName} ${lastName}`.trim() : authUser.email?.split('@')[0] || 'Coach'
+      const initials = firstName && lastName
+        ? `${firstName[0]}${lastName[0]}`.toUpperCase()
+        : name.slice(0, 2).toUpperCase()
+
+      setUser({
+        name,
+        email: authUser.email || '',
+        initials
+      })
+
+      // Load clients
+      await loadClients(authUser.id)
+
+      setLoading(false)
+    } catch (error) {
+      console.error('[CoachLayout] Auth error:', error)
+      router.push('/coach/login')
     }
+  }
 
-    const role = await getUserSystemRole()
-    if (role !== 'super_admin') {
-      router.push('/login')
-      return
+  async function loadClients(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('businesses')
+        .select('id, business_name, status')
+        .eq('assigned_coach_id', userId)
+        .order('business_name', { ascending: true })
+
+      if (!error && data) {
+        setClients(data.map(b => ({
+          id: b.id,
+          business_name: b.business_name || 'Unnamed Business',
+          status: b.status || 'active'
+        })))
+      }
+    } catch (error) {
+      console.error('[CoachLayout] Error loading clients:', error)
     }
-
-    const firstName = authUser.user_metadata?.first_name || ''
-    const lastName = authUser.user_metadata?.last_name || ''
-    const name = firstName ? `${firstName} ${lastName}`.trim() : authUser.email?.split('@')[0] || 'Admin'
-    const initials = firstName && lastName
-      ? `${firstName[0]}${lastName[0]}`.toUpperCase()
-      : name.slice(0, 2).toUpperCase()
-
-    setUser({
-      name,
-      email: authUser.email || '',
-      initials
-    })
-    setLoading(false)
   }
 
   async function handleLogout() {
     await supabase.auth.signOut()
-    router.push('/admin/login')
+    router.push('/coach/login')
   }
 
-  function switchToCoachPortal() {
-    router.push('/coach/clients')
+  function switchToAdminPortal() {
+    router.push('/admin')
   }
 
   function refreshData() {
-    // Trigger a refresh - child components can call this
     checkAuth()
+  }
+
+  const getStatusDot = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-green-400'
+      case 'pending': return 'bg-yellow-400'
+      case 'at-risk': return 'bg-red-400'
+      default: return 'bg-gray-400'
+    }
+  }
+
+  // For public pages, render without layout
+  if (isPublicPage) {
+    return <>{children}</>
   }
 
   if (loading) {
@@ -148,7 +231,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <div className="absolute inset-0 w-16 h-16 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
           </div>
           <div className="text-center">
-            <p className="text-white font-medium">Loading Admin Portal</p>
+            <p className="text-white font-medium">Loading Coach Portal</p>
             <p className="text-slate-500 text-sm mt-1">Please wait...</p>
           </div>
         </div>
@@ -157,7 +240,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   }
 
   return (
-    <AdminContext.Provider value={{ user, refreshData }}>
+    <CoachContext.Provider value={{ user, clients, refreshData }}>
       <div className="min-h-screen bg-slate-100">
         {/* Mobile sidebar backdrop */}
         <div
@@ -176,13 +259,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           <div className="flex flex-col h-full">
             {/* Logo Header */}
             <div className="flex items-center justify-between h-16 px-5 border-b border-slate-800/80">
-              <Link href="/admin" className="flex items-center gap-3 group">
+              <Link href="/coach/dashboard" className="flex items-center gap-3 group">
                 <div className="w-10 h-10 bg-gradient-to-br from-teal-400 to-teal-600 rounded-xl flex items-center justify-center shadow-lg shadow-teal-500/25 group-hover:shadow-teal-500/40 transition-shadow">
-                  <Shield className="w-5 h-5 text-white" />
+                  <Briefcase className="w-5 h-5 text-white" />
                 </div>
                 <div>
                   <h1 className="text-white font-bold text-lg tracking-tight">Wisdom BI</h1>
-                  <p className="text-slate-500 text-[11px] font-medium uppercase tracking-wider">Admin Portal</p>
+                  <p className="text-slate-500 text-[11px] font-medium uppercase tracking-wider">Coach Portal</p>
                 </div>
               </Link>
               <button
@@ -197,8 +280,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <nav className="flex-1 px-3 py-6 overflow-y-auto">
               <div className="space-y-1">
                 {navigation.map((item) => {
-                  const isActive = item.href === '/admin'
-                    ? pathname === '/admin'
+                  const isActive = item.href === '/coach/dashboard'
+                    ? pathname === '/coach' || pathname === '/coach/dashboard'
                     : pathname?.startsWith(item.href)
 
                   return (
@@ -224,9 +307,70 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         <div className={isActive ? 'text-white' : ''}>{item.name}</div>
                         <div className="text-[11px] text-slate-500 truncate">{item.description}</div>
                       </div>
+                      {item.badge && unreadCount > 0 && (
+                        <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                          {unreadCount}
+                        </span>
+                      )}
                     </Link>
                   )
                 })}
+              </div>
+
+              {/* My Clients Section */}
+              <div className="mt-8 pt-6 border-t border-slate-800/80">
+                <button
+                  onClick={() => setClientsExpanded(!clientsExpanded)}
+                  className="w-full flex items-center justify-between px-4 mb-3 text-[11px] font-semibold text-slate-600 uppercase tracking-wider hover:text-slate-400 transition-colors"
+                >
+                  <span>My Clients</span>
+                  <ChevronDown className={`w-4 h-4 transition-transform ${clientsExpanded ? '' : '-rotate-90'}`} />
+                </button>
+
+                {clientsExpanded && (
+                  <div className="space-y-1">
+                    <Link
+                      href="/coach/clients/new"
+                      className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-all duration-200"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      Add New Client
+                    </Link>
+
+                    {clients.slice(0, 6).map((client) => {
+                      const clientActive = pathname?.includes(`/coach/clients/${client.id}`)
+                      return (
+                        <Link
+                          key={client.id}
+                          href={`/coach/clients/${client.id}`}
+                          className={`
+                            flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
+                            ${clientActive
+                              ? 'bg-slate-800 text-white'
+                              : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
+                            }
+                          `}
+                        >
+                          <div className={`w-2 h-2 rounded-full ${getStatusDot(client.status)}`} />
+                          <span className="truncate">{client.business_name}</span>
+                        </Link>
+                      )
+                    })}
+
+                    {clients.length > 6 && (
+                      <Link
+                        href="/coach/clients"
+                        className="flex items-center gap-3 px-4 py-2 text-sm text-teal-400 hover:text-teal-300"
+                      >
+                        View all {clients.length} clients
+                      </Link>
+                    )}
+
+                    {clients.length === 0 && (
+                      <p className="px-4 py-2 text-sm text-slate-600">No clients yet</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Secondary Navigation */}
@@ -258,19 +402,21 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               </div>
             </nav>
 
-            {/* Portal Switcher */}
-            <div className="px-3 py-3 border-t border-slate-800/80">
-              <button
-                onClick={switchToCoachPortal}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all duration-200 group"
-              >
-                <div className="w-8 h-8 bg-indigo-500/20 rounded-lg flex items-center justify-center group-hover:bg-indigo-500/30 transition-colors">
-                  <Briefcase className="w-4 h-4 text-indigo-400" />
-                </div>
-                <span className="flex-1 text-left">Coach Portal</span>
-                <ExternalLink className="w-4 h-4 text-slate-600 group-hover:text-slate-400" />
-              </button>
-            </div>
+            {/* Admin Portal Switcher (only for super_admin) */}
+            {isSuperAdmin && (
+              <div className="px-3 py-3 border-t border-slate-800/80">
+                <button
+                  onClick={switchToAdminPortal}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all duration-200 group"
+                >
+                  <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center group-hover:bg-purple-500/30 transition-colors">
+                    <Shield className="w-4 h-4 text-purple-400" />
+                  </div>
+                  <span className="flex-1 text-left">Admin Portal</span>
+                  <ExternalLink className="w-4 h-4 text-slate-600 group-hover:text-slate-400" />
+                </button>
+              </div>
+            )}
 
             {/* User Profile */}
             <div className="p-3 border-t border-slate-800/80">
@@ -335,13 +481,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-teal-500 transition-colors" />
                     <input
                       type="text"
-                      placeholder="Search clients, coaches..."
-                      className="w-72 lg:w-80 pl-10 pr-12 py-2.5 bg-slate-100 border-0 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-teal-500/20 focus:bg-white transition-all"
+                      placeholder="Search clients..."
+                      className="w-72 lg:w-80 pl-10 pr-4 py-2.5 bg-slate-100 border-0 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-teal-500/20 focus:bg-white transition-all"
                     />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-0.5">
-                      <kbd className="px-1.5 py-0.5 bg-slate-200/80 text-slate-500 text-[10px] rounded font-medium">⌘</kbd>
-                      <kbd className="px-1.5 py-0.5 bg-slate-200/80 text-slate-500 text-[10px] rounded font-medium">K</kbd>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -356,7 +498,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 {/* Notifications */}
                 <button className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors">
                   <Bell className="w-5 h-5" />
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white" />
+                  )}
                 </button>
 
                 {/* Mobile user avatar */}
@@ -378,12 +522,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           {/* Footer */}
           <footer className="border-t border-slate-200 bg-white px-4 sm:px-6 py-4">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-              <p>© 2025 Wisdom Business Intelligence. All rights reserved.</p>
-              <p>Admin Portal v2.0</p>
+              <p>&copy; 2025 Wisdom Business Intelligence. All rights reserved.</p>
+              <p>Coach Portal v2.0</p>
             </div>
           </footer>
         </div>
       </div>
-    </AdminContext.Provider>
+    </CoachContext.Provider>
   )
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useBusinessContext } from '@/hooks/useBusinessContext'
 import {
   CheckCircle2,
   Circle,
@@ -38,6 +39,9 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
   const router = useRouter()
   const supabase = createClient()
 
+  // Get business context for coach view support
+  const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
+
   const [isLoading, setIsLoading] = useState(true)
   const [isExpanded, setIsExpanded] = useState(true)
   const [isDismissed, setIsDismissed] = useState(false)
@@ -50,8 +54,11 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
   })
 
   useEffect(() => {
-    checkCompletionStatus()
-  }, [])
+    // Wait for context to load before checking status
+    if (!contextLoading) {
+      checkCompletionStatus()
+    }
+  }, [contextLoading, activeBusiness?.id])
 
   async function checkCompletionStatus() {
     setIsLoading(true)
@@ -60,39 +67,92 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
+      // Determine whose data to query:
+      // - If coach is viewing a client (activeBusiness is set), use the client's ownerId
+      // - Otherwise, use the logged-in user's ID
+      let targetUserId = activeBusiness?.ownerId || user.id
+      const targetBusinessId = activeBusiness?.id || null
+
+      console.log('[Onboarding] Initial target for queries:', {
+        targetUserId,
+        targetBusinessId,
+        activeBusinessOwnerId: activeBusiness?.ownerId,
+        isCoachView: !!activeBusiness,
+        loggedInUserId: user.id
+      })
+
       // First get the user's business to find the business_id and name
       // Use limit(1) instead of maybeSingle() to handle users with multiple businesses
-      const { data: businesses, error: businessError } = await supabase
-        .from('businesses')
-        .select('id, name')
-        .eq('owner_id', user.id)
-        .order('created_at', { ascending: true })
-        .limit(1)
+      let business: { id: string; name?: string; owner_id?: string } | null = null
 
-      const business = businesses?.[0]
-      console.log('[Onboarding] Business lookup:', { businessId: business?.id, businessName: business?.name, error: businessError?.message })
+      if (targetBusinessId) {
+        // Coach view - we already have the business ID, but need to get owner_id too
+        const { data: businessData } = await supabase
+          .from('businesses')
+          .select('id, name, owner_id')
+          .eq('id', targetBusinessId)
+          .single()
+        business = businessData
+
+        // CRITICAL: If activeBusiness.ownerId was not set, get it from the business lookup
+        if (businessData?.owner_id && !activeBusiness?.ownerId) {
+          targetUserId = businessData.owner_id
+          console.log('[Onboarding] Updated targetUserId from business owner_id:', targetUserId)
+        }
+      } else {
+        // Normal user view - look up by owner_id
+        const { data: businesses, error: businessError } = await supabase
+          .from('businesses')
+          .select('id, name')
+          .eq('owner_id', targetUserId)
+          .order('created_at', { ascending: true })
+          .limit(1)
+        business = businesses?.[0] || null
+        if (businessError) {
+          console.log('[Onboarding] Business lookup error:', businessError.message)
+        }
+      }
+
+      console.log('[Onboarding] Business lookup:', { businessId: business?.id, businessName: business?.name, ownerId: business?.owner_id, targetUserId })
 
       // Get the business_profile ID for querying related tables
       // business_profiles.id is used as the foreign key in financial_goals, initiatives, etc.
-      const { data: profileForId } = await supabase
+      // ALWAYS use user_id lookup for consistency (matches how client sees their own data)
+      let businessProfileId: string | undefined = undefined
+
+      // Primary lookup: by user_id (most reliable, matches direct client login)
+      const { data: profileByUser } = await supabase
         .from('business_profiles')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .order('created_at', { ascending: true })
         .limit(1)
 
-      const businessProfileId = profileForId?.[0]?.id
-      console.log('[Onboarding] Business profile ID for queries:', businessProfileId)
+      if (profileByUser?.[0]?.id) {
+        businessProfileId = profileByUser[0].id
+      } else if (business?.id) {
+        // Fallback: try by business_id if user_id lookup failed
+        const { data: profileByBusiness } = await supabase
+          .from('business_profiles')
+          .select('id')
+          .eq('business_id', business.id)
+          .limit(1)
+
+        if (profileByBusiness?.[0]?.id) {
+          businessProfileId = profileByBusiness[0].id
+        }
+      }
+
+      console.log('[Onboarding] Business profile ID for queries:', { businessProfileId, targetUserId, businessId: business?.id })
 
       // Check all completion statuses in parallel
-      const [profileResult, assessmentResult, visionResult, swotResult, financialGoalsResult, initiativesResult, operationalActivitiesResult] = await Promise.all([
+      const [profileResult, assessmentResult, visionResult, swotResult, financialGoalsResult, initiativesResult] = await Promise.all([
         // 1. Business Profile - get full profile to calculate completion
-        // Always query by user_id for consistency with BusinessProfileService
-        // Use limit(1) instead of maybeSingle() to handle multiple profiles gracefully
+        // Query by user_id for consistency with BusinessProfileService
         supabase
           .from('business_profiles')
           .select('industry, annual_revenue, employee_count, years_in_operation, owner_info')
-          .eq('user_id', user.id)
+          .eq('user_id', targetUserId)
           .order('created_at', { ascending: true })
           .limit(1),
 
@@ -100,50 +160,43 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
         supabase
           .from('assessments')
           .select('id')
-          .eq('user_id', user.id)
+          .eq('user_id', targetUserId)
           .eq('status', 'completed')
           .limit(1),
 
         // 3. Vision & Mission (check if vision_mission has content)
+        // NOTE: strategy_data stores user_id, not business_id
         supabase
           .from('strategy_data')
           .select('vision_mission')
-          .eq('user_id', user.id)
+          .eq('user_id', targetUserId)
           .maybeSingle(),
 
-        // 4. SWOT Analysis - check if actual swot_items exist (not just empty analysis)
-        // NOTE: SWOT page stores user.id as business_id (not the actual business.id)
+        // 4. SWOT Analysis - check if actual swot_items exist
+        // NOTE: SWOT stores user_id as business_id (legacy pattern)
         supabase
           .from('swot_analyses')
           .select('id, swot_items(id)')
-          .eq('business_id', user.id)
+          .eq('business_id', targetUserId)
           .limit(1),
 
-        // 5. Strategic Plan - check all 5 steps of the wizard
-        // Step 1: Financial goals - query by business_id (business_profiles.id)
+        // 5. Strategic Plan - Financial goals
+        // Uses business_profiles.id as business_id
         businessProfileId
           ? supabase
               .from('business_financial_goals')
-              .select('revenue_year1, revenue_year2, revenue_year3, quarterly_targets')
+              .select('revenue_year1')
               .eq('business_id', businessProfileId)
               .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
 
-        // Steps 2-5: Strategic initiatives by step_type - query by business_id
+        // 6. Strategic initiatives - all step types
+        // Uses business_profiles.id as business_id
         businessProfileId
           ? supabase
               .from('strategic_initiatives')
               .select('id, step_type')
               .eq('business_id', businessProfileId)
-          : Promise.resolve({ data: [], error: null }),
-
-        // Step 5: Operational activities - query by business_id
-        businessProfileId
-          ? supabase
-              .from('operational_activities')
-              .select('id')
-              .eq('business_id', businessProfileId)
-              .limit(1)
           : Promise.resolve({ data: [], error: null })
       ])
 
@@ -154,7 +207,7 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       console.log('[Onboarding] Profile query result:', {
         data: profileResult.data,
         error: profileResult.error,
-        userId: user.id
+        targetUserId
       })
       const profileData = profileResult.data?.[0]
       if (profileData) {
@@ -224,55 +277,63 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
         console.log('[Onboarding] No SWOT data found', swotResult.error)
       }
 
-      // Strategic Plan: Check all 5 steps of the wizard
+      // Strategic Plan: Check meaningful engagement with the wizard
       let goals = false
       const initiatives = initiativesResult.data || []
       const fg = financialGoalsResult.data
 
-      // Step 1: Financial goals - All 3 years of revenue targets set
+      // Step 1: Financial goals - At least Year 1 revenue target set
       const hasYear1 = fg?.revenue_year1 && fg.revenue_year1 > 0
-      const hasYear2 = fg?.revenue_year2 && fg.revenue_year2 > 0
-      const hasYear3 = fg?.revenue_year3 && fg.revenue_year3 > 0
-      const hasFinancialGoals = !!(hasYear1 && hasYear2 && hasYear3)
+      const hasFinancialGoals = !!hasYear1
 
       // Step 2: At least 1 strategic idea
       const strategicIdeas = initiatives.filter((i: any) => i.step_type === 'strategic_ideas')
       const hasStrategicIdeas = strategicIdeas.length > 0
 
-      // Step 3: Has 8-20 prioritized initiatives (twelve_month step_type)
+      // Step 3: Has prioritized initiatives (at least 1 twelve_month initiative)
       const twelveMonthInitiatives = initiatives.filter((i: any) => i.step_type === 'twelve_month')
-      const hasPrioritizedInitiatives = twelveMonthInitiatives.length >= 8 && twelveMonthInitiatives.length <= 20
+      const hasPrioritizedInitiatives = twelveMonthInitiatives.length > 0
 
-      // Step 4: Quarterly targets set (from JSONB column) + Q3 & Q4 have initiatives
-      // quarterly_targets is stored as JSONB: { revenue: { q1, q2, q3, q4 }, ... }
-      const quarterlyTargets = fg?.quarterly_targets as Record<string, { q1: string; q2: string; q3: string; q4: string }> | null
-      const hasQuarterlyTargets = quarterlyTargets && Object.values(quarterlyTargets).some((metric: any) => {
-        const q3Val = parseFloat(metric?.q3 || '0')
-        const q4Val = parseFloat(metric?.q4 || '0')
-        return q3Val > 0 || q4Val > 0
-      })
+      // Step 4: Has distributed initiatives to quarters (at least one quarter has initiatives)
+      const q1Initiatives = initiatives.filter((i: any) => i.step_type === 'q1')
+      const q2Initiatives = initiatives.filter((i: any) => i.step_type === 'q2')
       const q3Initiatives = initiatives.filter((i: any) => i.step_type === 'q3')
       const q4Initiatives = initiatives.filter((i: any) => i.step_type === 'q4')
-      const hasUnlockedQuarters = q3Initiatives.length > 0 && q4Initiatives.length > 0
+      const hasQuarterlyInitiatives = q1Initiatives.length > 0 || q2Initiatives.length > 0 || q3Initiatives.length > 0 || q4Initiatives.length > 0
 
-      // Step 5: Planning quarter has initiatives + operational activities defined
-      const hasOperationalActivities = (operationalActivitiesResult.data?.length || 0) > 0
-
-      goals = !!(hasFinancialGoals && hasStrategicIdeas && hasPrioritizedInitiatives && hasQuarterlyTargets && hasUnlockedQuarters && hasOperationalActivities)
+      // Strategic Plan is complete if user has:
+      // 1. Set financial goals (Year 1 minimum)
+      // 2. Created strategic ideas
+      // 3. Prioritized initiatives for the year
+      // 4. Distributed to quarters
+      goals = !!(hasFinancialGoals && hasStrategicIdeas && hasPrioritizedInitiatives && hasQuarterlyInitiatives)
 
       console.log('[Onboarding] Strategic Plan check:', {
-        hasYear1, hasYear2, hasYear3, hasFinancialGoals,
-        strategicIdeasCount: strategicIdeas.length, hasStrategicIdeas,
-        twelveMonthCount: twelveMonthInitiatives.length, hasPrioritizedInitiatives,
-        hasQuarterlyTargets,
+        hasYear1,
+        hasFinancialGoals,
+        strategicIdeasCount: strategicIdeas.length,
+        hasStrategicIdeas,
+        twelveMonthCount: twelveMonthInitiatives.length,
+        hasPrioritizedInitiatives,
+        q1Count: q1Initiatives.length,
+        q2Count: q2Initiatives.length,
         q3Count: q3Initiatives.length,
         q4Count: q4Initiatives.length,
-        hasUnlockedQuarters,
-        hasOperationalActivities,
+        hasQuarterlyInitiatives,
         isComplete: goals
       })
 
       const allComplete = profile && assessment && visionMission && swot && goals
+
+      // SUMMARY LOG - shows exactly which checks passed/failed
+      console.log('[Onboarding] ===== COMPLETION SUMMARY =====')
+      console.log('[Onboarding] Profile:', profile ? '✅' : '❌')
+      console.log('[Onboarding] Assessment:', assessment ? '✅' : '❌')
+      console.log('[Onboarding] Vision/Mission:', visionMission ? '✅' : '❌')
+      console.log('[Onboarding] SWOT:', swot ? '✅' : '❌')
+      console.log('[Onboarding] Goals:', goals ? '✅' : '❌')
+      console.log('[Onboarding] ALL COMPLETE:', allComplete ? '✅ YES' : '❌ NO')
+      console.log('[Onboarding] ==============================')
 
       setCompletionStatus({
         profile,
@@ -425,7 +486,7 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
             </button>
           </div>
         ) : (
-          checklist.map((item, index) => {
+          checklist.map((item) => {
             const Icon = item.icon
             const isNext = nextItem?.id === item.id
 
