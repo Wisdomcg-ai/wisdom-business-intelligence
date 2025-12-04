@@ -67,16 +67,16 @@ interface StatusBadgeProps {
   status: 'active' | 'pending' | 'inactive' | 'invited' | 'overdue'
 }
 
-const statusConfig = {
-  active: { label: 'Active', variant: 'success' as BadgeVariant },
-  pending: { label: 'Pending', variant: 'warning' as BadgeVariant },
-  inactive: { label: 'Inactive', variant: 'neutral' as BadgeVariant },
-  invited: { label: 'Invited', variant: 'info' as BadgeVariant },
-  overdue: { label: 'Overdue', variant: 'danger' as BadgeVariant, pulse: true },
+const statusConfig: Record<string, { label: string; variant: BadgeVariant; pulse?: boolean }> = {
+  active: { label: 'Active', variant: 'success' },
+  pending: { label: 'Pending', variant: 'warning' },
+  inactive: { label: 'Inactive', variant: 'neutral' },
+  invited: { label: 'Invited', variant: 'info' },
+  overdue: { label: 'Overdue', variant: 'danger', pulse: true },
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {
-  const config = statusConfig[status]
+  const config = statusConfig[status] || statusConfig.inactive
   return (
     <Badge variant={config.variant} pulse={config.pulse}>
       {config.label}
