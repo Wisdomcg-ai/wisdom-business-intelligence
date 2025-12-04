@@ -141,13 +141,27 @@ export default function ClientFilePage() {
         return
       }
 
-      // Load business data
-      const { data: businessData, error: businessError } = await supabase
+      // Check if user is super_admin
+      const { data: roleData } = await supabase
+        .from('system_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      const isSuperAdmin = roleData?.role === 'super_admin'
+
+      // Load business data - super_admins can view any client
+      let businessQuery = supabase
         .from('businesses')
         .select('*')
         .eq('id', clientId)
-        .eq('assigned_coach_id', user.id)
-        .single()
+
+      // Only filter by assigned_coach_id if not super_admin
+      if (!isSuperAdmin) {
+        businessQuery = businessQuery.eq('assigned_coach_id', user.id)
+      }
+
+      const { data: businessData, error: businessError } = await businessQuery.single()
 
       if (businessError || !businessData) {
         setError('Client not found or you do not have access')
