@@ -81,7 +81,7 @@ export default function ActionsPage() {
 
         const { data: loops, error: loopsError } = await supabase
           .from('open_loops')
-          .select('id, title, description, user_id, created_at, updated_at, archived')
+          .select('id, title, user_id, created_at, updated_at, archived')
           .eq('user_id', client.ownerId)
           .eq('archived', false)
           .order('updated_at', { ascending: false })
@@ -97,7 +97,6 @@ export default function ActionsPage() {
               id: loop.id,
               type: 'loop',
               title: loop.title || 'Untitled Loop',
-              description: loop.description || undefined,
               status: 'open',
               clientId: client.id,
               clientName: client.businessName,
