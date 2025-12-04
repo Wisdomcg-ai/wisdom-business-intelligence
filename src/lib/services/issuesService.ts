@@ -13,7 +13,6 @@ export interface Issue {
   id: string;
   user_id: string;
   title: string;
-  issue_type: 'problem' | 'opportunity' | 'idea' | 'challenge';
   priority: number | null;
   status: 'new' | 'identified' | 'in-discussion' | 'solving' | 'solved';
   owner: string;
@@ -28,7 +27,6 @@ export interface Issue {
 
 export interface CreateIssueInput {
   title: string;
-  issue_type: 'problem' | 'opportunity' | 'idea' | 'challenge';
   priority: number | null;
   status: 'new' | 'identified' | 'in-discussion' | 'solving' | 'solved';
   owner: string;
@@ -215,13 +213,13 @@ export async function getIssuesStats(overrideUserId?: string) {
       total: issues.length,
       topPriority: issues.filter(i => i.priority && i.priority <= 3).length,
       new: issues.filter(i => i.status === 'new').length,
+      identified: issues.filter(i => i.status === 'identified').length,
       inDiscussion: issues.filter(i => i.status === 'in-discussion').length,
-      problems: issues.filter(i => i.issue_type === 'problem').length,
-      opportunities: issues.filter(i => i.issue_type === 'opportunity').length
+      solving: issues.filter(i => i.status === 'solving').length
     };
   } catch (error) {
     console.error('Error getting stats:', error);
-    return { total: 0, topPriority: 0, new: 0, inDiscussion: 0, problems: 0, opportunities: 0 };
+    return { total: 0, topPriority: 0, new: 0, identified: 0, inDiscussion: 0, solving: 0 };
   }
 }
 

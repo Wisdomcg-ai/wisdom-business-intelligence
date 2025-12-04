@@ -39,6 +39,7 @@ import {
   User,
   Gauge,
   Briefcase,
+  Lightbulb,
 } from 'lucide-react'
 
 interface NavItem {
@@ -106,6 +107,7 @@ const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
         { label: 'KPI Dashboard', href: '/business-dashboard', icon: BarChart3 },
         { label: 'Weekly Review', href: '/reviews/weekly', icon: Calendar },
         { label: 'Issues List', href: '/issues-list', icon: AlertCircle },
+        { label: 'Ideas Journal', href: '/ideas', icon: Lightbulb },
         {
           label: 'Productivity',
           href: '/productivity',

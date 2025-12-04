@@ -12,7 +12,8 @@ import {
   CheckCircle,
   AlertTriangle,
   ChevronRight,
-  Activity
+  Activity,
+  Lightbulb
 } from 'lucide-react'
 
 interface RecentActivity {
@@ -20,6 +21,13 @@ interface RecentActivity {
   type: 'session' | 'action' | 'message' | 'goal'
   title: string
   timestamp: string
+}
+
+interface IdeasStats {
+  total: number
+  captured: number
+  underReview: number
+  approved: number
 }
 
 interface OverviewTabProps {
@@ -37,6 +45,7 @@ interface OverviewTabProps {
   overdueActions?: number
   unreadMessages?: number
   recentActivity?: RecentActivity[]
+  ideasStats?: IdeasStats
 }
 
 export function OverviewTab({
@@ -53,7 +62,8 @@ export function OverviewTab({
   pendingActions = 0,
   overdueActions = 0,
   unreadMessages = 0,
-  recentActivity = []
+  recentActivity = [],
+  ideasStats
 }: OverviewTabProps) {
 
   const getHealthColor = (score?: number) => {
@@ -193,6 +203,44 @@ export function OverviewTab({
           <p className="text-sm text-gray-500">Unread Messages</p>
         </div>
       </div>
+
+      {/* Ideas Section */}
+      {ideasStats && ideasStats.total > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-100 rounded-lg">
+                <Lightbulb className="w-5 h-5 text-amber-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Ideas Journal</h3>
+            </div>
+            <Link
+              href={`/coach/clients/${clientId}/view/ideas`}
+              className="text-sm text-amber-600 hover:text-amber-700 font-medium"
+            >
+              View All
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <p className="text-2xl font-bold text-gray-900">{ideasStats.total}</p>
+              <p className="text-sm text-gray-500">Total Ideas</p>
+            </div>
+            <div className="p-4 bg-slate-50 rounded-lg">
+              <p className="text-2xl font-bold text-slate-600">{ideasStats.captured}</p>
+              <p className="text-sm text-gray-500">Captured</p>
+            </div>
+            <div className="p-4 bg-amber-50 rounded-lg">
+              <p className="text-2xl font-bold text-amber-600">{ideasStats.underReview}</p>
+              <p className="text-sm text-gray-500">Under Review</p>
+            </div>
+            <div className="p-4 bg-emerald-50 rounded-lg">
+              <p className="text-2xl font-bold text-emerald-600">{ideasStats.approved}</p>
+              <p className="text-sm text-gray-500">Approved</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

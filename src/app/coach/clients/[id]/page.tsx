@@ -99,7 +99,8 @@ export default function ClientFilePage() {
     activeGoals: 0,
     completedGoals: 0,
     goalsProgress: 0,
-    healthScore: null as number | null
+    healthScore: null as number | null,
+    ideasStats: null as { total: number; captured: number; underReview: number; approved: number } | null
   })
   const [recentActivity, setRecentActivity] = useState<Array<{
     id: string
@@ -201,6 +202,9 @@ export default function ClientFilePage() {
 
       // Store businessProfileId at higher scope for activity queries
       let businessProfileId: string | null = null
+
+      // Ideas stats holder
+      let ideasStats: { total: number; captured: number; underReview: number; approved: number } | null = null
 
       // Only query user-specific data if we have an owner_id
       if (ownerId) {
@@ -467,6 +471,35 @@ export default function ClientFilePage() {
           }
         } catch (e) { /* Ignore */ }
 
+        // Get ideas stats and activity
+        try {
+          const { data: ideas } = await supabase
+            .from('ideas')
+            .select('id, title, status, created_at, updated_at')
+            .eq('user_id', ownerId)
+            .eq('archived', false)
+
+          if (ideas && ideas.length > 0) {
+            // Calculate ideas stats
+            ideasStats = {
+              total: ideas.length,
+              captured: ideas.filter((i: any) => i.status === 'captured').length,
+              underReview: ideas.filter((i: any) => i.status === 'under_review').length,
+              approved: ideas.filter((i: any) => i.status === 'approved').length
+            }
+
+            // Add recent ideas to activity
+            ideas.slice(0, 5).forEach((idea: any) => {
+              activities.push({
+                id: `idea-${idea.id}`,
+                type: 'goal',
+                title: `Captured idea: ${idea.title?.substring(0, 40) || 'New idea'}`,
+                timestamp: idea.created_at
+              })
+            })
+          }
+        } catch (e) { /* Ideas table may not exist yet */ }
+
         // Get Vision targets updates
         try {
           const { data: vision } = await supabase
@@ -549,7 +582,8 @@ export default function ClientFilePage() {
         activeGoals,
         completedGoals,
         goalsProgress,
-        healthScore
+        healthScore,
+        ideasStats
       })
 
     } catch (err) {
@@ -883,6 +917,7 @@ export default function ClientFilePage() {
               overdueActions={stats.overdueActions}
               unreadMessages={stats.unreadMessages}
               recentActivity={recentActivity}
+              ideasStats={stats.ideasStats ?? undefined}
             />
           </div>
         )}

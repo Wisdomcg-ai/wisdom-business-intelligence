@@ -4,13 +4,21 @@ import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import {
-  Loader2,
   ListChecks,
   AlertCircle,
+  AlertTriangle,
   RefreshCw,
   Building2,
   ChevronRight,
-  Filter
+  Search,
+  Clock,
+  Play,
+  Pause,
+  Target,
+  MessageCircle,
+  Wrench,
+  CheckCircle2,
+  X
 } from 'lucide-react'
 
 interface PendingItem {
@@ -25,6 +33,7 @@ interface PendingItem {
   ownerId: string
   createdAt: string
   updatedAt: string
+  rootCause?: string
 }
 
 interface Client {
@@ -33,14 +42,212 @@ interface Client {
   ownerId: string | null
 }
 
+type FilterType = 'all' | 'loop' | 'issue'
+
+// Status configs for loops
+const LOOP_STATUS_CONFIG = {
+  'in-progress': { label: 'In Progress', color: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: Play },
+  'stuck': { label: 'Stuck', color: 'bg-red-100 text-red-700 border-red-200', icon: AlertTriangle },
+  'on-hold': { label: 'On Hold', color: 'bg-amber-100 text-amber-700 border-amber-200', icon: Pause }
+}
+
+// Status configs for issues
+const ISSUE_STATUS_CONFIG = {
+  'new': { label: 'New', color: 'bg-slate-100 text-slate-700 border-slate-200', icon: AlertCircle },
+  'identified': { label: 'Identified', color: 'bg-teal-100 text-teal-700 border-teal-200', icon: Target },
+  'in-discussion': { label: 'In Discussion', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: MessageCircle },
+  'solving': { label: 'Solving', color: 'bg-amber-100 text-amber-700 border-amber-200', icon: Wrench },
+  'solved': { label: 'Solved', color: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: CheckCircle2 }
+}
+
+// Skeleton loader
+function CardSkeleton() {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 animate-pulse">
+      <div className="flex items-start gap-4">
+        <div className="w-10 h-10 bg-gray-200 rounded-lg flex-shrink-0"></div>
+        <div className="flex-1 space-y-3">
+          <div className="h-5 bg-gray-200 rounded w-3/4"></div>
+          <div className="h-4 bg-gray-100 rounded w-1/2"></div>
+          <div className="flex gap-2">
+            <div className="h-6 bg-gray-100 rounded-full w-20"></div>
+            <div className="h-6 bg-gray-100 rounded-full w-24"></div>
+          </div>
+        </div>
+        <div className="h-5 w-5 bg-gray-100 rounded"></div>
+      </div>
+    </div>
+  )
+}
+
+// Days badge for loops
+function DaysOpenBadge({ createdAt }: { createdAt: string }) {
+  const days = Math.floor((new Date().getTime() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24))
+
+  let colorClass = 'bg-gray-100 text-gray-600'
+  let urgencyIcon = null
+
+  if (days >= 30) {
+    colorClass = 'bg-red-100 text-red-700'
+    urgencyIcon = <AlertTriangle className="w-3 h-3" />
+  } else if (days >= 14) {
+    colorClass = 'bg-amber-100 text-amber-700'
+  } else if (days >= 7) {
+    colorClass = 'bg-blue-100 text-blue-700'
+  }
+
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${colorClass}`}>
+      <Clock className="w-3 h-3" />
+      {days}d
+      {urgencyIcon}
+    </span>
+  )
+}
+
+// Priority badge
+function PriorityBadge({ priority }: { priority: number }) {
+  const colors = {
+    1: 'bg-red-100 text-red-700 ring-1 ring-red-200',
+    2: 'bg-orange-100 text-orange-700',
+    3: 'bg-yellow-100 text-yellow-700'
+  }
+
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-full ${colors[priority as keyof typeof colors]}`}>
+      P{priority}
+      {priority === 1 && <AlertTriangle className="w-3 h-3" />}
+    </span>
+  )
+}
+
+// Action card component
+function ActionCard({ item }: { item: PendingItem }) {
+  const isLoop = item.type === 'loop'
+
+  // Get the right status config
+  const statusConfig = isLoop
+    ? LOOP_STATUS_CONFIG[item.status as keyof typeof LOOP_STATUS_CONFIG]
+    : ISSUE_STATUS_CONFIG[item.status as keyof typeof ISSUE_STATUS_CONFIG]
+
+  const StatusIcon = statusConfig?.icon || AlertCircle
+
+  // Determine if item is urgent
+  const days = Math.floor((new Date().getTime() - new Date(item.createdAt).getTime()) / (1000 * 60 * 60 * 24))
+  const isUrgent = days >= 30 || item.status === 'stuck' || (item.priority && item.priority <= 2)
+
+  return (
+    <Link
+      href={`/coach/clients/${item.clientId}?tab=overview`}
+      className={`
+        block bg-white rounded-xl border-l-4 border border-gray-200
+        ${isLoop
+          ? (item.status === 'stuck' ? 'border-l-red-500' : item.status === 'on-hold' ? 'border-l-amber-500' : 'border-l-emerald-500')
+          : (item.priority && item.priority <= 2 ? 'border-l-red-500' : 'border-l-teal-500')
+        }
+        ${isUrgent ? 'ring-1 ring-red-100' : ''}
+        transition-all duration-200 hover:shadow-md
+      `}
+    >
+      <div className="p-4">
+        <div className="flex items-start gap-4">
+          {/* Type Icon */}
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+            isLoop ? 'bg-amber-100' : 'bg-teal-100'
+          }`}>
+            {isLoop ? (
+              <RefreshCw className="w-5 h-5 text-amber-600" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-teal-600" />
+            )}
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 min-w-0">
+            {/* Title row */}
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-semibold text-gray-900 truncate">{item.title}</h3>
+              {item.priority && item.priority <= 3 && (
+                <PriorityBadge priority={item.priority} />
+              )}
+            </div>
+
+            {/* Description if exists */}
+            {item.description && (
+              <p className="text-sm text-gray-500 truncate mb-2">{item.description}</p>
+            )}
+
+            {/* Root cause highlight for issues */}
+            {item.rootCause && (
+              <div className="flex items-center gap-1 text-xs text-teal-600 mb-2">
+                <Target className="w-3 h-3" />
+                <span className="truncate">Root: {item.rootCause}</span>
+              </div>
+            )}
+
+            {/* Meta badges */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Type badge */}
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${
+                isLoop ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700'
+              }`}>
+                {isLoop ? 'Open Loop' : 'Issue'}
+              </span>
+
+              {/* Status badge */}
+              {statusConfig && (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full border ${statusConfig.color}`}>
+                  <StatusIcon className="w-3 h-3" />
+                  {statusConfig.label}
+                </span>
+              )}
+
+              {/* Days open for loops */}
+              {isLoop && <DaysOpenBadge createdAt={item.createdAt} />}
+            </div>
+          </div>
+
+          {/* Client & Arrow */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="text-right">
+              <div className="flex items-center gap-1 text-sm font-medium text-gray-900">
+                <Building2 className="w-4 h-4 text-gray-400" />
+                <span className="max-w-[120px] truncate">{item.clientName}</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">{formatDate(item.updatedAt)}</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-gray-400" />
+          </div>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+function formatDate(dateStr: string) {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+
+  if (diffDays === 0) return 'Today'
+  if (diffDays === 1) return 'Yesterday'
+  if (diffDays < 7) return `${diffDays}d ago`
+  return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
+}
+
 export default function ActionsPage() {
   const supabase = createClient()
 
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<PendingItem[]>([])
   const [clients, setClients] = useState<Client[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  // Filter state
   const [filterClient, setFilterClient] = useState<string>('')
-  const [filterType, setFilterType] = useState<'all' | 'loop' | 'issue'>('all')
+  const [filterType, setFilterType] = useState<FilterType>('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'priority'>('newest')
 
   useEffect(() => {
     loadData()
@@ -50,18 +257,25 @@ export default function ActionsPage() {
   async function loadData() {
     try {
       setLoading(true)
+      setError(null)
 
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
       // Load clients assigned to this coach
-      const { data: clientsData } = await supabase
+      const { data: clientsData, error: clientsError } = await supabase
         .from('businesses')
         .select('id, business_name, owner_id')
         .eq('assigned_coach_id', user.id)
         .order('business_name')
 
-      if (!clientsData) {
+      if (clientsError) {
+        console.error('[Actions] Error loading clients:', clientsError)
+        setError('Failed to load clients')
+        return
+      }
+
+      if (!clientsData || clientsData.length === 0) {
         setLoading(false)
         return
       }
@@ -81,7 +295,7 @@ export default function ActionsPage() {
 
         const { data: loops, error: loopsError } = await supabase
           .from('open_loops')
-          .select('id, title, user_id, created_at, updated_at, archived')
+          .select('id, title, status, user_id, created_at, updated_at, archived')
           .eq('user_id', client.ownerId)
           .eq('archived', false)
           .order('updated_at', { ascending: false })
@@ -97,7 +311,7 @@ export default function ActionsPage() {
               id: loop.id,
               type: 'loop',
               title: loop.title || 'Untitled Loop',
-              status: 'open',
+              status: loop.status || 'in-progress',
               clientId: client.id,
               clientName: client.businessName,
               ownerId: loop.user_id,
@@ -114,7 +328,7 @@ export default function ActionsPage() {
 
         const { data: issues, error: issuesError } = await supabase
           .from('issues_list')
-          .select('id, title, stated_problem, user_id, status, priority, created_at, updated_at, archived')
+          .select('id, title, stated_problem, root_cause, user_id, status, priority, created_at, updated_at, archived')
           .eq('user_id', client.ownerId)
           .eq('archived', false)
           .neq('status', 'solved')
@@ -133,6 +347,7 @@ export default function ActionsPage() {
               type: 'issue',
               title: issue.title || 'Untitled Issue',
               description: issue.stated_problem || undefined,
+              rootCause: issue.root_cause || undefined,
               status: issue.status || 'new',
               priority: issue.priority,
               clientId: client.id,
@@ -151,6 +366,7 @@ export default function ActionsPage() {
       setItems(allItems)
     } catch (error) {
       console.error('Error loading actions:', error)
+      setError('Failed to load actions')
     } finally {
       setLoading(false)
     }
@@ -160,216 +376,247 @@ export default function ActionsPage() {
   const filteredItems = useMemo(() => {
     let result = [...items]
 
+    // Client filter
     if (filterClient) {
       result = result.filter(i => i.clientId === filterClient)
     }
 
+    // Type filter
     if (filterType !== 'all') {
       result = result.filter(i => i.type === filterType)
     }
 
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      result = result.filter(i =>
+        i.title.toLowerCase().includes(query) ||
+        i.description?.toLowerCase().includes(query) ||
+        i.clientName.toLowerCase().includes(query)
+      )
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      if (sortBy === 'priority') {
+        // Priority 1 first for issues, stuck first for loops
+        const getPriorityScore = (item: PendingItem) => {
+          if (item.type === 'issue' && item.priority) return item.priority
+          if (item.type === 'loop' && item.status === 'stuck') return 0
+          return 999
+        }
+        const scoreA = getPriorityScore(a)
+        const scoreB = getPriorityScore(b)
+        if (scoreA !== scoreB) return scoreA - scoreB
+      }
+      const dateA = new Date(a.updatedAt).getTime()
+      const dateB = new Date(b.updatedAt).getTime()
+      return sortBy === 'oldest' ? dateA - dateB : dateB - dateA
+    })
+
     return result
-  }, [items, filterClient, filterType])
+  }, [items, filterClient, filterType, searchQuery, sortBy])
 
   // Counts
   const counts = useMemo(() => ({
     total: items.length,
     loops: items.filter(i => i.type === 'loop').length,
-    issues: items.filter(i => i.type === 'issue').length
+    issues: items.filter(i => i.type === 'issue').length,
+    stuckLoops: items.filter(i => i.type === 'loop' && i.status === 'stuck').length,
+    topPriorityIssues: items.filter(i => i.type === 'issue' && i.priority && i.priority <= 3).length
   }), [items])
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    const now = new Date()
-    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
-
-    if (diffDays === 0) return 'Today'
-    if (diffDays === 1) return 'Yesterday'
-    if (diffDays < 7) return `${diffDays} days ago`
-    return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
-  }
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
-          <p className="text-gray-500">Loading open loops & issues...</p>
+      <div className="min-h-screen bg-slate-50 p-6">
+        <div className="max-w-[1400px] mx-auto">
+          <div className="mb-6">
+            <div className="h-8 w-48 bg-gray-200 rounded animate-pulse mb-2"></div>
+            <div className="h-5 w-64 bg-gray-100 rounded animate-pulse"></div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-20 bg-white rounded-xl border border-gray-200 animate-pulse"></div>
+            ))}
+          </div>
+          <div className="space-y-4">
+            {[1, 2, 3].map(i => (
+              <CardSkeleton key={i} />
+            ))}
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Pending Actions</h1>
-          <p className="text-gray-500 mt-1">
-            {counts.total} total &middot; {counts.loops} open loops &middot; {counts.issues} issues
-          </p>
-        </div>
-        <button
-          onClick={loadData}
-          className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
-        </button>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <div
-          className={`bg-white rounded-xl border-2 p-5 cursor-pointer transition-colors ${
-            filterType === 'all' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'
-          }`}
-          onClick={() => setFilterType('all')}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-              <ListChecks className="w-5 h-5 text-indigo-600" />
-            </div>
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Pending Actions</h1>
+              <p className="text-sm text-gray-600 mt-1">
+                Open loops and issues across all your clients
+              </p>
+            </div>
+            <button
+              onClick={loadData}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
+          </div>
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <button
+              onClick={() => setFilterType('all')}
+              className={`p-3 rounded-xl border-2 transition-all ${
+                filterType === 'all'
+                  ? 'border-indigo-500 bg-indigo-50'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
+              }`}
+            >
               <p className="text-2xl font-bold text-gray-900">{counts.total}</p>
-              <p className="text-sm text-gray-500">All Items</p>
-            </div>
-          </div>
-        </div>
-        <div
-          className={`bg-white rounded-xl border-2 p-5 cursor-pointer transition-colors ${
-            filterType === 'loop' ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-gray-300'
-          }`}
-          onClick={() => setFilterType('loop')}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
-              <RefreshCw className="w-5 h-5 text-amber-600" />
-            </div>
-            <div>
+              <p className="text-xs font-medium text-gray-600">Total Items</p>
+            </button>
+            <button
+              onClick={() => setFilterType('loop')}
+              className={`p-3 rounded-xl border-2 transition-all ${
+                filterType === 'loop'
+                  ? 'border-amber-500 bg-amber-50'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
+              }`}
+            >
               <p className="text-2xl font-bold text-amber-600">{counts.loops}</p>
-              <p className="text-sm text-gray-500">Open Loops</p>
+              <p className="text-xs font-medium text-gray-600">Open Loops</p>
+            </button>
+            <button
+              onClick={() => setFilterType('issue')}
+              className={`p-3 rounded-xl border-2 transition-all ${
+                filterType === 'issue'
+                  ? 'border-teal-500 bg-teal-50'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
+              }`}
+            >
+              <p className="text-2xl font-bold text-teal-600">{counts.issues}</p>
+              <p className="text-xs font-medium text-gray-600">Issues</p>
+            </button>
+            <div className="p-3 rounded-xl border-2 border-gray-200 bg-white">
+              <p className="text-2xl font-bold text-red-600">{counts.stuckLoops}</p>
+              <p className="text-xs font-medium text-gray-600">Stuck Loops</p>
             </div>
-          </div>
-        </div>
-        <div
-          className={`bg-white rounded-xl border-2 p-5 cursor-pointer transition-colors ${
-            filterType === 'issue' ? 'border-red-500 bg-red-50' : 'border-gray-200 hover:border-gray-300'
-          }`}
-          onClick={() => setFilterType('issue')}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-              <AlertCircle className="w-5 h-5 text-red-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-red-600">{counts.issues}</p>
-              <p className="text-sm text-gray-500">Issues</p>
+            <div className="p-3 rounded-xl border-2 border-gray-200 bg-white">
+              <p className="text-2xl font-bold text-red-600">{counts.topPriorityIssues}</p>
+              <p className="text-xs font-medium text-gray-600">Priority Issues</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Client Filter */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 text-gray-500">
-          <Filter className="w-4 h-4" />
-          <span className="text-sm font-medium">Filter by client:</span>
-        </div>
-        <select
-          value={filterClient}
-          onChange={(e) => setFilterClient(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-        >
-          <option value="">All Clients</option>
-          {clients.map(client => (
-            <option key={client.id} value={client.id}>
-              {client.businessName}
-            </option>
-          ))}
-        </select>
-        {(filterClient || filterType !== 'all') && (
-          <button
-            onClick={() => { setFilterClient(''); setFilterType('all') }}
-            className="text-sm text-indigo-600 hover:text-indigo-800"
+      {/* Main Content */}
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6">
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+              <p className="text-red-700">{error}</p>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="p-1 hover:bg-red-100 rounded"
+            >
+              <X className="w-5 h-5 text-red-600" />
+            </button>
+          </div>
+        )}
+
+        {/* Search and Filters */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search items..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+          </div>
+          <select
+            value={filterClient}
+            onChange={(e) => setFilterClient(e.target.value)}
+            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
           >
-            Clear filters
-          </button>
+            <option value="">All Clients</option>
+            {clients.map(client => (
+              <option key={client.id} value={client.id}>
+                {client.businessName}
+              </option>
+            ))}
+          </select>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+          >
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="priority">By Priority</option>
+          </select>
+          {(filterClient || filterType !== 'all' || searchQuery) && (
+            <button
+              onClick={() => {
+                setFilterClient('')
+                setFilterType('all')
+                setSearchQuery('')
+              }}
+              className="px-4 py-2.5 text-indigo-600 hover:text-indigo-700 font-medium"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+
+        {/* Items List */}
+        {filteredItems.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <ListChecks className="w-8 h-8 text-green-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              {items.length === 0 ? 'No pending items' : 'No items match your filters'}
+            </h3>
+            <p className="text-gray-600 max-w-md mx-auto">
+              {items.length === 0
+                ? 'All clients are up to date with no open loops or issues'
+                : 'Try adjusting your filters to see more items'}
+            </p>
+            {items.length > 0 && (
+              <button
+                onClick={() => {
+                  setFilterClient('')
+                  setFilterType('all')
+                  setSearchQuery('')
+                }}
+                className="mt-4 text-indigo-600 hover:text-indigo-700 font-medium"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredItems.map(item => (
+              <ActionCard key={`${item.type}-${item.id}`} item={item} />
+            ))}
+          </div>
         )}
       </div>
-
-      {/* Items List */}
-      {filteredItems.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <ListChecks className="w-8 h-8 text-green-600" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-1">
-            {items.length === 0 ? 'No pending items' : 'No items match your filters'}
-          </h3>
-          <p className="text-gray-500">
-            {items.length === 0
-              ? 'All clients are up to date with no open loops or issues'
-              : 'Try adjusting your filters to see more items'}
-          </p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-          {filteredItems.map(item => (
-            <Link
-              key={`${item.type}-${item.id}`}
-              href={`/coach/clients/${item.clientId}?tab=overview`}
-              className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors"
-            >
-              {/* Type Icon */}
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                item.type === 'loop' ? 'bg-amber-100' : 'bg-red-100'
-              }`}>
-                {item.type === 'loop' ? (
-                  <RefreshCw className="w-5 h-5 text-amber-600" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-red-600" />
-                )}
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                    item.type === 'loop'
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-red-100 text-red-700'
-                  }`}>
-                    {item.type === 'loop' ? 'Open Loop' : 'Issue'}
-                  </span>
-                  {item.priority && item.priority <= 3 && (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                      Priority {item.priority}
-                    </span>
-                  )}
-                </div>
-                <h3 className="font-medium text-gray-900 truncate">{item.title}</h3>
-                {item.description && (
-                  <p className="text-sm text-gray-500 truncate mt-0.5">{item.description}</p>
-                )}
-              </div>
-
-              {/* Client & Date */}
-              <div className="text-right flex-shrink-0">
-                <div className="flex items-center gap-1 text-sm font-medium text-gray-900">
-                  <Building2 className="w-4 h-4 text-gray-400" />
-                  {item.clientName}
-                </div>
-                <p className="text-xs text-gray-500 mt-1">{formatDate(item.updatedAt)}</p>
-              </div>
-
-              {/* Arrow */}
-              <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
-            </Link>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
