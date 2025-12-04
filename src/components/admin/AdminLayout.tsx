@@ -38,25 +38,25 @@ interface AdminLayoutProps {
 const navigation = [
   {
     name: 'Dashboard',
-    href: '/admin/dashboard-new',
+    href: '/admin',
     icon: LayoutDashboard,
     description: 'Overview & quick actions'
   },
   {
     name: 'Clients',
-    href: '/admin/clients-new',
+    href: '/admin/clients',
     icon: Building2,
     description: 'Manage client businesses'
   },
   {
     name: 'Coaches',
-    href: '/admin/coaches-new',
+    href: '/admin/coaches',
     icon: Briefcase,
     description: 'Manage coaching team'
   },
   {
     name: 'All Users',
-    href: '/admin/users-new',
+    href: '/admin/users',
     icon: Users,
     description: 'User accounts & passwords'
   },
@@ -197,8 +197,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <nav className="flex-1 px-3 py-6 overflow-y-auto">
               <div className="space-y-1">
                 {navigation.map((item) => {
-                  const isActive = item.href === '/admin/dashboard-new'
-                    ? pathname === '/admin/dashboard-new'
+                  const isActive = item.href === '/admin'
+                    ? pathname === '/admin'
                     : pathname?.startsWith(item.href)
 
                   return (
