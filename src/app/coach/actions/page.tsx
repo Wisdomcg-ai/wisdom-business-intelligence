@@ -2,42 +2,45 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ActionCard, type ActionItem } from '@/components/coach/actions/ActionCard'
-import { ActionFiltersBar, ActionQuickFilters, type ActionFilters } from '@/components/coach/actions/ActionFilters'
-import { CreateActionModal } from '@/components/coach/actions/CreateActionModal'
+import Link from 'next/link'
 import {
-  Plus,
   Loader2,
   ListChecks,
-  AlertTriangle,
-  CheckCircle,
-  Clock
+  AlertCircle,
+  RefreshCw,
+  Building2,
+  ChevronRight,
+  Filter
 } from 'lucide-react'
+
+interface PendingItem {
+  id: string
+  type: 'loop' | 'issue'
+  title: string
+  description?: string
+  status: string
+  priority?: number
+  clientId: string
+  clientName: string
+  ownerId: string
+  createdAt: string
+  updatedAt: string
+}
 
 interface Client {
   id: string
   businessName: string
-  industry?: string
+  ownerId: string | null
 }
 
 export default function ActionsPage() {
   const supabase = createClient()
 
   const [loading, setLoading] = useState(true)
-  const [actions, setActions] = useState<ActionItem[]>([])
+  const [items, setItems] = useState<PendingItem[]>([])
   const [clients, setClients] = useState<Client[]>([])
-  const [showCreateModal, setShowCreateModal] = useState(false)
-
-  const [filters, setFilters] = useState<ActionFilters>({
-    search: '',
-    status: 'all',
-    priority: 'all',
-    clientId: '',
-    dueFilter: 'all',
-    category: ''
-  })
-
-  const [quickFilter, setQuickFilter] = useState('all')
+  const [filterClient, setFilterClient] = useState<string>('')
+  const [filterType, setFilterType] = useState<'all' | 'loop' | 'issue'>('all')
 
   useEffect(() => {
     loadData()
@@ -51,66 +54,101 @@ export default function ActionsPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Load clients
+      // Load clients assigned to this coach
       const { data: clientsData } = await supabase
         .from('businesses')
-        .select('id, business_name, industry')
+        .select('id, business_name, owner_id')
         .eq('assigned_coach_id', user.id)
         .order('business_name')
 
-      if (clientsData) {
-        setClients(clientsData.map(c => ({
-          id: c.id,
-          businessName: c.business_name || 'Unnamed',
-          industry: c.industry || undefined
-        })))
+      if (!clientsData) {
+        setLoading(false)
+        return
       }
 
-      // Load actions
-      const { data: actionsData } = await supabase
-        .from('action_items')
-        .select(`
-          id,
-          title,
-          description,
-          business_id,
-          status,
-          priority,
-          due_date,
-          assigned_to,
-          created_at,
-          completed_at,
-          category,
-          businesses (
-            business_name
-          )
-        `)
-        .order('created_at', { ascending: false })
+      const clientsList: Client[] = clientsData.map(c => ({
+        id: c.id,
+        businessName: c.business_name || 'Unnamed',
+        ownerId: c.owner_id
+      }))
+      setClients(clientsList)
 
-      if (actionsData) {
-        setActions(actionsData.map(a => {
-          const businessData = a.businesses as unknown
-          const business = Array.isArray(businessData)
-            ? businessData[0] as { business_name: string } | undefined
-            : businessData as { business_name: string } | null
+      // Get owner IDs for querying
+      const ownerIds = clientsList
+        .map(c => c.ownerId)
+        .filter((id): id is string => id !== null)
 
-          return {
-            id: a.id,
-            title: a.title || '',
-            description: a.description || undefined,
-            businessId: a.business_id || '',
-            businessName: business?.business_name || 'Unknown',
-            status: (a.status as ActionItem['status']) || 'pending',
-            priority: (a.priority as ActionItem['priority']) || 'medium',
-            dueDate: a.due_date || undefined,
-            assignedTo: a.assigned_to || undefined,
-            createdAt: a.created_at,
-            completedAt: a.completed_at || undefined,
-            category: a.category || undefined
+      if (ownerIds.length === 0) {
+        setItems([])
+        setLoading(false)
+        return
+      }
+
+      const allItems: PendingItem[] = []
+
+      // Load open loops (not archived)
+      const { data: loops } = await supabase
+        .from('open_loops')
+        .select('id, title, description, user_id, created_at, updated_at, archived')
+        .in('user_id', ownerIds)
+        .eq('archived', false)
+        .order('updated_at', { ascending: false })
+
+      if (loops) {
+        loops.forEach(loop => {
+          const client = clientsList.find(c => c.ownerId === loop.user_id)
+          if (client) {
+            allItems.push({
+              id: loop.id,
+              type: 'loop',
+              title: loop.title || 'Untitled Loop',
+              description: loop.description || undefined,
+              status: 'open',
+              clientId: client.id,
+              clientName: client.businessName,
+              ownerId: loop.user_id,
+              createdAt: loop.created_at,
+              updatedAt: loop.updated_at || loop.created_at
+            })
           }
-        }))
+        })
       }
 
+      // Load open issues (not archived/solved)
+      const { data: issues } = await supabase
+        .from('issues_list')
+        .select('id, title, stated_problem, user_id, status, priority, created_at, updated_at, archived')
+        .in('user_id', ownerIds)
+        .eq('archived', false)
+        .neq('status', 'solved')
+        .order('priority', { ascending: true, nullsFirst: false })
+        .order('updated_at', { ascending: false })
+
+      if (issues) {
+        issues.forEach(issue => {
+          const client = clientsList.find(c => c.ownerId === issue.user_id)
+          if (client) {
+            allItems.push({
+              id: issue.id,
+              type: 'issue',
+              title: issue.title || 'Untitled Issue',
+              description: issue.stated_problem || undefined,
+              status: issue.status || 'new',
+              priority: issue.priority,
+              clientId: client.id,
+              clientName: client.businessName,
+              ownerId: issue.user_id,
+              createdAt: issue.created_at,
+              updatedAt: issue.updated_at || issue.created_at
+            })
+          }
+        })
+      }
+
+      // Sort by updated_at descending
+      allItems.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+
+      setItems(allItems)
     } catch (error) {
       console.error('Error loading actions:', error)
     } finally {
@@ -118,190 +156,37 @@ export default function ActionsPage() {
     }
   }
 
-  // Filter actions
-  const filteredActions = useMemo(() => {
-    let result = [...actions]
+  // Filter items
+  const filteredItems = useMemo(() => {
+    let result = [...items]
 
-    // Quick filter
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const weekEnd = new Date(today)
-    weekEnd.setDate(weekEnd.getDate() + 7)
-
-    if (quickFilter === 'overdue') {
-      result = result.filter(a =>
-        a.dueDate &&
-        new Date(a.dueDate) < today &&
-        a.status !== 'completed' &&
-        a.status !== 'cancelled'
-      )
-    } else if (quickFilter === 'today') {
-      result = result.filter(a =>
-        a.dueDate &&
-        new Date(a.dueDate).toDateString() === today.toDateString() &&
-        a.status !== 'completed'
-      )
-    } else if (quickFilter === 'this_week') {
-      result = result.filter(a =>
-        a.dueDate &&
-        new Date(a.dueDate) >= today &&
-        new Date(a.dueDate) < weekEnd &&
-        a.status !== 'completed'
-      )
-    } else if (quickFilter === 'completed') {
-      result = result.filter(a => a.status === 'completed')
+    if (filterClient) {
+      result = result.filter(i => i.clientId === filterClient)
     }
 
-    // Search
-    if (filters.search) {
-      const query = filters.search.toLowerCase()
-      result = result.filter(a =>
-        a.title.toLowerCase().includes(query) ||
-        a.description?.toLowerCase().includes(query) ||
-        a.businessName.toLowerCase().includes(query)
-      )
-    }
-
-    // Status filter
-    if (filters.status !== 'all') {
-      result = result.filter(a => a.status === filters.status)
-    }
-
-    // Priority filter
-    if (filters.priority !== 'all') {
-      result = result.filter(a => a.priority === filters.priority)
-    }
-
-    // Client filter
-    if (filters.clientId) {
-      result = result.filter(a => a.businessId === filters.clientId)
-    }
-
-    // Due date filter
-    if (filters.dueFilter !== 'all') {
-      if (filters.dueFilter === 'overdue') {
-        result = result.filter(a =>
-          a.dueDate && new Date(a.dueDate) < today && a.status !== 'completed'
-        )
-      } else if (filters.dueFilter === 'today') {
-        result = result.filter(a =>
-          a.dueDate && new Date(a.dueDate).toDateString() === today.toDateString()
-        )
-      } else if (filters.dueFilter === 'this_week') {
-        result = result.filter(a =>
-          a.dueDate && new Date(a.dueDate) >= today && new Date(a.dueDate) < weekEnd
-        )
-      } else if (filters.dueFilter === 'no_date') {
-        result = result.filter(a => !a.dueDate)
-      }
-    }
-
-    // Category filter
-    if (filters.category) {
-      result = result.filter(a => a.category === filters.category)
+    if (filterType !== 'all') {
+      result = result.filter(i => i.type === filterType)
     }
 
     return result
-  }, [actions, filters, quickFilter])
+  }, [items, filterClient, filterType])
 
-  // Get unique categories
-  const categories = useMemo(() => {
-    const cats = new Set(actions.map(a => a.category).filter(Boolean))
-    return Array.from(cats) as string[]
-  }, [actions])
+  // Counts
+  const counts = useMemo(() => ({
+    total: items.length,
+    loops: items.filter(i => i.type === 'loop').length,
+    issues: items.filter(i => i.type === 'issue').length
+  }), [items])
 
-  // Counts for quick filters
-  const counts = useMemo(() => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const weekEnd = new Date(today)
-    weekEnd.setDate(weekEnd.getDate() + 7)
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
 
-    return {
-      all: actions.filter(a => a.status !== 'completed' && a.status !== 'cancelled').length,
-      overdue: actions.filter(a =>
-        a.dueDate && new Date(a.dueDate) < today && a.status !== 'completed' && a.status !== 'cancelled'
-      ).length,
-      today: actions.filter(a =>
-        a.dueDate && new Date(a.dueDate).toDateString() === today.toDateString() && a.status !== 'completed'
-      ).length,
-      thisWeek: actions.filter(a =>
-        a.dueDate && new Date(a.dueDate) >= today && new Date(a.dueDate) < weekEnd && a.status !== 'completed'
-      ).length,
-      completed: actions.filter(a => a.status === 'completed').length
-    }
-  }, [actions])
-
-  const handleCreateAction = async (data: {
-    title: string
-    description?: string
-    businessId: string
-    priority: 'low' | 'medium' | 'high' | 'urgent'
-    dueDate?: string
-    category?: string
-  }) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const { error } = await supabase
-      .from('action_items')
-      .insert({
-        title: data.title,
-        description: data.description,
-        business_id: data.businessId,
-        priority: data.priority,
-        due_date: data.dueDate,
-        category: data.category,
-        status: 'pending',
-        created_by: user.id
-      })
-
-    if (error) {
-      console.error('Error creating action:', error)
-      throw error
-    }
-
-    await loadData()
-  }
-
-  const handleToggleComplete = async (actionId: string) => {
-    const action = actions.find(a => a.id === actionId)
-    if (!action) return
-
-    const newStatus = action.status === 'completed' ? 'pending' : 'completed'
-
-    const { error } = await supabase
-      .from('action_items')
-      .update({
-        status: newStatus,
-        completed_at: newStatus === 'completed' ? new Date().toISOString() : null
-      })
-      .eq('id', actionId)
-
-    if (error) {
-      console.error('Error updating action:', error)
-      return
-    }
-
-    setActions(prev => prev.map(a =>
-      a.id === actionId
-        ? { ...a, status: newStatus, completedAt: newStatus === 'completed' ? new Date().toISOString() : undefined }
-        : a
-    ))
-  }
-
-  const handleDeleteAction = async (actionId: string) => {
-    const { error } = await supabase
-      .from('action_items')
-      .delete()
-      .eq('id', actionId)
-
-    if (error) {
-      console.error('Error deleting action:', error)
-      return
-    }
-
-    setActions(prev => prev.filter(a => a.id !== actionId))
+    if (diffDays === 0) return 'Today'
+    if (diffDays === 1) return 'Yesterday'
+    if (diffDays < 7) return `${diffDays} days ago`
+    return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
   }
 
   if (loading) {
@@ -309,7 +194,7 @@ export default function ActionsPage() {
       <div className="p-6 flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
-          <p className="text-gray-500">Loading actions...</p>
+          <p className="text-gray-500">Loading open loops & issues...</p>
         </div>
       </div>
     )
@@ -320,124 +205,171 @@ export default function ActionsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Actions</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Pending Actions</h1>
           <p className="text-gray-500 mt-1">
-            {counts.all} pending &middot; {counts.overdue} overdue &middot; {counts.completed} completed
+            {counts.total} total &middot; {counts.loops} open loops &middot; {counts.issues} issues
           </p>
         </div>
         <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+          onClick={loadData}
+          className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
-          <Plus className="w-4 h-4" />
-          Create Action
+          <RefreshCw className="w-4 h-4" />
+          Refresh
         </button>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
-              <Clock className="w-5 h-5 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{counts.all}</p>
-              <p className="text-sm text-gray-500">Pending</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-red-600">{counts.overdue}</p>
-              <p className="text-sm text-gray-500">Overdue</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="grid grid-cols-3 gap-4">
+        <div
+          className={`bg-white rounded-xl border-2 p-5 cursor-pointer transition-colors ${
+            filterType === 'all' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'
+          }`}
+          onClick={() => setFilterType('all')}
+        >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
               <ListChecks className="w-5 h-5 text-indigo-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">{counts.today}</p>
-              <p className="text-sm text-gray-500">Due Today</p>
+              <p className="text-2xl font-bold text-gray-900">{counts.total}</p>
+              <p className="text-sm text-gray-500">All Items</p>
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div
+          className={`bg-white rounded-xl border-2 p-5 cursor-pointer transition-colors ${
+            filterType === 'loop' ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-gray-300'
+          }`}
+          onClick={() => setFilterType('loop')}
+        >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-green-600" />
+            <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+              <RefreshCw className="w-5 h-5 text-amber-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-green-600">{counts.completed}</p>
-              <p className="text-sm text-gray-500">Completed</p>
+              <p className="text-2xl font-bold text-amber-600">{counts.loops}</p>
+              <p className="text-sm text-gray-500">Open Loops</p>
+            </div>
+          </div>
+        </div>
+        <div
+          className={`bg-white rounded-xl border-2 p-5 cursor-pointer transition-colors ${
+            filterType === 'issue' ? 'border-red-500 bg-red-50' : 'border-gray-200 hover:border-gray-300'
+          }`}
+          onClick={() => setFilterType('issue')}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+              <AlertCircle className="w-5 h-5 text-red-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-red-600">{counts.issues}</p>
+              <p className="text-sm text-gray-500">Issues</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Quick Filters */}
-      <ActionQuickFilters
-        activeFilter={quickFilter}
-        onFilterChange={setQuickFilter}
-        counts={counts}
-      />
-
-      {/* Filters */}
-      <ActionFiltersBar
-        filters={filters}
-        onFiltersChange={setFilters}
-        clients={clients}
-        categories={categories}
-      />
-
-      {/* Actions List */}
-      {filteredActions.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <ListChecks className="w-8 h-8 text-gray-400" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-1">No actions found</h3>
-          <p className="text-gray-500 mb-4">
-            {filters.search || quickFilter !== 'all'
-              ? 'Try adjusting your filters'
-              : 'Create your first action to get started'}
-          </p>
+      {/* Client Filter */}
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 text-gray-500">
+          <Filter className="w-4 h-4" />
+          <span className="text-sm font-medium">Filter by client:</span>
+        </div>
+        <select
+          value={filterClient}
+          onChange={(e) => setFilterClient(e.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        >
+          <option value="">All Clients</option>
+          {clients.map(client => (
+            <option key={client.id} value={client.id}>
+              {client.businessName}
+            </option>
+          ))}
+        </select>
+        {(filterClient || filterType !== 'all') && (
           <button
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+            onClick={() => { setFilterClient(''); setFilterType('all') }}
+            className="text-sm text-indigo-600 hover:text-indigo-800"
           >
-            <Plus className="w-4 h-4" />
-            Create Action
+            Clear filters
           </button>
+        )}
+      </div>
+
+      {/* Items List */}
+      {filteredItems.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <ListChecks className="w-8 h-8 text-green-600" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-1">
+            {items.length === 0 ? 'No pending items' : 'No items match your filters'}
+          </h3>
+          <p className="text-gray-500">
+            {items.length === 0
+              ? 'All clients are up to date with no open loops or issues'
+              : 'Try adjusting your filters to see more items'}
+          </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filteredActions.map(action => (
-            <ActionCard
-              key={action.id}
-              action={action}
-              onToggleComplete={handleToggleComplete}
-              onEdit={(a) => console.log('Edit action:', a)}
-              onDelete={handleDeleteAction}
-            />
+        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+          {filteredItems.map(item => (
+            <Link
+              key={`${item.type}-${item.id}`}
+              href={`/coach/clients/${item.clientId}?tab=overview`}
+              className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors"
+            >
+              {/* Type Icon */}
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                item.type === 'loop' ? 'bg-amber-100' : 'bg-red-100'
+              }`}>
+                {item.type === 'loop' ? (
+                  <RefreshCw className="w-5 h-5 text-amber-600" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-red-600" />
+                )}
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                    item.type === 'loop'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-red-100 text-red-700'
+                  }`}>
+                    {item.type === 'loop' ? 'Open Loop' : 'Issue'}
+                  </span>
+                  {item.priority && item.priority <= 3 && (
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                      Priority {item.priority}
+                    </span>
+                  )}
+                </div>
+                <h3 className="font-medium text-gray-900 truncate">{item.title}</h3>
+                {item.description && (
+                  <p className="text-sm text-gray-500 truncate mt-0.5">{item.description}</p>
+                )}
+              </div>
+
+              {/* Client & Date */}
+              <div className="text-right flex-shrink-0">
+                <div className="flex items-center gap-1 text-sm font-medium text-gray-900">
+                  <Building2 className="w-4 h-4 text-gray-400" />
+                  {item.clientName}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">{formatDate(item.updatedAt)}</p>
+              </div>
+
+              {/* Arrow */}
+              <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
+            </Link>
           ))}
         </div>
       )}
-
-      {/* Create Modal */}
-      <CreateActionModal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onCreate={handleCreateAction}
-        clients={clients}
-      />
     </div>
   )
 }
