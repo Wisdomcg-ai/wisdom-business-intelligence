@@ -72,6 +72,18 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       const business = businesses?.[0]
       console.log('[Onboarding] Business lookup:', { businessId: business?.id, businessName: business?.name, error: businessError?.message })
 
+      // Get the business_profile ID for querying related tables
+      // business_profiles.id is used as the foreign key in financial_goals, initiatives, etc.
+      const { data: profileForId } = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+
+      const businessProfileId = profileForId?.[0]?.id
+      console.log('[Onboarding] Business profile ID for queries:', businessProfileId)
+
       // Check all completion statuses in parallel
       const [profileResult, assessmentResult, visionResult, swotResult, financialGoalsResult, initiativesResult, operationalActivitiesResult] = await Promise.all([
         // 1. Business Profile - get full profile to calculate completion
@@ -108,25 +120,31 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
           .limit(1),
 
         // 5. Strategic Plan - check all 5 steps of the wizard
-        // Step 1: Financial goals (all 3 years) + quarterly_targets (stored as JSONB)
-        supabase
-          .from('business_financial_goals')
-          .select('revenue_year1, revenue_year2, revenue_year3, quarterly_targets')
-          .eq('user_id', user.id)
-          .maybeSingle(),
+        // Step 1: Financial goals - query by business_id (business_profiles.id)
+        businessProfileId
+          ? supabase
+              .from('business_financial_goals')
+              .select('revenue_year1, revenue_year2, revenue_year3, quarterly_targets')
+              .eq('business_id', businessProfileId)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
 
-        // Steps 2-5: Strategic initiatives by step_type
-        supabase
-          .from('strategic_initiatives')
-          .select('id, step_type')
-          .eq('user_id', user.id),
+        // Steps 2-5: Strategic initiatives by step_type - query by business_id
+        businessProfileId
+          ? supabase
+              .from('strategic_initiatives')
+              .select('id, step_type')
+              .eq('business_id', businessProfileId)
+          : Promise.resolve({ data: [], error: null }),
 
-        // Step 5: Operational activities
-        supabase
-          .from('operational_activities')
-          .select('id')
-          .eq('user_id', user.id)
-          .limit(1)
+        // Step 5: Operational activities - query by business_id
+        businessProfileId
+          ? supabase
+              .from('operational_activities')
+              .select('id')
+              .eq('business_id', businessProfileId)
+              .limit(1)
+          : Promise.resolve({ data: [], error: null })
       ])
 
       // Determine completion status
