@@ -541,6 +541,22 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* New Design Banner */}
+      <div className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white px-4 py-3">
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between">
+          <p className="text-sm">
+            <span className="font-semibold">New!</span> Try the redesigned Admin Portal with improved UX
+          </p>
+          <Link
+            href="/admin/dashboard-new"
+            className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
+          >
+            Try New Design
+            <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
