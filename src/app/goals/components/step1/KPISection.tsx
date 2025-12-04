@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronDown, ChevronUp, Activity, Plus, Trash2, X, Search, AlertCircle, Sparkles } from 'lucide-react'
+import { ChevronDown, ChevronUp, Activity, Plus, Trash2, X, Search, AlertCircle, Sparkles, HelpCircle, ChevronRight } from 'lucide-react'
 import { KPIData, YearType } from '../../types'
 import { getYearLabel } from './types'
 import { useKPIs } from '../../hooks/useKPIs'
@@ -399,16 +399,18 @@ function KPISelectionModal({
   onAddKPI,
   onCreateCustom
 }: KPISelectionModalProps) {
+  const [expandedKPI, setExpandedKPI] = useState<string | null>(null)
+
   if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="sticky top-0 bg-gradient-to-r from-green-50 to-green-100 border-b border-gray-200 p-5 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Select KPIs to Track</h3>
-            <p className="text-sm text-gray-600 mt-1">Choose from 200+ KPIs across all business functions</p>
+            <p className="text-sm text-gray-600 mt-1">Choose from 200+ KPIs across all business functions. Click the help icon for more details.</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-white rounded">
             <X className="w-5 h-5" />
@@ -478,33 +480,116 @@ function KPISelectionModal({
               {Object.entries(groupedKPIs).map(([category, categoryKPIs]) => (
                 <div key={category}>
                   <h4 className="text-sm font-semibold text-gray-700 mb-2">{category} ({categoryKPIs.length})</h4>
-                  <div className="space-y-2">
-                    {categoryKPIs.map((kpi) => (
-                      <button
-                        key={kpi.id}
-                        onClick={() => {
-                          onAddKPI(kpi)
-                          onClose()
-                        }}
-                        className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-all group"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium text-gray-900 group-hover:text-green-700">{kpi.name}</p>
-                              {kpi.isCustom && (
-                                <span className="text-[9px] px-1.5 py-0.5 bg-teal-600 text-white rounded font-bold">CUSTOM</span>
+                  <div className="space-y-3">
+                    {categoryKPIs.map((kpi) => {
+                      const isExpanded = expandedKPI === kpi.id
+                      const hasDetails = kpi.whyItMatters || kpi.actionToTake
+
+                      return (
+                        <div
+                          key={kpi.id}
+                          className={`rounded-lg border transition-all ${
+                            isExpanded ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-white hover:border-gray-300'
+                          }`}
+                        >
+                          {/* Main KPI Card */}
+                          <div className="p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-semibold text-gray-900">{kpi.name}</p>
+                                  {kpi.isCustom && (
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-teal-600 text-white rounded font-bold">CUSTOM</span>
+                                  )}
+                                </div>
+                                <p className="text-sm text-gray-600">{kpi.friendlyName}</p>
+                                {kpi.description && (
+                                  <p className="text-sm text-gray-700 mt-2">{kpi.description}</p>
+                                )}
+                                <div className="flex items-center gap-3 mt-2">
+                                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                                    {kpi.category}
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    Track {kpi.frequency}
+                                  </span>
+                                  {kpi.benchmarks?.good && (
+                                    <span className="text-xs text-gray-500">
+                                      Target: {typeof kpi.benchmarks.good === 'number' && kpi.unit === 'percentage' ? `${kpi.benchmarks.good}%` : kpi.benchmarks.good}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {hasDetails && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setExpandedKPI(isExpanded ? null : kpi.id)
+                                    }}
+                                    className={`p-1.5 rounded transition-colors ${
+                                      isExpanded ? 'text-green-600 bg-green-100' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                                    }`}
+                                    title="Show details"
+                                  >
+                                    <HelpCircle className="w-5 h-5" />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    onAddKPI(kpi)
+                                    onClose()
+                                  }}
+                                  className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm transition-colors"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                  Add
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Expanded Details Section */}
+                          {isExpanded && hasDetails && (
+                            <div className="border-t border-green-200 bg-green-50 p-4 space-y-3">
+                              {kpi.whyItMatters && (
+                                <div>
+                                  <h5 className="font-semibold text-sm text-gray-900 mb-1 flex items-center gap-1">
+                                    <ChevronRight className="w-4 h-4 text-green-600" />
+                                    Why This Matters
+                                  </h5>
+                                  <p className="text-sm text-gray-700 ml-5">{kpi.whyItMatters}</p>
+                                </div>
+                              )}
+                              {kpi.actionToTake && (
+                                <div>
+                                  <h5 className="font-semibold text-sm text-gray-900 mb-1 flex items-center gap-1">
+                                    <ChevronRight className="w-4 h-4 text-green-600" />
+                                    What To Do
+                                  </h5>
+                                  <p className="text-sm text-gray-700 ml-5">{kpi.actionToTake}</p>
+                                </div>
+                              )}
+                              {kpi.benchmarks && (
+                                <div>
+                                  <h5 className="font-semibold text-sm text-gray-900 mb-1 flex items-center gap-1">
+                                    <ChevronRight className="w-4 h-4 text-green-600" />
+                                    Benchmarks
+                                  </h5>
+                                  <div className="ml-5 flex gap-4 text-xs">
+                                    <span className="text-red-600">Poor: {kpi.benchmarks.poor}</span>
+                                    <span className="text-yellow-600">Average: {kpi.benchmarks.average}</span>
+                                    <span className="text-green-600">Good: {kpi.benchmarks.good}</span>
+                                    <span className="text-emerald-600">Excellent: {kpi.benchmarks.excellent}</span>
+                                  </div>
+                                </div>
                               )}
                             </div>
-                            <p className="text-xs text-gray-600 mt-0.5">{kpi.friendlyName}</p>
-                            {kpi.description && (
-                              <p className="text-xs text-gray-500 mt-1 line-clamp-1">{kpi.description}</p>
-                            )}
-                          </div>
-                          <Plus className="w-4 h-4 text-gray-400 group-hover:text-green-600 flex-shrink-0 ml-2" />
+                          )}
                         </div>
-                      </button>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               ))}

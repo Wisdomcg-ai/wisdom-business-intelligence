@@ -31,6 +31,14 @@ export interface KPIData {
   unit: string
   frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'annual'
   description?: string
+  whyItMatters?: string
+  actionToTake?: string
+  benchmarks?: {
+    poor: number | string
+    average: number | string
+    good: number | string
+    excellent: number | string
+  }
   isStandard?: boolean
   isIndustry?: boolean
   isCustom?: boolean

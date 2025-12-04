@@ -136,10 +136,10 @@ export class KPIService {
     return libraryKPIs.map(kpi => {
       // Handle both 'function' and 'businessFunction' property names
       let functionName = kpi.function || kpi.businessFunction || 'Other'
-      
+
       // Normalize - convert to string and uppercase
       functionName = String(functionName).toUpperCase().trim()
-      
+
       return {
         id: kpi.id || `kpi-${Math.random()}`,
         name: kpi.name || 'Unknown KPI',
@@ -148,6 +148,9 @@ export class KPIService {
         frequency: kpi.frequency || 'monthly',
         unit: kpi.unit || 'number',
         description: kpi.description || '',
+        whyItMatters: kpi.whyItMatters || '',
+        actionToTake: kpi.actionToTake || '',
+        benchmarks: kpi.benchmarks || undefined,
         currentValue: 0,
         year1Target: 0,
         year2Target: 0,
