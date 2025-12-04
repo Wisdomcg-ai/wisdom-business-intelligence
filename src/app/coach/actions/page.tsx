@@ -73,31 +73,26 @@ export default function ActionsPage() {
       }))
       setClients(clientsList)
 
-      // Get owner IDs for querying
-      const ownerIds = clientsList
-        .map(c => c.ownerId)
-        .filter((id): id is string => id !== null)
-
-      if (ownerIds.length === 0) {
-        setItems([])
-        setLoading(false)
-        return
-      }
-
       const allItems: PendingItem[] = []
 
-      // Load open loops (not archived)
-      const { data: loops } = await supabase
-        .from('open_loops')
-        .select('id, title, description, user_id, created_at, updated_at, archived')
-        .in('user_id', ownerIds)
-        .eq('archived', false)
-        .order('updated_at', { ascending: false })
+      // Load open loops for each client individually (avoids RLS issues with .in())
+      for (const client of clientsList) {
+        if (!client.ownerId) continue
 
-      if (loops) {
-        loops.forEach(loop => {
-          const client = clientsList.find(c => c.ownerId === loop.user_id)
-          if (client) {
+        const { data: loops, error: loopsError } = await supabase
+          .from('open_loops')
+          .select('id, title, description, user_id, created_at, updated_at, archived')
+          .eq('user_id', client.ownerId)
+          .eq('archived', false)
+          .order('updated_at', { ascending: false })
+
+        if (loopsError) {
+          console.error('[Actions] Error loading loops for', client.businessName, loopsError)
+          continue
+        }
+
+        if (loops) {
+          loops.forEach(loop => {
             allItems.push({
               id: loop.id,
               type: 'loop',
@@ -110,24 +105,30 @@ export default function ActionsPage() {
               createdAt: loop.created_at,
               updatedAt: loop.updated_at || loop.created_at
             })
-          }
-        })
+          })
+        }
       }
 
-      // Load open issues (not archived/solved)
-      const { data: issues } = await supabase
-        .from('issues_list')
-        .select('id, title, stated_problem, user_id, status, priority, created_at, updated_at, archived')
-        .in('user_id', ownerIds)
-        .eq('archived', false)
-        .neq('status', 'solved')
-        .order('priority', { ascending: true, nullsFirst: false })
-        .order('updated_at', { ascending: false })
+      // Load open issues for each client individually
+      for (const client of clientsList) {
+        if (!client.ownerId) continue
 
-      if (issues) {
-        issues.forEach(issue => {
-          const client = clientsList.find(c => c.ownerId === issue.user_id)
-          if (client) {
+        const { data: issues, error: issuesError } = await supabase
+          .from('issues_list')
+          .select('id, title, stated_problem, user_id, status, priority, created_at, updated_at, archived')
+          .eq('user_id', client.ownerId)
+          .eq('archived', false)
+          .neq('status', 'solved')
+          .order('priority', { ascending: true, nullsFirst: false })
+          .order('updated_at', { ascending: false })
+
+        if (issuesError) {
+          console.error('[Actions] Error loading issues for', client.businessName, issuesError)
+          continue
+        }
+
+        if (issues) {
+          issues.forEach(issue => {
             allItems.push({
               id: issue.id,
               type: 'issue',
@@ -141,8 +142,8 @@ export default function ActionsPage() {
               createdAt: issue.created_at,
               updatedAt: issue.updated_at || issue.created_at
             })
-          }
-        })
+          })
+        }
       }
 
       // Sort by updated_at descending
