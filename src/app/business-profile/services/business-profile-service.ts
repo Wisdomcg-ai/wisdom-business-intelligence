@@ -62,8 +62,9 @@ export class BusinessProfileService {
 
       let profile = profiles && profiles.length > 0 ? profiles[0] : null
 
-      // Create profile if doesn't exist
-      if (!profile) {
+      // Create profile if doesn't exist AND we have an owner
+      // Don't create profiles for businesses without owners (coach view of unlinked client)
+      if (!profile && business.owner_id) {
         console.log('[Business Profile Service] 🆕 Creating new business profile record')
         const { data: newProfile, error: createProfileError } = await supabase
           .from('business_profiles')
@@ -91,6 +92,8 @@ export class BusinessProfileService {
         }
 
         profile = newProfile
+      } else if (!profile) {
+        console.log('[Business Profile Service] ⚠️ No profile found and no owner_id - cannot create profile')
       }
 
       // Merge business + profile data for the UI (same as loadBusinessProfile)

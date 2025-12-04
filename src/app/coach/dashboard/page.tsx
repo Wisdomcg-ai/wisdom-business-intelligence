@@ -389,7 +389,7 @@ export default function CoachDashboardPage() {
           icon={ListChecks}
           iconColor="amber"
           subtitle="Open loops & issues"
-          onClick={() => window.location.href = '/coach/actions'}
+          onClick={() => window.location.href = '/coach/clients'}
         />
         <StatsCard
           title="Sessions This Week"
