@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Calendar,
   ChevronLeft,
@@ -10,27 +10,38 @@ import {
   Lightbulb,
   Target,
   CheckSquare,
-  CalendarDays,
   TrendingDown,
   TrendingUp,
   MessageCircle,
   Loader2,
-  Plus,
   X,
   Check,
   Star,
-  History
+  History,
+  Zap,
+  Compass,
+  ArrowRight,
+  Mountain,
+  DollarSign,
+  CalendarDays,
+  Users,
+  Eye,
+  ChevronDown,
+  ChevronUp,
+  User,
+  RotateCcw
 } from 'lucide-react'
 import WeeklyReviewService, {
   WeeklyReview,
-  LastWeekGoal,
-  DisciplineCompleted,
-  ImportantDate,
-  CoachQuestion
+  RockProgress,
+  WeeklyPriority,
+  TeamMemberReviewStatus
 } from '../services/weekly-review-service'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
+import { StrategicPlanningService } from '@/app/goals/services/strategic-planning-service'
+import { FinancialService } from '@/app/goals/services/financial-service'
 
 const DEFAULT_DISCIPLINES = [
   'Dashboard updated',
@@ -38,6 +49,179 @@ const DEFAULT_DISCIPLINES = [
   'Reviewed Financials',
   'Team check-in'
 ]
+
+// Helper to format currency
+const formatCurrency = (amount: number | null | undefined) => {
+  if (amount === null || amount === undefined) return '--'
+  return new Intl.NumberFormat('en-AU', {
+    style: 'currency',
+    currency: 'AUD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(amount)
+}
+
+// Rating button component
+function RatingButtons({
+  value,
+  onChange,
+  color = 'teal'
+}: {
+  value: number | null
+  onChange: (val: number) => void
+  color?: 'teal' | 'amber' | 'purple'
+}) {
+  const colorClasses = {
+    teal: 'bg-teal-600 text-white',
+    amber: 'bg-amber-500 text-white',
+    purple: 'bg-purple-600 text-white'
+  }
+
+  return (
+    <div className="flex items-center gap-1 sm:gap-2">
+      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((rating) => (
+        <button
+          key={rating}
+          onClick={() => onChange(rating)}
+          className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg font-semibold text-sm transition-all ${
+            value === rating
+              ? colorClasses[color]
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          {rating}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// List input component with Add button and edit capability
+function ListInput({
+  items,
+  onAdd,
+  onRemove,
+  onUpdate,
+  placeholder,
+  icon: Icon,
+  iconColor,
+  addButtonColor = 'teal'
+}: {
+  items: string[]
+  onAdd: (item: string) => void
+  onRemove: (index: number) => void
+  onUpdate?: (index: number, value: string) => void
+  placeholder: string
+  icon: typeof Trophy
+  iconColor: string
+  addButtonColor?: 'teal' | 'amber' | 'purple' | 'red'
+}) {
+  const [newItem, setNewItem] = useState('')
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [editingValue, setEditingValue] = useState('')
+
+  const handleAdd = () => {
+    if (newItem.trim()) {
+      onAdd(newItem.trim())
+      setNewItem('')
+    }
+  }
+
+  const startEditing = (index: number, value: string) => {
+    setEditingIndex(index)
+    setEditingValue(value)
+  }
+
+  const saveEdit = () => {
+    if (editingIndex !== null && editingValue.trim() && onUpdate) {
+      onUpdate(editingIndex, editingValue.trim())
+    }
+    setEditingIndex(null)
+    setEditingValue('')
+  }
+
+  const cancelEdit = () => {
+    setEditingIndex(null)
+    setEditingValue('')
+  }
+
+  const buttonColors = {
+    teal: 'bg-teal-600 hover:bg-teal-700',
+    amber: 'bg-amber-600 hover:bg-amber-700',
+    purple: 'bg-purple-600 hover:bg-purple-700',
+    red: 'bg-red-600 hover:bg-red-700'
+  }
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, idx) => (
+        <div key={idx} className="flex items-start gap-2 p-3 bg-gray-50 rounded-lg group">
+          <Icon className={`w-4 h-4 ${iconColor} flex-shrink-0 mt-0.5`} />
+          {editingIndex === idx ? (
+            <div className="flex-1 flex items-center gap-2">
+              <input
+                type="text"
+                value={editingValue}
+                onChange={(e) => setEditingValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveEdit()
+                  if (e.key === 'Escape') cancelEdit()
+                }}
+                autoFocus
+                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              />
+              <button onClick={saveEdit} className="text-green-600 hover:text-green-700">
+                <Check className="w-4 h-4" />
+              </button>
+              <button onClick={cancelEdit} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <span
+                className="flex-1 text-gray-800 text-sm cursor-pointer hover:text-teal-600"
+                onClick={() => onUpdate && startEditing(idx, item)}
+                title={onUpdate ? "Click to edit" : undefined}
+              >
+                {item}
+              </span>
+              <button
+                onClick={() => onRemove(idx)}
+                className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          )}
+        </div>
+      ))}
+      <div className="flex items-center gap-2">
+        <Icon className={`w-4 h-4 text-gray-300 flex-shrink-0`} />
+        <input
+          type="text"
+          value={newItem}
+          onChange={(e) => setNewItem(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              handleAdd()
+            }
+          }}
+          placeholder={placeholder}
+          className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={!newItem.trim()}
+          className={`px-3 py-2 ${buttonColors[addButtonColor]} text-white text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed`}
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export default function WeeklyReviewPage() {
   const supabase = createClient()
@@ -52,18 +236,37 @@ export default function WeeklyReviewPage() {
   const [showHistory, setShowHistory] = useState(false)
   const [allReviews, setAllReviews] = useState<WeeklyReview[]>([])
 
-  // Form state for adding new items
-  const [newWin, setNewWin] = useState('')
-  const [newChallenge, setNewChallenge] = useState('')
-  const [newGoal, setNewGoal] = useState('')
-  const [newDate, setNewDate] = useState('')
-  const [newDateDesc, setNewDateDesc] = useState('')
-  const [newStopDoing, setNewStopDoing] = useState('')
-  const [newStartDoing, setNewStartDoing] = useState('')
+  // Quarterly targets and rocks from strategic plan
+  const [quarterlyTargets, setQuarterlyTargets] = useState<{
+    revenue: number | null
+    grossProfit: number | null
+    netProfit: number | null
+  }>({ revenue: null, grossProfit: null, netProfit: null })
+  const [rocks, setRocks] = useState<{ id: string; title: string; owner?: string }[]>([])
+
+  // Form state for new items
   const [newQuestion, setNewQuestion] = useState('')
   const [newQuestionPriority, setNewQuestionPriority] = useState<'low' | 'medium' | 'high'>('medium')
   const [newDiscipline, setNewDiscipline] = useState('')
+  const [newDate, setNewDate] = useState('')
+  const [newDateDesc, setNewDateDesc] = useState('')
+  const [newPriorityText, setNewPriorityText] = useState('')
+  const [newPriorityRockId, setNewPriorityRockId] = useState('')
+  const [editingDateIdx, setEditingDateIdx] = useState<number | null>(null)
+  const [editingDateValue, setEditingDateValue] = useState('')
+  const [editingDateDescValue, setEditingDateDescValue] = useState('')
+  const [editingPriorityId, setEditingPriorityId] = useState<string | null>(null)
+  const [editingPriorityText, setEditingPriorityText] = useState('')
+  const [editingPriorityRockId, setEditingPriorityRockId] = useState<string | undefined>(undefined)
 
+  // Team reviews state
+  const [teamReviewStatus, setTeamReviewStatus] = useState<TeamMemberReviewStatus[]>([])
+  const [teamReviews, setTeamReviews] = useState<WeeklyReview[]>([])
+  const [showTeamPanel, setShowTeamPanel] = useState(false)
+  const [viewingTeamMemberId, setViewingTeamMemberId] = useState<string | null>(null)
+  const [isOwnerOrAdmin, setIsOwnerOrAdmin] = useState(false)
+  const [currentUserName, setCurrentUserName] = useState('')
+  
   useEffect(() => {
     setMounted(true)
     if (!contextLoading) {
@@ -73,7 +276,6 @@ export default function WeeklyReviewPage() {
 
   const loadInitialData = async () => {
     try {
-      // Get current user from Supabase
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!user) {
@@ -82,16 +284,12 @@ export default function WeeklyReviewPage() {
         return
       }
 
-      // Use activeBusiness if viewing as coach, otherwise current user
       const uid = activeBusiness?.ownerId || user.id
       setUserId(uid)
 
-      // Determine the correct business_profiles.id for data queries
-      // Weekly reviews are stored with business_profiles.id as the business_id
+      // Determine the correct business_profiles.id
       let bizId: string
       if (activeBusiness?.id) {
-        // Coach view: activeBusiness.id is businesses.id
-        // Need to look up the corresponding business_profiles.id
         const { data: profile } = await supabase
           .from('business_profiles')
           .select('id')
@@ -102,10 +300,9 @@ export default function WeeklyReviewPage() {
           bizId = profile.id
         } else {
           console.warn('[Weekly Review] No business_profiles found for businesses.id:', activeBusiness.id)
-          bizId = activeBusiness.id // Fallback
+          bizId = activeBusiness.id
         }
       } else {
-        // Get business profile to get business_id
         const { data: profile } = await supabase
           .from('business_profiles')
           .select('id')
@@ -120,6 +317,7 @@ export default function WeeklyReviewPage() {
       const weekStart = WeeklyReviewService.getWeekStart()
       setCurrentWeekStart(weekStart)
 
+      // Load review
       const { review: loadedReview, error } = await WeeklyReviewService.getOrCreateReview(
         bizId,
         uid,
@@ -129,39 +327,63 @@ export default function WeeklyReviewPage() {
       if (error) {
         console.error('Error loading review:', error)
       } else {
-        // Add default disciplines if they're missing
+        // Ensure disciplines are in correct order
         let finalReview = loadedReview
         if (loadedReview) {
           const existingDisciplines = loadedReview.disciplines_completed || []
-
-          // Build properly ordered array: defaults first (in order), then customs
           const defaultDisciplinesOrdered = DEFAULT_DISCIPLINES.map(defaultName => {
             const existing = existingDisciplines.find(d => d.discipline === defaultName)
             return existing || { discipline: defaultName, completed: false }
           })
-
           const customDisciplines = existingDisciplines.filter(
             d => !DEFAULT_DISCIPLINES.includes(d.discipline)
           )
-
-          const needsUpdate = existingDisciplines.length !== (defaultDisciplinesOrdered.length + customDisciplines.length) ||
-            existingDisciplines.some((d, idx) => d.discipline !== [...defaultDisciplinesOrdered, ...customDisciplines][idx]?.discipline)
-
-          if (needsUpdate) {
-            console.log('[Weekly Review] Reordering disciplines to match default order')
-            finalReview = {
-              ...loadedReview,
-              disciplines_completed: [...defaultDisciplinesOrdered, ...customDisciplines]
-            }
+          finalReview = {
+            ...loadedReview,
+            disciplines_completed: [...defaultDisciplinesOrdered, ...customDisciplines]
           }
         }
-        console.log('[Weekly Review] Loaded review with disciplines:', finalReview?.disciplines_completed)
         setReview(finalReview)
       }
 
       // Load all reviews for history
       const reviews = await WeeklyReviewService.getAllReviews(bizId)
       setAllReviews(reviews)
+
+      // Load quarterly targets and rocks from strategic plan
+      await loadStrategicData(bizId)
+
+      // Check if user is owner/admin and load team data
+      const { data: userRole } = await supabase
+        .from('business_users')
+        .select('role')
+        .eq('business_id', bizId)
+        .eq('user_id', user.id)
+        .single()
+
+      const isOwnerAdmin = userRole?.role === 'owner' || userRole?.role === 'admin'
+      setIsOwnerOrAdmin(isOwnerAdmin)
+
+      // Get current user's name
+      const { data: userData } = await supabase
+        .from('users')
+        .select('first_name, last_name')
+        .eq('id', user.id)
+        .single()
+
+      if (userData?.first_name) {
+        setCurrentUserName(`${userData.first_name} ${userData.last_name || ''}`.trim())
+      }
+
+      // Load team review status if owner/admin
+      if (isOwnerAdmin) {
+        const teamStatus = await WeeklyReviewService.getTeamReviewStatus(bizId, weekStart)
+        setTeamReviewStatus(teamStatus)
+
+        // Load all team reviews for this week
+        const allTeamReviews = await WeeklyReviewService.getTeamReviewsForWeek(bizId, weekStart)
+        setTeamReviews(allTeamReviews)
+      }
 
       setIsLoading(false)
     } catch (err) {
@@ -170,7 +392,48 @@ export default function WeeklyReviewPage() {
     }
   }
 
-  // Auto-save whenever review changes
+  const loadStrategicData = async (bizId: string) => {
+    try {
+      // Load financial goals to get quarterly targets
+      const { quarterlyTargets: loadedTargets } = await FinancialService.loadFinancialGoals(bizId)
+
+      if (loadedTargets) {
+        // Get current quarter
+        const now = new Date()
+        const currentQuarter = `q${Math.ceil((now.getMonth() + 1) / 3)}` as 'q1' | 'q2' | 'q3' | 'q4'
+
+        // Parse quarterly targets
+        const parseQuarterlyValue = (key: string): number | null => {
+          const value = loadedTargets[key]?.[currentQuarter]
+          if (value === undefined || value === '') return null
+          const parsed = parseFloat(value)
+          return isNaN(parsed) ? null : parsed
+        }
+
+        setQuarterlyTargets({
+          revenue: parseQuarterlyValue('revenue'),
+          grossProfit: parseQuarterlyValue('grossProfit'),
+          netProfit: parseQuarterlyValue('netProfit')
+        })
+      }
+
+      // Load rocks (initiatives assigned to current quarter)
+      const currentQuarter = `q${Math.ceil((new Date().getMonth() + 1) / 3)}` as 'q1' | 'q2' | 'q3' | 'q4'
+      const loadedInitiatives = await StrategicPlanningService.loadInitiatives(bizId, currentQuarter)
+
+      if (loadedInitiatives && loadedInitiatives.length > 0) {
+        setRocks(loadedInitiatives.map(i => ({
+          id: i.id,
+          title: i.title,
+          owner: i.assignedTo
+        })))
+      }
+    } catch (err) {
+      console.error('[Weekly Review] Error loading strategic data:', err)
+    }
+  }
+
+  // Auto-save effect
   useEffect(() => {
     if (!review || !mounted || isLoading) return
 
@@ -198,32 +461,33 @@ export default function WeeklyReviewPage() {
       newWeekStart
     )
 
-    // Add default disciplines if they're missing
-    let finalReview = loadedReview
     if (loadedReview) {
       const existingDisciplines = loadedReview.disciplines_completed || []
-
       const defaultDisciplinesOrdered = DEFAULT_DISCIPLINES.map(defaultName => {
         const existing = existingDisciplines.find(d => d.discipline === defaultName)
         return existing || { discipline: defaultName, completed: false }
       })
-
       const customDisciplines = existingDisciplines.filter(
         d => !DEFAULT_DISCIPLINES.includes(d.discipline)
       )
-
-      const needsUpdate = existingDisciplines.length !== (defaultDisciplinesOrdered.length + customDisciplines.length) ||
-        existingDisciplines.some((d, idx) => d.discipline !== [...defaultDisciplinesOrdered, ...customDisciplines][idx]?.discipline)
-
-      if (needsUpdate) {
-        finalReview = {
-          ...loadedReview,
-          disciplines_completed: [...defaultDisciplinesOrdered, ...customDisciplines]
-        }
-      }
+      setReview({
+        ...loadedReview,
+        disciplines_completed: [...defaultDisciplinesOrdered, ...customDisciplines]
+      })
     }
 
-    setReview(finalReview)
+    // Also reload team data if owner/admin
+    if (isOwnerOrAdmin) {
+      const teamStatus = await WeeklyReviewService.getTeamReviewStatus(businessId, newWeekStart)
+      setTeamReviewStatus(teamStatus)
+
+      const allTeamReviews = await WeeklyReviewService.getTeamReviewsForWeek(businessId, newWeekStart)
+      setTeamReviews(allTeamReviews)
+    }
+
+    // Reset viewing state
+    setViewingTeamMemberId(null)
+
     setIsLoading(false)
   }
 
@@ -238,34 +502,58 @@ export default function WeeklyReviewPage() {
       weekStart
     )
 
-    // Add default disciplines if they're missing
-    let finalReview = loadedReview
     if (loadedReview) {
       const existingDisciplines = loadedReview.disciplines_completed || []
-
       const defaultDisciplinesOrdered = DEFAULT_DISCIPLINES.map(defaultName => {
         const existing = existingDisciplines.find(d => d.discipline === defaultName)
         return existing || { discipline: defaultName, completed: false }
       })
-
       const customDisciplines = existingDisciplines.filter(
         d => !DEFAULT_DISCIPLINES.includes(d.discipline)
       )
-
-      const needsUpdate = existingDisciplines.length !== (defaultDisciplinesOrdered.length + customDisciplines.length) ||
-        existingDisciplines.some((d, idx) => d.discipline !== [...defaultDisciplinesOrdered, ...customDisciplines][idx]?.discipline)
-
-      if (needsUpdate) {
-        finalReview = {
-          ...loadedReview,
-          disciplines_completed: [...defaultDisciplinesOrdered, ...customDisciplines]
-        }
-      }
+      setReview({
+        ...loadedReview,
+        disciplines_completed: [...defaultDisciplinesOrdered, ...customDisciplines]
+      })
     }
 
-    setReview(finalReview)
+    // Also reload team data if owner/admin
+    if (isOwnerOrAdmin) {
+      const teamStatus = await WeeklyReviewService.getTeamReviewStatus(businessId, weekStart)
+      setTeamReviewStatus(teamStatus)
+
+      const allTeamReviews = await WeeklyReviewService.getTeamReviewsForWeek(businessId, weekStart)
+      setTeamReviews(allTeamReviews)
+    }
+
+    // Reset viewing state
+    setViewingTeamMemberId(null)
+
     setIsLoading(false)
   }
+
+  // View a specific team member's review
+  const viewTeamMemberReview = (memberId: string) => {
+    if (memberId === userId) {
+      setViewingTeamMemberId(null) // View own review
+    } else {
+      setViewingTeamMemberId(memberId)
+    }
+  }
+
+  // Get the review to display (either own or team member's)
+  const getDisplayedReview = (): WeeklyReview | null => {
+    if (viewingTeamMemberId) {
+      return teamReviews.find(r => r.user_id === viewingTeamMemberId) || null
+    }
+    return review
+  }
+
+  const displayedReview = getDisplayedReview()
+  const isViewingOther = viewingTeamMemberId !== null
+  const viewingMemberName = viewingTeamMemberId
+    ? teamReviewStatus.find(m => m.userId === viewingTeamMemberId)?.userName || 'Team Member'
+    : null
 
   const formatDateRange = (startDate: string, endDate: string) => {
     const start = new Date(startDate)
@@ -274,79 +562,98 @@ export default function WeeklyReviewPage() {
     return `${start.toLocaleDateString('en-US', options)} - ${end.toLocaleDateString('en-US', options)}`
   }
 
-  const updateReview = (updates: Partial<WeeklyReview>) => {
+  const updateReview = useCallback((updates: Partial<WeeklyReview>) => {
     if (review) {
       setReview({ ...review, ...updates })
     }
-  }
+  }, [review])
 
-  const addWin = () => {
-    if (!newWin.trim() || !review) return
-    updateReview({ wins: [...review.wins, newWin.trim()] })
-    setNewWin('')
-  }
-
-  const removeWin = (index: number) => {
+  // Rock progress handlers
+  const updateRockProgress = (rockId: string, updates: Partial<RockProgress>) => {
     if (!review) return
-    updateReview({ wins: review.wins.filter((_, i) => i !== index) })
+    const existingProgress = review.rock_progress || []
+    const rock = rocks.find(r => r.id === rockId)
+    const existingIndex = existingProgress.findIndex(rp => rp.rockId === rockId)
+
+    if (existingIndex >= 0) {
+      const updated = [...existingProgress]
+      updated[existingIndex] = { ...updated[existingIndex], ...updates }
+      updateReview({ rock_progress: updated })
+    } else {
+      updateReview({
+        rock_progress: [...existingProgress, {
+          rockId,
+          rockTitle: rock?.title || '',
+          status: 'on_track',
+          ...updates
+        }]
+      })
+    }
   }
 
-  const addChallenge = () => {
-    if (!newChallenge.trim() || !review) return
-    updateReview({ challenges: [...review.challenges, newChallenge.trim()] })
-    setNewChallenge('')
+  // Priority handlers
+  const addTopPriority = (priority: string, linkedRockId?: string) => {
+    if (!review || !priority.trim()) return
+    const newPriority: WeeklyPriority = {
+      id: `priority-${Date.now()}`,
+      priority: priority.trim(),
+      linkedRockId,
+      completed: false
+    }
+    updateReview({ top_priorities: [...(review.top_priorities || []), newPriority] })
   }
 
-  const removeChallenge = (index: number) => {
+  const handleAddPriority = () => {
+    if (!newPriorityText.trim()) return
+    addTopPriority(newPriorityText, newPriorityRockId || undefined)
+    setNewPriorityText('')
+    setNewPriorityRockId('')
+  }
+
+  const removeTopPriority = (id: string) => {
     if (!review) return
-    updateReview({ challenges: review.challenges.filter((_, i) => i !== index) })
+    updateReview({ top_priorities: (review.top_priorities || []).filter(p => p.id !== id) })
   }
 
-  const addNextWeekGoal = () => {
-    if (!newGoal.trim() || !review) return
-    updateReview({ next_week_goals: [...review.next_week_goals, newGoal.trim()] })
-    setNewGoal('')
-  }
-
-  const removeNextWeekGoal = (index: number) => {
+  const toggleTopPriorityComplete = (id: string) => {
     if (!review) return
-    updateReview({ next_week_goals: review.next_week_goals.filter((_, i) => i !== index) })
+    const updated = (review.top_priorities || []).map(p =>
+      p.id === id ? { ...p, completed: !p.completed } : p
+    )
+    updateReview({ top_priorities: updated })
   }
 
-  const addImportantDate = () => {
-    if (!newDate || !newDateDesc.trim() || !review) return
-    updateReview({
-      important_dates: [...review.important_dates, { date: newDate, description: newDateDesc.trim() }]
-    })
-    setNewDate('')
-    setNewDateDesc('')
+  const startEditingPriority = (priority: WeeklyPriority) => {
+    setEditingPriorityId(priority.id)
+    setEditingPriorityText(priority.priority)
+    setEditingPriorityRockId(priority.linkedRockId)
   }
 
-  const removeImportantDate = (index: number) => {
+  const saveEditingPriority = () => {
+    if (!editingPriorityId || !review || !editingPriorityText.trim()) return
+    const updated = (review.top_priorities || []).map(p =>
+      p.id === editingPriorityId
+        ? { ...p, priority: editingPriorityText.trim(), linkedRockId: editingPriorityRockId }
+        : p
+    )
+    updateReview({ top_priorities: updated })
+    setEditingPriorityId(null)
+    setEditingPriorityText('')
+    setEditingPriorityRockId(undefined)
+  }
+
+  const cancelEditingPriority = () => {
+    setEditingPriorityId(null)
+    setEditingPriorityText('')
+    setEditingPriorityRockId(undefined)
+  }
+
+  // Discipline handlers
+  const toggleDiscipline = (index: number) => {
     if (!review) return
-    updateReview({ important_dates: review.important_dates.filter((_, i) => i !== index) })
-  }
-
-  const addStopDoing = () => {
-    if (!newStopDoing.trim() || !review) return
-    updateReview({ stop_doing: [...review.stop_doing, newStopDoing.trim()] })
-    setNewStopDoing('')
-  }
-
-  const removeStopDoing = (index: number) => {
-    if (!review) return
-    updateReview({ stop_doing: review.stop_doing.filter((_, i) => i !== index) })
-  }
-
-  const addStartDoing = () => {
-    if (!newStartDoing.trim() || !review) return
-    updateReview({ start_doing: [...review.start_doing, newStartDoing.trim()] })
-    setNewStartDoing('')
-  }
-
-  const removeStartDoing = (index: number) => {
-    if (!review) return
-    updateReview({ start_doing: review.start_doing.filter((_, i) => i !== index) })
+    const updated = [...review.disciplines_completed]
+    updated[index].completed = !updated[index].completed
+    updateReview({ disciplines_completed: updated })
   }
 
   const addDiscipline = () => {
@@ -362,10 +669,11 @@ export default function WeeklyReviewPage() {
     updateReview({ disciplines_completed: review.disciplines_completed.filter((_, i) => i !== index) })
   }
 
+  // Question handlers
   const addCoachQuestion = () => {
     if (!newQuestion.trim() || !review) return
     updateReview({
-      coach_questions: [...review.coach_questions, {
+      coach_questions: [...(review.coach_questions || []), {
         question: newQuestion.trim(),
         priority: newQuestionPriority
       }]
@@ -376,16 +684,56 @@ export default function WeeklyReviewPage() {
 
   const removeCoachQuestion = (index: number) => {
     if (!review) return
-    updateReview({ coach_questions: review.coach_questions.filter((_, i) => i !== index) })
+    updateReview({ coach_questions: (review.coach_questions || []).filter((_, i) => i !== index) })
+  }
+
+  // Date handlers
+  const addImportantDate = () => {
+    if (!newDate || !newDateDesc.trim() || !review) return
+    updateReview({
+      important_dates: [...(review.important_dates || []), { date: newDate, description: newDateDesc.trim() }]
+    })
+    setNewDate('')
+    setNewDateDesc('')
+  }
+
+  const removeImportantDate = (index: number) => {
+    if (!review) return
+    updateReview({ important_dates: (review.important_dates || []).filter((_, i) => i !== index) })
+  }
+
+  const startEditingDate = (index: number) => {
+    const dateItem = review?.important_dates?.[index]
+    if (dateItem) {
+      setEditingDateIdx(index)
+      setEditingDateValue(dateItem.date)
+      setEditingDateDescValue(dateItem.description)
+    }
+  }
+
+  const saveEditingDate = () => {
+    if (editingDateIdx === null || !review || !editingDateValue || !editingDateDescValue.trim()) return
+    const updatedDates = [...(review.important_dates || [])]
+    updatedDates[editingDateIdx] = { date: editingDateValue, description: editingDateDescValue.trim() }
+    updateReview({ important_dates: updatedDates })
+    setEditingDateIdx(null)
+    setEditingDateValue('')
+    setEditingDateDescValue('')
+  }
+
+  const cancelEditingDate = () => {
+    setEditingDateIdx(null)
+    setEditingDateValue('')
+    setEditingDateDescValue('')
   }
 
   if (!mounted) {
     return (
       <div className="p-8">
-        <div className="max-w-[1600px] mx-auto">
+        <div className="max-w-[1200px] mx-auto">
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
-            <div className="h-4 bg-gray-100 rounded w-2/3"></div>
+            <div className="h-8 bg-gray-200 rounded w-1/3 mb-4 animate-pulse"></div>
+            <div className="h-4 bg-gray-100 rounded w-2/3 animate-pulse"></div>
           </div>
         </div>
       </div>
@@ -416,37 +764,36 @@ export default function WeeklyReviewPage() {
   const isCurrentWeek = currentWeekStart === WeeklyReviewService.getWeekStart()
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
-      <div className="max-w-[1600px] mx-auto">
+    <div className="min-h-screen bg-slate-50 p-4 sm:p-8">
+      <div className="max-w-[1200px] mx-auto">
         {/* Header with Week Navigation */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Weekly Review</h1>
-              <p className="text-gray-600">Reflect, plan, and prepare for the week ahead</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">Weekly Reset</h1>
+              <p className="text-gray-500">Reflect, align, and plan for the week ahead</p>
             </div>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowHistory(!showHistory)}
-                className="flex items-center space-x-2 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
               >
                 <History className="w-4 h-4" />
                 <span className="text-sm font-medium">History</span>
               </button>
-              {isSaving && (
-                <div className="flex items-center text-gray-600">
+              {isSaving ? (
+                <div className="flex items-center text-gray-500">
                   <Loader2 className="animate-spin h-4 w-4 mr-2" />
                   <span className="text-sm">Saving...</span>
                 </div>
-              )}
-              {!isSaving && (
+              ) : (
                 <div className="text-sm text-green-600 font-medium">✓ Saved</div>
               )}
             </div>
           </div>
 
           {/* Week Selector */}
-          <div className="flex items-center justify-between bg-teal-50 border border-teal-200 rounded-lg p-4">
+          <div className="flex items-center justify-between bg-teal-50 border border-teal-200 rounded-xl p-4">
             <button
               onClick={() => navigateWeek('prev')}
               className="p-2 hover:bg-teal-100 rounded-lg transition-colors"
@@ -455,7 +802,7 @@ export default function WeeklyReviewPage() {
             </button>
 
             <div className="text-center">
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center justify-center gap-2">
                 <Calendar className="w-5 h-5 text-teal-700" />
                 <span className="text-lg font-semibold text-teal-900">
                   {formatDateRange(review.week_start_date, review.week_end_date)}
@@ -480,9 +827,9 @@ export default function WeeklyReviewPage() {
 
         {/* History View */}
         {showHistory && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Review History</h2>
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
               {allReviews.map((r) => (
                 <button
                   key={r.id}
@@ -493,22 +840,22 @@ export default function WeeklyReviewPage() {
                       : 'bg-white border-gray-200 hover:bg-gray-50'
                   }`}
                 >
-                  <div className="flex items-center space-x-3">
+                  <div className="flex items-center gap-3">
                     <Calendar className="w-5 h-5 text-gray-600" />
                     <span className="font-medium text-gray-900">
                       {formatDateRange(r.week_start_date, r.week_end_date)}
                     </span>
                   </div>
-                  <div className="flex items-center space-x-3">
+                  <div className="flex items-center gap-3">
                     {r.week_rating && (
-                      <div className="flex items-center space-x-1">
+                      <div className="flex items-center gap-1">
                         <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
                         <span className="text-sm font-medium text-gray-700">{r.week_rating}/10</span>
                       </div>
                     )}
                     {r.is_completed && (
                       <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">
-                        Completed
+                        Complete
                       </span>
                     )}
                   </div>
@@ -518,538 +865,846 @@ export default function WeeklyReviewPage() {
           </div>
         )}
 
-        {/* Section 1: Reflection */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
-            <Trophy className="w-6 h-6 text-teal-600 mr-3" />
-            Reflection
-          </h2>
-
-          {/* Wins & Highlights */}
-          <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center">
-              <Trophy className="w-4 h-4 text-green-600 mr-2" />
-              Wins & Highlights
-            </label>
-            <div className="space-y-2 mb-3">
-              {review.wins.map((win, idx) => (
-                <div key={idx} className="flex items-start space-x-2 bg-green-50 p-3 rounded-lg">
-                  <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <span className="flex-1 text-gray-800">{win}</span>
-                  <button
-                    onClick={() => removeWin(idx)}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+        {/* ============================================================================ */}
+        {/* TEAM REVIEWS PANEL - For owners/admins */}
+        {/* ============================================================================ */}
+        {isOwnerOrAdmin && teamReviewStatus.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+            <button
+              onClick={() => setShowTeamPanel(!showTeamPanel)}
+              className="w-full flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <Users className="w-5 h-5 text-blue-600" />
                 </div>
-              ))}
+                <div className="text-left">
+                  <h2 className="text-xl font-bold text-gray-900">Team Reviews</h2>
+                  <p className="text-sm text-gray-500">
+                    {teamReviewStatus.filter(m => m.isComplete).length} of {teamReviewStatus.length} complete
+                  </p>
+                </div>
+              </div>
+              {showTeamPanel ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </button>
+
+            {showTeamPanel && (
+              <div className="mt-4 space-y-2">
+                {teamReviewStatus.map((member) => (
+                  <div
+                    key={member.userId}
+                    className={`flex items-center justify-between p-4 rounded-lg border transition-colors ${
+                      viewingTeamMemberId === member.userId
+                        ? 'bg-blue-50 border-blue-300'
+                        : member.userId === userId
+                        ? 'bg-teal-50 border-teal-200'
+                        : 'bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${
+                        member.isComplete ? 'bg-green-500' : member.hasReview ? 'bg-amber-500' : 'bg-gray-400'
+                      }`}>
+                        {member.userName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {member.userName}
+                          {member.userId === userId && (
+                            <span className="ml-2 text-xs text-teal-600">(You)</span>
+                          )}
+                        </p>
+                        <p className="text-xs text-gray-500 capitalize">{member.role}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {member.weekRating && (
+                        <div className="flex items-center gap-1">
+                          <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                          <span className="text-sm font-medium text-gray-700">{member.weekRating}/10</span>
+                        </div>
+                      )}
+                      {member.isComplete ? (
+                        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">
+                          Complete
+                        </span>
+                      ) : member.hasReview ? (
+                        <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
+                          In Progress
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full font-medium">
+                          Not Started
+                        </span>
+                      )}
+                      {member.hasReview && member.userId !== userId && (
+                        <button
+                          onClick={() => viewTeamMemberReview(member.userId)}
+                          className={`p-2 rounded-lg transition-colors ${
+                            viewingTeamMemberId === member.userId
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          }`}
+                          title="View review"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      )}
+                      {member.userId === userId && viewingTeamMemberId !== null && (
+                        <button
+                          onClick={() => setViewingTeamMemberId(null)}
+                          className="px-3 py-1 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700"
+                        >
+                          Back to My Review
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Viewing Other Team Member Banner */}
+        {isViewingOther && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <User className="w-5 h-5 text-blue-600" />
+              <span className="font-medium text-blue-900">
+                Viewing {viewingMemberName}&apos;s review (read-only)
+              </span>
             </div>
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                value={newWin}
-                onChange={(e) => setNewWin(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addWin()}
-                placeholder="Add a win or highlight..."
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-              />
-              <button
-                onClick={addWin}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
+            <button
+              onClick={() => setViewingTeamMemberId(null)}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+            >
+              Back to My Review
+            </button>
+          </div>
+        )}
+
+        {/* ============================================================================ */}
+        {/* SECTION 1: LOOK BACK */}
+        {/* ============================================================================ */}
+        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-amber-100 rounded-lg">
+              <ArrowRight className="w-5 h-5 text-amber-600 rotate-180" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Look Back</h2>
+              <p className="text-sm text-gray-500">Reflect on the past week</p>
             </div>
           </div>
 
-          {/* Challenges & Frustrations */}
-          <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center">
-              <AlertTriangle className="w-4 h-4 text-orange-600 mr-2" />
-              Challenges & Frustrations
-            </label>
-            <div className="space-y-2 mb-3">
-              {review.challenges.map((challenge, idx) => (
-                <div key={idx} className="flex items-start space-x-2 bg-orange-50 p-3 rounded-lg">
-                  <AlertTriangle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
-                  <span className="flex-1 text-gray-800">{challenge}</span>
-                  <button
-                    onClick={() => removeChallenge(idx)}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                value={newChallenge}
-                onChange={(e) => setNewChallenge(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addChallenge()}
-                placeholder="Add a challenge or frustration..."
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+          {/* Energy & Week Rating */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div className="bg-purple-50 rounded-xl p-5">
+              <label className="flex items-center gap-2 text-sm font-semibold text-purple-900 mb-3">
+                <Zap className="w-4 h-4" />
+                Energy Level (1-10)
+              </label>
+              <RatingButtons
+                value={displayedReview?.energy_rating ?? null}
+                onChange={(val) => !isViewingOther && updateReview({ energy_rating: val })}
+                color="purple"
               />
-              <button
-                onClick={addChallenge}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
+            </div>
+
+            <div className="bg-amber-50 rounded-xl p-5">
+              <label className="flex items-center gap-2 text-sm font-semibold text-amber-900 mb-3">
+                <Star className="w-4 h-4" />
+                Week Rating (1-10)
+              </label>
+              <RatingButtons
+                value={displayedReview?.week_rating ?? null}
+                onChange={(val) => !isViewingOther && updateReview({ week_rating: val })}
+                color="amber"
+              />
+              <textarea
+                value={displayedReview?.rating_reason || ''}
+                onChange={(e) => !isViewingOther && updateReview({ rating_reason: e.target.value })}
+                placeholder="Why did you give this rating?"
+                disabled={isViewingOther}
+                className="w-full mt-3 px-3 py-2 text-sm border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                rows={2}
+              />
+            </div>
+          </div>
+
+          {/* Wins & Challenges */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+                <Trophy className="w-4 h-4 text-green-600" />
+                Wins & Highlights
+              </label>
+              <ListInput
+                items={review.wins}
+                onAdd={(item) => updateReview({ wins: [...review.wins, item] })}
+                onRemove={(idx) => updateReview({ wins: review.wins.filter((_, i) => i !== idx) })}
+                onUpdate={(idx, value) => updateReview({ wins: review.wins.map((w, i) => i === idx ? value : w) })}
+                placeholder="What went well this week?"
+                icon={Check}
+                iconColor="text-green-600"
+              />
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+                <AlertTriangle className="w-4 h-4 text-orange-600" />
+                Challenges & Frustrations
+              </label>
+              <ListInput
+                items={review.challenges}
+                onAdd={(item) => updateReview({ challenges: [...review.challenges, item] })}
+                onRemove={(idx) => updateReview({ challenges: review.challenges.filter((_, i) => i !== idx) })}
+                onUpdate={(idx, value) => updateReview({ challenges: review.challenges.map((c, i) => i === idx ? value : c) })}
+                placeholder="What was difficult?"
+                icon={AlertTriangle}
+                iconColor="text-orange-500"
+                addButtonColor="amber"
+              />
             </div>
           </div>
 
           {/* Key Learning */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center">
-              <Lightbulb className="w-4 h-4 text-yellow-600 mr-2" />
+          <div className="mb-6">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+              <Lightbulb className="w-4 h-4 text-yellow-600" />
               Key Learning
             </label>
             <textarea
               value={review.key_learning}
               onChange={(e) => updateReview({ key_learning: e.target.value })}
               placeholder="What was the most important thing you learned this week?"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-              rows={3}
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              rows={2}
+            />
+          </div>
+
+          {/* Weekly Checklist */}
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+              <CheckSquare className="w-4 h-4 text-teal-600" />
+              Weekly Checklist
+            </label>
+            <div className="space-y-2">
+              {review.disciplines_completed.map((discipline, idx) => {
+                const isDefault = DEFAULT_DISCIPLINES.includes(discipline.discipline)
+                const is90DayPlan = discipline.discipline === '90 day plan reviewed'
+                const isDashboard = discipline.discipline === 'Dashboard updated'
+
+                return (
+                  <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg group">
+                    <input
+                      type="checkbox"
+                      checked={discipline.completed}
+                      onChange={() => toggleDiscipline(idx)}
+                      className="w-5 h-5 text-teal-600 rounded focus:ring-2 focus:ring-teal-500"
+                    />
+                    {is90DayPlan ? (
+                      <Link
+                        href="/goals?step=5"
+                        className={`flex-1 text-sm ${discipline.completed ? 'text-gray-500 line-through' : 'text-teal-600 hover:text-teal-800'} underline`}
+                      >
+                        {discipline.discipline}
+                      </Link>
+                    ) : isDashboard ? (
+                      <Link
+                        href="/business-dashboard"
+                        className={`flex-1 text-sm ${discipline.completed ? 'text-gray-500 line-through' : 'text-teal-600 hover:text-teal-800'} underline`}
+                      >
+                        {discipline.discipline}
+                      </Link>
+                    ) : (
+                      <span className={`flex-1 text-sm ${discipline.completed ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
+                        {discipline.discipline}
+                      </span>
+                    )}
+                    {!isDefault && (
+                      <button
+                        onClick={() => removeDiscipline(idx)}
+                        className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+              <div className="flex items-center gap-2 pt-2">
+                <input
+                  type="text"
+                  value={newDiscipline}
+                  onChange={(e) => setNewDiscipline(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addDiscipline()}
+                  placeholder="+ Add custom item..."
+                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                />
+                <button
+                  onClick={addDiscipline}
+                  disabled={!newDiscipline.trim()}
+                  className="px-3 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ============================================================================ */}
+        {/* SECTION 2: ALIGN */}
+        {/* ============================================================================ */}
+        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-indigo-100 rounded-lg">
+              <Compass className="w-5 h-5 text-indigo-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Align</h2>
+              <p className="text-sm text-gray-500">Check in with your 90-day plan</p>
+            </div>
+          </div>
+
+          {/* 90-Day Financial Targets */}
+          <div className="mb-6">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+              <DollarSign className="w-4 h-4 text-green-600" />
+              90-Day Financial Targets
+            </label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-emerald-50 rounded-xl p-4 text-center">
+                <p className="text-xs text-emerald-600 font-medium mb-1">Revenue</p>
+                <p className="text-lg font-bold text-emerald-700">{formatCurrency(quarterlyTargets.revenue)}</p>
+              </div>
+              <div className="bg-teal-50 rounded-xl p-4 text-center">
+                <p className="text-xs text-teal-600 font-medium mb-1">Gross Profit</p>
+                <p className="text-lg font-bold text-teal-700">{formatCurrency(quarterlyTargets.grossProfit)}</p>
+              </div>
+              <div className="bg-blue-50 rounded-xl p-4 text-center">
+                <p className="text-xs text-blue-600 font-medium mb-1">Net Profit</p>
+                <p className="text-lg font-bold text-blue-700">{formatCurrency(quarterlyTargets.netProfit)}</p>
+              </div>
+            </div>
+            {!quarterlyTargets.revenue && (
+              <p className="text-xs text-gray-500 mt-2">
+                <Link href="/goals?step=5" className="text-teal-600 hover:underline">Set your 90-day targets</Link> to see them here.
+              </p>
+            )}
+          </div>
+
+          {/* Rocks Progress */}
+          <div className="mb-6">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+              <Mountain className="w-4 h-4 text-indigo-600" />
+              Rock Progress Check
+            </label>
+            {rocks.length === 0 ? (
+              <div className="bg-gray-50 rounded-xl p-4 text-center">
+                <p className="text-sm text-gray-500">
+                  No rocks found for this quarter.{' '}
+                  <Link href="/goals?step=5" className="text-teal-600 hover:underline">Add rocks</Link> in your 90-day plan.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {rocks.map((rock) => {
+                  const progress = (review.rock_progress || []).find(rp => rp.rockId === rock.id)
+                  return (
+                    <div key={rock.id} className="border border-gray-200 rounded-xl p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="font-medium text-gray-900">{rock.title}</p>
+                          {rock.owner && <p className="text-xs text-gray-500">Owner: {rock.owner}</p>}
+                        </div>
+                        <select
+                          value={progress?.status || 'on_track'}
+                          onChange={(e) => updateRockProgress(rock.id, { status: e.target.value as RockProgress['status'] })}
+                          className={`text-sm px-3 py-1.5 rounded-lg border-0 font-medium ${
+                            progress?.status === 'completed' ? 'bg-green-100 text-green-700' :
+                            progress?.status === 'on_track' ? 'bg-teal-100 text-teal-700' :
+                            progress?.status === 'at_risk' ? 'bg-amber-100 text-amber-700' :
+                            'bg-red-100 text-red-700'
+                          }`}
+                        >
+                          <option value="on_track">On Track</option>
+                          <option value="at_risk">At Risk</option>
+                          <option value="behind">Behind</option>
+                          <option value="completed">Completed</option>
+                        </select>
+                      </div>
+                      <textarea
+                        value={progress?.progressNotes || ''}
+                        onChange={(e) => updateRockProgress(rock.id, { progressNotes: e.target.value })}
+                        placeholder="Progress notes..."
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent mb-2"
+                        rows={2}
+                      />
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={progress?.pivotNeeded || false}
+                          onChange={(e) => updateRockProgress(rock.id, { pivotNeeded: e.target.checked })}
+                          className="w-4 h-4 text-amber-600 rounded focus:ring-2 focus:ring-amber-500"
+                        />
+                        <label className="text-sm text-gray-600">Pivot needed?</label>
+                      </div>
+                      {progress?.pivotNeeded && (
+                        <textarea
+                          value={progress?.pivotNotes || ''}
+                          onChange={(e) => updateRockProgress(rock.id, { pivotNotes: e.target.value })}
+                          placeholder="Describe the pivot..."
+                          className="w-full mt-2 px-3 py-2 text-sm border border-amber-200 bg-amber-50 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                          rows={2}
+                        />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Alignment Notes */}
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+              <Target className="w-4 h-4 text-indigo-600" />
+              Overall Alignment Notes
+            </label>
+            <textarea
+              value={review.alignment_notes}
+              onChange={(e) => updateReview({ alignment_notes: e.target.value })}
+              placeholder="How aligned are you with your 90-day plan? Any strategic adjustments needed?"
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              rows={2}
             />
           </div>
         </div>
 
-        {/* Section 2: Accountability - Goals from Last Week */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
-            <Target className="w-6 h-6 text-teal-600 mr-3" />
-            Accountability - Last Week's Goals
-          </h2>
+        {/* ============================================================================ */}
+        {/* SECTION 3: PLAN FORWARD */}
+        {/* ============================================================================ */}
+        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-teal-100 rounded-lg">
+              <ArrowRight className="w-5 h-5 text-teal-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Plan Forward</h2>
+              <p className="text-sm text-gray-500">Set up for a successful week</p>
+            </div>
+          </div>
 
-          {review.last_week_goals.length === 0 ? (
-            <p className="text-gray-500 italic">No goals from last week. Add goals in "This Week Planning" section.</p>
-          ) : (
-            <div className="space-y-3">
-              {review.last_week_goals.map((goal, idx) => (
-                <div key={idx} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-start space-x-3 mb-2">
+          {/* Last Week's Goals Review - only show if there are goals from last week */}
+          {review.last_week_goals && review.last_week_goals.length > 0 && (
+            <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-xl">
+              <label className="flex items-center gap-2 text-sm font-semibold text-purple-700 mb-3">
+                <History className="w-4 h-4 text-purple-600" />
+                Last Week&apos;s Goals - Did you achieve them?
+              </label>
+              <div className="space-y-2">
+                {review.last_week_goals.map((goal, idx) => (
+                  <div key={idx} className="flex items-center gap-3 p-3 bg-white rounded-lg">
                     <input
                       type="checkbox"
                       checked={goal.achieved}
-                      onChange={(e) => {
-                        const updated = [...review.last_week_goals]
-                        updated[idx].achieved = e.target.checked
-                        const completionRate = Math.round(
-                          (updated.filter(g => g.achieved).length / updated.length) * 100
-                        )
-                        updateReview({ last_week_goals: updated, completion_rate: completionRate })
+                      onChange={() => {
+                        const updatedGoals = [...review.last_week_goals]
+                        updatedGoals[idx] = { ...goal, achieved: !goal.achieved }
+                        updateReview({ last_week_goals: updatedGoals })
                       }}
-                      className="mt-1 w-5 h-5 text-teal-600 rounded focus:ring-2 focus:ring-teal-500"
+                      className="w-5 h-5 text-purple-600 rounded focus:ring-2 focus:ring-purple-500"
                     />
-                    <div className="flex-1">
-                      <p className={`font-medium ${goal.achieved ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
-                        {goal.goal}
-                      </p>
-                      <input
-                        type="text"
-                        value={goal.comment}
-                        onChange={(e) => {
-                          const updated = [...review.last_week_goals]
-                          updated[idx].comment = e.target.value
-                          updateReview({ last_week_goals: updated })
-                        }}
-                        placeholder="Add a comment..."
-                        className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                      />
-                    </div>
+                    <span className={`flex-1 text-sm ${goal.achieved ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
+                      {goal.goal}
+                    </span>
+                    {goal.achieved ? (
+                      <Check className="w-4 h-4 text-green-500" />
+                    ) : (
+                      <span className="text-xs text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">Pending</span>
+                    )}
                   </div>
-                </div>
-              ))}
-              <div className="mt-4 p-4 bg-teal-50 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-teal-900">Completion Rate</span>
-                  <span className="text-2xl font-bold text-teal-600">{review.completion_rate}%</span>
-                </div>
+                ))}
               </div>
+              <p className="text-xs text-purple-600 mt-2">
+                Incomplete goals will automatically carry forward to this week&apos;s priorities
+              </p>
             </div>
           )}
-        </div>
 
-        {/* Section 3: Weekly Checklist */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
-            <CheckSquare className="w-6 h-6 text-teal-600 mr-3" />
-            Weekly Checklist
-          </h2>
-
-          <div className="space-y-3">
-            {review.disciplines_completed.map((discipline, idx) => {
-              const isDefault = DEFAULT_DISCIPLINES.includes(discipline.discipline)
-              const is90DayPlan = discipline.discipline === '90 day plan reviewed'
-              const isDashboard = discipline.discipline === 'Dashboard updated'
-
-              return (
-                <div key={idx} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                  <input
-                    type="checkbox"
-                    checked={discipline.completed}
-                    onChange={(e) => {
-                      const updated = [...review.disciplines_completed]
-                      updated[idx].completed = e.target.checked
-                      updateReview({ disciplines_completed: updated })
-                    }}
-                    className="w-5 h-5 text-teal-600 rounded focus:ring-2 focus:ring-teal-500"
-                  />
-                  {is90DayPlan ? (
-                    <Link
-                      href="/goals?step=5"
-                      className={`flex-1 ${discipline.completed ? 'text-gray-500 line-through' : 'text-teal-600 hover:text-teal-800'} underline`}
-                    >
-                      {discipline.discipline}
-                    </Link>
-                  ) : isDashboard ? (
-                    <Link
-                      href="/business-dashboard"
-                      className={`flex-1 ${discipline.completed ? 'text-gray-500 line-through' : 'text-teal-600 hover:text-teal-800'} underline`}
-                    >
-                      {discipline.discipline}
-                    </Link>
-                  ) : (
-                    <span className={`flex-1 ${discipline.completed ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
-                      {discipline.discipline}
-                    </span>
-                  )}
-                  {!isDefault && (
-                    <button
-                      onClick={() => removeDiscipline(idx)}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-
-            {/* Add Additional Discipline */}
-            <div className="flex space-x-2 mt-3">
+          {/* Top 3 Priorities */}
+          <div className="mb-6">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+              <Target className="w-4 h-4 text-teal-600" />
+              Top Priorities (connected to rocks)
+            </label>
+            <div className="space-y-2 mb-3">
+              {(review.top_priorities || []).map((priority, idx) => {
+                const linkedRock = rocks.find(r => r.id === priority.linkedRockId)
+                const isEditing = editingPriorityId === priority.id
+                return (
+                  <div key={priority.id} className={`flex items-center gap-3 p-3 rounded-lg group ${priority.carriedForward ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50'}`}>
+                    <input
+                      type="checkbox"
+                      checked={priority.completed}
+                      onChange={() => toggleTopPriorityComplete(priority.id)}
+                      className="w-5 h-5 text-teal-600 rounded focus:ring-2 focus:ring-teal-500"
+                      disabled={isEditing}
+                    />
+                    {isEditing ? (
+                      <div className="flex-1 flex items-center gap-2">
+                        <span className="font-semibold text-teal-600">#{idx + 1}</span>
+                        <input
+                          type="text"
+                          value={editingPriorityText}
+                          onChange={(e) => setEditingPriorityText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveEditingPriority()
+                            if (e.key === 'Escape') cancelEditingPriority()
+                          }}
+                          autoFocus
+                          className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-teal-500"
+                        />
+                        {rocks.length > 0 && (
+                          <select
+                            value={editingPriorityRockId || ''}
+                            onChange={(e) => setEditingPriorityRockId(e.target.value || undefined)}
+                            className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-teal-500"
+                          >
+                            <option value="">No rock</option>
+                            {rocks.map(rock => (
+                              <option key={rock.id} value={rock.id}>{rock.title}</option>
+                            ))}
+                          </select>
+                        )}
+                        <button onClick={saveEditingPriority} className="text-green-600 hover:text-green-700">
+                          <Check className="w-4 h-4" />
+                        </button>
+                        <button onClick={cancelEditingPriority} className="text-gray-400 hover:text-gray-600">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span
+                          className={`flex-1 text-sm cursor-pointer hover:text-teal-600 ${priority.completed ? 'text-gray-500 line-through' : 'text-gray-900'}`}
+                          onClick={() => startEditingPriority(priority)}
+                          title="Click to edit"
+                        >
+                          <span className="font-semibold text-teal-600 mr-2">#{idx + 1}</span>
+                          {priority.priority}
+                          {priority.carriedForward && (
+                            <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full inline-flex items-center gap-1">
+                              <RotateCcw className="w-3 h-3" />
+                              From last week
+                            </span>
+                          )}
+                          {linkedRock && (
+                            <span className="ml-2 px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded-full">
+                              {linkedRock.title}
+                            </span>
+                          )}
+                        </span>
+                        <button
+                          onClick={() => removeTopPriority(priority.id)}
+                          className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-teal-600 w-6">
+                #{(review.top_priorities || []).length + 1}
+              </span>
               <input
                 type="text"
-                value={newDiscipline}
-                onChange={(e) => setNewDiscipline(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addDiscipline()}
-                placeholder="+ Additional discipline..."
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                value={newPriorityText}
+                onChange={(e) => setNewPriorityText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddPriority()}
+                placeholder="Add priority..."
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               />
+              {rocks.length > 0 && (
+                <select
+                  value={newPriorityRockId}
+                  onChange={(e) => setNewPriorityRockId(e.target.value)}
+                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                >
+                  <option value="">Link to rock...</option>
+                  {rocks.map(rock => (
+                    <option key={rock.id} value={rock.id}>{rock.title}</option>
+                  ))}
+                </select>
+              )}
               <button
-                onClick={addDiscipline}
-                className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                onClick={handleAddPriority}
+                disabled={!newPriorityText.trim()}
+                className="px-3 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Plus className="w-5 h-5" />
+                Add
               </button>
             </div>
           </div>
-        </div>
 
-        {/* Section 4: Goals for Next Week */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
-            <Target className="w-6 h-6 text-teal-600 mr-3" />
-            Goals for Next Week
-          </h2>
-
+          {/* Other Priorities */}
           <div className="mb-6">
-            <div className="space-y-3">
-              {/* Always show at least 3 goal input fields */}
-              {Array.from({ length: Math.max(3, review.next_week_goals.length) }).map((_, idx) => (
-                <div key={idx} className="flex items-center space-x-2">
-                  <div className="flex items-center space-x-2 flex-1">
-                    <span className="text-sm font-semibold text-gray-600 w-6">{idx + 1}.</span>
-                    <input
-                      type="text"
-                      value={review.next_week_goals[idx] || ''}
-                      onChange={(e) => {
-                        const updated = [...review.next_week_goals]
-                        if (e.target.value.trim()) {
-                          updated[idx] = e.target.value
-                        } else {
-                          // Remove the goal if it's cleared
-                          updated.splice(idx, 1)
-                        }
-                        updateReview({ next_week_goals: updated })
-                      }}
-                      placeholder={`Goal ${idx + 1}${idx < 3 ? ' (required)' : ''}`}
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                    />
-                  </div>
-                  {idx >= 3 && review.next_week_goals[idx] && (
-                    <button
-                      onClick={() => removeNextWeekGoal(idx)}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+              <CheckSquare className="w-4 h-4 text-gray-600" />
+              Other Weekly Goals
+            </label>
+            <ListInput
+              items={review.other_priorities || []}
+              onAdd={(item) => updateReview({ other_priorities: [...(review.other_priorities || []), item] })}
+              onRemove={(idx) => updateReview({ other_priorities: (review.other_priorities || []).filter((_, i) => i !== idx) })}
+              onUpdate={(idx, value) => updateReview({ other_priorities: (review.other_priorities || []).map((p, i) => i === idx ? value : p) })}
+              placeholder="Add other goals for this week..."
+              icon={Check}
+              iconColor="text-gray-500"
+            />
+          </div>
+
+          {/* Important Dates */}
+          <div className="mb-6">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+              <CalendarDays className="w-4 h-4 text-purple-600" />
+              Important Dates & Deadlines
+            </label>
+            <div className="space-y-2 mb-3">
+              {(review.important_dates || []).map((item, idx) => (
+                <div key={idx} className="flex items-center gap-2 p-3 bg-purple-50 rounded-lg group">
+                  <Calendar className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                  {editingDateIdx === idx ? (
+                    <>
+                      <input
+                        type="date"
+                        value={editingDateValue}
+                        onChange={(e) => setEditingDateValue(e.target.value)}
+                        className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                      />
+                      <input
+                        type="text"
+                        value={editingDateDescValue}
+                        onChange={(e) => setEditingDateDescValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveEditingDate()
+                          if (e.key === 'Escape') cancelEditingDate()
+                        }}
+                        autoFocus
+                        className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                      />
+                      <button onClick={saveEditingDate} className="text-green-600 hover:text-green-700">
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button onClick={cancelEditingDate} className="text-gray-400 hover:text-gray-600">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span
+                        className="font-medium text-sm text-gray-900 cursor-pointer hover:text-purple-600"
+                        onClick={() => startEditingDate(idx)}
+                        title="Click to edit"
+                      >
+                        {item.date}
+                      </span>
+                      <span
+                        className="text-sm text-gray-600 cursor-pointer hover:text-purple-600"
+                        onClick={() => startEditingDate(idx)}
+                        title="Click to edit"
+                      >
+                        - {item.description}
+                      </span>
+                      <button
+                        onClick={() => removeImportantDate(idx)}
+                        className="ml-auto text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </>
                   )}
                 </div>
               ))}
-
-              {/* Add More Goal Button (only show if 3+ goals exist) */}
-              {review.next_week_goals.length >= 3 && (
-                <button
-                  onClick={() => {
-                    updateReview({ next_week_goals: [...review.next_week_goals, ''] })
-                  }}
-                  className="flex items-center space-x-2 px-4 py-2 text-teal-600 hover:text-teal-700 font-medium"
-                >
-                  <Plus className="w-5 h-5" />
-                  <span>Add Another Goal</span>
-                </button>
-              )}
             </div>
-          </div>
-
-          {/* Important Dates & Actions */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-3">
-              Important Dates & Actions
-            </label>
-            <div className="space-y-2 mb-3">
-              {review.important_dates.map((item, idx) => (
-                <div key={idx} className="flex items-center space-x-2 bg-purple-50 p-3 rounded-lg">
-                  <Calendar className="w-5 h-5 text-purple-600 flex-shrink-0" />
-                  <div className="flex-1">
-                    <span className="font-medium text-gray-900">{item.date}</span>
-                    <span className="text-gray-600 ml-2">- {item.description}</span>
-                  </div>
-                  <button
-                    onClick={() => removeImportantDate(idx)}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="flex space-x-2">
+            <div className="flex gap-2">
               <input
                 type="date"
                 value={newDate}
                 onChange={(e) => setNewDate(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               />
               <input
                 type="text"
                 value={newDateDesc}
                 onChange={(e) => setNewDateDesc(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addImportantDate()}
+                onKeyDown={(e) => e.key === 'Enter' && addImportantDate()}
                 placeholder="Description..."
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               />
               <button
                 onClick={addImportantDate}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                disabled={!newDate || !newDateDesc.trim()}
+                className="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Plus className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Section 5: Summary */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Summary</h2>
-
-          {/* Stop Doing */}
-          <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center">
-              <TrendingDown className="w-4 h-4 text-red-600 mr-2" />
-              Stop Doing
-            </label>
-            <div className="space-y-2 mb-3">
-              {review.stop_doing.map((item, idx) => (
-                <div key={idx} className="flex items-start space-x-2 bg-red-50 p-3 rounded-lg">
-                  <X className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                  <span className="flex-1 text-gray-800">{item}</span>
-                  <button
-                    onClick={() => removeStopDoing(idx)}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                value={newStopDoing}
-                onChange={(e) => setNewStopDoing(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addStopDoing()}
-                placeholder="What should you stop doing?"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-              />
-              <button
-                onClick={addStopDoing}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              >
-                <Plus className="w-5 h-5" />
+                Add
               </button>
             </div>
           </div>
 
-          {/* Start Doing */}
-          <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center">
-              <TrendingUp className="w-4 h-4 text-green-600 mr-2" />
-              Start Doing
-            </label>
-            <div className="space-y-2 mb-3">
-              {review.start_doing.map((item, idx) => (
-                <div key={idx} className="flex items-start space-x-2 bg-green-50 p-3 rounded-lg">
-                  <Plus className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <span className="flex-1 text-gray-800">{item}</span>
-                  <button
-                    onClick={() => removeStartDoing(idx)}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                value={newStartDoing}
-                onChange={(e) => setNewStartDoing(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addStartDoing()}
+          {/* Start/Stop Doing */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+                <TrendingUp className="w-4 h-4 text-green-600" />
+                Start Doing
+              </label>
+              <ListInput
+                items={review.start_doing}
+                onAdd={(item) => updateReview({ start_doing: [...review.start_doing, item] })}
+                onRemove={(idx) => updateReview({ start_doing: review.start_doing.filter((_, i) => i !== idx) })}
+                onUpdate={(idx, value) => updateReview({ start_doing: review.start_doing.map((s, i) => i === idx ? value : s) })}
                 placeholder="What should you start doing?"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                icon={TrendingUp}
+                iconColor="text-green-600"
               />
-              <button
-                onClick={addStartDoing}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+                <TrendingDown className="w-4 h-4 text-red-600" />
+                Stop Doing
+              </label>
+              <ListInput
+                items={review.stop_doing}
+                onAdd={(item) => updateReview({ stop_doing: [...review.stop_doing, item] })}
+                onRemove={(idx) => updateReview({ stop_doing: review.stop_doing.filter((_, i) => i !== idx) })}
+                onUpdate={(idx, value) => updateReview({ stop_doing: review.stop_doing.map((s, i) => i === idx ? value : s) })}
+                placeholder="What should you stop doing?"
+                icon={TrendingDown}
+                iconColor="text-red-600"
+                addButtonColor="red"
+              />
             </div>
           </div>
 
-          {/* Rate Your Week */}
+          {/* Questions for Coach */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center">
-              <Star className="w-4 h-4 text-yellow-600 mr-2" />
-              Rate Your Week (1-10)
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+              <MessageCircle className="w-4 h-4 text-blue-600" />
+              Questions for Coach
             </label>
-            <div className="flex items-center space-x-4 mb-3">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((rating) => (
-                <button
-                  key={rating}
-                  onClick={() => updateReview({ week_rating: rating })}
-                  className={`w-12 h-12 rounded-lg font-bold transition-colors ${
-                    review.week_rating === rating
-                      ? 'bg-teal-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {rating}
-                </button>
-              ))}
-            </div>
-            <textarea
-              value={review.rating_reason}
-              onChange={(e) => updateReview({ rating_reason: e.target.value })}
-              placeholder="Why did you give this rating?"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-              rows={3}
-            />
-          </div>
-        </div>
-
-        {/* Section 6: Questions for Coach */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
-            <MessageCircle className="w-6 h-6 text-teal-600 mr-3" />
-            Questions for Coach
-          </h2>
-
-          <div className="space-y-3 mb-4">
-            {review.coach_questions.map((q, idx) => (
-              <div key={idx} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <p className="flex-1 text-gray-900 font-medium">{q.question}</p>
-                  <button
-                    onClick={() => removeCoachQuestion(idx)}
-                    className="text-red-500 hover:text-red-700 ml-2"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className={`px-2 py-1 text-xs rounded-full font-medium ${
+            <div className="space-y-2 mb-3">
+              {(review.coach_questions || []).map((q, idx) => (
+                <div key={idx} className="p-3 bg-blue-50 rounded-lg group">
+                  <div className="flex items-start justify-between">
+                    <p className="text-sm text-gray-900">{q.question}</p>
+                    <button
+                      onClick={() => removeCoachQuestion(idx)}
+                      className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-2"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <span className={`inline-block mt-2 px-2 py-0.5 text-xs rounded-full font-medium ${
                     q.priority === 'high' ? 'bg-red-100 text-red-700' :
                     q.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
                     'bg-teal-100 text-teal-700'
                   }`}>
-                    {q.priority.toUpperCase()} PRIORITY
+                    {q.priority.toUpperCase()}
                   </span>
-                  {q.category && (
-                    <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
-                      {q.category}
-                    </span>
-                  )}
                 </div>
+              ))}
+            </div>
+            <div className="space-y-2">
+              <textarea
+                value={newQuestion}
+                onChange={(e) => setNewQuestion(e.target.value)}
+                placeholder="What question do you have for your coach?"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                rows={2}
+              />
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1">
+                  {(['low', 'medium', 'high'] as const).map((priority) => (
+                    <button
+                      key={priority}
+                      onClick={() => setNewQuestionPriority(priority)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        newQuestionPriority === priority
+                          ? priority === 'high' ? 'bg-red-600 text-white' :
+                            priority === 'medium' ? 'bg-yellow-500 text-white' :
+                            'bg-teal-600 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {priority.charAt(0).toUpperCase() + priority.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={addCoachQuestion}
+                  disabled={!newQuestion.trim()}
+                  className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Add Question
+                </button>
               </div>
-            ))}
-          </div>
-
-          <div className="space-y-3">
-            <textarea
-              value={newQuestion}
-              onChange={(e) => setNewQuestion(e.target.value)}
-              placeholder="What question do you have for your coach?"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-              rows={3}
-            />
-            <div className="flex items-center space-x-3">
-              <div className="flex space-x-2">
-                {(['low', 'medium', 'high'] as const).map((priority) => (
-                  <button
-                    key={priority}
-                    onClick={() => setNewQuestionPriority(priority)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      newQuestionPriority === priority
-                        ? priority === 'high' ? 'bg-red-600 text-white' :
-                          priority === 'medium' ? 'bg-yellow-600 text-white' :
-                          'bg-teal-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    {priority.charAt(0).toUpperCase() + priority.slice(1)}
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={addCoachQuestion}
-                className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium"
-              >
-                Add Question
-              </button>
             </div>
           </div>
         </div>
 
         {/* Mark as Complete Button */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <button
-            onClick={() => updateReview({ is_completed: !review.is_completed })}
-            className={`w-full py-4 rounded-lg font-bold text-lg transition-colors ${
-              review.is_completed
-                ? 'bg-green-600 text-white hover:bg-green-700'
-                : 'bg-teal-600 text-white hover:bg-teal-700'
-            }`}
-          >
-            {review.is_completed ? '✓ Review Completed' : 'Mark as Complete'}
-          </button>
-        </div>
+        {!isViewingOther && (
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <button
+              onClick={() => {
+                const isCompleting = !review.is_completed
+                updateReview({
+                  is_completed: isCompleting,
+                  completed_at: isCompleting ? new Date().toISOString() : undefined,
+                  submitter_name: isCompleting ? currentUserName : review.submitter_name
+                })
+              }}
+              className={`w-full py-4 rounded-xl font-bold text-lg transition-colors ${
+                review.is_completed
+                  ? 'bg-green-600 text-white hover:bg-green-700'
+                  : 'bg-teal-600 text-white hover:bg-teal-700'
+              }`}
+            >
+              {review.is_completed ? '✓ Review Completed' : 'Mark as Complete'}
+            </button>
+          </div>
+        )}
+
+        {/* Read-only indicator when viewing other's review */}
+        {isViewingOther && displayedReview && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
+            <p className="text-blue-800 font-medium">
+              {displayedReview.is_completed
+                ? `✓ ${viewingMemberName} completed this review`
+                : `${viewingMemberName}'s review is in progress`
+              }
+            </p>
+            <button
+              onClick={() => setViewingTeamMemberId(null)}
+              className="mt-4 px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700"
+            >
+              Back to My Review
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

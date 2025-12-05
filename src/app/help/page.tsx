@@ -99,7 +99,7 @@ export default function HelpPage() {
         {/* Quick Links */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <a
-            href="mailto:support@wisdomcoaching.com.au"
+            href="mailto:support@wisdombi.ai"
             className="bg-white rounded-lg border border-gray-200 p-6 hover:border-teal-400 hover:shadow-md transition-all"
           >
             <div className="flex items-start gap-3">
@@ -107,7 +107,7 @@ export default function HelpPage() {
               <div>
                 <h3 className="font-semibold text-gray-900 mb-1">Email Support</h3>
                 <p className="text-sm text-gray-600">Get help via email</p>
-                <p className="text-xs text-teal-600 mt-2">support@wisdomcoaching.com.au</p>
+                <p className="text-xs text-teal-600 mt-2">support@wisdombi.ai</p>
               </div>
             </div>
           </a>
@@ -199,7 +199,7 @@ export default function HelpPage() {
             Can't find what you're looking for? Our support team is here to help.
           </p>
           <a
-            href="mailto:support@wisdomcoaching.com.au"
+            href="mailto:support@wisdombi.ai"
             className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors"
           >
             <Mail className="w-4 h-4" />

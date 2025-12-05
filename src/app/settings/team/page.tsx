@@ -20,7 +20,8 @@ import {
   Phone,
   Briefcase,
   Clock,
-  Send
+  Send,
+  CalendarCheck
 } from 'lucide-react'
 
 interface TeamMember {
@@ -29,6 +30,7 @@ interface TeamMember {
   role: 'owner' | 'admin' | 'member' | 'viewer'
   status: 'pending' | 'active' | 'inactive'
   invited_at: string
+  weekly_review_enabled: boolean
   user: {
     email: string
     first_name?: string
@@ -175,7 +177,8 @@ export default function TeamMembersPage() {
             user_id,
             role,
             status,
-            invited_at
+            invited_at,
+            weekly_review_enabled
           `)
           .eq('business_id', bizId)
           .order('role', { ascending: true })
@@ -193,6 +196,7 @@ export default function TeamMembersPage() {
 
           const membersWithUsers = members.map(m => ({
             ...m,
+            weekly_review_enabled: m.weekly_review_enabled ?? true,
             user: users?.find(u => u.id === m.user_id) || null
           }))
 
@@ -374,6 +378,23 @@ export default function TeamMembersPage() {
     }
   }
 
+  async function toggleWeeklyReview(memberId: string, currentValue: boolean) {
+    try {
+      const { error } = await supabase
+        .from('business_users')
+        .update({ weekly_review_enabled: !currentValue })
+        .eq('id', memberId)
+
+      if (error) throw error
+
+      setTeamMembers(prev => prev.map(m =>
+        m.id === memberId ? { ...m, weekly_review_enabled: !currentValue } : m
+      ))
+    } catch (error) {
+      console.error('Error toggling weekly review:', error)
+    }
+  }
+
   const canManageTeam = currentUserRole === 'owner' || currentUserRole === 'admin'
 
   if (loading) {
@@ -492,11 +513,22 @@ export default function TeamMembersPage() {
                       </button>
                     </div>
                   ) : (
-                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${roleInfo.bgColor}`}>
-                      <RoleIcon className={`w-4 h-4 ${roleInfo.color}`} />
-                      <span className={`text-sm font-medium ${roleInfo.color}`}>
-                        {roleInfo.label}
-                      </span>
+                    <div className="flex items-center gap-2">
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${roleInfo.bgColor}`}>
+                        <RoleIcon className={`w-4 h-4 ${roleInfo.color}`} />
+                        <span className={`text-sm font-medium ${roleInfo.color}`}>
+                          {roleInfo.label}
+                        </span>
+                      </div>
+                      {member.weekly_review_enabled ? (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-teal-50 rounded-full" title="Weekly Review Enabled">
+                          <CalendarCheck className="w-3 h-3 text-teal-600" />
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-full" title="Weekly Review Disabled">
+                          <CalendarCheck className="w-3 h-3 text-gray-400" />
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -525,6 +557,16 @@ export default function TeamMembersPage() {
                             >
                               <Edit className="w-4 h-4" />
                               Change Role
+                            </button>
+                            <button
+                              onClick={() => {
+                                toggleWeeklyReview(member.id, member.weekly_review_enabled)
+                                setMenuOpen(null)
+                              }}
+                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                              <CalendarCheck className="w-4 h-4" />
+                              {member.weekly_review_enabled ? 'Disable Weekly Review' : 'Enable Weekly Review'}
                             </button>
                             <button
                               onClick={() => removeMember(member.id)}

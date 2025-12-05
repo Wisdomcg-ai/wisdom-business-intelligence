@@ -8,6 +8,7 @@ import { ClientFileTabs, type TabId } from '@/components/coach/ClientFileTabs'
 import { OverviewTab } from '@/components/coach/tabs/OverviewTab'
 import { ProfileTab } from '@/components/coach/tabs/ProfileTab'
 import { TeamTab } from '@/components/coach/tabs/TeamTab'
+import { WeeklyReviewsTab } from '@/components/coach/tabs/WeeklyReviewsTab'
 import {
   ArrowLeft,
   Building2,
@@ -953,6 +954,13 @@ export default function ClientFilePage() {
         {activeTab === 'team' && (
           <TeamTab
             clientId={clientId}
+            businessName={business.business_name}
+          />
+        )}
+
+        {activeTab === 'weekly-reviews' && (
+          <WeeklyReviewsTab
+            businessId={clientId}
             businessName={business.business_name}
           />
         )}

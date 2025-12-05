@@ -289,8 +289,21 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
         </nav>
 
         <div className="p-4 border-t bg-gray-50">
-          <p className="text-xs text-gray-500 text-center">
-            © 2025 Business Coaching Platform
+          <div className="flex justify-center gap-3 mb-2">
+            <Link href="/privacy" className="text-xs text-gray-500 hover:text-teal-600">
+              Privacy
+            </Link>
+            <span className="text-gray-300">•</span>
+            <Link href="/terms" className="text-xs text-gray-500 hover:text-teal-600">
+              Terms
+            </Link>
+            <span className="text-gray-300">•</span>
+            <Link href="/help" className="text-xs text-gray-500 hover:text-teal-600">
+              Help
+            </Link>
+          </div>
+          <p className="text-xs text-gray-400 text-center">
+            © 2025 Wisdom Coaching
           </p>
         </div>
       </div>

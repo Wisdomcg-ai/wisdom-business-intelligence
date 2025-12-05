@@ -3,251 +3,261 @@
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 
-export default function PrivacyPage() {
-  const lastUpdated = 'November 30, 2024'
+export default function PrivacyPolicyPage() {
+  const lastUpdated = '5 December 2024'
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-b border-gray-100 z-50">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <Link href="/" className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
-              <ArrowLeft className="w-4 h-4" />
-              Back to Home
-            </Link>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg flex items-center justify-center">
-                <span className="text-sm font-bold text-white">W</span>
-              </div>
-              <span className="font-semibold text-gray-900">Wisdom BI</span>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-4xl mx-auto px-4 py-12">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 text-teal-600 hover:text-teal-700 mb-8"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Home
+        </Link>
 
-      {/* Content */}
-      <main className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Privacy Policy</h1>
-          <p className="text-gray-500 mb-8">Last updated: {lastUpdated}</p>
+        <div className="bg-white rounded-xl shadow-sm p-8 md:p-12">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
+          <p className="text-sm text-gray-500 mb-8">Last updated: {lastUpdated}</p>
 
-          <div className="prose prose-lg prose-gray max-w-none">
-            {/* Introduction */}
-            <section className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">1. Introduction</h2>
+          <div className="prose prose-gray max-w-none">
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">1. Introduction</h2>
               <p className="text-gray-700 mb-4">
-                Wisdom BI is operated by Wisdom Consulting Group (ABN 11 331 804 705), located at Suite 5, 12 Laycock Avenue, Cronulla NSW 2230, Australia.
+                Envisage Australia Pty Ltd ATF Malouf Family Trust (ABN 11 331 804 705) trading as Wisdom Coaching
+                (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) is committed to protecting your privacy and complying with the
+                Australian Privacy Principles (&quot;APPs&quot;) contained in the <em>Privacy Act 1988</em> (Cth).
               </p>
               <p className="text-gray-700 mb-4">
-                We respect your privacy and are committed to protecting your personal information. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our platform.
+                This Privacy Policy describes how we collect, use, disclose, and protect your personal information
+                when you use our business coaching platform and related services (the &quot;Platform&quot;).
               </p>
               <p className="text-gray-700">
-                By using Wisdom BI, you consent to the data practices described in this policy. If you do not agree with the terms of this policy, please do not access or use our services.
+                By using the Platform, you consent to the collection and use of your information as described in this policy.
               </p>
             </section>
 
-            {/* Information We Collect */}
-            <section className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">2. Information We Collect</h2>
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">2. Information We Collect</h2>
 
-              <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">2.1 Information You Provide</h3>
-              <p className="text-gray-700 mb-4">We collect information you voluntarily provide when using our platform:</p>
-              <ul className="list-disc pl-6 text-gray-700 space-y-2 mb-4">
-                <li><strong>Account Information:</strong> Name, email address, password, and contact details when you create an account.</li>
-                <li><strong>Business Profile:</strong> Business name, industry, number of employees, annual revenue, and other business details you provide during onboarding.</li>
-                <li><strong>Assessment Data:</strong> Responses to our business assessment questionnaires.</li>
-                <li><strong>Goals and Plans:</strong> Business goals, targets, strategic plans, and reviews you create within the platform.</li>
-                <li><strong>Communications:</strong> Messages exchanged with your coach through our messaging feature.</li>
+              <h3 className="text-lg font-medium text-gray-800 mb-3">2.1 Personal Information</h3>
+              <p className="text-gray-700 mb-4">We may collect the following types of personal information:</p>
+              <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+                <li>Name, email address, phone number, and business address</li>
+                <li>Business name, ABN, and role within your organisation</li>
+                <li>Account credentials (username and encrypted password)</li>
+                <li>Payment and billing information (processed securely via Stripe)</li>
+                <li>Business performance data, goals, and coaching session notes</li>
+                <li>Financial data you choose to integrate from Xero</li>
+                <li>Communications between you and your coach</li>
               </ul>
 
-              <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">2.2 Financial Data (via Xero Integration)</h3>
-              <p className="text-gray-700 mb-4">
-                If you connect your Xero account, we access financial data including revenue, expenses, profit and loss statements, and account balances. This data is used solely to provide financial insights and forecasting features within the platform. We do not store your Xero credentials — authentication is handled securely through Xero&apos;s OAuth system.
-              </p>
-
-              <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">2.3 Automatically Collected Information</h3>
-              <p className="text-gray-700 mb-4">When you use our platform, we automatically collect:</p>
-              <ul className="list-disc pl-6 text-gray-700 space-y-2">
-                <li><strong>Usage Data:</strong> Pages visited, features used, time spent on the platform, and interaction patterns.</li>
-                <li><strong>Device Information:</strong> Browser type, operating system, device type, and screen resolution.</li>
-                <li><strong>Log Data:</strong> IP address, access times, and referring URLs.</li>
+              <h3 className="text-lg font-medium text-gray-800 mb-3">2.2 Automatically Collected Information</h3>
+              <p className="text-gray-700 mb-4">When you use our Platform, we automatically collect:</p>
+              <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+                <li>Device information (browser type, operating system)</li>
+                <li>IP address and general location data</li>
+                <li>Usage data (pages visited, features used, time spent)</li>
+                <li>Cookies and similar tracking technologies</li>
               </ul>
-            </section>
 
-            {/* How We Use Your Information */}
-            <section className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">3. How We Use Your Information</h2>
-              <p className="text-gray-700 mb-4">We use your information for the following purposes:</p>
-              <ul className="list-disc pl-6 text-gray-700 space-y-2">
-                <li><strong>Provide Our Services:</strong> To deliver the features and functionality of Wisdom BI, including dashboards, assessments, goal tracking, and coaching tools.</li>
-                <li><strong>Personalise Your Experience:</strong> To tailor content, recommendations, and insights based on your business profile and usage patterns.</li>
-                <li><strong>Facilitate Coaching:</strong> To enable communication between you and your assigned business coach.</li>
-                <li><strong>Generate Insights:</strong> To create financial forecasts, business assessments, and strategic recommendations.</li>
-                <li><strong>Improve Our Platform:</strong> To analyse usage patterns, identify issues, and enhance our services.</li>
-                <li><strong>Communicate With You:</strong> To send account notifications, updates, and (with your consent) marketing communications.</li>
-                <li><strong>Ensure Security:</strong> To detect, prevent, and address technical issues and security threats.</li>
-                <li><strong>Comply With Law:</strong> To meet legal obligations and respond to lawful requests.</li>
-              </ul>
-            </section>
-
-            {/* Legal Basis */}
-            <section className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">4. Legal Basis for Processing</h2>
-              <p className="text-gray-700 mb-4">We process your personal information based on the following legal grounds:</p>
-              <ul className="list-disc pl-6 text-gray-700 space-y-2">
-                <li><strong>Contract:</strong> Processing is necessary to provide the services you&apos;ve requested.</li>
-                <li><strong>Consent:</strong> You have given explicit consent for specific processing activities (e.g., marketing emails, Xero integration).</li>
-                <li><strong>Legitimate Interests:</strong> Processing is necessary for our legitimate business interests, such as improving our services and ensuring platform security.</li>
-                <li><strong>Legal Obligation:</strong> Processing is necessary to comply with applicable laws.</li>
-              </ul>
-            </section>
-
-            {/* How We Share Your Information */}
-            <section className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">5. How We Share Your Information</h2>
-              <p className="text-gray-700 mb-4">We do not sell your personal information. We may share your data in the following circumstances:</p>
-
-              <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">5.1 Service Providers</h3>
-              <p className="text-gray-700 mb-4">We use trusted third-party services to operate our platform:</p>
-              <ul className="list-disc pl-6 text-gray-700 space-y-2 mb-4">
-                <li><strong>Supabase:</strong> Database hosting and user authentication (data stored in secure cloud infrastructure).</li>
-                <li><strong>Vercel:</strong> Website hosting and content delivery.</li>
-                <li><strong>Xero:</strong> Accounting software integration (only when you choose to connect).</li>
-                <li><strong>OpenAI:</strong> AI-powered features and insights generation.</li>
-                <li><strong>Resend:</strong> Transactional email delivery.</li>
-              </ul>
-              <p className="text-gray-700 mb-4">
-                These providers are contractually obligated to protect your data and may only use it to provide services to us.
-              </p>
-
-              <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">5.2 Your Business Coach</h3>
-              <p className="text-gray-700 mb-4">
-                If you are assigned a business coach through our platform, they will have access to your business profile, assessments, goals, and progress data to provide effective coaching services.
-              </p>
-
-              <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">5.3 Legal Requirements</h3>
+              <h3 className="text-lg font-medium text-gray-800 mb-3">2.3 Sensitive Information</h3>
               <p className="text-gray-700">
-                We may disclose your information if required by law, court order, or government regulation, or if we believe disclosure is necessary to protect our rights, your safety, or the safety of others.
+                We do not intentionally collect sensitive information as defined under the Privacy Act 1988.
+                If you provide sensitive information to us (such as health information relevant to your
+                business performance), we will only use it for the purpose for which it was provided and
+                with your explicit consent.
               </p>
             </section>
 
-            {/* Data Storage and Security */}
-            <section className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">6. Data Storage and Security</h2>
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">3. How We Use Your Information</h2>
+              <p className="text-gray-700 mb-4">We use your personal information to:</p>
+              <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+                <li>Provide and improve our coaching platform and services</li>
+                <li>Create and manage your account</li>
+                <li>Facilitate coaching sessions and track your business progress</li>
+                <li>Process payments and manage subscriptions via Stripe</li>
+                <li>Integrate with third-party services at your request (e.g., Xero)</li>
+                <li>Send you service-related communications and updates</li>
+                <li>Analyse usage patterns to improve user experience</li>
+                <li>Comply with legal obligations and resolve disputes</li>
+                <li>Protect against fraud and unauthorised access</li>
+              </ul>
+            </section>
 
-              <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">6.1 Where We Store Your Data</h3>
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">4. How We Share Your Information</h2>
+              <p className="text-gray-700 mb-4">We may share your personal information with:</p>
+
+              <h3 className="text-lg font-medium text-gray-800 mb-3">4.1 Your Business Coach</h3>
               <p className="text-gray-700 mb-4">
-                Your data is stored on secure servers operated by our service providers. This may include servers located in the United States, European Union, and Australia. By using our platform, you consent to the transfer of your data to these locations.
+                Your assigned coach will have access to your business data, goals, session notes, and
+                performance metrics to provide effective coaching services.
               </p>
 
-              <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">6.2 Security Measures</h3>
-              <p className="text-gray-700 mb-4">We implement industry-standard security measures including:</p>
-              <ul className="list-disc pl-6 text-gray-700 space-y-2 mb-4">
+              <h3 className="text-lg font-medium text-gray-800 mb-3">4.2 Service Providers</h3>
+              <p className="text-gray-700 mb-4">We use trusted third-party service providers including:</p>
+              <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+                <li><strong>Supabase</strong> - Database hosting and authentication (data stored in Australia/Singapore)</li>
+                <li><strong>Stripe</strong> - Payment processing (PCI-DSS compliant)</li>
+                <li><strong>Xero</strong> - Accounting integration (only when you authorise connection)</li>
+                <li><strong>Vercel</strong> - Application hosting</li>
+              </ul>
+
+              <h3 className="text-lg font-medium text-gray-800 mb-3">4.3 Legal Requirements</h3>
+              <p className="text-gray-700">
+                We may disclose your information if required by law, court order, or government authority,
+                or to protect our rights, property, or safety, or that of our users or the public.
+              </p>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">5. Data Security</h2>
+              <p className="text-gray-700 mb-4">
+                We implement appropriate technical and organisational measures to protect your personal
+                information, including:
+              </p>
+              <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
                 <li>Encryption of data in transit (TLS/SSL) and at rest</li>
                 <li>Secure authentication with password hashing</li>
                 <li>Role-based access controls</li>
-                <li>Regular security audits and updates</li>
-                <li>Secure OAuth integration for third-party connections</li>
+                <li>Regular security assessments and updates</li>
+                <li>Secure cloud infrastructure with reputable providers</li>
               </ul>
               <p className="text-gray-700">
-                While we take reasonable precautions, no method of transmission over the internet is 100% secure. We cannot guarantee absolute security of your data.
-              </p>
-
-              <h3 className="text-xl font-semibold text-gray-900 mt-6 mb-3">6.3 Data Retention</h3>
-              <p className="text-gray-700">
-                We retain your personal information for as long as your account is active or as needed to provide services. If you close your account, we will delete or anonymise your data within 90 days, unless we are required to retain it for legal, accounting, or compliance purposes.
+                While we take reasonable steps to protect your information, no method of transmission
+                over the Internet is 100% secure. We cannot guarantee absolute security.
               </p>
             </section>
 
-            {/* Your Rights */}
-            <section className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">7. Your Rights</h2>
-              <p className="text-gray-700 mb-4">Under the Australian Privacy Act 1988 and applicable privacy laws, you have the following rights:</p>
-              <ul className="list-disc pl-6 text-gray-700 space-y-2 mb-4">
-                <li><strong>Access:</strong> Request a copy of the personal information we hold about you.</li>
-                <li><strong>Correction:</strong> Request correction of inaccurate or incomplete information.</li>
-                <li><strong>Deletion:</strong> Request deletion of your personal information (subject to legal obligations).</li>
-                <li><strong>Data Portability:</strong> Request a copy of your data in a structured, machine-readable format.</li>
-                <li><strong>Withdraw Consent:</strong> Withdraw consent for processing where consent is the legal basis.</li>
-                <li><strong>Object:</strong> Object to processing based on legitimate interests.</li>
-                <li><strong>Restrict Processing:</strong> Request restriction of processing in certain circumstances.</li>
-              </ul>
-              <p className="text-gray-700">
-                To exercise any of these rights, please contact us at <a href="mailto:info@wisdombi.ai" className="text-teal-600 hover:underline">info@wisdombi.ai</a>. We will respond to your request within 30 days.
-              </p>
-            </section>
-
-            {/* Cookies */}
-            <section className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">8. Cookies and Tracking</h2>
-              <p className="text-gray-700 mb-4">We use cookies and similar technologies to:</p>
-              <ul className="list-disc pl-6 text-gray-700 space-y-2 mb-4">
-                <li><strong>Essential Cookies:</strong> Enable core functionality like user authentication and session management.</li>
-                <li><strong>Analytics Cookies:</strong> Understand how users interact with our platform to improve our services.</li>
-                <li><strong>Preference Cookies:</strong> Remember your settings and preferences.</li>
-              </ul>
-              <p className="text-gray-700">
-                You can control cookies through your browser settings. Note that disabling certain cookies may affect platform functionality.
-              </p>
-            </section>
-
-            {/* Children's Privacy */}
-            <section className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">9. Children&apos;s Privacy</h2>
-              <p className="text-gray-700">
-                Wisdom BI is a business platform intended for users aged 18 and over. We do not knowingly collect personal information from children under 18. If we become aware that we have collected data from a child under 18, we will take steps to delete that information promptly.
-              </p>
-            </section>
-
-            {/* Changes to This Policy */}
-            <section className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">10. Changes to This Policy</h2>
-              <p className="text-gray-700">
-                We may update this Privacy Policy from time to time. We will notify you of significant changes by posting the new policy on this page and updating the &quot;Last updated&quot; date. For material changes, we will also send you an email notification. We encourage you to review this policy periodically.
-              </p>
-            </section>
-
-            {/* Contact Us */}
-            <section className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">11. Contact Us</h2>
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">6. Data Retention</h2>
               <p className="text-gray-700 mb-4">
-                If you have questions about this Privacy Policy or our data practices, please contact us:
+                We retain your personal information for as long as necessary to provide our services
+                and comply with legal obligations. Specifically:
               </p>
-              <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-                <p className="text-gray-700 mb-2"><strong>Wisdom Consulting Group</strong></p>
-                <p className="text-gray-700 mb-2">ABN: 11 331 804 705</p>
-                <p className="text-gray-700 mb-2">Suite 5, 12 Laycock Avenue</p>
-                <p className="text-gray-700 mb-2">Cronulla NSW 2230, Australia</p>
-                <p className="text-gray-700 mb-2">Email: <a href="mailto:info@wisdombi.ai" className="text-teal-600 hover:underline">info@wisdombi.ai</a></p>
-                <p className="text-gray-700">Phone: 02 8526 9181</p>
+              <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+                <li>Account data is retained while your account is active</li>
+                <li>Coaching records and session notes are retained for 7 years after your last session</li>
+                <li>Financial records are retained as required by Australian tax law (minimum 5 years)</li>
+                <li>You may request deletion of your data at any time (subject to legal retention requirements)</li>
+              </ul>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">7. Your Rights</h2>
+              <p className="text-gray-700 mb-4">Under Australian privacy law, you have the right to:</p>
+              <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+                <li><strong>Access</strong> - Request a copy of the personal information we hold about you</li>
+                <li><strong>Correction</strong> - Request correction of inaccurate or incomplete information</li>
+                <li><strong>Deletion</strong> - Request deletion of your personal information (subject to legal requirements)</li>
+                <li><strong>Portability</strong> - Request your data in a portable format</li>
+                <li><strong>Withdraw consent</strong> - Withdraw consent for specific processing activities</li>
+                <li><strong>Complaint</strong> - Lodge a complaint with the Office of the Australian Information Commissioner (OAIC)</li>
+              </ul>
+              <p className="text-gray-700">
+                To exercise these rights, please contact us using the details below.
+              </p>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">8. Cookies and Tracking</h2>
+              <p className="text-gray-700 mb-4">
+                We use cookies and similar technologies to enhance your experience. These include:
+              </p>
+              <ul className="list-disc pl-6 text-gray-700 mb-4 space-y-2">
+                <li><strong>Essential cookies</strong> - Required for the Platform to function (authentication, security)</li>
+                <li><strong>Analytics cookies</strong> - Help us understand how users interact with the Platform</li>
+                <li><strong>Preference cookies</strong> - Remember your settings and preferences</li>
+              </ul>
+              <p className="text-gray-700">
+                You can control cookies through your browser settings. Disabling certain cookies may
+                affect Platform functionality.
+              </p>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">9. Third-Party Integrations</h2>
+
+              <h3 className="text-lg font-medium text-gray-800 mb-3">9.1 Xero Integration</h3>
+              <p className="text-gray-700 mb-4">
+                If you choose to connect your Xero account, we will access financial data including
+                profit and loss reports, balance sheets, and account information. This data is used
+                solely to provide coaching insights and is subject to Xero&apos;s own privacy policy.
+                You can disconnect Xero at any time through your account settings.
+              </p>
+
+              <h3 className="text-lg font-medium text-gray-800 mb-3">9.2 Stripe Payments</h3>
+              <p className="text-gray-700">
+                Payment information is processed directly by Stripe and is subject to Stripe&apos;s
+                privacy policy. We do not store your full credit card details on our servers.
+              </p>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">10. Cross-Border Data Transfers</h2>
+              <p className="text-gray-700 mb-4">
+                Your data may be transferred to and processed in countries outside Australia where our
+                service providers are located. We ensure that any such transfers comply with the APPs
+                and that appropriate safeguards are in place. Our primary service providers maintain
+                data centres in Australia, Singapore, and the United States.
+              </p>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">11. Children&apos;s Privacy</h2>
+              <p className="text-gray-700">
+                Our Platform is not intended for individuals under 18 years of age. We do not knowingly
+                collect personal information from children. If we become aware that we have collected
+                personal information from a child, we will take steps to delete such information.
+              </p>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">12. Changes to This Policy</h2>
+              <p className="text-gray-700">
+                We may update this Privacy Policy from time to time. We will notify you of any material
+                changes by posting the new policy on the Platform and updating the &quot;Last updated&quot; date.
+                We encourage you to review this policy periodically.
+              </p>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">13. Contact Us</h2>
+              <p className="text-gray-700 mb-4">
+                If you have any questions about this Privacy Policy or wish to exercise your rights,
+                please contact us:
+              </p>
+              <div className="bg-gray-50 rounded-lg p-4 text-gray-700">
+                <p className="font-medium">Envisage Australia Pty Ltd ATF Malouf Family Trust</p>
+                <p>Trading as Wisdom Coaching</p>
+                <p>ABN: 11 331 804 705</p>
+                <p className="mt-2">Email: support@wisdombi.ai</p>
               </div>
-            </section>
-
-            {/* Complaints */}
-            <section className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">12. Complaints</h2>
-              <p className="text-gray-700 mb-4">
-                If you believe we have breached the Australian Privacy Principles or your privacy rights, you may lodge a complaint with us. We will investigate and respond within 30 days.
-              </p>
-              <p className="text-gray-700">
-                If you are not satisfied with our response, you may lodge a complaint with the Office of the Australian Information Commissioner (OAIC) at <a href="https://www.oaic.gov.au" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">www.oaic.gov.au</a>.
+              <p className="text-gray-700 mt-4">
+                If you are not satisfied with our response, you may lodge a complaint with the
+                Office of the Australian Information Commissioner (OAIC) at{' '}
+                <a
+                  href="https://www.oaic.gov.au"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-teal-600 hover:text-teal-700 underline"
+                >
+                  www.oaic.gov.au
+                </a>.
               </p>
             </section>
           </div>
         </div>
-      </main>
 
-      {/* Footer */}
-      <footer className="py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 border-t border-gray-100">
-        <div className="max-w-4xl mx-auto text-center text-gray-500 text-sm">
-          <p>&copy; {new Date().getFullYear()} Wisdom BI. All rights reserved.</p>
-          <div className="mt-2 flex justify-center gap-4">
-            <Link href="/privacy" className="hover:text-gray-700">Privacy Policy</Link>
-            <Link href="/terms" className="hover:text-gray-700">Terms of Service</Link>
-          </div>
+        <div className="mt-8 text-center text-sm text-gray-500">
+          <Link href="/terms" className="text-teal-600 hover:text-teal-700">
+            View Terms and Conditions
+          </Link>
         </div>
-      </footer>
+      </div>
     </div>
   )
 }

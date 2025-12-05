@@ -155,6 +155,13 @@ export default function AdminLogin() {
             Secure admin access only
           </p>
         </div>
+
+        {/* Legal Links */}
+        <div className="mt-4 text-center">
+          <a href="/privacy" className="text-xs text-teal-300 hover:text-white mx-2">Privacy Policy</a>
+          <span className="text-teal-400">•</span>
+          <a href="/terms" className="text-xs text-teal-300 hover:text-white mx-2">Terms of Service</a>
+        </div>
       </div>
     </div>
   )

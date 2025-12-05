@@ -522,8 +522,14 @@ export default function CoachLayoutNew({ children }: CoachLayoutNewProps) {
           {/* Footer */}
           <footer className="border-t border-slate-200 bg-white px-4 sm:px-6 py-4">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-              <p>&copy; 2025 Wisdom Business Intelligence. All rights reserved.</p>
-              <p>Coach Portal v2.0</p>
+              <p>&copy; 2025 Wisdom Coaching. All rights reserved.</p>
+              <div className="flex items-center gap-3">
+                <Link href="/privacy" className="hover:text-teal-600">Privacy</Link>
+                <span>•</span>
+                <Link href="/terms" className="hover:text-teal-600">Terms</Link>
+                <span>•</span>
+                <Link href="/help" className="hover:text-teal-600">Help</Link>
+              </div>
             </div>
           </footer>
         </div>

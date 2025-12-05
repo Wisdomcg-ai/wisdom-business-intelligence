@@ -8,8 +8,13 @@ import { BusinessContextProvider } from '@/contexts/BusinessContext'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Business Coaching Platform',
-  description: 'Transform your business with data-driven coaching',
+  title: 'WisdomBi - Business Intelligence',
+  description: 'Transform your business with data-driven coaching and business intelligence',
+  icons: {
+    icon: '/favicon.png',
+    shortcut: '/favicon.png',
+    apple: '/favicon.png',
+  },
 }
 
 export default function RootLayout({

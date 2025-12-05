@@ -9,10 +9,11 @@ import {
   FileText,
   MessageSquare,
   StickyNote,
-  Users
+  Users,
+  CalendarCheck
 } from 'lucide-react'
 
-export type TabId = 'overview' | 'profile' | 'goals' | 'financials' | 'actions' | 'documents' | 'messages' | 'notes' | 'team'
+export type TabId = 'overview' | 'profile' | 'goals' | 'financials' | 'actions' | 'documents' | 'messages' | 'notes' | 'team' | 'weekly-reviews'
 
 interface Tab {
   id: TabId
@@ -46,6 +47,7 @@ export function ClientFileTabs({
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'profile', label: 'Profile', icon: Building2 },
     { id: 'team', label: 'Team', icon: Users },
+    { id: 'weekly-reviews', label: 'Weekly Reviews', icon: CalendarCheck },
     { id: 'goals', label: 'Goals & Planning', icon: Target },
     { id: 'financials', label: 'Financials', icon: TrendingUp },
     { id: 'actions', label: 'Actions', icon: ListChecks, badge: badges.actions },

@@ -250,6 +250,23 @@ export default function LoginPage() {
             {isSignUp ? 'Sign In' : 'Sign Up'}
           </button>
         </p>
+
+        {/* Legal Links */}
+        <div className="mt-6 pt-6 border-t border-gray-200 text-center text-xs text-gray-500">
+          {isSignUp && (
+            <p className="mb-2">
+              By signing up, you agree to our{' '}
+              <a href="/terms" className="text-teal-600 hover:text-teal-700">Terms</a>
+              {' '}and{' '}
+              <a href="/privacy" className="text-teal-600 hover:text-teal-700">Privacy Policy</a>
+            </p>
+          )}
+          <div className="flex justify-center gap-4">
+            <a href="/privacy" className="hover:text-gray-700">Privacy Policy</a>
+            <span>•</span>
+            <a href="/terms" className="hover:text-gray-700">Terms of Service</a>
+          </div>
+        </div>
       </div>
     </div>
   )

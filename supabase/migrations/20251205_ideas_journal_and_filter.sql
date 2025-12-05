@@ -39,15 +39,19 @@ CREATE INDEX IF NOT EXISTS idx_ideas_archived ON public.ideas(archived) WHERE ar
 -- RLS for ideas
 ALTER TABLE public.ideas ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own ideas" ON public.ideas;
 CREATE POLICY "Users can view own ideas" ON public.ideas
   FOR SELECT USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can insert own ideas" ON public.ideas;
 CREATE POLICY "Users can insert own ideas" ON public.ideas
   FOR INSERT WITH CHECK (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can update own ideas" ON public.ideas;
 CREATE POLICY "Users can update own ideas" ON public.ideas
   FOR UPDATE USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can delete own ideas" ON public.ideas;
 CREATE POLICY "Users can delete own ideas" ON public.ideas
   FOR DELETE USING (user_id = auth.uid());
 
@@ -128,15 +132,19 @@ CREATE INDEX IF NOT EXISTS idx_ideas_filter_evaluated_at ON public.ideas_filter(
 -- RLS for ideas_filter
 ALTER TABLE public.ideas_filter ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own idea filters" ON public.ideas_filter;
 CREATE POLICY "Users can view own idea filters" ON public.ideas_filter
   FOR SELECT USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can insert own idea filters" ON public.ideas_filter;
 CREATE POLICY "Users can insert own idea filters" ON public.ideas_filter
   FOR INSERT WITH CHECK (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can update own idea filters" ON public.ideas_filter;
 CREATE POLICY "Users can update own idea filters" ON public.ideas_filter
   FOR UPDATE USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can delete own idea filters" ON public.ideas_filter;
 CREATE POLICY "Users can delete own idea filters" ON public.ideas_filter
   FOR DELETE USING (user_id = auth.uid());
 
@@ -147,6 +155,7 @@ CREATE POLICY "Users can delete own idea filters" ON public.ideas_filter
 
 -- Get business_id from businesses table via profiles
 -- Coach can view ideas for users they coach
+DROP POLICY IF EXISTS "Coaches can view client ideas" ON public.ideas;
 CREATE POLICY "Coaches can view client ideas" ON public.ideas
   FOR SELECT USING (
     EXISTS (
@@ -157,6 +166,7 @@ CREATE POLICY "Coaches can view client ideas" ON public.ideas
     )
   );
 
+DROP POLICY IF EXISTS "Coaches can view client idea filters" ON public.ideas_filter;
 CREATE POLICY "Coaches can view client idea filters" ON public.ideas_filter
   FOR SELECT USING (
     EXISTS (
@@ -170,6 +180,7 @@ CREATE POLICY "Coaches can view client idea filters" ON public.ideas_filter
 -- ============================================
 -- Super Admin Access Policies
 -- ============================================
+DROP POLICY IF EXISTS "Super admins can view all ideas" ON public.ideas;
 CREATE POLICY "Super admins can view all ideas" ON public.ideas
   FOR SELECT USING (
     EXISTS (
@@ -179,6 +190,7 @@ CREATE POLICY "Super admins can view all ideas" ON public.ideas
     )
   );
 
+DROP POLICY IF EXISTS "Super admins can view all idea filters" ON public.ideas_filter;
 CREATE POLICY "Super admins can view all idea filters" ON public.ideas_filter
   FOR SELECT USING (
     EXISTS (
@@ -199,10 +211,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS ideas_updated_at ON public.ideas;
 CREATE TRIGGER ideas_updated_at
   BEFORE UPDATE ON public.ideas
   FOR EACH ROW EXECUTE FUNCTION public.update_ideas_updated_at();
 
+DROP TRIGGER IF EXISTS ideas_filter_updated_at ON public.ideas_filter;
 CREATE TRIGGER ideas_filter_updated_at
   BEFORE UPDATE ON public.ideas_filter
   FOR EACH ROW EXECUTE FUNCTION public.update_ideas_updated_at();
@@ -229,6 +243,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS ideas_filter_decision_trigger ON public.ideas_filter;
 CREATE TRIGGER ideas_filter_decision_trigger
   AFTER INSERT OR UPDATE OF decision ON public.ideas_filter
   FOR EACH ROW EXECUTE FUNCTION public.update_idea_status_on_filter();
