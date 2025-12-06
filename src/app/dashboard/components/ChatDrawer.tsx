@@ -216,7 +216,7 @@ export default function ChatDrawer({
 
       {/* Drawer */}
       <div
-        className="absolute right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-2xl flex flex-col"
+        className="absolute right-0 top-0 bottom-0 w-full sm:max-w-md bg-white shadow-2xl flex flex-col"
         style={{ animation: 'slideIn 0.2s ease-out' }}
       >
         {/* Header - Fixed */}

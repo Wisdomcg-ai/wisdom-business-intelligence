@@ -289,7 +289,7 @@ export default function MessagesPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         <div className="max-w-4xl mx-auto">
-          <div className="flex flex-col h-[calc(100vh-12rem)]">
+          <div className="flex flex-col h-[calc(100svh-12rem)] sm:h-[calc(100vh-12rem)]">
             {/* Chat Header */}
             <div className="bg-white rounded-t-xl shadow-sm border border-gray-200 border-b-0 p-4 sm:p-6">
               <div className="flex items-center gap-3">

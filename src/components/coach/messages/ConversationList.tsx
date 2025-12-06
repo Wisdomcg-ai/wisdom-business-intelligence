@@ -210,7 +210,7 @@ export function ConversationList({
                         e.stopPropagation()
                         onToggleStar(conversation.id)
                       }}
-                      className="p-1 text-gray-400 hover:text-amber-500 transition-colors opacity-0 group-hover:opacity-100"
+                      className="p-2 text-gray-400 hover:text-amber-500 transition-colors opacity-0 group-hover:opacity-100"
                     >
                       <Star className={`w-4 h-4 ${
                         conversation.isStarred ? 'text-amber-500 fill-amber-500' : ''

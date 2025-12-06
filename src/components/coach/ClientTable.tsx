@@ -243,21 +243,21 @@ export function ClientTable({ clients, onMessage, onSchedule, onView }: ClientTa
                   <div className="flex items-center justify-end gap-1">
                     <button
                       onClick={() => onMessage?.(client.id)}
-                      className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
+                      className="p-3 sm:p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
                       title="Message"
                     >
                       <MessageSquare className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => onSchedule?.(client.id)}
-                      className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
+                      className="p-3 sm:p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
                       title="Schedule"
                     >
                       <Calendar className="w-4 h-4" />
                     </button>
                     <Link
                       href={`/coach/clients/${client.id}`}
-                      className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
+                      className="p-3 sm:p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
                       title="View"
                     >
                       <Eye className="w-4 h-4" />

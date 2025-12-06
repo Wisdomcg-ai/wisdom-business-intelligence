@@ -47,8 +47,73 @@ export default function CoreMetricsSection({
       </div>
 
       {!isCollapsed && (
-        <div className="border-t border-gray-200 p-6 bg-gradient-to-b from-white to-gray-50">
-          <div className="overflow-x-auto">
+        <div className="border-t border-gray-200 p-4 sm:p-6 bg-gradient-to-b from-white to-gray-50">
+          {/* Mobile Card View */}
+          <div className="sm:hidden space-y-4">
+            <MobileMetricCard
+              label="Leads per Month"
+              type="number"
+              values={coreMetrics.leadsPerMonth}
+              onChange={(period, value) => updateCoreMetric('leadsPerMonth', period, value)}
+              yearType={yearType}
+              currentYear={currentYear}
+            />
+            <MobileMetricCard
+              label="Conversion Rate (%)"
+              type="percentage"
+              values={coreMetrics.conversionRate}
+              onChange={(period, value) => updateCoreMetric('conversionRate', period, value)}
+              yearType={yearType}
+              currentYear={currentYear}
+            />
+            <MobileMetricCard
+              label="Avg Transaction Value ($)"
+              type="dollar"
+              values={coreMetrics.avgTransactionValue}
+              onChange={(period, value) => updateCoreMetric('avgTransactionValue', period, value)}
+              yearType={yearType}
+              currentYear={currentYear}
+            />
+            <MobileMetricCard
+              label="Team Headcount (FTE)"
+              type="decimal"
+              values={coreMetrics.teamHeadcount}
+              onChange={(period, value) => updateCoreMetric('teamHeadcount', period, value)}
+              yearType={yearType}
+              currentYear={currentYear}
+            />
+            {/* Revenue per Employee (Calculated) */}
+            <div className="bg-brand-orange-50/50 rounded-lg border border-gray-200 p-4">
+              <div className="font-semibold text-gray-900 text-sm mb-1">Revenue per Employee ($)</div>
+              <div className="text-xs text-gray-500 italic mb-3">(calculated)</div>
+              <div className="grid grid-cols-2 gap-3">
+                {(['current', 'year1', 'year2', 'year3'] as const).map((period, idx) => {
+                  const label = getYearLabel(idx, yearType, currentYear)
+                  return (
+                    <div key={period}>
+                      <label className="text-xs text-gray-500 block mb-1">{label.main}</label>
+                      <div className="px-3 py-2 bg-gray-100 rounded-md text-sm text-center font-medium text-gray-700 border border-gray-200">
+                        {coreMetrics.teamHeadcount[period] > 0
+                          ? formatDollar(Math.round(financialData.revenue[period] / coreMetrics.teamHeadcount[period]))
+                          : '$0'}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            <MobileMetricCard
+              label="Owner Hours per Week"
+              type="number"
+              values={coreMetrics.ownerHoursPerWeek}
+              onChange={(period, value) => updateCoreMetric('ownerHoursPerWeek', period, value)}
+              yearType={yearType}
+              currentYear={currentYear}
+            />
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="bg-gradient-to-r from-brand-orange-50 to-brand-orange-100 border-b-2 border-brand-orange-200">
@@ -136,6 +201,58 @@ export default function CoreMetricsSection({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Mobile card component for responsive view
+interface MobileMetricCardProps {
+  label: string
+  type: 'number' | 'percentage' | 'dollar' | 'decimal'
+  values: { current: number; year1: number; year2: number; year3: number }
+  onChange: (period: 'current' | 'year1' | 'year2' | 'year3', value: number) => void
+  yearType: YearType
+  currentYear: number
+}
+
+function MobileMetricCard({ label, type, values, onChange, yearType, currentYear }: MobileMetricCardProps) {
+  const formatValue = (value: number) => {
+    switch (type) {
+      case 'percentage': return `${value || 0}%`
+      case 'dollar': return formatDollar(value || 0)
+      default: return value || 0
+    }
+  }
+
+  const parseValue = (inputValue: string) => {
+    switch (type) {
+      case 'percentage': return parseFloat(inputValue.replace('%', '')) || 0
+      case 'dollar': return parseDollarInput(inputValue)
+      default: return parseFloat(inputValue) || 0
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="font-semibold text-gray-900 text-sm mb-3">{label}</div>
+      <div className="grid grid-cols-2 gap-3">
+        {(['current', 'year1', 'year2', 'year3'] as const).map((period, idx) => {
+          const yearLabel = getYearLabel(idx, yearType, currentYear)
+          return (
+            <div key={period}>
+              <label className="text-xs text-gray-500 block mb-1">{yearLabel.main}</label>
+              <input
+                type={type === 'decimal' ? 'number' : 'text'}
+                step={type === 'decimal' ? '0.1' : undefined}
+                value={formatValue(values[period])}
+                onChange={(e) => onChange(period, parseValue(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+                placeholder={type === 'percentage' ? '0%' : type === 'dollar' ? '$0' : '0'}
+              />
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

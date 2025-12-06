@@ -28,9 +28,9 @@ export default function OpExLineControls({
   ]
 
   return (
-    <div className="flex items-center gap-2 min-w-[280px]">
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:min-w-[280px]">
       {/* Method Dropdown */}
-      <div className="flex-1 min-w-[180px]">
+      <div className="flex-1 sm:min-w-[180px]">
         <select
           value={currentMethod}
           onChange={(e) => onMethodChange(e.target.value as ForecastMethod)}

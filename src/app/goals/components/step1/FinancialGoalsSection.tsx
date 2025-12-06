@@ -91,8 +91,47 @@ export default function FinancialGoalsSection({
         </div>
 
         {!isCollapsed && (
-          <div className="border-t border-gray-200 p-6 bg-gradient-to-b from-white to-gray-50">
-            <div className="overflow-x-auto">
+          <div className="border-t border-gray-200 p-4 sm:p-6 bg-gradient-to-b from-white to-gray-50">
+            {/* Mobile Card View */}
+            <div className="sm:hidden space-y-4">
+              {FINANCIAL_METRICS.map((metric) => (
+                <div key={metric.key} className="bg-white rounded-lg border border-gray-200 p-4">
+                  <div className="font-semibold text-gray-900 text-sm mb-3">
+                    {metric.label}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(['current', 'year1', 'year2', 'year3'] as const).map((period, idx) => {
+                      const label = getYearLabel(idx, yearType, currentYear)
+                      return (
+                        <div key={period}>
+                          <label className="text-xs text-gray-500 block mb-1">
+                            {label.main}
+                          </label>
+                          <input
+                            type="text"
+                            value={metric.isPercentage
+                              ? `${(financialData as any)[metric.key]?.[period] || 0}%`
+                              : formatDollar((financialData as any)[metric.key]?.[period] || 0)
+                            }
+                            onChange={(e) => {
+                              const numValue = metric.isPercentage
+                                ? parseFloat(e.target.value.replace('%', '')) || 0
+                                : parseDollarInput(e.target.value)
+                              updateFinancialValue(metric.key as keyof FinancialData, period, numValue, metric.isPercentage)
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+                            placeholder={metric.isPercentage ? '0%' : '$0'}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-gradient-to-r from-brand-orange-50 to-brand-orange-100 border-b-2 border-brand-orange-200">

@@ -209,7 +209,7 @@ export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
 
       <div className="flex">
         {/* Client Sidebar */}
-        <aside className="w-64 bg-white border-r border-gray-200 min-h-[calc(100vh-52px)] sticky top-[52px]">
+        <aside className="hidden lg:block w-64 bg-white border-r border-gray-200 min-h-[calc(100svh-52px)] sm:min-h-[calc(100vh-52px)] sticky top-[52px]">
           <nav className="py-4">
             {navigation.map((section) => (
               <div key={section.title} className="border-b border-gray-100 last:border-b-0">
@@ -253,7 +253,7 @@ export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 min-h-[calc(100vh-52px)]">
+        <main className="flex-1 min-h-[calc(100svh-52px)] sm:min-h-[calc(100vh-52px)]">
           {children}
         </main>
       </div>

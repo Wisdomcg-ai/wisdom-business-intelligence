@@ -316,7 +316,7 @@ export default function CoachLayoutNew({ children }: CoachLayoutNewProps) {
                       <item.icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-brand-orange' : 'text-gray-500 group-hover:text-slate-300'}`} />
                       <div className="flex-1 min-w-0">
                         <div className={isActive ? 'text-white' : ''}>{item.name}</div>
-                        <div className="text-[11px] text-gray-500 truncate">{item.description}</div>
+                        <div className="text-xs text-gray-500 truncate">{item.description}</div>
                       </div>
                       {item.badge && unreadCount > 0 && (
                         <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
@@ -332,7 +332,7 @@ export default function CoachLayoutNew({ children }: CoachLayoutNewProps) {
               <div className="mt-8 pt-6 border-t border-slate-800/80">
                 <button
                   onClick={() => setClientsExpanded(!clientsExpanded)}
-                  className="w-full flex items-center justify-between px-4 mb-3 text-[11px] font-semibold text-gray-600 uppercase tracking-wider hover:text-slate-400 transition-colors"
+                  className="w-full flex items-center justify-between px-4 mb-3 text-xs font-semibold text-gray-600 uppercase tracking-wider hover:text-slate-400 transition-colors"
                 >
                   <span>My Clients</span>
                   <ChevronDown className={`w-4 h-4 transition-transform ${clientsExpanded ? '' : '-rotate-90'}`} />
@@ -386,7 +386,7 @@ export default function CoachLayoutNew({ children }: CoachLayoutNewProps) {
 
               {/* Secondary Navigation */}
               <div className="mt-8 pt-6 border-t border-slate-800/80">
-                <p className="px-4 mb-3 text-[11px] font-semibold text-gray-600 uppercase tracking-wider">
+                <p className="px-4 mb-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Support
                 </p>
                 <div className="space-y-1">

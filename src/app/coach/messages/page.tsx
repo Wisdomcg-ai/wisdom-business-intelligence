@@ -332,7 +332,7 @@ export default function MessagesPage() {
 
   if (loading) {
     return (
-      <div className="h-[calc(100vh-64px)] flex items-center justify-center">
+      <div className="h-[calc(100svh-64px)] sm:h-[calc(100vh-64px)] flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-500">Loading messages...</p>
@@ -363,7 +363,7 @@ export default function MessagesPage() {
         />
 
         {/* Main Content Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-[calc(100vh-280px)] sm:h-[calc(100vh-240px)] flex flex-col sm:flex-row">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-[calc(100svh-280px)] sm:h-[calc(100vh-240px)] flex flex-col sm:flex-row">
           {/* Conversation List */}
           <div className="w-full sm:w-80 flex-shrink-0 border-b sm:border-b-0 sm:border-r border-gray-200">
             <ConversationList

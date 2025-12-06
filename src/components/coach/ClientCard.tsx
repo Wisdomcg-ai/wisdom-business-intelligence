@@ -141,19 +141,21 @@ export function ClientCard({ client, onMessage, onSchedule }: ClientCardProps) {
           </Link>
           <button
             onClick={() => onMessage?.(client.id)}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            className="flex items-center justify-center p-3 sm:p-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Message"
           >
             <MessageSquare className="w-4 h-4" />
           </button>
           <button
             onClick={() => onSchedule?.(client.id)}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            className="flex items-center justify-center p-3 sm:p-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Schedule"
           >
             <Calendar className="w-4 h-4" />
           </button>
           <Link
             href={`/coach/clients/${client.id}`}
-            className="flex items-center justify-center p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+            className="flex items-center justify-center p-3 sm:p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
             title="Client Profile"
           >
             <ChevronRight className="w-5 h-5" />

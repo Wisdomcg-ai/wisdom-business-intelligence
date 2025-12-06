@@ -282,9 +282,68 @@ interface KPITableProps {
 }
 
 function KPITable({ kpis, yearType, currentYear, updateKPIValue, deleteKPI, onAddClick }: KPITableProps) {
+  const fieldToIndex: Record<string, number> = {
+    'currentValue': 0,
+    'year1Target': 1,
+    'year2Target': 2,
+    'year3Target': 3
+  }
+
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto">
+      {/* Mobile Card View */}
+      <div className="sm:hidden space-y-4">
+        {kpis.map((kpi) => (
+          <div key={kpi.id} className="bg-white rounded-lg border border-gray-200 p-4">
+            {/* KPI Header */}
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-gray-900 text-sm">{kpi.name}</span>
+                  {kpi.isCustom && (
+                    <span className="text-[9px] px-1.5 py-0.5 bg-brand-orange text-white rounded font-bold">CUSTOM</span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-600 mt-0.5">{kpi.friendlyName}</p>
+                {kpi.category && (
+                  <span className="inline-block text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded mt-2">
+                    {kpi.category}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => deleteKPI(kpi.id)}
+                className="text-gray-400 hover:text-red-600 transition-colors p-2 hover:bg-red-50 rounded flex-shrink-0"
+                title="Delete KPI"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Year Inputs Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              {(['currentValue', 'year1Target', 'year2Target', 'year3Target'] as const).map((field) => {
+                const label = getYearLabel(fieldToIndex[field], yearType, currentYear)
+                return (
+                  <div key={field}>
+                    <label className="text-xs text-gray-500 block mb-1">{label.main}</label>
+                    <input
+                      type="number"
+                      value={kpi[field] || 0}
+                      onChange={(e) => updateKPIValue(kpi.id, field, parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="0"
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden sm:block overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-gradient-to-r from-green-50 to-green-100 border-b-2 border-green-200">

@@ -192,7 +192,7 @@ export default function TodoPage() {
         </button>
 
         {isOpen && (
-          <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-20 min-w-48">
+          <div className="absolute top-full left-0 right-0 sm:right-auto mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-20 sm:min-w-48">
             {/* Quick date options */}
             <button
               onClick={() => handleChangeDueDate(task.id, 'today')}

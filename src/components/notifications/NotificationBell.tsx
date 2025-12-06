@@ -104,7 +104,7 @@ export default function NotificationBell() {
       {/* Bell Icon Button */}
       <button
         onClick={() => setShowDropdown(!showDropdown)}
-        className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+        className="relative p-3 sm:p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
       >
         <Bell className="w-5 h-5" />
         {unreadCount > 0 && (
@@ -124,7 +124,7 @@ export default function NotificationBell() {
           />
 
           {/* Dropdown Content */}
-          <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-20 max-h-[600px] flex flex-col">
+          <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-96 max-w-[384px] bg-white rounded-lg shadow-lg border border-gray-200 z-20 max-h-[600px] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
@@ -139,7 +139,7 @@ export default function NotificationBell() {
                 )}
                 <button
                   onClick={() => setShowDropdown(false)}
-                  className="p-1 hover:bg-gray-100 rounded"
+                  className="p-2 hover:bg-gray-100 rounded"
                 >
                   <X className="w-4 h-4 text-gray-500" />
                 </button>
@@ -181,10 +181,10 @@ export default function NotificationBell() {
                             {!notification.read && (
                               <button
                                 onClick={() => markAsRead(notification.id)}
-                                className="p-1 hover:bg-gray-200 rounded flex-shrink-0"
+                                className="p-2 hover:bg-gray-200 rounded flex-shrink-0"
                                 title="Mark as read"
                               >
-                                <Check className="w-3 h-3 text-gray-600" />
+                                <Check className="w-4 h-4 text-gray-600" />
                               </button>
                             )}
                           </div>
