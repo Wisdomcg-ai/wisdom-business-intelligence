@@ -61,9 +61,9 @@ function RadarChart({ sections, previousSections }: {
   sections: { name: string; score: number; max: number }[];
   previousSections?: { name: string; score: number; max: number }[] | null;
 }) {
-  const size = 380;
+  const size = 440;
   const center = size / 2;
-  const radius = 120;
+  const radius = 110;
   const levels = 5;
 
   const angleStep = (2 * Math.PI) / sections.length;
@@ -195,30 +195,30 @@ function RadarChart({ sections, previousSections }: {
       {/* Labels */}
       {sections.map((section, i) => {
         const angle = angleStep * i - Math.PI / 2;
-        const labelRadius = radius + 55;
+        const labelRadius = radius + 65;
         const x = center + labelRadius * Math.cos(angle);
         const y = center + labelRadius * Math.sin(angle);
         const percentage = Math.round((section.score / section.max) * 100);
         const textAnchor = getTextAnchor(angle + Math.PI / 2);
 
         // Adjust x position based on text anchor
-        const xOffset = textAnchor === 'start' ? 4 : textAnchor === 'end' ? -4 : 0;
+        const xOffset = textAnchor === 'start' ? 8 : textAnchor === 'end' ? -8 : 0;
 
         return (
           <g key={section.name}>
             <text
               x={x + xOffset}
-              y={y - 5}
+              y={y - 6}
               textAnchor={textAnchor}
-              className="text-[11px] font-semibold fill-gray-800"
+              className="text-[12px] font-semibold fill-gray-800"
             >
-              {section.name.split(' ')[0]}
+              {section.name}
             </text>
             <text
               x={x + xOffset}
               y={y + 10}
               textAnchor={textAnchor}
-              className="text-[11px] font-bold fill-brand-orange"
+              className="text-[12px] font-bold fill-brand-orange"
             >
               {percentage}%
             </text>
@@ -575,7 +575,8 @@ function AssessmentResultsContent() {
     max: engine.maxScore,
     icon: engine.icon,
     colorClasses: engine.colorClasses,
-    description: engine.description
+    description: engine.description,
+    longDescription: engine.longDescription
   }));
 
   const previousSections = previousAssessment ? BUSINESS_ENGINES.map(engine => ({
@@ -908,6 +909,11 @@ function AssessmentResultsContent() {
                     </div>
                   </div>
 
+                  {/* Engine explanation */}
+                  <p className="text-sm text-gray-600 mb-3 leading-relaxed">
+                    {section.longDescription}
+                  </p>
+
                   <div className="mb-3 relative">
                     <div className="w-full bg-gray-100 rounded-full h-2.5">
                       {/* Previous score indicator */}
@@ -947,59 +953,15 @@ function AssessmentResultsContent() {
           </div>
         </div>
 
-        {/* Next Steps */}
-        <div className={`bg-brand-navy rounded-2xl shadow-lg p-8 ${showContent ? 'animate-slide-up delay-500' : 'opacity-0'}`}>
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
-              <Zap className="w-5 h-5 text-brand-orange" />
-            </div>
-            <h2 className="text-xl font-bold text-white">Your Next Steps</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-white/5 rounded-xl p-5 border border-white/10 hover:bg-white/10 transition-colors">
-              <div className="w-10 h-10 bg-brand-orange rounded-xl flex items-center justify-center mb-4">
-                <span className="text-white font-bold">1</span>
-              </div>
-              <h3 className="font-semibold text-white mb-2">Review & Discuss</h3>
-              <p className="text-white/60 text-sm">We'll review these results together and identify quick wins you can implement today.</p>
-            </div>
-
-            <div className="bg-white/5 rounded-xl p-5 border border-white/10 hover:bg-white/10 transition-colors">
-              <div className="w-10 h-10 bg-brand-orange rounded-xl flex items-center justify-center mb-4">
-                <span className="text-white font-bold">2</span>
-              </div>
-              <h3 className="font-semibold text-white mb-2">Prioritize Actions</h3>
-              <p className="text-white/60 text-sm">Create a focused 90-day action plan targeting your highest-impact opportunities.</p>
-            </div>
-
-            <div className="bg-white/5 rounded-xl p-5 border border-white/10 hover:bg-white/10 transition-colors">
-              <div className="w-10 h-10 bg-brand-orange rounded-xl flex items-center justify-center mb-4">
-                <span className="text-white font-bold">3</span>
-              </div>
-              <h3 className="font-semibold text-white mb-2">Track Progress</h3>
-              <p className="text-white/60 text-sm">Use the platform tools to implement changes and measure improvement over time.</p>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-white/10">
-            <p className="text-white/60 text-sm">Ready to start improving your business?</p>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push('/goals')}
-                className="flex items-center gap-2 px-6 py-3 bg-brand-orange text-white rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
-              >
-                Start Planning
-                <ChevronRight className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="px-6 py-3 bg-white/10 text-white rounded-xl font-semibold hover:bg-white/20 transition-colors"
-              >
-                Go to Dashboard
-              </button>
-            </div>
-          </div>
+        {/* Return to Dashboard */}
+        <div className={`flex justify-center ${showContent ? 'animate-slide-up delay-500' : 'opacity-0'}`}>
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="flex items-center gap-2 px-8 py-4 bg-brand-navy text-white rounded-xl font-semibold hover:bg-brand-navy-800 transition-colors shadow-lg"
+          >
+            Return to Dashboard
+            <ChevronRight className="w-5 h-5" />
+          </button>
         </div>
       </div>
     </div>

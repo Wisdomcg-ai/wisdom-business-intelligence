@@ -83,14 +83,14 @@ export default function SuggestedActions({ actions }: SuggestedActionsProps) {
 
   return (
     <div className="bg-white rounded-xl shadow-sm border-l-4 border-l-brand-navy border border-gray-200 overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 bg-brand-navy/5">
+      <div className="px-5 py-4 border-b border-gray-100 bg-brand-navy">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-brand-navy/10 rounded-lg flex items-center justify-center">
-            <Zap className="h-4 w-4 text-brand-navy" />
+          <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center">
+            <Zap className="h-4 w-4 text-white" />
           </div>
           <div>
-            <h3 className="font-semibold text-brand-navy">Suggested Actions</h3>
-            <p className="text-xs text-gray-500">Based on your current priorities</p>
+            <h3 className="font-semibold text-white">Suggested Actions</h3>
+            <p className="text-xs text-white/70">Based on your current priorities</p>
           </div>
         </div>
       </div>

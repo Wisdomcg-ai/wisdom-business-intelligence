@@ -14,19 +14,19 @@ export default function WeeklyPrioritiesCard({ weeklyGoals }: WeeklyPrioritiesCa
   return (
     <div className="bg-white rounded-xl shadow-sm border-l-4 border-l-brand-navy border border-gray-200 overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-100 bg-brand-navy/5">
+      <div className="px-5 py-4 border-b border-gray-100 bg-brand-navy">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-brand-navy/10 rounded-lg flex items-center justify-center">
-              <Calendar className="h-4 w-4 text-brand-navy" />
+            <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center">
+              <Calendar className="h-4 w-4 text-white" />
             </div>
             <div>
-              <h3 className="font-semibold text-brand-navy">This Week's Focus</h3>
-              <p className="text-xs text-gray-500">Your top priorities</p>
+              <h3 className="font-semibold text-white">This Week's Focus</h3>
+              <p className="text-xs text-white/70">Your top priorities</p>
             </div>
           </div>
           {totalCount > 0 && (
-            <span className="text-xs font-medium text-brand-navy bg-brand-navy/10 px-2 py-1 rounded">
+            <span className="text-xs font-medium text-white bg-white/20 px-2 py-1 rounded">
               {completedCount}/{totalCount} done
             </span>
           )}

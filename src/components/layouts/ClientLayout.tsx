@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ClientSidebar } from './ClientSidebar'
-import { Loader2 } from 'lucide-react'
+import NotificationBell from '@/components/notifications/NotificationBell'
+import { Loader2, Menu, X } from 'lucide-react'
 
 const SIDEBAR_STORAGE_KEY = 'sidebar-expanded'
 
@@ -22,6 +23,7 @@ export function ClientLayout({ children }: ClientLayoutProps) {
   const [coach, setCoach] = useState<{ name: string; email?: string } | undefined>()
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
   const [sidebarInitialized, setSidebarInitialized] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // Initialize sidebar based on screen size and stored preference
   useEffect(() => {
@@ -148,18 +150,45 @@ export function ClientLayout({ children }: ClientLayoutProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Mobile Top Bar */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b border-gray-200 z-50 flex items-center justify-between px-4">
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+        >
+          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+        <span className="font-semibold text-gray-900 truncate">{businessName}</span>
+        <NotificationBell />
+      </div>
+
+      {/* Desktop Top Bar */}
+      <div className={`hidden lg:flex fixed top-0 right-0 h-14 bg-white border-b border-gray-200 z-30 items-center justify-end px-6 ${sidebarExpanded ? 'left-64' : 'left-[72px]'} transition-all duration-300`}>
+        <NotificationBell />
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/40 z-40"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <ClientSidebar
-        businessName={businessName}
-        userName={userName}
-        coach={coach}
-        onLogout={handleLogout}
-        isExpanded={sidebarExpanded}
-        onToggle={toggleSidebar}
-      />
+      <div className={`lg:block ${mobileMenuOpen ? 'block' : 'hidden'}`}>
+        <ClientSidebar
+          businessName={businessName}
+          userName={userName}
+          coach={coach}
+          onLogout={handleLogout}
+          isExpanded={sidebarExpanded}
+          onToggle={toggleSidebar}
+        />
+      </div>
 
       {/* Main Content */}
-      <div className={`${sidebarExpanded ? 'pl-64' : 'pl-[72px]'} transition-all duration-300`}>
+      <div className={`pt-14 lg:pt-14 ${sidebarExpanded ? 'lg:pl-64' : 'lg:pl-[72px]'} transition-all duration-300`}>
         <main className="min-h-screen">
           {children}
         </main>

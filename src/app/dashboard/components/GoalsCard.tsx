@@ -34,17 +34,17 @@ export default function GoalsCard({
   return (
     <div className="bg-white rounded-xl shadow-sm border-l-4 border-l-brand-navy border border-gray-200 overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-100 bg-brand-navy/5">
+      <div className="px-5 py-4 border-b border-gray-100 bg-brand-navy">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-brand-navy/10 rounded-lg flex items-center justify-center">
-              <Icon className="h-4 w-4 text-brand-navy" />
+            <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center">
+              <Icon className="h-4 w-4 text-white" />
             </div>
             <div>
-              <h3 className="font-semibold text-brand-navy">{title}</h3>
+              <h3 className="font-semibold text-white">{title}</h3>
               {subtitle && (
                 <div className="flex items-center gap-2">
-                  <p className="text-xs text-gray-500">{subtitle}</p>
+                  <p className="text-xs text-white/70">{subtitle}</p>
                   {isShowingPlanningQuarter && (
                     <span className="text-[10px] font-medium text-brand-orange-700 bg-brand-orange-100 px-1.5 py-0.5 rounded">
                       Planning
@@ -55,7 +55,7 @@ export default function GoalsCard({
             </div>
           </div>
           {daysRemaining !== undefined && !isShowingPlanningQuarter && (
-            <span className="text-xs font-medium text-brand-navy bg-brand-navy/10 px-2 py-1 rounded">
+            <span className="text-xs font-medium text-white bg-white/20 px-2 py-1 rounded">
               {daysRemaining}d left
             </span>
           )}

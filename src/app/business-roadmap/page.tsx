@@ -104,6 +104,29 @@ export default function WisdomRoadmapTable() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Current Stage Banner - Always visible at top */}
+      {!isRoadmapComplete && hasSeenIntro && (
+        <div className="bg-gradient-to-r from-brand-navy to-brand-navy-700 text-white border-b-4 border-brand-orange">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-brand-orange rounded-xl flex items-center justify-center">
+                  <Target className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <div className="text-sm text-white/80 font-medium">Your Current Revenue Stage</div>
+                  <div className="text-2xl font-bold">{currentStageInfo.name} <span className="font-normal text-white/70">({currentStageInfo.range})</span></div>
+                </div>
+              </div>
+              <div className="text-right hidden sm:block">
+                <div className="text-3xl font-bold text-brand-orange">{getStageStats(currentStageId).percentage}%</div>
+                <div className="text-sm text-white/70">Stage Complete</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stage Change Celebration */}
       {stageChange?.changed && (
         <div className="bg-gradient-to-r from-brand-orange-500 to-brand-orange text-white">
@@ -318,36 +341,36 @@ export default function WisdomRoadmapTable() {
       {viewMode === 'focus' && !isRoadmapComplete && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
           {/* Current Stage Card */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
+          <div className="bg-gradient-to-r from-brand-navy to-brand-navy-700 rounded-xl shadow-sm border-l-4 border-brand-orange p-4 sm:p-6 mb-4 sm:mb-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
               <div className="flex items-center gap-3 sm:gap-4">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-brand-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <Target className="h-6 w-6 sm:h-7 sm:w-7 text-brand-orange" />
+                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-brand-orange rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Target className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
                 </div>
                 <div>
-                  <div className="text-xs sm:text-sm font-medium text-brand-orange uppercase tracking-wide">Your Current Stage</div>
-                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900">{currentStageInfo.name}</h2>
-                  <p className="text-sm sm:text-base text-gray-600">{currentStageInfo.range}</p>
+                  <div className="text-xs sm:text-sm font-medium text-white/80 uppercase tracking-wide">Your Current Stage</div>
+                  <h2 className="text-xl sm:text-2xl font-bold text-white">{currentStageInfo.name}</h2>
+                  <p className="text-sm sm:text-base text-white/70">{currentStageInfo.range}</p>
                 </div>
               </div>
               <div className="text-left sm:text-right pl-14 sm:pl-0">
                 <div className="text-2xl sm:text-3xl font-bold text-brand-orange">{getStageStats(currentStageId).percentage}%</div>
-                <div className="text-xs sm:text-sm text-gray-500">Stage Complete</div>
+                <div className="text-xs sm:text-sm text-white/70">Stage Complete</div>
               </div>
             </div>
 
             {/* Stage Progress */}
             <div className="mb-6">
-              <div className="w-full bg-gray-200 rounded-full h-3">
+              <div className="w-full bg-white/20 rounded-full h-3">
                 <div
-                  className="bg-brand-orange-500 h-3 rounded-full transition-all"
+                  className="bg-brand-orange h-3 rounded-full transition-all"
                   style={{ width: `${getStageStats(currentStageId).percentage}%` }}
                 />
               </div>
             </div>
 
             {/* Priority Builds */}
-            <div>
+            <div className="bg-white rounded-xl p-4 sm:p-6 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6 mt-4">
               <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Star className="h-5 w-5 text-amber-500" />
                 Priority Builds ({priorityBuilds.length} remaining)
@@ -523,20 +546,20 @@ export default function WisdomRoadmapTable() {
               </div>
             ) : (
               /* Normal Focus Section */
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+              <div className="bg-gradient-to-r from-brand-navy to-brand-navy-700 rounded-xl shadow-sm border-l-4 border-brand-orange p-4 sm:p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-brand-orange-100 rounded-xl flex items-center justify-center">
-                      <Target className="h-5 w-5 text-brand-orange" />
+                    <div className="w-10 h-10 bg-brand-orange rounded-xl flex items-center justify-center">
+                      <Target className="h-5 w-5 text-white" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h2 className="text-base sm:text-lg font-bold text-gray-900">Your Focus: {currentStageInfo.name}</h2>
-                        <span className="px-2 py-0.5 bg-brand-orange-100 text-brand-orange-700 text-xs font-medium rounded-full">
+                        <h2 className="text-base sm:text-lg font-bold text-white">Your Focus: {currentStageInfo.name}</h2>
+                        <span className="px-2 py-0.5 bg-white/20 text-white text-xs font-medium rounded-full">
                           {currentStageInfo.range}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-white/70">
                         {priorityBuilds.length > 0
                           ? `${priorityBuilds.length} builds to complete in your stage and below`
                           : 'All builds complete in your current stage!'}
@@ -544,7 +567,7 @@ export default function WisdomRoadmapTable() {
                     </div>
                   </div>
                   {priorityBuilds.length === 0 && (
-                    <span className="flex items-center gap-1 text-amber-600 text-sm font-medium">
+                    <span className="flex items-center gap-1 text-brand-orange text-sm font-medium">
                       <Star className="h-4 w-4" />
                       Stage Complete
                     </span>
@@ -553,7 +576,7 @@ export default function WisdomRoadmapTable() {
 
                 {/* Priority Builds List */}
                 {priorityBuilds.length > 0 && (
-                  <div className="border-t border-gray-100 pt-4">
+                  <div className="bg-white rounded-xl p-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6">
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
                       Priority Builds
                     </div>

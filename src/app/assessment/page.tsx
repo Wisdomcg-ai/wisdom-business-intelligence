@@ -739,8 +739,8 @@ function AssessmentContent() {
       localStorage.removeItem('assessment_draft');
       localStorage.removeItem('assessment_question_index');
 
-      // Redirect to dashboard - middleware will now allow access
-      router.push('/dashboard');
+      // Redirect to assessment results page
+      router.push(`/dashboard/assessment-results?id=${assessment.id}`);
 
     } catch (error) {
       console.error('Error submitting assessment:', error);

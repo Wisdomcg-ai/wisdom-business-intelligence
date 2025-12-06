@@ -20,6 +20,7 @@ export interface EngineConfig {
     border: string
   }
   description: string
+  longDescription: string
 }
 
 // 8 Business Engines Configuration
@@ -38,7 +39,8 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
       text: 'text-brand-navy',
       border: 'border-brand-navy'
     },
-    description: 'Marketing & Lead Generation'
+    description: 'Marketing & Lead Generation',
+    longDescription: 'How effectively you generate awareness and attract qualified leads to your business. This includes your marketing strategy, brand positioning, lead generation systems, and your ability to consistently fill your pipeline with potential customers.'
   },
   {
     id: 'convert',
@@ -53,7 +55,8 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
       text: 'text-brand-navy',
       border: 'border-brand-navy'
     },
-    description: 'Sales & Closing'
+    description: 'Sales & Closing',
+    longDescription: 'Your ability to turn leads into paying customers. This covers your sales process, conversion rates, pricing strategy, proposal systems, and the overall effectiveness of moving prospects through your sales funnel to closed deals.'
   },
   {
     id: 'deliver',
@@ -68,7 +71,8 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
       text: 'text-brand-navy',
       border: 'border-brand-navy'
     },
-    description: 'Client Experience & Results'
+    description: 'Client Experience & Results',
+    longDescription: 'How well you deliver on your promises and create exceptional client experiences. This includes service quality, client communication, results delivery, retention rates, and your ability to generate referrals and repeat business.'
   },
   {
     id: 'people',
@@ -83,7 +87,8 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
       text: 'text-brand-navy',
       border: 'border-brand-navy'
     },
-    description: 'Team, Culture, Hiring'
+    description: 'Team, Culture, Hiring',
+    longDescription: 'The strength of your team and organizational culture. This measures your hiring practices, team development, performance management, employee engagement, and how well your people are aligned with your business vision and values.'
   },
   {
     id: 'systems',
@@ -98,7 +103,8 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
       text: 'text-brand-navy',
       border: 'border-brand-navy'
     },
-    description: 'Operations, Process, Tech'
+    description: 'Operations, Process, Tech',
+    longDescription: 'How well-documented and efficient your business operations are. This covers standard operating procedures, technology stack, automation, workflow efficiency, and the overall scalability of your business processes.'
   },
   {
     id: 'finance',
@@ -113,7 +119,8 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
       text: 'text-brand-navy',
       border: 'border-brand-navy'
     },
-    description: 'Money, Metrics, Wealth'
+    description: 'Money, Metrics, Wealth',
+    longDescription: 'Your financial health and management capabilities. This includes profitability, cash flow management, financial forecasting, pricing optimization, and your understanding of key financial metrics that drive business success.'
   },
   {
     id: 'leadership',
@@ -128,7 +135,8 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
       text: 'text-brand-navy',
       border: 'border-brand-navy'
     },
-    description: 'Vision, Strategy, You'
+    description: 'Vision, Strategy, You',
+    longDescription: 'Your effectiveness as a business leader. This measures strategic thinking, decision-making ability, vision clarity, personal development, and how well you inspire and guide your business toward its long-term goals.'
   },
   {
     id: 'time',
@@ -143,7 +151,8 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
       text: 'text-brand-navy',
       border: 'border-brand-navy'
     },
-    description: 'Freedom, Productivity, Leverage'
+    description: 'Freedom, Productivity, Leverage',
+    longDescription: 'How effectively you manage and leverage your time. This covers personal productivity, delegation, work-life balance, time blocking, and your ability to work ON the business rather than just IN the business.'
   }
 ]
 
