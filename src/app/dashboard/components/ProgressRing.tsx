@@ -18,8 +18,8 @@ export default function ProgressRing({
   const offset = circumference - (Math.min(progress, 100) / 100) * circumference
 
   const getColor = () => {
-    if (progress >= 100) return 'text-teal-500'
-    if (progress >= 70) return 'text-teal-500'
+    if (progress >= 100) return 'text-brand-orange-500'
+    if (progress >= 70) return 'text-brand-orange-500'
     if (progress >= 40) return 'text-amber-500'
     return 'text-gray-300'
   }

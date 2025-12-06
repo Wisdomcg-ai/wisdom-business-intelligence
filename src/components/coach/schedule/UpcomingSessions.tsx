@@ -98,7 +98,7 @@ export function UpcomingSessions({ sessions, onSessionClick }: UpcomingSessionsP
           <div key={dateKey}>
             {/* Date Header */}
             <div className={`px-5 py-2 text-sm font-medium ${
-              isToday(dateKey) ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-50 text-gray-600'
+              isToday(dateKey) ? 'bg-brand-orange-50 text-brand-orange-700' : 'bg-gray-50 text-gray-600'
             }`}>
               {formatDateHeader(dateKey)}
             </div>
@@ -113,8 +113,8 @@ export function UpcomingSessions({ sessions, onSessionClick }: UpcomingSessionsP
                   className="px-5 py-4 hover:bg-gray-50 cursor-pointer transition-colors"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <TypeIcon className="w-5 h-5 text-indigo-600" />
+                    <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <TypeIcon className="w-5 h-5 text-brand-orange" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
@@ -154,7 +154,7 @@ export function UpcomingSessions({ sessions, onSessionClick }: UpcomingSessionsP
       <div className="px-5 py-3 border-t border-gray-200 bg-gray-50">
         <Link
           href="/coach/schedule?view=week"
-          className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+          className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
         >
           View all sessions
         </Link>

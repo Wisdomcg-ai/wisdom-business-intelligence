@@ -70,9 +70,9 @@ export function ProcessDiagramRenderer({ data, title }: Props) {
     <div className="w-full bg-white p-8">
       {title && (
         <div className="mb-8">
-          <h2 className="text-3xl font-bold text-slate-900 mb-2">{title}</h2>
+          <h2 className="text-3xl font-bold text-brand-navy mb-2">{title}</h2>
           {data.description && (
-            <p className="text-slate-600 text-sm">{data.description}</p>
+            <p className="text-gray-600 text-sm">{data.description}</p>
           )}
         </div>
       )}
@@ -326,7 +326,7 @@ export function ProcessDiagramRenderer({ data, title }: Props) {
         <div className="grid grid-cols-3 gap-12">
           {/* Functions Legend */}
           <div>
-            <h3 className="font-bold text-slate-900 mb-4 text-sm uppercase tracking-wider">Functions</h3>
+            <h3 className="font-bold text-brand-navy mb-4 text-sm uppercase tracking-wider">Functions</h3>
             <div className="space-y-3">
               {data.functions.map((func) => {
                 const color = getFunctionColor(func);
@@ -339,7 +339,7 @@ export function ProcessDiagramRenderer({ data, title }: Props) {
                         border: `2.5px solid ${color.border}`,
                       }}
                     />
-                    <span className="text-sm font-medium text-slate-700">{func}</span>
+                    <span className="text-sm font-medium text-gray-700">{func}</span>
                   </div>
                 );
               })}
@@ -348,8 +348,8 @@ export function ProcessDiagramRenderer({ data, title }: Props) {
 
           {/* Roles Legend */}
           <div>
-            <h3 className="font-bold text-slate-900 mb-4 text-sm uppercase tracking-wider">Roles</h3>
-            <div className="space-y-2 text-sm text-slate-600">
+            <h3 className="font-bold text-brand-navy mb-4 text-sm uppercase tracking-wider">Roles</h3>
+            <div className="space-y-2 text-sm text-gray-600">
               {data.roles.map((role, idx) => (
                 <div key={role} className="flex items-center gap-2">
                   <div
@@ -366,19 +366,19 @@ export function ProcessDiagramRenderer({ data, title }: Props) {
 
           {/* Statistics */}
           <div>
-            <h3 className="font-bold text-slate-900 mb-4 text-sm uppercase tracking-wider">Statistics</h3>
+            <h3 className="font-bold text-brand-navy mb-4 text-sm uppercase tracking-wider">Statistics</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-slate-600">Total Activities:</span>
-                <span className="font-semibold text-slate-900">{data.activities.length}</span>
+                <span className="text-gray-600">Total Activities:</span>
+                <span className="font-semibold text-brand-navy">{data.activities.length}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Connections:</span>
-                <span className="font-semibold text-slate-900">{data.connections.length}</span>
+                <span className="text-gray-600">Connections:</span>
+                <span className="font-semibold text-brand-navy">{data.connections.length}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Grid Size:</span>
-                <span className="font-semibold text-slate-900">
+                <span className="text-gray-600">Grid Size:</span>
+                <span className="font-semibold text-brand-navy">
                   {numFunctions} × {numRoles}
                 </span>
               </div>

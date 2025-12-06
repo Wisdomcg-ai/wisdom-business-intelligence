@@ -36,7 +36,7 @@ function CircularProgress({
   progress,
   size = 80,
   strokeWidth = 8,
-  color = 'text-teal-500'
+  color = 'text-brand-orange-500'
 }: {
   progress: number;
   size?: number;
@@ -183,7 +183,7 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
 
   const getProgressColor = (progress: number) => {
     if (progress >= 75) return 'text-green-500';
-    if (progress >= 50) return 'text-teal-500';
+    if (progress >= 50) return 'text-brand-orange-500';
     if (progress >= 25) return 'text-amber-500';
     return 'text-red-500';
   };
@@ -225,7 +225,7 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
           estimatedTime={10}
         />
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
         </div>
       </div>
     );
@@ -249,7 +249,7 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
         <div className="bg-white rounded-xl border-2 border-gray-200 p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-              <Target className="w-5 h-5 text-teal-600" />
+              <Target className="w-5 h-5 text-brand-orange" />
               Annual Target Progress
             </h3>
             <span className="text-sm text-gray-500">{getQuarterContext()}</span>
@@ -258,12 +258,12 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
           {/* Financial Targets - Card Grid */}
           <div className="grid md:grid-cols-3 gap-4 mb-6">
             {/* Revenue Card */}
-            <div className="bg-teal-50 rounded-xl p-5 border border-teal-200">
+            <div className="bg-brand-orange-50 rounded-xl p-5 border border-brand-orange-200">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-3">
-                    <DollarSign className="w-4 h-4 text-teal-600" />
-                    <span className="text-sm font-medium text-teal-700">Revenue</span>
+                    <DollarSign className="w-4 h-4 text-brand-orange" />
+                    <span className="text-sm font-medium text-brand-orange-700">Revenue</span>
                   </div>
                   <div className="text-2xl font-bold text-gray-900 mb-1">
                     {formatCurrency(goals.revenue_year1)}
@@ -271,7 +271,7 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
                   <div className="text-sm text-gray-600 mb-3">
                     Annual Target
                   </div>
-                  <div className="pt-3 border-t border-teal-200">
+                  <div className="pt-3 border-t border-brand-orange-200">
                     <label className="text-xs text-gray-500 mb-1 block">YTD Actual</label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
@@ -280,7 +280,7 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
                         value={formatCurrencyInput(ytdRevenue)}
                         onChange={(e) => handleUpdate({ ytdRevenue: parseNumber(e.target.value) })}
                         placeholder="Enter YTD revenue"
-                        className="w-full pl-7 pr-3 py-2 text-sm border border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
+                        className="w-full pl-7 pr-3 py-2 text-sm border border-brand-orange-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent bg-white"
                       />
                     </div>
                   </div>
@@ -337,12 +337,12 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
             </div>
 
             {/* Net Profit Card */}
-            <div className="bg-blue-50 rounded-xl p-5 border border-blue-200">
+            <div className="bg-brand-orange-50 rounded-xl p-5 border border-brand-orange-200">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-3">
-                    <DollarSign className="w-4 h-4 text-blue-600" />
-                    <span className="text-sm font-medium text-blue-700">Net Profit</span>
+                    <DollarSign className="w-4 h-4 text-brand-orange" />
+                    <span className="text-sm font-medium text-brand-orange-700">Net Profit</span>
                   </div>
                   <div className="text-2xl font-bold text-gray-900 mb-1">
                     {formatCurrency(goals.net_profit_year1)}
@@ -350,12 +350,12 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
                   <div className="text-sm text-gray-600 mb-3">
                     Annual Target
                     {goals.net_margin_year1 > 0 && (
-                      <span className="text-blue-600 ml-1">
+                      <span className="text-brand-orange ml-1">
                         @ {formatPercent(goals.net_margin_year1)}
                       </span>
                     )}
                   </div>
-                  <div className="pt-3 border-t border-blue-200">
+                  <div className="pt-3 border-t border-brand-orange-200">
                     <label className="text-xs text-gray-500 mb-1 block">YTD Actual</label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
@@ -364,7 +364,7 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
                         value={formatCurrencyInput(ytdNetProfit)}
                         onChange={(e) => handleUpdate({ ytdNetProfit: parseNumber(e.target.value) })}
                         placeholder="Enter YTD net profit"
-                        className="w-full pl-7 pr-3 py-2 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                        className="w-full pl-7 pr-3 py-2 text-sm border border-brand-orange-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent bg-white"
                       />
                     </div>
                   </div>
@@ -385,25 +385,25 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
               <h4 className="text-sm font-medium text-gray-700 mb-3">Core Business Metric Targets</h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {(goals.leads_per_month_year1 ?? 0) > 0 && (
-                  <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="bg-gray-50 rounded-lg p-3">
                     <div className="text-xs text-gray-500 mb-1">Leads/Month</div>
                     <div className="text-lg font-semibold text-gray-900">{goals.leads_per_month_year1}</div>
                   </div>
                 )}
                 {(goals.conversion_rate_year1 ?? 0) > 0 && (
-                  <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="bg-gray-50 rounded-lg p-3">
                     <div className="text-xs text-gray-500 mb-1">Conversion Rate</div>
                     <div className="text-lg font-semibold text-gray-900">{formatPercent(goals.conversion_rate_year1 ?? 0)}</div>
                   </div>
                 )}
                 {(goals.avg_transaction_value_year1 ?? 0) > 0 && (
-                  <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="bg-gray-50 rounded-lg p-3">
                     <div className="text-xs text-gray-500 mb-1">Avg Transaction</div>
                     <div className="text-lg font-semibold text-gray-900">{formatCurrency(goals.avg_transaction_value_year1 ?? 0)}</div>
                   </div>
                 )}
                 {(goals.team_headcount_year1 ?? 0) > 0 && (
-                  <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="bg-gray-50 rounded-lg p-3">
                     <div className="text-xs text-gray-500 mb-1">Team Size</div>
                     <div className="text-lg font-semibold text-gray-900">{goals.team_headcount_year1}</div>
                   </div>
@@ -445,7 +445,7 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
                 onClick={() => handleUpdate({ confidence: num })}
                 className={`flex-1 h-12 rounded-lg text-sm font-bold transition-all ${
                   confidence === num
-                    ? 'bg-teal-600 text-white shadow-lg scale-105'
+                    ? 'bg-brand-orange text-white shadow-lg scale-105'
                     : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                 }`}
               >
@@ -476,7 +476,7 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
           onChange={(e) => handleUpdate({ notes: e.target.value })}
           placeholder="What factors are influencing your confidence? What would need to change to increase it?"
           rows={4}
-          className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+          className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
         />
       </div>
 

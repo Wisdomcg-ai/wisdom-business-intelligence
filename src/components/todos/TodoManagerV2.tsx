@@ -262,13 +262,13 @@ function MorningRitual({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="bg-gradient-to-r from-purple-600 to-teal-600 p-6 text-white rounded-t-xl">
+        <div className="bg-gradient-to-r from-brand-navy to-brand-orange p-6 text-white rounded-t-xl">
           <h2 className="text-2xl font-bold mb-2">Morning Ritual</h2>
-          <p className="text-purple-100">5 minutes to set up your perfect day</p>
-          
+          <p className="text-brand-orange-100">5 minutes to set up your perfect day</p>
+
           {/* Progress bar */}
           <div className="mt-4">
-            <div className="bg-purple-800 rounded-full h-2">
+            <div className="bg-brand-navy-800 rounded-full h-2">
               <div
                 className="bg-white rounded-full h-2 transition-all duration-300"
                 style={{ width: `${(currentStep / 5) * 100}%` }}
@@ -276,7 +276,7 @@ function MorningRitual({
             </div>
             <div className="flex justify-between mt-2 text-xs">
               {steps.map(s => (
-                <span key={s.number} className={currentStep >= s.number ? 'text-white' : 'text-purple-300'}>
+                <span key={s.number} className={currentStep >= s.number ? 'text-white' : 'text-brand-orange-300'}>
                   Step {s.number}
                 </span>
               ))}
@@ -362,10 +362,10 @@ function MorningRitual({
             
             {currentStep === 5 && (
               <div className="space-y-4">
-                <div className="bg-purple-50 rounded-lg p-4">
-                  <p className="font-medium text-purple-900 mb-2">Your Daily Commitment:</p>
+                <div className="bg-brand-navy-50 rounded-lg p-4">
+                  <p className="font-medium text-brand-navy-900 mb-2">Your Daily Commitment:</p>
                   <p className="text-gray-700 italic">
-                    "I commit to focusing on my 3 MUSTs today. I will not let distractions 
+                    "I commit to focusing on my 3 MUSTs today. I will not let distractions
                     pull me away from what truly matters. Today, I choose progress over perfection."
                   </p>
                 </div>
@@ -402,7 +402,7 @@ function MorningRitual({
               )}
               <button
                 onClick={handleNext}
-                className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                className="px-6 py-2 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-700"
                 disabled={currentStep === 5 && !ritualData.commitment}
               >
                 {currentStep === 5 ? 'Complete Ritual' : 'Next'}
@@ -814,7 +814,7 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
   const filteredTodos = getFilteredTodos()
   
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Morning Ritual Modal */}
       {showMorningRitual && (
         <MorningRitual
@@ -838,7 +838,7 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
             <div className="flex gap-2">
               <button
                 onClick={() => setShowMorningRitual(true)}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                className="px-4 py-2 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-700"
               >
                 🌅 Morning Ritual
               </button>
@@ -858,15 +858,15 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
               <div className="text-xs text-gray-600">Done Today</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-teal-600">{stats.due_today}</div>
+              <div className="text-2xl font-bold text-brand-orange">{stats.due_today}</div>
               <div className="text-xs text-gray-600">Due Today</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-purple-600">{stats.open_loops}</div>
+              <div className="text-2xl font-bold text-brand-navy">{stats.open_loops}</div>
               <div className="text-xs text-gray-600">Open Loops</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-orange-600">{stats.backlog_count}</div>
+              <div className="text-2xl font-bold text-brand-orange-600">{stats.backlog_count}</div>
               <div className="text-xs text-gray-600">Backlog</div>
             </div>
             <div className="text-center">
@@ -877,7 +877,7 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
         </div>
         
         {/* Quick Add - More Visible */}
-        <div className="bg-gradient-to-r from-teal-50 to-purple-50 rounded-lg shadow-sm p-6 mb-6 border border-teal-200">
+        <div className="bg-gradient-to-r from-brand-orange-50 to-brand-navy-50 rounded-lg shadow-sm p-6 mb-6 border border-brand-orange-200">
           <form onSubmit={handleQuickAdd} className="space-y-4">
             <div className="flex gap-2">
               <input
@@ -885,12 +885,12 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
                 value={quickAddText}
                 onChange={(e) => setQuickAddText(e.target.value)}
                 placeholder="What needs to be done? (Natural language: 'Call client tomorrow' or 'Review report urgent')"
-                className="flex-1 px-4 py-3 border-2 border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500 text-lg"
+                className="flex-1 px-4 py-3 border-2 border-brand-orange-300 rounded-lg focus:ring-2 focus:ring-brand-orange text-lg"
                 autoFocus
               />
               <button
                 type="submit"
-                className="px-8 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium"
+                className="px-8 py-3 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 font-medium"
               >
                 Add Task
               </button>
@@ -908,7 +908,7 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
                       onClick={() => setSelectedDate(option)}
                       className={`px-4 py-2 rounded-lg font-medium transition-all ${
                         selectedDate === option
-                          ? 'bg-teal-600 text-white shadow-md scale-105'
+                          ? 'bg-brand-orange text-white shadow-md scale-105'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
                     >
@@ -940,7 +940,7 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       } ${
                         selectedPriority === option.value && option.value === 'critical' ? 'bg-red-600' :
-                        selectedPriority === option.value && option.value === 'high' ? 'bg-orange-600' :
+                        selectedPriority === option.value && option.value === 'high' ? 'bg-brand-orange-600' :
                         selectedPriority === option.value && option.value === 'medium' ? 'bg-yellow-600' :
                         selectedPriority === option.value && option.value === 'low' ? 'bg-green-600' : ''
                       }`}
@@ -975,7 +975,7 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
                   onClick={() => setActiveView(view.id as TodoView)}
                   className={`px-4 py-2 rounded-lg flex items-center gap-1 ${
                     activeView === view.id
-                      ? 'bg-teal-600 text-white'
+                      ? 'bg-brand-orange text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
@@ -1007,7 +1007,7 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
         <div className="bg-white rounded-lg shadow-sm p-6">
           {loading ? (
             <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600 mx-auto"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-orange mx-auto"></div>
             </div>
           ) : filteredTodos.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
@@ -1031,7 +1031,7 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
                       ${todo.is_must ? 'border-yellow-400 bg-yellow-50' :
                         todo.is_top_three ? 'border-red-400 bg-red-50' :
                         overdue ? 'border-red-300 bg-red-50' :
-                        dueToday ? 'border-teal-300 bg-teal-50' :
+                        dueToday ? 'border-brand-orange-300 bg-brand-orange-50' :
                         'border-gray-200 hover:bg-gray-50'}
                     `}
                   >
@@ -1052,7 +1052,7 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
                               <span className="text-white text-xs">✓</span>
                             </div>
                           ) : todo.status === 'in-progress' ? (
-                            <div className="w-6 h-6 rounded-full bg-teal-500 animate-pulse" />
+                            <div className="w-6 h-6 rounded-full bg-brand-orange-500 animate-pulse" />
                           ) : (
                             <div className="w-6 h-6 rounded-full border-2 border-gray-300 hover:border-gray-400" />
                           )}
@@ -1072,7 +1072,7 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
                               </span>
                             )}
                             {todo.priority === 'high' && (
-                              <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full font-medium">
+                              <span className="text-xs px-2 py-0.5 bg-brand-orange-100 text-brand-orange-700 rounded-full font-medium">
                                 High
                               </span>
                             )}
@@ -1121,7 +1121,7 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
                         
                         <button
                           onClick={() => startEdit(todo)}
-                          className="p-2 text-gray-400 hover:text-teal-600"
+                          className="p-2 text-gray-400 hover:text-brand-orange"
                         >
                           ✏️
                         </button>
@@ -1230,7 +1230,7 @@ export default function TodoManagerV2({ userId, businessId, userRole }: TodoMana
                 </button>
                 <button
                   onClick={saveEdit}
-                  className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+                  className="px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600"
                 >
                   Save Changes
                 </button>

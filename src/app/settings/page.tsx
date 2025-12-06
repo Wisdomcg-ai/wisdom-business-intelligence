@@ -17,6 +17,7 @@ import {
   ExternalLink,
   ChevronRight
 } from 'lucide-react'
+import PageHeader from '@/components/ui/PageHeader'
 
 type TabType = 'profile' | 'team' | 'integrations'
 
@@ -139,9 +140,9 @@ function SettingsContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Settings className="w-8 h-8 text-teal-600 animate-spin mx-auto mb-4" />
+          <Settings className="w-8 h-8 text-brand-orange animate-spin mx-auto mb-4" />
           <p className="text-gray-600">Loading settings...</p>
         </div>
       </div>
@@ -149,18 +150,19 @@ function SettingsContent() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-          <p className="text-gray-500 mt-1">Manage your account, team, and integrations</p>
-        </div>
+        <PageHeader
+          title="Settings"
+          subtitle="Manage your account, team, and integrations"
+          icon={Settings}
+        />
 
-        <div className="flex flex-col lg:flex-row gap-8">
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
           {/* Left Sidebar Navigation */}
           <nav className="lg:w-64 flex-shrink-0">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               {navItems.map((item) => {
                 const Icon = item.icon
                 const isActive = activeTab === item.id
@@ -168,22 +170,22 @@ function SettingsContent() {
                   <button
                     key={item.id}
                     onClick={() => handleTabChange(item.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-4 text-left transition-colors border-l-4 ${
+                    className={`w-full flex items-center gap-3 px-4 py-3 sm:py-4 text-left transition-colors border-l-4 ${
                       isActive
-                        ? 'bg-teal-50 border-l-teal-600 text-teal-700'
+                        ? 'bg-brand-orange-50 border-l-brand-orange text-brand-orange-700'
                         : 'border-l-transparent text-gray-700 hover:bg-gray-50'
                     }`}
                   >
-                    <div className={`p-2 rounded-lg ${isActive ? 'bg-teal-100' : 'bg-gray-100'}`}>
-                      <Icon className={`w-5 h-5 ${isActive ? 'text-teal-600' : 'text-gray-500'}`} />
+                    <div className={`p-2 rounded-lg ${isActive ? 'bg-brand-orange-100' : 'bg-gray-100'}`}>
+                      <Icon className={`w-4 h-4 sm:w-5 sm:h-5 ${isActive ? 'text-brand-orange' : 'text-gray-500'}`} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`font-medium ${isActive ? 'text-teal-700' : 'text-gray-900'}`}>
+                      <p className={`text-sm sm:text-base font-medium ${isActive ? 'text-brand-orange-700' : 'text-gray-900'}`}>
                         {item.label}
                       </p>
                       <p className="text-xs text-gray-500 truncate">{item.description}</p>
                     </div>
-                    <ChevronRight className={`w-4 h-4 ${isActive ? 'text-teal-600' : 'text-gray-400'}`} />
+                    <ChevronRight className={`w-4 h-4 ${isActive ? 'text-brand-orange' : 'text-gray-400'}`} />
                   </button>
                 )
               })}
@@ -194,7 +196,7 @@ function SettingsContent() {
           <div className="flex-1 min-w-0">
             {/* Message Banner */}
             {message && (
-              <div className={`mb-6 rounded-lg p-4 flex items-start gap-3 ${
+              <div className={`mb-4 sm:mb-6 rounded-xl p-4 flex items-start gap-3 ${
                 message.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
               }`}>
                 {message.type === 'success' ? (
@@ -210,23 +212,23 @@ function SettingsContent() {
 
             {/* Profile Section */}
             {activeTab === 'profile' && (
-              <div className="space-y-6">
+              <div className="space-y-4 sm:space-y-6">
                 {/* Profile Information */}
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-center gap-3 mb-6">
-                    <User className="w-5 h-5 text-teal-600" />
-                    <h2 className="text-lg font-semibold text-gray-900">Profile Information</h2>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+                  <div className="flex items-center gap-3 mb-4 sm:mb-6">
+                    <User className="w-5 h-5 text-brand-orange" />
+                    <h2 className="text-base sm:text-lg font-semibold text-gray-900">Profile Information</h2>
                   </div>
 
                   <form onSubmit={handleUpdateProfile} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
                         <input
                           type="text"
                           value={firstName}
                           onChange={(e) => setFirstName(e.target.value)}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                           placeholder="John"
                         />
                       </div>
@@ -236,7 +238,7 @@ function SettingsContent() {
                           type="text"
                           value={lastName}
                           onChange={(e) => setLastName(e.target.value)}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                           placeholder="Doe"
                         />
                       </div>
@@ -244,7 +246,7 @@ function SettingsContent() {
                     <button
                       type="submit"
                       disabled={saving}
-                      className="flex items-center gap-2 px-6 py-2 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 disabled:bg-gray-400 transition-colors"
+                      className="flex items-center gap-2 px-6 py-2 bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg shadow-sm transition-colors disabled:bg-gray-400"
                     >
                       <Save className="w-4 h-4" />
                       {saving ? 'Saving...' : 'Save Profile'}
@@ -253,10 +255,10 @@ function SettingsContent() {
                 </div>
 
                 {/* Email */}
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-center gap-3 mb-6">
-                    <Mail className="w-5 h-5 text-teal-600" />
-                    <h2 className="text-lg font-semibold text-gray-900">Email Address</h2>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+                  <div className="flex items-center gap-3 mb-4 sm:mb-6">
+                    <Mail className="w-5 h-5 text-brand-orange" />
+                    <h2 className="text-base sm:text-lg font-semibold text-gray-900">Email Address</h2>
                   </div>
 
                   <form onSubmit={handleUpdateEmail} className="space-y-4">
@@ -266,14 +268,14 @@ function SettingsContent() {
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                       />
                       <p className="text-xs text-gray-500 mt-1">Changing your email will require verification</p>
                     </div>
                     <button
                       type="submit"
                       disabled={saving || email === user?.email}
-                      className="flex items-center gap-2 px-6 py-2 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 disabled:bg-gray-400 transition-colors"
+                      className="flex items-center gap-2 px-6 py-2 bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg shadow-sm transition-colors disabled:bg-gray-400"
                     >
                       <Save className="w-4 h-4" />
                       Update Email
@@ -282,10 +284,10 @@ function SettingsContent() {
                 </div>
 
                 {/* Password */}
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-center gap-3 mb-6">
-                    <Lock className="w-5 h-5 text-teal-600" />
-                    <h2 className="text-lg font-semibold text-gray-900">Change Password</h2>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+                  <div className="flex items-center gap-3 mb-4 sm:mb-6">
+                    <Lock className="w-5 h-5 text-brand-orange" />
+                    <h2 className="text-base sm:text-lg font-semibold text-gray-900">Change Password</h2>
                   </div>
 
                   <form onSubmit={handleUpdatePassword} className="space-y-4">
@@ -295,7 +297,7 @@ function SettingsContent() {
                         type="password"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                         placeholder="••••••••"
                       />
                     </div>
@@ -305,14 +307,14 @@ function SettingsContent() {
                         type="password"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                         placeholder="••••••••"
                       />
                     </div>
                     <button
                       type="submit"
                       disabled={saving || !newPassword || !confirmPassword}
-                      className="flex items-center gap-2 px-6 py-2 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 disabled:bg-gray-400 transition-colors"
+                      className="flex items-center gap-2 px-6 py-2 bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg shadow-sm transition-colors disabled:bg-gray-400"
                     >
                       <Save className="w-4 h-4" />
                       Update Password
@@ -324,25 +326,25 @@ function SettingsContent() {
 
             {/* Team Section */}
             {activeTab === 'team' && (
-              <div className="space-y-6">
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-center justify-between mb-6">
+              <div className="space-y-4 sm:space-y-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 sm:mb-6">
                     <div className="flex items-center gap-3">
-                      <Users className="w-5 h-5 text-teal-600" />
-                      <h2 className="text-lg font-semibold text-gray-900">Team Members</h2>
+                      <Users className="w-5 h-5 text-brand-orange" />
+                      <h2 className="text-base sm:text-lg font-semibold text-gray-900">Team Members</h2>
                     </div>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors">
+                    <button className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg shadow-sm transition-colors text-sm font-medium">
                       <UserPlus className="w-4 h-4" />
                       Invite Member
                     </button>
                   </div>
 
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
                     <div className="divide-y divide-gray-200">
                       {/* Current User */}
                       <div className="flex items-center justify-between p-4 bg-gray-50">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-teal-600 rounded-full flex items-center justify-center">
+                          <div className="w-10 h-10 bg-brand-orange rounded-full flex items-center justify-center">
                             <span className="text-white font-medium">
                               {firstName?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'U'}
                             </span>
@@ -354,14 +356,14 @@ function SettingsContent() {
                             <p className="text-sm text-gray-500">{user?.email}</p>
                           </div>
                         </div>
-                        <span className="px-3 py-1 bg-teal-100 text-teal-700 text-xs font-medium rounded-full">
+                        <span className="px-3 py-1 bg-brand-orange-100 text-brand-orange-700 text-xs font-medium rounded-full">
                           Owner
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="mt-4 sm:mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
                     <p className="text-sm text-gray-600">
                       <strong>Coming Soon:</strong> Invite team members to collaborate on your business planning.
                       Team members will be able to view and contribute to your business goals and planning.
@@ -373,18 +375,18 @@ function SettingsContent() {
 
             {/* Integrations Section */}
             {activeTab === 'integrations' && (
-              <div className="space-y-6">
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-center gap-3 mb-6">
-                    <Zap className="w-5 h-5 text-teal-600" />
-                    <h2 className="text-lg font-semibold text-gray-900">Integrations</h2>
+              <div className="space-y-4 sm:space-y-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+                  <div className="flex items-center gap-3 mb-4 sm:mb-6">
+                    <Zap className="w-5 h-5 text-brand-orange" />
+                    <h2 className="text-base sm:text-lg font-semibold text-gray-900">Integrations</h2>
                   </div>
 
                   <div className="space-y-4">
                     {/* Xero Integration */}
-                    <div className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
+                    <div className="border border-gray-200 rounded-xl p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div className="flex items-center gap-3 sm:gap-4">
                           <div className="w-12 h-12 bg-[#13B5EA] rounded-lg flex items-center justify-center">
                             <span className="text-white font-bold text-lg">X</span>
                           </div>
@@ -395,7 +397,7 @@ function SettingsContent() {
                         </div>
                         <a
                           href="/integrations"
-                          className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                          className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm font-medium"
                         >
                           Configure
                           <ExternalLink className="w-4 h-4" />
@@ -404,13 +406,13 @@ function SettingsContent() {
                     </div>
 
                     {/* Future Integrations */}
-                    <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center">
+                    <div className="border border-dashed border-gray-300 rounded-xl p-4 bg-gray-50">
+                      <div className="flex items-center gap-3 sm:gap-4">
+                        <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
                           <Zap className="w-6 h-6 text-gray-400" />
                         </div>
                         <div>
-                          <h3 className="font-medium text-gray-500">More Integrations Coming Soon</h3>
+                          <h3 className="text-sm sm:text-base font-medium text-gray-500">More Integrations Coming Soon</h3>
                           <p className="text-sm text-gray-400">QuickBooks, Google Calendar, Slack, and more</p>
                         </div>
                       </div>
@@ -429,9 +431,9 @@ function SettingsContent() {
 export default function SettingsPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Settings className="w-8 h-8 text-teal-600 animate-spin mx-auto mb-4" />
+          <Settings className="w-8 h-8 text-brand-orange animate-spin mx-auto mb-4" />
           <p className="text-gray-600">Loading settings...</p>
         </div>
       </div>

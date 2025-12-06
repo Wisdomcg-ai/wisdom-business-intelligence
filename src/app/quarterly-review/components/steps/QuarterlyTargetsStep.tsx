@@ -137,7 +137,7 @@ export function QuarterlyTargetsStep({ review, onUpdate }: QuarterlyTargetsStepP
           estimatedTime={15}
         />
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
         </div>
       </div>
     );
@@ -154,9 +154,9 @@ export function QuarterlyTargetsStep({ review, onUpdate }: QuarterlyTargetsStepP
 
       {/* Annual Context */}
       {annualTargets && (
-        <div className="bg-slate-50 rounded-xl border border-gray-200 p-4 mb-6">
+        <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 mb-6">
           <div className="flex items-center gap-2 mb-3">
-            <Target className="w-5 h-5 text-slate-600" />
+            <Target className="w-5 h-5 text-gray-600" />
             <span className="font-medium text-gray-900">{review.year} Annual Targets (Reference)</span>
           </div>
           <div className="grid grid-cols-3 gap-4 text-sm">
@@ -185,7 +185,7 @@ export function QuarterlyTargetsStep({ review, onUpdate }: QuarterlyTargetsStepP
       {/* Quarterly Financial Targets */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
         <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <DollarSign className="w-5 h-5 text-slate-600" />
+          <DollarSign className="w-5 h-5 text-gray-600" />
           Q{nextQ.quarter} {nextQ.year} Financial Targets
         </h3>
 
@@ -202,7 +202,7 @@ export function QuarterlyTargetsStep({ review, onUpdate }: QuarterlyTargetsStepP
                 value={targets.revenue || ''}
                 onChange={(e) => updateFinancial('revenue', parseInt(e.target.value) || 0)}
                 placeholder="0"
-                className="w-full pl-8 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                className="w-full pl-8 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent text-lg"
               />
             </div>
             {annualTargets && (
@@ -224,7 +224,7 @@ export function QuarterlyTargetsStep({ review, onUpdate }: QuarterlyTargetsStepP
                 value={targets.grossProfit || ''}
                 onChange={(e) => updateFinancial('grossProfit', parseInt(e.target.value) || 0)}
                 placeholder="0"
-                className="w-full pl-8 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                className="w-full pl-8 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent text-lg"
               />
             </div>
             {targets.revenue > 0 && targets.grossProfit > 0 && (
@@ -246,7 +246,7 @@ export function QuarterlyTargetsStep({ review, onUpdate }: QuarterlyTargetsStepP
                 value={targets.netProfit || ''}
                 onChange={(e) => updateFinancial('netProfit', parseInt(e.target.value) || 0)}
                 placeholder="0"
-                className="w-full pl-8 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                className="w-full pl-8 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent text-lg"
               />
             </div>
             {targets.revenue > 0 && targets.netProfit > 0 && (
@@ -261,7 +261,7 @@ export function QuarterlyTargetsStep({ review, onUpdate }: QuarterlyTargetsStepP
       {/* KPI Targets */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-slate-600" />
+          <TrendingUp className="w-5 h-5 text-gray-600" />
           Key Performance Indicators
         </h3>
 
@@ -285,7 +285,7 @@ export function QuarterlyTargetsStep({ review, onUpdate }: QuarterlyTargetsStepP
                   value={kpi.target || ''}
                   onChange={(e) => updateKpi(kpi.id, parseInt(e.target.value) || 0)}
                   placeholder="Target"
-                  className="w-32 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  className="w-32 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange"
                 />
                 <button
                   onClick={() => removeKpi(kpi.id)}
@@ -306,12 +306,12 @@ export function QuarterlyTargetsStep({ review, onUpdate }: QuarterlyTargetsStepP
             onChange={(e) => setNewKpiName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addKpi()}
             placeholder="Add a KPI (e.g., Lead Conversion Rate, Customer Satisfaction)..."
-            className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange"
           />
           <button
             onClick={addKpi}
             disabled={!newKpiName.trim()}
-            className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 disabled:bg-gray-200 disabled:cursor-not-allowed flex items-center gap-2"
+            className="px-4 py-2 bg-brand-orange text-white rounded-lg font-medium hover:bg-brand-orange-600 disabled:bg-gray-200 disabled:cursor-not-allowed flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
             Add
@@ -320,7 +320,7 @@ export function QuarterlyTargetsStep({ review, onUpdate }: QuarterlyTargetsStepP
       </div>
 
       {/* Summary */}
-      <div className="mt-6 bg-slate-50 rounded-xl border border-gray-200 p-4">
+      <div className="mt-6 bg-gray-50 rounded-xl border border-gray-200 p-4">
         <h4 className="font-medium text-gray-900 mb-2">Q{nextQ.quarter} Target Summary</h4>
         <div className="grid grid-cols-3 gap-4">
           <div className="text-center">

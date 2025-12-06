@@ -1,6 +1,7 @@
 'use client'
 
-import { Loader2, Lock, Unlock, Settings } from 'lucide-react'
+import { Loader2, Lock, Unlock, Settings, TrendingUp } from 'lucide-react'
+import PageHeader from '@/components/ui/PageHeader'
 import ManageMetricsModal from './components/ManageMetricsModal'
 import QuarterProgressCard from './components/QuarterProgressCard'
 import MetricRow from './components/MetricRow'
@@ -78,15 +79,21 @@ export default function BusinessDashboardPage() {
   }
 
   if (!mounted) {
-    return <div className="p-8"><div className="max-w-[1600px] mx-auto"><div className="h-8 bg-gray-200 rounded"></div></div></div>
+    return (
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="h-8 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    )
   }
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen p-4">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-teal-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading dashboard...</p>
+          <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
+          <p className="text-sm sm:text-base text-gray-600">Loading dashboard...</p>
         </div>
       </div>
     )
@@ -124,7 +131,7 @@ export default function BusinessDashboardPage() {
   const visibleKpis = kpis.filter(kpi => isKpiVisible(kpi.id))
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
       <style jsx>{`
         input[type='number']::-webkit-inner-spin-button,
         input[type='number']::-webkit-outer-spin-button {
@@ -135,44 +142,18 @@ export default function BusinessDashboardPage() {
           -moz-appearance: textfield;
         }
       `}</style>
-      <div className="max-w-[1600px] mx-auto">
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Business Dashboard</h1>
-              <p className="text-gray-600">Track your weekly progress against annual targets</p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Week Preference Toggle */}
-              <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50">
-                <button
-                  onClick={() => setWeekPreference('beginning')}
-                  className={`px-3 py-2 text-sm font-medium rounded-l-lg transition-colors ${
-                    weekPreference === 'beginning'
-                      ? 'bg-teal-600 text-white'
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Week Start
-                </button>
-                <button
-                  onClick={() => setWeekPreference('ending')}
-                  className={`px-3 py-2 text-sm font-medium rounded-r-lg transition-colors ${
-                    weekPreference === 'ending'
-                      ? 'bg-teal-600 text-white'
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Week End
-                </button>
-              </div>
-
+      <div className="max-w-7xl mx-auto">
+        {/* Page Header */}
+        <PageHeader
+          title="KPI Dashboard"
+          subtitle="Track your weekly progress against annual targets"
+          icon={TrendingUp}
+          actions={
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               {/* Lock/Unlock Button */}
               <button
                 onClick={() => setPastWeeksUnlocked(!pastWeeksUnlocked)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+                className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
                   pastWeeksUnlocked
                     ? 'bg-amber-600 text-white hover:bg-amber-700'
                     : 'bg-gray-600 text-white hover:bg-gray-700'
@@ -181,18 +162,18 @@ export default function BusinessDashboardPage() {
                 {pastWeeksUnlocked ? (
                   <>
                     <Unlock className="w-4 h-4" />
-                    <span>Lock</span>
+                    <span className="hidden sm:inline">Lock</span>
                   </>
                 ) : (
                   <>
                     <Lock className="w-4 h-4" />
-                    <span>Edit Past</span>
+                    <span className="hidden sm:inline">Edit Past</span>
                   </>
                 )}
               </button>
             </div>
-          </div>
-        </div>
+          }
+        />
 
         {/* Quarter Progress Summary */}
         {currentQuarterInfo && (
@@ -213,43 +194,43 @@ export default function BusinessDashboardPage() {
         )}
 
         {/* Metrics Table */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-gray-200">
+        <div className="rounded-xl shadow-sm border border-gray-200 bg-white overflow-hidden">
+          <div className="p-4 sm:p-6 border-b border-gray-200">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <h2 className="text-2xl font-bold text-gray-900">Business Metrics Dashboard</h2>
+              <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">Business Metrics Dashboard</h2>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
                 {/* View Mode Toggle */}
                 <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50">
                   <button
                     onClick={() => setViewMode('quarter')}
-                    className={`px-4 py-2 text-sm font-medium rounded-l-lg transition-colors ${
+                    className={`px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-l-lg transition-colors ${
                       viewMode === 'quarter'
-                        ? 'bg-teal-600 text-white'
+                        ? 'bg-brand-orange text-white'
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
-                    Current Quarter
+                    <span className="hidden sm:inline">Current </span>Quarter
                   </button>
                   <button
                     onClick={() => setViewMode('year')}
-                    className={`px-4 py-2 text-sm font-medium rounded-r-lg transition-colors ${
+                    className={`px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-r-lg transition-colors ${
                       viewMode === 'year'
-                        ? 'bg-teal-600 text-white'
+                        ? 'bg-brand-orange text-white'
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
-                    Current Year
+                    <span className="hidden sm:inline">Current </span>Year
                   </button>
                 </div>
 
                 {/* Manage Metrics Button */}
                 <button
                   onClick={() => setIsManageMetricsOpen(true)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   <Settings className="w-4 h-4" />
-                  <span>Manage</span>
+                  <span className="hidden sm:inline">Manage</span>
                 </button>
               </div>
             </div>
@@ -295,7 +276,7 @@ export default function BusinessDashboardPage() {
                         )
                       } else if (col.type === 'quarter-header') {
                         return (
-                          <th key={col.quarterKey} className="w-32 px-3 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-teal-100 cursor-pointer hover:bg-teal-200"
+                          <th key={col.quarterKey} className="w-32 px-3 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-brand-orange-100 cursor-pointer hover:bg-brand-orange-200"
                               onClick={() => toggleQuarter(col.quarterKey!)}>
                             <div className="flex flex-col items-center">
                               <span>{col.quarterLabel}</span>
@@ -309,7 +290,7 @@ export default function BusinessDashboardPage() {
                           <th
                             key={col.date || idx}
                             ref={col.isCurrentWeek ? currentWeekRef : null}
-                            className={`w-36 px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider ${col.isCurrentWeek ? 'bg-teal-50 text-teal-700' : 'text-gray-700'}`}>
+                            className={`w-36 px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider ${col.isCurrentWeek ? 'bg-brand-orange-50 text-brand-orange-700' : 'text-gray-700'}`}>
                             {col.date ? formatDate(col.date) : ''}
                           </th>
                         )
@@ -597,7 +578,7 @@ export default function BusinessDashboardPage() {
                                 )
                               } else if (col.type === 'quarter-header') {
                                 return (
-                                  <td key={col.quarterKey} className="px-3 py-4 text-sm text-center bg-teal-50 border-l-2 border-teal-200"></td>
+                                  <td key={col.quarterKey} className="px-3 py-4 text-sm text-center bg-brand-orange-50 border-l-2 border-brand-orange-200"></td>
                                 )
                               } else {
                                 const isEditable = isWeekEditable(col.isCurrentWeek || false, col.date)
@@ -606,7 +587,7 @@ export default function BusinessDashboardPage() {
                                   : col.snapshot?.kpi_actuals?.[kpi.id]
 
                                 return (
-                                  <td key={col.date || idx} className={`px-3 py-4 text-sm text-center ${col.isCurrentWeek ? 'bg-teal-50' : ''}`}>
+                                  <td key={col.date || idx} className={`px-3 py-4 text-sm text-center ${col.isCurrentWeek ? 'bg-brand-orange-50' : ''}`}>
                                     {isEditable ? (
                                       <input
                                         type="text"
@@ -624,7 +605,7 @@ export default function BusinessDashboardPage() {
                                           }
                                         }}
                                         onKeyDown={handleKeyDown}
-                                        className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 transition-colors"
+                                        className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 transition-colors"
                                         placeholder={kpi.unit === 'currency' ? '$0' : '0'}
                                       />
                                     ) : (

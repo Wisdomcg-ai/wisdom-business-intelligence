@@ -80,9 +80,9 @@ export default function AuditLogViewer({ forecastId, className = '' }: AuditLogV
   const getActionColor = (action: string): string => {
     switch (action) {
       case 'create': return 'text-green-700 bg-green-50'
-      case 'update': return 'text-teal-700 bg-teal-50'
+      case 'update': return 'text-brand-orange-700 bg-brand-orange-50'
       case 'delete': return 'text-red-700 bg-red-50'
-      case 'sync_xero': return 'text-purple-700 bg-purple-50'
+      case 'sync_xero': return 'text-brand-navy-700 bg-brand-navy-50'
       case 'import_annual_plan': return 'text-amber-700 bg-amber-50'
       default: return 'text-gray-700 bg-gray-50'
     }
@@ -174,7 +174,7 @@ export default function AuditLogViewer({ forecastId, className = '' }: AuditLogV
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <History className="w-6 h-6 text-teal-600" />
+            <History className="w-6 h-6 text-brand-orange" />
             <div>
               <h2 className="text-xl font-bold text-gray-900">Change History</h2>
               <p className="text-sm text-gray-500 mt-1">
@@ -184,7 +184,7 @@ export default function AuditLogViewer({ forecastId, className = '' }: AuditLogV
           </div>
           <button
             onClick={fetchAuditLogs}
-            className="px-4 py-2 text-sm font-medium text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors"
+            className="px-4 py-2 text-sm font-medium text-brand-orange bg-brand-orange-50 rounded-lg hover:bg-brand-orange-100 transition-colors"
           >
             Refresh
           </button>
@@ -201,7 +201,7 @@ export default function AuditLogViewer({ forecastId, className = '' }: AuditLogV
           <select
             value={filterAction}
             onChange={(e) => setFilterAction(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
           >
             <option value="all">All Actions</option>
             <option value="create">Created</option>
@@ -216,7 +216,7 @@ export default function AuditLogViewer({ forecastId, className = '' }: AuditLogV
             <select
               value={filterUser}
               onChange={(e) => setFilterUser(e.target.value)}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
             >
               <option value="all">All Users</option>
               {uniqueUsers.map(email => (
@@ -229,7 +229,7 @@ export default function AuditLogViewer({ forecastId, className = '' }: AuditLogV
           <select
             value={filterDateRange}
             onChange={(e) => setFilterDateRange(e.target.value as any)}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
           >
             <option value="all">All Time</option>
             <option value="today">Today</option>
@@ -242,7 +242,7 @@ export default function AuditLogViewer({ forecastId, className = '' }: AuditLogV
       <div className="p-6">
         {loading && (
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-orange"></div>
           </div>
         )}
 

@@ -120,14 +120,14 @@ export default function Step3TeamPlanning({
   return (
     <div className="space-y-6">
       {/* Teaching Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-5 text-white">
+      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-5 text-white">
         <div className="flex items-start gap-4">
           <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
             <Users className="w-5 h-5 text-white" />
           </div>
           <div>
             <h3 className="font-bold text-lg mb-1">Step 3: Plan Your Team</h3>
-            <p className="text-teal-100 text-sm">
+            <p className="text-brand-orange-100 text-sm">
               Your team is your biggest investment. Let's map out who you need to deliver
               your services and run your business.
             </p>
@@ -154,7 +154,7 @@ export default function Step3TeamPlanning({
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Briefcase className="w-4 h-4 text-blue-600" />
+            <Briefcase className="w-4 h-4 text-brand-orange" />
             <span className="text-xs font-medium text-gray-500 uppercase">OpEx Wages Budget</span>
           </div>
           <div className="text-xl font-bold text-gray-900">
@@ -167,7 +167,7 @@ export default function Step3TeamPlanning({
 
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <HardHat className="w-4 h-4 text-orange-600" />
+            <HardHat className="w-4 h-4 text-brand-orange-600" />
             <span className="text-xs font-medium text-gray-500 uppercase">COGS Wages Budget</span>
           </div>
           <div className="text-xl font-bold text-gray-900">
@@ -180,7 +180,7 @@ export default function Step3TeamPlanning({
 
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Calculator className="w-4 h-4 text-teal-600" />
+            <Calculator className="w-4 h-4 text-brand-orange" />
             <span className="text-xs font-medium text-gray-500 uppercase">% of OpEx Budget</span>
           </div>
           <div className="text-xl font-bold text-gray-900">
@@ -217,7 +217,7 @@ export default function Step3TeamPlanning({
           </h4>
           <button
             onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
             Add Team Member
@@ -235,12 +235,12 @@ export default function Step3TeamPlanning({
           <div className="divide-y divide-gray-100">
             {data.teamMembers.map((member) => (
               <div key={member.id} className="px-5 py-4 flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${member.classification === 'cogs' ? 'bg-orange-100' : 'bg-blue-100'
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${member.classification === 'cogs' ? 'bg-brand-orange-100' : 'bg-brand-orange-100'
                   }`}>
                   {member.classification === 'cogs' ? (
-                    <HardHat className="w-5 h-5 text-orange-600" />
+                    <HardHat className="w-5 h-5 text-brand-orange-600" />
                   ) : (
-                    <Briefcase className="w-5 h-5 text-blue-600" />
+                    <Briefcase className="w-5 h-5 text-brand-orange" />
                   )}
                 </div>
 
@@ -256,7 +256,7 @@ export default function Step3TeamPlanning({
                   <div className="text-sm text-gray-500 flex items-center gap-3">
                     <span>{member.position}</span>
                     <span className="text-gray-300">•</span>
-                    <span className={member.classification === 'cogs' ? 'text-orange-600' : 'text-blue-600'}>
+                    <span className={member.classification === 'cogs' ? 'text-brand-orange-600' : 'text-brand-orange'}>
                       {member.classification === 'cogs' ? 'COGS' : 'OpEx'}
                     </span>
                     {member.startMonth && (
@@ -298,7 +298,7 @@ export default function Step3TeamPlanning({
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4">
             <div className="px-6 py-4 border-b border-gray-100">
               <h3 className="font-semibold text-lg text-gray-900 flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-teal-600" />
+                <UserPlus className="w-5 h-5 text-brand-orange" />
                 Add Team Member
               </h3>
             </div>
@@ -313,7 +313,7 @@ export default function Step3TeamPlanning({
                     type="text"
                     value={newMember.name || ''}
                     onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                     placeholder="e.g., John Smith"
                   />
                 </div>
@@ -326,7 +326,7 @@ export default function Step3TeamPlanning({
                     type="text"
                     value={newMember.position || ''}
                     onChange={(e) => setNewMember({ ...newMember, position: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                     placeholder="e.g., Electrician"
                   />
                 </div>
@@ -343,7 +343,7 @@ export default function Step3TeamPlanning({
                       type="number"
                       value={newMember.annualSalary || ''}
                       onChange={(e) => setNewMember({ ...newMember, annualSalary: parseFloat(e.target.value) || 0 })}
-                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                       placeholder="80000"
                     />
                   </div>
@@ -359,7 +359,7 @@ export default function Step3TeamPlanning({
                   <select
                     value={newMember.classification || 'opex'}
                     onChange={(e) => setNewMember({ ...newMember, classification: e.target.value as 'opex' | 'cogs' })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                   >
                     <option value="opex">OpEx (Admin, Sales, etc.)</option>
                     <option value="cogs">COGS (Directly billable)</option>
@@ -376,7 +376,7 @@ export default function Step3TeamPlanning({
                     type="month"
                     value={newMember.startMonth || ''}
                     onChange={(e) => setNewMember({ ...newMember, startMonth: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                     min={`${fiscalYear - 1}-07`}
                     max={`${fiscalYear}-06`}
                   />
@@ -388,7 +388,7 @@ export default function Step3TeamPlanning({
                       type="checkbox"
                       checked={newMember.isNew || false}
                       onChange={(e) => setNewMember({ ...newMember, isNew: e.target.checked })}
-                      className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                      className="w-4 h-4 text-brand-orange border-gray-300 rounded focus:ring-brand-orange"
                     />
                     <span className="text-sm text-gray-700">This is a planned new hire</span>
                   </label>
@@ -409,7 +409,7 @@ export default function Step3TeamPlanning({
               <button
                 onClick={handleAddMember}
                 disabled={!newMember.name || !newMember.position || !newMember.annualSalary}
-                className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Add Team Member
               </button>
@@ -421,24 +421,24 @@ export default function Step3TeamPlanning({
       {/* How We'll Use This */}
       <div className="bg-gray-50 rounded-lg p-4">
         <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-          <ArrowRight className="w-4 h-4 text-teal-600" />
+          <ArrowRight className="w-4 h-4 text-brand-orange" />
           How We'll Use This Data
         </h4>
         <ul className="space-y-2 text-sm text-gray-700">
           <li className="flex items-start gap-2">
-            <span className="text-teal-600 font-bold">•</span>
+            <span className="text-brand-orange font-bold">•</span>
             <span>
               <strong>COGS wages</strong> will be factored into your cost of sales calculations
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="text-teal-600 font-bold">•</span>
+            <span className="text-brand-orange font-bold">•</span>
             <span>
               <strong>OpEx wages</strong> will appear as a line item in your operating expenses
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="text-teal-600 font-bold">•</span>
+            <span className="text-brand-orange font-bold">•</span>
             <span>
               <strong>Start dates</strong> allow us to pro-rata salaries for new hires
             </span>

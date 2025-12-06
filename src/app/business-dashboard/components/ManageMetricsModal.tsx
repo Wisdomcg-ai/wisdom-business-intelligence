@@ -195,7 +195,7 @@ export default function ManageMetricsModal({
                     type="checkbox"
                     checked={true}
                     disabled
-                    className="w-4 h-4 text-teal-600 rounded border-gray-300 cursor-not-allowed"
+                    className="w-4 h-4 text-brand-orange rounded border-gray-300 cursor-not-allowed"
                   />
                   <span className="ml-3 text-sm font-medium text-gray-700">Revenue</span>
                 </label>
@@ -204,7 +204,7 @@ export default function ManageMetricsModal({
                     type="checkbox"
                     checked={true}
                     disabled
-                    className="w-4 h-4 text-teal-600 rounded border-gray-300 cursor-not-allowed"
+                    className="w-4 h-4 text-brand-orange rounded border-gray-300 cursor-not-allowed"
                   />
                   <span className="ml-3 text-sm font-medium text-gray-700">Gross Profit</span>
                 </label>
@@ -213,7 +213,7 @@ export default function ManageMetricsModal({
                     type="checkbox"
                     checked={true}
                     disabled
-                    className="w-4 h-4 text-teal-600 rounded border-gray-300 cursor-not-allowed"
+                    className="w-4 h-4 text-brand-orange rounded border-gray-300 cursor-not-allowed"
                   />
                   <span className="ml-3 text-sm font-medium text-gray-700">Net Profit</span>
                 </label>
@@ -235,7 +235,7 @@ export default function ManageMetricsModal({
                         type="checkbox"
                         checked={isVisible}
                         onChange={() => toggleCoreMetric(metric.id)}
-                        className="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-2 focus:ring-teal-500"
+                        className="w-4 h-4 text-brand-orange rounded border-gray-300 focus:ring-2 focus:ring-brand-orange"
                       />
                       <span className="ml-3 text-sm font-medium text-gray-700">{metric.name}</span>
                     </label>
@@ -261,7 +261,7 @@ export default function ManageMetricsModal({
                         type="checkbox"
                         checked={isVisible}
                         onChange={() => toggleCustomKpi(kpi.id)}
-                        className="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-2 focus:ring-teal-500"
+                        className="w-4 h-4 text-brand-orange rounded border-gray-300 focus:ring-2 focus:ring-brand-orange"
                       />
                       <span className="ml-3 text-sm font-medium text-gray-700">{kpi.name}</span>
                     </label>
@@ -270,7 +270,7 @@ export default function ManageMetricsModal({
 
                 {/* Create KPI Form - Appears after KPIs list */}
                 {isCreatingKPI && (
-                  <div ref={createFormRef} className="p-4 bg-teal-50 border-2 border-teal-200 rounded-lg space-y-3">
+                  <div ref={createFormRef} className="p-4 bg-brand-orange-50 border-2 border-brand-orange-200 rounded-lg space-y-3">
                     <div className="flex items-center justify-between mb-2">
                       <h4 className="text-sm font-semibold text-gray-900">Create Custom KPI</h4>
                       <button
@@ -299,7 +299,7 @@ export default function ManageMetricsModal({
                         value={newKpiName}
                         onChange={(e) => setNewKpiName(e.target.value)}
                         placeholder="e.g., Customer Satisfaction Score"
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                         disabled={isSavingKPI}
                       />
                     </div>
@@ -312,7 +312,7 @@ export default function ManageMetricsModal({
                       <select
                         value={newKpiUnit}
                         onChange={(e) => setNewKpiUnit(e.target.value as 'currency' | 'percentage' | 'number')}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                         disabled={isSavingKPI}
                       >
                         <option value="number">Number</option>
@@ -333,7 +333,7 @@ export default function ManageMetricsModal({
                         placeholder="e.g., 40 for 40 hours/week"
                         min="0"
                         step="any"
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                         disabled={isSavingKPI}
                       />
                       <p className="text-xs text-gray-500 mt-1">For cumulative metrics (revenue, leads), enter the annual total. For rates/averages (hours per week), enter the target value.</p>
@@ -351,7 +351,7 @@ export default function ManageMetricsModal({
                         placeholder="e.g., 40 (same as annual for rates)"
                         min="0"
                         step="any"
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                         disabled={isSavingKPI}
                       />
                       <p className="text-xs text-gray-500 mt-1">For cumulative metrics, divide annual by 4. For rates/averages, use the same value as annual.</p>
@@ -362,7 +362,7 @@ export default function ManageMetricsModal({
                       <button
                         onClick={handleCreateKpi}
                         disabled={isSavingKPI}
-                        className="flex-1 px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex-1 px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isSavingKPI ? 'Creating...' : 'Create KPI'}
                       </button>
@@ -395,7 +395,7 @@ export default function ManageMetricsModal({
               {!isCreatingKPI && (
                 <button
                   onClick={() => setIsCreatingKPI(true)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-orange bg-brand-orange-50 rounded-lg hover:bg-brand-orange-100 transition-colors"
                 >
                   <Plus className="w-4 h-4" />
                   Create New KPI
@@ -411,7 +411,7 @@ export default function ManageMetricsModal({
               </button>
               <button
                 onClick={handleSave}
-                className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors"
               >
                 Save Changes
               </button>

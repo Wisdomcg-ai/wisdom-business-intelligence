@@ -67,7 +67,7 @@ export function ProfileSettings({ profile: initialProfile, onSave }: ProfileSett
   const sessionLengths = [30, 45, 60, 90, 120]
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="rounded-xl shadow-sm border border-gray-200 bg-white overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-200">
         <h3 className="font-semibold text-gray-900">Profile Settings</h3>
         <p className="text-sm text-gray-500 mt-1">Manage your personal information and preferences</p>
@@ -77,11 +77,11 @@ export function ProfileSettings({ profile: initialProfile, onSave }: ProfileSett
         {/* Avatar */}
         <div className="flex items-center gap-6">
           <div className="relative">
-            <div className="w-24 h-24 bg-indigo-100 rounded-full flex items-center justify-center overflow-hidden">
+            <div className="w-24 h-24 bg-brand-orange-100 rounded-full flex items-center justify-center overflow-hidden">
               {profile.avatarUrl ? (
                 <img src={profile.avatarUrl} alt="Profile" className="w-full h-full object-cover" />
               ) : (
-                <span className="text-3xl font-bold text-indigo-600">
+                <span className="text-3xl font-bold text-brand-orange">
                   {profile.firstName.charAt(0)}{profile.lastName.charAt(0)}
                 </span>
               )}
@@ -93,7 +93,7 @@ export function ProfileSettings({ profile: initialProfile, onSave }: ProfileSett
           <div>
             <h4 className="font-medium text-gray-900">{profile.firstName} {profile.lastName}</h4>
             <p className="text-sm text-gray-500">{profile.email}</p>
-            <button className="mt-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium">
+            <button className="mt-2 text-sm text-brand-orange hover:text-brand-orange-700 font-medium">
               Change photo
             </button>
           </div>
@@ -111,7 +111,7 @@ export function ProfileSettings({ profile: initialProfile, onSave }: ProfileSett
                 type="text"
                 value={profile.firstName}
                 onChange={(e) => setProfile({ ...profile, firstName: e.target.value })}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               />
             </div>
           </div>
@@ -125,7 +125,7 @@ export function ProfileSettings({ profile: initialProfile, onSave }: ProfileSett
                 type="text"
                 value={profile.lastName}
                 onChange={(e) => setProfile({ ...profile, lastName: e.target.value })}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               />
             </div>
           </div>
@@ -142,7 +142,7 @@ export function ProfileSettings({ profile: initialProfile, onSave }: ProfileSett
                 type="email"
                 value={profile.email}
                 onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               />
             </div>
           </div>
@@ -157,7 +157,7 @@ export function ProfileSettings({ profile: initialProfile, onSave }: ProfileSett
                 value={profile.phone || ''}
                 onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
                 placeholder="+61 400 000 000"
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               />
             </div>
           </div>
@@ -178,7 +178,7 @@ export function ProfileSettings({ profile: initialProfile, onSave }: ProfileSett
                   value={profile.businessName || ''}
                   onChange={(e) => setProfile({ ...profile, businessName: e.target.value })}
                   placeholder="Your Coaching Business"
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 />
               </div>
             </div>
@@ -193,7 +193,7 @@ export function ProfileSettings({ profile: initialProfile, onSave }: ProfileSett
                   value={profile.website || ''}
                   onChange={(e) => setProfile({ ...profile, website: e.target.value })}
                   placeholder="https://yoursite.com"
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 />
               </div>
             </div>
@@ -210,7 +210,7 @@ export function ProfileSettings({ profile: initialProfile, onSave }: ProfileSett
             onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
             rows={4}
             placeholder="Tell your clients a bit about yourself and your coaching approach..."
-            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
           />
         </div>
 
@@ -225,7 +225,7 @@ export function ProfileSettings({ profile: initialProfile, onSave }: ProfileSett
               <select
                 value={profile.timezone}
                 onChange={(e) => setProfile({ ...profile, timezone: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               >
                 {timezones.map(tz => (
                   <option key={tz} value={tz}>{tz.replace('_', ' ')}</option>
@@ -239,7 +239,7 @@ export function ProfileSettings({ profile: initialProfile, onSave }: ProfileSett
               <select
                 value={profile.defaultSessionLength}
                 onChange={(e) => setProfile({ ...profile, defaultSessionLength: parseInt(e.target.value) })}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               >
                 {sessionLengths.map(length => (
                   <option key={length} value={length}>{length} minutes</option>
@@ -257,7 +257,7 @@ export function ProfileSettings({ profile: initialProfile, onSave }: ProfileSett
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-6 py-2.5 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg transition-colors disabled:opacity-50"
           >
             {saving ? (
               <Loader2 className="w-4 h-4 animate-spin" />

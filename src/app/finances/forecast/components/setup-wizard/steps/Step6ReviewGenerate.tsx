@@ -133,14 +133,14 @@ export default function Step6ReviewGenerate({
   return (
     <div className="space-y-6">
       {/* Teaching Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-5 text-white">
+      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-5 text-white">
         <div className="flex items-start gap-4">
           <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
           <div>
             <h3 className="font-bold text-lg mb-1">Step 6: Review & Generate</h3>
-            <p className="text-teal-100 text-sm">
+            <p className="text-brand-orange-100 text-sm">
               Let's make sure everything looks right before we build your forecast.
               This is your last chance to adjust before generating.
             </p>
@@ -152,7 +152,7 @@ export default function Step6ReviewGenerate({
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Target className="w-4 h-4 text-teal-600" />
+            <Target className="w-4 h-4 text-brand-orange" />
             <span className="text-xs font-medium text-gray-500 uppercase">Revenue Goal</span>
           </div>
           <div className="text-xl font-bold text-gray-900">
@@ -175,7 +175,7 @@ export default function Step6ReviewGenerate({
 
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Wallet className="w-4 h-4 text-orange-600" />
+            <Wallet className="w-4 h-4 text-brand-orange-600" />
             <span className="text-xs font-medium text-gray-500 uppercase">Total OpEx</span>
           </div>
           <div className="text-xl font-bold text-gray-900">
@@ -256,7 +256,7 @@ export default function Step6ReviewGenerate({
       {/* Distribution Method */}
       <div className="bg-white border border-gray-200 rounded-xl p-5">
         <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-teal-600" />
+          <Calendar className="w-5 h-5 text-brand-orange" />
           Revenue Distribution Method
         </h4>
         <p className="text-sm text-gray-600 mb-4">
@@ -267,11 +267,11 @@ export default function Step6ReviewGenerate({
           <button
             onClick={() => onUpdate({ distributionMethod: 'even' })}
             className={`p-4 rounded-lg border-2 transition-all text-left ${data.distributionMethod === 'even'
-                ? 'border-teal-500 bg-teal-50'
+                ? 'border-brand-orange-500 bg-brand-orange-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
               }`}
           >
-            <div className={`text-sm font-bold mb-1 ${data.distributionMethod === 'even' ? 'text-teal-900' : 'text-gray-900'
+            <div className={`text-sm font-bold mb-1 ${data.distributionMethod === 'even' ? 'text-brand-navy' : 'text-gray-900'
               }`}>
               Even Split
             </div>
@@ -284,13 +284,13 @@ export default function Step6ReviewGenerate({
             onClick={() => onUpdate({ distributionMethod: 'seasonal_pattern' })}
             disabled={!data.hasActualData}
             className={`p-4 rounded-lg border-2 transition-all text-left ${data.distributionMethod === 'seasonal_pattern'
-                ? 'border-teal-500 bg-teal-50'
+                ? 'border-brand-orange-500 bg-brand-orange-50'
                 : data.hasActualData
                   ? 'border-gray-200 bg-white hover:border-gray-300'
                   : 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
               }`}
           >
-            <div className={`text-sm font-bold mb-1 ${data.distributionMethod === 'seasonal_pattern' ? 'text-teal-900' : 'text-gray-900'
+            <div className={`text-sm font-bold mb-1 ${data.distributionMethod === 'seasonal_pattern' ? 'text-brand-navy' : 'text-gray-900'
               }`}>
               Match FY{fiscalYear - 1} Pattern
             </div>
@@ -304,11 +304,11 @@ export default function Step6ReviewGenerate({
           <button
             onClick={() => onUpdate({ distributionMethod: 'custom' })}
             className={`p-4 rounded-lg border-2 transition-all text-left ${data.distributionMethod === 'custom'
-                ? 'border-teal-500 bg-teal-50'
+                ? 'border-brand-orange-500 bg-brand-orange-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
               }`}
           >
-            <div className={`text-sm font-bold mb-1 ${data.distributionMethod === 'custom' ? 'text-teal-900' : 'text-gray-900'
+            <div className={`text-sm font-bold mb-1 ${data.distributionMethod === 'custom' ? 'text-brand-navy' : 'text-gray-900'
               }`}>
               Custom
             </div>
@@ -320,35 +320,35 @@ export default function Step6ReviewGenerate({
       </div>
 
       {/* What Happens Next */}
-      <div className="bg-gradient-to-br from-teal-50 to-teal-100 border border-teal-200 rounded-xl p-5">
-        <h4 className="font-semibold text-teal-900 mb-3 flex items-center gap-2">
-          <ArrowRight className="w-5 h-5 text-teal-600" />
+      <div className="bg-gradient-to-br from-brand-orange-50 to-brand-orange-100 border border-brand-orange-200 rounded-xl p-5">
+        <h4 className="font-semibold text-brand-navy mb-3 flex items-center gap-2">
+          <ArrowRight className="w-5 h-5 text-brand-orange" />
           What Happens When You Generate
         </h4>
-        <ul className="space-y-2 text-sm text-teal-800">
+        <ul className="space-y-2 text-sm text-brand-orange-800">
           <li className="flex items-start gap-2">
-            <span className="text-teal-600 font-bold mt-0.5">1.</span>
+            <span className="text-brand-orange font-bold mt-0.5">1.</span>
             <span>
               <strong>Revenue distribution:</strong> Your {formatCurrency(data.revenueGoal)} goal
               will be spread across months using your selected method
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="text-teal-600 font-bold mt-0.5">2.</span>
+            <span className="text-brand-orange font-bold mt-0.5">2.</span>
             <span>
               <strong>COGS calculation:</strong> Cost of sales will be calculated at{' '}
               {summary.cogsPercent.toFixed(1)}% of revenue each month
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="text-teal-600 font-bold mt-0.5">3.</span>
+            <span className="text-brand-orange font-bold mt-0.5">3.</span>
             <span>
               <strong>OpEx allocation:</strong> Your operating expenses will be distributed
               based on the methods you selected
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="text-teal-600 font-bold mt-0.5">4.</span>
+            <span className="text-brand-orange font-bold mt-0.5">4.</span>
             <span>
               <strong>P&L table:</strong> You'll be taken to the detailed P&L forecast where
               you can fine-tune individual line items
@@ -362,7 +362,7 @@ export default function Step6ReviewGenerate({
         <button
           onClick={onGenerate}
           disabled={isGenerating || data.revenueGoal === 0}
-          className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-teal-600 to-teal-700 text-white rounded-xl hover:from-teal-700 hover:to-teal-800 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-brand-orange to-brand-orange-700 text-white rounded-xl hover:from-brand-orange-700 hover:to-brand-orange-800 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isGenerating ? (
             <>

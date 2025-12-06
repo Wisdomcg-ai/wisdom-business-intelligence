@@ -45,7 +45,7 @@ export default function AssessmentHistory({ assessments }: AssessmentHistoryProp
           <p className="text-gray-500">No assessments completed yet</p>
           <Link
             href="/assessment"
-            className="mt-4 inline-block px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+            className="mt-4 inline-block px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
           >
             Take Your First Assessment
           </Link>
@@ -79,7 +79,7 @@ export default function AssessmentHistory({ assessments }: AssessmentHistoryProp
                     {formatTime(assessment.created_at)}
                   </span>
                   {index === 0 && (
-                    <span className="px-2 py-1 bg-teal-100 text-teal-700 text-xs rounded-full">
+                    <span className="px-2 py-1 bg-brand-orange-100 text-brand-orange-700 text-xs rounded-full">
                       Latest
                     </span>
                   )}

@@ -206,8 +206,8 @@ export default function ChatPage() {
         {/* Header */}
         <div className="bg-white rounded-t-lg border border-gray-200 border-b-0 p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-              <Briefcase className="w-5 h-5 text-indigo-600" />
+            <div className="w-10 h-10 bg-brand-orange-100 rounded-full flex items-center justify-center">
+              <Briefcase className="w-5 h-5 text-brand-orange" />
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Chat with Your Coach</h2>
@@ -222,7 +222,7 @@ export default function ChatPage() {
         <div className="flex-1 bg-white border-x border-gray-200 overflow-y-auto p-6 space-y-4">
           {loading ? (
             <div className="flex items-center justify-center h-full">
-              <Loader2 className="w-8 h-8 text-teal-600 animate-spin" />
+              <Loader2 className="w-8 h-8 text-brand-orange animate-spin" />
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
@@ -243,19 +243,19 @@ export default function ChatPage() {
                   >
                     <div className={`flex gap-3 max-w-2xl ${isFromCoach ? 'flex-row' : 'flex-row-reverse'}`}>
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        isFromCoach ? 'bg-indigo-100' : 'bg-teal-100'
+                        isFromCoach ? 'bg-brand-orange-100' : 'bg-brand-orange-100'
                       }`}>
                         {isFromCoach ? (
-                          <Briefcase className="w-4 h-4 text-indigo-600" />
+                          <Briefcase className="w-4 h-4 text-brand-orange" />
                         ) : (
-                          <User className="w-4 h-4 text-teal-600" />
+                          <User className="w-4 h-4 text-brand-orange" />
                         )}
                       </div>
                       <div>
                         <div className={`rounded-lg px-4 py-3 ${
                           isFromCoach
                             ? 'bg-gray-100 text-gray-900'
-                            : 'bg-teal-600 text-white'
+                            : 'bg-brand-orange text-white'
                         }`}>
                           <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                         </div>
@@ -264,7 +264,7 @@ export default function ChatPage() {
                             {formatTime(message.created_at)}
                           </span>
                           {!isFromCoach && message.read && (
-                            <CheckCheck className="w-3 h-3 text-teal-500" />
+                            <CheckCheck className="w-3 h-3 text-brand-orange-500" />
                           )}
                         </div>
                       </div>
@@ -285,13 +285,13 @@ export default function ChatPage() {
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder={coachId ? "Type your message..." : "No coach assigned yet"}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               disabled={sending || !businessId || !coachId}
             />
             <button
               type="submit"
               disabled={!newMessage.trim() || sending || !businessId || !coachId}
-              className="bg-teal-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+              className="bg-brand-orange text-white px-6 py-2 rounded-lg shadow-sm font-medium hover:bg-brand-orange-600 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
             >
               {sending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

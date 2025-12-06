@@ -107,7 +107,7 @@ export function SessionsTab({
         </div>
         <button
           onClick={onScheduleSession}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
         >
           <Plus className="w-4 h-4" />
           Schedule Session
@@ -122,7 +122,7 @@ export function SessionsTab({
             onClick={() => setFilter(f)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               filter === f
-                ? 'border-indigo-600 text-indigo-600'
+                ? 'border-brand-orange text-brand-orange'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
@@ -133,10 +133,10 @@ export function SessionsTab({
 
       {/* Next Session Highlight */}
       {upcomingSessions.length > 0 && filter !== 'completed' && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5">
+        <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-xl p-5">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm font-medium text-indigo-600 mb-1">Next Session</p>
+              <p className="text-sm font-medium text-brand-orange mb-1">Next Session</p>
               <h3 className="text-lg font-semibold text-gray-900">
                 {formatDate(upcomingSessions[0].scheduledAt)}
               </h3>
@@ -159,11 +159,11 @@ export function SessionsTab({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button className="px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors">
+              <button className="px-4 py-2 text-sm font-medium text-brand-orange hover:bg-brand-orange-100 rounded-lg transition-colors">
                 <FileText className="w-4 h-4 inline mr-1" />
                 Prep
               </button>
-              <button className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg transition-colors">
+              <button className="px-4 py-2 text-sm font-medium bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg transition-colors">
                 <PlayCircle className="w-4 h-4 inline mr-1" />
                 Start
               </button>
@@ -187,7 +187,7 @@ export function SessionsTab({
             </p>
             <button
               onClick={onScheduleSession}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600"
             >
               <Plus className="w-4 h-4" />
               Schedule First Session
@@ -202,15 +202,15 @@ export function SessionsTab({
             return (
               <div
                 key={session.id}
-                className={`bg-white rounded-xl border border-gray-200 p-5 hover:border-indigo-300 transition-colors ${
-                  today ? 'ring-2 ring-indigo-500' : ''
+                className={`bg-white rounded-xl border border-gray-200 p-5 hover:border-brand-orange-300 transition-colors ${
+                  today ? 'ring-2 ring-brand-orange' : ''
                 }`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-4">
                     {/* Date Badge */}
                     <div className={`w-14 text-center ${
-                      upcoming ? 'text-indigo-600' : 'text-gray-500'
+                      upcoming ? 'text-brand-orange' : 'text-gray-500'
                     }`}>
                       <p className="text-2xl font-bold">
                         {new Date(session.scheduledAt).getDate()}
@@ -227,7 +227,7 @@ export function SessionsTab({
                           {formatTime(session.scheduledAt)}
                         </h4>
                         {today && (
-                          <span className="px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-700 rounded-full">
+                          <span className="px-2 py-0.5 text-xs font-medium bg-brand-orange-100 text-brand-orange-700 rounded-full">
                             Today
                           </span>
                         )}
@@ -257,7 +257,7 @@ export function SessionsTab({
                   {/* Actions */}
                   <button
                     onClick={() => onViewSession?.(session.id)}
-                    className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                    className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
                   >
                     <ChevronRight className="w-5 h-5" />
                   </button>

@@ -56,7 +56,7 @@ export function SprintPlanningStep({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-orange"></div>
         <span className="ml-3 text-gray-600">Loading strategic planning data...</span>
       </div>
     );
@@ -90,11 +90,11 @@ export function SprintPlanningStep({
       />
 
       {/* Planning Context */}
-      <div className="bg-gradient-to-r from-teal-50 to-teal-100 rounded-lg border border-teal-200 p-4 mb-6">
+      <div className="bg-gradient-to-r from-brand-orange-50 to-brand-orange-100 rounded-lg border border-brand-orange-200 p-4 mb-6">
         <div className="flex items-center gap-3">
-          <Lightbulb className="w-5 h-5 text-teal-600" />
+          <Lightbulb className="w-5 h-5 text-brand-orange" />
           <span className="text-sm text-gray-700">
-            <span className="font-semibold text-teal-700">{yearType} {planYear}</span>
+            <span className="font-semibold text-brand-orange-700">{yearType} {planYear}</span>
             <span className="mx-2">•</span>
             Data synced with Goals Wizard
           </span>

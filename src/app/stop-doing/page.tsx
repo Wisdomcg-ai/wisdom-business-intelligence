@@ -3,9 +3,10 @@
 import { useState } from 'react'
 import {
   Clock, DollarSign, ListChecks, Target,
-  ChevronRight, ChevronLeft, Check, Loader2
+  ChevronRight, ChevronLeft, Check, Loader2, Ban
 } from 'lucide-react'
 import { JargonTooltip } from '@/components/ui/Tooltip'
+import PageHeader from '@/components/ui/PageHeader'
 import { useStopDoingList } from './hooks/useStopDoingList'
 import Step1TimeLog from './components/Step1TimeLog'
 import Step2HourlyRate from './components/Step2HourlyRate'
@@ -148,7 +149,7 @@ export default function StopDoingPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-teal-600 mx-auto mb-3" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-3" />
           <p className="text-gray-600">Loading your Stop Doing List...</p>
         </div>
       </div>
@@ -168,21 +169,14 @@ export default function StopDoingPage() {
   }
 
   return (
-    <div className="max-w-[1600px] mx-auto px-6 py-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                <JargonTooltip term="stopDoing">Stop Doing List</JargonTooltip>
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Identify and eliminate low-value activities to reclaim your time
-              </p>
-            </div>
-
-            {/* Save Status Indicator */}
-            {saveStatus !== 'idle' && (
+        <PageHeader
+          title="Stop Doing List"
+          subtitle="Identify and eliminate low-value activities to reclaim your time"
+          icon={Ban}
+          actions={
+            saveStatus !== 'idle' && (
               <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
                 saveStatus === 'saving' ? 'bg-gray-100 text-gray-600' :
                 saveStatus === 'saved' ? 'bg-green-100 text-green-700' :
@@ -192,13 +186,13 @@ export default function StopDoingPage() {
                 {saveStatus === 'saved' && <Check className="w-4 h-4" />}
                 {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : 'Error saving'}
               </div>
-            )}
-          </div>
-        </div>
+            )
+          }
+        />
 
         {/* Step Navigation */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between bg-white rounded-lg border border-gray-200 p-4">
+        <div className="mb-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6 gap-4 overflow-x-auto">
             {STEPS.map((step, index) => {
               const Icon = step.icon
               const isActive = currentStep === step.id
@@ -210,18 +204,18 @@ export default function StopDoingPage() {
               )
 
               return (
-                <div key={step.id} className="flex items-center">
+                <div key={step.id} className="flex items-center w-full sm:w-auto">
                   <button
                     onClick={() => goToStep(step.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                    className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg transition-colors flex-1 sm:flex-initial ${
                       isActive
-                        ? 'bg-teal-600 text-white'
+                        ? 'bg-brand-orange text-white'
                         : isCompleted
                         ? 'bg-green-100 text-green-700 hover:bg-green-200'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                       isActive ? 'bg-white/20' :
                       isCompleted ? 'bg-green-200' : 'bg-gray-200'
                     }`}>
@@ -231,17 +225,17 @@ export default function StopDoingPage() {
                         <Icon className="w-4 h-4" />
                       )}
                     </div>
-                    <div className="text-left hidden md:block">
+                    <div className="text-left hidden lg:block">
                       <p className="font-medium text-sm">{step.title}</p>
                       {step.optional && (
                         <p className="text-xs opacity-75">Optional</p>
                       )}
                     </div>
-                    <span className="md:hidden font-medium text-sm">{step.shortTitle}</span>
+                    <span className="lg:hidden font-medium text-sm truncate">{step.shortTitle}</span>
                   </button>
 
                   {index < STEPS.length - 1 && (
-                    <ChevronRight className="w-5 h-5 text-gray-300 mx-2 hidden sm:block" />
+                    <ChevronRight className="w-5 h-5 text-gray-300 mx-2 hidden sm:block flex-shrink-0" />
                   )}
                 </div>
               )
@@ -250,7 +244,7 @@ export default function StopDoingPage() {
         </div>
 
         {/* Step Content */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+        <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6 mb-6">
           {currentStep === 1 && (
             <Step1TimeLog
               onSkipStep={skipTimeLog}
@@ -310,40 +304,40 @@ export default function StopDoingPage() {
         </div>
 
         {/* Navigation Buttons */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <button
             onClick={goToPrevStep}
             disabled={currentStep === 1}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
-            Previous
+            <span className="text-sm sm:text-base">Previous</span>
           </button>
 
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-gray-500 order-first sm:order-none">
             Step {currentStep} of {STEPS.length}
           </div>
 
           <button
             onClick={goToNextStep}
             disabled={currentStep === 4 || !canProceed()}
-            className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {currentStep === 4 ? 'Complete' : 'Next'}
+            <span className="text-sm sm:text-base">{currentStep === 4 ? 'Complete' : 'Next'}</span>
             {currentStep < 4 && <ChevronRight className="w-4 h-4" />}
           </button>
         </div>
 
         {/* Progress Summary (always visible at bottom) */}
         {stepCompletion.overallProgress > 0 && (
-          <div className="mt-8 bg-gray-50 rounded-lg border border-gray-200 p-4">
+          <div className="mt-6 rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-700">Overall Progress</span>
               <span className="text-sm text-gray-500">{stepCompletion.overallProgress}%</span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
               <div
-                className="h-full bg-teal-600 transition-all duration-500"
+                className="h-full bg-brand-orange transition-all duration-500"
                 style={{ width: `${stepCompletion.overallProgress}%` }}
               />
             </div>

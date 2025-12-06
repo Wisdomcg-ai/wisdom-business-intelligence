@@ -78,7 +78,7 @@ export default function VersionsTab({
           </div>
           <button
             onClick={() => setShowNewVersionModal(true)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors"
           >
             <Plus className="w-4 h-4" />
             Save as New Version
@@ -106,7 +106,7 @@ export default function VersionsTab({
                   key={version.id}
                   className={`border-2 rounded-lg transition-all ${
                     isSelected
-                      ? 'border-teal-500 bg-teal-50'
+                      ? 'border-brand-orange-500 bg-brand-orange-50'
                       : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
                   }`}
                 >
@@ -114,7 +114,7 @@ export default function VersionsTab({
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3 mb-2">
-                          <h3 className={`text-lg font-semibold ${isSelected ? 'text-teal-900' : 'text-gray-900'}`}>
+                          <h3 className={`text-lg font-semibold ${isSelected ? 'text-brand-navy' : 'text-gray-900'}`}>
                             {version.name}
                           </h3>
                           {version.is_active && (
@@ -129,7 +129,7 @@ export default function VersionsTab({
                             </div>
                           )}
                           {isSelected && (
-                            <div className="flex items-center gap-1 text-xs text-teal-600 font-medium">
+                            <div className="flex items-center gap-1 text-xs text-brand-orange font-medium">
                               <Check className="w-4 h-4" />
                               <span>Current</span>
                             </div>
@@ -150,7 +150,7 @@ export default function VersionsTab({
                       {!isSelected && (
                         <button
                           onClick={() => onSelectVersion(version)}
-                          className="ml-4 flex items-center gap-2 px-4 py-2 text-sm font-medium text-teal-600 bg-white border border-teal-600 rounded-lg hover:bg-teal-50 transition-colors"
+                          className="ml-4 flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-orange bg-white border border-brand-orange rounded-lg hover:bg-brand-orange-50 transition-colors"
                         >
                           <span>Switch to this version</span>
                           <ChevronRight className="w-4 h-4" />
@@ -206,7 +206,7 @@ export default function VersionsTab({
                   onChange={(e) => setNewVersionName(e.target.value)}
                   placeholder="e.g., Updated Revenue Goals"
                   disabled={isSaving}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500 disabled:opacity-50"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-orange focus:border-brand-orange-500 disabled:opacity-50"
                   autoFocus
                 />
               </div>
@@ -234,7 +234,7 @@ export default function VersionsTab({
               <button
                 onClick={handleSaveNewVersion}
                 disabled={isSaving || !newVersionName.trim()}
-                className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-md hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {isSaving ? (
                   <>

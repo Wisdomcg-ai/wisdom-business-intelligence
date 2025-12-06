@@ -60,7 +60,7 @@ export function ActionFiltersBar({
           value={filters.search}
           onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
           placeholder="Search actions..."
-          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
         />
       </div>
 
@@ -70,7 +70,7 @@ export function ActionFiltersBar({
         <select
           value={filters.status}
           onChange={(e) => onFiltersChange({ ...filters, status: e.target.value as ActionFilters['status'] })}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
         >
           <option value="all">All Status</option>
           <option value="pending">Pending</option>
@@ -82,7 +82,7 @@ export function ActionFiltersBar({
         <select
           value={filters.priority}
           onChange={(e) => onFiltersChange({ ...filters, priority: e.target.value as ActionFilters['priority'] })}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
         >
           <option value="all">All Priority</option>
           <option value="urgent">Urgent</option>
@@ -95,7 +95,7 @@ export function ActionFiltersBar({
         <select
           value={filters.dueFilter}
           onChange={(e) => onFiltersChange({ ...filters, dueFilter: e.target.value as ActionFilters['dueFilter'] })}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
         >
           <option value="all">All Dates</option>
           <option value="overdue">Overdue</option>
@@ -108,7 +108,7 @@ export function ActionFiltersBar({
         <select
           value={filters.clientId}
           onChange={(e) => onFiltersChange({ ...filters, clientId: e.target.value })}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
         >
           <option value="">All Clients</option>
           {clients.map(client => (
@@ -121,7 +121,7 @@ export function ActionFiltersBar({
           <select
             value={filters.category}
             onChange={(e) => onFiltersChange({ ...filters, category: e.target.value })}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
           >
             <option value="">All Categories</option>
             {categories.map(cat => (
@@ -177,7 +177,7 @@ export function ActionQuickFilters({
           onClick={() => onFilterChange(filter.key)}
           className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
             activeFilter === filter.key
-              ? 'bg-indigo-600 text-white'
+              ? 'bg-brand-orange text-white'
               : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
           }`}
         >

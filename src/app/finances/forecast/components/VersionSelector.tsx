@@ -45,7 +45,7 @@ export default function VersionSelector({
       {/* Trigger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500"
+        className="w-full flex items-center justify-between px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-orange"
       >
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4 text-gray-500" />
@@ -85,13 +85,13 @@ export default function VersionSelector({
                       setIsOpen(false)
                     }}
                     className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${
-                      isSelected ? 'bg-teal-50' : ''
+                      isSelected ? 'bg-brand-orange-50' : ''
                     }`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className={`text-sm font-medium ${isSelected ? 'text-teal-900' : 'text-gray-900'}`}>
+                          <span className={`text-sm font-medium ${isSelected ? 'text-brand-navy' : 'text-gray-900'}`}>
                             {version.name}
                           </span>
                           {version.is_active && (
@@ -113,7 +113,7 @@ export default function VersionSelector({
                         )}
                       </div>
                       {isSelected && (
-                        <Check className="w-5 h-5 text-teal-600 flex-shrink-0 ml-2" />
+                        <Check className="w-5 h-5 text-brand-orange flex-shrink-0 ml-2" />
                       )}
                     </div>
                   </button>

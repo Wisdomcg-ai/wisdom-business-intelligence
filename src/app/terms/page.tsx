@@ -11,7 +11,7 @@ export default function TermsAndConditionsPage() {
       <div className="max-w-4xl mx-auto px-4 py-12">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-teal-600 hover:text-teal-700 mb-8"
+          className="inline-flex items-center gap-2 text-brand-orange hover:text-brand-orange-700 mb-8"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Home
@@ -359,7 +359,7 @@ export default function TermsAndConditionsPage() {
         </div>
 
         <div className="mt-8 text-center text-sm text-gray-500">
-          <Link href="/privacy" className="text-teal-600 hover:text-teal-700">
+          <Link href="/privacy" className="text-brand-orange hover:text-brand-orange-700">
             View Privacy Policy
           </Link>
         </div>

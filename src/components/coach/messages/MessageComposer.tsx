@@ -164,7 +164,7 @@ export function MessageComposer({
               disabled={disabled}
               className={`p-2 rounded-lg transition-colors disabled:opacity-50 ${
                 showTemplates
-                  ? 'text-indigo-600 bg-indigo-50'
+                  ? 'text-brand-orange bg-brand-orange-50'
                   : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
               }`}
               title="Use template"
@@ -184,7 +184,7 @@ export function MessageComposer({
             placeholder={placeholder}
             disabled={disabled || sending}
             rows={1}
-            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white disabled:opacity-50"
+            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-brand-orange focus:bg-white disabled:opacity-50"
             style={{ maxHeight: '150px' }}
           />
         </div>
@@ -193,7 +193,7 @@ export function MessageComposer({
         <button
           onClick={handleSend}
           disabled={disabled || sending || (!message.trim() && attachments.length === 0)}
-          className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="p-3 bg-brand-orange text-white rounded-xl hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {sending ? (
             <Loader2 className="w-5 h-5 animate-spin" />

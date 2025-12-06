@@ -53,7 +53,7 @@ For security, please change your password after your first login.
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -100,12 +100,12 @@ For security, please change your password after your first login.
             </div>
           </div>
         ) : emailSent ? (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-4 mb-6">
             <div className="flex items-start gap-3">
-              <Mail className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <Mail className="w-5 h-5 text-brand-orange flex-shrink-0 mt-0.5" />
               <div>
-                <h4 className="text-sm font-semibold text-blue-900">Invitation Email Sent</h4>
-                <p className="text-sm text-blue-800 mt-1">
+                <h4 className="text-sm font-semibold text-brand-navy">Invitation Email Sent</h4>
+                <p className="text-sm text-brand-navy mt-1">
                   An email with login credentials has been sent to {email}. The credentials below are also available if you need to share them another way.
                 </p>
               </div>
@@ -148,7 +148,7 @@ For security, please change your password after your first login.
 
           <button
             onClick={copyToClipboard}
-            className="mt-6 w-full px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center justify-center gap-2"
+            className="mt-6 w-full px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 shadow-sm transition-colors flex items-center justify-center gap-2"
           >
             {copied ? (
               <>
@@ -179,13 +179,13 @@ For security, please change your password after your first login.
         <div className="flex gap-4">
           <Link
             href="/admin/clients/new"
-            className="flex-1 px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-center"
+            className="flex-1 px-6 py-3 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-center"
           >
             Add Another Client
           </Link>
           <Link
             href="/admin"
-            className="flex-1 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-center"
+            className="flex-1 px-6 py-3 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 shadow-sm transition-colors text-center"
           >
             Back to Dashboard
           </Link>
@@ -198,9 +198,9 @@ For security, please change your password after your first login.
 export default function ClientCreatedSuccessPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-orange mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>

@@ -34,7 +34,7 @@ export default function OpExLineControls({
         <select
           value={currentMethod}
           onChange={(e) => onMethodChange(e.target.value as ForecastMethod)}
-          className="w-full px-3 py-2 text-sm font-medium border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white transition-all cursor-pointer hover:border-gray-400"
+          className="w-full px-3 py-2 text-sm font-medium border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 bg-white transition-all cursor-pointer hover:border-gray-400"
         >
           {methodOptions.map((option) => (
             <option key={option.value} value={option.value}>
@@ -51,7 +51,7 @@ export default function OpExLineControls({
             type="number"
             value={currentPercentage}
             onChange={(e) => onPercentageChange(parseFloat(e.target.value) || 0)}
-            className="w-16 px-2 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right transition-all"
+            className="w-16 px-2 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 text-right transition-all"
             placeholder="0"
             step="0.5"
             min="0"
@@ -71,7 +71,7 @@ export default function OpExLineControls({
               // This will need to be handled separately - for now just show the input
               console.log('Driver percentage:', e.target.value)
             }}
-            className="w-16 px-2 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-right transition-all"
+            className="w-16 px-2 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 text-right transition-all"
             placeholder="5"
             step="0.5"
             min="0"

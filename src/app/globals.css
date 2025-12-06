@@ -6,6 +6,11 @@
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;
   --background-end-rgb: 255, 255, 255;
+
+  /* WisdomBi Brand Colors - Exact from brand guidelines */
+  --brand-navy: #273E65;
+  --brand-teal: #0d9488;
+  --brand-orange: #F5821F;
 }
 
 @media (prefers-color-scheme: dark) {

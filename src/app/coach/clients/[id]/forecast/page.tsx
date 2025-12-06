@@ -480,9 +480,9 @@ export default function CoachForecastPage() {
     return (
       <>
         <CoachNavbar businessId={clientId} />
-        <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <div className="flex items-center justify-center min-h-screen bg-gray-50">
           <div className="text-center">
-            <Loader2 className="w-12 h-12 animate-spin text-teal-600 mx-auto mb-4" />
+            <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
             <p className="text-gray-600">Loading financial forecast...</p>
           </div>
         </div>
@@ -519,7 +519,7 @@ export default function CoachForecastPage() {
   return (
     <>
       <CoachNavbar businessId={clientId} />
-      <div className="min-h-screen bg-slate-50 p-8">
+      <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-[1600px] mx-auto">
           {/* Error Banner */}
           {error && !isLoading && (
@@ -549,8 +549,8 @@ export default function CoachForecastPage() {
                   disabled={isSaving}
                   className={`flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 ${
                     hasUnsavedChanges
-                      ? 'bg-orange-600 hover:bg-orange-700 animate-pulse'
-                      : 'bg-teal-600 hover:bg-teal-700'
+                      ? 'bg-brand-orange-600 hover:bg-brand-orange-600 animate-pulse'
+                      : 'bg-brand-orange hover:bg-brand-orange-600'
                   }`}
                 >
                   <Save className="w-4 h-4" />

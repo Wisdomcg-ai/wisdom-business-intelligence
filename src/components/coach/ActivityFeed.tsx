@@ -35,19 +35,19 @@ export function ActivityFeed({ activities, maxItems = 10 }: ActivityFeedProps) {
   const getActivityIcon = (type: ActivityItem['type']) => {
     switch (type) {
       case 'action_completed':
-        return { icon: CheckCircle, bg: 'bg-green-100', color: 'text-green-600' }
+        return { icon: CheckCircle, bg: 'bg-brand-teal-100', color: 'text-brand-teal' }
       case 'message_received':
-        return { icon: MessageSquare, bg: 'bg-blue-100', color: 'text-blue-600' }
+        return { icon: MessageSquare, bg: 'bg-brand-orange-100', color: 'text-brand-orange' }
       case 'session_completed':
-        return { icon: Calendar, bg: 'bg-indigo-100', color: 'text-indigo-600' }
+        return { icon: Calendar, bg: 'bg-brand-navy-50', color: 'text-brand-navy' }
       case 'goal_achieved':
-        return { icon: Target, bg: 'bg-purple-100', color: 'text-purple-600' }
+        return { icon: Target, bg: 'bg-brand-teal-100', color: 'text-brand-teal' }
       case 'document_uploaded':
-        return { icon: FileText, bg: 'bg-cyan-100', color: 'text-cyan-600' }
+        return { icon: FileText, bg: 'bg-brand-navy-50', color: 'text-brand-navy' }
       case 'assessment_completed':
-        return { icon: TrendingUp, bg: 'bg-teal-100', color: 'text-teal-600' }
+        return { icon: TrendingUp, bg: 'bg-brand-orange-100', color: 'text-brand-orange' }
       case 'client_added':
-        return { icon: User, bg: 'bg-indigo-100', color: 'text-indigo-600' }
+        return { icon: User, bg: 'bg-brand-navy-50', color: 'text-brand-navy' }
       case 'action_overdue':
         return { icon: AlertCircle, bg: 'bg-red-100', color: 'text-red-600' }
       default:
@@ -77,7 +77,7 @@ export function ActivityFeed({ activities, maxItems = 10 }: ActivityFeedProps) {
       {/* Header */}
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="bg-indigo-600 p-2 rounded-lg">
+          <div className="bg-brand-orange p-2 rounded-lg">
             <Activity className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -115,7 +115,7 @@ export function ActivityFeed({ activities, maxItems = 10 }: ActivityFeedProps) {
                       <div>
                         <Link
                           href={`/coach/clients/${activity.clientId}`}
-                          className="font-medium text-gray-900 hover:text-indigo-600"
+                          className="font-medium text-gray-900 hover:text-brand-orange"
                         >
                           {activity.clientName}
                         </Link>
@@ -138,7 +138,7 @@ export function ActivityFeed({ activities, maxItems = 10 }: ActivityFeedProps) {
       {/* Footer */}
       {activities.length > maxItems && (
         <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
-          <button className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center justify-center gap-1 w-full">
+          <button className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium flex items-center justify-center gap-1 w-full">
             View all activity
             <ChevronRight className="w-4 h-4" />
           </button>

@@ -771,8 +771,8 @@ export default function StrategicInitiatives() {
   const getPriorityColor = (priority: 'high' | 'medium' | 'low') => {
     switch (priority) {
       case 'high': return 'text-red-700 bg-red-100';
-      case 'medium': return 'text-orange-700 bg-orange-100';
-      case 'low': return 'text-teal-700 bg-teal-100';
+      case 'medium': return 'text-brand-orange-700 bg-brand-orange-100';
+      case 'low': return 'text-brand-orange-700 bg-brand-orange-100';
     }
   };
 
@@ -791,7 +791,7 @@ export default function StrategicInitiatives() {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading initiatives...</p>
         </div>
       </div>
@@ -808,10 +808,10 @@ export default function StrategicInitiatives() {
       )}
 
       {/* Input Section - FIRST */}
-      <div className="bg-gradient-to-br from-teal-50 to-teal-50 rounded-xl shadow-sm border border-teal-100 p-6">
+      <div className="bg-gradient-to-br from-brand-orange-50 to-brand-orange-50 rounded-xl shadow-sm border border-brand-orange-100 p-6">
         <div className="flex items-start gap-4 mb-6">
-          <div className="p-3 bg-teal-100 rounded-xl">
-            <Target className="w-6 h-6 text-teal-600" />
+          <div className="p-3 bg-brand-orange-100 rounded-xl">
+            <Target className="w-6 h-6 text-brand-orange" />
           </div>
           <div className="flex-1">
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
@@ -822,7 +822,7 @@ export default function StrategicInitiatives() {
                 Brain dump everything - systems, people, skills, processes, technology.
               </p>
               {twelveMonthTargets && (
-                <div className="text-sm text-teal-800 bg-teal-100 rounded-lg p-3">
+                <div className="text-sm text-brand-orange-800 bg-brand-orange-100 rounded-lg p-3">
                   <strong>Your 12-month targets:</strong> 
                   {twelveMonthTargets.currentRevenue && twelveMonthTargets.targetRevenue && (
                     <span className="ml-2">
@@ -843,12 +843,12 @@ export default function StrategicInitiatives() {
               onChange={(e) => setNewInitiative(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addInitiative()}
               placeholder="Type what you need to implement..."
-              className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
             />
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value as InitiativeCategory)}
-              className="px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
             >
               {Object.entries(categoryInfo).map(([key, info]) => (
                 <option key={key} value={key}>
@@ -862,7 +862,7 @@ export default function StrategicInitiatives() {
               className={`px-6 py-3 rounded-lg font-semibold flex items-center gap-2 ${
                 !newInitiative.trim()
                   ? 'bg-gray-300 text-gray-500'
-                  : 'bg-teal-600 text-white hover:bg-teal-700'
+                  : 'bg-brand-orange text-white hover:bg-brand-orange-600'
               }`}
             >
               <Plus className="w-5 h-5" />
@@ -870,10 +870,10 @@ export default function StrategicInitiatives() {
             </button>
           </div>
           
-          <div className="p-4 bg-teal-50 rounded-lg border border-teal-100">
+          <div className="p-4 bg-brand-orange-50 rounded-lg border border-brand-orange-100">
             <div className="flex items-start gap-3">
-              <Lightbulb className="w-5 h-5 text-teal-600 mt-0.5" />
-              <p className="text-sm text-teal-800">
+              <Lightbulb className="w-5 h-5 text-brand-orange mt-0.5" />
+              <p className="text-sm text-brand-orange-800">
                 <span className="font-bold">Pro tip:</span> Think capabilities - what systems, people, skills do you need to hit your targets?
               </p>
             </div>
@@ -888,7 +888,7 @@ export default function StrategicInitiatives() {
           className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors text-left"
         >
           <div className="flex items-center gap-3">
-            <Building className="w-5 h-5 text-teal-600" />
+            <Building className="w-5 h-5 text-brand-orange" />
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Foundation-First Roadmap</h3>
               <p className="text-sm text-gray-600">
@@ -901,8 +901,8 @@ export default function StrategicInitiatives() {
         
         {showRoadmap && (
           <div className="border-t border-gray-200 p-6">
-            <div className="mb-4 p-3 bg-teal-50 rounded-lg border border-teal-200">
-              <div className="flex items-center gap-2 text-teal-700 text-sm">
+            <div className="mb-4 p-3 bg-brand-orange-50 rounded-lg border border-brand-orange-200">
+              <div className="flex items-center gap-2 text-brand-orange-700 text-sm">
                 <AlertCircle className="w-4 h-4" />
                 <strong>Foundation-First Approach:</strong> Complete lower levels before advancing. Showing all levels through {currentStage.name}.
               </div>
@@ -918,7 +918,7 @@ export default function StrategicInitiatives() {
                 return (
                   <div key={stage.id} className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <h4 className={`font-medium ${stage.id === currentStage.id ? 'text-teal-700' : 'text-gray-700'}`}>
+                      <h4 className={`font-medium ${stage.id === currentStage.id ? 'text-brand-orange-700' : 'text-gray-700'}`}>
                         {stage.name} ({stage.range})
                       </h4>
                       <div className="flex items-center gap-2">
@@ -929,7 +929,7 @@ export default function StrategicInitiatives() {
                           <div 
                             className={`h-2 rounded-full transition-all ${
                               completionPercent === 100 ? 'bg-green-500' : 
-                              completionPercent > 50 ? 'bg-teal-500' : 'bg-gray-400'
+                              completionPercent > 50 ? 'bg-brand-orange-500' : 'bg-gray-400'
                             }`}
                             style={{ width: `${completionPercent}%` }}
                           />
@@ -979,7 +979,7 @@ export default function StrategicInitiatives() {
                                     
                                     <div className="flex items-center gap-2">
                                       {exists && (
-                                        <span className="text-xs text-teal-600 flex items-center gap-1">
+                                        <span className="text-xs text-brand-orange flex items-center gap-1">
                                           <Check className="w-3.5 h-3.5" />
                                           In List
                                         </span>
@@ -987,7 +987,7 @@ export default function StrategicInitiatives() {
                                       {!exists && !completed && (
                                         <button
                                           onClick={() => addFromRoadmap(task, category as InitiativeCategory, stage.id)}
-                                          className="text-xs px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700 transition-colors"
+                                          className="text-xs px-3 py-1 bg-brand-orange text-white rounded hover:bg-brand-orange-600 transition-colors"
                                         >
                                           Add to List
                                         </button>
@@ -1011,13 +1011,13 @@ export default function StrategicInitiatives() {
 
       {/* Assessment Suggestions - THIRD (Simplified, Blue Branded) */}
       {assessmentResults && assessmentSuggestions.length > 0 && (
-        <div className="bg-gradient-to-br from-teal-50 to-teal-50 rounded-xl shadow-sm border border-teal-100">
+        <div className="bg-gradient-to-br from-brand-orange-50 to-brand-orange-50 rounded-xl shadow-sm border border-brand-orange-100">
           <button
             onClick={() => setShowAssessmentSuggestions(!showAssessmentSuggestions)}
-            className="w-full p-4 flex items-center justify-between hover:bg-teal-50 transition-colors text-left rounded-t-xl"
+            className="w-full p-4 flex items-center justify-between hover:bg-brand-orange-50 transition-colors text-left rounded-t-xl"
           >
             <div className="flex items-center gap-3">
-              <Zap className="w-5 h-5 text-teal-600" />
+              <Zap className="w-5 h-5 text-brand-orange" />
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Diagnostic-Based Suggestions</h3>
                 <p className="text-sm text-gray-600">
@@ -1034,7 +1034,7 @@ export default function StrategicInitiatives() {
           </button>
           
           {showAssessmentSuggestions && (
-            <div className="border-t border-teal-200 p-6">
+            <div className="border-t border-brand-orange-200 p-6">
               <div className="space-y-3">
                 {assessmentSuggestions.map((suggestion) => {
                   const Icon = categoryIcons[suggestion.category];
@@ -1044,10 +1044,10 @@ export default function StrategicInitiatives() {
                   return (
                     <div
                       key={suggestion.id}
-                      className="flex items-start gap-4 p-4 bg-white rounded-lg border hover:border-teal-200 transition-colors"
+                      className="flex items-start gap-4 p-4 bg-white rounded-lg border hover:border-brand-orange-200 transition-colors"
                     >
-                      <div className="flex-shrink-0 p-2 bg-teal-100 rounded-lg">
-                        <Icon className="w-4 h-4 text-teal-600" />
+                      <div className="flex-shrink-0 p-2 bg-brand-orange-100 rounded-lg">
+                        <Icon className="w-4 h-4 text-brand-orange" />
                       </div>
                       
                       <div className="flex-1 min-w-0">
@@ -1074,7 +1074,7 @@ export default function StrategicInitiatives() {
                           
                           <div className="flex items-center gap-2">
                             {exists && (
-                              <span className="text-xs text-teal-600 flex items-center gap-1">
+                              <span className="text-xs text-brand-orange flex items-center gap-1">
                                 <Check className="w-3.5 h-3.5" />
                                 In List
                               </span>
@@ -1082,7 +1082,7 @@ export default function StrategicInitiatives() {
                             {!exists && (
                               <button
                                 onClick={() => addFromAssessment(suggestion)}
-                                className="text-xs px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700 transition-colors"
+                                className="text-xs px-3 py-1 bg-brand-orange text-white rounded hover:bg-brand-orange-600 transition-colors"
                               >
                                 Add to List
                               </button>
@@ -1095,10 +1095,10 @@ export default function StrategicInitiatives() {
                 })}
               </div>
 
-              <div className="mt-4 p-3 bg-teal-50 rounded-lg border border-teal-200">
+              <div className="mt-4 p-3 bg-brand-orange-50 rounded-lg border border-brand-orange-200">
                 <div className="flex items-start gap-3">
-                  <Lightbulb className="w-4 h-4 text-teal-600 mt-0.5" />
-                  <p className="text-xs text-teal-800">
+                  <Lightbulb className="w-4 h-4 text-brand-orange mt-0.5" />
+                  <p className="text-xs text-brand-orange-800">
                     <span className="font-bold">Assessment Insight:</span> These suggestions target your diagnostic weak spots for maximum impact.
                   </p>
                 </div>
@@ -1121,7 +1121,7 @@ export default function StrategicInitiatives() {
                 Choose up to 15 initiatives to prioritize over the next 12 months to achieve your targets
               </p>
               {maxReached && (
-                <div className="flex items-center gap-2 text-orange-600 text-sm mt-2">
+                <div className="flex items-center gap-2 text-brand-orange-600 text-sm mt-2">
                   <AlertCircle className="w-4 h-4" />
                   Maximum reached - deselect one to add another
                 </div>
@@ -1136,7 +1136,7 @@ export default function StrategicInitiatives() {
             <button
               onClick={() => setFilterCategory('all')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filterCategory === 'all' ? 'bg-teal-100 text-teal-700' : 'bg-white text-gray-600 hover:bg-gray-100'
+                filterCategory === 'all' ? 'bg-brand-orange-100 text-brand-orange-700' : 'bg-white text-gray-600 hover:bg-gray-100'
               }`}
             >
               All ({initiatives.length})
@@ -1144,7 +1144,7 @@ export default function StrategicInitiatives() {
             <button
               onClick={() => setFilterCategory('selected')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filterCategory === 'selected' ? 'bg-teal-100 text-teal-700' : 'bg-white text-gray-600 hover:bg-gray-100'
+                filterCategory === 'selected' ? 'bg-brand-orange-100 text-brand-orange-700' : 'bg-white text-gray-600 hover:bg-gray-100'
               }`}
             >
               Selected Only ({selectedCount})
@@ -1157,7 +1157,7 @@ export default function StrategicInitiatives() {
                   key={key}
                   onClick={() => setFilterCategory(key as InitiativeCategory)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors ${
-                    filterCategory === key ? 'bg-teal-100 text-teal-700' : 'bg-white text-gray-600 hover:bg-gray-100'
+                    filterCategory === key ? 'bg-brand-orange-100 text-brand-orange-700' : 'bg-white text-gray-600 hover:bg-gray-100'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -1176,7 +1176,7 @@ export default function StrategicInitiatives() {
           className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors text-left"
         >
           <div className="flex items-center gap-3">
-            <User className="w-5 h-5 text-teal-600" />
+            <User className="w-5 h-5 text-brand-orange" />
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Your Initiatives</h3>
               <p className="text-sm text-gray-600">
@@ -1215,7 +1215,7 @@ export default function StrategicInitiatives() {
                       key={initiative.id}
                       className={`flex items-center gap-4 p-4 rounded-lg transition-colors border ${
                         isSelected 
-                          ? 'bg-teal-50 border-teal-200' 
+                          ? 'bg-brand-orange-50 border-brand-orange-200' 
                           : 'bg-white border-gray-200 hover:bg-gray-50'
                       } ${isDisabled ? 'opacity-50' : ''}`}
                     >
@@ -1225,7 +1225,7 @@ export default function StrategicInitiatives() {
                           checked={isSelected}
                           onChange={() => toggleAnnualPlan(initiative.id)}
                           disabled={isDisabled}
-                          className="w-6 h-6 text-teal-600 rounded border-2 border-gray-300 focus:ring-teal-500 focus:ring-2 disabled:cursor-not-allowed"
+                          className="w-6 h-6 text-brand-orange rounded border-2 border-gray-300 focus:ring-brand-orange focus:ring-2 disabled:cursor-not-allowed"
                         />
                       </div>
                       
@@ -1241,8 +1241,8 @@ export default function StrategicInitiatives() {
                         
                         <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
                           initiative.source_type === 'user' ? 'bg-green-100 text-green-700' :
-                          initiative.source_type === 'assessment' ? 'bg-teal-100 text-teal-700' :
-                          initiative.source_type === 'roadmap' ? 'bg-indigo-100 text-indigo-700' :
+                          initiative.source_type === 'assessment' ? 'bg-brand-orange-100 text-brand-orange-700' :
+                          initiative.source_type === 'roadmap' ? 'bg-brand-orange-100 text-brand-orange-700' :
                           'bg-green-100 text-green-700'
                         }`}>
                           <User className="w-3 h-3" />

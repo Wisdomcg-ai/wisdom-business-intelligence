@@ -27,16 +27,16 @@ export const CATEGORIES_SIMPLE = {
   OTHER: 'Other'
 } as const
 
-// Category objects with display properties
+// Category objects with display properties - Using brand colors
 export const CATEGORIES: Record<string, { label: string; emoji: string; color: string; keywords: string[] }> = {
-  Operations: { label: 'Operations', emoji: '⚙️', color: 'text-purple-600', keywords: ['ops', 'operation', 'process', 'system', 'workflow'] },
-  Sales: { label: 'Sales', emoji: '💰', color: 'text-blue-600', keywords: ['sale', 'sell', 'deal', 'prospect', 'lead', 'client', 'customer', 'revenue'] },
-  Marketing: { label: 'Marketing', emoji: '📢', color: 'text-green-600', keywords: ['market', 'campaign', 'ads', 'content', 'social', 'brand', 'promo'] },
-  Finance: { label: 'Finance', emoji: '💵', color: 'text-yellow-600', keywords: ['finance', 'money', 'budget', 'invoice', 'payment', 'expense', 'profit', 'tax'] },
-  Team: { label: 'Team', emoji: '👥', color: 'text-pink-600', keywords: ['team', 'hire', 'recruit', 'staff', 'employee', 'hr', 'training', 'meeting'] },
-  Strategy: { label: 'Strategy', emoji: '🎯', color: 'text-indigo-600', keywords: ['strategy', 'plan', 'goal', 'vision', 'roadmap', 'quarterly', 'annual'] },
+  Operations: { label: 'Operations', emoji: '⚙️', color: 'text-brand-navy', keywords: ['ops', 'operation', 'process', 'system', 'workflow'] },
+  Sales: { label: 'Sales', emoji: '💰', color: 'text-brand-orange', keywords: ['sale', 'sell', 'deal', 'prospect', 'lead', 'client', 'customer', 'revenue'] },
+  Marketing: { label: 'Marketing', emoji: '📢', color: 'text-brand-navy', keywords: ['market', 'campaign', 'ads', 'content', 'social', 'brand', 'promo'] },
+  Finance: { label: 'Finance', emoji: '💵', color: 'text-brand-orange', keywords: ['finance', 'money', 'budget', 'invoice', 'payment', 'expense', 'profit', 'tax'] },
+  Team: { label: 'Team', emoji: '👥', color: 'text-brand-navy', keywords: ['team', 'hire', 'recruit', 'staff', 'employee', 'hr', 'training', 'meeting'] },
+  Strategy: { label: 'Strategy', emoji: '🎯', color: 'text-brand-orange', keywords: ['strategy', 'plan', 'goal', 'vision', 'roadmap', 'quarterly', 'annual'] },
   Personal: { label: 'Personal', emoji: '🏠', color: 'text-gray-600', keywords: ['personal', 'home', 'family', 'health', 'self', 'life'] },
-  Admin: { label: 'Admin', emoji: '📋', color: 'text-orange-600', keywords: ['admin', 'office', 'document', 'file', 'report', 'email'] },
+  Admin: { label: 'Admin', emoji: '📋', color: 'text-brand-navy', keywords: ['admin', 'office', 'document', 'file', 'report', 'email'] },
   Other: { label: 'Other', emoji: '📌', color: 'text-gray-500', keywords: [] }
 }
 
@@ -70,25 +70,25 @@ export const LIMITS = {
 export const COLORS = {
   priority: {
     critical: 'bg-red-100 text-red-700 border-red-300',
-    high: 'bg-orange-100 text-orange-700 border-orange-300',
+    high: 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-300',
     medium: 'bg-yellow-100 text-yellow-700 border-yellow-300',
-    low: 'bg-green-100 text-green-700 border-green-300'
+    low: 'bg-brand-teal/10 text-brand-teal border-brand-teal/30'
   },
   category: {
-    Operations: 'bg-purple-100 text-purple-700',
-    Sales: 'bg-blue-100 text-blue-700',
-    Marketing: 'bg-green-100 text-green-700',
-    Finance: 'bg-yellow-100 text-yellow-700',
-    Team: 'bg-pink-100 text-pink-700',
-    Strategy: 'bg-indigo-100 text-indigo-700',
+    Operations: 'bg-brand-navy-50 text-brand-navy',
+    Sales: 'bg-brand-orange-50 text-brand-orange-700',
+    Marketing: 'bg-brand-navy-50 text-brand-navy',
+    Finance: 'bg-brand-orange-50 text-brand-orange-700',
+    Team: 'bg-brand-navy-50 text-brand-navy',
+    Strategy: 'bg-brand-orange-50 text-brand-orange-700',
     Personal: 'bg-gray-100 text-gray-700',
-    Admin: 'bg-orange-100 text-orange-700',
+    Admin: 'bg-brand-navy-50 text-brand-navy',
     Other: 'bg-gray-100 text-gray-700'
   },
   status: {
     pending: 'bg-gray-100 text-gray-700',
-    in_progress: 'bg-blue-100 text-blue-700',
-    completed: 'bg-green-100 text-green-700',
+    in_progress: 'bg-brand-orange-50 text-brand-orange-700',
+    completed: 'bg-brand-teal/10 text-brand-teal',
     cancelled: 'bg-red-100 text-red-700'
   }
 } as const

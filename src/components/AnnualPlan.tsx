@@ -747,7 +747,7 @@ export default function AnnualPlan() {
     switch (saveStatus) {
       case 'saving':
         return (
-          <div className="flex items-center text-teal-600">
+          <div className="flex items-center text-brand-orange">
             <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
             <span className="text-sm">Saving...</span>
           </div>
@@ -787,7 +787,7 @@ export default function AnnualPlan() {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-orange mx-auto"></div>
           <p className="mt-3 text-gray-600">Loading your annual strategic plan...</p>
           <p className="mt-1 text-xs text-gray-500">Connecting to database...</p>
         </div>
@@ -807,7 +807,7 @@ export default function AnnualPlan() {
           <button
             onClick={refreshData}
             disabled={loading.refreshing}
-            className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50"
+            className="bg-brand-orange text-white px-4 py-2 rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50"
           >
             {loading.refreshing ? (
               <>
@@ -838,7 +838,7 @@ export default function AnnualPlan() {
           <button
             onClick={refreshData}
             disabled={loading.refreshing}
-            className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50"
+            className="bg-brand-orange text-white px-4 py-2 rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50"
           >
             Setup Strategic Goals
           </button>
@@ -886,8 +886,8 @@ export default function AnnualPlan() {
       {error && (
         <div className={`border rounded-lg px-4 py-3 flex items-center gap-2 ${
           error.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' :
-          error.type === 'warning' ? 'bg-orange-50 border-orange-200 text-orange-700' :
-          'bg-teal-50 border-teal-200 text-teal-700'
+          error.type === 'warning' ? 'bg-brand-orange-50 border-brand-orange-200 text-brand-orange-700' :
+          'bg-brand-orange-50 border-brand-orange-200 text-brand-orange-700'
         }`}>
           {error.type === 'error' ? <AlertCircle className="w-5 h-5 flex-shrink-0" /> :
            error.type === 'warning' ? <AlertCircle className="w-5 h-5 flex-shrink-0" /> :
@@ -921,9 +921,9 @@ export default function AnnualPlan() {
 
       {/* Quarterly Planning Controls */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="bg-teal-50 px-6 py-4 border-b border-gray-200">
+        <div className="bg-brand-orange-50 px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-            <Settings className="h-5 w-5 mr-2 text-teal-600" />
+            <Settings className="h-5 w-5 mr-2 text-brand-orange" />
             Quarterly Planning Method
           </h3>
         </div>
@@ -941,7 +941,7 @@ export default function AnnualPlan() {
                       recalculateAllTargets(quarterlyPercentages)
                     }
                   }}
-                  className="w-4 h-4 text-teal-600 border-gray-300 focus:ring-teal-500"
+                  className="w-4 h-4 text-brand-orange border-gray-300 focus:ring-brand-orange"
                 />
                 <span className="ml-2 font-medium text-gray-900">Use percentage distribution</span>
                 <span className="ml-2 text-sm text-gray-500">(recommended for balanced growth)</span>
@@ -951,7 +951,7 @@ export default function AnnualPlan() {
                   type="radio"
                   checked={!usePercentageMode}
                   onChange={() => setUsePercentageMode(false)}
-                  className="w-4 h-4 text-teal-600 border-gray-300 focus:ring-teal-500"
+                  className="w-4 h-4 text-brand-orange border-gray-300 focus:ring-brand-orange"
                 />
                 <span className="ml-2 font-medium text-gray-900">Manual individual targets</span>
               </label>
@@ -960,7 +960,7 @@ export default function AnnualPlan() {
             {usePercentageMode && (
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-4">
-                  <Zap className="h-4 w-4 text-teal-600" />
+                  <Zap className="h-4 w-4 text-brand-orange" />
                   <p className="text-sm text-gray-600">
                     Set what percentage of your annual target each quarter should achieve (must total 100%):
                   </p>
@@ -976,7 +976,7 @@ export default function AnnualPlan() {
                           type="number"
                           value={quarterlyPercentages[quarter]}
                           onChange={(e) => updateQuarterlyPercentages(quarter, Number(e.target.value))}
-                          className={`w-20 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-center ${
+                          className={`w-20 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange text-center ${
                             percentageError ? 'border-red-300 bg-red-50' : 'border-gray-300'
                           }`}
                           min="0"
@@ -1006,10 +1006,10 @@ export default function AnnualPlan() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <button
           onClick={() => toggleSection('financial')}
-          className="w-full bg-teal-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between hover:bg-teal-100 transition-colors"
+          className="w-full bg-brand-orange-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between hover:bg-brand-orange-100 transition-colors"
         >
           <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-            <TrendingUp className="h-5 w-5 mr-2 text-teal-600" />
+            <TrendingUp className="h-5 w-5 mr-2 text-brand-orange" />
             Financial Performance Targets
           </h3>
           {sectionsCollapsed.financial ? (
@@ -1025,7 +1025,7 @@ export default function AnnualPlan() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Financial Metric</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-600 bg-teal-50">Current</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-600 bg-brand-orange-50">Current</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-gray-600 bg-green-50">Year Target</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-gray-600">
                     {getQuarterEndDate('q1', financialData.year_type)}
@@ -1047,10 +1047,10 @@ export default function AnnualPlan() {
                     <DollarSign className="h-4 w-4 mr-2 text-green-600" />
                     Revenue
                   </td>
-                  <td className="px-6 py-4 text-center text-gray-700 bg-teal-50 font-medium">
+                  <td className="px-6 py-4 text-center text-gray-700 bg-brand-orange-50 font-medium">
                     {formatCurrency(getFinancialValue('revenue_current'))}
                   </td>
-                  <td className="px-6 py-4 text-center font-semibold text-teal-600 bg-green-50">
+                  <td className="px-6 py-4 text-center font-semibold text-brand-orange bg-green-50">
                     {formatCurrency(getFinancialValue('revenue_1_year'))}
                   </td>
                   {(['q1', 'q2', 'q3', 'q4'] as const).map(quarter => (
@@ -1059,7 +1059,7 @@ export default function AnnualPlan() {
                         type="text"
                         value={formatNumber(getQuarterlyTarget('revenue_1_year', quarter))}
                         onChange={(e) => updateQuarterlyTarget('revenue_1_year', quarter, parseCurrencyInput(e.target.value))}
-                        className="w-24 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        className="w-24 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                         disabled={usePercentageMode}
                         placeholder="0"
                       />
@@ -1068,10 +1068,10 @@ export default function AnnualPlan() {
                 </tr>
                 <tr className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">Gross Profit</td>
-                  <td className="px-6 py-4 text-center text-gray-700 bg-teal-50 font-medium">
+                  <td className="px-6 py-4 text-center text-gray-700 bg-brand-orange-50 font-medium">
                     {formatCurrency(getFinancialValue('gross_profit_current'))}
                   </td>
-                  <td className="px-6 py-4 text-center font-semibold text-teal-600 bg-green-50">
+                  <td className="px-6 py-4 text-center font-semibold text-brand-orange bg-green-50">
                     {formatCurrency(getFinancialValue('gross_profit_1_year'))}
                   </td>
                   {(['q1', 'q2', 'q3', 'q4'] as const).map(quarter => (
@@ -1080,7 +1080,7 @@ export default function AnnualPlan() {
                         type="text"
                         value={formatNumber(getQuarterlyTarget('gross_profit_1_year', quarter))}
                         onChange={(e) => updateQuarterlyTarget('gross_profit_1_year', quarter, parseCurrencyInput(e.target.value))}
-                        className="w-24 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        className="w-24 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                         disabled={usePercentageMode}
                         placeholder="0"
                       />
@@ -1089,10 +1089,10 @@ export default function AnnualPlan() {
                 </tr>
                 <tr className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">Net Profit</td>
-                  <td className="px-6 py-4 text-center text-gray-700 bg-teal-50 font-medium">
+                  <td className="px-6 py-4 text-center text-gray-700 bg-brand-orange-50 font-medium">
                     {formatCurrency(getFinancialValue('net_profit_current'))}
                   </td>
-                  <td className="px-6 py-4 text-center font-semibold text-teal-600 bg-green-50">
+                  <td className="px-6 py-4 text-center font-semibold text-brand-orange bg-green-50">
                     {formatCurrency(getFinancialValue('net_profit_1_year'))}
                   </td>
                   {(['q1', 'q2', 'q3', 'q4'] as const).map(quarter => (
@@ -1101,7 +1101,7 @@ export default function AnnualPlan() {
                         type="text"
                         value={formatNumber(getQuarterlyTarget('net_profit_1_year', quarter))}
                         onChange={(e) => updateQuarterlyTarget('net_profit_1_year', quarter, parseCurrencyInput(e.target.value))}
-                        className="w-24 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        className="w-24 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                         disabled={usePercentageMode}
                         placeholder="0"
                       />
@@ -1110,10 +1110,10 @@ export default function AnnualPlan() {
                 </tr>
                 <tr className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900 flex items-center">
-                    <Users className="h-4 w-4 mr-2 text-teal-600" />
+                    <Users className="h-4 w-4 mr-2 text-brand-orange" />
                     Customers
                   </td>
-                  <td className="px-6 py-4 text-center text-gray-700 bg-teal-50 font-medium">
+                  <td className="px-6 py-4 text-center text-gray-700 bg-brand-orange-50 font-medium">
                     {formatNumber(getFinancialValue('customers_current'))}
                   </td>
                   <td className="px-6 py-4 text-center font-semibold text-green-600 bg-green-50">
@@ -1125,7 +1125,7 @@ export default function AnnualPlan() {
                         type="number"
                         value={getQuarterlyTarget('customers_1_year', quarter)}
                         onChange={(e) => updateQuarterlyTarget('customers_1_year', quarter, Number(e.target.value))}
-                        className="w-20 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        className="w-20 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                         disabled={usePercentageMode}
                         min="0"
                         placeholder="0"
@@ -1135,7 +1135,7 @@ export default function AnnualPlan() {
                 </tr>
                 <tr className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">Team Size</td>
-                  <td className="px-6 py-4 text-center text-gray-700 bg-teal-50 font-medium">
+                  <td className="px-6 py-4 text-center text-gray-700 bg-brand-orange-50 font-medium">
                     {formatNumber(getFinancialValue('employees_current'))}
                   </td>
                   <td className="px-6 py-4 text-center font-semibold text-green-600 bg-green-50">
@@ -1147,7 +1147,7 @@ export default function AnnualPlan() {
                         type="number"
                         value={getQuarterlyTarget('employees_1_year', quarter)}
                         onChange={(e) => updateQuarterlyTarget('employees_1_year', quarter, Number(e.target.value))}
-                        className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                         disabled={usePercentageMode}
                         min="0"
                         placeholder="0"
@@ -1188,7 +1188,7 @@ export default function AnnualPlan() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">KPI</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-600 bg-teal-50">Current</th>
+                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-600 bg-brand-orange-50">Current</th>
                     <th className="px-6 py-4 text-center text-sm font-semibold text-gray-600 bg-green-50">Year Target</th>
                     <th className="px-6 py-4 text-center text-sm font-semibold text-gray-600">
                       {getQuarterEndDate('q1', financialData.year_type)}
@@ -1223,7 +1223,7 @@ export default function AnnualPlan() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-center text-gray-700 bg-teal-50 font-medium">
+                          <td className="px-6 py-4 text-center text-gray-700 bg-brand-orange-50 font-medium">
                             {kpi.unit === 'currency' ? formatCurrency(kpi.current_value) : 
                              kpi.unit === 'percentage' ? formatPercentage(kpi.current_value) : 
                              formatNumber(kpi.current_value)}
@@ -1243,7 +1243,7 @@ export default function AnnualPlan() {
                                   quarter, 
                                   kpi.unit === 'currency' ? parseCurrencyInput(e.target.value) : Number(e.target.value)
                                 )}
-                                className="w-20 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                className="w-20 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                                 disabled={usePercentageMode}
                                 placeholder="0"
                               />
@@ -1265,12 +1265,12 @@ export default function AnnualPlan() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <button
             onClick={() => toggleSection('initiatives')}
-            className="w-full bg-slate-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between hover:bg-slate-100 transition-colors"
+            className="w-full bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between hover:bg-slate-100 transition-colors"
           >
             <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-              <Calendar className="h-5 w-5 mr-2 text-slate-600" />
+              <Calendar className="h-5 w-5 mr-2 text-gray-600" />
               Strategic Initiatives
-              <span className="ml-2 text-sm bg-slate-100 text-slate-800 px-2 py-1 rounded-full">
+              <span className="ml-2 text-sm bg-slate-100 text-brand-navy px-2 py-1 rounded-full">
                 {initiatives.length} selected
               </span>
             </h3>
@@ -1362,10 +1362,10 @@ export default function AnnualPlan() {
                     {['q1', 'q2', 'q3', 'q4'].map((quarter, quarterIndex) => {
                       const quarterInitiatives = getInitiativesByQuarter(quarter)
                       const quarterColors = [
-                        { bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-700', dot: 'bg-teal-500' },
+                        { bg: 'bg-brand-orange-50', border: 'border-brand-orange-200', text: 'text-brand-orange-700', dot: 'bg-brand-orange-500' },
                         { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700', dot: 'bg-green-500' },
-                        { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', dot: 'bg-indigo-500' },
-                        { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-700', dot: 'bg-slate-500' }
+                        { bg: 'bg-brand-orange-50', border: 'border-brand-orange-200', text: 'text-brand-orange-700', dot: 'bg-brand-orange-500' },
+                        { bg: 'bg-gray-50', border: 'border-slate-200', text: 'text-gray-700', dot: 'bg-gray-500' }
                       ][quarterIndex]
 
                       return (

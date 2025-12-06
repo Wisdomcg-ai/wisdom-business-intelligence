@@ -158,7 +158,7 @@ export function OverviewTab({
         {/* Goals Progress */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-3">
-            <Target className="w-5 h-5 text-purple-500" />
+            <Target className="w-5 h-5 text-brand-teal" />
             <span className="text-xs text-gray-500">{completedGoals}/{activeGoals + completedGoals} complete</span>
           </div>
           <p className="text-2xl font-bold text-gray-900">
@@ -170,9 +170,9 @@ export function OverviewTab({
         {/* Sessions */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-3">
-            <Calendar className="w-5 h-5 text-indigo-500" />
+            <Calendar className="w-5 h-5 text-brand-orange" />
             {nextSessionDate && (
-              <span className="text-xs text-indigo-600">Next: {formatDate(nextSessionDate)}</span>
+              <span className="text-xs text-brand-orange">Next: {formatDate(nextSessionDate)}</span>
             )}
           </div>
           <p className="text-2xl font-bold text-gray-900">{upcomingSessions}</p>
@@ -182,7 +182,7 @@ export function OverviewTab({
         {/* Actions */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-3">
-            <ListChecks className="w-5 h-5 text-amber-500" />
+            <ListChecks className="w-5 h-5 text-brand-orange" />
             {overdueActions > 0 && (
               <span className="flex items-center gap-1 text-xs text-red-600">
                 <AlertTriangle className="w-3 h-3" />
@@ -197,7 +197,7 @@ export function OverviewTab({
         {/* Messages */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-3">
-            <MessageSquare className="w-5 h-5 text-blue-500" />
+            <MessageSquare className="w-5 h-5 text-brand-orange" />
           </div>
           <p className="text-2xl font-bold text-gray-900">{unreadMessages}</p>
           <p className="text-sm text-gray-500">Unread Messages</p>
@@ -209,14 +209,14 @@ export function OverviewTab({
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-100 rounded-lg">
-                <Lightbulb className="w-5 h-5 text-amber-600" />
+              <div className="p-2 bg-brand-orange-100 rounded-lg">
+                <Lightbulb className="w-5 h-5 text-brand-orange" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900">Ideas Journal</h3>
             </div>
             <Link
               href={`/coach/clients/${clientId}/view/ideas`}
-              className="text-sm text-amber-600 hover:text-amber-700 font-medium"
+              className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
             >
               View All
             </Link>
@@ -226,16 +226,16 @@ export function OverviewTab({
               <p className="text-2xl font-bold text-gray-900">{ideasStats.total}</p>
               <p className="text-sm text-gray-500">Total Ideas</p>
             </div>
-            <div className="p-4 bg-slate-50 rounded-lg">
-              <p className="text-2xl font-bold text-slate-600">{ideasStats.captured}</p>
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <p className="text-2xl font-bold text-gray-600">{ideasStats.captured}</p>
               <p className="text-sm text-gray-500">Captured</p>
             </div>
-            <div className="p-4 bg-amber-50 rounded-lg">
-              <p className="text-2xl font-bold text-amber-600">{ideasStats.underReview}</p>
+            <div className="p-4 bg-brand-orange-50 rounded-lg">
+              <p className="text-2xl font-bold text-brand-orange">{ideasStats.underReview}</p>
               <p className="text-sm text-gray-500">Under Review</p>
             </div>
-            <div className="p-4 bg-emerald-50 rounded-lg">
-              <p className="text-2xl font-bold text-emerald-600">{ideasStats.approved}</p>
+            <div className="p-4 bg-brand-teal-50 rounded-lg">
+              <p className="text-2xl font-bold text-brand-teal">{ideasStats.approved}</p>
               <p className="text-sm text-gray-500">Approved</p>
             </div>
           </div>
@@ -250,7 +250,7 @@ export function OverviewTab({
             <h3 className="font-semibold text-gray-900">Recent Activity</h3>
             <Link
               href={`/coach/clients/${clientId}?tab=notes`}
-              className="text-sm text-indigo-600 hover:text-indigo-700"
+              className="text-sm text-brand-orange hover:text-brand-orange-700"
             >
               View all
             </Link>
@@ -288,21 +288,21 @@ export function OverviewTab({
           <div className="p-5 space-y-3">
             <button className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
               <div className="flex items-center gap-3">
-                <Calendar className="w-5 h-5 text-indigo-600" />
+                <Calendar className="w-5 h-5 text-brand-orange" />
                 <span className="font-medium text-gray-900">Schedule Session</span>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-400" />
             </button>
             <button className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
               <div className="flex items-center gap-3">
-                <ListChecks className="w-5 h-5 text-amber-600" />
+                <ListChecks className="w-5 h-5 text-brand-orange" />
                 <span className="font-medium text-gray-900">Create Action Item</span>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-400" />
             </button>
             <button className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
               <div className="flex items-center gap-3">
-                <MessageSquare className="w-5 h-5 text-blue-600" />
+                <MessageSquare className="w-5 h-5 text-brand-orange" />
                 <span className="font-medium text-gray-900">Send Message</span>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-400" />

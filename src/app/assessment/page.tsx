@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChevronRight, ChevronLeft, Check, AlertCircle } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, AlertCircle, ClipboardList } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { BUSINESS_ENGINES, TOTAL_MAX_SCORE, getHealthStatus, mapSectionToEngineId } from '@/lib/assessment/constants';
+import PageHeader from '@/components/ui/PageHeader';
 
 interface Question {
   id: string;
@@ -455,9 +456,9 @@ const questions: Question[] = [
 export default function AssessmentPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4" />
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading assessment...</p>
         </div>
       </div>
@@ -751,9 +752,9 @@ function AssessmentContent() {
   // Show loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4" />
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading assessment...</p>
         </div>
       </div>
@@ -761,31 +762,31 @@ function AssessmentContent() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       <div className="bg-white/90 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Business Assessment</h1>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Business Assessment</h1>
               <p className="text-sm text-gray-600 mt-1">
                 30 questions • 12-15 minutes
                 {Object.keys(answers).length > 0 && (
-                  <span className="ml-2 text-teal-600 font-medium">
+                  <span className="ml-2 text-brand-orange font-medium">
                     • {Object.keys(answers).length}/30 answered
                   </span>
                 )}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 onClick={() => router.push('/assessment/history')}
-                className="text-teal-600 hover:text-teal-700 px-3 py-1 rounded-lg hover:bg-teal-50 text-sm font-medium"
+                className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
               >
                 View History
               </button>
               <button
                 onClick={handleExit}
-                className="text-gray-500 hover:text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-100"
+                className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
               >
                 Exit
               </button>
@@ -793,7 +794,7 @@ function AssessmentContent() {
           </div>
 
           <div className="mt-4">
-            <div className="flex items-center justify-between text-sm mb-2">
+            <div className="flex items-center justify-between text-xs sm:text-sm mb-2">
               <span className="text-gray-600">
                 Section {currentSectionIndex + 1} of {sections.length}: <span className="font-medium">{currentSection}</span>
               </span>
@@ -802,8 +803,8 @@ function AssessmentContent() {
               </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-teal-500 h-2 rounded-full transition-all duration-500 ease-out"
+              <div
+                className="bg-brand-orange-500 h-2 rounded-full transition-all duration-500 ease-out"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -814,45 +815,45 @@ function AssessmentContent() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-          <div className="bg-teal-600 px-8 py-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-brand-orange px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-white/90 text-sm font-medium">
+              <span className="text-white/90 text-xs sm:text-sm font-medium">
                 {currentQuestion.subsection || currentSection}
               </span>
-              <span className="bg-white/20 text-white px-3 py-1 rounded-full text-sm">
+              <span className="bg-white/20 text-white px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm">
                 {currentQuestionIndex + 1}/{questions.length}
               </span>
             </div>
-            <h2 className="text-2xl md:text-3xl font-bold text-white">
+            <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-white">
               {currentQuestion.text}
             </h2>
           </div>
 
-          <div className="p-8">
+          <div className="p-4 sm:p-6 lg:p-8">
             <div className="space-y-3">
               {currentQuestion.options.map((option) => (
                 <button
                   key={option.value}
                   onClick={() => handleAnswer(option.value, option.points)}
-                  className={`w-full text-left p-5 rounded-xl border-2 transition-all duration-200 group ${
+                  className={`w-full text-left p-4 sm:p-5 rounded-xl border-2 transition-all duration-200 group ${
                     answers[currentQuestion.id]?.value === option.value
-                      ? 'border-teal-500 bg-teal-50 shadow-lg transform scale-[1.02]'
+                      ? 'border-brand-orange-500 bg-brand-orange-50 shadow-lg transform scale-[1.02]'
                       : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                   }`}
                 >
                   <div className="flex items-center">
-                    <div className={`w-6 h-6 rounded-full border-2 mr-4 flex items-center justify-center transition-all ${
+                    <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 mr-3 sm:mr-4 flex items-center justify-center transition-all flex-shrink-0 ${
                       answers[currentQuestion.id]?.value === option.value
-                        ? 'border-teal-500 bg-teal-500'
+                        ? 'border-brand-orange-500 bg-brand-orange-500'
                         : 'border-gray-400 group-hover:border-gray-500'
                     }`}>
                       {answers[currentQuestion.id]?.value === option.value && (
-                        <div className="w-3 h-3 bg-white rounded-full" />
+                        <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-white rounded-full" />
                       )}
                     </div>
-                    <span className={`text-lg ${
+                    <span className={`text-base sm:text-lg ${
                       answers[currentQuestion.id]?.value === option.value
                         ? 'text-gray-900 font-medium'
                         : 'text-gray-700'
@@ -867,17 +868,17 @@ function AssessmentContent() {
             {error && (
               <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start">
                 <AlertCircle className="w-5 h-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
-                <p className="text-red-700">{error}</p>
+                <p className="text-sm sm:text-base text-red-700">{error}</p>
               </div>
             )}
           </div>
 
-          <div className="px-8 py-6 bg-gray-50 border-t border-gray-200">
-            <div className="flex items-center justify-between">
+          <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6 bg-gray-50 border-t border-gray-200">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               <button
                 onClick={goToPrevious}
                 disabled={currentQuestionIndex === 0}
-                className={`flex items-center px-6 py-3 rounded-lg font-medium transition-all ${
+                className={`flex items-center justify-center px-4 sm:px-6 py-3 rounded-lg font-medium transition-all ${
                   currentQuestionIndex === 0
                     ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                     : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 hover:shadow'
@@ -887,24 +888,24 @@ function AssessmentContent() {
                 Previous
               </button>
 
-              <span className="text-sm text-gray-500">
-                Press <kbd className="px-2 py-1 bg-white rounded border border-gray-300 text-xs">Enter</kbd> to continue
+              <span className="hidden sm:flex text-xs sm:text-sm text-gray-500 items-center justify-center">
+                Press <kbd className="px-2 py-1 bg-white rounded border border-gray-300 text-xs mx-1">Enter</kbd> to continue
               </span>
 
               {currentQuestionIndex === questions.length - 1 ? (
-                <div className="flex flex-col items-end gap-2">
+                <div className="flex flex-col items-stretch sm:items-end gap-2">
                   {!areAllQuestionsAnswered() && (
-                    <span className="text-sm text-orange-600 font-medium">
+                    <span className="text-xs sm:text-sm text-brand-orange-600 font-medium text-center sm:text-right">
                       {getUnansweredCount()} question{getUnansweredCount() > 1 ? 's' : ''} remaining
                     </span>
                   )}
                   <button
                     onClick={handleSubmit}
                     disabled={!areAllQuestionsAnswered() || isSubmitting}
-                    className={`flex items-center px-8 py-3 rounded-lg font-medium transition-all ${
+                    className={`flex items-center justify-center px-6 sm:px-8 py-3 rounded-lg font-medium transition-all ${
                       !areAllQuestionsAnswered() || isSubmitting
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-teal-600 text-white hover:bg-teal-700 hover:shadow-lg transform hover:-translate-y-0.5'
+                        : 'bg-brand-orange text-white hover:bg-brand-orange-600 hover:shadow-lg transform hover:-translate-y-0.5'
                     }`}
                   >
                     {isSubmitting ? (
@@ -924,10 +925,10 @@ function AssessmentContent() {
                 <button
                   onClick={goToNext}
                   disabled={!isCurrentQuestionAnswered()}
-                  className={`flex items-center px-6 py-3 rounded-lg font-medium transition-all ${
+                  className={`flex items-center justify-center px-4 sm:px-6 py-3 rounded-lg font-medium transition-all ${
                     !isCurrentQuestionAnswered()
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-teal-600 text-white hover:bg-teal-700 hover:shadow-lg transform hover:-translate-y-0.5'
+                      : 'bg-brand-orange text-white hover:bg-brand-orange-600 hover:shadow-lg transform hover:-translate-y-0.5'
                   }`}
                 >
                   Next
@@ -942,16 +943,16 @@ function AssessmentContent() {
       {/* Exit Confirmation Modal */}
       {showExitModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <div className="flex items-start gap-4 mb-6">
-              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
-                <AlertCircle className="w-6 h-6 text-orange-600" />
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 max-w-md w-full p-4 sm:p-6">
+            <div className="flex items-start gap-3 sm:gap-4 mb-4 sm:mb-6">
+              <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-brand-orange-100 flex items-center justify-center">
+                <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6 text-brand-orange-600" />
               </div>
-              <div className="flex-1">
-                <h3 className="text-xl font-bold text-gray-900 mb-2">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">
                   Exit Assessment?
                 </h3>
-                <p className="text-gray-600">
+                <p className="text-sm sm:text-base text-gray-600">
                   {Object.keys(answers).length > 0
                     ? `You've answered ${Object.keys(answers).length} out of 30 questions. Your progress will be saved and you can continue later.`
                     : 'Are you sure you want to exit?'}
@@ -962,13 +963,13 @@ function AssessmentContent() {
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={() => setShowExitModal(false)}
-                className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                className="flex-1 px-4 py-3 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg font-medium transition-colors text-sm sm:text-base"
               >
                 Continue Assessment
               </button>
               <button
                 onClick={confirmExit}
-                className="flex-1 px-4 py-3 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors"
+                className="flex-1 px-4 py-3 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg font-medium transition-colors text-sm sm:text-base"
               >
                 Save & Exit
               </button>

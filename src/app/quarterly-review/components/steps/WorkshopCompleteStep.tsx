@@ -49,7 +49,7 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
     <div>
       {/* Celebration Header */}
       <div className="text-center mb-8">
-        <div className="w-20 h-20 bg-teal-600 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div className="w-20 h-20 bg-brand-orange rounded-full flex items-center justify-center mx-auto mb-4">
           <Trophy className="w-10 h-10 text-white" />
         </div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -64,9 +64,9 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
       <div className="grid md:grid-cols-2 gap-6 mb-8">
         {/* Financial Targets */}
         {targets && (
-          <div className="bg-slate-50 rounded-xl border border-gray-200 p-6">
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-6">
             <div className="flex items-center gap-2 mb-4">
-              <DollarSign className="w-5 h-5 text-slate-600" />
+              <DollarSign className="w-5 h-5 text-gray-600" />
               <h3 className="font-semibold text-gray-900">
                 Q{nextQ.quarter} {nextQ.year} Targets
               </h3>
@@ -90,9 +90,9 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
 
         {/* Personal Commitments */}
         {commitments && (
-          <div className="bg-slate-50 rounded-xl border border-gray-200 p-6">
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-6">
             <div className="flex items-center gap-2 mb-4">
-              <Calendar className="w-5 h-5 text-slate-600" />
+              <Calendar className="w-5 h-5 text-gray-600" />
               <h3 className="font-semibold text-gray-900">Personal Commitments</h3>
             </div>
             <div className="space-y-3">
@@ -117,15 +117,15 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
 
       {/* Rocks Summary */}
       {rocks.length > 0 && (
-        <div className="bg-slate-50 rounded-xl border border-gray-200 p-6 mb-8">
+        <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-8">
           <div className="flex items-center gap-2 mb-4">
-            <Mountain className="w-5 h-5 text-slate-600" />
+            <Mountain className="w-5 h-5 text-gray-600" />
             <h3 className="font-semibold text-gray-900">Q{nextQ.quarter} Rocks</h3>
           </div>
           <div className="space-y-3">
             {rocks.map((rock, index) => (
               <div key={rock.id} className="flex items-start gap-3 bg-white rounded-lg p-3 border border-gray-100">
-                <span className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm font-bold bg-teal-600">
+                <span className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm font-bold bg-brand-orange">
                   {index + 1}
                 </span>
                 <div className="flex-1">
@@ -143,7 +143,7 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
       {/* Key Insights from Review */}
       <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-8">
         <div className="flex items-center gap-2 mb-4">
-          <Sparkles className="w-5 h-5 text-slate-600" />
+          <Sparkles className="w-5 h-5 text-gray-600" />
           <h3 className="font-semibold text-gray-900">Key Insights</h3>
         </div>
 
@@ -183,22 +183,22 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
         <h3 className="font-semibold text-gray-900 mb-4">Next Steps</h3>
         <div className="space-y-3">
           <div className="flex items-center gap-3 text-gray-700">
-            <CheckCircle2 className="w-5 h-5 text-slate-600" />
+            <CheckCircle2 className="w-5 h-5 text-gray-600" />
             <span>Update your One Page Business Plan</span>
-            <Link href="/business-plan" className="text-slate-600 hover:text-slate-700 text-sm ml-auto">
+            <Link href="/business-plan" className="text-gray-600 hover:text-gray-700 text-sm ml-auto">
               Go to Plan →
             </Link>
           </div>
           <div className="flex items-center gap-3 text-gray-700">
-            <CheckCircle2 className="w-5 h-5 text-slate-600" />
+            <CheckCircle2 className="w-5 h-5 text-gray-600" />
             <span>Schedule your Rocks in your calendar</span>
           </div>
           <div className="flex items-center gap-3 text-gray-700">
-            <CheckCircle2 className="w-5 h-5 text-slate-600" />
+            <CheckCircle2 className="w-5 h-5 text-gray-600" />
             <span>Book your days off in advance</span>
           </div>
           <div className="flex items-center gap-3 text-gray-700">
-            <CheckCircle2 className="w-5 h-5 text-slate-600" />
+            <CheckCircle2 className="w-5 h-5 text-gray-600" />
             <span>Share your quarterly plan with your team</span>
           </div>
         </div>
@@ -208,7 +208,7 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
       <div className="flex flex-col sm:flex-row gap-4">
         <Link
           href={`/quarterly-review/summary/${review.id}`}
-          className="flex-1 flex items-center justify-center gap-2 px-6 py-4 bg-teal-600 text-white rounded-xl font-semibold hover:bg-teal-700 transition-colors"
+          className="flex-1 flex items-center justify-center gap-2 px-6 py-4 bg-brand-orange text-white rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
         >
           <FileText className="w-5 h-5" />
           View Full Summary

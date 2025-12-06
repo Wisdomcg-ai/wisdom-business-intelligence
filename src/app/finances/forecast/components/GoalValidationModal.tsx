@@ -202,7 +202,7 @@ export default function GoalValidationModal({
                   <button
                     key={idx}
                     onClick={() => onAutoAdjust(suggestion.adjustments)}
-                    className="w-full text-left p-4 border border-gray-200 rounded-lg hover:border-teal-500 hover:bg-teal-50 transition-colors"
+                    className="w-full text-left p-4 border border-gray-200 rounded-lg hover:border-brand-orange-500 hover:bg-brand-orange-50 transition-colors"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -224,7 +224,7 @@ export default function GoalValidationModal({
                         </div>
                       </div>
                       <div className="ml-4">
-                        <span className="text-xs text-teal-600 font-medium">
+                        <span className="text-xs text-brand-orange font-medium">
                           Apply →
                         </span>
                       </div>

@@ -411,7 +411,7 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
     return (
       <button
         onClick={() => setIsExpanded(true)}
-        className="fixed bottom-4 right-4 bg-teal-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-teal-700 transition-colors flex items-center gap-2 z-50"
+        className="fixed bottom-4 right-4 bg-brand-orange text-white px-4 py-2 rounded-full shadow-lg hover:bg-brand-orange-600 transition-colors flex items-center gap-2 z-50"
       >
         <Sparkles className="w-4 h-4" />
         Setup: {completedCount}/{totalCount}
@@ -423,18 +423,18 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
   return (
     <div className={`bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden ${compact ? 'fixed bottom-4 right-4 w-80 z-50' : ''}`}>
       {/* Header */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 px-4 py-3 text-white">
+      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 px-4 py-3 text-white">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5" />
             <span className="font-semibold">Getting Started</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-teal-100">{completedCount}/{totalCount}</span>
+            <span className="text-sm text-brand-orange-100">{completedCount}/{totalCount}</span>
             {compact && (
               <button
                 onClick={() => setIsExpanded(false)}
-                className="p-1 hover:bg-teal-500 rounded"
+                className="p-1 hover:bg-brand-orange-500 rounded"
               >
                 <ChevronDown className="w-4 h-4" />
               </button>
@@ -445,7 +445,7 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
                   setIsDismissed(true)
                   onDismiss()
                 }}
-                className="p-1 hover:bg-teal-500 rounded"
+                className="p-1 hover:bg-brand-orange-500 rounded"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -454,7 +454,7 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
         </div>
 
         {/* Progress bar */}
-        <div className="mt-2 bg-teal-800 rounded-full h-2 overflow-hidden">
+        <div className="mt-2 bg-brand-orange-800 rounded-full h-2 overflow-hidden">
           <div
             className="bg-white h-full rounded-full transition-all duration-500"
             style={{ width: `${progressPercentage}%` }}
@@ -466,7 +466,7 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
       <div className="divide-y divide-gray-100">
         {isLoading ? (
           <div className="p-4 text-center text-gray-500">
-            <div className="animate-spin w-5 h-5 border-2 border-teal-600 border-t-transparent rounded-full mx-auto mb-2" />
+            <div className="animate-spin w-5 h-5 border-2 border-brand-orange border-t-transparent rounded-full mx-auto mb-2" />
             Checking progress...
           </div>
         ) : allComplete ? (
@@ -480,7 +480,7 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
             </p>
             <button
               onClick={() => router.push('/one-page-plan')}
-              className="text-sm text-teal-600 hover:text-teal-700 font-medium"
+              className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
             >
               View your One-Page Plan →
             </button>
@@ -499,11 +499,11 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
                   item.isComplete
                     ? 'bg-gray-50 cursor-default'
                     : isNext
-                    ? 'bg-teal-50 hover:bg-teal-100'
+                    ? 'bg-brand-orange-50 hover:bg-brand-orange-100'
                     : 'hover:bg-gray-50'
                 }`}
               >
-                <div className={`flex-shrink-0 ${item.isComplete ? 'text-green-600' : isNext ? 'text-teal-600' : 'text-gray-400'}`}>
+                <div className={`flex-shrink-0 ${item.isComplete ? 'text-green-600' : isNext ? 'text-brand-orange' : 'text-gray-400'}`}>
                   {item.isComplete ? (
                     <CheckCircle2 className="w-5 h-5" />
                   ) : (
@@ -515,14 +515,14 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
                   item.isComplete
                     ? 'bg-gray-100'
                     : isNext
-                    ? 'bg-teal-100'
+                    ? 'bg-brand-orange-100'
                     : 'bg-gray-100'
                 }`}>
                   <Icon className={`w-4 h-4 ${
                     item.isComplete
                       ? 'text-gray-400'
                       : isNext
-                      ? 'text-teal-600'
+                      ? 'text-brand-orange'
                       : 'text-gray-500'
                   }`} />
                 </div>
@@ -539,11 +539,11 @@ export default function OnboardingChecklist({ onDismiss, onComplete, compact = f
                 </div>
 
                 {!item.isComplete && (
-                  <ChevronRight className={`w-4 h-4 flex-shrink-0 ${isNext ? 'text-teal-600' : 'text-gray-400'}`} />
+                  <ChevronRight className={`w-4 h-4 flex-shrink-0 ${isNext ? 'text-brand-orange' : 'text-gray-400'}`} />
                 )}
 
                 {isNext && (
-                  <span className="flex-shrink-0 text-xs bg-teal-600 text-white px-2 py-0.5 rounded-full">
+                  <span className="flex-shrink-0 text-xs bg-brand-orange text-white px-2 py-0.5 rounded-full">
                     Next
                   </span>
                 )}

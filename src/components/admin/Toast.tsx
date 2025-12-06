@@ -120,10 +120,10 @@ function ToastItem({ toast, onClose }: { toast: Toast, onClose: () => void }) {
       message: 'text-amber-700',
     },
     info: {
-      bg: 'bg-blue-50 border-blue-200',
-      icon: 'text-blue-500',
-      title: 'text-blue-900',
-      message: 'text-blue-700',
+      bg: 'bg-brand-orange-50 border-brand-orange-200',
+      icon: 'text-brand-orange',
+      title: 'text-brand-navy',
+      message: 'text-brand-orange-700',
     },
   }
 

@@ -78,7 +78,7 @@ export function TemplatesLibrary({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="rounded-xl shadow-sm border border-gray-200 bg-white overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <div>
@@ -87,7 +87,7 @@ export function TemplatesLibrary({
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg shadow-sm transition-colors"
           >
             <Plus className="w-4 h-4" />
             New Template
@@ -107,14 +107,14 @@ export function TemplatesLibrary({
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === tab.id
-                    ? 'border-indigo-600 text-indigo-600'
+                    ? 'border-brand-orange text-brand-orange'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
                 <Icon className="w-4 h-4" />
                 {tab.label}
                 <span className={`px-2 py-0.5 rounded-full text-xs ${
-                  activeTab === tab.id ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-500'
+                  activeTab === tab.id ? 'bg-brand-orange-100 text-brand-orange' : 'bg-gray-100 text-gray-500'
                 }`}>
                   {count}
                 </span>
@@ -133,7 +133,7 @@ export function TemplatesLibrary({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search templates..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
           />
         </div>
       </div>
@@ -151,7 +151,7 @@ export function TemplatesLibrary({
             </p>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg shadow-sm transition-colors"
             >
               <Plus className="w-4 h-4" />
               Create Template
@@ -167,8 +167,8 @@ export function TemplatesLibrary({
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-                      <Icon className="w-5 h-5 text-indigo-600" />
+                    <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+                      <Icon className="w-5 h-5 text-brand-orange" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -191,14 +191,14 @@ export function TemplatesLibrary({
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => setEditingTemplate(template)}
-                      className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
                       title="Edit"
                     >
                       <Edit className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => onDuplicateTemplate(template.id)}
-                      className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
                       title="Duplicate"
                     >
                       <Copy className="w-4 h-4" />
@@ -320,7 +320,7 @@ function TemplateModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g., Weekly Check-in Agenda"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
             />
           </div>
 
@@ -333,7 +333,7 @@ function TemplateModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Brief description of this template"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
             />
           </div>
 
@@ -346,14 +346,14 @@ function TemplateModal({
               onChange={(e) => setContent(e.target.value)}
               placeholder={getPlaceholder()}
               rows={10}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm resize-none"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange font-mono text-sm resize-none"
             />
           </div>
 
           {type === 'email' && (
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-              <h4 className="font-medium text-blue-900 mb-2">Available Variables</h4>
-              <div className="grid grid-cols-2 gap-2 text-sm text-blue-700">
+            <div className="p-4 bg-brand-orange-50 rounded-lg border border-brand-orange-100">
+              <h4 className="font-medium text-brand-navy mb-2">Available Variables</h4>
+              <div className="grid grid-cols-2 gap-2 text-sm text-brand-orange-700">
                 <code>{'{client_name}'}</code>
                 <code>{'{business_name}'}</code>
                 <code>{'{coach_name}'}</code>
@@ -366,14 +366,14 @@ function TemplateModal({
         <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            className="px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={!name.trim() || saving}
-            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+            className="px-6 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg shadow-sm transition-colors disabled:opacity-50"
           >
             {saving ? 'Saving...' : template ? 'Save Changes' : 'Create Template'}
           </button>

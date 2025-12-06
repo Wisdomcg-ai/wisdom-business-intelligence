@@ -10,6 +10,7 @@ import { ActionMenu } from '@/components/admin/ActionMenu'
 import { Badge, StatusBadge } from '@/components/admin/Badge'
 import { EmptyState } from '@/components/admin/EmptyState'
 import { ToastProvider, useToast } from '@/components/admin/Toast'
+import PageHeader from '@/components/ui/PageHeader'
 import {
   Building2,
   Search,
@@ -241,32 +242,34 @@ function ClientsContent() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-teal-500 animate-spin" />
-          <p className="text-slate-500 text-sm">Loading clients...</p>
+          <Loader2 className="w-8 h-8 text-brand-orange-500 animate-spin" />
+          <p className="text-gray-500 text-sm">Loading clients...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Clients</h1>
-          <p className="text-slate-500 mt-1">{clients.length} total clients</p>
-        </div>
-        <Link
-          href="/admin/clients/new"
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white font-medium rounded-xl hover:bg-teal-700 transition-colors shadow-lg shadow-teal-500/20"
-        >
-          <Plus className="w-4 h-4" />
-          Add New Client
-        </Link>
-      </div>
+      <PageHeader
+        title="Clients"
+        subtitle={`${clients.length} total clients`}
+        icon={Building2}
+        variant="simple"
+        actions={
+          <Link
+            href="/admin/clients/new"
+            className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-brand-orange text-white font-medium text-sm sm:text-base rounded-lg hover:bg-brand-orange-600 shadow-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add New Client
+          </Link>
+        }
+      />
 
       {/* Search and Filters */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6">
         {/* Search */}
         <div className="relative mb-4">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -275,12 +278,12 @@ function ClientsContent() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search by business name or industry..."
-            className="w-full pl-12 pr-4 py-3 bg-slate-50 border-0 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all"
+            className="w-full pl-12 pr-4 py-3 bg-gray-50 border-0 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-brand-orange focus:bg-white transition-all"
           />
           {searchTerm && (
             <button
               onClick={() => setSearchTerm('')}
-              className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-gray-600"
             >
               <X className="w-4 h-4" />
             </button>
@@ -294,10 +297,10 @@ function ClientsContent() {
               key={filter.key}
               onClick={() => setActiveFilter(filter.key)}
               className={`
-                inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all
+                inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
                 ${activeFilter === filter.key
-                  ? 'bg-teal-600 text-white shadow-lg shadow-teal-500/20'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-brand-orange text-white shadow-sm'
+                  : 'bg-slate-100 text-gray-600 hover:bg-slate-200'
                 }
               `}
             >
@@ -305,7 +308,7 @@ function ClientsContent() {
               {filterCounts[filter.key] > 0 && (
                 <span className={`
                   px-1.5 py-0.5 rounded-md text-xs font-semibold
-                  ${activeFilter === filter.key ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}
+                  ${activeFilter === filter.key ? 'bg-white/20 text-white' : 'bg-slate-200 text-gray-600'}
                 `}>
                   {filterCounts[filter.key]}
                 </span>
@@ -316,7 +319,7 @@ function ClientsContent() {
       </div>
 
       {/* Clients List */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         {filteredClients.length === 0 ? (
           <EmptyState
             icon={Building2}
@@ -336,29 +339,29 @@ function ClientsContent() {
               return (
                 <div
                   key={client.id}
-                  className="px-6 py-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                  className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
                   onClick={() => setSelectedClient(client)}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
                       {/* Avatar */}
-                      <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <Building2 className="w-6 h-6 text-slate-400" />
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
                       </div>
 
                       {/* Info */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-slate-900 truncate">{client.business_name}</h3>
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <h3 className="font-semibold text-sm sm:text-base text-brand-navy truncate">{client.business_name}</h3>
                           <StatusBadge status={client.status as 'active' | 'pending' | 'inactive'} />
                           {needsInvite && (
                             <Badge variant="warning" pulse>
                               <Mail className="w-3 h-3" />
-                              Needs Invite
+                              <span className="hidden sm:inline">Needs Invite</span>
                             </Badge>
                           )}
                         </div>
-                        <div className="flex items-center gap-4 text-sm text-slate-500">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-gray-500">
                           {client.industry && <span>{client.industry}</span>}
                           {coachName ? (
                             <span className="flex items-center gap-1">
@@ -380,19 +383,19 @@ function ClientsContent() {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-2 ml-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-2 sm:ml-4 self-end sm:self-center" onClick={(e) => e.stopPropagation()}>
                       {needsInvite && (
                         <button
                           onClick={() => sendInvitation(client)}
                           disabled={sendingInvitation === client.id}
-                          className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-700 font-medium text-sm rounded-lg hover:bg-amber-200 transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-700 font-medium text-xs sm:text-sm rounded-lg hover:bg-amber-200 transition-colors disabled:opacity-50"
                         >
                           {sendingInvitation === client.id ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
                             <Send className="w-4 h-4" />
                           )}
-                          Send Invite
+                          <span className="hidden sm:inline">Send Invite</span>
                         </button>
                       )}
                       <ActionMenu
@@ -415,7 +418,7 @@ function ClientsContent() {
                           }
                         ]}
                       />
-                      <ChevronRight className="w-5 h-5 text-slate-300" />
+                      <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-slate-300" />
                     </div>
                   </div>
                 </div>
@@ -449,13 +452,13 @@ function ClientsContent() {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setSelectedClient(null)}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
               >
                 Close
               </button>
               <Link
                 href={`/coach/clients/${selectedClient?.id}`}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white font-medium rounded-lg hover:bg-brand-orange-600 shadow-sm transition-colors"
               >
                 <Eye className="w-4 h-4" />
                 View Full Profile
@@ -493,7 +496,7 @@ function ClientsContent() {
                   <button
                     onClick={() => sendInvitation(selectedClient)}
                     disabled={sendingInvitation === selectedClient.id}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 text-white font-medium rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 text-white font-medium rounded-lg hover:bg-amber-700 shadow-sm transition-colors disabled:opacity-50"
                   >
                     {sendingInvitation === selectedClient.id ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -515,9 +518,9 @@ function ClientsContent() {
                   disabled={assigningCoach === selectedClient.id}
                   className={`
                     w-full px-4 py-3 rounded-xl border text-sm font-medium appearance-none
-                    focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all
+                    focus:ring-2 focus:ring-brand-orange focus:border-transparent transition-all
                     ${selectedClient.assigned_coach_id
-                      ? 'border-slate-200 bg-white text-slate-900'
+                      ? 'border-slate-200 bg-white text-brand-navy'
                       : 'border-amber-200 bg-amber-50 text-amber-900'
                     }
                     ${assigningCoach === selectedClient.id ? 'opacity-50' : ''}
@@ -541,18 +544,18 @@ function ClientsContent() {
             <SlideOverSection title="Business Details">
               <dl className="space-y-4">
                 <div>
-                  <dt className="text-sm text-slate-500">Industry</dt>
-                  <dd className="mt-1 text-sm font-medium text-slate-900">{selectedClient.industry || 'Not set'}</dd>
+                  <dt className="text-sm text-gray-500">Industry</dt>
+                  <dd className="mt-1 text-sm font-medium text-brand-navy">{selectedClient.industry || 'Not set'}</dd>
                 </div>
                 {selectedClient.website && (
                   <div>
-                    <dt className="text-sm text-slate-500">Website</dt>
+                    <dt className="text-sm text-gray-500">Website</dt>
                     <dd className="mt-1">
                       <a
                         href={selectedClient.website}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm font-medium text-teal-600 hover:text-teal-700 flex items-center gap-1"
+                        className="text-sm font-medium text-brand-orange hover:text-brand-orange-700 flex items-center gap-1"
                       >
                         <Globe className="w-4 h-4" />
                         {selectedClient.website}
@@ -562,16 +565,16 @@ function ClientsContent() {
                 )}
                 {selectedClient.address && (
                   <div>
-                    <dt className="text-sm text-slate-500">Address</dt>
-                    <dd className="mt-1 text-sm font-medium text-slate-900 flex items-center gap-2">
+                    <dt className="text-sm text-gray-500">Address</dt>
+                    <dd className="mt-1 text-sm font-medium text-brand-navy flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-slate-400" />
                       {selectedClient.address}
                     </dd>
                   </div>
                 )}
                 <div>
-                  <dt className="text-sm text-slate-500">Created</dt>
-                  <dd className="mt-1 text-sm font-medium text-slate-900 flex items-center gap-2">
+                  <dt className="text-sm text-gray-500">Created</dt>
+                  <dd className="mt-1 text-sm font-medium text-brand-navy flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-slate-400" />
                     {formatDate(selectedClient.created_at)}
                   </dd>

@@ -98,9 +98,9 @@ export default function SwotHistoryPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading history...</p>
         </div>
       </div>
@@ -108,7 +108,7 @@ export default function SwotHistoryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -148,27 +148,27 @@ export default function SwotHistoryPage() {
       {/* Strategic Insights */}
       {analyses.length >= 2 && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-          <div className="bg-gradient-to-r from-teal-50 to-teal-50 border-2 border-teal-200 rounded-lg p-6">
+          <div className="bg-gradient-to-r from-brand-orange-50 to-brand-orange-50 border-2 border-brand-orange-200 rounded-lg p-6">
             <div className="flex items-center gap-2 mb-4">
-              <TrendingUp className="h-6 w-6 text-teal-600" />
+              <TrendingUp className="h-6 w-6 text-brand-orange" />
               <h2 className="text-2xl font-bold text-gray-900">Strategic Insights</h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Evolution Summary */}
-              <div className="bg-white rounded-lg p-4 border border-teal-100">
+              <div className="bg-white rounded-lg p-4 border border-brand-orange-100">
                 <h3 className="text-base font-semibold text-gray-900 mb-2">📈 Your Strategic Evolution</h3>
                 <p className="text-base text-gray-700">
-                  Tracking <span className="font-bold text-teal-600">{analyses.length} quarters</span> of SWOT analyses.
+                  Tracking <span className="font-bold text-brand-orange">{analyses.length} quarters</span> of SWOT analyses.
                   {analyses.length >= 4 ? ' You have a full year of strategic data!' : ' Keep building your strategic history for deeper insights.'}
                 </p>
               </div>
 
               {/* Most Recent Trend */}
-              <div className="bg-white rounded-lg p-4 border border-teal-100">
+              <div className="bg-white rounded-lg p-4 border border-brand-orange-100">
                 <h3 className="text-base font-semibold text-gray-900 mb-2">🎯 Latest Focus</h3>
                 <p className="text-base text-gray-700">
-                  Most recent analysis: <span className="font-bold text-teal-600">
+                  Most recent analysis: <span className="font-bold text-brand-orange">
                     {getQuarterLabel(analyses[0].quarter, analyses[0].year)}
                   </span>
                   {' '}with {analyses[0].item_counts?.total || 0} strategic items identified.
@@ -177,7 +177,7 @@ export default function SwotHistoryPage() {
 
               {/* Quarter-over-Quarter Progress */}
               {analyses.length >= 2 && (
-                <div className="bg-white rounded-lg p-4 border border-teal-100">
+                <div className="bg-white rounded-lg p-4 border border-brand-orange-100">
                   <h3 className="text-base font-semibold text-gray-900 mb-2">📊 Recent Progress</h3>
                   <div className="space-y-2 text-sm">
                     {(() => {
@@ -189,7 +189,7 @@ export default function SwotHistoryPage() {
                       return (
                         <div className="space-y-1">
                           {strengthChange !== 0 && (
-                            <p className={strengthChange > 0 ? 'text-green-700' : 'text-orange-700'}>
+                            <p className={strengthChange > 0 ? 'text-green-700' : 'text-brand-orange-700'}>
                               <Shield className="inline h-4 w-4 mr-1" />
                               Strengths: {strengthChange > 0 ? '+' : ''}{strengthChange}
                             </p>
@@ -231,7 +231,7 @@ export default function SwotHistoryPage() {
             </p>
             <button
               onClick={() => router.push('/swot')}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-teal-600 hover:bg-teal-700"
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-brand-orange hover:bg-brand-orange-600"
             >
               Start Your First SWOT
             </button>
@@ -286,7 +286,7 @@ export default function SwotHistoryPage() {
                       {/* Opportunities */}
                       <div>
                         <div className="text-sm text-gray-500 mb-1">Opportunities</div>
-                        <div className="text-2xl font-bold text-teal-600">
+                        <div className="text-2xl font-bold text-brand-orange">
                           {analysis.item_counts?.opportunities || 0}
                         </div>
                       </div>
@@ -294,7 +294,7 @@ export default function SwotHistoryPage() {
                       {/* Threats */}
                       <div>
                         <div className="text-sm text-gray-500 mb-1">Threats</div>
-                        <div className="text-2xl font-bold text-orange-600">
+                        <div className="text-2xl font-bold text-brand-orange-600">
                           {analysis.item_counts?.threats || 0}
                         </div>
                       </div>

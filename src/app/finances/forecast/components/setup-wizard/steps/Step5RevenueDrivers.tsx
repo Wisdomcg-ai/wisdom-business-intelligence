@@ -135,14 +135,14 @@ export default function Step5RevenueDrivers({
   return (
     <div className="space-y-6">
       {/* Teaching Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-5 text-white">
+      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-5 text-white">
         <div className="flex items-start gap-4">
           <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
             <Target className="w-5 h-5 text-white" />
           </div>
           <div>
             <h3 className="font-bold text-lg mb-1">Step 5: Understand Your Revenue Drivers</h3>
-            <p className="text-teal-100 text-sm">
+            <p className="text-brand-orange-100 text-sm">
               Revenue doesn't just "happen". It's the result of 5 key drivers working together.
               Let's see what it takes to hit your goal.
             </p>
@@ -198,7 +198,7 @@ export default function Step5RevenueDrivers({
               industryLabels: newConfig.fiveWaysLabels
             }))
           }}
-          className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+          className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
         >
           {industries.map(ind => (
             <option key={ind.id} value={ind.id}>{ind.name}</option>
@@ -222,8 +222,8 @@ export default function Step5RevenueDrivers({
           <div className="px-5 py-4 grid grid-cols-12 gap-4 items-center">
             <div className="col-span-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Users className="w-5 h-5 text-blue-600" />
+                <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+                  <Users className="w-5 h-5 text-brand-orange" />
                 </div>
                 <div>
                   <div className="font-medium text-gray-900">
@@ -240,7 +240,7 @@ export default function Step5RevenueDrivers({
                 type="number"
                 value={fiveWays.leads.current}
                 onChange={(e) => handleMetricChange('leads', 'current', parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 text-center border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500"
+                className="w-full px-3 py-2 text-center border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange"
               />
             </div>
             <div className="col-span-3">
@@ -248,7 +248,7 @@ export default function Step5RevenueDrivers({
                 type="number"
                 value={fiveWays.leads.target}
                 onChange={(e) => handleMetricChange('leads', 'target', parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 text-center border border-teal-200 bg-teal-50 rounded-lg focus:ring-2 focus:ring-teal-500 font-semibold"
+                className="w-full px-3 py-2 text-center border border-brand-orange-200 bg-brand-orange-50 rounded-lg focus:ring-2 focus:ring-brand-orange font-semibold"
               />
             </div>
             <div className="col-span-2 text-center">
@@ -282,7 +282,7 @@ export default function Step5RevenueDrivers({
                   step="0.1"
                   value={fiveWays.conversionRate.current}
                   onChange={(e) => handleMetricChange('conversionRate', 'current', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 text-center border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2 text-center border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange"
                 />
                 <span className="text-gray-500">%</span>
               </div>
@@ -294,7 +294,7 @@ export default function Step5RevenueDrivers({
                   step="0.1"
                   value={fiveWays.conversionRate.target}
                   onChange={(e) => handleMetricChange('conversionRate', 'target', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 text-center border border-teal-200 bg-teal-50 rounded-lg focus:ring-2 focus:ring-teal-500 font-semibold"
+                  className="w-full px-3 py-2 text-center border border-brand-orange-200 bg-brand-orange-50 rounded-lg focus:ring-2 focus:ring-brand-orange font-semibold"
                 />
                 <span className="text-gray-500">%</span>
               </div>
@@ -310,8 +310,8 @@ export default function Step5RevenueDrivers({
           <div className="px-5 py-4 grid grid-cols-12 gap-4 items-center">
             <div className="col-span-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
-                  <RefreshCw className="w-5 h-5 text-teal-600" />
+                <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+                  <RefreshCw className="w-5 h-5 text-brand-orange" />
                 </div>
                 <div>
                   <div className="font-medium text-gray-900">
@@ -329,7 +329,7 @@ export default function Step5RevenueDrivers({
                 step="0.1"
                 value={fiveWays.transactions.current}
                 onChange={(e) => handleMetricChange('transactions', 'current', parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 text-center border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500"
+                className="w-full px-3 py-2 text-center border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange"
               />
             </div>
             <div className="col-span-3">
@@ -338,7 +338,7 @@ export default function Step5RevenueDrivers({
                 step="0.1"
                 value={fiveWays.transactions.target}
                 onChange={(e) => handleMetricChange('transactions', 'target', parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 text-center border border-teal-200 bg-teal-50 rounded-lg focus:ring-2 focus:ring-teal-500 font-semibold"
+                className="w-full px-3 py-2 text-center border border-brand-orange-200 bg-brand-orange-50 rounded-lg focus:ring-2 focus:ring-brand-orange font-semibold"
               />
             </div>
             <div className="col-span-2 text-center">
@@ -352,8 +352,8 @@ export default function Step5RevenueDrivers({
           <div className="px-5 py-4 grid grid-cols-12 gap-4 items-center">
             <div className="col-span-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                  <ShoppingCart className="w-5 h-5 text-orange-600" />
+                <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+                  <ShoppingCart className="w-5 h-5 text-brand-orange-600" />
                 </div>
                 <div>
                   <div className="font-medium text-gray-900">
@@ -372,7 +372,7 @@ export default function Step5RevenueDrivers({
                   type="number"
                   value={fiveWays.avgSaleValue.current}
                   onChange={(e) => handleMetricChange('avgSaleValue', 'current', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 text-center border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2 text-center border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
             </div>
@@ -383,7 +383,7 @@ export default function Step5RevenueDrivers({
                   type="number"
                   value={fiveWays.avgSaleValue.target}
                   onChange={(e) => handleMetricChange('avgSaleValue', 'target', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 text-center border border-teal-200 bg-teal-50 rounded-lg focus:ring-2 focus:ring-teal-500 font-semibold"
+                  className="w-full px-3 py-2 text-center border border-brand-orange-200 bg-brand-orange-50 rounded-lg focus:ring-2 focus:ring-brand-orange font-semibold"
                 />
               </div>
             </div>
@@ -398,8 +398,8 @@ export default function Step5RevenueDrivers({
           <div className="px-5 py-4 grid grid-cols-12 gap-4 items-center bg-gray-50">
             <div className="col-span-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-teal-600" />
+                <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-brand-orange" />
                 </div>
                 <div>
                   <div className="font-medium text-gray-900">
@@ -418,7 +418,7 @@ export default function Step5RevenueDrivers({
                   step="0.1"
                   value={fiveWays.margin.current}
                   onChange={(e) => handleMetricChange('margin', 'current', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 text-center border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2 text-center border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange"
                 />
                 <span className="text-gray-500">%</span>
               </div>
@@ -430,7 +430,7 @@ export default function Step5RevenueDrivers({
                   step="0.1"
                   value={fiveWays.margin.target}
                   onChange={(e) => handleMetricChange('margin', 'target', parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 text-center border border-teal-200 bg-teal-50 rounded-lg focus:ring-2 focus:ring-teal-500 font-semibold"
+                  className="w-full px-3 py-2 text-center border border-brand-orange-200 bg-brand-orange-50 rounded-lg focus:ring-2 focus:ring-brand-orange font-semibold"
                 />
                 <span className="text-gray-500">%</span>
               </div>
@@ -451,7 +451,7 @@ export default function Step5RevenueDrivers({
             ? 'bg-green-50 border-green-200'
             : calculations.revenueGap > 0
               ? 'bg-red-50 border-red-200'
-              : 'bg-blue-50 border-blue-200'
+              : 'bg-brand-orange-50 border-brand-orange-200'
           }`}>
           <div className="flex items-center gap-2 mb-2">
             <Calculator className="w-5 h-5 text-gray-600" />
@@ -468,7 +468,7 @@ export default function Step5RevenueDrivers({
                 {formatCurrency(calculations.revenueGap)} short of goal
               </span>
             ) : (
-              <span className="text-blue-700">
+              <span className="text-brand-orange-700">
                 {formatCurrency(Math.abs(calculations.revenueGap))} above goal!
               </span>
             )}
@@ -505,12 +505,12 @@ export default function Step5RevenueDrivers({
       </div>
 
       {/* Coaching Tip */}
-      <div className="bg-gradient-to-br from-teal-50 to-teal-100 border border-teal-200 rounded-xl p-5">
-        <h4 className="font-semibold text-teal-900 mb-3 flex items-center gap-2">
-          <Lightbulb className="w-5 h-5 text-teal-600" />
+      <div className="bg-gradient-to-br from-brand-orange-50 to-brand-orange-100 border border-brand-orange-200 rounded-xl p-5">
+        <h4 className="font-semibold text-brand-navy mb-3 flex items-center gap-2">
+          <Lightbulb className="w-5 h-5 text-brand-orange" />
           Coaching Insight
         </h4>
-        <p className="text-sm text-teal-800">
+        <p className="text-sm text-brand-orange-800">
           {isOnTrack ? (
             <>
               Great work! Your 5 Ways targets align with your revenue goal.
@@ -536,24 +536,24 @@ export default function Step5RevenueDrivers({
       {/* How We'll Use This */}
       <div className="bg-gray-50 rounded-lg p-4">
         <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-          <ArrowRight className="w-4 h-4 text-teal-600" />
+          <ArrowRight className="w-4 h-4 text-brand-orange" />
           How We'll Use This Data
         </h4>
         <ul className="space-y-2 text-sm text-gray-700">
           <li className="flex items-start gap-2">
-            <span className="text-teal-600 font-bold">•</span>
+            <span className="text-brand-orange font-bold">•</span>
             <span>
               Your target margin will be used to calculate COGS in the forecast
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="text-teal-600 font-bold">•</span>
+            <span className="text-brand-orange font-bold">•</span>
             <span>
               We'll track these drivers as KPIs you can monitor throughout the year
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="text-teal-600 font-bold">•</span>
+            <span className="text-brand-orange font-bold">•</span>
             <span>
               The calculated revenue validates your goals are achievable with realistic inputs
             </span>

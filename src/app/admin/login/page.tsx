@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Shield, Lock, Mail, AlertCircle } from 'lucide-react'
 import { getUserSystemRole } from '@/lib/auth/roles'
@@ -55,17 +56,21 @@ export default function AdminLogin() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-teal-900 to-slate-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-brand-navy via-brand-navy-800 to-brand-navy-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-teal-600 rounded-full mb-4">
-            <Shield className="w-8 h-8 text-white" />
-          </div>
+          <Image
+            src="/images/logo-tight.png"
+            alt="WisdomBi"
+            width={550}
+            height={300}
+            className="h-24 w-auto mx-auto mb-4"
+          />
           <h1 className="text-3xl font-bold text-white mb-2">
             Admin Portal
           </h1>
-          <p className="text-teal-200">
+          <p className="text-brand-orange-300">
             Wisdom Business Intelligence
           </p>
         </div>
@@ -93,7 +98,7 @@ export default function AdminLogin() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   placeholder="admin@wisdombi.com.au"
                   required
                   disabled={loading}
@@ -113,14 +118,14 @@ export default function AdminLogin() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   placeholder="••••••••"
                   required
                   disabled={loading}
                 />
               </div>
               <div className="text-right mt-1">
-                <a href="/auth/reset-password" className="text-sm text-teal-600 hover:text-teal-700">
+                <a href="/auth/reset-password" className="text-sm text-brand-orange hover:text-brand-orange-700">
                   Forgot password?
                 </a>
               </div>
@@ -130,7 +135,7 @@ export default function AdminLogin() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-teal-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full bg-brand-orange text-white py-3 px-4 rounded-lg font-medium hover:bg-brand-orange-600 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? 'Signing in...' : 'Sign In to Admin Portal'}
             </button>
@@ -138,11 +143,11 @@ export default function AdminLogin() {
 
           {/* Footer Links */}
           <div className="mt-6 text-center space-y-2">
-            <a href="/login" className="text-sm text-teal-600 hover:text-teal-700">
+            <a href="/login" className="text-sm text-brand-orange hover:text-brand-orange-700">
               Client Login →
             </a>
             <br />
-            <a href="/coach/login" className="text-sm text-teal-600 hover:text-teal-700">
+            <a href="/coach/login" className="text-sm text-brand-orange hover:text-brand-orange-700">
               Coach Login →
             </a>
           </div>
@@ -150,7 +155,7 @@ export default function AdminLogin() {
 
         {/* Security Notice */}
         <div className="mt-6 text-center">
-          <p className="text-sm text-teal-200">
+          <p className="text-sm text-brand-orange-300">
             <Lock className="w-4 h-4 inline mr-1" />
             Secure admin access only
           </p>
@@ -158,9 +163,9 @@ export default function AdminLogin() {
 
         {/* Legal Links */}
         <div className="mt-4 text-center">
-          <a href="/privacy" className="text-xs text-teal-300 hover:text-white mx-2">Privacy Policy</a>
-          <span className="text-teal-400">•</span>
-          <a href="/terms" className="text-xs text-teal-300 hover:text-white mx-2">Terms of Service</a>
+          <a href="/privacy" className="text-xs text-brand-orange-300 hover:text-white mx-2">Privacy Policy</a>
+          <span className="text-brand-orange-400">•</span>
+          <a href="/terms" className="text-xs text-brand-orange-300 hover:text-white mx-2">Terms of Service</a>
         </div>
       </div>
     </div>

@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import {
-  ArrowLeft,
   TrendingUp,
   AlertCircle,
   CheckCircle,
@@ -14,8 +13,11 @@ import {
   DollarSign,
   Brain,
   Clock,
-  RefreshCw
+  RefreshCw,
+  History,
+  Activity
 } from 'lucide-react';
+import PageHeader from '@/components/ui/PageHeader';
 
 interface AssessmentResult {
   id: string;
@@ -80,21 +82,21 @@ export default function AssessmentResultsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-orange-50 via-white to-purple-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange"></div>
       </div>
     );
   }
 
   if (!assessment) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-orange-50 via-white to-purple-50">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Assessment Not Found</h2>
-          <p className="text-gray-600 mb-4">This assessment could not be loaded.</p>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Assessment Not Found</h2>
+          <p className="text-sm sm:text-base text-gray-600 mb-4">This assessment could not be loaded.</p>
           <button
             onClick={() => router.push('/dashboard')}
-            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+            className="px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
           >
             Back to Dashboard
           </button>
@@ -111,7 +113,7 @@ export default function AssessmentResultsPage() {
       case 'THRIVING': return { label: 'THRIVING', color: 'text-green-600', bg: 'bg-green-100' };
       case 'STRONG': return { label: 'STRONG', color: 'text-green-500', bg: 'bg-green-50' };
       case 'STABLE': return { label: 'STABLE', color: 'text-yellow-600', bg: 'bg-yellow-50' };
-      case 'BUILDING': return { label: 'BUILDING', color: 'text-orange-600', bg: 'bg-orange-50' };
+      case 'BUILDING': return { label: 'BUILDING', color: 'text-brand-orange-600', bg: 'bg-brand-orange-50' };
       case 'STRUGGLING': return { label: 'STRUGGLING', color: 'text-red-500', bg: 'bg-red-50' };
       default: return { label: 'URGENT', color: 'text-red-600', bg: 'bg-red-100' };
     }
@@ -156,48 +158,46 @@ export default function AssessmentResultsPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 via-white to-purple-50">
-      {/* Header */}
-      <div className="bg-white/90 backdrop-blur-sm border-b">
-        <div className="max-w-6xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="flex items-center text-gray-600 hover:text-gray-900"
-            >
-              <ArrowLeft className="w-5 h-5 mr-2" />
-              Back to Dashboard
-            </button>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.push('/assessment/history')}
-                className="text-sm text-teal-600 hover:text-teal-700 font-medium"
-              >
-                View History
-              </button>
-              <div className="text-sm text-gray-500">
-                Completed: {new Date(assessment.created_at).toLocaleDateString()}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div className="min-h-screen bg-gradient-to-br from-brand-orange-50 via-white to-purple-50">
       {/* Main Content */}
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <PageHeader
+          title="Assessment Results"
+          subtitle={`Completed ${new Date(assessment.created_at).toLocaleDateString()} • ${timeSince.text}`}
+          icon={Activity}
+          badge={healthStatus.label}
+          badgeColor={
+            healthStatus.label === 'THRIVING' || healthStatus.label === 'STRONG' ? 'teal' :
+            healthStatus.label === 'STABLE' ? 'orange' : 'gray'
+          }
+          backLink={{
+            href: '/dashboard',
+            label: 'Back to Dashboard'
+          }}
+          actions={
+            <button
+              onClick={() => router.push('/assessment/history')}
+              className="inline-flex items-center px-3 sm:px-4 py-2 text-sm font-medium text-white bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+            >
+              <History className="w-4 h-4 mr-2" />
+              <span className="hidden sm:inline">View History</span>
+              <span className="sm:hidden">History</span>
+            </button>
+          }
+        />
         {/* Time Since Assessment Banner */}
         {timeSince.shouldRetake && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-center justify-between">
-            <div className="flex items-center">
-              <Clock className="w-5 h-5 text-amber-600 mr-3" />
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-6 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center">
+              <Clock className="w-5 h-5 text-amber-600 mr-3 mt-0.5 sm:mt-0 flex-shrink-0" />
               <div>
-                <p className="text-amber-800 font-medium">{timeSince.text}</p>
-                <p className="text-amber-600 text-sm">We recommend retaking the assessment quarterly to track your progress</p>
+                <p className="text-sm sm:text-base text-amber-800 font-medium">{timeSince.text}</p>
+                <p className="text-xs sm:text-sm text-amber-600 mt-1">We recommend retaking the assessment quarterly to track your progress</p>
               </div>
             </div>
             <button
               onClick={() => router.push('/assessment?new=true')}
-              className="flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm font-medium"
+              className="flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm font-medium whitespace-nowrap"
             >
               <RefreshCw className="w-4 h-4 mr-2" />
               Retake Now
@@ -206,17 +206,17 @@ export default function AssessmentResultsPage() {
         )}
 
         {/* Overall Score Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Your Business Assessment Results
-            </h1>
-            <p className="text-gray-600">
+        <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8">
+          <div className="text-center mb-6 sm:mb-8">
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+              Your Business Health Score
+            </h2>
+            <p className="text-sm sm:text-base text-gray-600">
               Comprehensive analysis of your business health and opportunities
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
             {/* Score Circle */}
             <div className="flex flex-col items-center justify-center">
               <div className="relative w-48 h-48">
@@ -251,10 +251,10 @@ export default function AssessmentResultsPage() {
                 </div>
               </div>
               <div className="mt-4 text-center">
-                <p className="text-lg font-semibold text-gray-900">
+                <p className="text-base sm:text-lg font-semibold text-gray-900">
                   Overall Business Health
                 </p>
-                <p className="text-sm text-gray-600">
+                <p className="text-xs sm:text-sm text-gray-600">
                   {assessment.total_score || 0} out of {assessment.total_max || 300} points
                 </p>
               </div>
@@ -262,22 +262,23 @@ export default function AssessmentResultsPage() {
 
             {/* Detailed Breakdown - 8 Engines */}
             <div className="space-y-3">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">8 Business Engines</h3>
+              <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">8 Business Engines</h3>
               {engines.map((engine) => {
                 const percentage = engine.max > 0 ? Math.round((engine.score / engine.max) * 100) : 0;
                 const Icon = engine.icon;
 
                 return (
-                  <div key={engine.id} className="bg-gray-50 rounded-lg p-3">
+                  <div key={engine.id} className="bg-gray-50 rounded-lg p-3 sm:p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center">
-                        <Icon className="w-4 h-4 mr-2 text-gray-600" />
-                        <div>
-                          <span className="font-medium text-gray-900">{engine.name}</span>
-                          <span className="text-xs text-gray-500 ml-2">{engine.subtitle}</span>
+                      <div className="flex items-center min-w-0 flex-1">
+                        <Icon className="w-4 h-4 mr-2 text-gray-600 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <span className="text-sm sm:text-base font-medium text-gray-900">{engine.name}</span>
+                          <span className="hidden sm:inline text-xs text-gray-500 ml-2">{engine.subtitle}</span>
+                          <div className="sm:hidden text-xs text-gray-500">{engine.subtitle}</div>
                         </div>
                       </div>
-                      <span className={`text-sm font-semibold ${
+                      <span className={`text-sm font-semibold ml-2 flex-shrink-0 ${
                         percentage >= 80 ? 'text-green-600' :
                         percentage >= 60 ? 'text-yellow-600' : 'text-red-600'
                       }`}>
@@ -304,20 +305,20 @@ export default function AssessmentResultsPage() {
         </div>
 
         {/* Recommendations Section */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
-          <div className="flex items-center mb-6">
-            <Target className="w-6 h-6 text-teal-600 mr-3" />
-            <h2 className="text-2xl font-bold text-gray-900">Key Recommendations</h2>
+        <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8">
+          <div className="flex items-center mb-4 sm:mb-6">
+            <Target className="w-5 h-5 sm:w-6 sm:h-6 text-brand-orange mr-2 sm:mr-3 flex-shrink-0" />
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Key Recommendations</h2>
           </div>
-          
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {/* Priority Areas */}
-            <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-lg">
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 sm:p-6 rounded-lg">
               <div className="flex items-center mb-3">
-                <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
-                <h3 className="font-semibold text-red-900">Priority Areas</h3>
+                <AlertCircle className="w-5 h-5 text-red-600 mr-2 flex-shrink-0" />
+                <h3 className="text-sm sm:text-base font-semibold text-red-900">Priority Areas</h3>
               </div>
-              <ul className="text-sm text-red-800 space-y-2">
+              <ul className="text-xs sm:text-sm text-red-800 space-y-2">
                 {engines
                   .filter(engine => engine.max > 0 && (engine.score / engine.max) < 0.6)
                   .slice(0, 4)
@@ -335,12 +336,12 @@ export default function AssessmentResultsPage() {
             </div>
 
             {/* Strengths */}
-            <div className="bg-green-50 border-l-4 border-green-500 p-6 rounded-lg">
+            <div className="bg-green-50 border-l-4 border-green-500 p-4 sm:p-6 rounded-lg">
               <div className="flex items-center mb-3">
-                <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-                <h3 className="font-semibold text-green-900">Your Strengths</h3>
+                <CheckCircle className="w-5 h-5 text-green-600 mr-2 flex-shrink-0" />
+                <h3 className="text-sm sm:text-base font-semibold text-green-900">Your Strengths</h3>
               </div>
-              <ul className="text-sm text-green-800 space-y-2">
+              <ul className="text-xs sm:text-sm text-green-800 space-y-2">
                 {engines
                   .filter(engine => engine.max > 0 && (engine.score / engine.max) >= 0.8)
                   .slice(0, 4)
@@ -358,22 +359,22 @@ export default function AssessmentResultsPage() {
             </div>
 
             {/* Next Steps */}
-            <div className="bg-teal-50 border-l-4 border-teal-500 p-6 rounded-lg">
+            <div className="bg-brand-orange-50 border-l-4 border-brand-orange-500 p-4 sm:p-6 rounded-lg">
               <div className="flex items-center mb-3">
-                <TrendingUp className="w-5 h-5 text-teal-600 mr-2" />
-                <h3 className="font-semibold text-teal-900">Next Steps</h3>
+                <TrendingUp className="w-5 h-5 text-brand-orange mr-2 flex-shrink-0" />
+                <h3 className="text-sm sm:text-base font-semibold text-brand-navy">Next Steps</h3>
               </div>
-              <ul className="text-sm text-teal-800 space-y-2">
+              <ul className="text-xs sm:text-sm text-brand-orange-800 space-y-2">
                 <li className="flex items-center">
-                  <div className="w-2 h-2 bg-teal-500 rounded-full mr-2" />
+                  <div className="w-2 h-2 bg-brand-orange-500 rounded-full mr-2" />
                   Set specific improvement goals
                 </li>
                 <li className="flex items-center">
-                  <div className="w-2 h-2 bg-teal-500 rounded-full mr-2" />
+                  <div className="w-2 h-2 bg-brand-orange-500 rounded-full mr-2" />
                   Focus on priority areas first
                 </li>
                 <li className="flex items-center">
-                  <div className="w-2 h-2 bg-teal-500 rounded-full mr-2" />
+                  <div className="w-2 h-2 bg-brand-orange-500 rounded-full mr-2" />
                   Schedule regular progress reviews
                 </li>
               </ul>
@@ -382,24 +383,24 @@ export default function AssessmentResultsPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="bg-gradient-to-r from-teal-600 to-purple-600 rounded-2xl shadow-xl p-8 text-white">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold mb-2">Ready to Take Action?</h2>
-            <p className="text-teal-100">
+        <div className="bg-gradient-to-r from-brand-orange to-purple-600 rounded-xl shadow-xl p-6 sm:p-8 text-white">
+          <div className="text-center mb-4 sm:mb-6">
+            <h2 className="text-xl sm:text-2xl font-bold mb-2">Ready to Take Action?</h2>
+            <p className="text-sm sm:text-base text-brand-orange-100">
               Transform your assessment insights into actionable business improvements
             </p>
           </div>
-          
-          <div className="grid md:grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <button
               onClick={() => router.push('/strategic-goals')}
-              className="bg-white text-teal-600 font-semibold py-3 px-6 rounded-lg hover:bg-teal-50 transition-colors"
+              className="bg-white text-brand-orange font-semibold py-3 px-4 sm:px-6 rounded-lg hover:bg-brand-orange-50 transition-colors text-sm sm:text-base"
             >
               Set Strategic Goals
             </button>
             <button
               onClick={() => router.push('/assessment?new=true')}
-              className="bg-teal-700 text-white font-semibold py-3 px-6 rounded-lg hover:bg-teal-800 transition-colors"
+              className="bg-brand-orange-700 text-white font-semibold py-3 px-4 sm:px-6 rounded-lg hover:bg-brand-orange-800 transition-colors text-sm sm:text-base"
             >
               Retake Assessment
             </button>

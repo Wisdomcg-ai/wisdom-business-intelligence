@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase/client'
 import { ClientOverviewTable, type ClientMetrics } from '@/components/coach/ClientOverviewTable'
 import { ActivityFeed, type ActivityItem } from '@/components/coach/ActivityFeed'
 import { StatsCard } from '@/components/admin/StatsCard'
-import { Loader2, AlertTriangle, RefreshCw, Users, Calendar, ListChecks, MessageSquare, Building2, Plus, ArrowRight } from 'lucide-react'
+import PageHeader from '@/components/ui/PageHeader'
+import { Loader2, AlertTriangle, RefreshCw, Users, Calendar, ListChecks, MessageSquare, Building2, Plus, ArrowRight, LayoutDashboard } from 'lucide-react'
 import Link from 'next/link'
 
 // Stage calculation from revenue (matching stage-service.ts)
@@ -340,189 +341,193 @@ export default function CoachDashboardPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-teal-500 animate-spin" />
-          <p className="text-slate-500 text-sm">Loading dashboard...</p>
+          <Loader2 className="w-8 h-8 text-brand-orange-500 animate-spin" />
+          <p className="text-gray-500 text-sm">Loading dashboard...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-8">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-slate-500 mt-1">Overview of your coaching clients</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => loadDashboardData(true)}
-            disabled={refreshing}
-            className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
-          <Link
-            href="/coach/clients/new"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white font-medium rounded-xl hover:bg-teal-700 transition-colors shadow-lg shadow-teal-500/20"
-          >
-            <Plus className="w-4 h-4" />
-            Add Client
-          </Link>
-        </div>
-      </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="space-y-6 sm:space-y-8">
+        {/* Page Header */}
+        <PageHeader
+          title="Dashboard"
+          subtitle="Overview of your coaching clients"
+          icon={LayoutDashboard}
+          actions={
+            <>
+              <button
+                onClick={() => loadDashboardData(true)}
+                disabled={refreshing}
+                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+              <Link
+                href="/coach/clients/new"
+                className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-600 text-white text-sm font-medium rounded-lg shadow-sm transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Add Client</span>
+                <span className="sm:hidden">Add</span>
+              </Link>
+            </>
+          }
+        />
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard
-          title="Active Clients"
-          value={stats.activeClients}
-          icon={Building2}
-          iconColor="teal"
-          onClick={() => window.location.href = '/coach/clients'}
-        />
-        <StatsCard
-          title="Pending Actions"
-          value={stats.pendingActions}
-          icon={ListChecks}
-          iconColor="amber"
-          subtitle="Open loops & issues"
-          onClick={() => window.location.href = '/coach/actions'}
-        />
-        <StatsCard
-          title="Sessions This Week"
-          value={stats.sessionsThisWeek}
-          icon={Calendar}
-          iconColor="purple"
-          onClick={() => window.location.href = '/coach/schedule'}
-        />
-        <StatsCard
-          title="Unread Messages"
-          value={stats.unreadMessages}
-          icon={MessageSquare}
-          iconColor="blue"
-          onClick={() => window.location.href = '/coach/messages'}
-        />
-      </div>
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          <StatsCard
+            title="Active Clients"
+            value={stats.activeClients}
+            icon={Building2}
+            iconColor="teal"
+            onClick={() => window.location.href = '/coach/clients'}
+          />
+          <StatsCard
+            title="Pending Actions"
+            value={stats.pendingActions}
+            icon={ListChecks}
+            iconColor="amber"
+            subtitle="Open loops & issues"
+            onClick={() => window.location.href = '/coach/actions'}
+          />
+          <StatsCard
+            title="Sessions This Week"
+            value={stats.sessionsThisWeek}
+            icon={Calendar}
+            iconColor="navy"
+            onClick={() => window.location.href = '/coach/schedule'}
+          />
+          <StatsCard
+            title="Unread Messages"
+            value={stats.unreadMessages}
+            icon={MessageSquare}
+            iconColor="orange"
+            onClick={() => window.location.href = '/coach/messages'}
+          />
+        </div>
 
-      {/* Needs Attention Card */}
-      {clientsNeedingAttention.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 text-amber-600" />
-              </div>
-              <div>
-                <h2 className="font-semibold text-slate-900">Needs Attention</h2>
-                <p className="text-sm text-slate-500">{clientsNeedingAttention.length} clients need your attention</p>
-              </div>
-            </div>
-          </div>
-          <div className="divide-y divide-slate-100">
-            {clientsNeedingAttention.slice(0, 5).map((client) => (
-              <div key={client.id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-                    <Building2 className="w-5 h-5 text-slate-500" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-slate-900">{client.name}</p>
-                    <p className="text-sm text-amber-600">{client.reason}</p>
-                  </div>
+        {/* Needs Attention Card */}
+        {clientsNeedingAttention.length > 0 && (
+          <div className="rounded-xl shadow-sm border border-gray-200 bg-white overflow-hidden">
+            <div className="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
                 </div>
-                <Link
-                  href={`/coach/clients/${client.id}`}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 font-medium text-sm rounded-lg hover:bg-amber-200 transition-colors"
-                >
-                  View
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
+                <div>
+                  <h2 className="text-base sm:text-lg font-semibold text-brand-navy">Needs Attention</h2>
+                  <p className="text-sm text-gray-500">{clientsNeedingAttention.length} clients need your attention</p>
+                </div>
               </div>
-            ))}
+            </div>
+            <div className="divide-y divide-slate-100">
+              {clientsNeedingAttention.slice(0, 5).map((client) => (
+                <div key={client.id} className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <Building2 className="w-5 h-5 text-gray-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium text-brand-navy truncate">{client.name}</p>
+                      <p className="text-sm text-amber-600">{client.reason}</p>
+                    </div>
+                  </div>
+                  <Link
+                    href={`/coach/clients/${client.id}`}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 font-medium text-sm rounded-lg hover:bg-amber-200 transition-colors"
+                  >
+                    View
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Client Overview Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-900">Client Overview</h2>
-          <p className="text-sm text-slate-500 mt-1">Quick view of all your clients' status</p>
-        </div>
-        <ClientOverviewTable clients={clientMetrics} isLoading={refreshing} />
-      </div>
-
-      {/* Activity Feed */}
-      {activities.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h2 className="font-semibold text-slate-900">Recent Activity</h2>
-            <p className="text-sm text-slate-500 mt-1">Latest updates from your clients</p>
+        {/* Client Overview Table */}
+        <div className="rounded-xl shadow-sm border border-gray-200 bg-white overflow-hidden">
+          <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
+            <h2 className="text-base sm:text-lg font-semibold text-brand-navy">Client Overview</h2>
+            <p className="text-sm text-gray-500 mt-1">Quick view of all your clients' status</p>
           </div>
-          <div className="p-6">
-            <ActivityFeed activities={activities} />
-          </div>
+          <ClientOverviewTable clients={clientMetrics} isLoading={refreshing} />
         </div>
-      )}
 
-      {/* Quick Actions Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6">
-        <h2 className="font-semibold text-slate-900 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Link
-            href="/coach/clients/new"
-            className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50 transition-all"
-          >
-            <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center group-hover:bg-teal-500 transition-colors">
-              <Plus className="w-6 h-6 text-teal-600 group-hover:text-white transition-colors" />
+        {/* Activity Feed */}
+        {activities.length > 0 && (
+          <div className="rounded-xl shadow-sm border border-gray-200 bg-white overflow-hidden">
+            <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
+              <h2 className="text-base sm:text-lg font-semibold text-brand-navy">Recent Activity</h2>
+              <p className="text-sm text-gray-500 mt-1">Latest updates from your clients</p>
             </div>
-            <div>
-              <p className="font-medium text-slate-900">Add Client</p>
-              <p className="text-sm text-slate-500">Onboard new business</p>
+            <div className="p-4 sm:p-6">
+              <ActivityFeed activities={activities} />
             </div>
-          </Link>
+          </div>
+        )}
 
-          <Link
-            href="/coach/schedule"
-            className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-purple-500 hover:bg-purple-50 transition-all"
-          >
-            <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center group-hover:bg-purple-500 transition-colors">
-              <Calendar className="w-6 h-6 text-purple-600 group-hover:text-white transition-colors" />
-            </div>
-            <div>
-              <p className="font-medium text-slate-900">Schedule Session</p>
-              <p className="text-sm text-slate-500">Book coaching call</p>
-            </div>
-          </Link>
+        {/* Quick Actions Card */}
+        <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold text-brand-navy mb-4">Quick Actions</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <Link
+              href="/coach/clients/new"
+              className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-brand-orange-500 hover:bg-brand-orange-50 transition-all"
+            >
+              <div className="w-12 h-12 bg-brand-orange-100 rounded-xl flex items-center justify-center group-hover:bg-brand-orange-500 transition-colors flex-shrink-0">
+                <Plus className="w-6 h-6 text-brand-orange group-hover:text-white transition-colors" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium text-brand-navy">Add Client</p>
+                <p className="text-sm text-gray-500">Onboard new business</p>
+              </div>
+            </Link>
 
-          <Link
-            href="/coach/messages"
-            className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50 transition-all"
-          >
-            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-500 transition-colors">
-              <MessageSquare className="w-6 h-6 text-blue-600 group-hover:text-white transition-colors" />
-            </div>
-            <div>
-              <p className="font-medium text-slate-900">Messages</p>
-              <p className="text-sm text-slate-500">Client conversations</p>
-            </div>
-          </Link>
+            <Link
+              href="/coach/schedule"
+              className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-brand-navy hover:bg-brand-navy-50 transition-all"
+            >
+              <div className="w-12 h-12 bg-brand-navy-50 rounded-xl flex items-center justify-center group-hover:bg-brand-navy transition-colors flex-shrink-0">
+                <Calendar className="w-6 h-6 text-brand-navy group-hover:text-white transition-colors" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium text-brand-navy">Schedule Session</p>
+                <p className="text-sm text-gray-500">Book coaching call</p>
+              </div>
+            </Link>
 
-          <Link
-            href="/coach/reports"
-            className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 transition-all"
-          >
-            <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center group-hover:bg-indigo-500 transition-colors">
-              <Users className="w-6 h-6 text-indigo-600 group-hover:text-white transition-colors" />
-            </div>
-            <div>
-              <p className="font-medium text-slate-900">Reports</p>
-              <p className="text-sm text-slate-500">Analytics & insights</p>
-            </div>
-          </Link>
+            <Link
+              href="/coach/messages"
+              className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-brand-orange hover:bg-brand-orange-50 transition-all"
+            >
+              <div className="w-12 h-12 bg-brand-orange-100 rounded-xl flex items-center justify-center group-hover:bg-brand-orange-500 transition-colors flex-shrink-0">
+                <MessageSquare className="w-6 h-6 text-brand-orange group-hover:text-white transition-colors" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium text-brand-navy">Messages</p>
+                <p className="text-sm text-gray-500">Client conversations</p>
+              </div>
+            </Link>
+
+            <Link
+              href="/coach/reports"
+              className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-brand-orange hover:bg-brand-orange-50 transition-all"
+            >
+              <div className="w-12 h-12 bg-brand-orange-100 rounded-xl flex items-center justify-center group-hover:bg-brand-orange-500 transition-colors flex-shrink-0">
+                <Users className="w-6 h-6 text-brand-orange group-hover:text-white transition-colors" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium text-brand-navy">Reports</p>
+                <p className="text-sm text-gray-500">Analytics & insights</p>
+              </div>
+            </Link>
+          </div>
         </div>
       </div>
     </div>

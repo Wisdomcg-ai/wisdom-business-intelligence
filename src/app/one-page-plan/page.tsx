@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
-import { ArrowLeft, Printer, Loader2, ExternalLink, CheckCircle2, Circle, Lightbulb } from 'lucide-react'
+import { Printer, Loader2, ExternalLink, CheckCircle2, Circle, Lightbulb, FileText } from 'lucide-react'
 import { calculateQuarters, determinePlanYear } from '@/app/goals/utils/quarters'
 import type { YearType } from '@/app/goals/types'
+import PageHeader from '@/components/ui/PageHeader'
 
 // Only log in development
 const isDev = process.env.NODE_ENV === 'development'
@@ -572,9 +573,9 @@ export default function OnePagePlan() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-teal-600 mx-auto mb-4" />
+          <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading your One Page Plan...</p>
         </div>
       </div>
@@ -583,7 +584,7 @@ export default function OnePagePlan() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 font-medium mb-2">Error loading plan</p>
           <p className="text-gray-600">{error}</p>
@@ -593,34 +594,34 @@ export default function OnePagePlan() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8">
-      {/* Navigation - Hidden when printing */}
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 mb-6 print:hidden">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
-          </button>
-          <div className="flex gap-3">
-            <button
-              onClick={() => router.push('/goals')}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium text-sm"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Edit Strategic Plan
-            </button>
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm"
-            >
-              <Printer className="w-4 h-4" />
-              Print
-            </button>
-          </div>
-        </div>
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-8">
+      {/* Page Header - Hidden when printing */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 print:hidden">
+        <PageHeader
+          title="One Page Strategic Plan"
+          subtitle={`${data.companyName} • Year ${data.planYear} • ${data.yearType === 'FY' ? 'Financial Year' : 'Calendar Year'}`}
+          icon={FileText}
+          backLink={{ href: '/dashboard', label: 'Back to Dashboard' }}
+          actions={
+            <>
+              <button
+                onClick={() => router.push('/goals')}
+                className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg font-medium text-sm"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span className="hidden sm:inline">Edit Strategic Plan</span>
+                <span className="sm:hidden">Edit</span>
+              </button>
+              <button
+                onClick={handlePrint}
+                className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg font-medium text-sm"
+              >
+                <Printer className="w-4 h-4" />
+                <span className="hidden sm:inline">Print</span>
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* Strategic Health Dashboard - Hidden when printing */}
@@ -628,43 +629,45 @@ export default function OnePagePlan() {
         const health = calculatePlanHealth(data)
         const insights = generateCoachingInsights(data)
         return (
-          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 mb-6 print:hidden">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-              <div className="flex items-start gap-6">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6 print:hidden">
+            <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6">
+              <div className="flex flex-col lg:flex-row items-start gap-4 sm:gap-6">
                 {/* Health Score */}
                 <div className="flex-shrink-0">
                   <div className="relative">
-                    <svg className="w-20 h-20 transform -rotate-90">
+                    <svg className="w-24 h-24 sm:w-28 sm:h-28" viewBox="0 0 100 100">
                       <circle
-                        cx="40"
-                        cy="40"
-                        r="36"
+                        cx="50"
+                        cy="50"
+                        r="42"
                         stroke="#e5e7eb"
                         strokeWidth="8"
                         fill="none"
+                        transform="rotate(-90 50 50)"
                       />
                       <circle
-                        cx="40"
-                        cy="40"
-                        r="36"
+                        cx="50"
+                        cy="50"
+                        r="42"
                         stroke={health.percentage >= 70 ? '#22c55e' : health.percentage >= 40 ? '#f59e0b' : '#ef4444'}
                         strokeWidth="8"
                         fill="none"
-                        strokeDasharray={`${(health.percentage / 100) * 226} 226`}
+                        strokeDasharray={`${(health.percentage / 100) * 264} 264`}
                         strokeLinecap="round"
+                        transform="rotate(-90 50 50)"
                       />
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-xl font-bold text-gray-900">{health.percentage}%</span>
+                      <span className="text-2xl sm:text-3xl font-bold text-gray-900">{health.percentage}%</span>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-600 text-center mt-1">Plan Health</p>
+                  <p className="text-sm text-gray-600 text-center mt-2 font-medium">Plan Health</p>
                 </div>
 
                 {/* Section Checklist */}
                 <div className="flex-1 min-w-0">
                   <h3 className="text-sm font-semibold text-gray-900 mb-2">Strategic Plan Completeness</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                     {health.sections.map((section, idx) => (
                       <Link
                         key={idx}
@@ -687,14 +690,14 @@ export default function OnePagePlan() {
                 </div>
 
                 {/* Quarter Focus Visualization */}
-                <div className="flex-shrink-0">
+                <div className="flex-shrink-0 w-full sm:w-auto">
                   <div className="flex items-center gap-2 mb-2">
                     <h3 className="text-sm font-semibold text-gray-900">Quarter Focus</h3>
                     <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
                       {data.yearType === 'FY' ? 'Financial Year' : 'Calendar Year'}
                     </span>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 overflow-x-auto">
                     {(() => {
                       const quarters = calculateQuarters(data.yearType, data.planYear)
                       return quarters.map((q) => (
@@ -702,12 +705,12 @@ export default function OnePagePlan() {
                           key={q.id}
                           className={`flex flex-col items-center justify-center rounded px-2 py-1.5 ${
                             q.isCurrent
-                              ? 'bg-teal-600 text-white ring-2 ring-teal-300'
+                              ? 'bg-brand-orange text-white ring-2 ring-brand-orange-300'
                               : 'bg-gray-100 text-gray-500'
                           }`}
                         >
                           <span className="text-xs font-semibold">{q.label}</span>
-                          <span className={`text-[9px] ${q.isCurrent ? 'text-teal-100' : 'text-gray-400'}`}>{q.months}</span>
+                          <span className={`text-[9px] ${q.isCurrent ? 'text-brand-orange-100' : 'text-gray-400'}`}>{q.months}</span>
                         </div>
                       ))
                     })()}
@@ -720,7 +723,7 @@ export default function OnePagePlan() {
 
                 {/* Coaching Insights */}
                 {insights.length > 0 && (
-                  <div className="flex-shrink-0 max-w-xs">
+                  <div className="flex-shrink-0 w-full lg:max-w-xs">
                     <div className="flex items-center gap-1.5 mb-2">
                       <Lightbulb className="w-4 h-4 text-amber-500" />
                       <h3 className="text-sm font-semibold text-gray-900">Coaching Insights</h3>
@@ -741,56 +744,56 @@ export default function OnePagePlan() {
       })()}
 
       {/* One Page Plan - Printable */}
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-white shadow-lg rounded-lg print:shadow-none print:rounded-none">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="bg-white shadow-lg rounded-xl print:shadow-none print:rounded-none">
           {/* Header */}
-          <div className="border-b-4 border-gray-900 p-6 print:p-4">
-            <div className="flex items-center justify-between">
+          <div className="border-b-4 border-gray-900 p-4 sm:p-6 print:p-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900 print:text-2xl">{data.companyName}</h1>
-                <p className="text-base text-gray-600 mt-1">One Page Strategic Plan</p>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 print:text-2xl">{data.companyName}</h1>
+                <p className="text-sm sm:text-base text-gray-600 mt-1">One Page Strategic Plan</p>
               </div>
-              <div className="text-right">
-                <p className="text-base font-semibold text-gray-900">Year {data.planYear}</p>
-                <p className="text-sm text-gray-600">{new Date().toLocaleDateString()}</p>
+              <div className="sm:text-right">
+                <p className="text-sm sm:text-base font-semibold text-gray-900">Year {data.planYear}</p>
+                <p className="text-xs sm:text-sm text-gray-600">{new Date().toLocaleDateString()}</p>
                 {lastUpdated && (
                   <p className="text-xs text-gray-500">Updated {lastUpdated.toLocaleTimeString()}</p>
                 )}
-                <p className="text-sm text-red-600 mt-1 font-medium">CONFIDENTIAL</p>
+                <p className="text-xs sm:text-sm text-red-600 mt-1 font-medium">CONFIDENTIAL</p>
               </div>
             </div>
           </div>
 
           {/* Vision, Mission & Core Values Row */}
-          <div className="grid grid-cols-3 border-b border-gray-300">
-            <div className="border-r border-gray-300 flex flex-col">
-              <div className="bg-teal-50 px-3 py-2 border-b border-gray-300">
-                <h3 className="text-sm font-bold text-teal-900 uppercase text-center print:text-xs">Vision (Where We're Going)</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 border-b border-gray-300">
+            <div className="md:border-r border-gray-300 flex flex-col border-b md:border-b-0">
+              <div className="bg-brand-orange-50 px-3 py-2 border-b border-gray-300">
+                <h3 className="text-xs sm:text-sm font-bold text-brand-navy uppercase text-center print:text-xs">Vision (Where We're Going)</h3>
               </div>
-              <div className="flex-1 flex items-center justify-center p-3">
+              <div className="flex-1 flex items-center justify-center p-3 sm:p-4">
                 {data.vision ? (
-                  <p className="text-sm text-gray-900 leading-relaxed text-center print:text-xs">{data.vision}</p>
+                  <p className="text-xs sm:text-sm text-gray-900 leading-relaxed text-center print:text-xs">{data.vision}</p>
                 ) : (
                   <div className="text-center">
-                    <p className="text-sm text-gray-500 mb-2">Vision not set</p>
-                    <Link href="/vision-mission" className="text-xs text-teal-600 hover:text-teal-800 underline print:hidden">
+                    <p className="text-xs sm:text-sm text-gray-500 mb-2">Vision not set</p>
+                    <Link href="/vision-mission" className="text-xs text-brand-orange hover:text-brand-orange-800 underline print:hidden">
                       Set your vision →
                     </Link>
                   </div>
                 )}
               </div>
             </div>
-            <div className="border-r border-gray-300 flex flex-col">
-              <div className="bg-teal-50 px-3 py-2 border-b border-gray-300">
-                <h3 className="text-sm font-bold text-teal-900 uppercase text-center print:text-xs">Mission (Why We Exist)</h3>
+            <div className="md:border-r border-gray-300 flex flex-col border-b md:border-b-0">
+              <div className="bg-brand-orange-50 px-3 py-2 border-b border-gray-300">
+                <h3 className="text-xs sm:text-sm font-bold text-brand-navy uppercase text-center print:text-xs">Mission (Why We Exist)</h3>
               </div>
-              <div className="flex-1 flex items-center justify-center p-3">
+              <div className="flex-1 flex items-center justify-center p-3 sm:p-4">
                 {data.mission ? (
-                  <p className="text-sm text-gray-900 leading-relaxed text-center print:text-xs">{data.mission}</p>
+                  <p className="text-xs sm:text-sm text-gray-900 leading-relaxed text-center print:text-xs">{data.mission}</p>
                 ) : (
                   <div className="text-center">
-                    <p className="text-sm text-gray-500 mb-2">Mission not set</p>
-                    <Link href="/vision-mission" className="text-xs text-teal-600 hover:text-teal-800 underline print:hidden">
+                    <p className="text-xs sm:text-sm text-gray-500 mb-2">Mission not set</p>
+                    <Link href="/vision-mission" className="text-xs text-brand-orange hover:text-brand-orange-800 underline print:hidden">
                       Set your mission →
                     </Link>
                   </div>
@@ -798,22 +801,22 @@ export default function OnePagePlan() {
               </div>
             </div>
             <div className="flex flex-col">
-              <div className="bg-teal-50 px-3 py-2 border-b border-gray-300">
-                <h3 className="text-sm font-bold text-teal-900 uppercase text-center print:text-xs">Core Values</h3>
+              <div className="bg-brand-orange-50 px-3 py-2 border-b border-gray-300">
+                <h3 className="text-xs sm:text-sm font-bold text-brand-navy uppercase text-center print:text-xs">Core Values</h3>
               </div>
-              <div className="flex-1 flex items-center justify-center p-4">
+              <div className="flex-1 flex items-center justify-center p-3 sm:p-4">
                 {data.coreValues.length > 0 ? (
                   <ul className="space-y-1 text-center">
                     {data.coreValues.slice(0, 8).map((value, idx) => (
-                      <li key={idx} className="text-sm text-gray-900 print:text-xs">
+                      <li key={idx} className="text-xs sm:text-sm text-gray-900 print:text-xs">
                         {value}
                       </li>
                     ))}
                   </ul>
                 ) : (
                   <div className="text-center">
-                    <p className="text-sm text-gray-500 mb-2">Core values not set</p>
-                    <Link href="/vision-mission" className="text-xs text-teal-600 hover:text-teal-800 underline">
+                    <p className="text-xs sm:text-sm text-gray-500 mb-2">Core values not set</p>
+                    <Link href="/vision-mission" className="text-xs text-brand-orange hover:text-brand-orange-800 underline">
                       Add core values →
                     </Link>
                   </div>
@@ -823,73 +826,73 @@ export default function OnePagePlan() {
           </div>
 
           {/* SWOT Row */}
-          <div className="grid grid-cols-4 border-b border-gray-300">
-            <div className="p-3 border-r border-gray-300">
-              <h3 className="text-sm font-bold text-green-700 uppercase mb-2 print:text-xs">Strengths</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 border-b border-gray-300">
+            <div className="p-3 sm:p-4 lg:border-r border-gray-300 border-b sm:border-b lg:border-b-0">
+              <h3 className="text-xs sm:text-sm font-bold text-green-700 uppercase mb-2 print:text-xs">Strengths</h3>
               {data.strengths.length > 0 ? (
                 <ol className="space-y-1">
                   {data.strengths.slice(0, 5).map((item, idx) => (
-                    <li key={idx} className="text-sm text-gray-800 print:text-xs">{idx + 1}. {item}</li>
+                    <li key={idx} className="text-xs sm:text-sm text-gray-800 print:text-xs">{idx + 1}. {item}</li>
                   ))}
                 </ol>
               ) : (
                 <div className="text-center py-4">
                   <p className="text-xs text-gray-500 mb-2">No strengths identified</p>
-                  <Link href="/swot" className="text-xs text-teal-600 hover:text-teal-800 underline print:hidden">
+                  <Link href="/swot" className="text-xs text-brand-orange hover:text-brand-orange-800 underline print:hidden">
                     Complete SWOT →
                   </Link>
                 </div>
               )}
             </div>
 
-            <div className="p-3 border-r border-gray-300">
-              <h3 className="text-sm font-bold text-orange-700 uppercase mb-2 print:text-xs">Weaknesses</h3>
+            <div className="p-3 sm:p-4 sm:border-r lg:border-r border-gray-300 border-b sm:border-b-0 lg:border-b-0">
+              <h3 className="text-xs sm:text-sm font-bold text-brand-orange-700 uppercase mb-2 print:text-xs">Weaknesses</h3>
               {data.weaknesses.length > 0 ? (
                 <ol className="space-y-1">
                   {data.weaknesses.slice(0, 5).map((item, idx) => (
-                    <li key={idx} className="text-sm text-gray-800 print:text-xs">{idx + 1}. {item}</li>
+                    <li key={idx} className="text-xs sm:text-sm text-gray-800 print:text-xs">{idx + 1}. {item}</li>
                   ))}
                 </ol>
               ) : (
                 <div className="text-center py-4">
                   <p className="text-xs text-gray-500 mb-2">No weaknesses identified</p>
-                  <Link href="/swot" className="text-xs text-teal-600 hover:text-teal-800 underline print:hidden">
+                  <Link href="/swot" className="text-xs text-brand-orange hover:text-brand-orange-800 underline print:hidden">
                     Complete SWOT →
                   </Link>
                 </div>
               )}
             </div>
 
-            <div className="p-3 border-r border-gray-300">
-              <h3 className="text-sm font-bold text-teal-700 uppercase mb-2 print:text-xs">Opportunities</h3>
+            <div className="p-3 sm:p-4 lg:border-r border-gray-300 border-b sm:border-b lg:border-b-0">
+              <h3 className="text-xs sm:text-sm font-bold text-brand-orange-700 uppercase mb-2 print:text-xs">Opportunities</h3>
               {data.opportunities.length > 0 ? (
                 <ol className="space-y-1">
                   {data.opportunities.slice(0, 5).map((item, idx) => (
-                    <li key={idx} className="text-sm text-gray-800 print:text-xs">{idx + 1}. {item}</li>
+                    <li key={idx} className="text-xs sm:text-sm text-gray-800 print:text-xs">{idx + 1}. {item}</li>
                   ))}
                 </ol>
               ) : (
                 <div className="text-center py-4">
                   <p className="text-xs text-gray-500 mb-2">No opportunities identified</p>
-                  <Link href="/swot" className="text-xs text-teal-600 hover:text-teal-800 underline print:hidden">
+                  <Link href="/swot" className="text-xs text-brand-orange hover:text-brand-orange-800 underline print:hidden">
                     Complete SWOT →
                   </Link>
                 </div>
               )}
             </div>
 
-            <div className="p-3">
-              <h3 className="text-sm font-bold text-red-700 uppercase mb-2 print:text-xs">Threats</h3>
+            <div className="p-3 sm:p-4">
+              <h3 className="text-xs sm:text-sm font-bold text-red-700 uppercase mb-2 print:text-xs">Threats</h3>
               {data.threats.length > 0 ? (
                 <ol className="space-y-1">
                   {data.threats.slice(0, 5).map((item, idx) => (
-                    <li key={idx} className="text-sm text-gray-800 print:text-xs">{idx + 1}. {item}</li>
+                    <li key={idx} className="text-xs sm:text-sm text-gray-800 print:text-xs">{idx + 1}. {item}</li>
                   ))}
                 </ol>
               ) : (
                 <div className="text-center py-4">
                   <p className="text-xs text-gray-500 mb-2">No threats identified</p>
-                  <Link href="/swot" className="text-xs text-teal-600 hover:text-teal-800 underline print:hidden">
+                  <Link href="/swot" className="text-xs text-brand-orange hover:text-brand-orange-800 underline print:hidden">
                     Complete SWOT →
                   </Link>
                 </div>
@@ -898,11 +901,11 @@ export default function OnePagePlan() {
           </div>
 
           {/* Goals & Metrics Table */}
-          <div className="border-b border-gray-300">
-            <div className="bg-teal-50 px-3 py-2 border-b border-gray-300">
-              <h3 className="text-sm font-bold text-teal-900 uppercase print:text-xs">Goals & Key Metrics</h3>
+          <div className="border-b border-gray-300 overflow-x-auto">
+            <div className="bg-brand-orange-50 px-3 py-2 border-b border-gray-300">
+              <h3 className="text-xs sm:text-sm font-bold text-brand-navy uppercase print:text-xs">Goals & Key Metrics</h3>
             </div>
-            <table className="w-full text-sm print:text-xs">
+            <table className="w-full text-xs sm:text-sm print:text-xs">
               <colgroup>
                 <col className="w-[30%]" />
                 <col className="w-[20%]" />
@@ -913,7 +916,7 @@ export default function OnePagePlan() {
                 <tr className="bg-gray-100 border-b border-gray-300">
                   <th className="text-left p-2 font-semibold text-gray-700">Metric</th>
                   <th className="text-center p-2 font-semibold text-gray-700">3-Year Goal</th>
-                  <th className="text-center p-2 font-semibold text-teal-700">1-Year Goal</th>
+                  <th className="text-center p-2 font-semibold text-brand-orange-700">1-Year Goal</th>
                   <th className="text-center p-2 font-semibold text-green-700">{data.currentQuarterLabel} Target</th>
                 </tr>
               </thead>
@@ -925,7 +928,7 @@ export default function OnePagePlan() {
                 <tr className="border-b border-gray-200">
                   <td className="p-2 font-semibold pl-4">Revenue</td>
                   <td className="p-2 text-center">{formatCurrency(data.financialGoals.year3.revenue)}</td>
-                  <td className="p-2 text-center font-semibold text-teal-900">{formatCurrency(data.financialGoals.year1.revenue)}</td>
+                  <td className="p-2 text-center font-semibold text-brand-navy">{formatCurrency(data.financialGoals.year1.revenue)}</td>
                   <td className="p-2 text-center font-semibold text-green-700">{formatCurrency(data.financialGoals.quarter.revenue)}</td>
                 </tr>
                 <tr className="border-b border-gray-200">
@@ -934,9 +937,9 @@ export default function OnePagePlan() {
                     <div>{formatCurrency(data.financialGoals.year3.grossProfit)}</div>
                     <div className="text-xs text-gray-500">({calculateMargin(data.financialGoals.year3.grossProfit, data.financialGoals.year3.revenue)})</div>
                   </td>
-                  <td className="p-2 text-center font-semibold text-teal-900">
+                  <td className="p-2 text-center font-semibold text-brand-navy">
                     <div>{formatCurrency(data.financialGoals.year1.grossProfit)}</div>
-                    <div className="text-xs text-teal-600 font-normal">({calculateMargin(data.financialGoals.year1.grossProfit, data.financialGoals.year1.revenue)})</div>
+                    <div className="text-xs text-brand-orange font-normal">({calculateMargin(data.financialGoals.year1.grossProfit, data.financialGoals.year1.revenue)})</div>
                   </td>
                   <td className="p-2 text-center font-semibold text-green-700">
                     <div>{formatCurrency(data.financialGoals.quarter.grossProfit)}</div>
@@ -949,9 +952,9 @@ export default function OnePagePlan() {
                     <div>{formatCurrency(data.financialGoals.year3.netProfit)}</div>
                     <div className="text-xs text-gray-500">({calculateMargin(data.financialGoals.year3.netProfit, data.financialGoals.year3.revenue)})</div>
                   </td>
-                  <td className="p-2 text-center font-semibold text-teal-900">
+                  <td className="p-2 text-center font-semibold text-brand-navy">
                     <div>{formatCurrency(data.financialGoals.year1.netProfit)}</div>
-                    <div className="text-xs text-teal-600 font-normal">({calculateMargin(data.financialGoals.year1.netProfit, data.financialGoals.year1.revenue)})</div>
+                    <div className="text-xs text-brand-orange font-normal">({calculateMargin(data.financialGoals.year1.netProfit, data.financialGoals.year1.revenue)})</div>
                   </td>
                   <td className="p-2 text-center font-semibold text-green-700">
                     <div>{formatCurrency(data.financialGoals.quarter.netProfit)}</div>
@@ -966,31 +969,31 @@ export default function OnePagePlan() {
                 <tr className="border-b border-gray-200">
                   <td className="p-2 font-semibold pl-4">Leads per Month</td>
                   <td className="p-2 text-center">{data.coreMetrics.year3.leadsPerMonth || 0}</td>
-                  <td className="p-2 text-center font-semibold text-teal-900">{data.coreMetrics.year1.leadsPerMonth || 0}</td>
+                  <td className="p-2 text-center font-semibold text-brand-navy">{data.coreMetrics.year1.leadsPerMonth || 0}</td>
                   <td className="p-2 text-center font-semibold text-green-700">{data.coreMetrics.quarter.leadsPerMonth || 0}</td>
                 </tr>
                 <tr className="border-b border-gray-200">
                   <td className="p-2 font-semibold pl-4">Conversion Rate (%)</td>
                   <td className="p-2 text-center">{data.coreMetrics.year3.conversionRate || 0}%</td>
-                  <td className="p-2 text-center font-semibold text-teal-900">{data.coreMetrics.year1.conversionRate || 0}%</td>
+                  <td className="p-2 text-center font-semibold text-brand-navy">{data.coreMetrics.year1.conversionRate || 0}%</td>
                   <td className="p-2 text-center font-semibold text-green-700">{data.coreMetrics.quarter.conversionRate || 0}%</td>
                 </tr>
                 <tr className="border-b border-gray-200">
                   <td className="p-2 font-semibold pl-4">Avg Transaction Value</td>
                   <td className="p-2 text-center">{formatCurrency(data.coreMetrics.year3.avgTransactionValue || 0)}</td>
-                  <td className="p-2 text-center font-semibold text-teal-900">{formatCurrency(data.coreMetrics.year1.avgTransactionValue || 0)}</td>
+                  <td className="p-2 text-center font-semibold text-brand-navy">{formatCurrency(data.coreMetrics.year1.avgTransactionValue || 0)}</td>
                   <td className="p-2 text-center font-semibold text-green-700">{formatCurrency(data.coreMetrics.quarter.avgTransactionValue || 0)}</td>
                 </tr>
                 <tr className="border-b border-gray-200">
                   <td className="p-2 font-semibold pl-4">Team Headcount (FTE)</td>
                   <td className="p-2 text-center">{data.coreMetrics.year3.teamHeadcount || 0}</td>
-                  <td className="p-2 text-center font-semibold text-teal-900">{data.coreMetrics.year1.teamHeadcount || 0}</td>
+                  <td className="p-2 text-center font-semibold text-brand-navy">{data.coreMetrics.year1.teamHeadcount || 0}</td>
                   <td className="p-2 text-center font-semibold text-green-700">{data.coreMetrics.quarter.teamHeadcount || 0}</td>
                 </tr>
                 <tr className="border-b border-gray-200">
                   <td className="p-2 font-semibold pl-4">Owner Hours per Week</td>
                   <td className="p-2 text-center">{data.coreMetrics.year3.ownerHoursPerWeek || 0}</td>
-                  <td className="p-2 text-center font-semibold text-teal-900">{data.coreMetrics.year1.ownerHoursPerWeek || 0}</td>
+                  <td className="p-2 text-center font-semibold text-brand-navy">{data.coreMetrics.year1.ownerHoursPerWeek || 0}</td>
                   <td className="p-2 text-center font-semibold text-green-700">{data.coreMetrics.quarter.ownerHoursPerWeek || 0}</td>
                 </tr>
 
@@ -1002,7 +1005,7 @@ export default function OnePagePlan() {
                   <tr key={idx} className="border-b border-gray-200">
                     <td className="p-2 font-semibold pl-4">{kpi.name}</td>
                     <td className="p-2 text-center">{kpi.year3Target}</td>
-                    <td className="p-2 text-center font-semibold text-teal-900">{kpi.year1Target}</td>
+                    <td className="p-2 text-center font-semibold text-brand-navy">{kpi.year1Target}</td>
                     <td className="p-2 text-center font-semibold text-green-700">{kpi.quarterTarget}</td>
                   </tr>
                 ))}
@@ -1011,45 +1014,45 @@ export default function OnePagePlan() {
           </div>
 
           {/* Strategic Initiatives & Quarterly Rocks - Aligned with columns */}
-          <div className="grid grid-cols-[30%_20%_25%_25%] border-t border-gray-300">
+          <div className="grid grid-cols-1 lg:grid-cols-[30%_20%_25%_25%] border-t border-gray-300">
             {/* Owner Personal Goals - Left columns (only show if data exists) */}
             {(data.ownerGoals.primaryGoal || data.ownerGoals.desiredHoursPerWeek || data.ownerGoals.timeHorizon || data.ownerGoals.exitStrategy) ? (
-              <div className="col-span-2 border-r border-gray-300">
-                <div className="bg-teal-50 px-3 py-2 border-b border-gray-300">
-                  <h3 className="text-sm font-bold text-teal-900 uppercase print:text-xs">What I Want From This Business</h3>
+              <div className="lg:col-span-2 lg:border-r border-gray-300 border-b lg:border-b-0">
+                <div className="bg-brand-orange-50 px-3 py-2 border-b border-gray-300">
+                  <h3 className="text-xs sm:text-sm font-bold text-brand-navy uppercase print:text-xs">What I Want From This Business</h3>
                 </div>
-                <div className="p-3 space-y-2">
+                <div className="p-3 sm:p-4 space-y-2">
                   {data.ownerGoals.primaryGoal && (
                     <div>
                       <p className="text-[10px] font-semibold text-gray-700 uppercase mb-0.5 print:text-[8px]">Primary Goal</p>
-                      <p className="text-sm font-bold text-gray-900 print:text-xs">{data.ownerGoals.primaryGoal}</p>
+                      <p className="text-xs sm:text-sm font-bold text-gray-900 print:text-xs">{data.ownerGoals.primaryGoal}</p>
                     </div>
                   )}
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {data.ownerGoals.timeHorizon && (
                       <div>
                         <p className="text-[10px] font-semibold text-gray-700 uppercase mb-0.5 print:text-[8px]">Time Horizon</p>
-                        <p className="text-sm text-gray-900 print:text-xs">{data.ownerGoals.timeHorizon}</p>
+                        <p className="text-xs sm:text-sm text-gray-900 print:text-xs">{data.ownerGoals.timeHorizon}</p>
                       </div>
                     )}
                     {data.ownerGoals.exitStrategy && (
                       <div>
                         <p className="text-[10px] font-semibold text-gray-700 uppercase mb-0.5 print:text-[8px]">Exit Strategy</p>
-                        <p className="text-sm text-gray-900 print:text-xs">{data.ownerGoals.exitStrategy}</p>
+                        <p className="text-xs sm:text-sm text-gray-900 print:text-xs">{data.ownerGoals.exitStrategy}</p>
                       </div>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {data.ownerGoals.currentHoursPerWeek && (
                       <div>
                         <p className="text-[10px] font-semibold text-gray-700 uppercase mb-0.5 print:text-[8px]">Current Hours/Week</p>
-                        <p className="text-sm font-bold text-gray-900 print:text-xs">{data.ownerGoals.currentHoursPerWeek} hrs</p>
+                        <p className="text-xs sm:text-sm font-bold text-gray-900 print:text-xs">{data.ownerGoals.currentHoursPerWeek} hrs</p>
                       </div>
                     )}
                     {data.ownerGoals.desiredHoursPerWeek && (
                       <div>
                         <p className="text-[10px] font-semibold text-gray-700 uppercase mb-0.5 print:text-[8px]">Desired Hours/Week</p>
-                        <p className="text-sm font-bold text-gray-900 print:text-xs">{data.ownerGoals.desiredHoursPerWeek} hrs</p>
+                        <p className="text-xs sm:text-sm font-bold text-gray-900 print:text-xs">{data.ownerGoals.desiredHoursPerWeek} hrs</p>
                       </div>
                     )}
                   </div>
@@ -1057,18 +1060,18 @@ export default function OnePagePlan() {
               </div>
             ) : (
               // Empty placeholder when no owner goals data
-              <div className="col-span-2 border-r border-gray-300 bg-gray-50"></div>
+              <div className="lg:col-span-2 lg:border-r border-gray-300 bg-gray-50 hidden lg:block"></div>
             )}
 
             {/* Strategic Initiatives - Under 1-Year Goal */}
-            <div className="border-r border-gray-300">
-              <div className="bg-teal-50 px-3 py-2 border-b border-gray-300">
-                <h3 className="text-sm font-bold text-teal-900 uppercase print:text-xs">12-Month Initiatives</h3>
+            <div className="lg:border-r border-gray-300 border-b lg:border-b-0">
+              <div className="bg-brand-orange-50 px-3 py-2 border-b border-gray-300">
+                <h3 className="text-xs sm:text-sm font-bold text-brand-navy uppercase print:text-xs">12-Month Initiatives</h3>
               </div>
-              <div className="p-3">
+              <div className="p-3 sm:p-4">
                 <ol className="space-y-1">
                   {data.strategicInitiatives.slice(0, 12).map((initiative, idx) => (
-                    <li key={idx} className="text-sm print:text-xs">
+                    <li key={idx} className="text-xs sm:text-sm print:text-xs">
                       <span className="font-medium text-gray-900">{idx + 1}. {initiative.title}</span>
                     </li>
                   ))}
@@ -1078,13 +1081,13 @@ export default function OnePagePlan() {
 
             {/* Current Quarter Rocks - Under Quarter Target */}
             <div>
-              <div className="bg-teal-50 px-3 py-2 border-b border-gray-300">
-                <h3 className="text-sm font-bold text-teal-900 uppercase print:text-xs">{data.currentQuarterLabel} Rocks</h3>
+              <div className="bg-brand-orange-50 px-3 py-2 border-b border-gray-300">
+                <h3 className="text-xs sm:text-sm font-bold text-brand-navy uppercase print:text-xs">{data.currentQuarterLabel} Rocks</h3>
               </div>
-              <div className="p-3">
+              <div className="p-3 sm:p-4">
                 <ol className="space-y-1">
                   {data.quarterlyRocks.slice(0, 5).map((rock, idx) => (
-                    <li key={idx} className="text-sm print:text-xs">
+                    <li key={idx} className="text-xs sm:text-sm print:text-xs">
                       <div className="font-medium text-gray-900">{idx + 1}. {rock.action}</div>
                       {(rock.owner || rock.dueDate) && (
                         <div className="text-[10px] text-gray-600 mt-0.5 print:text-[8px]">
@@ -1104,7 +1107,7 @@ export default function OnePagePlan() {
           <div className="border-t border-gray-300 p-4 bg-gray-50 text-center print:hidden">
             <p className="text-xs text-gray-600">
               Generated with Business Coaching Platform • {new Date().toLocaleDateString()} •
-              <button onClick={() => router.push('/goals')} className="text-teal-600 hover:underline ml-1">
+              <button onClick={() => router.push('/goals')} className="text-brand-orange hover:underline ml-1">
                 Edit Strategic Plan →
               </button>
             </p>

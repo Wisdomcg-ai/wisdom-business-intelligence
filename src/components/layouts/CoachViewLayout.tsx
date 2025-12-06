@@ -159,7 +159,7 @@ export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-500">Loading client view...</p>
         </div>
       </div>
@@ -175,7 +175,7 @@ export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
           <p className="text-gray-500 mb-4">{error}</p>
           <Link
             href="/coach/clients"
-            className="text-indigo-600 hover:text-indigo-700 font-medium"
+            className="text-brand-orange hover:text-brand-orange-700 font-medium"
           >
             Back to Clients
           </Link>
@@ -187,12 +187,12 @@ export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Coach View Banner */}
-      <div className="bg-indigo-600 text-white px-4 py-3 sticky top-0 z-50">
+      <div className="bg-brand-orange text-white px-4 py-3 sticky top-0 z-50">
         <div className="max-w-full mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Eye className="w-5 h-5" />
             <span className="font-medium">COACH VIEW:</span>
-            <div className="flex items-center gap-2 bg-indigo-500 px-3 py-1 rounded-lg">
+            <div className="flex items-center gap-2 bg-brand-orange-500 px-3 py-1 rounded-lg">
               <Building2 className="w-4 h-4" />
               <span>{activeBusiness?.name || 'Loading...'}</span>
             </div>

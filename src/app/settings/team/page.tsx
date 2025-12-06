@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import PageHeader from '@/components/ui/PageHeader'
 import {
   Users,
   UserPlus,
@@ -71,15 +72,15 @@ const ROLE_INFO = {
     label: 'Admin',
     description: 'Full access, can manage team members',
     icon: ShieldCheck,
-    color: 'text-indigo-600',
-    bgColor: 'bg-indigo-50'
+    color: 'text-brand-orange',
+    bgColor: 'bg-brand-orange-50'
   },
   member: {
     label: 'Member',
     description: 'Can view and edit business data',
     icon: Shield,
-    color: 'text-teal-600',
-    bgColor: 'bg-teal-50'
+    color: 'text-brand-orange',
+    bgColor: 'bg-brand-orange-50'
   },
   viewer: {
     label: 'Viewer',
@@ -399,67 +400,60 @@ export default function TeamMembersPage() {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-          <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
-            <Users className="w-5 h-5 text-teal-600" />
-          </div>
-          Team Members
-        </h1>
-        <p className="text-gray-600 mt-2">
-          Manage who has access to {businessName}
-        </p>
-      </div>
+      <PageHeader
+        title="Team Members"
+        subtitle={`Manage who has access to ${businessName}`}
+        icon={Users}
+        actions={
+          canManageTeam && (
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg shadow-sm transition-colors text-sm sm:text-base"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span className="hidden sm:inline">Add Team Member</span>
+              <span className="sm:hidden">Add Member</span>
+            </button>
+          )
+        }
+      />
 
       {/* Success/Error Messages */}
       {success && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
-          <Check className="w-5 h-5 text-green-600" />
-          <p className="text-green-800">{success}</p>
-          <button onClick={() => setSuccess(null)} className="ml-auto">
+        <div className="mb-6 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
+          <Check className="w-5 h-5 text-green-600 flex-shrink-0" />
+          <p className="text-sm sm:text-base text-green-800">{success}</p>
+          <button onClick={() => setSuccess(null)} className="ml-auto flex-shrink-0">
             <X className="w-4 h-4 text-green-600" />
           </button>
         </div>
       )}
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-red-600" />
-          <p className="text-red-800">{error}</p>
-          <button onClick={() => setError(null)} className="ml-auto">
+        <div className="mb-6 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+          <p className="text-sm sm:text-base text-red-800">{error}</p>
+          <button onClick={() => setError(null)} className="ml-auto flex-shrink-0">
             <X className="w-4 h-4 text-red-600" />
-          </button>
-        </div>
-      )}
-
-      {/* Invite Button */}
-      {canManageTeam && (
-        <div className="mb-6">
-          <button
-            onClick={() => setShowInviteModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
-          >
-            <UserPlus className="w-4 h-4" />
-            Add Team Member
           </button>
         </div>
       )}
 
       {/* Team Members List */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-          <h2 className="font-semibold text-gray-900">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 bg-gray-50">
+          <h2 className="text-sm sm:text-base font-semibold text-gray-900">
             {teamMembers.length} Team Member{teamMembers.length !== 1 ? 's' : ''}
           </h2>
         </div>
@@ -472,27 +466,27 @@ export default function TeamMembersPage() {
             return (
               <div
                 key={member.id}
-                className="px-6 py-4 flex items-center justify-between hover:bg-gray-50"
+                className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 hover:bg-gray-50"
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1 sm:flex-initial">
+                  <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
                     <span className="text-sm font-medium text-gray-600">
                       {member.user?.first_name?.[0] || member.user?.email?.[0]?.toUpperCase() || '?'}
                     </span>
                   </div>
 
-                  <div>
-                    <p className="font-medium text-gray-900">
+                  <div className="min-w-0">
+                    <p className="text-sm sm:text-base font-medium text-gray-900 truncate">
                       {member.user?.first_name
                         ? `${member.user.first_name} ${member.user.last_name || ''}`
                         : member.user?.email?.split('@')[0] || 'Unknown User'
                       }
                     </p>
-                    <p className="text-sm text-gray-500">{member.user?.email || 'No email'}</p>
+                    <p className="text-xs sm:text-sm text-gray-500 truncate">{member.user?.email || 'No email'}</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 sm:gap-4 flex-wrap sm:flex-nowrap">
                   {editingMember === member.id ? (
                     <div className="flex items-center gap-2">
                       <select
@@ -521,8 +515,8 @@ export default function TeamMembersPage() {
                         </span>
                       </div>
                       {member.weekly_review_enabled ? (
-                        <div className="flex items-center gap-1 px-2 py-1 bg-teal-50 rounded-full" title="Weekly Review Enabled">
-                          <CalendarCheck className="w-3 h-3 text-teal-600" />
+                        <div className="flex items-center gap-1 px-2 py-1 bg-brand-orange-50 rounded-full" title="Weekly Review Enabled">
+                          <CalendarCheck className="w-3 h-3 text-brand-orange" />
                         </div>
                       ) : (
                         <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-full" title="Weekly Review Disabled">
@@ -586,13 +580,13 @@ export default function TeamMembersPage() {
           })}
 
           {teamMembers.length === 0 && (
-            <div className="px-6 py-12 text-center">
-              <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No team members yet</p>
+            <div className="px-4 sm:px-6 py-12 text-center">
+              <Users className="w-10 sm:w-12 h-10 sm:h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-sm sm:text-base text-gray-500">No team members yet</p>
               {canManageTeam && (
                 <button
                   onClick={() => setShowInviteModal(true)}
-                  className="mt-4 text-teal-600 hover:text-teal-700 font-medium"
+                  className="mt-4 text-sm sm:text-base text-brand-orange hover:text-brand-orange-700 font-medium"
                 >
                   Add your first team member
                 </button>
@@ -604,9 +598,9 @@ export default function TeamMembersPage() {
 
       {/* Pending Invites */}
       {pendingInvites.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 bg-amber-50">
-            <h2 className="font-semibold text-amber-900 flex items-center gap-2">
+        <div className="mt-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 bg-amber-50">
+            <h2 className="text-sm sm:text-base font-semibold text-amber-900 flex items-center gap-2">
               <Clock className="w-4 h-4" />
               Pending Invites ({pendingInvites.length})
             </h2>
@@ -620,18 +614,18 @@ export default function TeamMembersPage() {
               return (
                 <div
                   key={invite.id}
-                  className="px-6 py-4 flex items-center justify-between hover:bg-gray-50"
+                  className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 hover:bg-gray-50"
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                  <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1 sm:flex-initial">
+                    <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
                       <Clock className="w-4 h-4 text-amber-600" />
                     </div>
 
-                    <div>
-                      <p className="font-medium text-gray-900">
+                    <div className="min-w-0">
+                      <p className="text-sm sm:text-base font-medium text-gray-900 truncate">
                         {invite.first_name} {invite.last_name || ''}
                       </p>
-                      <p className="text-sm text-gray-500">{invite.email}</p>
+                      <p className="text-xs sm:text-sm text-gray-500 truncate">{invite.email}</p>
                       {invite.position && (
                         <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
                           <Briefcase className="w-3 h-3" />
@@ -641,7 +635,7 @@ export default function TeamMembersPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4 flex-wrap sm:flex-nowrap">
                     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${roleInfo.bgColor}`}>
                       <RoleIcon className={`w-4 h-4 ${roleInfo.color}`} />
                       <span className={`text-sm font-medium ${roleInfo.color}`}>
@@ -652,7 +646,7 @@ export default function TeamMembersPage() {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => resendInvite(invite)}
-                        className="p-2 text-gray-400 hover:text-teal-600 rounded-lg hover:bg-gray-100"
+                        className="p-2 text-gray-400 hover:text-brand-orange rounded-lg hover:bg-gray-100"
                         title="Resend invite"
                       >
                         <Send className="w-4 h-4" />
@@ -674,19 +668,19 @@ export default function TeamMembersPage() {
       )}
 
       {/* Role Descriptions */}
-      <div className="mt-8 bg-gray-50 rounded-xl p-6">
-        <h3 className="font-semibold text-gray-900 mb-4">Role Permissions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="mt-6 sm:mt-8 bg-gray-50 rounded-xl p-4 sm:p-6">
+        <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-4">Role Permissions</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {Object.entries(ROLE_INFO).map(([role, info]) => {
             const Icon = info.icon
             return (
               <div key={role} className="flex items-start gap-3">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${info.bgColor}`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${info.bgColor} flex-shrink-0`}>
                   <Icon className={`w-4 h-4 ${info.color}`} />
                 </div>
-                <div>
-                  <p className="font-medium text-gray-900">{info.label}</p>
-                  <p className="text-sm text-gray-500">{info.description}</p>
+                <div className="min-w-0">
+                  <p className="text-sm sm:text-base font-medium text-gray-900">{info.label}</p>
+                  <p className="text-xs sm:text-sm text-gray-500">{info.description}</p>
                 </div>
               </div>
             )
@@ -702,21 +696,21 @@ export default function TeamMembersPage() {
             onClick={() => setShowInviteModal(false)}
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
-            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 my-8">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-teal-600" />
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-4 sm:p-6 my-8">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-brand-orange" />
                   Invite Team Member
                 </h2>
                 <button
                   onClick={() => setShowInviteModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 flex-shrink-0"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 {/* Name Row */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -728,7 +722,7 @@ export default function TeamMembersPage() {
                       value={inviteForm.firstName}
                       onChange={(e) => setInviteForm({ ...inviteForm, firstName: e.target.value })}
                       placeholder="John"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                     />
                   </div>
                   <div>
@@ -740,7 +734,7 @@ export default function TeamMembersPage() {
                       value={inviteForm.lastName}
                       onChange={(e) => setInviteForm({ ...inviteForm, lastName: e.target.value })}
                       placeholder="Smith"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                     />
                   </div>
                 </div>
@@ -757,7 +751,7 @@ export default function TeamMembersPage() {
                       value={inviteForm.email}
                       onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
                       placeholder="john@company.com"
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                     />
                   </div>
                 </div>
@@ -774,7 +768,7 @@ export default function TeamMembersPage() {
                       value={inviteForm.phone}
                       onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
                       placeholder="0400 000 000"
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                     />
                   </div>
                 </div>
@@ -791,7 +785,7 @@ export default function TeamMembersPage() {
                       value={inviteForm.position}
                       onChange={(e) => setInviteForm({ ...inviteForm, position: e.target.value })}
                       placeholder="Operations Manager"
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                     />
                   </div>
                 </div>
@@ -804,7 +798,7 @@ export default function TeamMembersPage() {
                   <select
                     value={inviteForm.role}
                     onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value as any })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                   >
                     <option value="admin">Admin - Full access, can manage team</option>
                     <option value="member">Member - Can view and edit data</option>
@@ -823,21 +817,21 @@ export default function TeamMembersPage() {
                   </div>
                 )}
 
-                <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3 pt-4 border-t border-gray-200">
                   <button
                     onClick={() => {
                       setShowInviteModal(false)
                       resetInviteForm()
                       setError(null)
                     }}
-                    className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    className="w-full sm:w-auto px-4 py-2 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm sm:text-base"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={inviteTeamMember}
                     disabled={inviting || !inviteForm.email || !inviteForm.firstName}
-                    className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="w-full sm:w-auto px-4 py-2 bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
                   >
                     {inviting ? (
                       <>

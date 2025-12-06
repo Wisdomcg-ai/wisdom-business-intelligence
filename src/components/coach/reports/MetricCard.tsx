@@ -29,8 +29,8 @@ export function MetricCard({
   subtitle,
   trend,
   icon: Icon,
-  iconColor = 'text-indigo-600',
-  iconBgColor = 'bg-indigo-100',
+  iconColor = 'text-brand-orange',
+  iconBgColor = 'bg-brand-orange-100',
   onClick
 }: MetricCardProps) {
   const getTrendIcon = () => {
@@ -51,7 +51,7 @@ export function MetricCard({
   return (
     <div
       className={`bg-white rounded-xl border border-gray-200 p-5 ${
-        onClick ? 'cursor-pointer hover:border-indigo-300 hover:shadow-sm transition-all' : ''
+        onClick ? 'cursor-pointer hover:border-brand-orange-300 hover:shadow-sm transition-all' : ''
       }`}
       onClick={onClick}
     >
@@ -78,8 +78,8 @@ export function MetricCard({
       </div>
       {onClick && (
         <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between text-sm">
-          <span className="text-indigo-600 font-medium">View details</span>
-          <ArrowRight className="w-4 h-4 text-indigo-600" />
+          <span className="text-brand-orange font-medium">View details</span>
+          <ArrowRight className="w-4 h-4 text-brand-orange" />
         </div>
       )}
     </div>

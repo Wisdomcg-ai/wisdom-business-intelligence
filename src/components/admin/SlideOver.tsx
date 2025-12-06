@@ -52,17 +52,17 @@ export function SlideOver({
       >
         <div className="h-full flex flex-col bg-white shadow-2xl">
           {/* Header */}
-          <div className="flex-shrink-0 px-6 py-5 border-b border-slate-200 bg-slate-50">
+          <div className="flex-shrink-0 px-6 py-5 border-b border-slate-200 bg-gray-50">
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
+                <h2 className="text-xl font-semibold text-brand-navy">{title}</h2>
                 {subtitle && (
-                  <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+                  <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
                 )}
               </div>
               <button
                 onClick={onClose}
-                className="p-2 -mr-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                className="p-2 -mr-2 text-slate-400 hover:text-gray-600 hover:bg-slate-200 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -76,7 +76,7 @@ export function SlideOver({
 
           {/* Footer */}
           {footer && (
-            <div className="flex-shrink-0 px-6 py-4 border-t border-slate-200 bg-slate-50">
+            <div className="flex-shrink-0 px-6 py-4 border-t border-slate-200 bg-gray-50">
               {footer}
             </div>
           )}
@@ -97,7 +97,7 @@ export function SlideOverSection({ title, children, className = '' }: SlideOverS
   return (
     <div className={`px-6 py-5 ${className}`}>
       {title && (
-        <h3 className="text-sm font-semibold text-slate-900 mb-4">{title}</h3>
+        <h3 className="text-sm font-semibold text-brand-navy mb-4">{title}</h3>
       )}
       {children}
     </div>

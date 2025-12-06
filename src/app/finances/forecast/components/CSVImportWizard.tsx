@@ -235,9 +235,9 @@ export default function CSVImportWizard({
             <div className="flex items-center">
               {importSteps.map((step, index) => (
                 <React.Fragment key={index}>
-                  <div className={`flex items-center ${index === currentStep ? 'text-teal-600' : index < currentStep ? 'text-green-600' : 'text-gray-400'}`}>
+                  <div className={`flex items-center ${index === currentStep ? 'text-brand-orange' : index < currentStep ? 'text-green-600' : 'text-gray-400'}`}>
                     <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center ${
-                      index === currentStep ? 'border-teal-600 bg-teal-50' :
+                      index === currentStep ? 'border-brand-orange bg-brand-orange-50' :
                       index < currentStep ? 'border-green-600 bg-green-50' :
                       'border-gray-300'
                     }`}>
@@ -258,11 +258,11 @@ export default function CSVImportWizard({
           </div>
 
           {/* Instructions */}
-          <div className="mb-6 p-4 bg-teal-50 border border-teal-200 rounded-lg">
-            <h3 className="text-sm font-medium text-teal-900 mb-2">
+          <div className="mb-6 p-4 bg-brand-orange-50 border border-brand-orange-200 rounded-lg">
+            <h3 className="text-sm font-medium text-brand-navy mb-2">
               Export from Xero: {currentImportStep.period}
             </h3>
-            <ol className="text-sm text-teal-800 space-y-1 list-decimal list-inside">
+            <ol className="text-sm text-brand-orange-800 space-y-1 list-decimal list-inside">
               <li>Log in to Xero</li>
               <li>Go to <strong>Accounting → Reports → Profit and Loss</strong></li>
               <li>Set date range to the last month only: <strong>1 {new Date(currentImportStep.period.split(' to ')[1] + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</strong> to <strong>{new Date(new Date(currentImportStep.period.split(' to ')[1] + '-01').getFullYear(), new Date(currentImportStep.period.split(' to ')[1] + '-01').getMonth() + 1, 0).getDate()} {new Date(currentImportStep.period.split(' to ')[1] + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</strong></li>
@@ -272,7 +272,7 @@ export default function CSVImportWizard({
               <li>Open in Excel and <strong>Save As → CSV</strong></li>
               <li>Upload the CSV file below</li>
             </ol>
-            <p className="mt-2 text-xs text-teal-700">
+            <p className="mt-2 text-xs text-brand-orange-700">
               {currentImportStep.description}
             </p>
           </div>
@@ -284,7 +284,7 @@ export default function CSVImportWizard({
             onDragLeave={handleDragLeave}
             className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
               isDragging
-                ? 'border-teal-500 bg-teal-50'
+                ? 'border-brand-orange-500 bg-brand-orange-50'
                 : currentData
                 ? 'border-green-500 bg-green-50'
                 : 'border-gray-300 hover:border-gray-400'
@@ -309,7 +309,7 @@ export default function CSVImportWizard({
                       setYtdData(null)
                     }
                   }}
-                  className="text-sm text-teal-600 hover:text-teal-700 underline"
+                  className="text-sm text-brand-orange hover:text-brand-orange-700 underline"
                 >
                   Upload a different file
                 </button>
@@ -367,7 +367,7 @@ export default function CSVImportWizard({
           <button
             onClick={handleNext}
             disabled={!canProceed || isUploading}
-            className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-md hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isUploading ? 'Importing...' : isLastStep ? 'Import Data' : 'Next Step'}
           </button>

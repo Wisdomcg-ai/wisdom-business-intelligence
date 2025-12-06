@@ -8,7 +8,7 @@ interface QuarterlyReviewLayoutProps {
 
 export default function QuarterlyReviewLayout({ children }: QuarterlyReviewLayoutProps) {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       {children}
     </div>
   );

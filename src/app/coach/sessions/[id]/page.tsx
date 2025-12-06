@@ -503,9 +503,9 @@ export default function SessionDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-500">Loading session...</p>
         </div>
       </div>
@@ -514,14 +514,14 @@ export default function SessionDetailPage() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-gray-900 mb-2">Session Not Found</h2>
           <p className="text-gray-600 mb-4">This session may have been deleted or you don't have access.</p>
           <Link
             href="/coach/sessions"
-            className="text-indigo-600 hover:text-indigo-700 font-medium"
+            className="text-brand-orange hover:text-brand-orange-700 font-medium"
           >
             Back to Sessions
           </Link>
@@ -531,7 +531,7 @@ export default function SessionDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -683,35 +683,35 @@ export default function SessionDetailPage() {
           {/* Left Column - Main Notes */}
           <div className="lg:col-span-2 space-y-6">
             {/* Session Actions */}
-            <div className="bg-indigo-50 rounded-xl border border-indigo-200 p-6">
+            <div className="bg-brand-orange-50 rounded-xl border border-brand-orange-200 p-6">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-                  <Target className="w-5 h-5 text-indigo-600" />
+                <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+                  <Target className="w-5 h-5 text-brand-orange" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-indigo-900">Session Actions</h3>
-                  <p className="text-sm text-indigo-700">3 key commitments for accountability</p>
+                  <h3 className="font-semibold text-brand-orange-900">Session Actions</h3>
+                  <p className="text-sm text-brand-orange-700">3 key commitments for accountability</p>
                 </div>
               </div>
 
               {/* Existing Actions for this Session */}
               {sessionActions.length > 0 && (
                 <div className="mb-4 space-y-2">
-                  <label className="block text-xs font-medium text-indigo-800 mb-2">Current Actions</label>
+                  <label className="block text-xs font-medium text-brand-orange-800 mb-2">Current Actions</label>
                   {sessionActions.map((action) => (
                     <div
                       key={action.id}
-                      className="flex items-center gap-3 p-3 bg-white rounded-lg border border-indigo-200"
+                      className="flex items-center gap-3 p-3 bg-white rounded-lg border border-brand-orange-200"
                     >
                       <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
                         action.status === 'completed' ? 'bg-green-100' :
                         action.status === 'missed' ? 'bg-red-100' :
-                        'bg-indigo-100'
+                        'bg-brand-orange-100'
                       }`}>
                         <span className={`text-xs font-bold ${
                           action.status === 'completed' ? 'text-green-600' :
                           action.status === 'missed' ? 'text-red-600' :
-                          'text-indigo-600'
+                          'text-brand-orange'
                         }`}>
                           {action.action_number}
                         </span>
@@ -734,13 +734,13 @@ export default function SessionDetailPage() {
 
               {/* Add New Actions */}
               <div className="space-y-3">
-                <label className="block text-xs font-medium text-indigo-800">
+                <label className="block text-xs font-medium text-brand-orange-800">
                   {sessionActions.length > 0 ? 'Add More Actions' : 'Set Actions'}
                 </label>
                 {newActions.map((action, index) => (
                   <div key={index} className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-2">
-                      <span className="text-xs font-bold text-indigo-600">{sessionActions.length + index + 1}</span>
+                    <div className="w-6 h-6 rounded-full bg-brand-orange-100 flex items-center justify-center flex-shrink-0 mt-2">
+                      <span className="text-xs font-bold text-brand-orange">{sessionActions.length + index + 1}</span>
                     </div>
                     <div className="flex-1 flex gap-2">
                       <input
@@ -748,13 +748,13 @@ export default function SessionDetailPage() {
                         value={action.description}
                         onChange={(e) => updateNewAction(index, 'description', e.target.value)}
                         placeholder={`Action ${sessionActions.length + index + 1}...`}
-                        className="flex-1 px-3 py-2 border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                        className="flex-1 px-3 py-2 border border-brand-orange-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm"
                       />
                       <input
                         type="date"
                         value={action.due_date}
                         onChange={(e) => updateNewAction(index, 'due_date', e.target.value)}
-                        className="w-36 px-3 py-2 border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                        className="w-36 px-3 py-2 border border-brand-orange-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm"
                       />
                       {newActions.length > 3 && (
                         <button
@@ -771,7 +771,7 @@ export default function SessionDetailPage() {
                 <div className="flex items-center gap-3 mt-4">
                   <button
                     onClick={addMoreActions}
-                    className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                    className="flex items-center gap-1.5 text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
                   >
                     <Plus className="w-4 h-4" />
                     Add More
@@ -779,7 +779,7 @@ export default function SessionDetailPage() {
                   <button
                     onClick={saveNewActions}
                     disabled={!newActions.some(a => a.description.trim())}
-                    className="ml-auto flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="ml-auto flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg shadow-sm hover:bg-brand-orange-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Target className="w-4 h-4" />
                     Save Actions
@@ -787,7 +787,7 @@ export default function SessionDetailPage() {
                 </div>
               </div>
 
-              <p className="text-xs text-indigo-700 mt-4">
+              <p className="text-xs text-brand-orange-700 mt-4">
                 Actions are visible to the client and appear on their dashboard
               </p>
             </div>
@@ -802,7 +802,7 @@ export default function SessionDetailPage() {
                 onChange={(e) => setDiscussionPoints(e.target.value)}
                 placeholder="Key topics discussed during the session..."
                 rows={6}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
               />
               <p className="text-xs text-gray-500 mt-2">
                 Visible to client
@@ -819,7 +819,7 @@ export default function SessionDetailPage() {
                 onChange={(e) => setClientCommitments(e.target.value)}
                 placeholder="Action items and commitments the client agreed to..."
                 rows={4}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
               />
               <p className="text-xs text-gray-500 mt-2">
                 Visible to client
@@ -884,15 +884,15 @@ export default function SessionDetailPage() {
 
             {/* Client Input (Read-only for coach) */}
             {(session.client_takeaways || session.client_notes || session.client_rating || session.client_feedback) && (
-              <div className="bg-blue-50 rounded-xl border border-blue-200 p-6">
+              <div className="bg-brand-orange-50 rounded-xl border border-brand-orange-200 p-6">
                 <div className="flex items-center gap-2 mb-4">
-                  <User className="w-4 h-4 text-blue-600" />
-                  <h3 className="text-sm font-semibold text-blue-900">Client Input</h3>
+                  <User className="w-4 h-4 text-brand-orange" />
+                  <h3 className="text-sm font-semibold text-brand-navy">Client Input</h3>
                 </div>
 
                 {session.client_rating && (
                   <div className="mb-4">
-                    <label className="block text-xs font-medium text-blue-800 mb-2">Rating</label>
+                    <label className="block text-xs font-medium text-brand-navy mb-2">Rating</label>
                     <div className="flex items-center gap-1">
                       {[1, 2, 3, 4, 5].map((star) => (
                         <Star
@@ -904,29 +904,29 @@ export default function SessionDetailPage() {
                           }`}
                         />
                       ))}
-                      <span className="ml-2 text-sm text-blue-800">{session.client_rating}/5</span>
+                      <span className="ml-2 text-sm text-brand-navy">{session.client_rating}/5</span>
                     </div>
                   </div>
                 )}
 
                 {session.client_takeaways && (
                   <div className="mb-4">
-                    <label className="block text-xs font-medium text-blue-800 mb-2">Takeaways</label>
-                    <p className="text-sm text-blue-900 whitespace-pre-wrap">{session.client_takeaways}</p>
+                    <label className="block text-xs font-medium text-brand-navy mb-2">Takeaways</label>
+                    <p className="text-sm text-brand-navy whitespace-pre-wrap">{session.client_takeaways}</p>
                   </div>
                 )}
 
                 {session.client_notes && (
                   <div className="mb-4">
-                    <label className="block text-xs font-medium text-blue-800 mb-2">Notes</label>
-                    <p className="text-sm text-blue-900 whitespace-pre-wrap">{session.client_notes}</p>
+                    <label className="block text-xs font-medium text-brand-navy mb-2">Notes</label>
+                    <p className="text-sm text-brand-navy whitespace-pre-wrap">{session.client_notes}</p>
                   </div>
                 )}
 
                 {session.client_feedback && (
                   <div>
-                    <label className="block text-xs font-medium text-blue-800 mb-2">Feedback</label>
-                    <p className="text-sm text-blue-900 whitespace-pre-wrap">{session.client_feedback}</p>
+                    <label className="block text-xs font-medium text-brand-navy mb-2">Feedback</label>
+                    <p className="text-sm text-brand-navy whitespace-pre-wrap">{session.client_feedback}</p>
                   </div>
                 )}
               </div>
@@ -947,7 +947,7 @@ export default function SessionDetailPage() {
                     value={durationMinutes || ''}
                     onChange={(e) => setDurationMinutes(e.target.value ? parseInt(e.target.value) : null)}
                     placeholder="60"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   />
                 </div>
 
@@ -955,7 +955,7 @@ export default function SessionDetailPage() {
                   <label className="block text-xs font-medium text-gray-600 mb-1">Client</label>
                   <Link
                     href={`/coach/clients/${business?.id}`}
-                    className="flex items-center gap-2 text-indigo-600 hover:text-indigo-700"
+                    className="flex items-center gap-2 text-brand-orange hover:text-brand-orange-700"
                   >
                     <Building2 className="w-4 h-4" />
                     {business?.business_name}
@@ -969,7 +969,7 @@ export default function SessionDetailPage() {
                       type="checkbox"
                       checked={visibleToAll}
                       onChange={(e) => setVisibleToAll(e.target.checked)}
-                      className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                      className="w-4 h-4 text-brand-orange rounded border-gray-300 focus:ring-brand-orange"
                     />
                     <span className="text-sm text-gray-700">Visible to all team members</span>
                   </label>
@@ -986,7 +986,7 @@ export default function SessionDetailPage() {
 
               {session.transcript_url ? (
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                  <FileText className="w-8 h-8 text-indigo-600" />
+                  <FileText className="w-8 h-8 text-brand-orange" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">
                       {session.transcript_name}
@@ -995,7 +995,7 @@ export default function SessionDetailPage() {
                       href={session.transcript_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-indigo-600 hover:text-indigo-700"
+                      className="text-xs text-brand-orange hover:text-brand-orange-700"
                     >
                       View transcript
                     </a>
@@ -1009,9 +1009,9 @@ export default function SessionDetailPage() {
                 </div>
               ) : (
                 <div>
-                  <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
+                  <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-brand-orange-400 hover:bg-brand-orange-50 transition-colors">
                     {uploading ? (
-                      <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-2" />
+                      <Loader2 className="w-8 h-8 text-brand-orange animate-spin mb-2" />
                     ) : (
                       <Upload className="w-8 h-8 text-gray-400 mb-2" />
                     )}
@@ -1048,12 +1048,12 @@ export default function SessionDetailPage() {
                   >
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                       attendee.user_type === 'coach'
-                        ? 'bg-indigo-100'
+                        ? 'bg-brand-orange-100'
                         : 'bg-green-100'
                     }`}>
                       <User className={`w-4 h-4 ${
                         attendee.user_type === 'coach'
-                          ? 'text-indigo-600'
+                          ? 'text-brand-orange'
                           : 'text-green-600'
                       }`} />
                     </div>

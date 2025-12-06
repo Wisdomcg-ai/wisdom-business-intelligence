@@ -44,17 +44,17 @@ export default function Step1GoalsAndKPIs({
   return (
     <div className="space-y-6">
       {/* Task Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-4 text-white">
+      <div className="bg-brand-navy rounded-lg p-4 text-white">
         <p className="text-base font-medium">
           📋 <strong>YOUR TASK:</strong> Set your 3-year, 2-year, and 1-year financial targets
         </p>
-        <p className="text-sm text-teal-100 mt-1">
+        <p className="text-sm text-white/70 mt-1">
           Start with your 3-year vision, then work backwards to define Year 2 milestones and Year 1 targets.
         </p>
       </div>
 
       {/* Year Type & Industry Selector */}
-      <div className="bg-gradient-to-r from-teal-50 to-teal-100 rounded-lg border border-teal-200 p-4">
+      <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <span className="text-sm font-medium text-gray-700 mr-3">Period Type:</span>
@@ -65,7 +65,7 @@ export default function Step1GoalsAndKPIs({
                   onClick={() => setYearType(type)}
                   className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
                     yearType === type
-                      ? 'bg-teal-600 text-white shadow-md'
+                      ? 'bg-brand-orange text-white shadow-md'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
@@ -76,7 +76,7 @@ export default function Step1GoalsAndKPIs({
           </div>
           <div className="text-right">
             <span className="text-xs font-medium text-gray-600 block mb-1">INDUSTRY</span>
-            <span className="text-sm text-teal-700 font-semibold capitalize">
+            <span className="text-sm text-brand-navy font-semibold capitalize">
               {industry?.replace(/_/g, ' ')}
             </span>
           </div>
@@ -85,7 +85,7 @@ export default function Step1GoalsAndKPIs({
 
       {/* Required Section Header */}
       <div className="flex items-center gap-2">
-        <span className="px-3 py-1 bg-teal-600 text-white text-xs font-bold rounded-full uppercase tracking-wide">
+        <span className="px-3 py-1 bg-brand-orange text-white text-xs font-bold rounded-full uppercase tracking-wide">
           Required
         </span>
         <span className="text-sm text-gray-600">Set your financial targets to drive your strategic plan</span>
@@ -105,7 +105,7 @@ export default function Step1GoalsAndKPIs({
 
       {/* Optional Section Header */}
       <div className="flex items-center gap-2 mt-8">
-        <span className="px-3 py-1 bg-slate-500 text-white text-xs font-bold rounded-full uppercase tracking-wide">
+        <span className="px-3 py-1 bg-gray-500 text-white text-xs font-bold rounded-full uppercase tracking-wide">
           Optional
         </span>
         <span className="text-sm text-gray-600">Track additional metrics for deeper insights</span>
@@ -142,8 +142,8 @@ export default function Step1GoalsAndKPIs({
       />
 
       {/* Tip Box */}
-      <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
-        <p className="text-sm text-teal-800">
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <p className="text-sm text-gray-700">
           <strong>Tip:</strong> Set realistic targets based on your current performance. These will drive your annual and 90-day plans.
         </p>
       </div>

@@ -125,7 +125,7 @@ export default function MetricRow({
           )
         } else if (col.type === 'quarter-header') {
           return (
-            <td key={col.quarterKey} className="px-3 py-4 text-sm text-center bg-teal-50 border-l-2 border-teal-200"></td>
+            <td key={col.quarterKey} className="px-3 py-4 text-sm text-center bg-brand-orange-50 border-l-2 border-brand-orange-200"></td>
           )
         } else {
           const isEditable = isWeekEditable(col.isCurrentWeek || false, col.date)
@@ -134,7 +134,7 @@ export default function MetricRow({
             : col.snapshot?.[metricKey]
 
           return (
-            <td key={col.date || idx} className={`px-3 py-4 text-sm text-center ${col.isCurrentWeek ? 'bg-teal-50' : ''}`}>
+            <td key={col.date || idx} className={`px-3 py-4 text-sm text-center ${col.isCurrentWeek ? 'bg-brand-orange-50' : ''}`}>
               {isEditable ? (
                 <input
                   type="text"
@@ -148,7 +148,7 @@ export default function MetricRow({
                     }
                   }}
                   onKeyDown={handleKeyDown}
-                  className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 transition-colors"
+                  className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 transition-colors"
                   placeholder={placeholder}
                 />
               ) : (

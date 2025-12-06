@@ -83,7 +83,7 @@ export default function ClientAnalyticsPage() {
       <ClientLayout>
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
-            <Loader2 className="w-12 h-12 text-teal-600 animate-spin mx-auto mb-4" />
+            <Loader2 className="w-12 h-12 text-brand-orange animate-spin mx-auto mb-4" />
             <p className="text-gray-600">Loading analytics...</p>
           </div>
         </div>
@@ -117,8 +117,8 @@ export default function ClientAnalyticsPage() {
           {/* Total Sessions */}
           <div className="bg-white rounded-lg border border-gray-200 p-5">
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-teal-100 rounded-lg">
-                <Calendar className="w-5 h-5 text-teal-600" />
+              <div className="p-2 bg-brand-orange-100 rounded-lg">
+                <Calendar className="w-5 h-5 text-brand-orange" />
               </div>
               <div>
                 <p className="text-sm text-gray-600">Total Sessions</p>
@@ -133,8 +133,8 @@ export default function ClientAnalyticsPage() {
           {/* Action Completion */}
           <div className="bg-white rounded-lg border border-gray-200 p-5">
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <CheckCircle className="w-5 h-5 text-green-600" />
+              <div className="p-2 bg-brand-teal-100 rounded-lg">
+                <CheckCircle className="w-5 h-5 text-brand-teal-600" />
               </div>
               <div>
                 <p className="text-sm text-gray-600">Completion Rate</p>
@@ -149,8 +149,8 @@ export default function ClientAnalyticsPage() {
           {/* Average Session Gap */}
           <div className="bg-white rounded-lg border border-gray-200 p-5">
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <TrendingUp className="w-5 h-5 text-purple-600" />
+              <div className="p-2 bg-brand-navy-100 rounded-lg">
+                <TrendingUp className="w-5 h-5 text-brand-navy" />
               </div>
               <div>
                 <p className="text-sm text-gray-600">Session Frequency</p>
@@ -165,8 +165,8 @@ export default function ClientAnalyticsPage() {
           {/* Health Score */}
           <div className="bg-white rounded-lg border border-gray-200 p-5">
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-orange-100 rounded-lg">
-                <Target className="w-5 h-5 text-orange-600" />
+              <div className="p-2 bg-brand-orange-100 rounded-lg">
+                <Target className="w-5 h-5 text-brand-orange-600" />
               </div>
               <div>
                 <p className="text-sm text-gray-600">Health Score</p>
@@ -199,7 +199,7 @@ export default function ClientAnalyticsPage() {
         )}
 
         {/* Insights Section */}
-        <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-6 text-white">
+        <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-6 text-white">
           <h3 className="text-lg font-semibold mb-4">Key Insights</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">

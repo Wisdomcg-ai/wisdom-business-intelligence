@@ -26,36 +26,36 @@ const COLUMN_CONFIG: Record<ActionColumn, {
     title: 'What Worked',
     description: 'Actions that delivered results',
     icon: CheckCircle2,
-    bgColor: 'bg-slate-50',
+    bgColor: 'bg-gray-50',
     borderColor: 'border-gray-200',
-    iconColor: 'text-slate-600',
+    iconColor: 'text-gray-600',
     placeholder: 'e.g., Weekly team meetings improved communication'
   },
   didntWork: {
     title: "What Didn't Work",
     description: 'Actions that fell short',
     icon: XCircle,
-    bgColor: 'bg-slate-50',
+    bgColor: 'bg-gray-50',
     borderColor: 'border-gray-200',
-    iconColor: 'text-slate-600',
+    iconColor: 'text-gray-600',
     placeholder: 'e.g., Cold email campaign had low response rate'
   },
   plannedButDidnt: {
     title: "Planned But Didn't Do",
     description: 'Intentions that got deferred',
     icon: AlertTriangle,
-    bgColor: 'bg-slate-50',
+    bgColor: 'bg-gray-50',
     borderColor: 'border-gray-200',
-    iconColor: 'text-slate-600',
+    iconColor: 'text-gray-600',
     placeholder: 'e.g., Website redesign kept getting pushed back'
   },
   newIdeas: {
     title: 'New Ideas',
     description: 'Insights for next quarter',
     icon: Lightbulb,
-    bgColor: 'bg-slate-50',
+    bgColor: 'bg-gray-50',
     borderColor: 'border-gray-200',
-    iconColor: 'text-slate-600',
+    iconColor: 'text-gray-600',
     placeholder: 'e.g., Partner with complementary businesses'
   }
 };
@@ -158,7 +158,7 @@ export function ActionReplayStep({ review, onUpdate }: ActionReplayStepProps) {
                   onChange={(e) => setNewItems({ ...newItems, [column]: e.target.value })}
                   onKeyDown={(e) => handleKeyDown(e, column)}
                   placeholder={config.placeholder}
-                  className="flex-1 text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="flex-1 text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 />
                 <button
                   onClick={() => addItem(column)}
@@ -178,10 +178,10 @@ export function ActionReplayStep({ review, onUpdate }: ActionReplayStepProps) {
       </div>
 
       {/* Key Insight */}
-      <div className="bg-slate-50 rounded-xl border border-gray-200 p-6">
+      <div className="bg-gray-50 rounded-xl border border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-4">
           <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-slate-600" />
+            <Sparkles className="w-5 h-5 text-gray-600" />
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">Key Insight</h3>
@@ -193,7 +193,7 @@ export function ActionReplayStep({ review, onUpdate }: ActionReplayStepProps) {
           onChange={(e) => updateKeyInsight(e.target.value)}
           placeholder="Summarize your most important learning from this action replay..."
           rows={3}
-          className="w-full px-4 py-3 border border-blue-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-white"
+          className="w-full px-4 py-3 border border-brand-orange-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none bg-white"
         />
       </div>
 

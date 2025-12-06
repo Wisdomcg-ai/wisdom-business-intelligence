@@ -84,14 +84,14 @@ export function BuildModal({
           {/* Content */}
           <div className="px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
             {/* Outcome */}
-            <div className="bg-teal-50 border-l-4 border-teal-500 rounded-r-lg p-3 sm:p-4">
-              <div className="text-xs sm:text-sm font-semibold text-teal-900 mb-1 sm:mb-2">Outcome</div>
-              <div className="text-sm sm:text-base text-teal-800">{build.outcome}</div>
+            <div className="bg-brand-orange-50 border-l-4 border-brand-orange-500 rounded-r-lg p-3 sm:p-4">
+              <div className="text-xs sm:text-sm font-semibold text-brand-navy mb-1 sm:mb-2">Outcome</div>
+              <div className="text-sm sm:text-base text-brand-orange-800">{build.outcome}</div>
             </div>
 
             {/* Completion Check Section - PROMINENT */}
             {checks && checks.length > 0 && (
-              <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-xl p-3 sm:p-5">
+              <div className="bg-gradient-to-br from-amber-50 to-brand-orange-50 border-2 border-amber-200 rounded-xl p-3 sm:p-5">
                 {/* Header with instructions */}
                 <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
                   <div className="p-1.5 sm:p-2 bg-amber-100 rounded-lg flex-shrink-0">
@@ -112,7 +112,7 @@ export function BuildModal({
                     <span className={`text-sm font-bold ${
                       completionPercentage === 100 ? 'text-green-600' :
                       completionPercentage >= 66 ? 'text-amber-600' :
-                      completionPercentage >= 33 ? 'text-orange-600' :
+                      completionPercentage >= 33 ? 'text-brand-orange-600' :
                       'text-red-600'
                     }`}>
                       {completionPercentage}%
@@ -123,7 +123,7 @@ export function BuildModal({
                       className={`h-full rounded-full transition-all duration-500 ${
                         completionPercentage === 100 ? 'bg-green-500' :
                         completionPercentage >= 66 ? 'bg-amber-500' :
-                        completionPercentage >= 33 ? 'bg-orange-500' :
+                        completionPercentage >= 33 ? 'bg-brand-orange' :
                         'bg-red-500'
                       }`}
                       style={{ width: `${completionPercentage}%` }}
@@ -223,7 +223,7 @@ export function BuildModal({
                   <ul className="space-y-3">
                     {build.toDo.map((item, index) => (
                       <li key={index} className="flex items-start gap-3">
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-teal-100 text-teal-600 text-xs font-semibold flex-shrink-0 mt-0.5">
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-brand-orange-100 text-brand-orange text-xs font-semibold flex-shrink-0 mt-0.5">
                           {index + 1}
                         </span>
                         <span className="text-gray-700 flex-1">{item}</span>
@@ -239,15 +239,15 @@ export function BuildModal({
           <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
             {/* Linked Feature - Show if available */}
             {linkedFeature && (
-              <div className="mb-3 sm:mb-4 p-2.5 sm:p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="mb-3 sm:mb-4 p-2.5 sm:p-3 bg-brand-orange-50 border border-brand-orange-200 rounded-lg">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
                   <div>
-                    <p className="text-xs sm:text-sm text-blue-800 font-medium">Work on this build in the platform</p>
-                    <p className="text-xs text-blue-600 mt-0.5 hidden sm:block">Use the {linkedFeature.label} tool to complete this build</p>
+                    <p className="text-xs sm:text-sm text-brand-navy font-medium">Work on this build in the platform</p>
+                    <p className="text-xs text-brand-orange mt-0.5 hidden sm:block">Use the {linkedFeature.label} tool to complete this build</p>
                   </div>
                   <Link
                     href={linkedFeature.href}
-                    className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs sm:text-sm font-medium transition-colors"
+                    className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg text-xs sm:text-sm font-medium transition-colors"
                   >
                     Go to {linkedFeature.label}
                     <ExternalLink className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
@@ -262,7 +262,7 @@ export function BuildModal({
                 className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-2 sm:py-3 rounded-lg font-medium transition-all text-sm sm:text-base ${
                   isComplete
                     ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                    : 'bg-teal-600 hover:bg-teal-700 text-white'
+                    : 'bg-brand-orange hover:bg-brand-orange-600 text-white'
                 }`}
               >
                 <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard,
@@ -194,6 +195,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   const router = useRouter()
   const supabase = createClient()
 
+  const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [expandedSections, setExpandedSections] = useState<string[]>([
     'HOME',
@@ -251,9 +253,11 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
         }
 
         setNavigation(getNavigation('client'))
+        setLoading(false)
       } catch (error) {
         console.error('Error loading user/business data:', error)
         setNavigation(getNavigation('client'))
+        setLoading(false)
       }
     }
 
@@ -306,55 +310,89 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
     return <>{children}</>
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-brand-navy flex items-center justify-center">
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative">
+            <Image
+              src="/images/logo-wbi.png"
+              alt="WisdomBi"
+              width={410}
+              height={170}
+              className="h-14 w-auto animate-pulse"
+              priority
+            />
+            <div className="absolute -inset-2 border-4 border-brand-orange/30 border-t-brand-orange rounded-full animate-spin" />
+          </div>
+          <div className="text-center">
+            <p className="text-white font-medium text-lg">Loading</p>
+            <p className="text-brand-orange-300 text-sm mt-1">Please wait...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
-      <div className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white border-r border-gray-200 flex flex-col h-screen transition-all duration-200 ease-in-out fixed left-0 top-0 z-40`}>
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 h-16">
-          {sidebarOpen ? (
-            <div>
-              <h1 className="text-sm font-bold text-gray-900 truncate">Business Coaching</h1>
-              {businessData.name && businessData.name !== 'My Business' && (
-                <p className="text-xs text-gray-500 truncate">{businessData.name}</p>
-              )}
-            </div>
-          ) : (
-            <div className="text-xs font-bold text-gray-900">BC</div>
+      <div className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-brand-navy flex flex-col h-screen transition-all duration-200 ease-in-out fixed left-0 top-0 z-40`}>
+        {/* Logo Header - Keep white background for logo visibility */}
+        <div className={`bg-white ${sidebarOpen ? 'px-3 py-3' : 'px-2 py-3'} border-b border-brand-navy-700`}>
+          <div className="flex items-center justify-center">
+            <Link href="/dashboard" className="block">
+              <Image
+                src="/images/logo-wbi.png"
+                alt="WisdomBi"
+                width={410}
+                height={170}
+                className={`${sidebarOpen ? 'h-12' : 'h-10'} w-auto`}
+                priority
+              />
+            </Link>
+          </div>
+          {sidebarOpen && businessData.name && businessData.name !== 'My Business' && (
+            <p className="text-xs text-brand-navy text-center mt-2 truncate font-medium">{businessData.name}</p>
           )}
-
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1 rounded hover:bg-gray-100 transition-colors"
-            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-          >
-            {sidebarOpen ? (
-              <ChevronLeft className="h-4 w-4 text-gray-600" />
-            ) : (
-              <ChevronRight className="h-4 w-4 text-gray-600" />
-            )}
-          </button>
         </div>
+
+        {/* Sidebar Toggle */}
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className={`flex items-center justify-center ${sidebarOpen ? 'px-4' : 'px-2'} py-2 border-b border-brand-navy-700 hover:bg-white/10 transition-colors w-full`}
+          title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+        >
+          {sidebarOpen ? (
+            <>
+              <ChevronLeft className="h-4 w-4 text-white" />
+              <span className="text-xs text-white ml-1">Collapse</span>
+            </>
+          ) : (
+            <ChevronRight className="h-4 w-4 text-white" />
+          )}
+        </button>
 
         <nav className="flex-1 overflow-y-auto">
           {navigation.map((section) => (
-            <div key={section.title} className="border-b border-gray-100">
+            <div key={section.title} className="border-b border-brand-navy-700">
               {sidebarOpen ? (
                 <>
                   <button
                     onClick={() => toggleSection(section.title)}
-                    className="w-full px-4 py-2 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                    className="w-full px-4 py-2 flex items-center justify-between hover:bg-white/5 transition-colors"
                   >
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
                       {section.title}
                     </span>
                     {expandedSections.includes(section.title) ? (
-                      <ChevronUp className="h-3 w-3 text-gray-400" />
+                      <ChevronUp className="h-3 w-3 text-white/70" />
                     ) : (
-                      <ChevronDown className="h-3 w-3 text-gray-400" />
+                      <ChevronDown className="h-3 w-3 text-white/70" />
                     )}
                   </button>
 
                   {expandedSections.includes(section.title) && (
-                    <div className="space-y-1">
+                    <div className="space-y-0.5 pb-2">
                       {section.items.map((item) => {
                         const Icon = item.icon
                         const isActive = pathname === item.href
@@ -367,18 +405,18 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                               <>
                                 <button
                                   onClick={() => toggleSubItem(item.label)}
-                                  className={`w-full flex items-center px-4 py-2 text-sm ${isActive ? 'bg-teal-50 text-teal-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                                  className={`w-full flex items-center px-4 py-2 text-sm ${isActive ? 'bg-white/15 text-white font-medium border-l-2 border-brand-orange ml-0.5' : 'text-white hover:bg-white/10'}`}
                                 >
                                   <Icon className="h-4 w-4 mr-3 flex-shrink-0" />
                                   <span className="flex-1 text-left">{item.label}</span>
                                   {isExpanded ? (
-                                    <ChevronUp className="h-3 w-3 text-gray-400" />
+                                    <ChevronUp className="h-3 w-3 text-white/70" />
                                   ) : (
-                                    <ChevronDown className="h-3 w-3 text-gray-400" />
+                                    <ChevronDown className="h-3 w-3 text-white/70" />
                                   )}
                                 </button>
                                 {isExpanded && (
-                                  <div className="ml-4 border-l border-gray-200 space-y-1">
+                                  <div className="ml-4 border-l border-white/20 space-y-0.5">
                                     {item.children!.map((child) => {
                                       const ChildIcon = child.icon
                                       const isChildActive = pathname === child.href
@@ -386,7 +424,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                                         <Link
                                           key={child.href}
                                           href={child.disabled ? '#' : child.href}
-                                          className={`flex items-center pl-6 pr-4 py-2 text-sm ${isChildActive ? 'bg-teal-50 text-teal-700 border-r-2 border-teal-600' : 'text-gray-600 hover:bg-gray-50'} ${child.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                          className={`flex items-center pl-6 pr-4 py-2 text-sm ${isChildActive ? 'bg-white/15 text-white font-medium border-l-2 border-brand-orange -ml-px' : 'text-white/90 hover:bg-white/10 hover:text-white'} ${child.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                           onClick={(e) => child.disabled && e.preventDefault()}
                                         >
                                           <ChildIcon className="h-4 w-4 mr-3 flex-shrink-0" />
@@ -400,13 +438,13 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                             ) : (
                               <Link
                                 href={item.disabled ? '#' : item.href}
-                                className={`flex items-center px-4 py-2 text-sm ${isActive ? 'bg-teal-50 text-teal-700 border-r-2 border-teal-600' : 'text-gray-700 hover:bg-gray-50'} ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                className={`flex items-center px-4 py-2 text-sm ${isActive ? 'bg-white/15 text-white font-medium border-l-2 border-brand-orange ml-0.5' : 'text-white hover:bg-white/10'} ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 onClick={(e) => item.disabled && e.preventDefault()}
                               >
                                 <Icon className="h-4 w-4 mr-3 flex-shrink-0" />
                                 <span className="flex-1">{item.label}</span>
                                 {item.badge && (
-                                  <span className={`text-xs px-2 py-0.5 rounded ${item.badge === 'Private' ? 'bg-gray-100 text-gray-600' : 'bg-teal-100 text-teal-700'}`}>
+                                  <span className={`text-xs px-2 py-0.5 rounded ${item.badge === 'Private' ? 'bg-white/10 text-white/60' : 'bg-brand-orange/30 text-brand-orange-300'}`}>
                                     {item.badge}
                                   </span>
                                 )}
@@ -419,7 +457,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                   )}
                 </>
               ) : (
-                <div className="space-y-1">
+                <div className="space-y-0.5 py-1">
                   {section.items.map((item) => {
                     const Icon = item.icon
                     const isActive = pathname === item.href
@@ -428,7 +466,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                       <Link
                         key={item.href}
                         href={item.disabled ? '#' : item.href}
-                        className={`flex items-center justify-center py-2 px-1 ${isActive ? 'bg-teal-50 text-teal-700 border-r-2 border-teal-600' : 'text-gray-700 hover:bg-gray-50'} ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`flex items-center justify-center py-2 px-1 ${isActive ? 'bg-white/15 text-white border-l-2 border-brand-orange' : 'text-white hover:bg-white/10'} ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                         title={item.label}
                         onClick={(e) => item.disabled && e.preventDefault()}
                       >
@@ -442,10 +480,10 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
           ))}
         </nav>
 
-        <div className="border-t border-gray-200 p-4">
+        <div className="border-t border-brand-navy-700 p-4">
           <button
             onClick={handleSignOut}
-            className="flex items-center text-sm text-gray-600 hover:text-red-600 py-1 w-full transition-colors"
+            className="flex items-center text-sm text-white hover:text-red-400 py-1 w-full transition-colors"
           >
             <LogOut className="h-4 w-4 mr-3 flex-shrink-0" />
             {sidebarOpen && <span>Sign Out</span>}
@@ -462,7 +500,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
               >
-                <div className="w-8 h-8 bg-teal-600 rounded-full flex items-center justify-center">
+                <div className="w-8 h-8 bg-brand-orange rounded-full flex items-center justify-center">
                   <User className="h-4 w-4 text-white" />
                 </div>
                 <span className="text-sm font-medium text-gray-700">{userName}</span>

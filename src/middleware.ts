@@ -97,7 +97,8 @@ export async function middleware(request: NextRequest) {
       '/admin',        // Admin portal doesn't require client onboarding
       '/dashboard'     // Allow dashboard access - it handles its own auth/data
     ]
-    const isExemptRoute = onboardingExemptRoutes.some(route => pathname.startsWith(route))
+    // Also exempt public marketing pages from onboarding checks
+    const isExemptRoute = isPublicRoute || onboardingExemptRoutes.some(route => pathname.startsWith(route))
 
     // Only check onboarding if not on exempt routes
     if (!isExemptRoute) {

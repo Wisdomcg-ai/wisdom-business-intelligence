@@ -269,11 +269,11 @@ export default function Step3Wizard({
       <button
         onClick={() => goToPhase('list')}
         className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all cursor-pointer hover:scale-105 ${
-          phase === 'list' ? 'bg-teal-600 text-white' : 'bg-teal-100 text-teal-700 hover:bg-teal-200'
+          phase === 'list' ? 'bg-brand-orange text-white' : 'bg-brand-orange-100 text-brand-orange-700 hover:bg-brand-orange-200'
         }`}
       >
         <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-          phase === 'list' ? 'bg-white/20' : 'bg-teal-200'
+          phase === 'list' ? 'bg-white/20' : 'bg-brand-orange-200'
         }`}>1</span>
         List
       </button>
@@ -282,15 +282,15 @@ export default function Step3Wizard({
         onClick={() => goToPhase('categorize')}
         disabled={!isPhaseAccessible('categorize')}
         className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
-          phase === 'categorize' ? 'bg-teal-600 text-white cursor-pointer hover:scale-105' :
-          phase === 'decide' ? 'bg-teal-100 text-teal-700 cursor-pointer hover:bg-teal-200 hover:scale-105' :
+          phase === 'categorize' ? 'bg-brand-orange text-white cursor-pointer hover:scale-105' :
+          phase === 'decide' ? 'bg-brand-orange-100 text-brand-orange-700 cursor-pointer hover:bg-brand-orange-200 hover:scale-105' :
           isPhaseAccessible('categorize') ? 'bg-gray-100 text-gray-600 cursor-pointer hover:bg-gray-200 hover:scale-105' :
           'bg-gray-100 text-gray-400 cursor-not-allowed'
         }`}
       >
         <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
           phase === 'categorize' ? 'bg-white/20' :
-          phase === 'decide' ? 'bg-teal-200' : 'bg-gray-200'
+          phase === 'decide' ? 'bg-brand-orange-200' : 'bg-gray-200'
         }`}>2</span>
         Categorize
       </button>
@@ -299,7 +299,7 @@ export default function Step3Wizard({
         onClick={() => goToPhase('decide')}
         disabled={!isPhaseAccessible('decide')}
         className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
-          phase === 'decide' ? 'bg-teal-600 text-white cursor-pointer hover:scale-105' :
+          phase === 'decide' ? 'bg-brand-orange text-white cursor-pointer hover:scale-105' :
           isPhaseAccessible('decide') ? 'bg-gray-100 text-gray-600 cursor-pointer hover:bg-gray-200 hover:scale-105' :
           'bg-gray-100 text-gray-400 cursor-not-allowed'
         }`}
@@ -326,22 +326,22 @@ export default function Step3Wizard({
 
       {/* Import from Time Log */}
       {hasTimeLogData && validTimeLogEntries.length > 0 && (
-        <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+        <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
-            <Clock className="w-5 h-5 text-teal-600 flex-shrink-0 mt-0.5" />
+            <Clock className="w-5 h-5 text-brand-orange flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="text-teal-900 font-medium">Import from your Time Log</p>
-              <p className="text-teal-700 text-sm mt-1">
+              <p className="text-brand-navy font-medium">Import from your Time Log</p>
+              <p className="text-brand-orange-700 text-sm mt-1">
                 We found {validTimeLogEntries.length} activities. Import them to save time.
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
                 {validTimeLogEntries.slice(0, 5).map(([id, hours]) => (
-                  <span key={id} className="px-2 py-1 bg-white rounded text-xs text-teal-700 border border-teal-200">
+                  <span key={id} className="px-2 py-1 bg-white rounded text-xs text-brand-orange-700 border border-brand-orange-200">
                     {getActivityLabel(id)}: {hours}h/week
                   </span>
                 ))}
                 {validTimeLogEntries.length > 5 && (
-                  <span className="px-2 py-1 text-xs text-teal-600">
+                  <span className="px-2 py-1 text-xs text-brand-orange">
                     +{validTimeLogEntries.length - 5} more
                   </span>
                 )}
@@ -349,7 +349,7 @@ export default function Step3Wizard({
               <button
                 onClick={handleImportFromTimeLog}
                 disabled={isImporting}
-                className="mt-3 flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors"
+                className="mt-3 flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 transition-colors"
               >
                 {isImporting ? (
                   <>
@@ -400,7 +400,7 @@ export default function Step3Wizard({
 
       {/* Add Activity Form */}
       {showAddForm ? (
-        <div className="bg-white border-2 border-teal-200 rounded-lg p-4 space-y-4">
+        <div className="bg-white border-2 border-brand-orange-200 rounded-lg p-4 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-medium text-gray-900">Add Activity</h3>
             <button onClick={() => setShowAddForm(false)} className="text-gray-400 hover:text-gray-600">
@@ -413,7 +413,7 @@ export default function Step3Wizard({
             value={newActivityName}
             onChange={(e) => setNewActivityName(e.target.value)}
             placeholder="What do you spend time on?"
-            className="w-full px-4 py-3 text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+            className="w-full px-4 py-3 text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
             autoFocus
           />
 
@@ -447,7 +447,7 @@ export default function Step3Wizard({
             <button
               onClick={handleAddActivity}
               disabled={!newActivityName.trim()}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 disabled:opacity-50"
             >
               <Plus className="w-4 h-4" />
               Add Activity
@@ -463,7 +463,7 @@ export default function Step3Wizard({
       ) : (
         <button
           onClick={() => setShowAddForm(true)}
-          className="w-full py-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-teal-400 hover:text-teal-600 transition-colors flex items-center justify-center gap-2"
+          className="w-full py-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-brand-orange-400 hover:text-brand-orange transition-colors flex items-center justify-center gap-2"
         >
           <Plus className="w-5 h-5" />
           Add Activity
@@ -503,7 +503,7 @@ export default function Step3Wizard({
         <button
           onClick={() => setPhase('categorize')}
           disabled={!canProceedToCategories}
-          className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="flex items-center gap-2 px-6 py-3 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           Continue to Categorize
           <ArrowRight className="w-4 h-4" />
@@ -620,7 +620,7 @@ export default function Step3Wizard({
         </div>
         <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
           <div
-            className="h-full bg-teal-600 transition-all duration-300"
+            className="h-full bg-brand-orange transition-all duration-300"
             style={{ width: `${activities.length > 0 ? ((activities.length - uncategorizedActivities.length) / activities.length) * 100 : 0}%` }}
           />
         </div>
@@ -638,7 +638,7 @@ export default function Step3Wizard({
         <button
           onClick={() => setPhase('decide')}
           disabled={!canProceedToDecide}
-          className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="flex items-center gap-2 px-6 py-3 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {canProceedToDecide ? 'Continue to Decide Actions' : `Categorize all activities first (${uncategorizedActivities.length} left)`}
           <ArrowRight className="w-4 h-4" />
@@ -748,15 +748,15 @@ export default function Step3Wizard({
                     {FOCUS_FUNNEL_OPTIONS.map((option) => {
                       const isSelected = activity.focus_funnel_outcome === option.value
                       const bgColor = option.value === 'eliminate' ? 'bg-red-100 hover:bg-red-200 border-red-300' :
-                                      option.value === 'automate' ? 'bg-purple-100 hover:bg-purple-200 border-purple-300' :
-                                      option.value === 'delegate' ? 'bg-blue-100 hover:bg-blue-200 border-blue-300' :
+                                      option.value === 'automate' ? 'bg-brand-navy-50 hover:bg-brand-navy-100 border-brand-navy-200' :
+                                      option.value === 'delegate' ? 'bg-brand-orange-100 hover:bg-brand-orange-200 border-brand-orange-300' :
                                       'bg-green-100 hover:bg-green-200 border-green-300'
                       const textColor = option.value === 'eliminate' ? 'text-red-700' :
-                                        option.value === 'automate' ? 'text-purple-700' :
-                                        option.value === 'delegate' ? 'text-blue-700' : 'text-green-700'
+                                        option.value === 'automate' ? 'text-brand-navy' :
+                                        option.value === 'delegate' ? 'text-brand-orange-700' : 'text-green-700'
                       const selectedBg = option.value === 'eliminate' ? 'bg-red-600' :
-                                         option.value === 'automate' ? 'bg-purple-600' :
-                                         option.value === 'delegate' ? 'bg-blue-600' : 'bg-green-600'
+                                         option.value === 'automate' ? 'bg-brand-navy' :
+                                         option.value === 'delegate' ? 'bg-brand-orange' : 'bg-green-600'
 
                       return (
                         <button

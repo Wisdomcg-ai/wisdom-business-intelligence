@@ -30,29 +30,29 @@ interface Activity {
 
 // Default activity categories with colors
 const DEFAULT_ACTIVITIES: Activity[] = [
-  { id: 'email', label: 'Email', color: 'bg-blue-500', lightColor: 'bg-blue-100' },
-  { id: 'meetings', label: 'Meetings', color: 'bg-purple-500', lightColor: 'bg-purple-100' },
+  { id: 'email', label: 'Email', color: 'bg-brand-orange-500', lightColor: 'bg-brand-orange-100' },
+  { id: 'meetings', label: 'Meetings', color: 'bg-brand-navy', lightColor: 'bg-brand-navy-50' },
   { id: 'admin', label: 'Admin', color: 'bg-gray-500', lightColor: 'bg-gray-200' },
   { id: 'client', label: 'Client Work', color: 'bg-green-500', lightColor: 'bg-green-100' },
   { id: 'sales', label: 'Sales', color: 'bg-amber-500', lightColor: 'bg-amber-100' },
-  { id: 'marketing', label: 'Marketing', color: 'bg-pink-500', lightColor: 'bg-pink-100' },
-  { id: 'team', label: 'Team', color: 'bg-indigo-500', lightColor: 'bg-indigo-100' },
-  { id: 'finance', label: 'Finance', color: 'bg-emerald-500', lightColor: 'bg-emerald-100' },
-  { id: 'planning', label: 'Planning', color: 'bg-teal-500', lightColor: 'bg-teal-100' },
+  { id: 'marketing', label: 'Marketing', color: 'bg-brand-orange', lightColor: 'bg-brand-orange-100' },
+  { id: 'team', label: 'Team', color: 'bg-brand-orange-500', lightColor: 'bg-brand-orange-100' },
+  { id: 'finance', label: 'Finance', color: 'bg-brand-navy', lightColor: 'bg-brand-navy-50' },
+  { id: 'planning', label: 'Planning', color: 'bg-brand-orange-500', lightColor: 'bg-brand-orange-100' },
   { id: 'break', label: 'Break', color: 'bg-slate-400', lightColor: 'bg-slate-100' },
 ]
 
 // Colors available for custom activities
 const CUSTOM_COLORS = [
   { color: 'bg-red-500', lightColor: 'bg-red-100' },
-  { color: 'bg-orange-500', lightColor: 'bg-orange-100' },
+  { color: 'bg-brand-orange', lightColor: 'bg-brand-orange-100' },
   { color: 'bg-yellow-500', lightColor: 'bg-yellow-100' },
-  { color: 'bg-lime-500', lightColor: 'bg-lime-100' },
-  { color: 'bg-cyan-500', lightColor: 'bg-cyan-100' },
-  { color: 'bg-sky-500', lightColor: 'bg-sky-100' },
-  { color: 'bg-violet-500', lightColor: 'bg-violet-100' },
-  { color: 'bg-fuchsia-500', lightColor: 'bg-fuchsia-100' },
-  { color: 'bg-rose-500', lightColor: 'bg-rose-100' },
+  { color: 'bg-brand-navy', lightColor: 'bg-brand-navy-50' },
+  { color: 'bg-brand-teal', lightColor: 'bg-brand-teal-50' },
+  { color: 'bg-amber-500', lightColor: 'bg-amber-100' },
+  { color: 'bg-brand-orange-700', lightColor: 'bg-brand-orange-200' },
+  { color: 'bg-gray-700', lightColor: 'bg-gray-200' },
+  { color: 'bg-green-600', lightColor: 'bg-green-100' },
 ]
 
 const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
@@ -430,7 +430,7 @@ export default function Step1TimeLog({
             </button>
 
             <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-teal-600" />
+              <Calendar className="w-5 h-5 text-brand-orange" />
               <span className="font-medium text-gray-900">
                 Week of {formatWeekDisplay(currentWeekStart)}
               </span>
@@ -469,7 +469,7 @@ export default function Step1TimeLog({
             {!isCurrentWeek && (
               <button
                 onClick={goToCurrentWeek}
-                className="px-3 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                className="px-3 py-1.5 text-sm bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
               >
                 Current Week
               </button>
@@ -562,7 +562,7 @@ export default function Step1TimeLog({
           {!showAddForm ? (
             <button
               onClick={() => setShowAddForm(true)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium border-2 border-dashed border-gray-300 text-gray-500 hover:border-teal-400 hover:text-teal-600 transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium border-2 border-dashed border-gray-300 text-gray-500 hover:border-brand-orange-400 hover:text-brand-orange transition-colors"
             >
               <Plus className="w-4 h-4" />
               Add Task
@@ -590,7 +590,7 @@ export default function Step1TimeLog({
               <button
                 onClick={addCustomActivity}
                 disabled={!newActivityName.trim()}
-                className="p-1 bg-teal-600 text-white rounded disabled:opacity-50"
+                className="p-1 bg-brand-orange text-white rounded disabled:opacity-50"
               >
                 <Plus className="w-4 h-4" />
               </button>
@@ -611,7 +611,7 @@ export default function Step1TimeLog({
       {/* Time Grid */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div
-          className={`overflow-x-auto transition-colors ${isDraggingOver ? 'bg-teal-50' : ''}`}
+          className={`overflow-x-auto transition-colors ${isDraggingOver ? 'bg-brand-orange-50' : ''}`}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         >
@@ -658,7 +658,7 @@ export default function Step1TimeLog({
                               activityStyle
                                 ? `${activityStyle.color}`
                                 : hoverCell?.day === day && hoverCell?.slot === slot && draggedActivity
-                                  ? 'bg-teal-200 ring-2 ring-teal-400'
+                                  ? 'bg-brand-orange-200 ring-2 ring-brand-orange-400'
                                   : draggedActivity ? 'bg-gray-100' : 'bg-gray-50'
                             }`}
                             title={activityStyle?.label || `${slot} - Drag activity here`}
@@ -684,10 +684,10 @@ export default function Step1TimeLog({
 
       {/* Summary */}
       {totalHours > 0 ? (
-        <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-5 text-white">
+        <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-5 text-white">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-teal-100 text-sm mb-1">Total Hours Logged</p>
+              <p className="text-brand-orange-100 text-sm mb-1">Total Hours Logged</p>
               <p className="text-3xl font-bold">{totalHours}h</p>
               {currentTimeLog?.is_complete && (
                 <span className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 bg-white/20 rounded text-sm">
@@ -697,7 +697,7 @@ export default function Step1TimeLog({
               )}
             </div>
             <div className="text-right">
-              <p className="text-teal-100 text-sm mb-2">Breakdown</p>
+              <p className="text-brand-orange-100 text-sm mb-2">Breakdown</p>
               <div className="space-y-1">
                 {hoursByActivity.slice(0, 5).map(activity => (
                   <div key={activity.id} className="flex items-center justify-end gap-2 text-sm">

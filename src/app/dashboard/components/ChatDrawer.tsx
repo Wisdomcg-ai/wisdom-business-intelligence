@@ -220,14 +220,14 @@ export default function ChatDrawer({
         style={{ animation: 'slideIn 0.2s ease-out' }}
       >
         {/* Header - Fixed */}
-        <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 bg-gradient-to-r from-teal-600 to-teal-700 text-white">
+        <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 bg-gradient-to-r from-brand-orange to-brand-orange-700 text-white">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
               <Briefcase className="w-5 h-5" />
             </div>
             <div>
               <h2 className="font-semibold text-lg">Coach Messages</h2>
-              <p className="text-xs text-teal-100">
+              <p className="text-xs text-brand-orange-100">
                 {coachId ? 'Your direct line to your coach' : 'No coach assigned yet'}
               </p>
             </div>
@@ -246,7 +246,7 @@ export default function ChatDrawer({
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <Loader2 className="w-8 h-8 text-teal-600 animate-spin mx-auto mb-2" />
+                <Loader2 className="w-8 h-8 text-brand-orange animate-spin mx-auto mb-2" />
                 <p className="text-sm text-gray-500">Loading messages...</p>
               </div>
             </div>
@@ -262,8 +262,8 @@ export default function ChatDrawer({
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center px-6">
-              <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mb-4">
-                <MessageSquare className="w-8 h-8 text-teal-600" />
+              <div className="w-16 h-16 bg-brand-orange-100 rounded-full flex items-center justify-center mb-4">
+                <MessageSquare className="w-8 h-8 text-brand-orange" />
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">Start a Conversation</h3>
               <p className="text-sm text-gray-500">
@@ -281,19 +281,19 @@ export default function ChatDrawer({
                   >
                     <div className={`flex gap-2 max-w-[85%] ${isFromCoach ? 'flex-row' : 'flex-row-reverse'}`}>
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        isFromCoach ? 'bg-indigo-100' : 'bg-teal-100'
+                        isFromCoach ? 'bg-brand-orange-100' : 'bg-brand-orange-100'
                       }`}>
                         {isFromCoach ? (
-                          <Briefcase className="w-4 h-4 text-indigo-600" />
+                          <Briefcase className="w-4 h-4 text-brand-orange" />
                         ) : (
-                          <User className="w-4 h-4 text-teal-600" />
+                          <User className="w-4 h-4 text-brand-orange" />
                         )}
                       </div>
                       <div className="flex flex-col">
                         <div className={`rounded-2xl px-4 py-2.5 ${
                           isFromCoach
                             ? 'bg-white border border-gray-200 text-gray-900 rounded-tl-md'
-                            : 'bg-teal-600 text-white rounded-tr-md'
+                            : 'bg-brand-orange text-white rounded-tr-md'
                         }`}>
                           <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
                         </div>
@@ -302,7 +302,7 @@ export default function ChatDrawer({
                             {formatTime(message.created_at)}
                           </span>
                           {!isFromCoach && message.read && (
-                            <CheckCheck className="w-3.5 h-3.5 text-teal-500" />
+                            <CheckCheck className="w-3.5 h-3.5 text-brand-orange-500" />
                           )}
                         </div>
                       </div>
@@ -326,7 +326,7 @@ export default function ChatDrawer({
                 onKeyDown={handleKeyDown}
                 placeholder={coachId ? "Type your message..." : "No coach assigned"}
                 rows={1}
-                className="w-full px-4 py-3 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none disabled:bg-gray-50 disabled:text-gray-400"
+                className="w-full px-4 py-3 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none disabled:bg-gray-50 disabled:text-gray-400"
                 disabled={sending || !businessId || !coachId}
                 style={{ minHeight: '48px', maxHeight: '120px' }}
               />
@@ -334,7 +334,7 @@ export default function ChatDrawer({
             <button
               type="submit"
               disabled={!newMessage.trim() || sending || !businessId || !coachId}
-              className="flex-shrink-0 w-12 h-12 bg-teal-600 text-white rounded-xl hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+              className="flex-shrink-0 w-12 h-12 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center shadow-sm"
             >
               {sending ? (
                 <Loader2 className="w-5 h-5 animate-spin" />

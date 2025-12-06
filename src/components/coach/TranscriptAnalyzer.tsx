@@ -93,8 +93,8 @@ export default function TranscriptAnalyzer({ sessionId, onAnalysisComplete }: Tr
   return (
     <div className="bg-white rounded-lg border-2 border-gray-200 p-6">
       <div className="flex items-center gap-3 mb-6">
-        <div className="p-2 bg-purple-100 rounded-lg">
-          <Brain className="w-6 h-6 text-purple-600" />
+        <div className="p-2 bg-brand-navy-50 rounded-lg">
+          <Brain className="w-6 h-6 text-brand-navy" />
         </div>
         <div>
           <h3 className="text-lg font-semibold text-gray-900">AI Transcript Analyzer</h3>
@@ -124,7 +124,7 @@ export default function TranscriptAnalyzer({ sessionId, onAnalysisComplete }: Tr
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={analyzing}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-brand-orange hover:bg-brand-orange-50 transition-colors disabled:opacity-50"
               >
                 <Upload className="w-5 h-5 text-gray-500" />
                 <span className="text-sm font-medium text-gray-700">
@@ -145,7 +145,7 @@ export default function TranscriptAnalyzer({ sessionId, onAnalysisComplete }: Tr
                 onChange={(e) => setTranscriptText(e.target.value)}
                 placeholder="Paste your session transcript here... (minimum 50 characters)"
                 disabled={analyzing}
-                className="w-full h-64 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none disabled:bg-gray-50"
+                className="w-full h-64 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none disabled:bg-gray-50"
               />
               <div className="mt-2 text-sm text-gray-500">
                 {transcriptText.length} characters
@@ -164,7 +164,7 @@ export default function TranscriptAnalyzer({ sessionId, onAnalysisComplete }: Tr
             <button
               onClick={analyzeTranscript}
               disabled={analyzing || !transcriptText.trim()}
-              className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-brand-orange text-white font-medium rounded-lg hover:bg-brand-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
             >
               {analyzing ? (
                 <>
@@ -224,7 +224,7 @@ export default function TranscriptAnalyzer({ sessionId, onAnalysisComplete }: Tr
                   {analysisResult.topics.map((topic, idx) => (
                     <span
                       key={idx}
-                      className="px-3 py-1 bg-teal-50 text-teal-700 text-sm font-medium rounded-full"
+                      className="px-3 py-1 bg-brand-orange-50 text-brand-orange-700 text-sm font-medium rounded-full"
                     >
                       {topic}
                     </span>
@@ -240,7 +240,7 @@ export default function TranscriptAnalyzer({ sessionId, onAnalysisComplete }: Tr
                 <ul className="space-y-2">
                   {analysisResult.goals.map((goal, idx) => (
                     <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
-                      <span className="text-purple-600 mt-1">•</span>
+                      <span className="text-brand-orange mt-1">•</span>
                       {goal}
                     </li>
                   ))}
@@ -255,7 +255,7 @@ export default function TranscriptAnalyzer({ sessionId, onAnalysisComplete }: Tr
                 setTranscriptText('')
                 setError(null)
               }}
-              className="w-full px-4 py-2 border-2 border-purple-600 text-purple-600 font-medium rounded-lg hover:bg-purple-50 transition-colors"
+              className="w-full px-4 py-2 border-2 border-brand-orange text-brand-orange font-medium rounded-lg hover:bg-brand-orange-50 transition-colors"
             >
               Analyze Another Transcript
             </button>

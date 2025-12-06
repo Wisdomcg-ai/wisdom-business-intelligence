@@ -58,8 +58,8 @@ export default function FinancialGoalsSection({
             onClick={onToggle}
             className="cursor-pointer flex items-center gap-3 flex-1 hover:opacity-80 transition-opacity"
           >
-            <div className="p-2 bg-teal-100 rounded-lg">
-              <DollarSign className="w-5 h-5 text-teal-600" />
+            <div className="p-2 bg-brand-orange-100 rounded-lg">
+              <DollarSign className="w-5 h-5 text-brand-orange" />
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Financial Goals</h3>
@@ -72,7 +72,7 @@ export default function FinancialGoalsSection({
                 e.stopPropagation()
                 setShowCalculator(true)
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-teal-600 to-teal-700 text-white rounded-lg hover:from-teal-700 hover:to-teal-800 transition-all shadow-sm hover:shadow-md font-medium text-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-brand-orange to-brand-orange-700 text-white rounded-lg hover:from-brand-orange-700 hover:to-brand-orange-800 transition-all shadow-sm hover:shadow-md font-medium text-sm"
             >
               <Calculator className="w-4 h-4" />
               Quick Start Calculator
@@ -95,8 +95,8 @@ export default function FinancialGoalsSection({
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
-                  <tr className="bg-gradient-to-r from-teal-50 to-teal-100 border-b-2 border-teal-200">
-                    <th className="text-left p-3 text-sm font-bold text-gray-700 sticky left-0 bg-teal-50 z-10 w-[250px]">
+                  <tr className="bg-gradient-to-r from-brand-orange-50 to-brand-orange-100 border-b-2 border-brand-orange-200">
+                    <th className="text-left p-3 text-sm font-bold text-gray-700 sticky left-0 bg-brand-orange-50 z-10 w-[250px]">
                       Financial Metric
                     </th>
                     {[0, 1, 2, 3].map(idx => {
@@ -118,7 +118,7 @@ export default function FinancialGoalsSection({
                   {FINANCIAL_METRICS.map((metric, index) => (
                     <tr
                       key={metric.key}
-                      className={`border-b border-gray-200 hover:bg-teal-50 transition-colors ${
+                      className={`border-b border-gray-200 hover:bg-brand-orange-50 transition-colors ${
                         index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
                       }`}
                     >
@@ -141,7 +141,7 @@ export default function FinancialGoalsSection({
                                 : parseDollarInput(e.target.value)
                               updateFinancialValue(metric.key as keyof FinancialData, period, numValue, metric.isPercentage)
                             }}
-                            className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 transition-colors"
+                            className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 transition-colors"
                             placeholder={metric.isPercentage ? '0%' : '$0'}
                           />
                         </td>

@@ -134,7 +134,7 @@ export default function CoachViewPage({ params }: PageProps) {
     return (
       <div className="min-h-[400px] flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-500">
             {!businessSet ? 'Loading client data...' : `Loading ${pathString}...`}
           </p>
@@ -177,16 +177,16 @@ export default function CoachViewPage({ params }: PageProps) {
   return (
     <div className="min-h-screen">
       {/* Coach View Banner */}
-      <div className="bg-indigo-600 text-white px-4 py-2 flex items-center justify-between sticky top-0 z-50">
+      <div className="bg-brand-orange text-white px-4 py-2 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-3">
           <Link
             href="/coach/clients"
-            className="flex items-center gap-2 hover:bg-indigo-700 px-3 py-1.5 rounded-lg transition-colors"
+            className="flex items-center gap-2 hover:bg-brand-orange-600 px-3 py-1.5 rounded-lg transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             <span className="font-medium">Back to Clients</span>
           </Link>
-          <div className="h-6 w-px bg-indigo-400" />
+          <div className="h-6 w-px bg-brand-orange-400" />
           <div className="flex items-center gap-2">
             <Eye className="w-4 h-4" />
             <span className="text-sm">
@@ -196,7 +196,7 @@ export default function CoachViewPage({ params }: PageProps) {
         </div>
         <Link
           href="/coach/dashboard"
-          className="text-sm hover:bg-indigo-700 px-3 py-1.5 rounded-lg transition-colors"
+          className="text-sm hover:bg-brand-orange-600 px-3 py-1.5 rounded-lg transition-colors"
         >
           Coach Dashboard
         </Link>

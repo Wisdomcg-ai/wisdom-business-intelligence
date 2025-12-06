@@ -2,6 +2,7 @@
 
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getUserSystemRole } from '@/lib/auth/roles'
@@ -141,15 +142,22 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
+      <div className="min-h-screen bg-brand-navy flex items-center justify-center">
+        <div className="flex flex-col items-center gap-6">
           <div className="relative">
-            <div className="w-16 h-16 border-4 border-slate-700 rounded-full" />
-            <div className="absolute inset-0 w-16 h-16 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+            <Image
+              src="/images/logo-wbi.png"
+              alt="WisdomBi"
+              width={410}
+              height={170}
+              className="h-14 w-auto animate-pulse"
+              priority
+            />
+            <div className="absolute -inset-2 border-4 border-brand-orange/30 border-t-brand-orange rounded-full animate-spin" />
           </div>
           <div className="text-center">
-            <p className="text-white font-medium">Loading Admin Portal</p>
-            <p className="text-slate-500 text-sm mt-1">Please wait...</p>
+            <p className="text-white font-medium text-lg">Loading Admin Portal</p>
+            <p className="text-brand-orange-300 text-sm mt-1">Please wait...</p>
           </div>
         </div>
       </div>
@@ -175,22 +183,25 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         `}>
           <div className="flex flex-col h-full">
             {/* Logo Header */}
-            <div className="flex items-center justify-between h-16 px-5 border-b border-slate-800/80">
-              <Link href="/admin" className="flex items-center gap-3 group">
-                <div className="w-10 h-10 bg-gradient-to-br from-teal-400 to-teal-600 rounded-xl flex items-center justify-center shadow-lg shadow-teal-500/25 group-hover:shadow-teal-500/40 transition-shadow">
-                  <Shield className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-white font-bold text-lg tracking-tight">Wisdom BI</h1>
-                  <p className="text-slate-500 text-[11px] font-medium uppercase tracking-wider">Admin Portal</p>
-                </div>
-              </Link>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="lg:hidden p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+            <div className="bg-white px-4 py-3 border-b border-gray-200">
+              <div className="flex items-center justify-center relative">
+                <Link href="/admin" className="block">
+                  <Image
+                    src="/images/logo-wbi.png"
+                    alt="WisdomBi"
+                    width={410}
+                    height={170}
+                    className="h-12 w-auto"
+                    priority
+                  />
+                </Link>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="lg:hidden absolute right-0 p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Main Navigation */}
@@ -209,20 +220,20 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         group flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium
                         transition-all duration-200 relative
                         ${isActive
-                          ? 'bg-gradient-to-r from-teal-500/20 to-teal-500/5 text-white'
+                          ? 'bg-gradient-to-r from-brand-orange/20 to-brand-orange/5 text-white'
                           : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                         }
                       `}
                     >
                       {/* Active indicator */}
                       {isActive && (
-                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-teal-500 rounded-r-full" />
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-brand-orange rounded-r-full" />
                       )}
 
-                      <item.icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-teal-400' : 'text-slate-500 group-hover:text-slate-300'}`} />
+                      <item.icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-brand-orange' : 'text-gray-500 group-hover:text-slate-300'}`} />
                       <div className="flex-1 min-w-0">
                         <div className={isActive ? 'text-white' : ''}>{item.name}</div>
-                        <div className="text-[11px] text-slate-500 truncate">{item.description}</div>
+                        <div className="text-[11px] text-gray-500 truncate">{item.description}</div>
                       </div>
                     </Link>
                   )
@@ -231,7 +242,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
               {/* Secondary Navigation */}
               <div className="mt-8 pt-6 border-t border-slate-800/80">
-                <p className="px-4 mb-3 text-[11px] font-semibold text-slate-600 uppercase tracking-wider">
+                <p className="px-4 mb-3 text-[11px] font-semibold text-gray-600 uppercase tracking-wider">
                   Support
                 </p>
                 <div className="space-y-1">
@@ -245,7 +256,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                           flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
                           ${isActive
                             ? 'bg-slate-800 text-white'
-                            : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
+                            : 'text-gray-500 hover:text-slate-300 hover:bg-slate-800/50'
                           }
                         `}
                       >
@@ -264,11 +275,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 onClick={switchToCoachPortal}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all duration-200 group"
               >
-                <div className="w-8 h-8 bg-indigo-500/20 rounded-lg flex items-center justify-center group-hover:bg-indigo-500/30 transition-colors">
-                  <Briefcase className="w-4 h-4 text-indigo-400" />
+                <div className="w-8 h-8 bg-brand-orange-500/20 rounded-lg flex items-center justify-center group-hover:bg-brand-orange-500/30 transition-colors">
+                  <Briefcase className="w-4 h-4 text-brand-orange-400" />
                 </div>
                 <span className="flex-1 text-left">Coach Portal</span>
-                <ExternalLink className="w-4 h-4 text-slate-600 group-hover:text-slate-400" />
+                <ExternalLink className="w-4 h-4 text-gray-600 group-hover:text-slate-400" />
               </button>
             </div>
 
@@ -282,14 +293,14 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                   }}
                   className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800/60 transition-all duration-200"
                 >
-                  <div className="w-10 h-10 bg-gradient-to-br from-teal-400 to-emerald-500 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-teal-500/20">
+                  <div className="w-10 h-10 bg-gradient-to-br from-brand-orange to-brand-orange-700 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-brand-orange/20">
                     {user?.initials}
                   </div>
                   <div className="flex-1 text-left min-w-0">
                     <p className="text-white text-sm font-medium truncate">{user?.name}</p>
-                    <p className="text-slate-500 text-xs truncate">{user?.email}</p>
+                    <p className="text-gray-500 text-xs truncate">{user?.email}</p>
                   </div>
-                  <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${showUserMenu ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${showUserMenu ? 'rotate-180' : ''}`} />
                 </button>
 
                 {/* User Dropdown */}
@@ -324,7 +335,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 {/* Mobile menu button */}
                 <button
                   onClick={() => setSidebarOpen(true)}
-                  className="lg:hidden p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors"
+                  className="lg:hidden p-2 text-gray-600 hover:text-brand-navy hover:bg-slate-100 rounded-xl transition-colors"
                 >
                   <Menu className="w-5 h-5" />
                 </button>
@@ -332,15 +343,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 {/* Search */}
                 <div className="hidden sm:block">
                   <div className="relative group">
-                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-teal-500 transition-colors" />
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-orange transition-colors" />
                     <input
                       type="text"
                       placeholder="Search clients, coaches..."
-                      className="w-72 lg:w-80 pl-10 pr-12 py-2.5 bg-slate-100 border-0 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-teal-500/20 focus:bg-white transition-all"
+                      className="w-72 lg:w-80 pl-10 pr-12 py-2.5 bg-slate-100 border-0 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-brand-orange/20 focus:bg-white transition-all"
                     />
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-0.5">
-                      <kbd className="px-1.5 py-0.5 bg-slate-200/80 text-slate-500 text-[10px] rounded font-medium">⌘</kbd>
-                      <kbd className="px-1.5 py-0.5 bg-slate-200/80 text-slate-500 text-[10px] rounded font-medium">K</kbd>
+                      <kbd className="px-1.5 py-0.5 bg-slate-200/80 text-gray-500 text-[10px] rounded font-medium">⌘</kbd>
+                      <kbd className="px-1.5 py-0.5 bg-slate-200/80 text-gray-500 text-[10px] rounded font-medium">K</kbd>
                     </div>
                   </div>
                 </div>
@@ -349,12 +360,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               {/* Right side */}
               <div className="flex items-center gap-2">
                 {/* Mobile search */}
-                <button className="sm:hidden p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors">
+                <button className="sm:hidden p-2 text-gray-600 hover:text-brand-navy hover:bg-slate-100 rounded-xl transition-colors">
                   <Search className="w-5 h-5" />
                 </button>
 
                 {/* Notifications */}
-                <button className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors">
+                <button className="relative p-2 text-gray-600 hover:text-brand-navy hover:bg-slate-100 rounded-xl transition-colors">
                   <Bell className="w-5 h-5" />
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white" />
                 </button>
@@ -362,7 +373,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 {/* Mobile user avatar */}
                 <button
                   onClick={() => setSidebarOpen(true)}
-                  className="lg:hidden w-9 h-9 bg-gradient-to-br from-teal-400 to-emerald-500 rounded-xl flex items-center justify-center text-white font-semibold text-sm shadow-lg shadow-teal-500/20"
+                  className="lg:hidden w-9 h-9 bg-gradient-to-br from-brand-orange to-brand-orange-700 rounded-xl flex items-center justify-center text-white font-semibold text-sm shadow-lg shadow-brand-orange/20"
                 >
                   {user?.initials}
                 </button>
@@ -377,9 +388,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
           {/* Footer */}
           <footer className="border-t border-slate-200 bg-white px-4 sm:px-6 py-4">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-              <p>© 2025 Wisdom Business Intelligence. All rights reserved.</p>
-              <p>Admin Portal v2.0</p>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-500">
+              <p>&copy; 2025 WisdomBi. All rights reserved.</p>
+              <div className="flex items-center gap-3">
+                <Link href="/privacy" className="hover:text-brand-orange">Privacy</Link>
+                <span>•</span>
+                <Link href="/terms" className="hover:text-brand-orange">Terms</Link>
+              </div>
             </div>
           </footer>
         </div>

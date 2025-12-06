@@ -221,7 +221,7 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
           estimatedTime={15}
         />
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
         </div>
       </div>
     );
@@ -278,14 +278,14 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
       <div className="grid md:grid-cols-2 gap-6">
         {/* Assessment Card */}
         <div className={`bg-white rounded-xl border overflow-hidden ${assessmentIsStale && !staleAcknowledged ? 'border-amber-300 border-2' : 'border-gray-200'}`}>
-          <div className={`p-6 text-white ${assessmentIsStale && !staleAcknowledged ? 'bg-amber-600' : 'bg-teal-600'}`}>
+          <div className={`p-6 text-white ${assessmentIsStale && !staleAcknowledged ? 'bg-amber-600' : 'bg-brand-orange'}`}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-5 h-5" />
                 <h3 className="font-semibold">Business Assessment</h3>
               </div>
               {assessmentData && (
-                <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full ${assessmentIsStale ? 'bg-amber-700' : 'bg-teal-700'}`}>
+                <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full ${assessmentIsStale ? 'bg-amber-700' : 'bg-brand-orange-700'}`}>
                   <Clock className="w-3 h-3" />
                   {getRelativeDateString(assessmentData.created_at)}
                 </div>
@@ -339,7 +339,7 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
                       </div>
                       <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-teal-600 rounded-full"
+                          className="h-full bg-brand-orange rounded-full"
                           style={{ width: `${Math.min(100, item.score)}%` }}
                         />
                       </div>
@@ -352,7 +352,7 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
                   className={`mt-4 inline-flex items-center gap-2 text-sm font-medium ${
                     assessmentIsStale
                       ? 'px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700'
-                      : 'text-teal-600 hover:text-teal-700'
+                      : 'text-brand-orange hover:text-brand-orange-700'
                   }`}
                 >
                   {assessmentIsStale ? 'Retake Assessment Now' : 'Retake Assessment'}
@@ -362,7 +362,7 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
             ) : (
               <Link
                 href="/assessment"
-                className="inline-flex items-center gap-2 text-teal-600 hover:text-teal-700 text-sm font-medium"
+                className="inline-flex items-center gap-2 text-brand-orange hover:text-brand-orange-700 text-sm font-medium"
               >
                 Take Assessment
                 <ExternalLink className="w-4 h-4" />
@@ -373,14 +373,14 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
 
         {/* Roadmap Card */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="bg-teal-600 p-6 text-white">
+          <div className="bg-brand-orange p-6 text-white">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Map className="w-5 h-5" />
                 <h3 className="font-semibold">Business Roadmap</h3>
               </div>
               {roadmapData && (
-                <span className="text-xs px-2 py-1 bg-teal-700 rounded-full">
+                <span className="text-xs px-2 py-1 bg-brand-orange-700 rounded-full">
                   {roadmapData.currentStage.range}
                 </span>
               )}
@@ -391,12 +391,12 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
                 <div className="text-3xl font-bold mb-1">
                   {roadmapData.currentStage.name}
                 </div>
-                <p className="text-teal-200">Current Stage</p>
+                <p className="text-brand-orange-200">Current Stage</p>
               </div>
             ) : (
               <div className="text-center py-4">
-                <AlertCircle className="w-12 h-12 mx-auto mb-2 text-teal-300" />
-                <p className="text-teal-200">Set up your roadmap</p>
+                <AlertCircle className="w-12 h-12 mx-auto mb-2 text-brand-orange-300" />
+                <p className="text-brand-orange-200">Set up your roadmap</p>
               </div>
             )}
           </div>
@@ -414,7 +414,7 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
                   </div>
                   <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-teal-600 rounded-full transition-all"
+                      className="h-full bg-brand-orange rounded-full transition-all"
                       style={{
                         width: `${(roadmapData.completedBuilds.length / roadmapData.totalBuilds) * 100}%`
                       }}
@@ -436,21 +436,21 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
                         key={stage.id}
                         className={`flex items-center gap-2 p-2 rounded-lg text-sm ${
                           isCurrentStage
-                            ? 'bg-teal-50 border border-teal-200'
+                            ? 'bg-brand-orange-50 border border-brand-orange-200'
                             : isPastStage
                             ? 'bg-gray-50'
                             : 'opacity-50'
                         }`}
                       >
                         <div className={`w-2 h-2 rounded-full ${
-                          isCurrentStage ? 'bg-teal-500' : isPastStage ? 'bg-gray-400' : 'bg-gray-200'
+                          isCurrentStage ? 'bg-brand-orange-500' : isPastStage ? 'bg-gray-400' : 'bg-gray-200'
                         }`} />
-                        <span className={`flex-1 ${isCurrentStage ? 'font-medium text-teal-700' : 'text-gray-600'}`}>
+                        <span className={`flex-1 ${isCurrentStage ? 'font-medium text-brand-orange-700' : 'text-gray-600'}`}>
                           {stage.name}
                         </span>
                         <span className="text-xs text-gray-500">{stage.range}</span>
                         {isCurrentStage && (
-                          <Target className="w-4 h-4 text-teal-500" />
+                          <Target className="w-4 h-4 text-brand-orange-500" />
                         )}
                         {isPastStage && (
                           <CheckCircle2 className="w-4 h-4 text-gray-400" />
@@ -474,7 +474,7 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
 
                 <Link
                   href="/business-roadmap"
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 text-sm font-medium"
                 >
                   View Full Roadmap
                   <ChevronRight className="w-4 h-4" />
@@ -487,7 +487,7 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
                 </p>
                 <Link
                   href="/business-roadmap"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 text-sm font-medium"
                 >
                   Set Up Roadmap
                   <ExternalLink className="w-4 h-4" />
@@ -499,9 +499,9 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
       </div>
 
       {/* Discussion Points */}
-      <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-gray-200">
+      <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
         <div className="flex items-start gap-3">
-          <TrendingUp className="w-5 h-5 text-slate-600 mt-0.5" />
+          <TrendingUp className="w-5 h-5 text-gray-600 mt-0.5" />
           <div>
             <h4 className="font-medium text-gray-900">Key Questions to Discuss</h4>
             <ul className="mt-2 text-sm text-gray-700 space-y-1">

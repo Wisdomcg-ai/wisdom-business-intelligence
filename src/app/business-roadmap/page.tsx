@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Loader2, Megaphone, ShoppingCart, Heart, Users, Settings, Calculator, Crown, Target, Star, ChevronRight, X, Sparkles, Trophy, PartyPopper, RefreshCw, HelpCircle, Eye, Grid3X3, ExternalLink, Lightbulb, TrendingUp, CheckCircle2 } from 'lucide-react'
+import { Loader2, Megaphone, ShoppingCart, Heart, Users, Settings, Calculator, Crown, Target, Star, ChevronRight, X, Sparkles, Trophy, PartyPopper, RefreshCw, HelpCircle, Eye, Grid3X3, ExternalLink, Lightbulb, TrendingUp, CheckCircle2, Map } from 'lucide-react'
 import { STAGES, ENGINES, getBuildsByEngine } from './data'
 import { BuildModal } from './components/BuildModal'
 import { BuildItem } from './components/BuildItem'
@@ -9,6 +9,7 @@ import { EngineTooltip } from './components/EngineTooltip'
 import { useRoadmapProgress } from './hooks/useRoadmapProgress'
 import { getCompletionChecks as getChecksForBuild, calculateCompletionPercentage } from './data/completion-checks'
 import type { RoadmapBuild } from './data/types'
+import PageHeader from '@/components/ui/PageHeader'
 
 // Icon mapping
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -92,9 +93,9 @@ export default function WisdomRoadmapTable() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-teal-600 mx-auto mb-3" />
+          <Loader2 className="h-8 w-8 animate-spin text-brand-orange mx-auto mb-3" />
           <div className="text-gray-600">Loading your roadmap...</div>
         </div>
       </div>
@@ -102,11 +103,11 @@ export default function WisdomRoadmapTable() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Stage Change Celebration */}
       {stageChange?.changed && (
-        <div className="bg-gradient-to-r from-teal-500 to-teal-600 text-white">
-          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="bg-gradient-to-r from-brand-orange-500 to-brand-orange text-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Sparkles className="h-6 w-6" />
@@ -130,12 +131,12 @@ export default function WisdomRoadmapTable() {
 
       {/* First-Time User Intro */}
       {!hasSeenIntro && !isRoadmapComplete && (
-        <div className="bg-gradient-to-br from-teal-50 via-white to-teal-50 border-b-2 border-teal-200">
-          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8">
+        <div className="bg-gradient-to-br from-brand-orange-50 via-white to-brand-orange-50 border-b-2 border-brand-orange-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8">
             <div className="max-w-5xl mx-auto">
               {/* Hero Section */}
               <div className="text-center mb-6 sm:mb-8">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-teal-100 text-teal-700 rounded-full text-xs font-medium mb-3">
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-orange-100 text-brand-orange-700 rounded-full text-xs font-medium mb-3">
                   <Lightbulb className="h-3.5 w-3.5" />
                   THE WISDOM ROADMAP
                 </div>
@@ -180,7 +181,7 @@ export default function WisdomRoadmapTable() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-5 sm:mb-6">
                 <div className="bg-white rounded-xl p-4 sm:p-5 border border-gray-200 shadow-sm">
                   <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">1</div>
+                    <div className="w-8 h-8 bg-gradient-to-br from-brand-orange-500 to-brand-orange rounded-lg flex items-center justify-center text-white font-bold text-sm">1</div>
                     <h3 className="font-semibold text-gray-900 text-sm sm:text-base">Know Your Stage</h3>
                   </div>
                   <p className="text-xs sm:text-sm text-gray-600">
@@ -190,7 +191,7 @@ export default function WisdomRoadmapTable() {
 
                 <div className="bg-white rounded-xl p-4 sm:p-5 border border-gray-200 shadow-sm">
                   <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">2</div>
+                    <div className="w-8 h-8 bg-gradient-to-br from-brand-orange-500 to-brand-orange rounded-lg flex items-center justify-center text-white font-bold text-sm">2</div>
                     <h3 className="font-semibold text-gray-900 text-sm sm:text-base">Build All 8 Engines</h3>
                   </div>
                   <p className="text-xs sm:text-sm text-gray-600">
@@ -200,7 +201,7 @@ export default function WisdomRoadmapTable() {
 
                 <div className="bg-white rounded-xl p-4 sm:p-5 border border-gray-200 shadow-sm">
                   <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">3</div>
+                    <div className="w-8 h-8 bg-gradient-to-br from-brand-orange-500 to-brand-orange rounded-lg flex items-center justify-center text-white font-bold text-sm">3</div>
                     <h3 className="font-semibold text-gray-900 text-sm sm:text-base">Complete Before Advancing</h3>
                   </div>
                   <p className="text-xs sm:text-sm text-gray-600">
@@ -210,19 +211,19 @@ export default function WisdomRoadmapTable() {
               </div>
 
               {/* Current Stage CTA */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-teal-600 to-teal-700 rounded-xl p-4 sm:p-5 text-white">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-xl p-4 sm:p-5 text-white">
                 <div className="flex items-start sm:items-center gap-3">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
                     <Target className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                   </div>
                   <div>
-                    <p className="text-teal-100 text-xs sm:text-sm">You're currently at</p>
-                    <p className="font-bold text-lg sm:text-xl">{currentStageInfo.name} Stage <span className="font-normal text-teal-200">({currentStageInfo.range})</span></p>
+                    <p className="text-brand-orange-100 text-xs sm:text-sm">You're currently at</p>
+                    <p className="font-bold text-lg sm:text-xl">{currentStageInfo.name} Stage <span className="font-normal text-brand-orange-200">({currentStageInfo.range})</span></p>
                   </div>
                 </div>
                 <button
                   onClick={dismissIntro}
-                  className="w-full sm:w-auto px-5 py-2.5 bg-white text-teal-700 rounded-lg hover:bg-teal-50 transition-colors font-semibold text-sm shadow-lg"
+                  className="w-full sm:w-auto px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg transition-colors font-semibold text-sm shadow-lg"
                 >
                   See My Roadmap
                 </button>
@@ -234,69 +235,62 @@ export default function WisdomRoadmapTable() {
 
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-30">
-        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">The Wisdom Roadmap</h1>
-                {isRoadmapComplete && (
-                  <span className="flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 bg-gradient-to-r from-amber-500 to-amber-600 text-white text-xs font-bold rounded-full">
-                    <Trophy className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                    MASTERED
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+          <PageHeader
+            title="The Wisdom Roadmap"
+            subtitle={isRoadmapComplete
+              ? 'Congratulations! You\'ve completed every build in the roadmap'
+              : 'Your stage-by-stage guide to business freedom'}
+            icon={Map}
+            badge={isRoadmapComplete ? "MASTERED" : undefined}
+            badgeColor={isRoadmapComplete ? "orange" : undefined}
+            actions={
+              <div className="flex items-center gap-2 sm:gap-3">
+                {isSaving && (
+                  <span className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-500">
+                    <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                    <span className="hidden sm:inline">Saving...</span>
                   </span>
                 )}
-              </div>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1 hidden sm:block">
-                {isRoadmapComplete
-                  ? 'Congratulations! You\'ve completed every build in the roadmap'
-                  : 'Your stage-by-stage guide to business freedom'}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-3">
-              {isSaving && (
-                <span className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-500">
-                  <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
-                  <span className="hidden sm:inline">Saving...</span>
-                </span>
-              )}
 
-              {/* View Mode Toggle */}
-              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 sm:p-1">
-                <button
-                  onClick={() => viewMode !== 'focus' && toggleViewMode()}
-                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
-                    viewMode === 'focus'
-                      ? 'bg-white text-teal-700 shadow-sm font-medium'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  <span className="hidden xs:inline">Focus</span>
-                </button>
-                <button
-                  onClick={() => viewMode !== 'full' && toggleViewMode()}
-                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
-                    viewMode === 'full'
-                      ? 'bg-white text-teal-700 shadow-sm font-medium'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <Grid3X3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  <span className="hidden xs:inline">Full</span>
-                </button>
-              </div>
+                {/* View Mode Toggle */}
+                <div className="flex items-center bg-gray-100 rounded-lg p-0.5 sm:p-1">
+                  <button
+                    onClick={() => viewMode !== 'focus' && toggleViewMode()}
+                    className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
+                      viewMode === 'focus'
+                        ? 'bg-white text-brand-orange-700 shadow-sm font-medium'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    <span className="hidden xs:inline">Focus</span>
+                  </button>
+                  <button
+                    onClick={() => viewMode !== 'full' && toggleViewMode()}
+                    className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
+                      viewMode === 'full'
+                        ? 'bg-white text-brand-orange-700 shadow-sm font-medium'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Grid3X3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    <span className="hidden xs:inline">Full</span>
+                  </button>
+                </div>
 
-              {hasSeenIntro && !isRoadmapComplete && (
-                <button
-                  onClick={() => {/* Could reset intro */}}
-                  className="flex items-center gap-1.5 p-1.5 sm:px-3 sm:py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                  title="Show help"
-                >
-                  <HelpCircle className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          </div>
+                {hasSeenIntro && !isRoadmapComplete && (
+                  <button
+                    onClick={() => {/* Could reset intro */}}
+                    className="flex items-center gap-1.5 p-1.5 sm:px-3 sm:py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Show help"
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            }
+          />
 
           {/* Progress Bar */}
           <div className="mt-4">
@@ -311,7 +305,7 @@ export default function WisdomRoadmapTable() {
                 className={`h-2 rounded-full transition-all duration-500 ${
                   isRoadmapComplete
                     ? 'bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-500'
-                    : 'bg-teal-500'
+                    : 'bg-brand-orange-500'
                 }`}
                 style={{ width: `${completionPercentage}%` }}
               />
@@ -322,22 +316,22 @@ export default function WisdomRoadmapTable() {
 
       {/* FOCUS MODE VIEW */}
       {viewMode === 'focus' && !isRoadmapComplete && (
-        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
           {/* Current Stage Card */}
-          <div className="bg-white rounded-xl shadow-lg border-2 border-teal-200 p-4 sm:p-6 mb-4 sm:mb-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
               <div className="flex items-center gap-3 sm:gap-4">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-teal-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <Target className="h-6 w-6 sm:h-7 sm:w-7 text-teal-600" />
+                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-brand-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Target className="h-6 w-6 sm:h-7 sm:w-7 text-brand-orange" />
                 </div>
                 <div>
-                  <div className="text-xs sm:text-sm font-medium text-teal-600 uppercase tracking-wide">Your Current Stage</div>
+                  <div className="text-xs sm:text-sm font-medium text-brand-orange uppercase tracking-wide">Your Current Stage</div>
                   <h2 className="text-xl sm:text-2xl font-bold text-gray-900">{currentStageInfo.name}</h2>
                   <p className="text-sm sm:text-base text-gray-600">{currentStageInfo.range}</p>
                 </div>
               </div>
               <div className="text-left sm:text-right pl-14 sm:pl-0">
-                <div className="text-2xl sm:text-3xl font-bold text-teal-600">{getStageStats(currentStageId).percentage}%</div>
+                <div className="text-2xl sm:text-3xl font-bold text-brand-orange">{getStageStats(currentStageId).percentage}%</div>
                 <div className="text-xs sm:text-sm text-gray-500">Stage Complete</div>
               </div>
             </div>
@@ -346,7 +340,7 @@ export default function WisdomRoadmapTable() {
             <div className="mb-6">
               <div className="w-full bg-gray-200 rounded-full h-3">
                 <div
-                  className="bg-teal-500 h-3 rounded-full transition-all"
+                  className="bg-brand-orange-500 h-3 rounded-full transition-all"
                   style={{ width: `${getStageStats(currentStageId).percentage}%` }}
                 />
               </div>
@@ -366,7 +360,7 @@ export default function WisdomRoadmapTable() {
                   <p className="text-green-600 text-xs sm:text-sm mt-1">You're ready to grow to the next level.</p>
                 </div>
               ) : (
-                <div className="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-2 sm:gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
                   {priorityBuilds.slice(0, 9).map((build) => {
                     const stage = STAGES.find(s => s.id === build.stageId)
                     const isBelowCurrent = build.stageId !== currentStageId
@@ -376,10 +370,10 @@ export default function WisdomRoadmapTable() {
                     return (
                       <div
                         key={build.name}
-                        className={`p-4 rounded-xl border-2 transition-all hover:shadow-md cursor-pointer ${
+                        className={`p-4 sm:p-6 rounded-xl border-2 transition-all hover:shadow-md cursor-pointer ${
                           isBelowCurrent
                             ? 'bg-amber-50 border-amber-300 hover:border-amber-400'
-                            : 'bg-white border-gray-200 hover:border-teal-300'
+                            : 'bg-white border-gray-200 hover:border-brand-orange-300'
                         }`}
                         onClick={() => {
                           const fullBuild = stage?.builds.find(b => b.name === build.name)
@@ -391,9 +385,9 @@ export default function WisdomRoadmapTable() {
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1">
-                            <h4 className="font-semibold text-gray-900">{build.name}</h4>
+                            <h4 className="font-semibold text-sm sm:text-base text-gray-900">{build.name}</h4>
                             <div className="flex items-center gap-2 mt-1">
-                              <span className="text-xs text-gray-500">{build.stageName}</span>
+                              <span className="text-xs sm:text-sm text-gray-500">{build.stageName}</span>
                               {isBelowCurrent && (
                                 <span className="px-1.5 py-0.5 bg-amber-200 text-amber-800 text-xs font-medium rounded">
                                   Catch-up
@@ -414,7 +408,7 @@ export default function WisdomRoadmapTable() {
                             <div className="w-full bg-gray-200 rounded-full h-1.5">
                               <div
                                 className={`h-1.5 rounded-full ${
-                                  completion === 100 ? 'bg-green-500' : 'bg-teal-500'
+                                  completion === 100 ? 'bg-green-500' : 'bg-brand-orange-500'
                                 }`}
                                 style={{ width: `${completion}%` }}
                               />
@@ -427,7 +421,7 @@ export default function WisdomRoadmapTable() {
                           <a
                             href={link.href}
                             onClick={(e) => e.stopPropagation()}
-                            className="mt-3 flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700"
+                            className="mt-3 flex items-center gap-1 text-xs text-brand-orange hover:text-brand-orange-700"
                           >
                             <ExternalLink className="h-3 w-3" />
                             Open {link.label}
@@ -448,7 +442,7 @@ export default function WisdomRoadmapTable() {
           </div>
 
           {/* Quick Stage Overview */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 sm:gap-6">
             {STAGES.map((stage) => {
               const stats = getStageStats(stage.id)
               const isCurrent = stage.id === currentStageId
@@ -456,18 +450,18 @@ export default function WisdomRoadmapTable() {
               return (
                 <div
                   key={stage.id}
-                  className={`p-2 sm:p-3 rounded-lg border text-center ${
+                  className={`p-3 sm:p-4 rounded-xl shadow-sm border border-gray-200 text-center ${
                     isCurrent
-                      ? 'bg-teal-50 border-teal-300'
+                      ? 'bg-brand-orange-50 border-brand-orange-300'
                       : stats.percentage === 100
                         ? 'bg-green-50 border-green-200'
-                        : 'bg-gray-50 border-gray-200'
+                        : 'bg-white'
                   }`}
                 >
                   <div className="font-semibold text-xs sm:text-sm text-gray-900">{stage.name}</div>
                   <div className="text-xs text-gray-500 mb-1 sm:mb-2 hidden sm:block">{stage.range}</div>
                   <div className={`text-base sm:text-lg font-bold ${
-                    stats.percentage === 100 ? 'text-green-600' : 'text-teal-600'
+                    stats.percentage === 100 ? 'text-green-600' : 'text-brand-orange'
                   }`}>
                     {stats.percentage}%
                   </div>
@@ -482,42 +476,42 @@ export default function WisdomRoadmapTable() {
       {(viewMode === 'full' || isRoadmapComplete) && (
         <>
           {/* Focus Section */}
-          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
             {isRoadmapComplete ? (
               /* Celebration Section */
-              <div className="bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50 rounded-lg shadow-sm border border-amber-200 p-6">
+              <div className="bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50 rounded-xl shadow-sm border border-amber-200 p-4 sm:p-6">
                 <div className="text-center">
                   <div className="flex justify-center gap-2 mb-4">
-                    <PartyPopper className="h-8 w-8 text-amber-500" />
-                    <Trophy className="h-8 w-8 text-amber-600" />
-                    <PartyPopper className="h-8 w-8 text-amber-500 transform scale-x-[-1]" />
+                    <PartyPopper className="h-6 w-6 sm:h-8 sm:w-8 text-amber-500" />
+                    <Trophy className="h-6 w-6 sm:h-8 sm:w-8 text-amber-600" />
+                    <PartyPopper className="h-6 w-6 sm:h-8 sm:w-8 text-amber-500 transform scale-x-[-1]" />
                   </div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
                     You've Mastered The Wisdom Roadmap!
                   </h2>
-                  <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
+                  <p className="text-sm sm:text-base text-gray-600 mb-6 max-w-2xl mx-auto">
                     Incredible achievement! You've completed all {totalBuilds} builds across every stage.
                     Your business now has the systems and foundations for sustainable growth.
                   </p>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto mb-6">
-                    <div className="bg-white rounded-lg p-4 border border-amber-200">
-                      <div className="text-3xl font-bold text-amber-600">{totalBuilds}</div>
-                      <div className="text-sm text-gray-600">Builds Completed</div>
+                    <div className="bg-white rounded-xl p-4 sm:p-6 border border-amber-200">
+                      <div className="text-2xl sm:text-3xl font-bold text-amber-600">{totalBuilds}</div>
+                      <div className="text-xs sm:text-sm text-gray-600">Builds Completed</div>
                     </div>
-                    <div className="bg-white rounded-lg p-4 border border-amber-200">
-                      <div className="text-3xl font-bold text-amber-600">5</div>
-                      <div className="text-sm text-gray-600">Stages Mastered</div>
+                    <div className="bg-white rounded-xl p-4 sm:p-6 border border-amber-200">
+                      <div className="text-2xl sm:text-3xl font-bold text-amber-600">5</div>
+                      <div className="text-xs sm:text-sm text-gray-600">Stages Mastered</div>
                     </div>
-                    <div className="bg-white rounded-lg p-4 border border-amber-200">
-                      <div className="text-3xl font-bold text-amber-600">8</div>
-                      <div className="text-sm text-gray-600">Engines Optimized</div>
+                    <div className="bg-white rounded-xl p-4 sm:p-6 border border-amber-200">
+                      <div className="text-2xl sm:text-3xl font-bold text-amber-600">8</div>
+                      <div className="text-xs sm:text-sm text-gray-600">Engines Optimized</div>
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-lg p-4 border border-gray-200 max-w-xl mx-auto">
+                  <div className="bg-white rounded-xl p-4 sm:p-6 border border-gray-200 max-w-xl mx-auto">
                     <div className="flex items-center gap-2 text-gray-700 mb-2">
-                      <RefreshCw className="h-5 w-5 text-teal-600" />
+                      <RefreshCw className="h-5 w-5 text-brand-orange" />
                       <span className="font-semibold">What's Next?</span>
                     </div>
                     <p className="text-sm text-gray-600">
@@ -529,16 +523,16 @@ export default function WisdomRoadmapTable() {
               </div>
             ) : (
               /* Normal Focus Section */
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
-                      <Target className="h-5 w-5 text-teal-600" />
+                    <div className="w-10 h-10 bg-brand-orange-100 rounded-xl flex items-center justify-center">
+                      <Target className="h-5 w-5 text-brand-orange" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h2 className="text-lg font-bold text-gray-900">Your Focus: {currentStageInfo.name}</h2>
-                        <span className="px-2 py-0.5 bg-teal-100 text-teal-700 text-xs font-medium rounded-full">
+                        <h2 className="text-base sm:text-lg font-bold text-gray-900">Your Focus: {currentStageInfo.name}</h2>
+                        <span className="px-2 py-0.5 bg-brand-orange-100 text-brand-orange-700 text-xs font-medium rounded-full">
                           {currentStageInfo.range}
                         </span>
                       </div>
@@ -563,7 +557,7 @@ export default function WisdomRoadmapTable() {
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
                       Priority Builds
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-3">
                       {priorityBuilds.slice(0, 6).map((build) => {
                         const stage = STAGES.find(s => s.id === build.stageId)
                         const isBelowCurrent = build.stageId !== currentStageId
@@ -578,7 +572,7 @@ export default function WisdomRoadmapTable() {
                                 handleBuildClick(fullBuild, stage.name, engine.name)
                               }
                             }}
-                            className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
+                            className={`flex items-center gap-3 p-3 sm:p-4 rounded-xl border text-left transition-colors ${
                               isBelowCurrent
                                 ? 'bg-amber-50 border-amber-200 hover:bg-amber-100'
                                 : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
@@ -589,7 +583,7 @@ export default function WisdomRoadmapTable() {
                               checked={false}
                               onChange={() => toggleBuild(build.name)}
                               onClick={(e) => e.stopPropagation()}
-                              className="w-4 h-4 accent-teal-600 rounded border-gray-300 focus:ring-teal-500"
+                              className="w-4 h-4 accent-brand-orange rounded border-gray-300 focus:ring-brand-orange"
                             />
                             <div className="flex-1 min-w-0">
                               <div className="text-sm font-medium text-gray-900 truncate">{build.name}</div>
@@ -620,8 +614,8 @@ export default function WisdomRoadmapTable() {
           </div>
 
           {/* Table */}
-          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto relative">
                 <table className="w-full border-collapse relative">
                   {/* Header Row - Engine Names */}
@@ -668,7 +662,7 @@ export default function WisdomRoadmapTable() {
                           key={stage.id}
                           className={`border-b border-gray-200 ${
                             isCurrentStage
-                              ? 'bg-teal-50'
+                              ? 'bg-brand-orange-50'
                               : isRelevant
                                 ? ''
                                 : 'opacity-50'
@@ -677,7 +671,7 @@ export default function WisdomRoadmapTable() {
                           {/* Stage Name Column */}
                           <td className={`sticky left-0 z-10 p-3 border-r-2 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] ${
                             isCurrentStage
-                              ? 'bg-teal-50 border-l-4 border-l-teal-500 border-r-gray-300'
+                              ? 'bg-brand-orange-50 border-l-4 border-l-brand-orange border-r-gray-300'
                               : isRelevant
                                 ? 'bg-white border-r-gray-300'
                                 : 'bg-gray-50 border-r-gray-300'
@@ -686,14 +680,14 @@ export default function WisdomRoadmapTable() {
                               <div className="flex items-center gap-2">
                                 <div className="font-bold text-sm text-gray-900">{stage.name}</div>
                                 {isCurrentStage && (
-                                  <span className="px-1.5 py-0.5 bg-teal-600 text-white text-xs font-medium rounded">
+                                  <span className="px-1.5 py-0.5 bg-brand-orange text-white text-xs font-medium rounded">
                                     You
                                   </span>
                                 )}
                               </div>
                               <div className="text-xs text-gray-600 mt-1">{stage.range}</div>
                               <div className={`text-xs mt-2 font-medium ${
-                                stageStats.percentage === 100 ? 'text-amber-600' : 'text-teal-600'
+                                stageStats.percentage === 100 ? 'text-amber-600' : 'text-brand-orange'
                               }`}>
                                 {stageStats.completed}/{stageStats.total} Complete
                                 {stageStats.percentage === 100 && ' ✓'}
@@ -709,7 +703,7 @@ export default function WisdomRoadmapTable() {
                               <td
                                 key={engine.id}
                                 className={`p-2 border-r border-gray-200 align-top ${
-                                  isCurrentStage ? 'bg-teal-50' : ''
+                                  isCurrentStage ? 'bg-brand-orange-50' : ''
                                 }`}
                               >
                                 {builds.length > 0 ? (
@@ -743,7 +737,7 @@ export default function WisdomRoadmapTable() {
             </div>
 
             {/* Success Criteria - Below Table */}
-            <div className="mt-6 sm:mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+            <div className="mt-6 sm:mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
               {STAGES.map((stage) => {
                 const isCurrentStage = stage.id === currentStageId
                 const stageStats = getStageStats(stage.id)
@@ -751,18 +745,18 @@ export default function WisdomRoadmapTable() {
                 return (
                   <div
                     key={stage.id}
-                    className={`bg-white rounded-lg shadow p-4 border-l-4 ${
+                    className={`bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 border-l-4 ${
                       isCurrentStage
-                        ? 'border-teal-500 ring-2 ring-teal-200'
+                        ? 'border-l-brand-orange-500 ring-2 ring-brand-orange-200'
                         : stageStats.percentage === 100
-                          ? 'border-amber-500'
-                          : 'border-gray-300'
+                          ? 'border-l-amber-500'
+                          : 'border-l-gray-300'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <div className="font-bold text-gray-900">{stage.name}</div>
+                      <div className="font-bold text-sm sm:text-base text-gray-900">{stage.name}</div>
                       {isCurrentStage && (
-                        <span className="px-1.5 py-0.5 bg-teal-100 text-teal-700 text-xs font-medium rounded">
+                        <span className="px-1.5 py-0.5 bg-brand-orange-100 text-brand-orange-700 text-xs font-medium rounded">
                           Current
                         </span>
                       )}
@@ -772,7 +766,7 @@ export default function WisdomRoadmapTable() {
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-gray-600 mb-3">{stage.range}</div>
+                    <div className="text-xs sm:text-sm text-gray-600 mb-3">{stage.range}</div>
 
                     {/* Progress */}
                     <div className="mb-3">
@@ -783,7 +777,7 @@ export default function WisdomRoadmapTable() {
                       <div className="w-full bg-gray-200 rounded-full h-2">
                         <div
                           className={`h-2 rounded-full transition-all ${
-                            stageStats.percentage === 100 ? 'bg-amber-500' : 'bg-teal-500'
+                            stageStats.percentage === 100 ? 'bg-amber-500' : 'bg-brand-orange-500'
                           }`}
                           style={{ width: `${stageStats.percentage}%` }}
                         />
@@ -796,7 +790,7 @@ export default function WisdomRoadmapTable() {
                       <ul className="space-y-1">
                         {stage.successCriteria.map((criteria, idx) => (
                           <li key={idx} className="text-xs text-gray-600 flex items-start gap-1">
-                            <span className="text-teal-500 mt-0.5">•</span>
+                            <span className="text-brand-orange-500 mt-0.5">•</span>
                             <span>{criteria}</span>
                           </li>
                         ))}

@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Trash2, Plus, AlertTriangle, FileText, Calendar, CheckCircle, XCircle } from 'lucide-react'
+import { Trash2, Plus, AlertTriangle, FileText, Calendar, CheckCircle, XCircle, ClipboardList } from 'lucide-react'
+import PageHeader from '@/components/ui/PageHeader'
 
 interface Assessment {
   id: string
@@ -141,7 +142,7 @@ export default function ManageAssessments() {
       case 'THRIVING': return 'text-green-600 bg-green-50'
       case 'STRONG': return 'text-green-500 bg-green-50'
       case 'STABLE': return 'text-yellow-600 bg-yellow-50'
-      case 'BUILDING': return 'text-orange-600 bg-orange-50'
+      case 'BUILDING': return 'text-brand-orange-600 bg-brand-orange-50'
       case 'STRUGGLING': return 'text-red-500 bg-red-50'
       case 'URGENT': return 'text-red-600 bg-red-50'
       default: return 'text-gray-600 bg-gray-50'
@@ -152,7 +153,7 @@ export default function ManageAssessments() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading assessments...</p>
         </div>
       </div>
@@ -160,37 +161,29 @@ export default function ManageAssessments() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="flex items-center text-gray-600 hover:text-gray-900"
-            >
-              <ArrowLeft className="h-5 w-5 mr-2" />
-              Back to Dashboard
-            </button>
-            <h1 className="text-xl font-semibold text-gray-900">Manage Assessments</h1>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-6 sm:py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <PageHeader
+          title="Manage Assessments"
+          subtitle="Track and review your business health assessments over time"
+          icon={ClipboardList}
+          backLink={{ href: '/dashboard', label: 'Back to Dashboard' }}
+          actions={
             <button
               onClick={() => router.push('/assessment')}
-              className="flex items-center px-4 py-2 bg-gradient-to-r from-teal-600 to-teal-700 text-white rounded-lg hover:from-teal-700 hover:to-teal-800 transition-all duration-200 shadow-lg"
+              className="flex items-center px-4 py-2 bg-gradient-to-r from-brand-orange to-brand-orange-700 text-white rounded-lg hover:from-brand-orange-700 hover:to-brand-orange-800 transition-all duration-200 shadow-lg text-sm sm:text-base"
             >
-              <Plus className="h-5 w-5 mr-2" />
+              <Plus className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
               New Assessment
             </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          }
+        />
         {/* Action Bar */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
-          <div className="flex items-center justify-between">
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Assessment History</h2>
-              <p className="text-gray-600 mt-1">
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Assessment History</h2>
+              <p className="text-sm sm:text-base text-gray-600 mt-1">
                 You have {assessments.length} assessment{assessments.length !== 1 ? 's' : ''} on record
               </p>
             </div>
@@ -198,7 +191,7 @@ export default function ManageAssessments() {
               <button
                 onClick={deleteAllAssessments}
                 disabled={deleting === 'all'}
-                className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                className="flex items-center justify-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm sm:text-base"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 {deleting === 'all' ? 'Deleting...' : 'Delete All'}
@@ -208,43 +201,43 @@ export default function ManageAssessments() {
         </div>
 
         {assessments.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm p-12 text-center">
-            <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <h2 className="text-2xl font-semibold text-gray-900 mb-2">No Assessments Found</h2>
-            <p className="text-gray-600 mb-6">Start fresh with a new assessment to evaluate your business.</p>
+          <div className="bg-white rounded-xl shadow-sm p-8 sm:p-12 text-center">
+            <FileText className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-4" />
+            <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2">No Assessments Found</h2>
+            <p className="text-sm sm:text-base text-gray-600 mb-6">Start fresh with a new assessment to evaluate your business.</p>
             <button
               onClick={() => router.push('/assessment')}
-              className="px-6 py-3 bg-gradient-to-r from-teal-600 to-teal-700 text-white rounded-lg hover:from-teal-700 hover:to-teal-800 transition-all duration-200 shadow-lg"
+              className="px-6 py-3 bg-gradient-to-r from-brand-orange to-brand-orange-700 text-white rounded-lg hover:from-brand-orange-700 hover:to-brand-orange-800 transition-all duration-200 shadow-lg text-sm sm:text-base"
             >
               Start New Assessment
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {assessments.map((assessment) => (
-              <div key={assessment.id} className="bg-white rounded-xl shadow-sm p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-4 mb-3">
+              <div key={assessment.id} className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
+                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 mb-3 gap-2 sm:gap-0">
                       <div className="flex items-center text-gray-600">
-                        <Calendar className="h-4 w-4 mr-2" />
+                        <Calendar className="h-4 w-4 mr-2 flex-shrink-0" />
                         <span className="text-sm">{formatDate(assessment.created_at)}</span>
                       </div>
                       {assessment.completion_percentage === 100 ? (
                         <div className="flex items-center text-green-600">
-                          <CheckCircle className="h-4 w-4 mr-1" />
+                          <CheckCircle className="h-4 w-4 mr-1 flex-shrink-0" />
                           <span className="text-sm font-medium">Complete</span>
                         </div>
                       ) : (
-                        <div className="flex items-center text-orange-600">
-                          <XCircle className="h-4 w-4 mr-1" />
+                        <div className="flex items-center text-brand-orange-600">
+                          <XCircle className="h-4 w-4 mr-1 flex-shrink-0" />
                           <span className="text-sm font-medium">{assessment.completion_percentage}% Complete</span>
                         </div>
                       )}
                     </div>
 
-                    <div className="flex items-center space-x-4">
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(assessment.health_status)}`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 gap-2 sm:gap-0 flex-wrap">
+                      <span className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(assessment.health_status)} w-fit`}>
                         {assessment.health_status || 'Not Calculated'}
                       </span>
                       <span className="text-sm text-gray-600">
@@ -256,16 +249,16 @@ export default function ManageAssessments() {
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-2 ml-4">
+                  <div className="flex items-center space-x-2 lg:ml-4">
                     {assessment.completion_percentage === 100 && (
                       <button
                         onClick={() => router.push('/assessment/results')}
-                        className="px-3 py-1.5 text-teal-600 border border-teal-300 rounded-lg hover:bg-teal-50 transition-colors text-sm"
+                        className="px-3 py-1.5 text-brand-orange border border-brand-orange-300 rounded-lg hover:bg-brand-orange-50 transition-colors text-sm"
                       >
                         View Report
                       </button>
                     )}
-                    
+
                     {showConfirmDelete === assessment.id ? (
                       <div className="flex items-center space-x-2">
                         <span className="text-sm text-red-600 font-medium">Delete?</span>
@@ -299,12 +292,12 @@ export default function ManageAssessments() {
         )}
 
         {/* Info Box */}
-        <div className="mt-8 bg-teal-50 border border-teal-200 rounded-xl p-6">
+        <div className="mt-6 sm:mt-8 bg-brand-orange-50 border border-brand-orange-200 rounded-xl p-4 sm:p-6">
           <div className="flex items-start space-x-3">
-            <AlertTriangle className="h-5 w-5 text-teal-600 mt-0.5" />
+            <AlertTriangle className="h-5 w-5 text-brand-orange mt-0.5 flex-shrink-0" />
             <div>
-              <h3 className="font-semibold text-teal-900 mb-1">About Assessments</h3>
-              <ul className="text-sm text-teal-800 space-y-1">
+              <h3 className="text-base sm:text-lg font-semibold text-brand-navy mb-1">About Assessments</h3>
+              <ul className="text-sm sm:text-base text-brand-orange-800 space-y-1">
                 <li>• We recommend completing assessments quarterly to track progress</li>
                 <li>• Each assessment provides a snapshot of your business at that point in time</li>
                 <li>• Deleting assessments is permanent and cannot be undone</li>

@@ -17,9 +17,11 @@ import {
   User,
   ChevronDown,
   ChevronUp,
-  Loader2
+  Loader2,
+  Repeat
 } from 'lucide-react';
 import { JargonTooltip } from '@/components/ui/Tooltip';
+import PageHeader from '@/components/ui/PageHeader';
 import {
   getOpenLoops,
   createOpenLoop,
@@ -41,10 +43,10 @@ type FilterType = 'all' | StatusType;
 const STATUS_CONFIG = {
   'in-progress': {
     label: 'In Progress',
-    color: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    borderColor: 'border-l-emerald-500',
+    color: 'bg-brand-teal-50 text-brand-teal border-brand-teal-200',
+    borderColor: 'border-l-brand-teal',
     icon: Play,
-    bgHover: 'hover:bg-emerald-50'
+    bgHover: 'hover:bg-brand-teal-50'
   },
   'stuck': {
     label: 'Stuck',
@@ -111,7 +113,7 @@ function DaysOpenBadge({ days }: { days: number }) {
   } else if (days >= 14) {
     colorClass = 'bg-amber-100 text-amber-700';
   } else if (days >= 7) {
-    colorClass = 'bg-blue-100 text-blue-700';
+    colorClass = 'bg-brand-orange-100 text-brand-orange-700';
   }
 
   return (
@@ -155,13 +157,13 @@ function LoopCard({
         transition-all duration-200 hover:shadow-md
       `}
     >
-      <div className="p-5">
+      <div className="p-4 sm:p-6">
         <div className="flex items-start justify-between gap-4">
           {/* Main content */}
           <div className="flex-1 min-w-0">
             {/* Title and badges */}
             <div className="flex flex-wrap items-center gap-2 mb-2">
-              <h3 className="font-semibold text-gray-900 text-lg">{loop.title}</h3>
+              <h3 className="font-semibold text-gray-900 text-base sm:text-lg">{loop.title}</h3>
               {isOverdue && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">
                   <AlertTriangle className="w-3 h-3" />
@@ -183,7 +185,7 @@ function LoopCard({
               <StatusBadge status={loop.status as StatusType} />
               <DaysOpenBadge days={daysOpen} />
               {loop.owner && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-slate-100 text-slate-600">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-slate-100 text-gray-600">
                   <User className="w-3 h-3" />
                   {loop.owner}
                 </span>
@@ -244,7 +246,7 @@ function LoopCard({
                         >
                           <Icon className="w-4 h-4" />
                           {cfg.label}
-                          {loop.status === key && <Check className="w-4 h-4 ml-auto text-emerald-600" />}
+                          {loop.status === key && <Check className="w-4 h-4 ml-auto text-brand-teal" />}
                         </button>
                       );
                     })}
@@ -255,7 +257,7 @@ function LoopCard({
 
             <button
               onClick={onEdit}
-              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              className="p-2 text-gray-500 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
               title="Edit"
             >
               <Edit3 className="w-5 h-5" />
@@ -263,7 +265,7 @@ function LoopCard({
 
             <button
               onClick={onComplete}
-              className="p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+              className="p-2 text-gray-500 hover:text-brand-teal hover:bg-brand-teal-50 rounded-lg transition-colors"
               title="Mark complete"
             >
               <Check className="w-5 h-5" />
@@ -313,13 +315,13 @@ function DeleteModal({
 }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
+      <div className="bg-white rounded-xl max-w-md w-full p-4 sm:p-6 shadow-xl">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-3 bg-red-100 rounded-full">
             <Trash2 className="w-6 h-6 text-red-600" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Delete Loop</h3>
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900">Delete Loop</h3>
             <p className="text-sm text-gray-500">This action cannot be undone</p>
           </div>
         </div>
@@ -331,7 +333,7 @@ function DeleteModal({
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={onCancel}
             className="flex-1 px-4 py-2.5 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium"
@@ -521,81 +523,75 @@ export default function OpenLoopsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-                <JargonTooltip term="openLoops">Open Loops</JargonTooltip>
-              </h1>
-              <p className="text-sm text-gray-600 mt-1">Track your in-progress projects and initiatives</p>
-            </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Main Content Container */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Page Header */}
+        <PageHeader
+          title="Open Loops"
+          subtitle="Track your in-progress projects and initiatives"
+          icon={Repeat}
+          actions={
             <button
               onClick={() => {
                 resetForm();
                 setShowForm(true);
               }}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium shadow-sm"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium shadow-sm"
             >
               <Plus className="h-5 w-5" />
               <span>Add Loop</span>
             </button>
-          </div>
+          }
+        />
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'all'
-                  ? 'border-teal-500 bg-teal-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-              <p className="text-xs font-medium text-gray-600">Total Loops</p>
-            </button>
-            <button
-              onClick={() => setStatusFilter('in-progress')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'in-progress'
-                  ? 'border-emerald-500 bg-emerald-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-emerald-600">{stats.inProgress}</p>
-              <p className="text-xs font-medium text-gray-600">In Progress</p>
-            </button>
-            <button
-              onClick={() => setStatusFilter('stuck')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'stuck'
-                  ? 'border-red-500 bg-red-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-red-600">{stats.stuck}</p>
-              <p className="text-xs font-medium text-gray-600">Stuck</p>
-            </button>
-            <button
-              onClick={() => setStatusFilter('on-hold')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'on-hold'
-                  ? 'border-amber-500 bg-amber-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-amber-600">{stats.onHold}</p>
-              <p className="text-xs font-medium text-gray-600">On Hold</p>
-            </button>
-          </div>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`p-4 sm:p-6 rounded-xl border-2 transition-all ${
+              statusFilter === 'all'
+                ? 'border-brand-orange-500 bg-brand-orange-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
+            <p className="text-xs sm:text-sm font-medium text-gray-600">Total Loops</p>
+          </button>
+          <button
+            onClick={() => setStatusFilter('in-progress')}
+            className={`p-4 sm:p-6 rounded-xl border-2 transition-all ${
+              statusFilter === 'in-progress'
+                ? 'border-brand-teal bg-brand-teal-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-brand-teal">{stats.inProgress}</p>
+            <p className="text-xs sm:text-sm font-medium text-gray-600">In Progress</p>
+          </button>
+          <button
+            onClick={() => setStatusFilter('stuck')}
+            className={`p-4 sm:p-6 rounded-xl border-2 transition-all ${
+              statusFilter === 'stuck'
+                ? 'border-red-500 bg-red-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-red-600">{stats.stuck}</p>
+            <p className="text-xs sm:text-sm font-medium text-gray-600">Stuck</p>
+          </button>
+          <button
+            onClick={() => setStatusFilter('on-hold')}
+            className={`p-4 sm:p-6 rounded-xl border-2 transition-all ${
+              statusFilter === 'on-hold'
+                ? 'border-amber-500 bg-amber-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-amber-600">{stats.onHold}</p>
+            <p className="text-xs sm:text-sm font-medium text-gray-600">On Hold</p>
+          </button>
         </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6">
         {/* Search and Filters */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <div className="relative flex-1">
@@ -605,13 +601,13 @@ export default function OpenLoopsPage() {
               placeholder="Search loops..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
             />
           </div>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
+            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent bg-white"
           >
             <option value="newest">Newest First</option>
             <option value="oldest">Oldest First</option>
@@ -644,14 +640,14 @@ export default function OpenLoopsPage() {
           </div>
         ) : filteredLoops.length === 0 ? (
           /* Empty State */
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="bg-white rounded-xl border border-gray-200 p-8 sm:p-12 text-center">
             {loops.length === 0 ? (
               <>
-                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Check className="w-8 h-8 text-emerald-600" />
+                <div className="w-16 h-16 bg-brand-teal-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Check className="w-8 h-8 text-brand-teal" />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">No open loops</h3>
-                <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">No open loops</h3>
+                <p className="text-sm sm:text-base text-gray-600 mb-6 max-w-md mx-auto">
                   You're all caught up! Add a new loop when you start a project or initiative you want to track.
                 </p>
                 <button
@@ -659,7 +655,7 @@ export default function OpenLoopsPage() {
                     resetForm();
                     setShowForm(true);
                   }}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium"
                 >
                   <Plus className="h-5 w-5" />
                   Add your first loop
@@ -670,8 +666,8 @@ export default function OpenLoopsPage() {
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Search className="w-8 h-8 text-gray-400" />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">No matching loops</h3>
-                <p className="text-gray-600 mb-4">
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">No matching loops</h3>
+                <p className="text-sm sm:text-base text-gray-600 mb-4">
                   Try adjusting your search or filter criteria
                 </p>
                 <button
@@ -679,7 +675,7 @@ export default function OpenLoopsPage() {
                     setSearchQuery('');
                     setStatusFilter('all');
                   }}
-                  className="text-teal-600 hover:text-teal-700 font-medium"
+                  className="text-brand-orange hover:text-brand-orange-700 font-medium"
                 >
                   Clear filters
                 </button>
@@ -709,8 +705,8 @@ export default function OpenLoopsPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl">
             {/* Modal Header */}
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900">
                 {editingId ? 'Edit Loop' : 'Add New Loop'}
               </h2>
               <button
@@ -721,7 +717,7 @@ export default function OpenLoopsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-5">
               {/* Title */}
               <div>
                 <label className="block text-sm font-semibold text-gray-900 mb-2">
@@ -733,13 +729,13 @@ export default function OpenLoopsPage() {
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   placeholder="e.g., Implement new CRM system"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-lg"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent text-base sm:text-lg"
                   autoFocus
                 />
               </div>
 
               {/* Dates Row */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-2">
                     Start Date
@@ -749,7 +745,7 @@ export default function OpenLoopsPage() {
                     required
                     value={formData.start_date}
                     onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   />
                 </div>
                 <div>
@@ -760,13 +756,13 @@ export default function OpenLoopsPage() {
                     type="date"
                     value={formData.expected_completion_date || ''}
                     onChange={(e) => setFormData({ ...formData, expected_completion_date: e.target.value || null })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   />
                 </div>
               </div>
 
               {/* Owner & Status Row */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-2">
                     Assigned To
@@ -776,7 +772,7 @@ export default function OpenLoopsPage() {
                     value={formData.owner}
                     onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
                     placeholder="Me"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   />
                 </div>
                 <div>
@@ -786,7 +782,7 @@ export default function OpenLoopsPage() {
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as StatusType })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   >
                     <option value="in-progress">In Progress</option>
                     <option value="stuck">Stuck</option>
@@ -805,7 +801,7 @@ export default function OpenLoopsPage() {
                   onChange={(e) => setFormData({ ...formData, blocker: e.target.value || null })}
                   placeholder="What's preventing progress? e.g., Waiting on vendor response"
                   rows={3}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
                 />
               </div>
 
@@ -820,7 +816,7 @@ export default function OpenLoopsPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-3 text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors font-medium"
+                  className="flex-1 px-4 py-3 text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors font-medium"
                 >
                   {editingId ? 'Save Changes' : 'Add Loop'}
                 </button>

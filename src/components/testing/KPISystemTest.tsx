@@ -127,23 +127,23 @@ export function KPISystemTest() {
       <div className="mb-6">
         <h3 className="text-lg font-semibold mb-2">Performance Stats</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-teal-50 p-3 rounded">
-            <div className="text-sm text-teal-600">Total KPIs</div>
-            <div className="font-semibold text-teal-900">{kpis.length}</div>
+          <div className="bg-brand-orange-50 p-3 rounded">
+            <div className="text-sm text-brand-orange">Total KPIs</div>
+            <div className="font-semibold text-brand-navy">{kpis.length}</div>
           </div>
-          <div className="bg-teal-50 p-3 rounded">
-            <div className="text-sm text-teal-600">Health Total</div>
-            <div className="font-semibold text-teal-900">
+          <div className="bg-brand-orange-50 p-3 rounded">
+            <div className="text-sm text-brand-orange">Health Total</div>
+            <div className="font-semibold text-brand-navy">
               {health?.totalKPIs || 0}
             </div>
           </div>
-          <div className="bg-teal-50 p-3 rounded">
-            <div className="text-sm text-teal-600">Essential KPIs</div>
-            <div className="font-semibold text-teal-900">{health?.essential || 0}</div>
+          <div className="bg-brand-orange-50 p-3 rounded">
+            <div className="text-sm text-brand-orange">Essential KPIs</div>
+            <div className="font-semibold text-brand-navy">{health?.essential || 0}</div>
           </div>
-          <div className="bg-teal-50 p-3 rounded">
-            <div className="text-sm text-teal-600">Last Checked</div>
-            <div className="font-semibold text-teal-900 text-xs">
+          <div className="bg-brand-orange-50 p-3 rounded">
+            <div className="text-sm text-brand-orange">Last Checked</div>
+            <div className="font-semibold text-brand-navy text-xs">
               {health?.lastChecked ? new Date(health.lastChecked).toLocaleTimeString() : 'N/A'}
             </div>
           </div>

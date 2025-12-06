@@ -91,7 +91,7 @@ export function QuarterSelector({
   // Get quarter status style
   const getQuarterStyle = (quarterInfo: QuarterInfo) => {
     if (quarterInfo.isCurrent) {
-      return 'bg-teal-100 text-teal-700 border-teal-300';
+      return 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-300';
     }
     if (quarterInfo.isPast) {
       return 'bg-gray-50 text-gray-600 hover:bg-gray-100';
@@ -130,7 +130,7 @@ export function QuarterSelector({
           className={`
             inline-flex items-center px-4 py-2 border rounded-md text-sm font-medium
             ${currentQuarter.isCurrent
-              ? 'border-teal-300 bg-teal-50 text-teal-700'
+              ? 'border-brand-orange-300 bg-brand-orange-50 text-brand-orange-700'
               : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
             }
           `}
@@ -204,14 +204,14 @@ export function QuarterSelector({
                     className={`
                       relative px-4 py-3 rounded-lg border transition-all
                       ${getQuarterStyle(quarterInfo)}
-                      ${isSelected ? 'ring-2 ring-teal-500' : ''}
+                      ${isSelected ? 'ring-2 ring-brand-orange' : ''}
                     `}
                   >
                     <div className="text-left">
                       <div className="flex items-center justify-between">
                         <span className="font-medium">Q{quarterInfo.quarter}</span>
                         {isSelected && (
-                          <Check className="h-4 w-4 text-teal-600" />
+                          <Check className="h-4 w-4 text-brand-orange" />
                         )}
                       </div>
                       <div className="text-xs mt-1 font-medium text-gray-600">
@@ -221,7 +221,7 @@ export function QuarterSelector({
                         {formatDateRange(quarterInfo.startDate, quarterInfo.endDate)}
                       </div>
                       {quarterInfo.isCurrent && (
-                        <div className="text-xs mt-1 font-semibold text-teal-600">
+                        <div className="text-xs mt-1 font-semibold text-brand-orange">
                           Current Quarter
                         </div>
                       )}
@@ -242,7 +242,7 @@ export function QuarterSelector({
                   setSelectedYear(currentQ.year);
                   setIsOpen(false);
                 }}
-                className="text-teal-600 hover:text-teal-700 font-medium"
+                className="text-brand-orange hover:text-brand-orange-700 font-medium"
               >
                 Go to Current Quarter
               </button>

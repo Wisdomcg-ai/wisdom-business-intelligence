@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
-import { Loader2, Save, Sparkles } from 'lucide-react'
+import { Loader2, Save, Sparkles, TrendingUp } from 'lucide-react'
 import { toast } from 'sonner'
+import PageHeader from '@/components/ui/PageHeader'
 import ForecastService from './services/forecast-service'
 import './forecast-styles.css'
 import { ForecastGenerator } from './services/forecast-generator'
@@ -672,7 +673,7 @@ export default function FinancialForecastPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-teal-600 mx-auto mb-4" />
+          <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading financial forecast...</p>
         </div>
       </div>
@@ -725,39 +726,39 @@ export default function FinancialForecastPage() {
   // Show welcome screen for new forecasts
   if (isNewForecast && !showSetupWizard && !skipWelcome) {
     return (
-      <div className="min-h-screen bg-slate-50 p-8">
-        <div className="max-w-2xl mx-auto pt-12">
-          <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
-            <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Sparkles className="w-8 h-8 text-teal-600" />
+      <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+        <div className="max-w-2xl mx-auto pt-8 sm:pt-12">
+          <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8 text-center">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-brand-orange-100 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
+              <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-brand-orange" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-3">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2 sm:mb-3">
               Build Your FY{forecast.fiscal_year} Forecast
             </h1>
-            <p className="text-gray-600 mb-8 max-w-md mx-auto">
+            <p className="text-sm sm:text-base text-gray-600 mb-6 sm:mb-8 max-w-md mx-auto">
               Let's create a financial forecast that helps you understand how your assumptions drive your numbers.
             </p>
 
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <button
                 onClick={() => setShowSetupWizard(true)}
-                className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-colors font-semibold text-lg"
+                className="w-full flex items-center justify-center gap-2 sm:gap-3 px-4 sm:px-6 py-3 sm:py-4 bg-brand-orange text-white rounded-xl hover:bg-brand-orange-600 transition-colors font-semibold text-base sm:text-lg"
               >
-                <Sparkles className="w-5 h-5" />
+                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
                 Use Setup Wizard
-                <span className="text-teal-200 text-sm font-normal">(Recommended)</span>
+                <span className="text-brand-orange-200 text-xs sm:text-sm font-normal">(Recommended)</span>
               </button>
 
               <button
                 onClick={() => setSkipWelcome(true)}
-                className="w-full px-6 py-3 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors font-medium"
+                className="w-full px-4 sm:px-6 py-2.5 sm:py-3 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors font-medium text-sm sm:text-base"
               >
                 Start from scratch
               </button>
             </div>
 
-            <div className="mt-8 pt-6 border-t border-gray-100">
-              <p className="text-sm text-gray-500">
+            <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-100">
+              <p className="text-xs sm:text-sm text-gray-500">
                 The Setup Wizard will guide you through setting goals, analysing prior year data, planning your team, and building revenue drivers.
               </p>
             </div>
@@ -803,11 +804,11 @@ export default function FinancialForecastPage() {
 
   return (
     <>
-      <div className="min-h-screen bg-slate-50 p-8">
-        <div className="max-w-[1600px] mx-auto">
+      <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+        <div className="max-w-7xl mx-auto">
         {/* Error Banner */}
         {error && !isLoading && (
-          <div className="mb-6">
+          <div className="mb-4 sm:mb-6">
             <ErrorState
               error={error}
               onRetry={() => {
@@ -819,31 +820,31 @@ export default function FinancialForecastPage() {
           </div>
         )}
 
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Financial Forecast</h1>
-              <p className="text-gray-600">{forecast.name}</p>
-            </div>
-            <div className="flex items-center space-x-3">
+        {/* Page Header */}
+        <PageHeader
+          title="Financial Forecast"
+          subtitle={forecast.name}
+          icon={TrendingUp}
+          actions={
+            <>
               {/* Setup Wizard Button */}
               <button
                 onClick={() => setShowSetupWizard(true)}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-all shadow-sm"
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm font-medium text-white bg-brand-orange hover:bg-brand-orange-600 rounded-lg transition-all shadow-sm"
               >
                 <Sparkles className="w-4 h-4" />
-                Setup Wizard
+                <span className="hidden sm:inline">Setup Wizard</span>
+                <span className="sm:hidden">Wizard</span>
               </button>
 
               {/* Save Button */}
               <button
                 onClick={() => handleSavePLLines(plLines)}
                 disabled={isSaving}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 ${
+                className={`flex items-center gap-2 px-3 sm:px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 ${
                   hasUnsavedChanges
-                    ? 'bg-orange-600 hover:bg-orange-700 animate-pulse'
-                    : 'bg-teal-600 hover:bg-teal-700'
+                    ? 'bg-brand-orange-600 hover:bg-brand-orange-600 animate-pulse'
+                    : 'bg-brand-orange hover:bg-brand-orange-600'
                 }`}
               >
                 <Save className="w-4 h-4" />
@@ -852,33 +853,33 @@ export default function FinancialForecastPage() {
 
               {/* Export Controls */}
               {forecast?.id && userId && <ExportControls forecastId={forecast.id} userId={userId} />}
+            </>
+          }
+        />
 
-              {/* Last Saved Indicator */}
-              {!isSaving && forecast && forecast.updated_at && (
-                <div className="text-xs text-gray-500">
-                  Last saved {new Date(forecast.updated_at).toLocaleString('en-AU', {
-                    day: 'numeric',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </div>
-              )}
-            </div>
+        {/* Last Saved Indicator */}
+        {!isSaving && forecast && forecast.updated_at && (
+          <div className="text-xs sm:text-sm text-gray-500 mb-4 text-right">
+            Last saved {new Date(forecast.updated_at).toLocaleString('en-AU', {
+              day: 'numeric',
+              month: 'short',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
           </div>
+        )}
 
-          {/* Xero Connection Status */}
-          <div className="border-t pt-4">
-            <XeroConnectionPanel
-              xeroConnection={xeroConnection}
-              isSaving={isSaving || isSyncing}
-              onConnect={handleConnectXero}
-              onDisconnect={handleDisconnectXero}
-              onSync={handleSyncFromXero}
-              onClearAndResync={handleClearAndResync}
-              onOpenCSVImport={() => setShowCSVImport(true)}
-            />
-          </div>
+        {/* Xero Connection Panel */}
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-4 sm:mb-6">
+          <XeroConnectionPanel
+            xeroConnection={xeroConnection}
+            isSaving={isSaving || isSyncing}
+            onConnect={handleConnectXero}
+            onDisconnect={handleDisconnectXero}
+            onSync={handleSyncFromXero}
+            onClearAndResync={handleClearAndResync}
+            onOpenCSVImport={() => setShowCSVImport(true)}
+          />
         </div>
 
         {/* Completeness Checker */}
@@ -894,7 +895,7 @@ export default function FinancialForecastPage() {
               forecast.baseline_start_month,
               forecast.baseline_end_month
             ).filter(c => c.isForecast).map(c => c.key)}
-            className="mb-6"
+            className="mb-4 sm:mb-6"
           />
         )}
 

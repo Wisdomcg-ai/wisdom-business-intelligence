@@ -10,7 +10,7 @@ interface StatCard {
     value: number
     isUp: boolean
   }
-  color: 'indigo' | 'green' | 'amber' | 'rose'
+  color: 'navy' | 'teal' | 'amber' | 'orange'
   href?: string
 }
 
@@ -24,25 +24,25 @@ interface DashboardStatsProps {
 }
 
 const colorClasses = {
-  indigo: {
-    bg: 'bg-indigo-50',
-    icon: 'bg-indigo-600',
-    text: 'text-indigo-600'
+  navy: {
+    bg: 'bg-brand-navy-50',
+    icon: 'bg-brand-navy',
+    text: 'text-brand-navy'
   },
-  green: {
-    bg: 'bg-green-50',
-    icon: 'bg-green-600',
-    text: 'text-green-600'
+  teal: {
+    bg: 'bg-brand-teal-50',
+    icon: 'bg-brand-teal',
+    text: 'text-brand-teal'
   },
   amber: {
     bg: 'bg-amber-50',
     icon: 'bg-amber-600',
     text: 'text-amber-600'
   },
-  rose: {
-    bg: 'bg-rose-50',
-    icon: 'bg-rose-600',
-    text: 'text-rose-600'
+  orange: {
+    bg: 'bg-brand-orange-50',
+    icon: 'bg-brand-orange',
+    text: 'text-brand-orange'
   }
 }
 
@@ -60,7 +60,7 @@ export function DashboardStats({
       value: activeClients,
       icon: Users,
       trend: clientsTrend !== undefined ? { value: Math.abs(clientsTrend), isUp: clientsTrend >= 0 } : undefined,
-      color: 'indigo',
+      color: 'navy',
       href: '/coach/clients'
     },
     {
@@ -68,7 +68,7 @@ export function DashboardStats({
       value: sessionsThisWeek,
       icon: Calendar,
       trend: sessionsTrend !== undefined ? { value: Math.abs(sessionsTrend), isUp: sessionsTrend >= 0 } : undefined,
-      color: 'green',
+      color: 'teal',
       href: '/coach/schedule'
     },
     {
@@ -82,7 +82,7 @@ export function DashboardStats({
       label: 'Unread Messages',
       value: unreadMessages,
       icon: MessageSquare,
-      color: 'rose',
+      color: 'orange',
       href: '/coach/messages'
     }
   ]
@@ -105,7 +105,7 @@ export function DashboardStats({
               </div>
               {stat.trend && (
                 <div className={`flex items-center gap-1 text-sm font-medium ${
-                  stat.trend.isUp ? 'text-green-600' : 'text-red-600'
+                  stat.trend.isUp ? 'text-brand-teal' : 'text-red-600'
                 }`}>
                   {stat.trend.isUp ? (
                     <TrendingUp className="w-4 h-4" />

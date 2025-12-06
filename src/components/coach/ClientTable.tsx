@@ -173,12 +173,12 @@ export function ClientTable({ clients, onMessage, onSchedule, onView }: ClientTa
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 bg-slate-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Building2 className="w-4 h-4 text-slate-600" />
+                      <Building2 className="w-4 h-4 text-gray-600" />
                     </div>
                     <div>
                       <Link
                         href={`/coach/clients/${client.id}`}
-                        className="font-medium text-gray-900 hover:text-indigo-600"
+                        className="font-medium text-gray-900 hover:text-brand-orange"
                       >
                         {client.businessName}
                       </Link>
@@ -222,7 +222,7 @@ export function ClientTable({ clients, onMessage, onSchedule, onView }: ClientTa
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center gap-2">
                     {(client.unreadMessages ?? 0) > 0 && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-brand-orange-50 text-brand-orange-700 rounded-full text-xs font-medium">
                         <MessageSquare className="w-3 h-3" />
                         {client.unreadMessages}
                       </span>
@@ -243,21 +243,21 @@ export function ClientTable({ clients, onMessage, onSchedule, onView }: ClientTa
                   <div className="flex items-center justify-end gap-1">
                     <button
                       onClick={() => onMessage?.(client.id)}
-                      className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
                       title="Message"
                     >
                       <MessageSquare className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => onSchedule?.(client.id)}
-                      className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
                       title="Schedule"
                     >
                       <Calendar className="w-4 h-4" />
                     </button>
                     <Link
                       href={`/coach/clients/${client.id}`}
-                      className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
                       title="View"
                     >
                       <Eye className="w-4 h-4" />

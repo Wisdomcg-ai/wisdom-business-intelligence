@@ -64,14 +64,14 @@ export default function Step2PriorYearAnalysis({
   return (
     <div className="space-y-6">
       {/* Teaching Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-5 text-white">
+      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-5 text-white">
         <div className="flex items-start gap-4">
           <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
             <BarChart3 className="w-5 h-5 text-white" />
           </div>
           <div>
             <h3 className="font-bold text-lg mb-1">Step 2: Analyse Your Prior Year</h3>
-            <p className="text-teal-100 text-sm">
+            <p className="text-brand-orange-100 text-sm">
               Understanding what happened last year helps you forecast what's realistic for next year.
               Let's look at your revenue patterns, costs, and trends.
             </p>
@@ -101,7 +101,7 @@ export default function Step2PriorYearAnalysis({
             <CheckCircle className="w-5 h-5 text-green-600" />
             <span className="text-sm font-medium text-gray-700">
               FY{fiscalYear - 1} data loaded from{' '}
-              <span className="text-teal-600 capitalize">{data.dataSource}</span>
+              <span className="text-brand-orange capitalize">{data.dataSource}</span>
             </span>
           </div>
 
@@ -109,7 +109,7 @@ export default function Step2PriorYearAnalysis({
           <div className="grid grid-cols-4 gap-4">
             <div className="bg-white border border-gray-200 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
-                <DollarSign className="w-4 h-4 text-teal-600" />
+                <DollarSign className="w-4 h-4 text-brand-orange" />
                 <span className="text-xs font-medium text-gray-500 uppercase">Total Revenue</span>
               </div>
               <div className="text-xl font-bold text-gray-900">
@@ -135,7 +135,7 @@ export default function Step2PriorYearAnalysis({
 
             <div className="bg-white border border-gray-200 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
-                <BarChart3 className="w-4 h-4 text-teal-600" />
+                <BarChart3 className="w-4 h-4 text-brand-orange" />
                 <span className="text-xs font-medium text-gray-500 uppercase">Net Margin</span>
               </div>
               <div className="text-xl font-bold text-gray-900">
@@ -148,7 +148,7 @@ export default function Step2PriorYearAnalysis({
 
             <div className="bg-white border border-gray-200 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
-                <Calendar className="w-4 h-4 text-orange-600" />
+                <Calendar className="w-4 h-4 text-brand-orange-600" />
                 <span className="text-xs font-medium text-gray-500 uppercase">Seasonality</span>
               </div>
               <div className="text-xl font-bold text-gray-900">
@@ -165,7 +165,7 @@ export default function Step2PriorYearAnalysis({
           {/* Revenue Pattern Chart */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-teal-600" />
+              <TrendingUp className="w-5 h-5 text-brand-orange" />
               Monthly Revenue Pattern
             </h4>
             <div className="relative h-40">
@@ -182,8 +182,8 @@ export default function Step2PriorYearAnalysis({
                     >
                       <div className="w-full relative flex justify-center mb-1">
                         <div
-                          className={`w-full max-w-[40px] rounded-t transition-all ${isAboveAvg ? 'bg-teal-500' : 'bg-teal-300'
-                            } group-hover:bg-teal-600`}
+                          className={`w-full max-w-[40px] rounded-t transition-all ${isAboveAvg ? 'bg-brand-orange-500' : 'bg-brand-orange-300'
+                            } group-hover:bg-brand-orange`}
                           style={{ height: `${Math.max(4, heightPercent)}%` }}
                         />
                         {/* Tooltip */}
@@ -206,10 +206,10 @@ export default function Step2PriorYearAnalysis({
               </div>
               {/* Average line */}
               <div
-                className="absolute left-0 right-0 border-t-2 border-dashed border-teal-400"
+                className="absolute left-0 right-0 border-t-2 border-dashed border-brand-orange-400"
                 style={{ bottom: '50%' }}
               >
-                <span className="absolute -top-5 right-0 text-xs text-teal-600 bg-white px-1">
+                <span className="absolute -top-5 right-0 text-xs text-brand-orange bg-white px-1">
                   Avg
                 </span>
               </div>
@@ -217,11 +217,11 @@ export default function Step2PriorYearAnalysis({
             <div className="flex items-center justify-between mt-4 text-sm">
               <div className="flex items-center gap-4">
                 <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 bg-teal-500 rounded" />
+                  <span className="w-3 h-3 bg-brand-orange-500 rounded" />
                   <span className="text-gray-600">Above average</span>
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 bg-teal-300 rounded" />
+                  <span className="w-3 h-3 bg-brand-orange-300 rounded" />
                   <span className="text-gray-600">Below average</span>
                 </span>
               </div>
@@ -302,14 +302,14 @@ export default function Step2PriorYearAnalysis({
 
           {/* AI Insights */}
           {insights.length > 0 && (
-            <div className="bg-gradient-to-br from-teal-50 to-teal-100 border border-teal-200 rounded-xl p-5">
-              <h4 className="font-semibold text-teal-900 mb-3 flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-teal-600" />
+            <div className="bg-gradient-to-br from-brand-orange-50 to-brand-orange-100 border border-brand-orange-200 rounded-xl p-5">
+              <h4 className="font-semibold text-brand-navy mb-3 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-brand-orange" />
                 Key Insights from FY{fiscalYear - 1}
               </h4>
               <div className="space-y-2">
                 {insights.map((insight, index) => (
-                  <p key={index} className="text-sm text-teal-800">
+                  <p key={index} className="text-sm text-brand-orange-800">
                     {insight}
                   </p>
                 ))}
@@ -320,25 +320,25 @@ export default function Step2PriorYearAnalysis({
           {/* What This Means */}
           <div className="bg-gray-50 rounded-lg p-4">
             <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-              <ArrowRight className="w-4 h-4 text-teal-600" />
+              <ArrowRight className="w-4 h-4 text-brand-orange" />
               How We'll Use This Data
             </h4>
             <ul className="space-y-2 text-sm text-gray-700">
               <li className="flex items-start gap-2">
-                <span className="text-teal-600 font-bold">•</span>
+                <span className="text-brand-orange font-bold">•</span>
                 <span>
                   <strong>Seasonal patterns</strong> will be applied to your revenue forecast
                   (unless you choose "even split")
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-teal-600 font-bold">•</span>
+                <span className="text-brand-orange font-bold">•</span>
                 <span>
                   <strong>Expense ratios</strong> give you a baseline for budgeting each category
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-teal-600 font-bold">•</span>
+                <span className="text-brand-orange font-bold">•</span>
                 <span>
                   <strong>Trend analysis</strong> helps identify costs that need attention
                 </span>
@@ -362,7 +362,7 @@ export default function Step2PriorYearAnalysis({
               {hasXeroConnection ? (
                 <button
                   onClick={onConnectXero}
-                  className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
                 >
                   <LinkIcon className="w-4 h-4" />
                   Sync from Xero
@@ -370,7 +370,7 @@ export default function Step2PriorYearAnalysis({
               ) : (
                 <button
                   onClick={onConnectXero}
-                  className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
                 >
                   <LinkIcon className="w-4 h-4" />
                   Connect Xero
@@ -378,7 +378,7 @@ export default function Step2PriorYearAnalysis({
               )}
               <button
                 onClick={onOpenCSVImport}
-                className="flex items-center gap-2 px-4 py-2 text-teal-600 border border-teal-200 bg-white rounded-lg hover:bg-teal-50 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-brand-orange border border-brand-orange-200 bg-white rounded-lg hover:bg-brand-orange-50 transition-colors"
               >
                 <Upload className="w-4 h-4" />
                 Import CSV

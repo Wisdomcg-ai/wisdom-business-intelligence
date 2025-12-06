@@ -4,7 +4,8 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Plus, Check, Trash2, ChevronDown, Calendar, AlertCircle, RotateCcw } from 'lucide-react'
+import { Plus, Check, Trash2, ChevronDown, Calendar, AlertCircle, RotateCcw, CheckSquare } from 'lucide-react'
+import PageHeader from '@/components/ui/PageHeader'
 import {
   getTodaysTasks,
   getTodaysCompletedTasks,
@@ -195,25 +196,25 @@ export default function TodoPage() {
             {/* Quick date options */}
             <button
               onClick={() => handleChangeDueDate(task.id, 'today')}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-teal-50 border-b border-gray-200 transition-colors"
+              className="w-full px-4 py-2 text-left text-sm hover:bg-brand-orange-50 border-b border-gray-200 transition-colors"
             >
               Today
             </button>
             <button
               onClick={() => handleChangeDueDate(task.id, 'tomorrow')}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-teal-50 border-b border-gray-200 transition-colors"
+              className="w-full px-4 py-2 text-left text-sm hover:bg-brand-orange-50 border-b border-gray-200 transition-colors"
             >
               Tomorrow
             </button>
             <button
               onClick={() => handleChangeDueDate(task.id, 'this-week')}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-teal-50 border-b border-gray-200 transition-colors"
+              className="w-full px-4 py-2 text-left text-sm hover:bg-brand-orange-50 border-b border-gray-200 transition-colors"
             >
               This Week
             </button>
             <button
               onClick={() => handleChangeDueDate(task.id, 'next-week')}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-teal-50 border-b border-gray-200 transition-colors"
+              className="w-full px-4 py-2 text-left text-sm hover:bg-brand-orange-50 border-b border-gray-200 transition-colors"
             >
               Next Week
             </button>
@@ -235,7 +236,7 @@ export default function TodoPage() {
                       setCustomDateInput({ ...customDateInput, [task.id]: '' })
                     }
                   }}
-                  className="px-2 py-1 text-xs font-medium bg-teal-600 text-white rounded hover:bg-teal-700 transition-colors"
+                  className="px-2 py-1 text-xs font-medium bg-brand-orange text-white rounded hover:bg-brand-orange-600 transition-colors"
                 >
                   Set
                 </button>
@@ -258,7 +259,7 @@ export default function TodoPage() {
 
     return (
       <div
-        className={`flex items-center gap-3 p-4 border rounded-lg transition-all ${
+        className={`flex flex-col sm:flex-row sm:items-center gap-3 p-4 sm:p-4 border rounded-xl transition-all ${
           isCompleted
             ? 'bg-gray-50 border-gray-200 opacity-60'
             : taskIsOverdue
@@ -270,14 +271,14 @@ export default function TodoPage() {
         <div className="flex-1 min-w-0">
           <div className="flex items-start gap-2 mb-2">
             <h3
-              className={`font-medium leading-tight ${
+              className={`font-medium leading-tight text-sm sm:text-base ${
                 isCompleted ? 'line-through text-gray-500' : 'text-gray-900'
               }`}
             >
               {task.title}
             </h3>
             {taskIsOverdue && !isCompleted && (
-              <div className="flex items-center gap-1 px-2 py-0.5 bg-red-200 rounded text-xs font-bold text-red-700 whitespace-nowrap">
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-red-200 rounded text-xs font-bold text-red-700 whitespace-nowrap flex-shrink-0">
                 <AlertCircle className="w-3 h-3" />
                 {daysOverdue}d overdue
               </div>
@@ -293,7 +294,7 @@ export default function TodoPage() {
         </div>
 
         {/* Actions - Due date dropdown, complete button, undo button, and delete */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {!isCompleted && (
             <>
               <DueDateDropdown task={task} />
@@ -311,7 +312,7 @@ export default function TodoPage() {
           {isCompleted && (
             <button
               onClick={() => handleStatusChange(task.id, 'to-do')}
-              className="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded transition-colors"
+              className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded transition-colors"
               title="Undo - restore to active tasks"
             >
               <RotateCcw className="w-4 h-4" />
@@ -335,206 +336,196 @@ export default function TodoPage() {
   // ========================================================================
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* HEADER - Sticky at top */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-[1600px] mx-auto px-6 py-8">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900">To-Do</h1>
-              <p className="text-gray-600 mt-2">Focus on what matters. Three priorities max.</p>
-            </div>
-
+    <div className="min-h-screen bg-gray-50">
+      {/* PAGE CONTAINER */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+        {/* PAGE HEADER */}
+        <PageHeader
+          title="To-Do"
+          subtitle="Focus on what matters. Three priorities max."
+          icon={CheckSquare}
+          actions={
             <button
               onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium"
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium text-sm sm:text-base"
             >
               <Plus className="w-4 h-4" />
-              Add Task
+              <span className="hidden sm:inline">Add Task</span>
+              <span className="sm:hidden">Add</span>
             </button>
-          </div>
+          }
+        />
 
-          {/* Quick Stats */}
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex gap-6">
-              <div>
-                <span className="text-gray-600">Tasks today: </span>
-                <span className="font-bold text-gray-900">{stats.total}</span>
-              </div>
-              <div>
-                <span className="text-gray-600">Completed: </span>
-                <span className="font-bold text-green-700">{stats.completed}</span>
-              </div>
-              <div>
-                <span className="text-gray-600">Progress: </span>
-                <span className="font-bold text-teal-700">{stats.completionRate}%</span>
-              </div>
-              {stats.overdue > 0 && (
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+          <div className="p-4 sm:p-6 rounded-xl border-2 border-gray-200 bg-white">
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
+            <p className="text-xs sm:text-sm font-medium text-gray-600">Tasks Today</p>
+          </div>
+          <div className="p-4 sm:p-6 rounded-xl border-2 border-gray-200 bg-white">
+            <p className="text-xl sm:text-2xl font-bold text-brand-teal">{stats.completed}</p>
+            <p className="text-xs sm:text-sm font-medium text-gray-600">Completed</p>
+          </div>
+          <div className="p-4 sm:p-6 rounded-xl border-2 border-gray-200 bg-white">
+            <p className="text-xl sm:text-2xl font-bold text-brand-orange">{stats.completionRate}%</p>
+            <p className="text-xs sm:text-sm font-medium text-gray-600">Progress</p>
+          </div>
+          {stats.overdue > 0 && (
+            <div className="p-4 sm:p-6 rounded-xl border-2 border-red-200 bg-red-50">
+              <p className="text-xl sm:text-2xl font-bold text-red-600">{stats.overdue}</p>
+              <p className="text-xs sm:text-sm font-medium text-gray-600">Overdue</p>
+            </div>
+          )}
+        </div>
+
+        {/* MAIN CONTENT */}
+        <div>
+          {loading ? (
+            <div className="text-center py-12">
+              <p className="text-gray-600">Loading tasks...</p>
+            </div>
+          ) : activeTasks.length === 0 && completedTasks.length === 0 ? (
+            // EMPTY STATE
+            <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-8 sm:p-12 text-center">
+              <p className="text-gray-600 mb-4">No tasks yet. You're free!</p>
+              <button
+                onClick={() => setShowForm(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add your first task
+              </button>
+            </div>
+          ) : (
+            // TASK SECTIONS
+            <div className="space-y-6">
+              {/* OVERDUE SECTION - AT TOP IF ANY EXIST */}
+              {activeTasks.filter(t => isOverdue(t.due_date, t.specific_date)).length > 0 && (
                 <div>
-                  <span className="text-gray-600">Overdue: </span>
-                  <span className="font-bold text-red-700">{stats.overdue} 🚨</span>
+                  <div className="mb-3">
+                    <h2 className="text-base sm:text-lg font-bold text-red-700 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                      OVERDUE (Deal with these first!)
+                    </h2>
+                    <p className="text-xs sm:text-sm text-gray-600">
+                      {activeTasks.filter(t => isOverdue(t.due_date, t.specific_date)).length} task
+                      {activeTasks.filter(t => isOverdue(t.due_date, t.specific_date)).length !== 1
+                        ? 's'
+                        : ''}{' '}
+                      past due
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {activeTasks
+                      .filter(t => isOverdue(t.due_date, t.specific_date))
+                      .map(task => (
+                        <TaskItem key={task.id} task={task} />
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* CRITICAL SECTION */}
+              {activeTasks.filter(
+                t => t.priority === 'critical' && !isOverdue(t.due_date, t.specific_date)
+              ).length > 0 && (
+                <div>
+                  <div className="mb-3">
+                    <h2 className="text-base sm:text-lg font-bold text-red-700">CRITICAL (Do First)</h2>
+                    <p className="text-xs sm:text-sm text-gray-600">These block other work</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {activeTasks
+                      .filter(
+                        t => t.priority === 'critical' && !isOverdue(t.due_date, t.specific_date)
+                      )
+                      .map(task => (
+                        <TaskItem key={task.id} task={task} />
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* IMPORTANT SECTION */}
+              {activeTasks.filter(
+                t => t.priority === 'important' && !isOverdue(t.due_date, t.specific_date)
+              ).length > 0 && (
+                <div>
+                  <div className="mb-3">
+                    <h2 className="text-base sm:text-lg font-bold text-amber-700">IMPORTANT (Next)</h2>
+                    <p className="text-xs sm:text-sm text-gray-600">Moves business forward</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {activeTasks
+                      .filter(
+                        t => t.priority === 'important' && !isOverdue(t.due_date, t.specific_date)
+                      )
+                      .map(task => (
+                        <TaskItem key={task.id} task={task} />
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* NICE-TO-DO SECTION */}
+              {activeTasks.filter(
+                t => t.priority === 'nice-to-do' && !isOverdue(t.due_date, t.specific_date)
+              ).length > 0 && (
+                <div>
+                  <div className="mb-3">
+                    <h2 className="text-base sm:text-lg font-bold text-green-700">NICE-TO-DO (If Time)</h2>
+                    <p className="text-xs sm:text-sm text-gray-600">Low priority, high value</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {activeTasks
+                      .filter(
+                        t => t.priority === 'nice-to-do' && !isOverdue(t.due_date, t.specific_date)
+                      )
+                      .map(task => (
+                        <TaskItem key={task.id} task={task} />
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* COMPLETED SECTION */}
+              {completedTasks.length > 0 && (
+                <div>
+                  <button
+                    onClick={() => setShowCompletedTasks(!showCompletedTasks)}
+                    className="flex items-center gap-2 text-base sm:text-lg font-bold text-green-700 hover:text-green-800 py-2"
+                  >
+                    <ChevronDown
+                      className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform ${
+                        showCompletedTasks ? 'rotate-180' : ''
+                      }`}
+                    />
+                    Completed Today ({completedTasks.length})
+                  </button>
+
+                  {showCompletedTasks && (
+                    <div className="space-y-2 mt-3">
+                      {completedTasks.map(task => (
+                        <TaskItem key={task.id} task={task} isCompleted={true} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-
-            {/* Load samples button - for testing */}
-            <button
-              onClick={handleLoadSamples}
-              className="text-xs text-gray-400 hover:text-gray-600 underline"
-            >
-              Load samples
-            </button>
-          </div>
+          )}
         </div>
-      </div>
-
-      {/* MAIN CONTENT */}
-      <div className="max-w-[1600px] mx-auto px-6 py-8">
-        {loading ? (
-          <div className="text-center py-12">
-            <p className="text-gray-600">Loading tasks...</p>
-          </div>
-        ) : activeTasks.length === 0 && completedTasks.length === 0 ? (
-          // EMPTY STATE
-          <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-            <p className="text-gray-600 mb-4">No tasks yet. You're free! 🎉</p>
-            <button
-              onClick={() => setShowForm(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Add your first task
-            </button>
-          </div>
-        ) : (
-          // TASK SECTIONS
-          <div className="space-y-6">
-            {/* 🔴 OVERDUE SECTION - AT TOP IF ANY EXIST */}
-            {activeTasks.filter(t => isOverdue(t.due_date, t.specific_date)).length > 0 && (
-              <div>
-                <div className="mb-3">
-                  <h2 className="text-lg font-bold text-red-700 flex items-center gap-2">
-                    <AlertCircle className="w-5 h-5" />
-                    OVERDUE (Deal with these first!)
-                  </h2>
-                  <p className="text-sm text-gray-600">
-                    {activeTasks.filter(t => isOverdue(t.due_date, t.specific_date)).length} task
-                    {activeTasks.filter(t => isOverdue(t.due_date, t.specific_date)).length !== 1
-                      ? 's'
-                      : ''}{' '}
-                    past due
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  {activeTasks
-                    .filter(t => isOverdue(t.due_date, t.specific_date))
-                    .map(task => (
-                      <TaskItem key={task.id} task={task} />
-                    ))}
-                </div>
-              </div>
-            )}
-
-            {/* 🔥 CRITICAL SECTION */}
-            {activeTasks.filter(
-              t => t.priority === 'critical' && !isOverdue(t.due_date, t.specific_date)
-            ).length > 0 && (
-              <div>
-                <div className="mb-3">
-                  <h2 className="text-lg font-bold text-red-700">🔥 CRITICAL (Do First)</h2>
-                  <p className="text-sm text-gray-600">These block other work</p>
-                </div>
-
-                <div className="space-y-2">
-                  {activeTasks
-                    .filter(
-                      t => t.priority === 'critical' && !isOverdue(t.due_date, t.specific_date)
-                    )
-                    .map(task => (
-                      <TaskItem key={task.id} task={task} />
-                    ))}
-                </div>
-              </div>
-            )}
-
-            {/* ⚡ IMPORTANT SECTION */}
-            {activeTasks.filter(
-              t => t.priority === 'important' && !isOverdue(t.due_date, t.specific_date)
-            ).length > 0 && (
-              <div>
-                <div className="mb-3">
-                  <h2 className="text-lg font-bold text-amber-700">⚡ IMPORTANT (Next)</h2>
-                  <p className="text-sm text-gray-600">Moves business forward</p>
-                </div>
-
-                <div className="space-y-2">
-                  {activeTasks
-                    .filter(
-                      t => t.priority === 'important' && !isOverdue(t.due_date, t.specific_date)
-                    )
-                    .map(task => (
-                      <TaskItem key={task.id} task={task} />
-                    ))}
-                </div>
-              </div>
-            )}
-
-            {/* ✨ NICE-TO-DO SECTION */}
-            {activeTasks.filter(
-              t => t.priority === 'nice-to-do' && !isOverdue(t.due_date, t.specific_date)
-            ).length > 0 && (
-              <div>
-                <div className="mb-3">
-                  <h2 className="text-lg font-bold text-green-700">✨ NICE-TO-DO (If Time)</h2>
-                  <p className="text-sm text-gray-600">Low priority, high value</p>
-                </div>
-
-                <div className="space-y-2">
-                  {activeTasks
-                    .filter(
-                      t => t.priority === 'nice-to-do' && !isOverdue(t.due_date, t.specific_date)
-                    )
-                    .map(task => (
-                      <TaskItem key={task.id} task={task} />
-                    ))}
-                </div>
-              </div>
-            )}
-
-            {/* ✅ COMPLETED SECTION */}
-            {completedTasks.length > 0 && (
-              <div>
-                <button
-                  onClick={() => setShowCompletedTasks(!showCompletedTasks)}
-                  className="flex items-center gap-2 text-lg font-bold text-green-700 hover:text-green-800 py-2"
-                >
-                  <ChevronDown
-                    className={`w-5 h-5 transition-transform ${
-                      showCompletedTasks ? 'rotate-180' : ''
-                    }`}
-                  />
-                  ✅ Completed Today ({completedTasks.length})
-                </button>
-
-                {showCompletedTasks && (
-                  <div className="space-y-2 mt-3">
-                    {completedTasks.map(task => (
-                      <TaskItem key={task.id} task={task} isCompleted={true} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* ADD TASK MODAL - Popup form */}
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Add Task</h2>
+          <div className="rounded-xl shadow-sm border border-gray-200 bg-white max-w-md w-full p-4 sm:p-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4 sm:mb-6">Add Task</h2>
 
             <form onSubmit={handleAddTask} className="space-y-4">
               {/* TITLE INPUT */}
@@ -549,14 +540,14 @@ export default function TodoPage() {
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   placeholder="e.g., Call CRM vendor"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-base"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm sm:text-base"
                 />
               </div>
 
               {/* PRIORITY BUTTONS */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {['critical', 'important', 'nice-to-do'].map(p => (
                     <button
                       key={p}
@@ -564,11 +555,10 @@ export default function TodoPage() {
                       onClick={() => setFormData({ ...formData, priority: p as TaskPriority })}
                       className={`px-3 py-2 rounded-lg border-2 font-medium text-sm transition-all ${
                         formData.priority === p
-                          ? 'border-teal-500 bg-teal-50'
+                          ? 'border-brand-orange-500 bg-brand-orange-50'
                           : 'border-gray-300 bg-white hover:border-gray-400'
                       }`}
                     >
-                      {p === 'critical' ? '🔥' : p === 'important' ? '⚡' : '✨'}{' '}
                       {p === 'critical' ? 'Critical' : p === 'important' ? 'Important' : 'Nice-to-do'}
                     </button>
                   ))}
@@ -592,7 +582,7 @@ export default function TodoPage() {
                       }
                       className={`px-3 py-2 rounded-lg border-2 font-medium text-sm transition-all ${
                         formData.due_date === d && !showDatePicker
-                          ? 'border-teal-500 bg-teal-50'
+                          ? 'border-brand-orange-500 bg-brand-orange-50'
                           : 'border-gray-300 bg-white hover:border-gray-400'
                       }`}
                     >
@@ -613,7 +603,7 @@ export default function TodoPage() {
                   onClick={() => setShowDatePicker(!showDatePicker)}
                   className={`w-full mt-2 px-3 py-2 rounded-lg border-2 font-medium text-sm transition-all flex items-center justify-center gap-2 ${
                     formData.due_date === 'custom'
-                      ? 'border-teal-500 bg-teal-50'
+                      ? 'border-brand-orange-500 bg-brand-orange-50'
                       : 'border-gray-300 bg-white hover:border-gray-400'
                   }`}
                 >
@@ -643,20 +633,20 @@ export default function TodoPage() {
               </div>
 
               {/* BUTTONS */}
-              <div className="flex gap-3 pt-6">
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 sm:pt-6">
                 <button
                   type="button"
                   onClick={() => {
                     setShowForm(false)
                     setShowDatePicker(false)
                   }}
-                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                  className="flex-1 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors font-medium"
+                  className="flex-1 px-4 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg transition-colors font-medium"
                 >
                   Add Task
                 </button>

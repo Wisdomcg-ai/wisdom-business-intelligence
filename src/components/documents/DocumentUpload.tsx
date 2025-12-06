@@ -108,15 +108,15 @@ export default function DocumentUpload({
         onClick={openFileDialog}
         className={`relative border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all ${
           dragActive
-            ? 'border-teal-500 bg-teal-50'
+            ? 'border-brand-orange-500 bg-brand-orange-50'
             : uploadSuccess
             ? 'border-green-500 bg-green-50'
-            : 'border-gray-300 hover:border-teal-400 hover:bg-gray-50'
+            : 'border-gray-300 hover:border-brand-orange-400 hover:bg-gray-50'
         }`}
       >
         {uploading ? (
           <div className="flex flex-col items-center">
-            <Loader2 className="w-12 h-12 text-teal-600 animate-spin mb-4" />
+            <Loader2 className="w-12 h-12 text-brand-orange animate-spin mb-4" />
             <p className="text-sm text-gray-600">Uploading...</p>
           </div>
         ) : uploadSuccess ? (

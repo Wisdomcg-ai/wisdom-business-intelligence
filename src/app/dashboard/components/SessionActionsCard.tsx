@@ -183,7 +183,7 @@ export function SessionActionsCard({ userId }: SessionActionsCardProps) {
             {overdueCount > 0 ? (
               <AlertTriangle className="w-5 h-5 text-red-500" />
             ) : (
-              <Target className="w-5 h-5 text-slate-600" />
+              <Target className="w-5 h-5 text-gray-600" />
             )}
           </div>
           <div>

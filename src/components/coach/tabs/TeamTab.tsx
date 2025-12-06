@@ -74,15 +74,15 @@ const ROLE_INFO = {
     label: 'Admin',
     description: 'Full access, can manage team members',
     icon: ShieldCheck,
-    color: 'text-indigo-600',
-    bgColor: 'bg-indigo-50'
+    color: 'text-brand-orange',
+    bgColor: 'bg-brand-orange-50'
   },
   member: {
     label: 'Member',
     description: 'Can view and edit business data',
     icon: Shield,
-    color: 'text-teal-600',
-    bgColor: 'bg-teal-50'
+    color: 'text-brand-orange',
+    bgColor: 'bg-brand-orange-50'
   },
   viewer: {
     label: 'Viewer',
@@ -329,7 +329,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
     return (
       <div className="p-6">
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
         </div>
       </div>
     )
@@ -341,8 +341,8 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-              <Users className="w-5 h-5 text-indigo-600" />
+            <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+              <Users className="w-5 h-5 text-brand-orange" />
             </div>
             Team Members
           </h2>
@@ -352,7 +352,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
         </div>
         <button
           onClick={() => setShowInviteModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
         >
           <UserPlus className="w-4 h-4" />
           Add Team Member
@@ -494,7 +494,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
               <p className="text-gray-500">No team members yet</p>
               <button
                 onClick={() => setShowInviteModal(true)}
-                className="mt-4 text-indigo-600 hover:text-indigo-700 font-medium"
+                className="mt-4 text-brand-orange hover:text-brand-orange-700 font-medium"
               >
                 Add the first team member
               </button>
@@ -553,7 +553,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => resendInvite(invite)}
-                        className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-gray-100"
+                        className="p-2 text-gray-400 hover:text-brand-orange rounded-lg hover:bg-gray-100"
                         title="Resend invite"
                       >
                         <Send className="w-4 h-4" />
@@ -606,7 +606,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
             <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 my-8">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-indigo-600" />
+                  <UserPlus className="w-5 h-5 text-brand-orange" />
                   Add Team Member
                 </h2>
                 <button
@@ -629,7 +629,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                       value={inviteForm.firstName}
                       onChange={(e) => setInviteForm({ ...inviteForm, firstName: e.target.value })}
                       placeholder="John"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
                     />
                   </div>
                   <div>
@@ -641,7 +641,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                       value={inviteForm.lastName}
                       onChange={(e) => setInviteForm({ ...inviteForm, lastName: e.target.value })}
                       placeholder="Smith"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
                     />
                   </div>
                 </div>
@@ -658,7 +658,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                       value={inviteForm.email}
                       onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
                       placeholder="john@company.com"
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
                     />
                   </div>
                 </div>
@@ -675,7 +675,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                       value={inviteForm.phone}
                       onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
                       placeholder="0400 000 000"
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
                     />
                   </div>
                 </div>
@@ -692,7 +692,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                       value={inviteForm.position}
                       onChange={(e) => setInviteForm({ ...inviteForm, position: e.target.value })}
                       placeholder="Operations Manager"
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
                     />
                   </div>
                 </div>
@@ -705,7 +705,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                   <select
                     value={inviteForm.role}
                     onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value as any })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
                   >
                     <option value="admin">Admin - Full access, can manage team</option>
                     <option value="member">Member - Can view and edit data</option>
@@ -738,7 +738,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                   <button
                     onClick={inviteTeamMember}
                     disabled={inviting || !inviteForm.email || !inviteForm.firstName}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     {inviting ? (
                       <>

@@ -22,7 +22,7 @@ export default function ErrorState({
 
   if (fullPage) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-orange-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-brand-orange-50 flex items-center justify-center p-4">
         <div className="max-w-md w-full text-center">
           <div className="mb-6 flex justify-center">
             <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center">
@@ -38,7 +38,7 @@ export default function ErrorState({
             {onRetry && (
               <button
                 onClick={onRetry}
-                className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 transition-colors"
+                className="flex items-center gap-2 px-6 py-3 bg-brand-orange text-white font-medium rounded-lg hover:bg-brand-orange-600 transition-colors"
               >
                 <RefreshCw className="w-4 h-4" />
                 Try Again

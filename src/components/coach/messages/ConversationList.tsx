@@ -88,7 +88,7 @@ export function ConversationList({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search conversations..."
-            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
           />
         </div>
       </div>
@@ -99,7 +99,7 @@ export function ConversationList({
           onClick={() => setFilter('all')}
           className={`px-3 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
             filter === 'all'
-              ? 'bg-indigo-100 text-indigo-700'
+              ? 'bg-brand-orange-100 text-brand-orange-700'
               : 'text-gray-600 hover:bg-gray-100'
           }`}
         >
@@ -109,7 +109,7 @@ export function ConversationList({
           onClick={() => setFilter('unread')}
           className={`px-3 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors flex items-center gap-1.5 ${
             filter === 'unread'
-              ? 'bg-indigo-100 text-indigo-700'
+              ? 'bg-brand-orange-100 text-brand-orange-700'
               : 'text-gray-600 hover:bg-gray-100'
           }`}
         >
@@ -124,7 +124,7 @@ export function ConversationList({
           onClick={() => setFilter('starred')}
           className={`px-3 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors flex items-center gap-1.5 ${
             filter === 'starred'
-              ? 'bg-indigo-100 text-indigo-700'
+              ? 'bg-brand-orange-100 text-brand-orange-700'
               : 'text-gray-600 hover:bg-gray-100'
           }`}
         >
@@ -135,7 +135,7 @@ export function ConversationList({
           onClick={() => setFilter('archived')}
           className={`px-3 py-1.5 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
             filter === 'archived'
-              ? 'bg-indigo-100 text-indigo-700'
+              ? 'bg-brand-orange-100 text-brand-orange-700'
               : 'text-gray-600 hover:bg-gray-100'
           }`}
         >
@@ -162,7 +162,7 @@ export function ConversationList({
                 onClick={() => onSelect(conversation)}
                 className={`p-4 cursor-pointer transition-colors ${
                   selectedId === conversation.id
-                    ? 'bg-indigo-50 border-l-2 border-indigo-600'
+                    ? 'bg-brand-orange-50 border-l-2 border-brand-orange'
                     : 'hover:bg-gray-50'
                 }`}
               >
@@ -170,7 +170,7 @@ export function ConversationList({
                   {/* Avatar */}
                   <div className="relative flex-shrink-0">
                     <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
-                      <Building2 className="w-5 h-5 text-slate-600" />
+                      <Building2 className="w-5 h-5 text-gray-600" />
                     </div>
                     {conversation.unreadCount > 0 && (
                       <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">

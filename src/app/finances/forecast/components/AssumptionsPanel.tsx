@@ -99,7 +99,7 @@ export default function AssumptionsPanel({
               type="number"
               value={config.base_amount || ''}
               onChange={(e) => handleConfigChange(category, 'base_amount', parseFloat(e.target.value) || 0)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-teal-500"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-brand-orange"
               placeholder="Enter amount per month"
             />
           </div>
@@ -115,7 +115,7 @@ export default function AssumptionsPanel({
                 step="0.1"
                 value={config.growth_rate ? config.growth_rate * 100 : ''}
                 onChange={(e) => handleConfigChange(category, 'growth_rate', parseFloat(e.target.value) / 100 || 0)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-teal-500"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-brand-orange"
                 placeholder="e.g., 5 for 5%"
               />
             </div>
@@ -124,7 +124,7 @@ export default function AssumptionsPanel({
               <select
                 value={config.growth_type || 'MoM'}
                 onChange={(e) => handleConfigChange(category, 'growth_type', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-teal-500"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-brand-orange"
               >
                 <option value="MoM">Month-over-Month (MoM)</option>
                 <option value="YoY">Year-over-Year (YoY)</option>
@@ -149,7 +149,7 @@ export default function AssumptionsPanel({
               step="0.1"
               value={config.driver_percentage ? config.driver_percentage * 100 : ''}
               onChange={(e) => handleConfigChange(category, 'driver_percentage', parseFloat(e.target.value) / 100 || 0)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-teal-500"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-brand-orange"
               placeholder="e.g., 40 for 40% of revenue"
             />
           </div>
@@ -176,7 +176,7 @@ export default function AssumptionsPanel({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-            <Settings className="w-5 h-5 text-slate-600" />
+            <Settings className="w-5 h-5 text-gray-600" />
           </div>
           <div>
             <h2 className="text-lg font-bold text-gray-900">Category Assumptions</h2>
@@ -241,7 +241,7 @@ export default function AssumptionsPanel({
                   <select
                     value={currentMethod}
                     onChange={(e) => handleMethodChange(category.key, e.target.value as ForecastMethod)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-teal-500 mb-2"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-brand-orange mb-2"
                   >
                     {FORECAST_METHODS.map(method => (
                       <option key={method.value} value={method.value}>
@@ -286,8 +286,8 @@ export default function AssumptionsPanel({
 
       {/* Special Note for Revenue */}
       {isEditing && (
-        <div className="mt-4 p-3 bg-teal-50 border border-teal-200 rounded-lg">
-          <p className="text-xs text-teal-800">
+        <div className="mt-4 p-3 bg-brand-orange-50 border border-brand-orange-200 rounded-lg">
+          <p className="text-xs text-brand-orange-800">
             <strong>Note:</strong> Revenue forecast will be based on the Distribution Strategy you've set above.
             The method selected here applies to subcategories and individual line items within Revenue.
           </p>

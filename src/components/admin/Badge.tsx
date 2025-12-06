@@ -2,7 +2,7 @@
 
 import { LucideIcon } from 'lucide-react'
 
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'purple'
+type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'primary'
 
 interface BadgeProps {
   children: React.ReactNode
@@ -13,21 +13,21 @@ interface BadgeProps {
 }
 
 const variantClasses = {
-  success: 'bg-green-100 text-green-700 border-green-200',
+  success: 'bg-brand-teal-100 text-brand-teal-700 border-brand-teal-200',
   warning: 'bg-amber-100 text-amber-700 border-amber-200',
   danger: 'bg-red-100 text-red-700 border-red-200',
-  info: 'bg-blue-100 text-blue-700 border-blue-200',
-  neutral: 'bg-slate-100 text-slate-600 border-slate-200',
-  purple: 'bg-purple-100 text-purple-700 border-purple-200',
+  info: 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-200',
+  neutral: 'bg-slate-100 text-gray-600 border-slate-200',
+  primary: 'bg-brand-navy-50 text-brand-navy border-brand-navy-200',
 }
 
 const pulseColors = {
-  success: 'bg-green-500',
+  success: 'bg-brand-teal',
   warning: 'bg-amber-500',
   danger: 'bg-red-500',
-  info: 'bg-blue-500',
-  neutral: 'bg-slate-500',
-  purple: 'bg-purple-500',
+  info: 'bg-brand-orange',
+  neutral: 'bg-gray-500',
+  primary: 'bg-brand-navy',
 }
 
 const sizeClasses = {
@@ -90,7 +90,7 @@ interface RoleBadgeProps {
 }
 
 const roleConfig = {
-  super_admin: { label: 'Admin', variant: 'purple' as BadgeVariant },
+  super_admin: { label: 'Admin', variant: 'primary' as BadgeVariant },
   coach: { label: 'Coach', variant: 'info' as BadgeVariant },
   client: { label: 'Client', variant: 'neutral' as BadgeVariant },
 }

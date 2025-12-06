@@ -172,9 +172,9 @@ export default function Step5SprintPlanning({
       icon: Target,
       description: 'Break down quarterly targets into monthly goals',
       color: 'from-slate-600 to-slate-700',
-      bgColor: 'bg-slate-50',
+      bgColor: 'bg-gray-50',
       borderColor: 'border-slate-500',
-      textColor: 'text-slate-700'
+      textColor: 'text-gray-700'
     },
     {
       id: 'initiatives',
@@ -182,10 +182,10 @@ export default function Step5SprintPlanning({
       icon: Flag,
       badge: initiatives.length,
       description: 'Plan and track strategic initiatives',
-      color: 'from-teal-600 to-teal-700',
-      bgColor: 'bg-teal-50',
-      borderColor: 'border-teal-500',
-      textColor: 'text-teal-700'
+      color: 'from-brand-orange to-brand-orange-700',
+      bgColor: 'bg-brand-orange-50',
+      borderColor: 'border-brand-orange-500',
+      textColor: 'text-brand-orange-700'
     },
     {
       id: 'operational',
@@ -193,9 +193,9 @@ export default function Step5SprintPlanning({
       icon: Briefcase,
       description: 'Weekly execution and accountability',
       color: 'from-slate-600 to-slate-700',
-      bgColor: 'bg-slate-50',
+      bgColor: 'bg-gray-50',
       borderColor: 'border-slate-500',
-      textColor: 'text-slate-700'
+      textColor: 'text-gray-700'
     }
   ], [initiatives.length])
 
@@ -377,11 +377,11 @@ export default function Step5SprintPlanning({
   return (
     <div className="space-y-6">
       {/* Task Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-4 text-white">
+      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-4 text-white">
         <p className="text-base font-medium">
           📋 <strong>YOUR TASK:</strong> Plan your next 90 days - review initiatives and define operational activities
         </p>
-        <p className="text-sm text-teal-100 mt-1">
+        <p className="text-sm text-brand-orange-100 mt-1">
           {currentQuarter.label} • {currentQuarter.months} • {yearType} {planYear}
         </p>
       </div>
@@ -479,8 +479,8 @@ export default function Step5SprintPlanning({
                       {tab.badge !== undefined && tab.badge > 0 && (
                         <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
                           isActive
-                            ? 'bg-white text-teal-700'
-                            : 'bg-teal-100 text-teal-700'
+                            ? 'bg-white text-brand-orange-700'
+                            : 'bg-brand-orange-100 text-brand-orange-700'
                         }`}>
                           {tab.badge}
                         </span>
@@ -640,9 +640,9 @@ function MonthlyGoalsTab({
   return (
     <div className="space-y-6">
       {/* Intro Text */}
-      <div className="bg-gradient-to-r from-teal-50 to-slate-50 border border-teal-200 rounded-lg p-5">
+      <div className="bg-gradient-to-r from-brand-orange-50 to-slate-50 border border-brand-orange-200 rounded-lg p-5">
         <p className="text-base text-gray-800 leading-relaxed">
-          <strong className="text-teal-700">Your {currentQuarter.label} Sprint</strong> - This is where strategy meets execution. Break down your quarterly targets into monthly goals and define the specific actions that will drive results.
+          <strong className="text-brand-orange-700">Your {currentQuarter.label} Sprint</strong> - This is where strategy meets execution. Break down your quarterly targets into monthly goals and define the specific actions that will drive results.
         </p>
         <p className="text-sm text-gray-600 mt-2">
           The initiatives below were assigned to {currentQuarter.label} in your Annual Plan.
@@ -661,13 +661,13 @@ function MonthlyGoalsTab({
         <div className="bg-white rounded-lg shadow-sm border border-slate-200">
           <button
             onClick={() => setShowFinancialTargets(!showFinancialTargets)}
-            className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
           >
-            <h4 className="text-sm font-semibold text-slate-900">Financial Targets</h4>
+            <h4 className="text-sm font-semibold text-brand-navy">Financial Targets</h4>
             {showFinancialTargets ? (
-              <ChevronUp className="w-5 h-5 text-slate-600" />
+              <ChevronUp className="w-5 h-5 text-gray-600" />
             ) : (
-              <ChevronDown className="w-5 h-5 text-slate-600" />
+              <ChevronDown className="w-5 h-5 text-gray-600" />
             )}
           </button>
           {showFinancialTargets && (
@@ -681,29 +681,29 @@ function MonthlyGoalsTab({
               <col style={{ width: '16%' }} />
               <col style={{ width: '16%' }} />
             </colgroup>
-            <thead className="bg-slate-50">
+            <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900 border-b border-r border-slate-200">Metric</th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">{currentQuarter.label} Target</th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-brand-navy border-b border-r border-slate-200">Metric</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">{currentQuarter.label} Target</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">
                   <div className="flex flex-col items-center">
                     <span>Month 1</span>
                     <span className="text-[10px] font-normal text-gray-500">{month1Name}</span>
                   </div>
                 </th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">
                   <div className="flex flex-col items-center">
                     <span>Month 2</span>
                     <span className="text-[10px] font-normal text-gray-500">{month2Name}</span>
                   </div>
                 </th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">
                   <div className="flex flex-col items-center">
                     <span>Month 3</span>
                     <span className="text-[10px] font-normal text-gray-500">{month3Name}</span>
                   </div>
                 </th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-slate-200">Total</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-slate-200">Total</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
@@ -715,8 +715,8 @@ function MonthlyGoalsTab({
                 const isValid = Math.abs(variance) < 1
                 return (
                   <tr>
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Revenue</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                    <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Revenue</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                       {formatCurrencyValue(quarterlyTarget)}
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -725,7 +725,7 @@ function MonthlyGoalsTab({
                         value={formatCurrencyValue(monthlyTargets.month1.revenue)}
                         onChange={(e) => updateMonthlyTarget('month1', 'revenue', parseCurrencyInput(e.target.value))}
                         placeholder="$0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -734,7 +734,7 @@ function MonthlyGoalsTab({
                         value={formatCurrencyValue(monthlyTargets.month2.revenue)}
                         onChange={(e) => updateMonthlyTarget('month2', 'revenue', parseCurrencyInput(e.target.value))}
                         placeholder="$0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -743,7 +743,7 @@ function MonthlyGoalsTab({
                         value={formatCurrencyValue(monthlyTargets.month3.revenue)}
                         onChange={(e) => updateMonthlyTarget('month3', 'revenue', parseCurrencyInput(e.target.value))}
                         placeholder="$0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className={`px-4 py-3 text-sm font-bold text-center border-l border-slate-200 ${isValid ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
@@ -762,8 +762,8 @@ function MonthlyGoalsTab({
                 const isValid = Math.abs(variance) < 1
                 return (
                   <tr>
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Gross Profit</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                    <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Gross Profit</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                       {formatCurrencyValue(quarterlyTarget)}
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -772,7 +772,7 @@ function MonthlyGoalsTab({
                         value={formatCurrencyValue(monthlyTargets.month1.grossProfit)}
                         onChange={(e) => updateMonthlyTarget('month1', 'grossProfit', parseCurrencyInput(e.target.value))}
                         placeholder="$0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -781,7 +781,7 @@ function MonthlyGoalsTab({
                         value={formatCurrencyValue(monthlyTargets.month2.grossProfit)}
                         onChange={(e) => updateMonthlyTarget('month2', 'grossProfit', parseCurrencyInput(e.target.value))}
                         placeholder="$0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -790,7 +790,7 @@ function MonthlyGoalsTab({
                         value={formatCurrencyValue(monthlyTargets.month3.grossProfit)}
                         onChange={(e) => updateMonthlyTarget('month3', 'grossProfit', parseCurrencyInput(e.target.value))}
                         placeholder="$0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className={`px-4 py-3 text-sm font-bold text-center border-l border-slate-200 ${isValid ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
@@ -806,26 +806,26 @@ function MonthlyGoalsTab({
                 const quarterlyTarget = getQuarterlyTarget('grossMargin')
                 const avg = (month1GrossMargin + month2GrossMargin + month3GrossMargin) / 3
                 return (
-                  <tr className="bg-teal-50">
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">
+                  <tr className="bg-brand-orange-50">
+                    <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">
                       Gross Margin
-                      <div className="text-[10px] font-normal text-teal-600">Auto-calculated</div>
+                      <div className="text-[10px] font-normal text-brand-orange">Auto-calculated</div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                    <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                       {quarterlyTarget > 0 ? `${quarterlyTarget}%` : '-'}
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
-                      <div className="px-2 py-2 bg-teal-100 rounded-md text-sm text-center font-medium text-slate-700 border border-teal-200">
+                      <div className="px-2 py-2 bg-brand-orange-100 rounded-md text-sm text-center font-medium text-gray-700 border border-brand-orange-200">
                         {month1GrossMargin > 0 ? `${month1GrossMargin.toFixed(1)}%` : '-'}
                       </div>
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
-                      <div className="px-2 py-2 bg-teal-100 rounded-md text-sm text-center font-medium text-slate-700 border border-teal-200">
+                      <div className="px-2 py-2 bg-brand-orange-100 rounded-md text-sm text-center font-medium text-gray-700 border border-brand-orange-200">
                         {month2GrossMargin > 0 ? `${month2GrossMargin.toFixed(1)}%` : '-'}
                       </div>
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
-                      <div className="px-2 py-2 bg-teal-100 rounded-md text-sm text-center font-medium text-slate-700 border border-teal-200">
+                      <div className="px-2 py-2 bg-brand-orange-100 rounded-md text-sm text-center font-medium text-gray-700 border border-brand-orange-200">
                         {month3GrossMargin > 0 ? `${month3GrossMargin.toFixed(1)}%` : '-'}
                       </div>
                     </td>
@@ -845,8 +845,8 @@ function MonthlyGoalsTab({
                 const isValid = Math.abs(variance) < 1
                 return (
                   <tr>
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Net Profit</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                    <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Net Profit</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                       {formatCurrencyValue(quarterlyTarget)}
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -855,7 +855,7 @@ function MonthlyGoalsTab({
                         value={formatCurrencyValue(monthlyTargets.month1.netProfit)}
                         onChange={(e) => updateMonthlyTarget('month1', 'netProfit', parseCurrencyInput(e.target.value))}
                         placeholder="$0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -864,7 +864,7 @@ function MonthlyGoalsTab({
                         value={formatCurrencyValue(monthlyTargets.month2.netProfit)}
                         onChange={(e) => updateMonthlyTarget('month2', 'netProfit', parseCurrencyInput(e.target.value))}
                         placeholder="$0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -873,7 +873,7 @@ function MonthlyGoalsTab({
                         value={formatCurrencyValue(monthlyTargets.month3.netProfit)}
                         onChange={(e) => updateMonthlyTarget('month3', 'netProfit', parseCurrencyInput(e.target.value))}
                         placeholder="$0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className={`px-4 py-3 text-sm font-bold text-center border-l border-slate-200 ${isValid ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
@@ -889,26 +889,26 @@ function MonthlyGoalsTab({
                 const quarterlyTarget = getQuarterlyTarget('netMargin')
                 const avg = (month1NetMargin + month2NetMargin + month3NetMargin) / 3
                 return (
-                  <tr className="bg-teal-50">
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">
+                  <tr className="bg-brand-orange-50">
+                    <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">
                       Net Margin
-                      <div className="text-[10px] font-normal text-teal-600">Auto-calculated</div>
+                      <div className="text-[10px] font-normal text-brand-orange">Auto-calculated</div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                    <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                       {quarterlyTarget > 0 ? `${quarterlyTarget}%` : '-'}
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
-                      <div className="px-2 py-2 bg-teal-100 rounded-md text-sm text-center font-medium text-slate-700 border border-teal-200">
+                      <div className="px-2 py-2 bg-brand-orange-100 rounded-md text-sm text-center font-medium text-gray-700 border border-brand-orange-200">
                         {month1NetMargin > 0 ? `${month1NetMargin.toFixed(1)}%` : '-'}
                       </div>
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
-                      <div className="px-2 py-2 bg-teal-100 rounded-md text-sm text-center font-medium text-slate-700 border border-teal-200">
+                      <div className="px-2 py-2 bg-brand-orange-100 rounded-md text-sm text-center font-medium text-gray-700 border border-brand-orange-200">
                         {month2NetMargin > 0 ? `${month2NetMargin.toFixed(1)}%` : '-'}
                       </div>
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
-                      <div className="px-2 py-2 bg-teal-100 rounded-md text-sm text-center font-medium text-slate-700 border border-teal-200">
+                      <div className="px-2 py-2 bg-brand-orange-100 rounded-md text-sm text-center font-medium text-gray-700 border border-brand-orange-200">
                         {month3NetMargin > 0 ? `${month3NetMargin.toFixed(1)}%` : '-'}
                       </div>
                     </td>
@@ -931,13 +931,13 @@ function MonthlyGoalsTab({
         <div className="bg-white rounded-lg shadow-sm border border-slate-200">
           <button
             onClick={() => setShowCoreMetrics(!showCoreMetrics)}
-            className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
           >
-            <h4 className="text-sm font-semibold text-slate-900">Core Business Metrics</h4>
+            <h4 className="text-sm font-semibold text-brand-navy">Core Business Metrics</h4>
             {showCoreMetrics ? (
-              <ChevronUp className="w-5 h-5 text-slate-600" />
+              <ChevronUp className="w-5 h-5 text-gray-600" />
             ) : (
-              <ChevronDown className="w-5 h-5 text-slate-600" />
+              <ChevronDown className="w-5 h-5 text-gray-600" />
             )}
           </button>
           {showCoreMetrics && (
@@ -951,29 +951,29 @@ function MonthlyGoalsTab({
               <col style={{ width: '16%' }} />
               <col style={{ width: '16%' }} />
             </colgroup>
-            <thead className="bg-slate-50">
+            <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900 border-b border-r border-slate-200">Metric</th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">{currentQuarter.label} Target</th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-brand-navy border-b border-r border-slate-200">Metric</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">{currentQuarter.label} Target</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">
                   <div className="flex flex-col items-center">
                     <span>Month 1</span>
                     <span className="text-[10px] font-normal text-gray-500">{month1Name}</span>
                   </div>
                 </th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">
                   <div className="flex flex-col items-center">
                     <span>Month 2</span>
                     <span className="text-[10px] font-normal text-gray-500">{month2Name}</span>
                   </div>
                 </th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">
                   <div className="flex flex-col items-center">
                     <span>Month 3</span>
                     <span className="text-[10px] font-normal text-gray-500">{month3Name}</span>
                   </div>
                 </th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-slate-200">Total</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-slate-200">Total</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
@@ -982,29 +982,29 @@ function MonthlyGoalsTab({
                 const quarterlyTarget = getQuarterlyTarget('leadsPerMonth')
                 return (
                   <tr>
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Leads Per Month</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                    <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Leads Per Month</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                       {quarterlyTarget > 0 ? Math.round(quarterlyTarget) : '-'}
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder="0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder="0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder="0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-3 text-sm font-bold text-center border-l border-slate-200 bg-slate-100">
@@ -1020,29 +1020,29 @@ function MonthlyGoalsTab({
                 const quarterlyTarget = getQuarterlyTarget('conversionRate')
                 return (
                   <tr className="bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Conversion Rate</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                    <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Conversion Rate</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                       {quarterlyTarget > 0 ? `${quarterlyTarget}%` : '-'}
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder="0%"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder="0%"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder="0%"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-3 text-sm font-bold text-center border-l border-slate-200 bg-slate-100">
@@ -1058,29 +1058,29 @@ function MonthlyGoalsTab({
                 const quarterlyTarget = getQuarterlyTarget('avgTransactionValue')
                 return (
                   <tr>
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Avg Transaction Value</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                    <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Avg Transaction Value</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                       {quarterlyTarget > 0 ? formatCurrencyValue(quarterlyTarget) : '-'}
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder="$0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder="$0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder="$0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-3 text-sm font-bold text-center border-l border-slate-200 bg-slate-100">
@@ -1097,8 +1097,8 @@ function MonthlyGoalsTab({
                 const avg = (monthlyTargets.month1.employees + monthlyTargets.month2.employees + monthlyTargets.month3.employees) / 3
                 return (
                   <tr>
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Team Headcount</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                    <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Team Headcount</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                       {quarterlyTarget > 0 ? Math.round(quarterlyTarget) : '-'}
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -1107,7 +1107,7 @@ function MonthlyGoalsTab({
                         value={monthlyTargets.month1.employees || ''}
                         onChange={(e) => updateMonthlyTarget('month1', 'employees', e.target.value)}
                         placeholder="0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -1116,7 +1116,7 @@ function MonthlyGoalsTab({
                         value={monthlyTargets.month2.employees || ''}
                         onChange={(e) => updateMonthlyTarget('month2', 'employees', e.target.value)}
                         placeholder="0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -1125,7 +1125,7 @@ function MonthlyGoalsTab({
                         value={monthlyTargets.month3.employees || ''}
                         onChange={(e) => updateMonthlyTarget('month3', 'employees', e.target.value)}
                         placeholder="0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-3 text-sm font-bold text-center border-l border-slate-200 bg-slate-100">
@@ -1141,29 +1141,29 @@ function MonthlyGoalsTab({
                 const quarterlyTarget = getQuarterlyTarget('ownerHoursPerWeek')
                 return (
                   <tr>
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Owner Hours Per Week</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                    <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Owner Hours Per Week</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                       {quarterlyTarget > 0 ? `${Math.round(quarterlyTarget)} hrs` : '-'}
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder="0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder="0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder="0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-3 text-sm font-bold text-center border-l border-slate-200 bg-slate-100">
@@ -1182,8 +1182,8 @@ function MonthlyGoalsTab({
                 const isValid = Math.abs(variance) < 1
                 return (
                   <tr>
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">New Customers</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                    <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">New Customers</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                       {quarterlyTarget > 0 ? Math.round(quarterlyTarget) : '-'}
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -1192,7 +1192,7 @@ function MonthlyGoalsTab({
                         value={monthlyTargets.month1.customers || ''}
                         onChange={(e) => updateMonthlyTarget('month1', 'customers', e.target.value)}
                         placeholder="0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -1201,7 +1201,7 @@ function MonthlyGoalsTab({
                         value={monthlyTargets.month2.customers || ''}
                         onChange={(e) => updateMonthlyTarget('month2', 'customers', e.target.value)}
                         placeholder="0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
@@ -1210,7 +1210,7 @@ function MonthlyGoalsTab({
                         value={monthlyTargets.month3.customers || ''}
                         onChange={(e) => updateMonthlyTarget('month3', 'customers', e.target.value)}
                         placeholder="0"
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className={`px-4 py-3 text-sm font-bold text-center border-l border-slate-200 ${isValid ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
@@ -1232,13 +1232,13 @@ function MonthlyGoalsTab({
         <div className="bg-white rounded-lg shadow-sm border border-slate-200">
           <button
             onClick={() => setShowKPIs(!showKPIs)}
-            className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
           >
-            <h4 className="text-sm font-semibold text-slate-900">Key Performance Indicators</h4>
+            <h4 className="text-sm font-semibold text-brand-navy">Key Performance Indicators</h4>
             {showKPIs ? (
-              <ChevronUp className="w-5 h-5 text-slate-600" />
+              <ChevronUp className="w-5 h-5 text-gray-600" />
             ) : (
-              <ChevronDown className="w-5 h-5 text-slate-600" />
+              <ChevronDown className="w-5 h-5 text-gray-600" />
             )}
           </button>
           {showKPIs && (
@@ -1252,29 +1252,29 @@ function MonthlyGoalsTab({
               <col style={{ width: '16%' }} />
               <col style={{ width: '16%' }} />
             </colgroup>
-            <thead className="bg-slate-50">
+            <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900 border-b border-r border-slate-200">KPI</th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">{currentQuarter.label} Target</th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-brand-navy border-b border-r border-slate-200">KPI</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">{currentQuarter.label} Target</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">
                   <div className="flex flex-col items-center">
                     <span>Month 1</span>
                     <span className="text-[10px] font-normal text-gray-500">{month1Name}</span>
                   </div>
                 </th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">
                   <div className="flex flex-col items-center">
                     <span>Month 2</span>
                     <span className="text-[10px] font-normal text-gray-500">{month2Name}</span>
                   </div>
                 </th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">
                   <div className="flex flex-col items-center">
                     <span>Month 3</span>
                     <span className="text-[10px] font-normal text-gray-500">{month3Name}</span>
                   </div>
                 </th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-slate-200">Total/Avg</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-slate-200">Total/Avg</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
@@ -1301,31 +1301,31 @@ function MonthlyGoalsTab({
 
                 return (
                   <tr key={kpi.id}>
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">
+                    <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">
                       {kpi.friendlyName || kpi.name}
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                    <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                       {quarterlyTarget > 0 ? formatKPIValue(quarterlyTarget) : '-'}
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder={isCurrency ? '$0' : isPercentage ? '0%' : '0'}
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder={isCurrency ? '$0' : isPercentage ? '0%' : '0'}
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-2 border-r border-slate-200">
                       <input
                         type="text"
                         placeholder={isCurrency ? '$0' : isPercentage ? '0%' : '0'}
-                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 border-gray-300"
+                        className="w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 border-gray-300"
                       />
                     </td>
                     <td className="px-4 py-3 text-sm font-bold text-center border-l border-slate-200 bg-slate-100">
@@ -1343,10 +1343,10 @@ function MonthlyGoalsTab({
       )}
 
       {/* Info Box */}
-      <div className="p-4 bg-teal-50 border border-teal-200 rounded-lg">
+      <div className="p-4 bg-brand-orange-50 border border-brand-orange-200 rounded-lg">
         <div className="flex gap-3">
-          <AlertCircle className="w-5 h-5 text-teal-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-teal-900">
+          <AlertCircle className="w-5 h-5 text-brand-orange flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-brand-navy">
             <p className="font-semibold mb-1">Adjust for Seasonality</p>
             <p>These targets default to an even split of your quarterly goals. Adjust each month based on your business seasonality, sales cycles, or planned initiatives. The total should match your quarterly target shown in the second column.</p>
           </div>
@@ -1571,7 +1571,7 @@ function InitiativesTab({
           disabled={!canAddMoreInitiatives}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
             canAddMoreInitiatives
-              ? 'bg-[#4C5D75] text-white hover:bg-[#3E3F57]'
+              ? 'bg-brand-navy text-white hover:bg-brand-navy-700'
               : 'bg-gray-200 text-gray-400 cursor-not-allowed'
           }`}
         >
@@ -1600,7 +1600,7 @@ function InitiativesTab({
           </div>
         </div>
 
-        <div className="p-4 bg-slate-50 border-2 border-slate-200 rounded-lg">
+        <div className="p-4 bg-gray-50 border-2 border-slate-200 rounded-lg">
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5 text-[#4C5D75]" />
             <div>
@@ -1615,7 +1615,7 @@ function InitiativesTab({
 
       {/* Initiatives List */}
       {initiatives.length === 0 ? (
-        <div className="text-center py-12 bg-slate-50 rounded-lg border-2 border-dashed border-slate-300">
+        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-slate-300">
           <Flag className="w-12 h-12 mx-auto mb-4 text-gray-400" />
           <h4 className="text-lg font-semibold text-gray-900 mb-2">No Initiatives or Projects Yet</h4>
           <p className="text-sm text-gray-600 mb-4">
@@ -1623,7 +1623,7 @@ function InitiativesTab({
           </p>
           <button
             onClick={() => setShowAddInitiative(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-[#4C5D75] text-white rounded-lg hover:bg-[#3E3F57] font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-700 font-medium"
           >
             <Plus className="w-5 h-5" />
             Add First Item
@@ -1730,14 +1730,14 @@ function InitiativeCard({
       {/* Card Header */}
       <div
         onClick={onToggle}
-        className="flex items-center justify-between p-4 cursor-pointer hover:bg-[#4C5D75]/5 hover:border-[#4C5D75]/40 transition-all"
+        className="flex items-center justify-between p-4 cursor-pointer hover:bg-brand-navy/5 hover:border-brand-navy/40 transition-all"
       >
         <div className="flex items-center gap-3 flex-1">
           {/* Drag Handle (visual only for now) */}
           <GripVertical className="w-4 h-4 text-gray-400 flex-shrink-0" />
 
           {/* Priority Number */}
-          <div className="flex items-center justify-center w-7 h-7 bg-[#4C5D75] text-white rounded-full text-sm font-bold flex-shrink-0">
+          <div className="flex items-center justify-center w-7 h-7 bg-brand-navy text-white rounded-full text-sm font-bold flex-shrink-0">
             {index + 1}
           </div>
 
@@ -1753,7 +1753,7 @@ function InitiativeCard({
               <span className={`inline-block px-2 py-0.5 text-[10px] rounded font-semibold ${
                 isUserIdea
                   ? 'bg-slate-800 text-white'
-                  : 'bg-teal-600 text-white'
+                  : 'bg-brand-orange text-white'
               }`}>
                 {isUserIdea ? 'YOUR IDEA' : 'ROADMAP'}
               </span>
@@ -1797,7 +1797,7 @@ function InitiativeCard({
             <div className="flex items-center gap-3 flex-shrink-0">
               <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-[#7BA082] transition-all"
+                  className="h-full bg-green-500 transition-all"
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -1827,7 +1827,7 @@ function InitiativeCard({
 
       {/* Card Content */}
       {isExpanded && (
-        <div className="border-t border-slate-200 p-6 bg-slate-50 space-y-6">
+        <div className="border-t border-slate-200 p-6 bg-gray-50 space-y-6">
           {/* Project Plan Header */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -1895,21 +1895,21 @@ function InitiativeCard({
                           e.stopPropagation()
                           setShowAssignmentFor(isShowingAssignment ? null : `init-${initiative.id}`)
                         }}
-                        className="w-full flex items-center justify-between gap-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-slate-50 transition-colors"
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                       >
                         {assignedMember ? (
                           <>
                             <div className={`w-6 h-6 rounded-full ${assignedMember.color} flex items-center justify-center flex-shrink-0`}>
                               <span className="text-white text-xs font-bold">{assignedMember.initials}</span>
                             </div>
-                            <span className="text-sm font-medium text-slate-900 flex-1 text-left">{assignedMember.name}</span>
+                            <span className="text-sm font-medium text-brand-navy flex-1 text-left">{assignedMember.name}</span>
                           </>
                         ) : (
                           <>
                             <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
                               <UserPlus className="w-3.5 h-3.5 text-slate-400" />
                             </div>
-                            <span className="text-sm text-slate-500 flex-1 text-left">Assign to...</span>
+                            <span className="text-sm text-gray-500 flex-1 text-left">Assign to...</span>
                           </>
                         )}
                         <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isShowingAssignment ? 'rotate-180' : ''}`} />
@@ -1932,7 +1932,7 @@ function InitiativeCard({
                                   }
                                 }}
                                 disabled={isOverLimit}
-                                className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-b-0 ${
+                                className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-slate-100 last:border-b-0 ${
                                   isOverLimit ? 'opacity-50 cursor-not-allowed' : ''
                                 }`}
                               >
@@ -1940,13 +1940,13 @@ function InitiativeCard({
                                   <span className="text-white text-sm font-bold">{member.initials}</span>
                                 </div>
                                 <div className="flex-1 text-left">
-                                  <div className="text-sm font-medium text-slate-900">
+                                  <div className="text-sm font-medium text-brand-navy">
                                     {member.name}{typeLabel}
                                   </div>
-                                  <div className="text-xs text-slate-500">{member.role}</div>
+                                  <div className="text-xs text-gray-500">{member.role}</div>
                                 </div>
                                 {count > 0 && (
-                                  <div className="text-xs text-slate-500">
+                                  <div className="text-xs text-gray-500">
                                     {count} {isOverLimit ? '(Max reached)' : ''}
                                   </div>
                                 )}
@@ -1959,7 +1959,7 @@ function InitiativeCard({
                               setShowAssignmentFor(null)
                               onAddTeamMember()
                             }}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-[#4C5D75] hover:bg-slate-50 transition-colors font-medium"
+                            className="w-full flex items-center gap-3 px-4 py-3 text-[#4C5D75] hover:bg-gray-50 transition-colors font-medium"
                           >
                             <Plus className="w-5 h-5" />
                             Add New Person...
@@ -1989,7 +1989,7 @@ function InitiativeCard({
                     milestones: [...(initiative.milestones || []), newMilestone]
                   })
                 }}
-                className="flex items-center gap-2 px-3 py-2 bg-[#7BA082] text-white rounded-lg hover:bg-[#6A8F71] text-sm font-medium"
+                className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
               >
                 <Plus className="w-4 h-4" />
                 Add Milestone
@@ -2011,7 +2011,7 @@ function InitiativeCard({
                       milestones: [...(initiative.milestones || []), newMilestone]
                     })
                   }}
-                  className="inline-flex items-center gap-2 px-3 py-2 bg-[#7BA082] text-white rounded-lg hover:bg-[#6A8F71] text-sm font-medium"
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
                 >
                   <Plus className="w-4 h-4" />
                   Add First Milestone
@@ -2030,7 +2030,7 @@ function InitiativeCard({
                         )
                         onUpdate({ milestones: updatedMilestones })
                       }}
-                      className="w-5 h-5 text-[#7BA082] rounded focus:ring-[#7BA082]"
+                      className="w-5 h-5 text-green-600 rounded focus:ring-green-500"
                     />
                     <input
                       type="text"
@@ -2076,7 +2076,7 @@ function InitiativeCard({
               <h5 className="text-lg font-bold text-gray-900">Task Breakdown</h5>
               <button
                 onClick={onAddTask}
-                className="flex items-center gap-2 px-3 py-2 bg-[#4C5D75] text-white rounded-lg hover:bg-[#3E3F57] text-sm font-medium"
+                className="flex items-center gap-2 px-3 py-2 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-700 text-sm font-medium"
               >
                 <Plus className="w-4 h-4" />
                 Add Task
@@ -2088,7 +2088,7 @@ function InitiativeCard({
                 <p className="text-sm text-gray-600 mb-3">No tasks yet. Break down this initiative into specific actions.</p>
                 <button
                   onClick={onAddTask}
-                  className="inline-flex items-center gap-2 px-3 py-2 bg-[#4C5D75] text-white rounded-lg hover:bg-[#3E3F57] text-sm font-medium"
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-700 text-sm font-medium"
                 >
                   <Plus className="w-4 h-4" />
                   Add First Task
@@ -2098,7 +2098,7 @@ function InitiativeCard({
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse bg-white rounded-lg overflow-hidden">
                   <thead>
-                    <tr className="bg-[#4C5D75] text-white">
+                    <tr className="bg-brand-navy text-white">
                       <th className="px-4 py-3 text-left text-sm font-semibold">Task</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold w-48">Assigned To</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold w-32">Minutes</th>
@@ -2155,11 +2155,11 @@ function TaskRow({ task, teamMembers, onUpdate, onDelete, onAddTeamMember }: Tas
   const getStatusColor = (status: TaskStatus) => {
     switch (status) {
       case 'not_started':
-        return 'bg-[#B85450]/10 text-[#B85450] border-[#B85450]/30'
+        return 'bg-red-100 text-red-700 border-red-300'
       case 'in_progress':
-        return 'bg-[#948687]/15 text-[#948687] border-[#948687]/40'
+        return 'bg-gray-100 text-gray-600 border-gray-300'
       case 'done':
-        return 'bg-[#7BA082]/10 text-[#7BA082] border-[#7BA082]/30'
+        return 'bg-green-100 text-green-700 border-green-300'
       default:
         return 'bg-gray-100 text-gray-600 border-gray-300'
     }
@@ -2175,7 +2175,7 @@ function TaskRow({ task, teamMembers, onUpdate, onDelete, onAddTeamMember }: Tas
   }
 
   return (
-    <tr className="hover:bg-slate-50">
+    <tr className="hover:bg-gray-50">
       <td className="px-4 py-3">
         <input
           type="text"
@@ -2297,7 +2297,7 @@ function AddInitiativeModal({ onClose, onAdd }: AddInitiativeModalProps) {
               <button
                 type="submit"
                 disabled={!title.trim()}
-                className="px-4 py-2 bg-[#4C5D75] text-white rounded-lg hover:bg-[#3E3F57] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Add
               </button>
@@ -2385,7 +2385,7 @@ function AddTeamMemberModal({ onClose, onAdd }: AddTeamMemberModalProps) {
                   onClick={() => setType('employee')}
                   className={`px-4 py-3 rounded-lg border-2 transition-colors ${
                     type === 'employee'
-                      ? 'border-[#4C5D75] bg-slate-50 text-[#4C5D75] font-semibold'
+                      ? 'border-[#4C5D75] bg-gray-50 text-[#4C5D75] font-semibold'
                       : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                   }`}
                 >
@@ -2396,7 +2396,7 @@ function AddTeamMemberModal({ onClose, onAdd }: AddTeamMemberModalProps) {
                   onClick={() => setType('contractor')}
                   className={`px-4 py-3 rounded-lg border-2 transition-colors ${
                     type === 'contractor'
-                      ? 'border-[#4C5D75] bg-slate-50 text-[#4C5D75] font-semibold'
+                      ? 'border-[#4C5D75] bg-gray-50 text-[#4C5D75] font-semibold'
                       : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                   }`}
                 >
@@ -2415,7 +2415,7 @@ function AddTeamMemberModal({ onClose, onAdd }: AddTeamMemberModalProps) {
               <button
                 type="submit"
                 disabled={!name.trim()}
-                className="px-4 py-2 bg-[#4C5D75] text-white rounded-lg hover:bg-[#3E3F57] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Add Team Member
               </button>
@@ -2594,16 +2594,16 @@ function OperationalPlanTab({
           return (
             <div key={func.id} className="bg-white rounded-lg border-2 border-gray-200 overflow-visible">
               {/* Function Header */}
-              <div className="bg-teal-50 border-b-2 border-teal-200 px-4 py-3">
+              <div className="bg-brand-orange-50 border-b-2 border-brand-orange-200 px-4 py-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-2xl">{func.icon}</span>
-                    <h3 className="text-lg font-bold text-teal-900">{func.name}</h3>
+                    <h3 className="text-lg font-bold text-brand-navy">{func.name}</h3>
                     <span className="text-sm text-gray-500">({functionActivities.length})</span>
                   </div>
                   <button
                     onClick={() => addActivity(func.id)}
-                    className="px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium flex items-center gap-1"
+                    className="px-3 py-1.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 text-sm font-medium flex items-center gap-1"
                   >
                     <Plus className="w-4 h-4" />
                     Add
@@ -2637,7 +2637,7 @@ function OperationalPlanTab({
                             }}
                             autoFocus
                             placeholder="Enter activity description..."
-                            className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                            className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                           />
                         ) : (
                           <div
@@ -2687,7 +2687,7 @@ function OperationalPlanTab({
                                 }}
                                 className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
                                   assignedMember
-                                    ? 'border-teal-200 bg-teal-50 hover:bg-teal-100'
+                                    ? 'border-brand-orange-200 bg-brand-orange-50 hover:bg-brand-orange-100'
                                     : 'border-gray-300 bg-white hover:bg-gray-50'
                                 }`}
                               >
@@ -2731,7 +2731,7 @@ function OperationalPlanTab({
                                             handleAssignPerson(activity.id, member.id)
                                           }}
                                           className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${
-                                            isCurrentlyAssigned ? 'bg-teal-50' : ''
+                                            isCurrentlyAssigned ? 'bg-brand-orange-50' : ''
                                           }`}
                                         >
                                           <div className={`w-8 h-8 rounded-full ${member.color} flex items-center justify-center flex-shrink-0`}>
@@ -2744,7 +2744,7 @@ function OperationalPlanTab({
                                             )}
                                           </div>
                                           {isCurrentlyAssigned && (
-                                            <CheckCircle2 className="w-5 h-5 text-teal-600" />
+                                            <CheckCircle2 className="w-5 h-5 text-brand-orange" />
                                           )}
                                         </button>
                                       )
@@ -2763,10 +2763,10 @@ function OperationalPlanTab({
                                         e.stopPropagation()
                                         setShowAddNewPerson(true)
                                       }}
-                                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-teal-50 transition-colors text-teal-600"
+                                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-brand-orange-50 transition-colors text-brand-orange"
                                     >
-                                      <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center flex-shrink-0">
-                                        <UserPlus className="w-4 h-4 text-teal-600" />
+                                      <div className="w-8 h-8 rounded-full bg-brand-orange-100 flex items-center justify-center flex-shrink-0">
+                                        <UserPlus className="w-4 h-4 text-brand-orange" />
                                       </div>
                                       <p className="text-sm font-medium">Add New Person...</p>
                                     </button>
@@ -2778,7 +2778,7 @@ function OperationalPlanTab({
                                         value={newPersonName}
                                         onChange={(e) => setNewPersonName(e.target.value)}
                                         placeholder="Full name"
-                                        className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-brand-orange"
                                         autoFocus
                                         onClick={(e) => e.stopPropagation()}
                                       />
@@ -2793,7 +2793,7 @@ function OperationalPlanTab({
                                             }}
                                             className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
                                               newPersonType === 'employee'
-                                                ? 'bg-teal-600 text-white border-teal-600'
+                                                ? 'bg-brand-orange text-white border-brand-orange'
                                                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                                             }`}
                                           >
@@ -2807,7 +2807,7 @@ function OperationalPlanTab({
                                             }}
                                             className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${
                                               newPersonType === 'contractor'
-                                                ? 'bg-teal-600 text-white border-teal-600'
+                                                ? 'bg-brand-orange text-white border-brand-orange'
                                                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                                             }`}
                                           >
@@ -2820,7 +2820,7 @@ function OperationalPlanTab({
                                         value={newPersonRole}
                                         onChange={(e) => setNewPersonRole(e.target.value)}
                                         placeholder="Role/Title (optional)"
-                                        className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                        className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-brand-orange"
                                         onClick={(e) => e.stopPropagation()}
                                       />
                                       <div className="flex items-center gap-2">
@@ -2830,7 +2830,7 @@ function OperationalPlanTab({
                                             handleAddTeamMember(activity.id)
                                           }}
                                           disabled={isSavingNewPerson || !newPersonName.trim()}
-                                          className="flex-1 px-4 py-2.5 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="flex-1 px-4 py-2.5 bg-brand-orange text-white text-sm rounded-lg hover:bg-brand-orange-600 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                           {isSavingNewPerson ? 'Saving...' : 'Add & Assign'}
                                         </button>

@@ -185,9 +185,9 @@ export default function SwotComparePage() {
       case 'Weaknesses':
         return 'bg-red-50 border-red-200'
       case 'Opportunities':
-        return 'bg-teal-50 border-teal-200'
+        return 'bg-brand-orange-50 border-brand-orange-200'
       case 'Threats':
-        return 'bg-orange-50 border-orange-200'
+        return 'bg-brand-orange-50 border-brand-orange-200'
       default:
         return 'bg-gray-50 border-gray-200'
     }
@@ -197,9 +197,9 @@ export default function SwotComparePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -207,7 +207,7 @@ export default function SwotComparePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -249,7 +249,7 @@ export default function SwotComparePage() {
             </p>
             <button
               onClick={() => router.push('/swot')}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-teal-600 hover:bg-teal-700"
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-brand-orange hover:bg-brand-orange-600"
             >
               Go to SWOT Analysis
             </button>
@@ -266,7 +266,7 @@ export default function SwotComparePage() {
                   <select
                     value={selectedPeriod1}
                     onChange={(e) => setSelectedPeriod1(e.target.value)}
-                    className="block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   >
                     <option value="">Select a period</option>
                     {availableAnalyses.map((analysis) => (
@@ -284,7 +284,7 @@ export default function SwotComparePage() {
                   <select
                     value={selectedPeriod2}
                     onChange={(e) => setSelectedPeriod2(e.target.value)}
-                    className="block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   >
                     <option value="">Select a period</option>
                     {availableAnalyses.map((analysis) => (
@@ -300,13 +300,13 @@ export default function SwotComparePage() {
             {/* Comparison Results */}
             {comparing ? (
               <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
                 <p className="mt-4 text-gray-600">Loading comparison...</p>
               </div>
             ) : analysis1 && analysis2 ? (
               <>
                 {/* Strategic Overview */}
-                <div className="bg-gradient-to-r from-teal-50 to-teal-50 border-2 border-teal-200 rounded-lg p-6 mb-6">
+                <div className="bg-gradient-to-r from-brand-orange-50 to-brand-orange-50 border-2 border-brand-orange-200 rounded-lg p-6 mb-6">
                   <h2 className="text-2xl font-bold text-gray-900 mb-4">Strategic Comparison: {analysis1 && getQuarterLabel(analysis1.quarter, analysis1.year)} → {analysis2 && getQuarterLabel(analysis2.quarter, analysis2.year)}</h2>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -336,9 +336,9 @@ export default function SwotComparePage() {
                     })}
                   </div>
 
-                  <div className="mt-4 p-4 bg-white rounded-lg border border-teal-100">
+                  <div className="mt-4 p-4 bg-white rounded-lg border border-brand-orange-100">
                     <p className="text-base text-gray-700">
-                      <span className="font-semibold text-teal-600">Strategic Insight:</span>{' '}
+                      <span className="font-semibold text-brand-orange">Strategic Insight:</span>{' '}
                       {(() => {
                         const weaknessChange = comparisonData.find(d => d.category === 'Weaknesses')?.change || 0;
                         const strengthChange = comparisonData.find(d => d.category === 'Strengths')?.change || 0;

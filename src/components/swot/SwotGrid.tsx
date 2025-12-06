@@ -88,18 +88,18 @@ export function SwotGrid({
       title: 'Opportunities',
       description: 'External positive factors you can capitalize on',
       icon: <Target className="h-5 w-5" />,
-      color: 'text-teal-700',
-      bgColor: 'bg-teal-50',
-      borderColor: 'border-teal-200'
+      color: 'text-brand-orange-700',
+      bgColor: 'bg-brand-orange-50',
+      borderColor: 'border-brand-orange-200'
     },
     {
       category: 'threat',
       title: 'Threats',
       description: 'External negative factors that could cause problems',
       icon: <Lightbulb className="h-5 w-5" />,
-      color: 'text-orange-700',
-      bgColor: 'bg-orange-50',
-      borderColor: 'border-orange-200'
+      color: 'text-brand-orange-700',
+      bgColor: 'bg-brand-orange-50',
+      borderColor: 'border-brand-orange-200'
     }
   ];
 
@@ -246,7 +246,7 @@ export function SwotGrid({
         key={section.category}
         className={`
           bg-white rounded-lg shadow-sm border-2 p-6 relative
-          ${isDraggedOver ? 'border-teal-400 bg-teal-50' : section.borderColor}
+          ${isDraggedOver ? 'border-brand-orange-400 bg-brand-orange-50' : section.borderColor}
           ${!isReadOnly ? 'hover:shadow-md transition-shadow' : ''}
         `}
         onDragOver={(e) => handleDragOver(e, section.category)}
@@ -303,7 +303,7 @@ export function SwotGrid({
             <ul className="text-base text-gray-700 space-y-2 mb-4">
               {categoryHelp[section.category].prompts.map((prompt, idx) => (
                 <li key={idx} className="flex items-start">
-                  <span className="text-teal-600 mr-2">•</span>
+                  <span className="text-brand-orange mr-2">•</span>
                   <span>{prompt}</span>
                 </li>
               ))}
@@ -311,7 +311,7 @@ export function SwotGrid({
 
             <div className="border-t border-gray-200 pt-3 mt-3 mb-3">
               <p className="text-base font-medium text-gray-800 mb-2">📊 Priority Rating:</p>
-              <p className="text-base text-gray-700 bg-teal-50 p-2 rounded border border-teal-200">
+              <p className="text-base text-gray-700 bg-brand-orange-50 p-2 rounded border border-brand-orange-200">
                 {categoryHelp[section.category].ratingGuidance}
               </p>
             </div>
@@ -341,14 +341,14 @@ export function SwotGrid({
               value={newItemTitle}
               onChange={(e) => setNewItemTitle(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSubmitNewItem(section.category)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 mb-2"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange mb-2"
               autoFocus
             />
             <textarea
               placeholder="Description (optional)"
               value={newItemDescription}
               onChange={(e) => setNewItemDescription(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 mb-2 resize-none"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange mb-2 resize-none"
               rows={2}
             />
             <p className="text-xs text-gray-500 mb-2">
@@ -371,7 +371,7 @@ export function SwotGrid({
                 className={`
                   px-3 py-1 text-sm text-white rounded-md
                   ${newItemTitle.trim()
-                    ? 'bg-teal-600 hover:bg-teal-700'
+                    ? 'bg-brand-orange hover:bg-brand-orange-600'
                     : 'bg-gray-400 cursor-not-allowed'
                   }
                 `}
@@ -421,9 +421,9 @@ export function SwotGrid({
         
         {/* Drop zone indicator */}
         {isDraggedOver && categoryItems.length === 0 && (
-          <div className="absolute inset-0 rounded-lg border-2 border-dashed border-teal-400 pointer-events-none">
+          <div className="absolute inset-0 rounded-lg border-2 border-dashed border-brand-orange-400 pointer-events-none">
             <div className="flex items-center justify-center h-full">
-              <p className="text-teal-600 font-medium">Drop here</p>
+              <p className="text-brand-orange font-medium">Drop here</p>
             </div>
           </div>
         )}

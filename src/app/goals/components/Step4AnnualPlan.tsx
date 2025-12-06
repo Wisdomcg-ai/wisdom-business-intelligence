@@ -140,7 +140,7 @@ export default function Step4AnnualPlan({
     } else {
       // Default team member (Owner)
       const defaultMembers: TeamMember[] = [
-        { id: '1', name: 'Owner', initials: 'OW', color: 'bg-teal-500' }
+        { id: '1', name: 'Owner', initials: 'OW', color: 'bg-brand-orange-500' }
       ]
       setTeamMembers(defaultMembers)
       saveToLocalStorage(defaultMembers)
@@ -372,16 +372,16 @@ export default function Step4AnnualPlan({
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
-    e.currentTarget.classList.add('bg-teal-50')
+    e.currentTarget.classList.add('bg-brand-orange-50')
   }
 
   const handleDragLeave = (e: React.DragEvent) => {
-    e.currentTarget.classList.remove('bg-teal-50')
+    e.currentTarget.classList.remove('bg-brand-orange-50')
   }
 
   const handleDrop = (e: React.DragEvent, targetQuarter: string) => {
     e.preventDefault()
-    e.currentTarget.classList.remove('bg-teal-50')
+    e.currentTarget.classList.remove('bg-brand-orange-50')
 
     if (!draggedItem) return
 
@@ -424,9 +424,9 @@ export default function Step4AnnualPlan({
       case 'full':
         return 'bg-amber-50 border-amber-300'
       case 'active':
-        return 'bg-teal-50 border-teal-300'
+        return 'bg-brand-orange-50 border-brand-orange-300'
       default:
-        return 'bg-slate-50 border-slate-200'
+        return 'bg-gray-50 border-slate-200'
     }
   }
 
@@ -529,11 +529,11 @@ export default function Step4AnnualPlan({
   return (
     <div className="space-y-6">
       {/* Task Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-4 text-white">
+      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-4 text-white">
         <p className="text-base font-medium">
           📋 <strong>YOUR TASK:</strong> Complete both sections below to finish Step 4
         </p>
-        <p className="text-sm text-teal-100 mt-1">
+        <p className="text-sm text-brand-orange-100 mt-1">
           Set your quarterly targets, then assign initiatives to each planning quarter.
         </p>
       </div>
@@ -596,13 +596,13 @@ export default function Step4AnnualPlan({
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <div className={`flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm ${
-              hasAnyQuarterlyTarget ? 'bg-green-500 text-white' : 'bg-teal-600 text-white'
+              hasAnyQuarterlyTarget ? 'bg-green-500 text-white' : 'bg-brand-orange text-white'
             }`}>
               {hasAnyQuarterlyTarget ? <Check className="w-5 h-5" /> : '1'}
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-bold text-slate-900">Quarterly Targets</h3>
-              <p className="text-sm text-slate-600">Break down your Year 1 targets across quarters</p>
+              <h3 className="text-lg font-bold text-brand-navy">Quarterly Targets</h3>
+              <p className="text-sm text-gray-600">Break down your Year 1 targets across quarters</p>
             </div>
             {hasAnyQuarterlyTarget && (
               <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded">
@@ -615,7 +615,7 @@ export default function Step4AnnualPlan({
             <div className="space-y-6">
               {/* Financial Targets Section */}
               <div>
-                <h4 className="text-sm font-semibold text-slate-900 mb-3">Financial Targets</h4>
+                <h4 className="text-sm font-semibold text-brand-navy mb-3">Financial Targets</h4>
                 <table className="w-full border-collapse border border-slate-200" style={{ tableLayout: 'fixed' }}>
                   <colgroup>
                     <col style={{ width: '21%' }} />
@@ -626,24 +626,24 @@ export default function Step4AnnualPlan({
                     <col style={{ width: '13%' }} />
                     <col style={{ width: '14%' }} />
                   </colgroup>
-                  <thead className="bg-slate-50">
+                  <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900 border-b border-r border-slate-200">Metric</th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">{yearLabel}</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-brand-navy border-b border-r border-slate-200">Metric</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">{yearLabel}</th>
                       {QUARTERS.map(q => (
-                        <th key={q.id} className={`px-4 py-3 text-center text-sm font-semibold border-b border-r border-slate-200 ${q.isLocked ? 'bg-gray-100 text-gray-500' : 'text-slate-900'}`}>
+                        <th key={q.id} className={`px-4 py-3 text-center text-sm font-semibold border-b border-r border-slate-200 ${q.isLocked ? 'bg-gray-100 text-gray-500' : 'text-brand-navy'}`}>
                           <div className="flex flex-col items-center gap-1">
                             <div className="flex items-center gap-1">
                               <span>{q.label}</span>
                               {q.isPast && <span className="text-[9px] px-1 py-0.5 bg-gray-300 text-gray-600 rounded font-semibold">PAST</span>}
                               {q.isCurrent && !q.isPast && <span className="text-[9px] px-1 py-0.5 bg-amber-500 text-white rounded font-semibold">NOW (LOCKED)</span>}
-                              {q.isNextQuarter && <span className="text-[9px] px-1 py-0.5 bg-teal-500 text-white rounded font-semibold">PLANNING</span>}
+                              {q.isNextQuarter && <span className="text-[9px] px-1 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLANNING</span>}
                             </div>
                             <span className="text-[10px] font-normal text-gray-500">{q.months}</span>
                           </div>
                         </th>
                       ))}
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-slate-200">Q Total</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-slate-200">Q Total</th>
                     </tr>
                   </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
@@ -652,8 +652,8 @@ export default function Step4AnnualPlan({
                         const validation = calculateQuarterlyTotal('revenue')
                         return (
                           <tr>
-                            <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Revenue</td>
-                            <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">{formatCurrency(financialData.revenue.year1)}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Revenue</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{formatCurrency(financialData.revenue.year1)}</td>
                             {QUARTERS.map(q => (
                               <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isLocked ? 'bg-gray-50' : ''}`}>
                                 <input
@@ -665,7 +665,7 @@ export default function Step4AnnualPlan({
                                   className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
                                     q.isLocked
                                       ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                      : 'border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300'
+                                      : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
                                   }`}
                                 />
                               </td>
@@ -696,8 +696,8 @@ export default function Step4AnnualPlan({
                         const validation = calculateQuarterlyTotal('grossProfit')
                         return (
                           <tr>
-                            <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Gross Profit</td>
-                            <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">{formatCurrency(financialData.grossProfit.year1)}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Gross Profit</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{formatCurrency(financialData.grossProfit.year1)}</td>
                             {QUARTERS.map(q => (
                               <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isLocked ? 'bg-gray-50' : ''}`}>
                                 <input
@@ -709,7 +709,7 @@ export default function Step4AnnualPlan({
                                   className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
                                     q.isLocked
                                       ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                      : 'border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300'
+                                      : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
                                   }`}
                                 />
                               </td>
@@ -744,8 +744,8 @@ export default function Step4AnnualPlan({
                           const avg = (q1 + q2 + q3 + q4) / 4
                           return (
                             <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Gross Margin</td>
-                              <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">{financialData.grossMargin.year1}%</td>
+                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Gross Margin</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{financialData.grossMargin.year1}%</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isLocked ? 'bg-gray-50' : ''}`}>
                                   <input
@@ -757,12 +757,12 @@ export default function Step4AnnualPlan({
                                     className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
                                       q.isLocked
                                         ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
                                     }`}
                                   />
                                 </td>
                               ))}
-                              <td className="px-4 py-3 text-sm text-center font-medium text-slate-700">
+                              <td className="px-4 py-3 text-sm text-center font-medium text-gray-700">
                                 {avg > 0 ? `${avg.toFixed(1)}% avg` : <span className="text-xs text-slate-400">-</span>}
                               </td>
                             </tr>
@@ -774,8 +774,8 @@ export default function Step4AnnualPlan({
                         const validation = calculateQuarterlyTotal('netProfit')
                         return (
                           <tr>
-                            <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Net Profit</td>
-                            <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">{formatCurrency(financialData.netProfit.year1)}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Net Profit</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{formatCurrency(financialData.netProfit.year1)}</td>
                             {QUARTERS.map(q => (
                               <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isLocked ? 'bg-gray-50' : ''}`}>
                                 <input
@@ -787,7 +787,7 @@ export default function Step4AnnualPlan({
                                   className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
                                     q.isLocked
                                       ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                      : 'border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300'
+                                      : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
                                   }`}
                                 />
                               </td>
@@ -822,8 +822,8 @@ export default function Step4AnnualPlan({
                           const avg = (q1 + q2 + q3 + q4) / 4
                           return (
                             <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Net Margin</td>
-                              <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">{financialData.netMargin.year1}%</td>
+                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Net Margin</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{financialData.netMargin.year1}%</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isLocked ? 'bg-gray-50' : ''}`}>
                                   <input
@@ -835,12 +835,12 @@ export default function Step4AnnualPlan({
                                     className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
                                       q.isLocked
                                         ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
                                     }`}
                                   />
                                 </td>
                               ))}
-                              <td className="px-4 py-3 text-sm text-center font-medium text-slate-700">
+                              <td className="px-4 py-3 text-sm text-center font-medium text-gray-700">
                                 {avg > 0 ? `${avg.toFixed(1)}% avg` : <span className="text-xs text-slate-400">-</span>}
                               </td>
                             </tr>
@@ -853,7 +853,7 @@ export default function Step4AnnualPlan({
               {/* Core Metrics Section */}
               {coreMetrics && (
                 <div>
-                  <h4 className="text-sm font-semibold text-slate-900 mb-3">Core Business Metrics</h4>
+                  <h4 className="text-sm font-semibold text-brand-navy mb-3">Core Business Metrics</h4>
                   <table className="w-full border-collapse border border-slate-200" style={{ tableLayout: 'fixed' }}>
                     <colgroup>
                       <col style={{ width: '21%' }} />
@@ -863,18 +863,18 @@ export default function Step4AnnualPlan({
                       <col style={{ width: '16.5%' }} />
                       <col style={{ width: '16.5%' }} />
                     </colgroup>
-                    <thead className="bg-slate-50">
+                    <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900 border-b border-r border-slate-200">Metric</th>
-                        <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">{yearLabel}</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-brand-navy border-b border-r border-slate-200">Metric</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">{yearLabel}</th>
                         {QUARTERS.map(q => (
-                          <th key={q.id} className={`px-4 py-3 text-center text-sm font-semibold border-b border-r border-slate-200 ${q.isLocked ? 'bg-gray-100 text-gray-500' : 'text-slate-900'}`}>
+                          <th key={q.id} className={`px-4 py-3 text-center text-sm font-semibold border-b border-r border-slate-200 ${q.isLocked ? 'bg-gray-100 text-gray-500' : 'text-brand-navy'}`}>
                             <div className="flex flex-col items-center gap-1">
                               <div className="flex items-center gap-1">
                                 <span>{q.label}</span>
                                 {q.isPast && <span className="text-[9px] px-1 py-0.5 bg-gray-300 text-gray-600 rounded font-semibold">PAST</span>}
                                 {q.isCurrent && !q.isPast && <span className="text-[9px] px-1 py-0.5 bg-amber-500 text-white rounded font-semibold">NOW (LOCKED)</span>}
-                                {q.isNextQuarter && <span className="text-[9px] px-1 py-0.5 bg-teal-500 text-white rounded font-semibold">PLANNING</span>}
+                                {q.isNextQuarter && <span className="text-[9px] px-1 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLANNING</span>}
                               </div>
                               <span className="text-[10px] font-normal text-gray-500">{q.months}</span>
                             </div>
@@ -891,8 +891,8 @@ export default function Step4AnnualPlan({
                           const total = q1 + q2 + q3 + q4
                           return (
                             <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Leads Per Month</td>
-                              <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">{coreMetrics.leadsPerMonth.year1}</td>
+                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Leads Per Month</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.leadsPerMonth.year1}</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isLocked ? 'bg-gray-50' : ''}`}>
                                   <input
@@ -904,7 +904,7 @@ export default function Step4AnnualPlan({
                                     className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
                                       q.isLocked
                                         ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
                                     }`}
                                   />
                                 </td>
@@ -920,8 +920,8 @@ export default function Step4AnnualPlan({
                           const avg = (q1 + q2 + q3 + q4) / 4
                           return (
                             <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Conversion Rate</td>
-                              <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">{coreMetrics.conversionRate.year1}%</td>
+                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Conversion Rate</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.conversionRate.year1}%</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isLocked ? 'bg-gray-50' : ''}`}>
                                   <input
@@ -933,7 +933,7 @@ export default function Step4AnnualPlan({
                                     className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
                                       q.isLocked
                                         ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
                                     }`}
                                   />
                                 </td>
@@ -949,8 +949,8 @@ export default function Step4AnnualPlan({
                           const avg = (q1 + q2 + q3 + q4) / 4
                           return (
                             <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Avg Transaction Value</td>
-                              <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">{formatCurrency(coreMetrics.avgTransactionValue.year1)}</td>
+                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Avg Transaction Value</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{formatCurrency(coreMetrics.avgTransactionValue.year1)}</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isLocked ? 'bg-gray-50' : ''}`}>
                                   <input
@@ -962,7 +962,7 @@ export default function Step4AnnualPlan({
                                     className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
                                       q.isLocked
                                         ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
                                     }`}
                                   />
                                 </td>
@@ -978,8 +978,8 @@ export default function Step4AnnualPlan({
                           const avg = (q1 + q2 + q3 + q4) / 4
                           return (
                             <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Team Headcount</td>
-                              <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">{coreMetrics.teamHeadcount.year1}</td>
+                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Team Headcount</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.teamHeadcount.year1}</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isLocked ? 'bg-gray-50' : ''}`}>
                                   <input
@@ -991,7 +991,7 @@ export default function Step4AnnualPlan({
                                     className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
                                       q.isLocked
                                         ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
                                     }`}
                                   />
                                 </td>
@@ -1023,30 +1023,30 @@ export default function Step4AnnualPlan({
                             : 0
 
                           return (
-                            <tr className="bg-teal-50/50">
-                              <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">
-                                Revenue per Employee <span className="text-xs text-slate-500 font-normal">(Auto-Calc)</span>
+                            <tr className="bg-brand-orange-50/50">
+                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">
+                                Revenue per Employee <span className="text-xs text-gray-500 font-normal">(Auto-Calc)</span>
                               </td>
-                              <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                                 {formatCurrency(Math.round(year1RPE))}
                               </td>
                               <td className="px-4 py-2 border-r border-slate-200">
-                                <div className="px-2 py-1.5 bg-slate-100 rounded text-sm text-center font-medium text-slate-700 border border-slate-200">
+                                <div className="px-2 py-1.5 bg-slate-100 rounded text-sm text-center font-medium text-gray-700 border border-slate-200">
                                   {rpeQ1 > 0 ? formatCurrency(Math.round(rpeQ1)) : '-'}
                                 </div>
                               </td>
                               <td className="px-4 py-2 border-r border-slate-200">
-                                <div className="px-2 py-1.5 bg-slate-100 rounded text-sm text-center font-medium text-slate-700 border border-slate-200">
+                                <div className="px-2 py-1.5 bg-slate-100 rounded text-sm text-center font-medium text-gray-700 border border-slate-200">
                                   {rpeQ2 > 0 ? formatCurrency(Math.round(rpeQ2)) : '-'}
                                 </div>
                               </td>
                               <td className="px-4 py-2 border-r border-slate-200">
-                                <div className="px-2 py-1.5 bg-slate-100 rounded text-sm text-center font-medium text-slate-700 border border-slate-200">
+                                <div className="px-2 py-1.5 bg-slate-100 rounded text-sm text-center font-medium text-gray-700 border border-slate-200">
                                   {rpeQ3 > 0 ? formatCurrency(Math.round(rpeQ3)) : '-'}
                                 </div>
                               </td>
                               <td className="px-4 py-2">
-                                <div className="px-2 py-1.5 bg-slate-100 rounded text-sm text-center font-medium text-slate-700 border border-slate-200">
+                                <div className="px-2 py-1.5 bg-slate-100 rounded text-sm text-center font-medium text-gray-700 border border-slate-200">
                                   {rpeQ4 > 0 ? formatCurrency(Math.round(rpeQ4)) : '-'}
                                 </div>
                               </td>
@@ -1061,8 +1061,8 @@ export default function Step4AnnualPlan({
                           const avg = (q1 + q2 + q3 + q4) / 4
                           return (
                             <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">Owner Hours Per Week</td>
-                              <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">{coreMetrics.ownerHoursPerWeek.year1} hrs</td>
+                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Owner Hours Per Week</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.ownerHoursPerWeek.year1} hrs</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isLocked ? 'bg-gray-50' : ''}`}>
                                   <input
@@ -1074,7 +1074,7 @@ export default function Step4AnnualPlan({
                                     className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
                                       q.isLocked
                                         ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
                                     }`}
                                   />
                                 </td>
@@ -1090,7 +1090,7 @@ export default function Step4AnnualPlan({
               {/* KPIs Section */}
               {kpis && kpis.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-semibold text-slate-900 mb-3">Key Performance Indicators</h4>
+                  <h4 className="text-sm font-semibold text-brand-navy mb-3">Key Performance Indicators</h4>
                   <table className="w-full border-collapse border border-slate-200" style={{ tableLayout: 'fixed' }}>
                     <colgroup>
                       <col style={{ width: '21%' }} />
@@ -1100,18 +1100,18 @@ export default function Step4AnnualPlan({
                       <col style={{ width: '16.5%' }} />
                       <col style={{ width: '16.5%' }} />
                     </colgroup>
-                    <thead className="bg-slate-50">
+                    <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-900 border-b border-r border-slate-200">KPI</th>
-                        <th className="px-4 py-3 text-center text-sm font-semibold text-slate-900 border-b border-r border-slate-200">{yearLabel}</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-brand-navy border-b border-r border-slate-200">KPI</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">{yearLabel}</th>
                         {QUARTERS.map(q => (
-                          <th key={q.id} className={`px-4 py-3 text-center text-sm font-semibold border-b border-r border-slate-200 ${q.isLocked ? 'bg-gray-100 text-gray-500' : 'text-slate-900'}`}>
+                          <th key={q.id} className={`px-4 py-3 text-center text-sm font-semibold border-b border-r border-slate-200 ${q.isLocked ? 'bg-gray-100 text-gray-500' : 'text-brand-navy'}`}>
                             <div className="flex flex-col items-center gap-1">
                               <div className="flex items-center gap-1">
                                 <span>{q.label}</span>
                                 {q.isPast && <span className="text-[9px] px-1 py-0.5 bg-gray-300 text-gray-600 rounded font-semibold">PAST</span>}
                                 {q.isCurrent && !q.isPast && <span className="text-[9px] px-1 py-0.5 bg-amber-500 text-white rounded font-semibold">NOW (LOCKED)</span>}
-                                {q.isNextQuarter && <span className="text-[9px] px-1 py-0.5 bg-teal-500 text-white rounded font-semibold">PLANNING</span>}
+                                {q.isNextQuarter && <span className="text-[9px] px-1 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLANNING</span>}
                               </div>
                               <span className="text-[10px] font-normal text-gray-500">{q.months}</span>
                             </div>
@@ -1152,8 +1152,8 @@ export default function Step4AnnualPlan({
 
                           return (
                             <tr key={kpi.id}>
-                              <td className="px-4 py-3 text-sm font-medium text-slate-900 border-r border-slate-200">{kpi.name}</td>
-                              <td className="px-4 py-3 text-sm text-slate-700 font-medium border-r border-slate-200 text-center">
+                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">{kpi.name}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
                                 {formatKPIValue(kpi.year1Target)}
                               </td>
                               {QUARTERS.map(q => (
@@ -1167,7 +1167,7 @@ export default function Step4AnnualPlan({
                                     className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
                                       q.isLocked
                                         ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
                                     }`}
                                   />
                                 </td>
@@ -1194,8 +1194,8 @@ export default function Step4AnnualPlan({
             {allUnlockedHaveInitiatives ? <Check className="w-5 h-5" /> : '2'}
           </div>
           <div className="flex-1">
-            <h3 className="text-lg font-bold text-slate-900">Quarterly Execution Plan</h3>
-            <p className="text-sm text-slate-600">Assign initiatives to quarters (Max {MAX_PER_QUARTER} per quarter)</p>
+            <h3 className="text-lg font-bold text-brand-navy">Quarterly Execution Plan</h3>
+            <p className="text-sm text-gray-600">Assign initiatives to quarters (Max {MAX_PER_QUARTER} per quarter)</p>
           </div>
           {allUnlockedHaveInitiatives && (
             <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded">
@@ -1213,8 +1213,8 @@ export default function Step4AnnualPlan({
           <div className="p-6">
             {/* Quarter Status Summary Bar */}
             {twelveMonthInitiatives.length > 0 && (
-              <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <h4 className="text-sm font-semibold text-slate-700 mb-3">Quarter Status Overview</h4>
+              <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-slate-200">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Quarter Status Overview</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {QUARTERS.map((quarter) => {
                     const items = annualPlanByQuarter[quarter.id] || []
@@ -1233,16 +1233,16 @@ export default function Step4AnnualPlan({
                             ? 'bg-amber-50 border-amber-200'
                             : isComplete
                             ? 'bg-green-50 border-green-300'
-                            : 'bg-teal-50 border-teal-200'
+                            : 'bg-brand-orange-50 border-brand-orange-200'
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-bold text-slate-900">{quarter.label}</span>
+                          <span className="text-sm font-bold text-brand-navy">{quarter.label}</span>
                           {quarter.isLocked && (
                             <span className="text-[9px] px-1.5 py-0.5 bg-gray-400 text-white rounded font-semibold">LOCKED</span>
                           )}
                           {quarter.isNextQuarter && (
-                            <span className="text-[9px] px-1.5 py-0.5 bg-teal-500 text-white rounded font-semibold">PLAN NOW</span>
+                            <span className="text-[9px] px-1.5 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLAN NOW</span>
                           )}
                           {!quarter.isLocked && !quarter.isNextQuarter && isComplete && (
                             <Check className="w-4 h-4 text-green-600" />
@@ -1250,7 +1250,7 @@ export default function Step4AnnualPlan({
                         </div>
                         <div className="flex items-center gap-2 text-xs">
                           <span className={`font-medium ${
-                            isEmpty ? 'text-amber-700' : isComplete ? 'text-green-700' : 'text-slate-600'
+                            isEmpty ? 'text-amber-700' : isComplete ? 'text-green-700' : 'text-gray-600'
                           }`}>
                             {items.length}/{MAX_PER_QUARTER} initiatives
                           </span>
@@ -1275,7 +1275,7 @@ export default function Step4AnnualPlan({
               <div className="flex items-center justify-end gap-2 mb-4">
                 <button
                   onClick={handleStaggerByPriority}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-orange-50 text-orange-700 rounded hover:bg-orange-100 font-medium transition-colors"
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-orange-50 text-brand-orange-700 rounded hover:bg-brand-orange-100 font-medium transition-colors"
                 >
                   <TrendingUp className="w-3.5 h-3.5" />
                   By Priority
@@ -1286,7 +1286,7 @@ export default function Step4AnnualPlan({
             {/* Empty State */}
             {teamMembers.length === 0 && (
               <div className="border-t border-slate-200 pt-4">
-                <p className="text-sm text-slate-600 text-center py-4">
+                <p className="text-sm text-gray-600 text-center py-4">
                   No team members found. Click "Assign to..." on any initiative below and select "Add New Person..." to add your team.
                 </p>
               </div>
@@ -1294,7 +1294,7 @@ export default function Step4AnnualPlan({
 
             {/* Keyboard Hints */}
             {twelveMonthInitiatives.length > 0 && (
-              <p className="text-xs text-slate-500 mt-4">
+              <p className="text-xs text-gray-500 mt-4">
                 💡 Shortcuts: Press 1-4 to toggle quarters
               </p>
             )}
@@ -1319,16 +1319,16 @@ export default function Step4AnnualPlan({
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {/* Unassigned Column */}
                 <div className="md:col-span-2 lg:col-span-4 xl:col-span-1">
-                  <div className="bg-slate-50 rounded-lg border-2 border-dashed border-slate-300 p-4 h-full">
-                    <h4 className="font-semibold text-slate-700 text-sm mb-3 uppercase tracking-wider">
+                  <div className="bg-gray-50 rounded-lg border-2 border-dashed border-slate-300 p-4 h-full">
+                    <h4 className="font-semibold text-gray-700 text-sm mb-3 uppercase tracking-wider">
                       Available
                     </h4>
-                    <p className="text-xs text-slate-500 mb-3">
+                    <p className="text-xs text-gray-500 mb-3">
                       {unassignedInitiatives.length} unassigned
                     </p>
                     <div className="space-y-2">
                       {unassignedInitiatives.length === 0 ? (
-                        <p className="text-xs text-slate-500 text-center py-6">
+                        <p className="text-xs text-gray-500 text-center py-6">
                           All initiatives assigned ✓
                         </p>
                       ) : (
@@ -1342,7 +1342,7 @@ export default function Step4AnnualPlan({
                               className={`group flex items-start gap-2 p-3 rounded-lg border-2 cursor-move transition-all ${
                                 isUserIdea
                                   ? 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-md'
-                                  : 'bg-teal-600 border-teal-600 shadow-md hover:bg-teal-700'
+                                  : 'bg-brand-orange border-brand-orange shadow-md hover:bg-brand-orange-600'
                               }`}
                             >
                               <GripVertical className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
@@ -1365,7 +1365,7 @@ export default function Step4AnnualPlan({
                                 <span className={`inline-block mt-2 px-2 py-0.5 text-[10px] rounded font-semibold ${
                                   isUserIdea
                                     ? 'bg-slate-800 text-white'
-                                    : 'bg-teal-800 text-white'
+                                    : 'bg-brand-orange-800 text-white'
                                 }`}>
                                   {isUserIdea ? 'YOUR IDEA' : 'ROADMAP'}
                                 </span>
@@ -1395,7 +1395,7 @@ export default function Step4AnnualPlan({
                           isLockedQuarter
                             ? 'bg-gray-100 border-gray-300 opacity-60'
                             : isNextQuarter
-                            ? 'bg-teal-50 border-teal-300 ring-2 ring-teal-200'
+                            ? 'bg-brand-orange-50 border-brand-orange-300 ring-2 ring-brand-orange-200'
                             : getStatusColor(status)
                         }`}
                         onDragOver={isLockedQuarter ? undefined : handleDragOver}
@@ -1411,7 +1411,7 @@ export default function Step4AnnualPlan({
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <h4 className={`font-bold text-sm uppercase tracking-wider ${isLockedQuarter ? 'text-gray-500' : 'text-slate-900'}`}>
+                                <h4 className={`font-bold text-sm uppercase tracking-wider ${isLockedQuarter ? 'text-gray-500' : 'text-brand-navy'}`}>
                                   {quarter.label}
                                 </h4>
                                 {quarter.isPast && (
@@ -1421,24 +1421,24 @@ export default function Step4AnnualPlan({
                                   <span className="text-[10px] px-1.5 py-0.5 bg-amber-500 text-white rounded font-semibold">NOW (LOCKED)</span>
                                 )}
                                 {isNextQuarter && (
-                                  <span className="text-[10px] px-1.5 py-0.5 bg-teal-500 text-white rounded font-semibold">PLANNING</span>
+                                  <span className="text-[10px] px-1.5 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLANNING</span>
                                 )}
                               </div>
-                              <p className={`text-xs mt-1 ${isLockedQuarter ? 'text-gray-500' : 'text-slate-600'}`}>
+                              <p className={`text-xs mt-1 ${isLockedQuarter ? 'text-gray-500' : 'text-gray-600'}`}>
                                 {quarter.months} {quarter.startDate.getFullYear()}
                               </p>
-                              <p className={`text-xs mt-0.5 ${isLockedQuarter ? 'text-gray-400' : 'text-slate-500'}`}>
+                              <p className={`text-xs mt-0.5 ${isLockedQuarter ? 'text-gray-400' : 'text-gray-500'}`}>
                                 {quarter.title}
                               </p>
                             </div>
                             {isExpanded ? (
-                              <ChevronUp className="w-4 h-4 text-slate-600" />
+                              <ChevronUp className="w-4 h-4 text-gray-600" />
                             ) : (
-                              <ChevronDown className="w-4 h-4 text-slate-600" />
+                              <ChevronDown className="w-4 h-4 text-gray-600" />
                             )}
                           </div>
                           <p className={`text-xs font-medium mt-2 ${
-                            isFull ? 'text-amber-700' : 'text-slate-700'
+                            isFull ? 'text-amber-700' : 'text-gray-700'
                           }`}>
                             {items.length} / {MAX_PER_QUARTER} initiatives
                             {isFull && ' (Full)'}
@@ -1450,7 +1450,7 @@ export default function Step4AnnualPlan({
                           <div className="min-h-20">
 
                             {items.length === 0 ? (
-                              <p className={`text-xs text-center py-6 ${isLockedQuarter ? 'text-gray-400' : 'text-slate-500'}`}>
+                              <p className={`text-xs text-center py-6 ${isLockedQuarter ? 'text-gray-400' : 'text-gray-500'}`}>
                                 {isLockedQuarter ? 'Quarter is locked' : 'Drag initiatives here'}
                               </p>
                             ) : (
@@ -1472,16 +1472,16 @@ export default function Step4AnnualPlan({
                                         {index + 1}
                                       </span>
                                       <div className="flex-1">
-                                        <p className="text-xs font-medium text-slate-900 line-clamp-2 mb-1.5">
+                                        <p className="text-xs font-medium text-brand-navy line-clamp-2 mb-1.5">
                                           {initiative.title}
                                         </p>
                                         {initiative.priority && (
                                           <span className={`inline-block text-xs px-1.5 py-0.5 rounded font-medium ${
                                             initiative.priority === 'high'
-                                              ? 'bg-orange-100 text-orange-700'
+                                              ? 'bg-brand-orange-100 text-brand-orange-700'
                                               : initiative.priority === 'medium'
-                                              ? 'bg-teal-100 text-teal-700'
-                                              : 'bg-slate-100 text-slate-600'
+                                              ? 'bg-brand-orange-100 text-brand-orange-700'
+                                              : 'bg-slate-100 text-gray-600'
                                           }`}>
                                             {initiative.priority.toUpperCase()}
                                           </span>
@@ -1508,7 +1508,7 @@ export default function Step4AnnualPlan({
                                         assignedMember
                                           ? peopleAtCapacityByQuarter[quarter.id]?.has(assignedMember.id)
                                             ? 'bg-red-50 border-red-200 hover:border-red-300'
-                                            : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                                            : 'bg-gray-50 border-slate-200 hover:border-slate-300'
                                           : 'bg-white border-dashed border-slate-300 hover:border-slate-400'
                                       }`}
                                     >
@@ -1517,14 +1517,14 @@ export default function Step4AnnualPlan({
                                           <div className={`w-5 h-5 rounded-full ${assignedMember.color} flex items-center justify-center flex-shrink-0`}>
                                             <span className="text-white text-xs font-bold">{assignedMember.initials}</span>
                                           </div>
-                                          <span className="text-xs font-medium text-slate-900 flex-1 text-left">{assignedMember.name}</span>
+                                          <span className="text-xs font-medium text-brand-navy flex-1 text-left">{assignedMember.name}</span>
                                         </>
                                       ) : (
                                         <>
                                           <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
                                             <UserPlus className="w-3 h-3 text-slate-400" />
                                           </div>
-                                          <span className="text-xs text-slate-500 flex-1 text-left">Assign to...</span>
+                                          <span className="text-xs text-gray-500 flex-1 text-left">Assign to...</span>
                                         </>
                                       )}
                                       <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${isShowingAssignment ? 'rotate-180' : ''}`} />
@@ -1550,23 +1550,23 @@ export default function Step4AnnualPlan({
                                                 }
                                               }}
                                               disabled={!canAssign}
-                                              className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors ${
-                                                isCurrentlyAssigned ? 'bg-teal-50' : ''
+                                              className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${
+                                                isCurrentlyAssigned ? 'bg-brand-orange-50' : ''
                                               } ${!canAssign ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             >
                                               <div className={`w-8 h-8 rounded-full ${member.color} flex items-center justify-center flex-shrink-0`}>
                                                 <span className="text-white text-sm font-bold">{member.initials}</span>
                                               </div>
                                               <div className="flex-1">
-                                                <p className="text-sm font-medium text-slate-900">{member.name}</p>
+                                                <p className="text-sm font-medium text-brand-navy">{member.name}</p>
                                                 <p className={`text-sm ${
-                                                  isAtCapacity ? 'text-red-600' : 'text-slate-500'
+                                                  isAtCapacity ? 'text-red-600' : 'text-gray-500'
                                                 }`}>
                                                   {count}/{MAX_PER_PERSON} {isAtCapacity && '(Full)'}
                                                 </p>
                                               </div>
                                               {isCurrentlyAssigned && (
-                                                <Check className="w-5 h-5 text-teal-600" />
+                                                <Check className="w-5 h-5 text-brand-orange" />
                                               )}
                                             </button>
                                           )
@@ -1584,22 +1584,22 @@ export default function Step4AnnualPlan({
                                               e.stopPropagation()
                                               setShowAddNewPerson(true)
                                             }}
-                                            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-teal-50 transition-colors text-teal-600"
+                                            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-brand-orange-50 transition-colors text-brand-orange"
                                           >
-                                            <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center flex-shrink-0">
-                                              <UserPlus className="w-4 h-4 text-teal-600" />
+                                            <div className="w-8 h-8 rounded-full bg-brand-orange-100 flex items-center justify-center flex-shrink-0">
+                                              <UserPlus className="w-4 h-4 text-brand-orange" />
                                             </div>
                                             <p className="text-sm font-medium">Add New Person...</p>
                                           </button>
                                         ) : (
-                                          <div className="p-4 bg-slate-50 border-t border-slate-200" onClick={(e) => e.stopPropagation()}>
-                                            <p className="text-sm font-semibold text-slate-900 mb-3">Add New Team Member</p>
+                                          <div className="p-4 bg-gray-50 border-t border-slate-200" onClick={(e) => e.stopPropagation()}>
+                                            <p className="text-sm font-semibold text-brand-navy mb-3">Add New Team Member</p>
                                             <input
                                               type="text"
                                               value={newPersonName}
                                               onChange={(e) => setNewPersonName(e.target.value)}
                                               placeholder="Full name"
-                                              className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                              className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-brand-orange"
                                               autoFocus
                                             />
                                             <input
@@ -1607,13 +1607,13 @@ export default function Step4AnnualPlan({
                                               value={newPersonRole}
                                               onChange={(e) => setNewPersonRole(e.target.value)}
                                               placeholder="Role/Title (optional)"
-                                              className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                              className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-brand-orange"
                                             />
                                             <div className="flex items-center gap-2">
                                               <button
                                                 onClick={() => handleAddTeamMember(initiative.id, quarter.id)}
                                                 disabled={isSavingNewPerson || !newPersonName.trim()}
-                                                className="flex-1 px-4 py-2.5 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className="flex-1 px-4 py-2.5 bg-brand-orange text-white text-sm rounded-lg hover:bg-brand-orange-600 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                               >
                                                 {isSavingNewPerson ? 'Saving...' : 'Add & Assign'}
                                               </button>
@@ -1624,7 +1624,7 @@ export default function Step4AnnualPlan({
                                                   setNewPersonName('')
                                                   setNewPersonRole('')
                                                 }}
-                                                className="px-4 py-2.5 bg-slate-200 text-slate-700 text-sm rounded-lg hover:bg-slate-300"
+                                                className="px-4 py-2.5 bg-slate-200 text-gray-700 text-sm rounded-lg hover:bg-slate-300"
                                               >
                                                 Cancel
                                               </button>
@@ -1659,19 +1659,19 @@ export default function Step4AnnualPlan({
 
               if (allUnlockedHaveInitiatives && allDistributed) {
                 return (
-                  <div className="bg-emerald-50 border-2 border-emerald-300 rounded-lg p-4 mt-4">
-                    <p className="text-base font-semibold text-emerald-800">
+                  <div className="bg-brand-teal-50 border-2 border-brand-teal-300 rounded-lg p-4 mt-4">
+                    <p className="text-base font-semibold text-brand-teal-800">
                       ✓ Step 4 Complete! All unlocked quarters have initiatives assigned.
                     </p>
-                    <p className="text-sm text-emerald-700 mt-1">
+                    <p className="text-sm text-brand-teal-700 mt-1">
                       You can proceed to Step 5 to define your sprint focus and key actions.
                     </p>
                   </div>
                 )
               } else if (allUnlockedHaveInitiatives) {
                 return (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mt-4">
-                    <p className="text-sm text-emerald-800">
+                  <div className="bg-brand-teal-50 border border-brand-teal-200 rounded-lg p-3 mt-4">
+                    <p className="text-sm text-brand-teal-800">
                       ✓ Minimum requirement met! You can proceed, or continue assigning remaining initiatives.
                     </p>
                   </div>

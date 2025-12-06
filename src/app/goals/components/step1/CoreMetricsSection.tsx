@@ -28,11 +28,11 @@ export default function CoreMetricsSection({
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       <div
         onClick={onToggle}
-        className="cursor-pointer p-5 flex items-center justify-between hover:bg-teal-50 transition-colors"
+        className="cursor-pointer p-5 flex items-center justify-between hover:bg-brand-orange-50 transition-colors"
       >
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-teal-100 rounded-lg">
-            <TrendingUp className="w-5 h-5 text-teal-600" />
+          <div className="p-2 bg-brand-orange-100 rounded-lg">
+            <TrendingUp className="w-5 h-5 text-brand-orange" />
           </div>
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Core Business Metrics</h3>
@@ -51,8 +51,8 @@ export default function CoreMetricsSection({
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
               <thead>
-                <tr className="bg-gradient-to-r from-teal-50 to-teal-100 border-b-2 border-teal-200">
-                  <th className="text-left p-3 text-sm font-bold text-gray-700 sticky left-0 bg-teal-50 z-10 w-[250px]">
+                <tr className="bg-gradient-to-r from-brand-orange-50 to-brand-orange-100 border-b-2 border-brand-orange-200">
+                  <th className="text-left p-3 text-sm font-bold text-gray-700 sticky left-0 bg-brand-orange-50 z-10 w-[250px]">
                     Core Metric
                   </th>
                   {[0, 1, 2, 3].map(idx => {
@@ -106,8 +106,8 @@ export default function CoreMetricsSection({
                 />
 
                 {/* Revenue per Employee (Calculated) */}
-                <tr className="border-b border-gray-200 bg-teal-50/50">
-                  <td className="p-3 sticky left-0 z-10 bg-teal-50/50">
+                <tr className="border-b border-gray-200 bg-brand-orange-50/50">
+                  <td className="p-3 sticky left-0 z-10 bg-brand-orange-50/50">
                     <span className="font-semibold text-gray-900 text-sm flex items-center gap-2">
                       Revenue per Employee ($)
                       <span className="text-xs text-gray-500 font-normal italic">(calculated)</span>
@@ -173,7 +173,7 @@ function MetricRow({ label, type, values, onChange, rowIndex = 0 }: MetricRowPro
   }
 
   return (
-    <tr className={`border-b border-gray-200 hover:bg-teal-50 transition-colors ${
+    <tr className={`border-b border-gray-200 hover:bg-brand-orange-50 transition-colors ${
       rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'
     }`}>
       <td className="p-3 sticky left-0 z-10 bg-inherit">
@@ -186,7 +186,7 @@ function MetricRow({ label, type, values, onChange, rowIndex = 0 }: MetricRowPro
             step={type === 'decimal' ? '0.1' : undefined}
             value={formatValue(values[period])}
             onChange={(e) => onChange(period, parseValue(e.target.value))}
-            className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent hover:border-teal-300 transition-colors"
+            className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 transition-colors"
             placeholder={type === 'percentage' ? '0%' : type === 'dollar' ? '$0' : '0'}
           />
         </td>

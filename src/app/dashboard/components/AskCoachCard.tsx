@@ -33,8 +33,8 @@ export default function AskCoachCard({ onOpenModal, lastQuestionDate }: AskCoach
       {/* Header */}
       <div className="px-5 py-4 border-b border-gray-100">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-teal-100 rounded-lg flex items-center justify-center">
-            <MessageCircle className="h-4 w-4 text-teal-600" />
+          <div className="w-9 h-9 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+            <MessageCircle className="h-4 w-4 text-brand-orange" />
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">Your Coach</h3>
@@ -50,7 +50,7 @@ export default function AskCoachCard({ onOpenModal, lastQuestionDate }: AskCoach
         {/* Coaching Insight */}
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
           <div className="flex items-start gap-3">
-            <Lightbulb className="h-5 w-5 text-teal-600 flex-shrink-0 mt-0.5" />
+            <Lightbulb className="h-5 w-5 text-brand-orange flex-shrink-0 mt-0.5" />
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
                 Today's Insight
@@ -66,7 +66,7 @@ export default function AskCoachCard({ onOpenModal, lastQuestionDate }: AskCoach
         <button
           type="button"
           onClick={onOpenModal}
-          className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium shadow-sm"
         >
           <MessageCircle className="h-5 w-5" />
           Ask Your Coach

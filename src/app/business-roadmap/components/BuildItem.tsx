@@ -23,11 +23,11 @@ export function BuildItem({
         checked={isComplete}
         onChange={() => {}}
         onClick={onToggleComplete}
-        className="mt-1 w-4 h-4 accent-teal-600 rounded border-gray-300 focus:ring-teal-500 cursor-pointer flex-shrink-0"
+        className="mt-1 w-4 h-4 accent-brand-orange rounded border-gray-300 focus:ring-brand-orange cursor-pointer flex-shrink-0"
       />
       <button
         onClick={onClick}
-        className="text-left flex-1 text-sm text-gray-700 hover:text-teal-600 transition-colors"
+        className="text-left flex-1 text-sm text-gray-700 hover:text-brand-orange transition-colors"
       >
         <div className="flex items-center gap-2">
           <span className={isComplete ? 'line-through text-gray-500' : ''}>{build.name}</span>
@@ -36,7 +36,7 @@ export function BuildItem({
           {!isComplete && completionPercentage !== undefined && completionPercentage > 0 && (
             <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
               completionPercentage < 33 ? 'bg-red-100 text-red-700' :
-              completionPercentage < 66 ? 'bg-orange-100 text-orange-700' :
+              completionPercentage < 66 ? 'bg-brand-orange-100 text-brand-orange-700' :
               completionPercentage < 100 ? 'bg-amber-100 text-amber-700' :
               'bg-green-100 text-green-700'
             }`}>
@@ -46,7 +46,7 @@ export function BuildItem({
 
           {/* Click to assess hint for items not started */}
           {!isComplete && (completionPercentage === undefined || completionPercentage === 0) && (
-            <span className="opacity-0 group-hover:opacity-100 text-xs text-teal-500 transition-opacity">
+            <span className="opacity-0 group-hover:opacity-100 text-xs text-brand-orange-500 transition-opacity">
               Click to assess →
             </span>
           )}

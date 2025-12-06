@@ -92,8 +92,8 @@ export function SessionCountdown({ session, onRequestSession }: SessionCountdown
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="text-center py-8">
-          <div className="w-16 h-16 bg-teal-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Calendar className="w-8 h-8 text-teal-600" />
+          <div className="w-16 h-16 bg-brand-orange-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Calendar className="w-8 h-8 text-brand-orange" />
           </div>
           <h3 className="font-semibold text-gray-900 mb-2">No Upcoming Sessions</h3>
           <p className="text-sm text-gray-500 mb-4">
@@ -101,7 +101,7 @@ export function SessionCountdown({ session, onRequestSession }: SessionCountdown
           </p>
           <button
             onClick={onRequestSession}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
           >
             <CalendarPlus className="w-4 h-4" />
             Request Session
@@ -118,7 +118,7 @@ export function SessionCountdown({ session, onRequestSession }: SessionCountdown
         <h3 className="font-semibold text-gray-900">Next Session</h3>
         <Link
           href="/sessions"
-          className="text-sm text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1"
+          className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium flex items-center gap-1"
         >
           View all
           <ChevronRight className="w-4 h-4" />
@@ -126,25 +126,25 @@ export function SessionCountdown({ session, onRequestSession }: SessionCountdown
       </div>
 
       {/* Countdown */}
-      <div className="px-6 py-6 bg-gradient-to-br from-teal-50 to-cyan-50">
+      <div className="px-6 py-6 bg-gradient-to-br from-brand-orange-50 to-cyan-50">
         <div className="flex items-center justify-center gap-4">
           <div className="text-center">
             <div className="w-16 h-16 bg-white rounded-xl shadow-sm flex items-center justify-center mb-2">
-              <span className="text-2xl font-bold text-teal-700">{countdown.days}</span>
+              <span className="text-2xl font-bold text-brand-orange-700">{countdown.days}</span>
             </div>
             <span className="text-xs text-gray-500 uppercase tracking-wider">Days</span>
           </div>
-          <span className="text-2xl text-teal-300 font-light">:</span>
+          <span className="text-2xl text-brand-orange-300 font-light">:</span>
           <div className="text-center">
             <div className="w-16 h-16 bg-white rounded-xl shadow-sm flex items-center justify-center mb-2">
-              <span className="text-2xl font-bold text-teal-700">{countdown.hours}</span>
+              <span className="text-2xl font-bold text-brand-orange-700">{countdown.hours}</span>
             </div>
             <span className="text-xs text-gray-500 uppercase tracking-wider">Hours</span>
           </div>
-          <span className="text-2xl text-teal-300 font-light">:</span>
+          <span className="text-2xl text-brand-orange-300 font-light">:</span>
           <div className="text-center">
             <div className="w-16 h-16 bg-white rounded-xl shadow-sm flex items-center justify-center mb-2">
-              <span className="text-2xl font-bold text-teal-700">{countdown.minutes}</span>
+              <span className="text-2xl font-bold text-brand-orange-700">{countdown.minutes}</span>
             </div>
             <span className="text-xs text-gray-500 uppercase tracking-wider">Minutes</span>
           </div>
@@ -155,7 +155,7 @@ export function SessionCountdown({ session, onRequestSession }: SessionCountdown
       <div className="p-6">
         <div className="flex items-start gap-4">
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-            session.type === 'video' ? 'bg-blue-100 text-blue-600' :
+            session.type === 'video' ? 'bg-brand-orange-100 text-brand-orange' :
             session.type === 'in-person' ? 'bg-amber-100 text-amber-600' :
             'bg-gray-100 text-gray-600'
           }`}>
@@ -190,7 +190,7 @@ export function SessionCountdown({ session, onRequestSession }: SessionCountdown
             <ul className="space-y-1">
               {session.agenda.slice(0, 3).map((item, index) => (
                 <li key={index} className="text-sm text-gray-600 flex items-start gap-2">
-                  <span className="w-5 h-5 bg-teal-100 text-teal-700 rounded text-xs flex items-center justify-center flex-shrink-0">
+                  <span className="w-5 h-5 bg-brand-orange-100 text-brand-orange-700 rounded text-xs flex items-center justify-center flex-shrink-0">
                     {index + 1}
                   </span>
                   {item}
@@ -208,7 +208,7 @@ export function SessionCountdown({ session, onRequestSession }: SessionCountdown
         {/* Actions */}
         {session.type === 'video' && (
           <div className="mt-4">
-            <button className="w-full py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium flex items-center justify-center gap-2">
+            <button className="w-full py-2.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium flex items-center justify-center gap-2">
               <Video className="w-4 h-4" />
               Join Session
             </button>

@@ -40,6 +40,7 @@ import {
   type IdeaImpact
 } from '@/lib/services/ideasService';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import PageHeader from '@/components/ui/PageHeader';
 
 type FilterStatus = 'all' | IdeaStatus;
 
@@ -47,33 +48,33 @@ type FilterStatus = 'all' | IdeaStatus;
 const STATUS_CONFIG: Record<IdeaStatus, { label: string; color: string; icon: typeof Lightbulb; bgHover: string }> = {
   'captured': {
     label: 'Captured',
-    color: 'bg-slate-100 text-slate-700 border-slate-200',
+    color: 'bg-slate-100 text-gray-700 border-slate-200',
     icon: Lightbulb,
-    bgHover: 'hover:bg-slate-50'
+    bgHover: 'hover:bg-gray-50'
   },
   'under_review': {
     label: 'Under Review',
-    color: 'bg-amber-100 text-amber-700 border-amber-200',
+    color: 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-200',
     icon: Clock,
-    bgHover: 'hover:bg-amber-50'
+    bgHover: 'hover:bg-brand-orange-50'
   },
   'approved': {
     label: 'Approved',
-    color: 'bg-teal-100 text-teal-700 border-teal-200',
+    color: 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-200',
     icon: CheckCircle2,
-    bgHover: 'hover:bg-teal-50'
+    bgHover: 'hover:bg-brand-orange-50'
   },
   'rejected': {
     label: 'Rejected',
-    color: 'bg-slate-100 text-slate-500 border-slate-200',
+    color: 'bg-slate-100 text-gray-500 border-slate-200',
     icon: XCircle,
-    bgHover: 'hover:bg-slate-50'
+    bgHover: 'hover:bg-gray-50'
   },
   'parked': {
     label: 'Parked',
-    color: 'bg-slate-100 text-slate-600 border-slate-200',
+    color: 'bg-slate-100 text-gray-600 border-slate-200',
     icon: PauseCircle,
-    bgHover: 'hover:bg-slate-50'
+    bgHover: 'hover:bg-gray-50'
   }
 };
 
@@ -92,13 +93,13 @@ const CATEGORY_CONFIG: Record<IdeaCategory, { label: string; color: string }> = 
 const IMPACT_CONFIG: Record<IdeaImpact, { label: string; color: string }> = {
   'low': { label: 'Low', color: 'bg-gray-100 text-gray-500' },
   'medium': { label: 'Medium', color: 'bg-gray-100 text-gray-600' },
-  'high': { label: 'High', color: 'bg-teal-50 text-teal-700' }
+  'high': { label: 'High', color: 'bg-brand-orange-50 text-brand-orange-700' }
 };
 
 // Skeleton loader
 function IdeaCardSkeleton() {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 animate-pulse">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 animate-pulse">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 space-y-3">
           <div className="h-5 bg-gray-200 rounded w-3/4"></div>
@@ -173,20 +174,20 @@ function IdeaCard({
   const [showMenu, setShowMenu] = useState(false);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-amber-400 transition-all duration-200 hover:shadow-md">
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-4">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-brand-orange transition-all duration-200 hover:shadow-md">
+      <div className="p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3 sm:gap-4">
           {/* Main content */}
           <div className="flex-1 min-w-0">
             {/* Title */}
             <div className="flex flex-wrap items-center gap-2 mb-2">
-              <Lightbulb className="w-5 h-5 text-amber-500 flex-shrink-0" />
-              <h3 className="font-semibold text-gray-900 text-lg">{idea.title}</h3>
+              <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-brand-orange flex-shrink-0" />
+              <h3 className="font-semibold text-gray-900 text-base sm:text-lg">{idea.title}</h3>
             </div>
 
             {/* Description preview */}
             {idea.description && (
-              <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+              <p className="text-xs sm:text-sm text-gray-600 mb-3 line-clamp-2">
                 {idea.description}
               </p>
             )}
@@ -229,7 +230,7 @@ function IdeaCard({
             {idea.status === 'captured' && (
               <button
                 onClick={onEvaluate}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-brand-orange hover:bg-brand-orange-600 rounded-lg transition-colors"
               >
                 <Filter className="w-4 h-4" />
                 <span>Evaluate</span>
@@ -338,28 +339,28 @@ function DeleteModal({
 }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
+      <div className="bg-white rounded-xl max-w-md w-full p-4 sm:p-6 shadow-xl">
         <div className="flex items-center gap-3 mb-4">
-          <div className="p-3 bg-red-100 rounded-full">
-            <Trash2 className="w-6 h-6 text-red-600" />
+          <div className="p-2 sm:p-3 bg-red-100 rounded-full flex-shrink-0">
+            <Trash2 className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" />
           </div>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Delete Idea</h3>
-            <p className="text-sm text-gray-500">This action cannot be undone</p>
+          <div className="min-w-0">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900">Delete Idea</h3>
+            <p className="text-xs sm:text-sm text-gray-500">This action cannot be undone</p>
           </div>
         </div>
 
-        <div className="p-4 bg-gray-50 rounded-lg mb-6">
-          <p className="font-medium text-gray-900">{idea.title}</p>
+        <div className="p-3 sm:p-4 bg-gray-50 rounded-lg mb-4 sm:mb-6">
+          <p className="font-medium text-sm sm:text-base text-gray-900 break-words">{idea.title}</p>
           <div className="flex gap-2 mt-2">
             <StatusBadge status={idea.status} size="sm" />
           </div>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={onCancel}
-            className="flex-1 px-4 py-2.5 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+            className="flex-1 px-4 py-2.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors font-medium"
           >
             Cancel
           </button>
@@ -392,54 +393,54 @@ function IdeasInfoBox() {
   }
 
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+    <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-xl overflow-hidden">
       <button
         onClick={toggleInfo}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-100 transition-colors"
+        className="w-full flex items-center justify-between px-4 sm:px-5 py-3 hover:bg-brand-orange-100 transition-colors"
       >
-        <div className="flex items-center gap-3">
-          <div className="p-1.5 bg-amber-100 rounded-lg">
-            <BookOpen className="h-4 w-4 text-amber-600" />
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="p-1.5 bg-brand-orange-100 rounded-lg flex-shrink-0">
+            <BookOpen className="h-4 w-4 text-brand-orange" />
           </div>
-          <span className="font-medium text-amber-900">About Your Ideas Journal</span>
+          <span className="text-sm sm:text-base font-medium text-brand-orange-900">About Your Ideas Journal</span>
         </div>
         {expanded ? (
-          <ChevronUp className="h-5 w-5 text-amber-600" />
+          <ChevronUp className="h-5 w-5 text-brand-orange flex-shrink-0" />
         ) : (
-          <ChevronDown className="h-5 w-5 text-amber-600" />
+          <ChevronDown className="h-5 w-5 text-brand-orange flex-shrink-0" />
         )}
       </button>
 
       {expanded && (
-        <div className="px-4 py-4 border-t border-amber-200 bg-white text-sm text-gray-700 space-y-3">
+        <div className="px-4 sm:px-5 py-4 border-t border-brand-orange-200 bg-white text-xs sm:text-sm text-gray-700 space-y-3">
           <p>
             <strong>Entrepreneurs are idea machines.</strong> The challenge isn't coming up with ideas -
             it's knowing which ones to pursue and which to let go.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 bg-amber-50 rounded-lg">
+            <div className="p-3 bg-brand-orange-50 rounded-lg">
               <div className="flex items-center gap-2 mb-1">
-                <Lightbulb className="w-4 h-4 text-amber-600" />
-                <span className="font-semibold text-amber-800">Capture Everything</span>
+                <Lightbulb className="w-4 h-4 text-brand-orange flex-shrink-0" />
+                <span className="text-xs sm:text-sm font-semibold text-brand-orange-800">Capture Everything</span>
               </div>
-              <p className="text-xs text-amber-700">
+              <p className="text-xs text-brand-orange-700">
                 Write down every idea as it comes. Don't judge - just capture.
               </p>
             </div>
-            <div className="p-3 bg-emerald-50 rounded-lg">
+            <div className="p-3 bg-brand-teal-50 rounded-lg">
               <div className="flex items-center gap-2 mb-1">
-                <Filter className="w-4 h-4 text-emerald-600" />
-                <span className="font-semibold text-emerald-800">Evaluate Periodically</span>
+                <Filter className="w-4 h-4 text-brand-teal flex-shrink-0" />
+                <span className="text-xs sm:text-sm font-semibold text-brand-teal-800">Evaluate Periodically</span>
               </div>
-              <p className="text-xs text-emerald-700">
+              <p className="text-xs text-brand-teal-700">
                 Review your ideas quarterly. Use the Ideas Filter to make smart decisions.
               </p>
             </div>
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-            <p className="text-xs text-blue-800">
+          <div className="bg-brand-orange-50 border border-brand-orange-200 p-3 rounded-lg">
+            <p className="text-xs text-brand-navy">
               <strong>Pro Tip:</strong> Schedule a monthly "idea review" session. Most ideas won't survive
               scrutiny - and that's the point. Focus on the few that truly align with your goals.
             </p>
@@ -613,108 +614,97 @@ export default function IdeasJournalPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-            <div>
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-100 rounded-xl">
-                  <Sparkles className="w-6 h-6 text-amber-600" />
-                </div>
-                <div>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Ideas Journal</h1>
-                  <p className="text-sm text-gray-600 mt-1">Capture ideas now, evaluate them later</p>
-                </div>
-              </div>
-            </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Main Container */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Header */}
+        <PageHeader
+          title="Ideas Journal"
+          subtitle="Capture ideas now, evaluate them later"
+          icon={Sparkles}
+          actions={
             <button
               onClick={() => {
                 resetForm();
                 setShowForm(true);
               }}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium shadow-sm"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg transition-colors font-medium shadow-sm"
             >
               <Plus className="h-5 w-5" />
               <span>Capture Idea</span>
             </button>
-          </div>
+          }
+        />
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'all'
-                  ? 'border-amber-500 bg-amber-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-              <p className="text-xs font-medium text-gray-600">Total Ideas</p>
-            </button>
-            <button
-              onClick={() => setStatusFilter('captured')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'captured'
-                  ? 'border-slate-500 bg-slate-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-slate-600">{stats.captured}</p>
-              <p className="text-xs font-medium text-gray-600">Captured</p>
-            </button>
-            <button
-              onClick={() => setStatusFilter('under_review')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'under_review'
-                  ? 'border-amber-500 bg-amber-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-amber-600">{stats.underReview}</p>
-              <p className="text-xs font-medium text-gray-600">Under Review</p>
-            </button>
-            <button
-              onClick={() => setStatusFilter('approved')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'approved'
-                  ? 'border-teal-500 bg-teal-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-teal-600">{stats.approved}</p>
-              <p className="text-xs font-medium text-gray-600">Approved</p>
-            </button>
-            <button
-              onClick={() => setStatusFilter('parked')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'parked'
-                  ? 'border-slate-400 bg-slate-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-slate-600">{stats.parked}</p>
-              <p className="text-xs font-medium text-gray-600">Parked</p>
-            </button>
-            <button
-              onClick={() => setStatusFilter('rejected')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'rejected'
-                  ? 'border-slate-400 bg-slate-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-slate-500">{stats.rejected}</p>
-              <p className="text-xs font-medium text-gray-600">Rejected</p>
-            </button>
-          </div>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6 mb-6">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`p-3 sm:p-4 rounded-xl shadow-sm border transition-all ${
+              statusFilter === 'all'
+                ? 'border-brand-orange bg-brand-orange-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
+            <p className="text-xs font-medium text-gray-600">Total Ideas</p>
+          </button>
+          <button
+            onClick={() => setStatusFilter('captured')}
+            className={`p-3 sm:p-4 rounded-xl shadow-sm border transition-all ${
+              statusFilter === 'captured'
+                ? 'border-slate-500 bg-gray-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-gray-600">{stats.captured}</p>
+            <p className="text-xs font-medium text-gray-600">Captured</p>
+          </button>
+          <button
+            onClick={() => setStatusFilter('under_review')}
+            className={`p-3 sm:p-4 rounded-xl shadow-sm border transition-all ${
+              statusFilter === 'under_review'
+                ? 'border-brand-orange bg-brand-orange-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-brand-orange">{stats.underReview}</p>
+            <p className="text-xs font-medium text-gray-600">Under Review</p>
+          </button>
+          <button
+            onClick={() => setStatusFilter('approved')}
+            className={`p-3 sm:p-4 rounded-xl shadow-sm border transition-all ${
+              statusFilter === 'approved'
+                ? 'border-brand-orange-500 bg-brand-orange-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-brand-orange">{stats.approved}</p>
+            <p className="text-xs font-medium text-gray-600">Approved</p>
+          </button>
+          <button
+            onClick={() => setStatusFilter('parked')}
+            className={`p-3 sm:p-4 rounded-xl shadow-sm border transition-all ${
+              statusFilter === 'parked'
+                ? 'border-slate-400 bg-gray-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-gray-600">{stats.parked}</p>
+            <p className="text-xs font-medium text-gray-600">Parked</p>
+          </button>
+          <button
+            onClick={() => setStatusFilter('rejected')}
+            className={`p-3 sm:p-4 rounded-xl shadow-sm border transition-all ${
+              statusFilter === 'rejected'
+                ? 'border-slate-400 bg-gray-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-gray-500">{stats.rejected}</p>
+            <p className="text-xs font-medium text-gray-600">Rejected</p>
+          </button>
         </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6">
         {/* Info Box */}
         <div className="mb-6">
           <IdeasInfoBox />
@@ -729,13 +719,13 @@ export default function IdeasJournalPage() {
               placeholder="Search ideas..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
             />
           </div>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white"
+            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent bg-white"
           >
             <option value="newest">Newest First</option>
             <option value="oldest">Oldest First</option>
@@ -746,7 +736,7 @@ export default function IdeasJournalPage() {
                 setStatusFilter('all');
                 setSearchQuery('');
               }}
-              className="px-4 py-2.5 text-amber-600 hover:text-amber-700 font-medium"
+              className="px-4 py-2.5 text-brand-orange hover:text-brand-orange-700 font-medium whitespace-nowrap"
             >
               Clear filters
             </button>
@@ -757,12 +747,12 @@ export default function IdeasJournalPage() {
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-              <p className="text-red-700">{error}</p>
+              <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0" />
+              <p className="text-sm sm:text-base text-red-700">{error}</p>
             </div>
             <button
               onClick={() => setError(null)}
-              className="p-1 hover:bg-red-100 rounded"
+              className="p-1 hover:bg-red-100 rounded flex-shrink-0"
             >
               <X className="w-5 h-5 text-red-600" />
             </button>
@@ -778,16 +768,16 @@ export default function IdeasJournalPage() {
           </div>
         ) : filteredIdeas.length === 0 ? (
           /* Empty State */
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 sm:p-12 text-center">
             {ideas.length === 0 ? (
               <>
-                <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Lightbulb className="w-8 h-8 text-amber-600" />
+                <div className="w-16 h-16 bg-brand-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Lightbulb className="w-8 h-8 text-brand-orange" />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
                   Start Capturing Ideas
                 </h3>
-                <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                <p className="text-sm sm:text-base text-gray-600 mb-6 max-w-md mx-auto">
                   Your Ideas Journal is empty. Whenever inspiration strikes, capture it here
                   instead of acting on it immediately.
                 </p>
@@ -796,7 +786,7 @@ export default function IdeasJournalPage() {
                     resetForm();
                     setShowForm(true);
                   }}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg transition-colors font-medium"
                 >
                   <Plus className="h-5 w-5" />
                   Capture your first idea
@@ -807,8 +797,8 @@ export default function IdeasJournalPage() {
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Search className="w-8 h-8 text-gray-400" />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">No matching ideas</h3>
-                <p className="text-gray-600 mb-4">
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">No matching ideas</h3>
+                <p className="text-sm sm:text-base text-gray-600 mb-4">
                   Try adjusting your search or filter criteria
                 </p>
                 <button
@@ -816,7 +806,7 @@ export default function IdeasJournalPage() {
                     setSearchQuery('');
                     setStatusFilter('all');
                   }}
-                  className="text-amber-600 hover:text-amber-700 font-medium"
+                  className="text-brand-orange hover:text-brand-orange-700 font-medium"
                 >
                   Clear filters
                 </button>
@@ -846,24 +836,24 @@ export default function IdeasJournalPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl">
             {/* Modal Header */}
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-100 rounded-lg">
-                  <Lightbulb className="w-5 h-5 text-amber-600" />
+                <div className="p-2 bg-brand-orange-100 rounded-lg">
+                  <Lightbulb className="w-5 h-5 text-brand-orange" />
                 </div>
-                <h2 className="text-xl font-bold text-gray-900">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900">
                   {editingId ? 'Edit Idea' : 'Capture New Idea'}
                 </h2>
               </div>
               <button
                 onClick={resetForm}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
               >
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-5">
               {/* Title */}
               <div>
                 <label className="block text-sm font-semibold text-gray-900 mb-2">
@@ -875,7 +865,7 @@ export default function IdeasJournalPage() {
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   placeholder="e.g., Launch a customer loyalty program"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-lg"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent text-lg"
                   autoFocus
                 />
               </div>
@@ -890,7 +880,7 @@ export default function IdeasJournalPage() {
                   onChange={(e) => setFormData({ ...formData, description: e.target.value || null })}
                   placeholder="Describe the idea in more detail..."
                   rows={3}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent resize-none"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
                 />
               </div>
 
@@ -905,7 +895,7 @@ export default function IdeasJournalPage() {
                     value={formData.source || ''}
                     onChange={(e) => setFormData({ ...formData, source: e.target.value || null })}
                     placeholder="e.g., Podcast, book, client..."
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   />
                 </div>
                 <div>
@@ -915,7 +905,7 @@ export default function IdeasJournalPage() {
                   <select
                     value={formData.category || ''}
                     onChange={(e) => setFormData({ ...formData, category: (e.target.value || null) as IdeaCategory | null })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent bg-white"
                   >
                     <option value="">Select category</option>
                     {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
@@ -926,8 +916,8 @@ export default function IdeasJournalPage() {
               </div>
 
               {/* Tip */}
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <p className="text-xs text-amber-800">
+              <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-3">
+                <p className="text-xs text-brand-orange-800">
                   <strong>Quick capture is key.</strong> Just get it down - you can add more details
                   and run it through the Ideas Filter later when you're ready to evaluate.
                 </p>
@@ -938,13 +928,13 @@ export default function IdeasJournalPage() {
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                  className="flex-1 px-4 py-3 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-3 text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors font-medium"
+                  className="flex-1 px-4 py-3 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg transition-colors font-medium"
                 >
                   {editingId ? 'Save Changes' : 'Capture Idea'}
                 </button>

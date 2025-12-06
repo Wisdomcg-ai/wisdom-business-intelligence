@@ -105,9 +105,9 @@ export default function ActionsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Pending</p>
-                  <p className="text-2xl font-bold text-orange-600">{pendingCount}</p>
+                  <p className="text-2xl font-bold text-brand-orange-600">{pendingCount}</p>
                 </div>
-                <Circle className="w-8 h-8 text-orange-400" />
+                <Circle className="w-8 h-8 text-brand-orange-400" />
               </div>
             </div>
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -132,7 +132,7 @@ export default function ActionsPage() {
                   onClick={() => setFilter('all')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     filter === 'all'
-                      ? 'bg-teal-600 text-white'
+                      ? 'bg-brand-orange text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
@@ -142,7 +142,7 @@ export default function ActionsPage() {
                   onClick={() => setFilter('open')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     filter === 'open'
-                      ? 'bg-orange-600 text-white'
+                      ? 'bg-brand-orange-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
@@ -191,7 +191,7 @@ export default function ActionsPage() {
                     ? 'border-green-200 bg-green-50/30'
                     : isOverdue(action.due_date)
                     ? 'border-red-200 bg-red-50/30'
-                    : 'border-gray-200 hover:border-teal-300'
+                    : 'border-gray-200 hover:border-brand-orange-300'
                 }`}
               >
                 <div className="p-6">
@@ -203,7 +203,7 @@ export default function ActionsPage() {
                       {action.status === 'completed' ? (
                         <CheckCircle className="w-6 h-6 text-green-600" />
                       ) : (
-                        <Circle className="w-6 h-6 text-gray-400 hover:text-teal-600" />
+                        <Circle className="w-6 h-6 text-gray-400 hover:text-brand-orange" />
                       )}
                     </button>
                     <div className="flex-1 min-w-0">
@@ -217,7 +217,7 @@ export default function ActionsPage() {
 
                       {/* Session Info */}
                       {action.coaching_sessions && (
-                        <div className="mb-3 inline-flex items-center gap-2 px-3 py-1 bg-teal-50 rounded-full text-xs text-teal-700">
+                        <div className="mb-3 inline-flex items-center gap-2 px-3 py-1 bg-brand-orange-50 rounded-full text-xs text-brand-orange-700">
                           <Video className="w-3 h-3" />
                           <span>From: {action.coaching_sessions.title}</span>
                         </div>

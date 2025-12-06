@@ -90,7 +90,7 @@ export default function DocumentsPage() {
         return <FileText className="w-8 h-8 text-red-500" />
       case 'doc':
       case 'docx':
-        return <FileText className="w-8 h-8 text-teal-500" />
+        return <FileText className="w-8 h-8 text-brand-orange-500" />
       case 'xls':
       case 'xlsx':
       case 'csv':
@@ -99,7 +99,7 @@ export default function DocumentsPage() {
       case 'jpeg':
       case 'png':
       case 'gif':
-        return <Image className="w-8 h-8 text-purple-500" />
+        return <Image className="w-8 h-8 text-brand-navy" />
       case 'txt':
       case 'md':
         return <FileCode className="w-8 h-8 text-gray-500" />
@@ -144,7 +144,7 @@ export default function DocumentsPage() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search documents..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               />
             </div>
 
@@ -154,7 +154,7 @@ export default function DocumentsPage() {
               <select
                 value={selectedFolder}
                 onChange={(e) => setSelectedFolder(e.target.value)}
-                className="pl-10 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent appearance-none bg-white"
+                className="pl-10 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent appearance-none bg-white"
               >
                 <option value="all">All Folders</option>
                 {folders.map(folder => (
@@ -190,7 +190,7 @@ export default function DocumentsPage() {
             {filteredDocuments.map((doc) => (
               <div
                 key={doc.id}
-                className="bg-white rounded-lg border-2 border-gray-200 p-5 hover:border-teal-400 hover:shadow-md transition-all group"
+                className="bg-white rounded-lg border-2 border-gray-200 p-5 hover:border-brand-orange-400 hover:shadow-md transition-all group"
               >
                 <div className="flex items-start gap-4">
                   {/* File Icon */}
@@ -226,7 +226,7 @@ export default function DocumentsPage() {
                     <div className="mt-3 flex gap-2">
                       <button
                         onClick={() => downloadDocument(doc.id)}
-                        className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded hover:bg-teal-700 transition-colors"
+                        className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-brand-orange text-white text-xs font-medium rounded hover:bg-brand-orange-600 transition-colors"
                       >
                         <Download className="w-3 h-3" />
                         Download
@@ -241,14 +241,14 @@ export default function DocumentsPage() {
 
         {/* Stats */}
         {documents.length > 0 && (
-          <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+          <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-4">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-teal-700 font-medium">
+              <span className="text-brand-orange-700 font-medium">
                 {filteredDocuments.length} {filteredDocuments.length === 1 ? 'document' : 'documents'}
                 {searchTerm || selectedFolder !== 'all' ? ' found' : ' total'}
               </span>
               {folders.length > 1 && (
-                <span className="text-teal-600">
+                <span className="text-brand-orange">
                   {folders.length} folders
                 </span>
               )}

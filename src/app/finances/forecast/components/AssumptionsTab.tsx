@@ -140,7 +140,7 @@ export default function AssumptionsTab({
       <div>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <Target className="w-6 h-6 text-teal-600" />
+            <Target className="w-6 h-6 text-brand-orange" />
             <div>
               <h2 className="text-xl font-bold text-gray-900">FY{forecast.fiscal_year} Annual Goals</h2>
               <p className="text-sm text-gray-500">Set your financial targets for the year</p>
@@ -148,7 +148,7 @@ export default function AssumptionsTab({
           </div>
           <button
             onClick={onImportFromAnnualPlan}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-orange bg-brand-orange-50 rounded-lg hover:bg-brand-orange-100 transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
             Import from Annual Plan
@@ -157,10 +157,10 @@ export default function AssumptionsTab({
 
         {/* Import Indicator */}
         {forecast.goal_source === 'goals_wizard' && forecast.annual_plan_id && (
-          <div className="mb-4 p-3 bg-teal-50 border border-teal-200 rounded-lg">
+          <div className="mb-4 p-3 bg-brand-orange-50 border border-brand-orange-200 rounded-lg">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-teal-600" />
-              <span className="text-sm font-medium text-teal-900">
+              <Sparkles className="w-4 h-4 text-brand-orange" />
+              <span className="text-sm font-medium text-brand-navy">
                 Goals imported from Goals & Targets wizard
               </span>
             </div>
@@ -176,7 +176,7 @@ export default function AssumptionsTab({
               type="number"
               value={goals.revenue || ''}
               onChange={(e) => setGoals({ ...goals, revenue: parseFloat(e.target.value) || 0 })}
-              className={`w-full px-3 py-2 text-lg font-bold text-gray-900 border rounded focus:ring-2 focus:ring-teal-500 ${
+              className={`w-full px-3 py-2 text-lg font-bold text-gray-900 border rounded focus:ring-2 focus:ring-brand-orange ${
                 validationIssues.some(i => i.field === 'revenue_goal' && i.severity === 'error')
                   ? 'border-red-300 bg-red-50'
                   : validationIssues.some(i => i.field === 'revenue_goal' && i.severity === 'warning')
@@ -216,7 +216,7 @@ export default function AssumptionsTab({
               type="number"
               value={goals.netProfit || ''}
               onChange={(e) => setGoals({ ...goals, netProfit: parseFloat(e.target.value) || 0 })}
-              className="w-full px-3 py-2 text-lg font-bold text-gray-900 border border-gray-300 rounded focus:ring-2 focus:ring-teal-500"
+              className="w-full px-3 py-2 text-lg font-bold text-gray-900 border border-gray-300 rounded focus:ring-2 focus:ring-brand-orange"
               placeholder="0"
             />
             <div className="text-xs text-gray-500 mt-1">
@@ -326,7 +326,7 @@ export default function AssumptionsTab({
                   type="number"
                   value={cogsPercentage}
                   onChange={(e) => setCogsPercentage(parseFloat(e.target.value) || 0)}
-                  className={`w-20 px-3 py-2 text-sm font-bold text-gray-900 border rounded focus:ring-2 focus:ring-teal-500 ${
+                  className={`w-20 px-3 py-2 text-sm font-bold text-gray-900 border rounded focus:ring-2 focus:ring-brand-orange ${
                     validationIssues.some(i => i.field === 'cogs_percentage' && i.severity === 'error')
                       ? 'border-red-300 bg-red-50'
                       : validationIssues.some(i => i.field === 'cogs_percentage' && i.severity === 'warning')
@@ -359,23 +359,23 @@ export default function AssumptionsTab({
 
           {/* Summary */}
           <div className="border-t border-gray-200 pt-8">
-            <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+            <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-teal-600 mt-0.5" />
+                <AlertCircle className="w-5 h-5 text-brand-orange mt-0.5" />
                 <div className="flex-1">
-                  <h3 className="text-sm font-bold text-teal-900 mb-2">Forecast Summary</h3>
+                  <h3 className="text-sm font-bold text-brand-navy mb-2">Forecast Summary</h3>
                   <div className="grid grid-cols-2 gap-6 text-sm">
                     <div>
-                      <div className="text-teal-700 mb-1">Revenue Goal</div>
-                      <div className="font-bold text-teal-900 text-lg">{formatCurrency(goals.revenue)}</div>
+                      <div className="text-brand-orange-700 mb-1">Revenue Goal</div>
+                      <div className="font-bold text-brand-navy text-lg">{formatCurrency(goals.revenue)}</div>
                     </div>
                     <div>
-                      <div className="text-teal-700 mb-1">Gross Profit</div>
-                      <div className="font-bold text-teal-900 text-lg">{formatCurrency(calculatedGP)}</div>
-                      <div className="text-xs text-teal-600">{(100 - cogsPercentage).toFixed(1)}% margin</div>
+                      <div className="text-brand-orange-700 mb-1">Gross Profit</div>
+                      <div className="font-bold text-brand-navy text-lg">{formatCurrency(calculatedGP)}</div>
+                      <div className="text-xs text-brand-orange">{(100 - cogsPercentage).toFixed(1)}% margin</div>
                     </div>
                   </div>
-                  <div className="mt-3 text-xs text-teal-700">
+                  <div className="mt-3 text-xs text-brand-orange-700">
                     💡 Operating expenses and net profit will be calculated line-by-line in the P&L Forecast tab
                   </div>
                 </div>
@@ -388,7 +388,7 @@ export default function AssumptionsTab({
             <button
               onClick={() => handleSave(false)}
               disabled={isSaving || goals.revenue === 0}
-              className="flex items-center gap-2 px-6 py-3 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-6 py-3 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Save className="w-4 h-4" />
               {isSaving ? 'Saving...' : 'Save & Generate Forecast'}

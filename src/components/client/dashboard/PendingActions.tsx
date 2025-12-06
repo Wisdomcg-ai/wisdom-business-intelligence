@@ -29,7 +29,7 @@ export function PendingActions({ actions, onToggleComplete }: PendingActionsProp
       case 'urgent':
         return 'bg-red-100 text-red-700 border-red-200'
       case 'high':
-        return 'bg-orange-100 text-orange-700 border-orange-200'
+        return 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-200'
       case 'medium':
         return 'bg-amber-100 text-amber-700 border-amber-200'
       default:
@@ -75,7 +75,7 @@ export function PendingActions({ actions, onToggleComplete }: PendingActionsProp
         </div>
         <Link
           href="/actions"
-          className="text-sm text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1"
+          className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium flex items-center gap-1"
         >
           View all
           <ChevronRight className="w-4 h-4" />
@@ -100,7 +100,7 @@ export function PendingActions({ actions, onToggleComplete }: PendingActionsProp
               <div className="flex items-start gap-3">
                 <button
                   onClick={() => onToggleComplete?.(action.id)}
-                  className="mt-0.5 flex-shrink-0 text-gray-300 hover:text-teal-500 transition-colors"
+                  className="mt-0.5 flex-shrink-0 text-gray-300 hover:text-brand-orange-500 transition-colors"
                 >
                   <Circle className="w-5 h-5" />
                 </button>
@@ -129,7 +129,7 @@ export function PendingActions({ actions, onToggleComplete }: PendingActionsProp
                 </div>
                 <Link
                   href={`/actions/${action.id}`}
-                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-teal-600 transition-all"
+                  className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-brand-orange transition-all"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </Link>
@@ -143,7 +143,7 @@ export function PendingActions({ actions, onToggleComplete }: PendingActionsProp
         <div className="px-6 py-3 border-t border-gray-100 bg-gray-50">
           <Link
             href="/actions"
-            className="text-sm text-teal-600 hover:text-teal-700 font-medium"
+            className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
           >
             +{actions.length - 5} more actions
           </Link>

@@ -36,7 +36,7 @@ const COLUMN_ICONS: Record<string, React.ElementType> = {
 const COLUMN_HEADER_COLORS: Record<string, string> = {
   stop: 'bg-red-100 text-red-800',
   continue: 'bg-green-100 text-green-800',
-  start: 'bg-blue-100 text-blue-800'
+  start: 'bg-brand-orange-100 text-brand-navy'
 };
 
 export function FeedbackLoopStep({ review, onUpdate }: FeedbackLoopStepProps) {
@@ -134,7 +134,7 @@ export function FeedbackLoopStep({ review, onUpdate }: FeedbackLoopStepProps) {
               const isLast = areaIdx === FEEDBACK_LOOP_AREAS.length - 1;
 
               return (
-                <tr key={area} className={areaIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                <tr key={area} className={areaIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   {/* Area Label */}
                   <td className={`p-3 border-r border-gray-200 ${isLast ? 'rounded-bl-lg' : ''}`}>
                     <div className="flex items-center gap-2">
@@ -183,7 +183,7 @@ export function FeedbackLoopStep({ review, onUpdate }: FeedbackLoopStepProps) {
                             onChange={(e) => setNewItems({ ...newItems, [key]: e.target.value })}
                             onKeyDown={(e) => handleKeyDown(e, area, column)}
                             placeholder="Add..."
-                            className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                            className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-brand-orange focus:border-brand-orange-500 bg-white"
                           />
                           <button
                             onClick={() => addItem(area, column)}
@@ -204,7 +204,7 @@ export function FeedbackLoopStep({ review, onUpdate }: FeedbackLoopStepProps) {
       </div>
 
       {/* Summary */}
-      <div className="mt-6 flex items-center justify-between bg-slate-50 rounded-lg p-4 border border-gray-200">
+      <div className="mt-6 flex items-center justify-between bg-gray-50 rounded-lg p-4 border border-gray-200">
         <div className="flex items-center gap-6">
           {FEEDBACK_LOOP_COLUMNS.map(column => {
             const Icon = COLUMN_ICONS[column];
@@ -226,7 +226,7 @@ export function FeedbackLoopStep({ review, onUpdate }: FeedbackLoopStepProps) {
           })}
         </div>
         <div className="text-right">
-          <div className="text-2xl font-bold text-teal-600">{getTotalItems()}</div>
+          <div className="text-2xl font-bold text-brand-orange">{getTotalItems()}</div>
           <div className="text-sm text-gray-500">Total Items</div>
         </div>
       </div>

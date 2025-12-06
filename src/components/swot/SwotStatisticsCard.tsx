@@ -10,7 +10,7 @@ interface SwotStatisticsCardProps {
   title: string;
   value: string | number;
   icon: React.ReactNode;
-  color: 'gray' | 'blue' | 'green' | 'red' | 'orange' | 'purple';
+  color: 'gray' | 'blue' | 'green' | 'red' | 'orange' | 'navy';
   trend?: 'up' | 'down' | 'neutral';
   trendValue?: string;
   description?: string;
@@ -27,20 +27,20 @@ export function SwotStatisticsCard({
 }: SwotStatisticsCardProps) {
   const colorClasses = {
     gray: 'bg-gray-50 text-gray-700 border-gray-200',
-    blue: 'bg-teal-50 text-teal-700 border-teal-200',
+    blue: 'bg-brand-orange-50 text-brand-orange-700 border-brand-orange-200',
     green: 'bg-green-50 text-green-700 border-green-200',
     red: 'bg-red-50 text-red-700 border-red-200',
-    orange: 'bg-orange-50 text-orange-700 border-orange-200',
-    purple: 'bg-purple-50 text-purple-700 border-purple-200'
+    orange: 'bg-brand-orange-50 text-brand-orange-700 border-brand-orange-200',
+    navy: 'bg-brand-navy-50 text-brand-navy-700 border-brand-navy-200'
   };
-  
+
   const iconBgClasses = {
     gray: 'bg-gray-100',
-    blue: 'bg-teal-100',
+    blue: 'bg-brand-orange-100',
     green: 'bg-green-100',
     red: 'bg-red-100',
-    orange: 'bg-orange-100',
-    purple: 'bg-purple-100'
+    orange: 'bg-brand-orange-100',
+    navy: 'bg-brand-navy-100'
   };
   
   return (

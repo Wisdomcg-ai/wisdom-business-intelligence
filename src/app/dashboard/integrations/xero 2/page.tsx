@@ -129,7 +129,7 @@ export default function XeroIntegrationPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center justify-between mb-2">
-            <Building2 className="h-5 w-5 text-teal-600" />
+            <Building2 className="h-5 w-5 text-brand-teal" />
             <span className="text-2xl font-bold">{businesses.length}</span>
           </div>
           <p className="text-sm text-gray-600">Total Businesses</p>
@@ -164,7 +164,7 @@ export default function XeroIntegrationPage() {
             <select
               value={selectedBusiness}
               onChange={(e) => setSelectedBusiness(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-brand-teal-500"
               disabled={loading}
             >
               <option value="">-- Select a business --</option>
@@ -181,7 +181,7 @@ export default function XeroIntegrationPage() {
           <button
             onClick={connectToXero}
             disabled={loading || !selectedBusiness}
-            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 bg-brand-teal text-white rounded-lg hover:bg-brand-teal-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
           >
             {loading ? 'Processing...' : 'Connect to Xero'}
           </button>
@@ -190,7 +190,7 @@ export default function XeroIntegrationPage() {
             <div className={`p-3 rounded-lg ${
               message.includes('✅') ? 'bg-green-50 text-green-800 border border-green-200' :
               message.includes('❌') ? 'bg-red-50 text-red-800 border border-red-200' :
-              'bg-teal-50 text-teal-800 border border-teal-200'
+              'bg-brand-teal-50 text-brand-teal-800 border border-brand-teal-200'
             }`}>
               {message}
             </div>

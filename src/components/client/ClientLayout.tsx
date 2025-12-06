@@ -139,7 +139,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <Building className="w-8 h-8 animate-pulse text-teal-600 mx-auto mb-4" />
+          <Building className="w-8 h-8 animate-pulse text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -147,13 +147,13 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-teal-600 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-brand-orange rounded-lg flex items-center justify-center">
                 <Building className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -177,7 +177,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
                   href={tab.href}
                   className={`relative flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                     isActive
-                      ? 'border-teal-600 text-teal-600'
+                      ? 'border-brand-orange text-brand-orange'
                       : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
                   }`}
                 >

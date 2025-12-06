@@ -72,7 +72,7 @@ export default function VersionManager({ forecast, onVersionChange, className = 
         <div className="flex items-center justify-between">
           {/* Current Version Display */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-teal-700 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-brand-orange-500 to-brand-orange-700 rounded-lg flex items-center justify-center">
               <GitBranch className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -128,7 +128,7 @@ export default function VersionManager({ forecast, onVersionChange, className = 
                           onClick={() => version.id && handleVersionSelect(version.id)}
                           className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
                             version.id === forecast.id
-                              ? 'bg-teal-50 text-teal-700'
+                              ? 'bg-brand-orange-50 text-brand-orange-700'
                               : 'hover:bg-gray-50 text-gray-700'
                           }`}
                         >
@@ -139,7 +139,7 @@ export default function VersionManager({ forecast, onVersionChange, className = 
                             </div>
                             <div className="flex items-center gap-1">
                               {version.is_locked && <Lock className="w-3 h-3 text-yellow-600" />}
-                              {version.id === forecast.id && <Check className="w-4 h-4 text-teal-600" />}
+                              {version.id === forecast.id && <Check className="w-4 h-4 text-brand-orange" />}
                             </div>
                           </div>
                         </button>
@@ -159,7 +159,7 @@ export default function VersionManager({ forecast, onVersionChange, className = 
                           onClick={() => version.id && handleVersionSelect(version.id)}
                           className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
                             version.id === forecast.id
-                              ? 'bg-teal-50 text-teal-700'
+                              ? 'bg-brand-orange-50 text-brand-orange-700'
                               : 'hover:bg-gray-50 text-gray-700'
                           }`}
                         >
@@ -174,7 +174,7 @@ export default function VersionManager({ forecast, onVersionChange, className = 
                             <div className="flex items-center gap-1">
                               {version.is_locked && <Lock className="w-3 h-3 text-yellow-600" />}
                               {version.is_active && <Check className="w-3 h-3 text-green-600" />}
-                              {version.id === forecast.id && <Check className="w-4 h-4 text-teal-600" />}
+                              {version.id === forecast.id && <Check className="w-4 h-4 text-brand-orange" />}
                             </div>
                           </div>
                         </button>

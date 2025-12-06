@@ -1,28 +1,107 @@
 import * as React from 'react'
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
-  size?: 'default' | 'sm' | 'lg' | 'icon'
+  variant?: 'default' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'destructive-outline' | 'link' | 'navy' | 'success'
+  size?: 'xs' | 'sm' | 'default' | 'lg' | 'xl' | 'icon' | 'icon-sm' | 'icon-lg'
+  fullWidth?: boolean
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className = '', variant = 'default', size = 'default', ...props }, ref) => {
-    const baseStyles = 'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50'
+  ({ className = '', variant = 'default', size = 'default', fullWidth = false, ...props }, ref) => {
+    // Base styles - consistent foundation for all buttons
+    const baseStyles = [
+      'inline-flex items-center justify-center gap-2',
+      'font-medium',
+      'rounded-lg',
+      'transition-all duration-200',
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+      'disabled:pointer-events-none disabled:opacity-50',
+      'select-none',
+      fullWidth ? 'w-full' : '',
+    ].join(' ')
 
-    const variantStyles = {
-      default: 'bg-teal-600 text-white hover:bg-teal-700 focus-visible:ring-teal-500',
-      destructive: 'bg-red-500 text-white hover:bg-red-600 focus-visible:ring-red-500',
-      outline: 'border border-gray-300 bg-white hover:bg-gray-100 focus-visible:ring-gray-400',
-      secondary: 'bg-gray-100 text-gray-900 hover:bg-gray-200 focus-visible:ring-gray-400',
-      ghost: 'hover:bg-gray-100 hover:text-gray-900 focus-visible:ring-gray-400',
-      link: 'text-teal-600 underline-offset-4 hover:underline focus-visible:ring-teal-500',
+    // Variant styles - visual appearance
+    const variantStyles: Record<string, string> = {
+      // Primary CTA - Orange (main actions: Save, Submit, Create, Continue)
+      default: [
+        'bg-brand-orange text-white',
+        'hover:bg-brand-orange-600 active:bg-brand-orange-700',
+        'focus-visible:ring-brand-orange',
+        'shadow-sm hover:shadow-md',
+      ].join(' '),
+
+      // Secondary - White with border (Cancel, Back, secondary actions)
+      secondary: [
+        'bg-white text-gray-700 border border-gray-300',
+        'hover:bg-gray-50 hover:border-gray-400 active:bg-gray-100',
+        'focus-visible:ring-gray-400',
+        'shadow-sm',
+      ].join(' '),
+
+      // Outline - Transparent with border (alternative secondary)
+      outline: [
+        'bg-transparent text-gray-700 border border-gray-300',
+        'hover:bg-gray-50 hover:text-gray-900 active:bg-gray-100',
+        'focus-visible:ring-gray-400',
+      ].join(' '),
+
+      // Ghost - No background (tertiary actions, in-table actions)
+      ghost: [
+        'bg-transparent text-gray-600',
+        'hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200',
+        'focus-visible:ring-gray-400',
+      ].join(' '),
+
+      // Destructive - Red (Delete, Remove)
+      destructive: [
+        'bg-red-600 text-white',
+        'hover:bg-red-700 active:bg-red-800',
+        'focus-visible:ring-red-500',
+        'shadow-sm hover:shadow-md',
+      ].join(' '),
+
+      // Destructive Outline - Red border (softer delete option)
+      'destructive-outline': [
+        'bg-transparent text-red-600 border border-red-300',
+        'hover:bg-red-50 hover:border-red-400 active:bg-red-100',
+        'focus-visible:ring-red-400',
+      ].join(' '),
+
+      // Link - Text only with underline
+      link: [
+        'bg-transparent text-brand-orange',
+        'hover:text-brand-orange-700 hover:underline',
+        'focus-visible:ring-brand-orange',
+        'underline-offset-4',
+      ].join(' '),
+
+      // Navy - Alternative primary for special emphasis
+      navy: [
+        'bg-brand-navy text-white',
+        'hover:bg-brand-navy-700 active:bg-brand-navy-800',
+        'focus-visible:ring-brand-navy',
+        'shadow-sm hover:shadow-md',
+      ].join(' '),
+
+      // Success - Green for positive confirmations
+      success: [
+        'bg-green-600 text-white',
+        'hover:bg-green-700 active:bg-green-800',
+        'focus-visible:ring-green-500',
+        'shadow-sm hover:shadow-md',
+      ].join(' '),
     }
 
-    const sizeStyles = {
-      default: 'h-10 px-4 py-2',
-      sm: 'h-9 rounded-md px-3',
-      lg: 'h-11 rounded-md px-8',
-      icon: 'h-10 w-10',
+    // Size styles - dimensions and typography
+    const sizeStyles: Record<string, string> = {
+      xs: 'h-7 px-2.5 text-xs',
+      sm: 'h-8 px-3 text-sm',
+      default: 'h-10 px-4 text-sm',
+      lg: 'h-11 px-6 text-base',
+      xl: 'h-12 px-8 text-base',
+      icon: 'h-10 w-10 p-0',
+      'icon-sm': 'h-8 w-8 p-0',
+      'icon-lg': 'h-12 w-12 p-0',
     }
 
     return (

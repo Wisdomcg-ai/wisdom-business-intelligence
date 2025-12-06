@@ -38,7 +38,7 @@ export function PreWorkReviewStep({ review, onEditPreWork }: PreWorkReviewStepPr
         {onEditPreWork && (
           <button
             onClick={onEditPreWork}
-            className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors text-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg font-medium hover:bg-brand-orange-600 transition-colors text-sm"
           >
             <Edit3 className="w-4 h-4" />
             Edit Pre-Work
@@ -48,25 +48,25 @@ export function PreWorkReviewStep({ review, onEditPreWork }: PreWorkReviewStepPr
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-slate-50 rounded-xl p-4 text-center">
+        <div className="bg-gray-50 rounded-xl p-4 text-center">
           <div className="text-3xl font-bold text-gray-900">
             {review.last_quarter_rating || '-'}/10
           </div>
           <div className="text-sm text-gray-600 mt-1">Quarter Rating</div>
         </div>
-        <div className="bg-slate-50 rounded-xl p-4 text-center">
+        <div className="bg-gray-50 rounded-xl p-4 text-center">
           <div className="text-3xl font-bold text-gray-900">
             {review.hours_worked_avg || '-'}
           </div>
           <div className="text-sm text-gray-600 mt-1">Avg Hours/Week</div>
         </div>
-        <div className="bg-slate-50 rounded-xl p-4 text-center">
+        <div className="bg-gray-50 rounded-xl p-4 text-center">
           <div className="text-3xl font-bold text-gray-900">
             {review.days_off_taken || '-'}
           </div>
           <div className="text-sm text-gray-600 mt-1">Days Off Taken</div>
         </div>
-        <div className="bg-slate-50 rounded-xl p-4 text-center">
+        <div className="bg-gray-50 rounded-xl p-4 text-center">
           <div className="text-3xl font-bold text-gray-900">
             {review.energy_level || '-'}/10
           </div>
@@ -77,10 +77,10 @@ export function PreWorkReviewStep({ review, onEditPreWork }: PreWorkReviewStepPr
       {/* Detailed Responses */}
       <div className="space-y-6">
         {/* Biggest Win */}
-        <div className="bg-slate-50 rounded-xl p-5">
+        <div className="bg-gray-50 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center">
-              <Lightbulb className="w-4 h-4 text-slate-600" />
+              <Lightbulb className="w-4 h-4 text-gray-600" />
             </div>
             <h3 className="font-semibold text-gray-900">Biggest Win</h3>
           </div>
@@ -90,10 +90,10 @@ export function PreWorkReviewStep({ review, onEditPreWork }: PreWorkReviewStepPr
         </div>
 
         {/* Biggest Challenge */}
-        <div className="bg-slate-50 rounded-xl p-5">
+        <div className="bg-gray-50 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center">
-              <AlertTriangle className="w-4 h-4 text-slate-600" />
+              <AlertTriangle className="w-4 h-4 text-gray-600" />
             </div>
             <h3 className="font-semibold text-gray-900">Biggest Challenge</h3>
           </div>
@@ -103,10 +103,10 @@ export function PreWorkReviewStep({ review, onEditPreWork }: PreWorkReviewStepPr
         </div>
 
         {/* Key Learning */}
-        <div className="bg-slate-50 rounded-xl p-5">
+        <div className="bg-gray-50 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center">
-              <BookOpen className="w-4 h-4 text-slate-600" />
+              <BookOpen className="w-4 h-4 text-gray-600" />
             </div>
             <h3 className="font-semibold text-gray-900">Key Learning</h3>
           </div>
@@ -116,10 +116,10 @@ export function PreWorkReviewStep({ review, onEditPreWork }: PreWorkReviewStepPr
         </div>
 
         {/* Purpose Alignment */}
-        <div className="bg-slate-50 rounded-xl p-5">
+        <div className="bg-gray-50 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center">
-              <Target className="w-4 h-4 text-slate-600" />
+              <Target className="w-4 h-4 text-gray-600" />
             </div>
             <h3 className="font-semibold text-gray-900">Purpose Alignment</h3>
           </div>
@@ -130,7 +130,7 @@ export function PreWorkReviewStep({ review, onEditPreWork }: PreWorkReviewStepPr
                   key={num}
                   className={`w-6 h-6 rounded text-xs flex items-center justify-center font-medium ${
                     num <= (review.purpose_alignment || 0)
-                      ? 'bg-teal-600 text-white'
+                      ? 'bg-brand-orange text-white'
                       : 'bg-slate-200 text-slate-400'
                   }`}
                 >
@@ -145,10 +145,10 @@ export function PreWorkReviewStep({ review, onEditPreWork }: PreWorkReviewStepPr
         </div>
 
         {/* Looking Ahead */}
-        <div className="bg-slate-50 rounded-xl p-5">
+        <div className="bg-gray-50 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center">
-              <Target className="w-4 h-4 text-slate-600" />
+              <Target className="w-4 h-4 text-gray-600" />
             </div>
             <h3 className="font-semibold text-gray-900">One Thing for Next Quarter</h3>
           </div>
@@ -159,10 +159,10 @@ export function PreWorkReviewStep({ review, onEditPreWork }: PreWorkReviewStepPr
 
         {/* Coach Support */}
         {review.coach_support_needed && (
-          <div className="bg-slate-50 rounded-xl p-5">
+          <div className="bg-gray-50 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center">
-                <Lightbulb className="w-4 h-4 text-slate-600" />
+                <Lightbulb className="w-4 h-4 text-gray-600" />
               </div>
               <h3 className="font-semibold text-gray-900">Coach Support Requested</h3>
             </div>
@@ -172,9 +172,9 @@ export function PreWorkReviewStep({ review, onEditPreWork }: PreWorkReviewStepPr
       </div>
 
       {/* Discussion Prompt */}
-      <div className="mt-8 p-4 bg-slate-50 rounded-xl border border-gray-200">
+      <div className="mt-8 p-4 bg-gray-50 rounded-xl border border-gray-200">
         <div className="flex items-start gap-3">
-          <CheckCircle2 className="w-5 h-5 text-slate-600 mt-0.5" />
+          <CheckCircle2 className="w-5 h-5 text-gray-600 mt-0.5" />
           <div>
             <h4 className="font-medium text-gray-900">Discussion Points</h4>
             <ul className="mt-2 text-sm text-gray-700 space-y-1">

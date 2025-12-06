@@ -226,7 +226,7 @@ function Step1BasicInfo({ data, updateData, errors }: StepProps) {
               type="text"
               value={data.businessName}
               onChange={(e) => updateData({ businessName: e.target.value })}
-              className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+              className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange ${
                 errors.businessName ? 'border-red-500' : 'border-gray-300'
               }`}
               placeholder="Enter business name"
@@ -243,7 +243,7 @@ function Step1BasicInfo({ data, updateData, errors }: StepProps) {
           <select
             value={data.industry}
             onChange={(e) => updateData({ industry: e.target.value })}
-            className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+            className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange ${
               errors.industry ? 'border-red-500' : 'border-gray-300'
             }`}
           >
@@ -270,7 +270,7 @@ function Step1BasicInfo({ data, updateData, errors }: StepProps) {
                 type="text"
                 value={data.ownerFirstName}
                 onChange={(e) => updateData({ ownerFirstName: e.target.value })}
-                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange ${
                   errors.ownerFirstName ? 'border-red-500' : 'border-gray-300'
                 }`}
                 placeholder="First name"
@@ -288,7 +288,7 @@ function Step1BasicInfo({ data, updateData, errors }: StepProps) {
               type="text"
               value={data.ownerLastName}
               onChange={(e) => updateData({ ownerLastName: e.target.value })}
-              className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+              className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange ${
                 errors.ownerLastName ? 'border-red-500' : 'border-gray-300'
               }`}
               placeholder="Last name"
@@ -307,7 +307,7 @@ function Step1BasicInfo({ data, updateData, errors }: StepProps) {
                 type="email"
                 value={data.ownerEmail}
                 onChange={(e) => updateData({ ownerEmail: e.target.value })}
-                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange ${
                   errors.ownerEmail ? 'border-red-500' : 'border-gray-300'
                 }`}
                 placeholder="email@example.com"
@@ -325,7 +325,7 @@ function Step1BasicInfo({ data, updateData, errors }: StepProps) {
                 type="tel"
                 value={data.ownerPhone}
                 onChange={(e) => updateData({ ownerPhone: e.target.value })}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 placeholder="Phone number"
               />
             </div>
@@ -340,7 +340,7 @@ function Step1BasicInfo({ data, updateData, errors }: StepProps) {
                 type="url"
                 value={data.website}
                 onChange={(e) => updateData({ website: e.target.value })}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 placeholder="https://"
               />
             </div>
@@ -355,7 +355,7 @@ function Step1BasicInfo({ data, updateData, errors }: StepProps) {
                 type="text"
                 value={data.address}
                 onChange={(e) => updateData({ address: e.target.value })}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 placeholder="Business address"
               />
             </div>
@@ -387,8 +387,8 @@ function Step2ProgramSetup({ data, updateData, errors }: StepProps) {
               onClick={() => updateData({ programType: program.value, customFrequency: '' })}
               className={`p-4 border-2 rounded-xl text-left transition-all ${
                 data.programType === program.value
-                  ? 'border-indigo-600 bg-indigo-50'
-                  : 'border-gray-200 hover:border-indigo-300'
+                  ? 'border-brand-orange bg-brand-orange-50'
+                  : 'border-gray-200 hover:border-brand-orange-300'
               }`}
             >
               <p className="font-semibold text-gray-900">{program.label}</p>
@@ -411,7 +411,7 @@ function Step2ProgramSetup({ data, updateData, errors }: StepProps) {
                 onClick={() => updateData({ sessionFrequency: freq })}
                 className={`px-6 py-3 rounded-lg font-medium transition-all ${
                   data.sessionFrequency === freq
-                    ? 'bg-indigo-600 text-white'
+                    ? 'bg-brand-orange text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
@@ -433,7 +433,7 @@ function Step2ProgramSetup({ data, updateData, errors }: StepProps) {
             value={data.customFrequency || ''}
             onChange={(e) => updateData({ customFrequency: e.target.value })}
             placeholder="e.g., Coaching weekly + CFO review monthly"
-            className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+            className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange ${
               errors.customFrequency ? 'border-red-500' : 'border-gray-300'
             }`}
           />
@@ -454,7 +454,7 @@ function Step2ProgramSetup({ data, updateData, errors }: StepProps) {
             type="date"
             value={data.engagementStartDate}
             onChange={(e) => updateData({ engagementStartDate: e.target.value })}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
           />
         </div>
       </div>
@@ -592,13 +592,13 @@ function Step3Modules({ data, updateData }: StepProps) {
           onClick={enableAllModules}
           className={`p-6 border-2 rounded-xl text-left transition-all ${
             accessMode === 'full'
-              ? 'border-indigo-600 bg-indigo-50'
-              : 'border-gray-200 hover:border-indigo-300'
+              ? 'border-brand-orange bg-brand-orange-50'
+              : 'border-gray-200 hover:border-brand-orange-300'
           }`}
         >
           <div className="flex items-center gap-3 mb-2">
             <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-              accessMode === 'full' ? 'bg-indigo-600' : 'bg-gray-200'
+              accessMode === 'full' ? 'bg-brand-orange' : 'bg-gray-200'
             }`}>
               {accessMode === 'full' && (
                 <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -616,13 +616,13 @@ function Step3Modules({ data, updateData }: StepProps) {
           onClick={selectCustomAccess}
           className={`p-6 border-2 rounded-xl text-left transition-all ${
             accessMode === 'custom'
-              ? 'border-indigo-600 bg-indigo-50'
-              : 'border-gray-200 hover:border-indigo-300'
+              ? 'border-brand-orange bg-brand-orange-50'
+              : 'border-gray-200 hover:border-brand-orange-300'
           }`}
         >
           <div className="flex items-center gap-3 mb-2">
             <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-              accessMode === 'custom' ? 'bg-indigo-600' : 'bg-gray-200'
+              accessMode === 'custom' ? 'bg-brand-orange' : 'bg-gray-200'
             }`}>
               {accessMode === 'custom' && (
                 <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -658,7 +658,7 @@ function Step3Modules({ data, updateData }: StepProps) {
                       {category.modules.filter(m => data.enabledModules[m.key]).length}/{category.modules.length} enabled
                     </span>
                     <div className={`w-10 h-6 rounded-full transition-colors ${
-                      allCategoryEnabled ? 'bg-indigo-600' : someCategoryEnabled ? 'bg-indigo-300' : 'bg-gray-300'
+                      allCategoryEnabled ? 'bg-brand-orange' : someCategoryEnabled ? 'bg-brand-orange-300' : 'bg-gray-300'
                     }`}>
                       <div className={`w-4 h-4 bg-white rounded-full shadow mt-1 transition-transform ${
                         allCategoryEnabled || someCategoryEnabled ? 'translate-x-5' : 'translate-x-1'
@@ -673,7 +673,7 @@ function Step3Modules({ data, updateData }: StepProps) {
                     <div
                       key={module.key}
                       className={`flex items-center justify-between p-4 cursor-pointer transition-colors ${
-                        data.enabledModules[module.key] ? 'bg-indigo-50/50' : 'hover:bg-gray-50'
+                        data.enabledModules[module.key] ? 'bg-brand-orange-50/50' : 'hover:bg-gray-50'
                       }`}
                       onClick={() => toggleModule(module.key)}
                     >
@@ -682,7 +682,7 @@ function Step3Modules({ data, updateData }: StepProps) {
                         <p className="text-sm text-gray-500">{module.description}</p>
                       </div>
                       <div className={`w-10 h-6 rounded-full transition-colors ${
-                        data.enabledModules[module.key] ? 'bg-indigo-600' : 'bg-gray-300'
+                        data.enabledModules[module.key] ? 'bg-brand-orange' : 'bg-gray-300'
                       }`}>
                         <div className={`w-4 h-4 bg-white rounded-full shadow mt-1 transition-transform ${
                           data.enabledModules[module.key] ? 'translate-x-5' : 'translate-x-1'
@@ -889,7 +889,7 @@ export function OnboardingWizard({ onComplete, onCancel }: OnboardingWizardProps
                   <div className="flex flex-col items-center">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
                       isActive
-                        ? 'bg-indigo-600 text-white'
+                        ? 'bg-brand-orange text-white'
                         : isCompleted
                           ? 'bg-green-500 text-white'
                           : 'bg-gray-200 text-gray-500'
@@ -901,7 +901,7 @@ export function OnboardingWizard({ onComplete, onCancel }: OnboardingWizardProps
                       )}
                     </div>
                     <span className={`text-xs mt-1 hidden sm:block ${
-                      isActive ? 'text-indigo-600 font-medium' : 'text-gray-500'
+                      isActive ? 'text-brand-orange font-medium' : 'text-gray-500'
                     }`}>
                       {step.title}
                     </span>
@@ -955,7 +955,7 @@ export function OnboardingWizard({ onComplete, onCancel }: OnboardingWizardProps
           {currentStep < 3 ? (
             <button
               onClick={handleNext}
-              className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
+              className="flex items-center gap-2 px-6 py-3 bg-brand-orange text-white rounded-lg font-medium hover:bg-brand-orange-600 transition-colors"
             >
               Continue
               <ChevronRight className="w-5 h-5" />

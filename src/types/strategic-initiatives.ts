@@ -124,7 +124,7 @@ export const sourceTypeInfo: Record<InitiativeSourceType, { label: string; descr
   coach: {
     label: 'Coach',
     description: 'Suggested by coach',
-    color: 'bg-purple-100 text-purple-700'
+    color: 'bg-brand-navy-50 text-brand-navy'
   },
   ai: {
     label: 'AI',

@@ -21,12 +21,12 @@ export function EmptyState({ icon: Icon, title, description, action }: EmptyStat
       <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
         <Icon className="w-8 h-8 text-slate-400" />
       </div>
-      <h3 className="text-lg font-semibold text-slate-900 mb-1">{title}</h3>
-      <p className="text-slate-500 text-center max-w-sm mb-6">{description}</p>
+      <h3 className="text-lg font-semibold text-brand-navy mb-1">{title}</h3>
+      <p className="text-gray-500 text-center max-w-sm mb-6">{description}</p>
       {action && (
         <button
           onClick={action.onClick}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white font-medium rounded-xl hover:bg-teal-700 transition-colors shadow-lg shadow-teal-500/20"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-orange text-white font-medium rounded-xl hover:bg-brand-orange-600 transition-colors shadow-lg shadow-brand-orange/20"
         >
           <ActionIcon className="w-4 h-4" />
           {action.label}

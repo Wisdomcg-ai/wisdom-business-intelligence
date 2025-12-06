@@ -86,7 +86,7 @@ export default function NewClientPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -117,7 +117,7 @@ export default function NewClientPage() {
         <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6">
           <div className="space-y-6">
             <div className="flex items-center gap-3 mb-6">
-              <UserPlus className="w-6 h-6 text-teal-600" />
+              <UserPlus className="w-6 h-6 text-brand-orange" />
               <h2 className="text-xl font-semibold">Client Details</h2>
             </div>
 
@@ -130,7 +130,7 @@ export default function NewClientPage() {
                 type="text"
                 value={formData.businessName}
                 onChange={(e) => updateField('businessName', e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 placeholder="ABC Construction Pty Ltd"
                 required
               />
@@ -146,7 +146,7 @@ export default function NewClientPage() {
                   type="text"
                   value={formData.firstName}
                   onChange={(e) => updateField('firstName', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   placeholder="John"
                   required
                 />
@@ -160,7 +160,7 @@ export default function NewClientPage() {
                   type="text"
                   value={formData.lastName}
                   onChange={(e) => updateField('lastName', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   placeholder="Smith"
                   required
                 />
@@ -176,7 +176,7 @@ export default function NewClientPage() {
                 type="email"
                 value={formData.email}
                 onChange={(e) => updateField('email', e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 placeholder="john@example.com"
                 required
               />
@@ -191,7 +191,7 @@ export default function NewClientPage() {
                 type="text"
                 value={formData.position}
                 onChange={(e) => updateField('position', e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 placeholder="Owner, CEO, Manager, etc."
                 required
               />
@@ -205,7 +205,7 @@ export default function NewClientPage() {
               <select
                 value={formData.accessLevel}
                 onChange={(e) => updateField('accessLevel', e.target.value as 'full' | 'view_only' | 'limited')}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 required
               >
                 <option value="full">Full Access - Can view and edit everything</option>
@@ -220,8 +220,8 @@ export default function NewClientPage() {
                 <button
                   type="button"
                   onClick={() => updateField('sendInvitation', !formData.sendInvitation)}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 ${
-                    formData.sendInvitation ? 'bg-teal-600' : 'bg-gray-200'
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-orange focus:ring-offset-2 ${
+                    formData.sendInvitation ? 'bg-brand-orange' : 'bg-gray-200'
                   }`}
                 >
                   <span
@@ -233,7 +233,7 @@ export default function NewClientPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     {formData.sendInvitation ? (
-                      <Mail className="w-4 h-4 text-teal-600" />
+                      <Mail className="w-4 h-4 text-brand-orange" />
                     ) : (
                       <MailX className="w-4 h-4 text-gray-400" />
                     )}
@@ -251,9 +251,9 @@ export default function NewClientPage() {
             </div>
 
             {/* Info Box */}
-            <div className={`rounded-lg p-4 ${formData.sendInvitation ? 'bg-teal-50 border border-teal-200' : 'bg-amber-50 border border-amber-200'}`}>
-              <p className={`text-sm font-medium mb-2 ${formData.sendInvitation ? 'text-teal-900' : 'text-amber-900'}`}>What happens next:</p>
-              <ul className={`text-sm space-y-1 ${formData.sendInvitation ? 'text-teal-800' : 'text-amber-800'}`}>
+            <div className={`rounded-lg p-4 ${formData.sendInvitation ? 'bg-brand-orange-50 border border-brand-orange-200' : 'bg-amber-50 border border-amber-200'}`}>
+              <p className={`text-sm font-medium mb-2 ${formData.sendInvitation ? 'text-brand-navy' : 'text-amber-900'}`}>What happens next:</p>
+              <ul className={`text-sm space-y-1 ${formData.sendInvitation ? 'text-brand-orange-800' : 'text-amber-800'}`}>
                 <li>✓ Account created with temporary password</li>
                 <li>✓ Client can log in immediately</li>
                 {formData.sendInvitation ? (
@@ -273,7 +273,7 @@ export default function NewClientPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full px-6 py-3 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>

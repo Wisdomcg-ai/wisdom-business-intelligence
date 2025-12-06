@@ -149,8 +149,8 @@ export function ProfitCalculatorModal({ isOpen, onClose, industry, onApply }: Pr
         {/* Header */}
         <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-teal-100 rounded-lg">
-              <Calculator className="w-6 h-6 text-teal-600" />
+            <div className="p-2 bg-brand-orange-100 rounded-lg">
+              <Calculator className="w-6 h-6 text-brand-orange" />
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900">Quick Start Calculator</h2>
@@ -168,22 +168,22 @@ export function ProfitCalculatorModal({ isOpen, onClose, industry, onApply }: Pr
         {/* Content */}
         <div className="p-6 space-y-6">
           {/* Industry Benchmark Info */}
-          <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+          <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
-              <TrendingUp className="w-5 h-5 text-teal-600 mt-0.5" />
+              <TrendingUp className="w-5 h-5 text-brand-orange mt-0.5" />
               <div className="flex-1">
-                <h3 className="font-semibold text-teal-900 mb-2">Industry: {benchmark.name}</h3>
+                <h3 className="font-semibold text-brand-navy mb-2">Industry: {benchmark.name}</h3>
                 <div className="grid grid-cols-2 gap-4 text-sm mb-2">
                   <div>
-                    <span className="text-teal-700">Typical Gross Margin:</span>
-                    <span className="ml-2 font-semibold text-teal-900">{benchmark.grossMargin}%</span>
+                    <span className="text-brand-orange-700">Typical Gross Margin:</span>
+                    <span className="ml-2 font-semibold text-brand-navy">{benchmark.grossMargin}%</span>
                   </div>
                   <div>
-                    <span className="text-teal-700">Typical Net Margin:</span>
-                    <span className="ml-2 font-semibold text-teal-900">{benchmark.netMargin}%</span>
+                    <span className="text-brand-orange-700">Typical Net Margin:</span>
+                    <span className="ml-2 font-semibold text-brand-navy">{benchmark.netMargin}%</span>
                   </div>
                 </div>
-                <p className="text-xs text-teal-600 italic">
+                <p className="text-xs text-brand-orange italic">
                   Based on ATO Small Business Benchmarks 2022-23 & Australian industry data
                 </p>
               </div>
@@ -200,7 +200,7 @@ export function ProfitCalculatorModal({ isOpen, onClose, industry, onApply }: Pr
                 type="number"
                 value={currentRevenue}
                 onChange={(e) => setCurrentRevenue(Number(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 placeholder="500000"
               />
               <p className="text-xs text-gray-500 mt-1">Your current yearly revenue</p>
@@ -214,7 +214,7 @@ export function ProfitCalculatorModal({ isOpen, onClose, industry, onApply }: Pr
                 type="number"
                 value={growthRate}
                 onChange={(e) => setGrowthRate(Number(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 placeholder="50"
               />
               <p className="text-xs text-gray-500 mt-1">Expected growth per year</p>
@@ -228,7 +228,7 @@ export function ProfitCalculatorModal({ isOpen, onClose, industry, onApply }: Pr
                 type="number"
                 value={grossMargin}
                 onChange={(e) => setGrossMargin(Number(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 placeholder="25"
               />
               <p className="text-xs text-gray-500 mt-1">Benchmark: {benchmark.grossMargin}%</p>
@@ -242,7 +242,7 @@ export function ProfitCalculatorModal({ isOpen, onClose, industry, onApply }: Pr
                 type="number"
                 value={netMargin}
                 onChange={(e) => setNetMargin(Number(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 placeholder="8"
               />
               <p className="text-xs text-gray-500 mt-1">Benchmark: {benchmark.netMargin}%</p>
@@ -311,7 +311,7 @@ export function ProfitCalculatorModal({ isOpen, onClose, industry, onApply }: Pr
           </button>
           <button
             onClick={handleApply}
-            className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium flex items-center gap-2"
+            className="px-6 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium flex items-center gap-2"
           >
             <Calculator className="w-4 h-4" />
             Apply to Goals

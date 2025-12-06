@@ -135,7 +135,7 @@ export default function DashboardPage() {
           href="/weekly-review"
           className="bg-white rounded-lg shadow p-4 flex items-center hover:shadow-md transition-shadow"
         >
-          <Calendar className="h-5 w-5 text-teal-500 mr-3" />
+          <Calendar className="h-5 w-5 text-brand-teal-500 mr-3" />
           <div>
             <h4 className="font-semibold text-gray-900">Weekly Review</h4>
             <p className="text-sm text-gray-600">Next: Monday, Dec 30</p>
@@ -146,7 +146,7 @@ export default function DashboardPage() {
           href="/monthly-review"
           className="bg-white rounded-lg shadow p-4 flex items-center hover:shadow-md transition-shadow"
         >
-          <CalendarCheck className="h-5 w-5 text-teal-500 mr-3" />
+          <CalendarCheck className="h-5 w-5 text-brand-teal-500 mr-3" />
           <div>
             <h4 className="font-semibold text-gray-900">Monthly Review</h4>
             <p className="text-sm text-gray-600">Next: Jan 3, 2025</p>
@@ -157,7 +157,7 @@ export default function DashboardPage() {
           href="/quarterly-review"
           className="bg-white rounded-lg shadow p-4 flex items-center hover:shadow-md transition-shadow"
         >
-          <BarChart className="h-5 w-5 text-teal-500 mr-3" />
+          <BarChart className="h-5 w-5 text-brand-teal-500 mr-3" />
           <div>
             <h4 className="font-semibold text-gray-900">Quarterly Planning</h4>
             <p className="text-sm text-gray-600">Next: Mar 28, 2025</p>
@@ -172,7 +172,7 @@ export default function DashboardPage() {
           href="/financials" 
           className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow text-center group"
         >
-          <BarChart3 className="h-8 w-8 text-gray-400 group-hover:text-teal-500 mb-2 mx-auto transition-colors" />
+          <BarChart3 className="h-8 w-8 text-gray-400 group-hover:text-brand-teal-500 mb-2 mx-auto transition-colors" />
           <span className="text-sm font-medium text-gray-700">Business Dashboard</span>
         </Link>
 
@@ -180,7 +180,7 @@ export default function DashboardPage() {
           href="/daily-disciplines" 
           className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow text-center group"
         >
-          <Flame className="h-8 w-8 text-gray-400 group-hover:text-orange-500 mb-2 mx-auto transition-colors" />
+          <Flame className="h-8 w-8 text-gray-400 group-hover:text-brand-orange mb-2 mx-auto transition-colors" />
           <span className="text-sm font-medium text-gray-700">Daily Disciplines</span>
         </Link>
 

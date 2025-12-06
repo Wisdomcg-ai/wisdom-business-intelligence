@@ -158,10 +158,10 @@ export function ClientProgressTable({ clients, onGenerateReport }: ClientProgres
                       className="flex items-center gap-3 group"
                     >
                       <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-                        <Building2 className="w-5 h-5 text-slate-600" />
+                        <Building2 className="w-5 h-5 text-gray-600" />
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900 group-hover:text-indigo-600">
+                        <p className="font-medium text-gray-900 group-hover:text-brand-orange">
                           {client.businessName}
                         </p>
                         {client.industry && (
@@ -191,7 +191,7 @@ export function ClientProgressTable({ clients, onGenerateReport }: ClientProgres
                     <div className="flex items-center gap-2">
                       <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-indigo-500 rounded-full"
+                          className="h-full bg-brand-orange-500 rounded-full"
                           style={{ width: `${client.goalsProgress}%` }}
                         />
                       </div>
@@ -229,7 +229,7 @@ export function ClientProgressTable({ clients, onGenerateReport }: ClientProgres
                       {onGenerateReport && (
                         <button
                           onClick={() => onGenerateReport(client.id)}
-                          className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg transition-colors"
+                          className="p-2 text-gray-400 hover:text-brand-orange rounded-lg transition-colors"
                           title="Generate Report"
                         >
                           <FileText className="w-4 h-4" />
@@ -273,7 +273,7 @@ export function ClientProgressTable({ clients, onGenerateReport }: ClientProgres
                         <div className="flex items-center justify-end">
                           <Link
                             href={`/coach/clients/${client.id}`}
-                            className="flex items-center gap-2 text-indigo-600 hover:text-indigo-700 font-medium text-sm"
+                            className="flex items-center gap-2 text-brand-orange hover:text-brand-orange-700 font-medium text-sm"
                           >
                             View Full Profile
                             <ExternalLink className="w-4 h-4" />

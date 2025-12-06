@@ -74,7 +74,7 @@ export default function SessionsPage() {
 
   const getStatusBadge = (status: string) => {
     const styles = {
-      scheduled: 'bg-teal-100 text-teal-800 border-teal-200',
+      scheduled: 'bg-brand-orange-100 text-brand-orange-800 border-brand-orange-200',
       completed: 'bg-green-100 text-green-800 border-green-200',
       cancelled: 'bg-gray-100 text-gray-800 border-gray-200'
     }

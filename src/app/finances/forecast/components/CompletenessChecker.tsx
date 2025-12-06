@@ -156,7 +156,7 @@ export default function CompletenessChecker({
             <div
               className={`h-full transition-all ${
                 completeness === 100 ? 'bg-green-600' :
-                completeness >= 75 ? 'bg-teal-600' :
+                completeness >= 75 ? 'bg-brand-orange' :
                 completeness >= 50 ? 'bg-yellow-600' :
                 'bg-red-600'
               }`}

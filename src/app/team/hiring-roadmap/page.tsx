@@ -163,9 +163,9 @@ export default function HiringRoadmapPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto mb-4"></div>
           <p className="text-gray-600">Loading hiring roadmap...</p>
         </div>
       </div>
@@ -173,7 +173,7 @@ export default function HiringRoadmapPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8">
+    <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-6xl mx-auto px-4">
         {/* Header */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
@@ -238,7 +238,7 @@ export default function HiringRoadmapPage() {
                           type="text"
                           value={priority.role}
                           onChange={(e) => updateHiringPriority(index, 'role', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                           placeholder="e.g., Sales Manager"
                         />
                       </td>
@@ -247,7 +247,7 @@ export default function HiringRoadmapPage() {
                           type="text"
                           value={priority.salary}
                           onChange={(e) => updateHiringPriority(index, 'salary', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                           placeholder="e.g., $75,000"
                         />
                       </td>
@@ -256,7 +256,7 @@ export default function HiringRoadmapPage() {
                           type="date"
                           value={priority.start_date}
                           onChange={(e) => updateHiringPriority(index, 'start_date', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                         />
                       </td>
                       <td className="p-3">
@@ -264,7 +264,7 @@ export default function HiringRoadmapPage() {
                           type="text"
                           value={priority.comments}
                           onChange={(e) => updateHiringPriority(index, 'comments', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                           placeholder="Additional notes"
                         />
                       </td>
@@ -290,7 +290,7 @@ export default function HiringRoadmapPage() {
               <button
                 type="button"
                 onClick={addHiringPriority}
-                className="mt-4 flex items-center gap-2 px-4 py-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                className="mt-4 flex items-center gap-2 px-4 py-2 text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
               >
                 <Plus className="h-4 w-4" />
                 Add Another Role
@@ -319,7 +319,7 @@ export default function HiringRoadmapPage() {
                     setFormData(prev => ({ ...prev, recognition_rewards: e.target.value }));
                     handleFieldChange();
                   }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   rows={3}
                   placeholder="How will you recognize and reward great performance? (e.g., bonuses, public recognition, perks)"
                 />
@@ -335,7 +335,7 @@ export default function HiringRoadmapPage() {
                     setFormData(prev => ({ ...prev, growth_opportunities: e.target.value }));
                     handleFieldChange();
                   }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   rows={3}
                   placeholder="What development and advancement opportunities will you offer? (e.g., training, mentorship, career paths)"
                 />
@@ -351,7 +351,7 @@ export default function HiringRoadmapPage() {
                     setFormData(prev => ({ ...prev, work_environment: e.target.value }));
                     handleFieldChange();
                   }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   rows={3}
                   placeholder="What kind of workplace will you create? (e.g., flexibility, remote options, culture initiatives)"
                 />
@@ -367,7 +367,7 @@ export default function HiringRoadmapPage() {
                     setFormData(prev => ({ ...prev, compensation_strategy: e.target.value }));
                     handleFieldChange();
                   }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   rows={3}
                   placeholder="How will you structure pay and benefits? (e.g., competitive base, bonuses, equity, benefits package)"
                 />
@@ -390,7 +390,7 @@ export default function HiringRoadmapPage() {
                 saveData();
                 router.push('/dashboard');
               }}
-              className="px-8 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium"
+              className="px-8 py-3 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 font-medium"
             >
               Save & Return to Dashboard
             </button>

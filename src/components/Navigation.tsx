@@ -76,7 +76,7 @@ export default function Navigation() {
           <div className="flex items-center">
             {/* Logo/Brand */}
             <Link href="/dashboard" className="flex items-center">
-              <span className="text-xl font-bold text-teal-600">
+              <span className="text-xl font-bold text-brand-navy">
                 Business Coaching Platform
               </span>
             </Link>
@@ -91,7 +91,7 @@ export default function Navigation() {
                     href={item.href}
                     className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                       isActive(item.href)
-                        ? 'bg-teal-100 text-teal-700'
+                        ? 'bg-brand-orange-100 text-brand-orange-700'
                         : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                     }`}
                   >
@@ -141,7 +141,7 @@ export default function Navigation() {
                   onClick={() => setIsOpen(false)}
                   className={`flex items-center px-3 py-2 rounded-md text-base font-medium transition-colors ${
                     isActive(item.href)
-                      ? 'bg-teal-100 text-teal-700'
+                      ? 'bg-brand-orange-100 text-brand-orange-700'
                       : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                   }`}
                 >

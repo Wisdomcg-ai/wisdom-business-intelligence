@@ -8,7 +8,7 @@ const quickActions = [
     href: '/todo',
     icon: CheckSquare,
     title: 'To-Do List',
-    color: 'text-teal-600'
+    color: 'text-brand-orange'
   },
   {
     href: '/stop-doing',
@@ -53,7 +53,7 @@ export default function QuickActionsGrid() {
               <Link
                 key={action.href}
                 href={action.href}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 hover:border-teal-300 hover:bg-teal-50 transition-all text-gray-700 hover:text-teal-700"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 hover:border-brand-orange-300 hover:bg-brand-orange-50 transition-all text-gray-700 hover:text-brand-orange-700"
               >
                 <Icon className={`h-4 w-4 ${action.color}`} />
                 <span className="text-sm font-medium">{action.title}</span>

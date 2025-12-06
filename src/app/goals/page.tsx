@@ -14,6 +14,7 @@ import Link from 'next/link'
 import { createBrowserClient } from '@supabase/ssr'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { calculateQuarters, determinePlanYear } from './utils/quarters'
+import PageHeader from '@/components/ui/PageHeader'
 
 type StepNumber = 1 | 2 | 3 | 4 | 5
 
@@ -376,15 +377,11 @@ function StrategicPlanningContent() {
   // HYDRATION FIX: Show skeleton before mounting
   if (!mounted) {
     return (
-      <div className="min-h-screen bg-slate-50">
-        <div className="bg-white border-b">
-          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Strategic Planning Wizard</h1>
-                <p className="text-base text-gray-600 mt-1">Build your 3-year roadmap, step by step</p>
-              </div>
-            </div>
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-1/3 mb-2"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/4 mb-6"></div>
             <div className="w-full h-2 bg-gray-200 rounded-full"></div>
           </div>
         </div>
@@ -441,9 +438,9 @@ function StrategicPlanningContent() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-teal-600 mx-auto mb-4" />
+          <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading your strategic plan...</p>
         </div>
       </div>
@@ -452,7 +449,7 @@ function StrategicPlanningContent() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="text-center">
           <p className="text-red-600 font-medium mb-2">Error loading data</p>
           <p className="text-gray-600">{error}</p>
@@ -513,113 +510,114 @@ function StrategicPlanningContent() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Strategic Planning Wizard</h1>
-              <p className="text-base text-gray-600 mt-1">Build your 3-year roadmap, step by step</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              {/* Auto-save status indicator - Enhanced */}
-              <div className="relative group">
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${
-                  saveStatus === 'saving' ? 'bg-amber-50 border-amber-200' :
-                  saveStatus === 'saved' ? 'bg-green-50 border-green-200' :
-                  saveStatus === 'error' ? 'bg-red-50 border-red-200' :
-                  isDirty ? 'bg-amber-50 border-amber-200' :
-                  'bg-gray-50 border-gray-200'
-                }`}>
-                  {saveStatus === 'saving' && (
-                    <Loader2 className="animate-spin h-4 w-4 text-amber-600" />
-                  )}
-                  {saveStatus === 'saved' && (
-                    <Cloud className="h-4 w-4 text-green-600" />
-                  )}
-                  {saveStatus === 'error' && (
-                    <CloudOff className="h-4 w-4 text-red-600" />
-                  )}
-                  {saveStatus === 'idle' && isDirty && (
-                    <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                  )}
-                  {saveStatus === 'idle' && !isDirty && lastSaved && (
-                    <Cloud className="h-4 w-4 text-gray-400" />
-                  )}
-                  {statusDisplay.text && (
-                    <span className={`text-xs font-medium ${statusDisplay.color}`}>
-                      {statusDisplay.text}
-                    </span>
-                  )}
+      <PageHeader
+        title="Goals & Planning"
+        subtitle={currentStepInfo ? `Step ${currentStep}: ${currentStepInfo.title}` : "Build your 3-year roadmap, step by step"}
+        icon={Target}
+        actions={
+          <div className="flex items-center gap-3">
+                {/* Auto-save status indicator */}
+                <div className="relative group">
+                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${
+                    saveStatus === 'saving' ? 'bg-amber-50 border-amber-200' :
+                    saveStatus === 'saved' ? 'bg-green-50 border-green-200' :
+                    saveStatus === 'error' ? 'bg-red-50 border-red-200' :
+                    isDirty ? 'bg-amber-50 border-amber-200' :
+                    'bg-gray-50 border-gray-200'
+                  }`}>
+                    {saveStatus === 'saving' && (
+                      <Loader2 className="animate-spin h-4 w-4 text-amber-600" />
+                    )}
+                    {saveStatus === 'saved' && (
+                      <Cloud className="h-4 w-4 text-green-600" />
+                    )}
+                    {saveStatus === 'error' && (
+                      <CloudOff className="h-4 w-4 text-red-600" />
+                    )}
+                    {saveStatus === 'idle' && isDirty && (
+                      <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                    )}
+                    {saveStatus === 'idle' && !isDirty && lastSaved && (
+                      <Cloud className="h-4 w-4 text-gray-400" />
+                    )}
+                    {statusDisplay.text && (
+                      <span className={`text-xs sm:text-sm font-medium ${statusDisplay.color}`}>
+                        {statusDisplay.text}
+                      </span>
+                    )}
+                  </div>
+                  {/* Tooltip explaining auto-save */}
+                  <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
+                    <p className="font-semibold mb-1">Auto-Save Enabled</p>
+                    <p className="text-slate-300">Your progress is automatically saved as you make changes. No need to manually save unless you want to force a sync.</p>
+                  </div>
                 </div>
-                {/* Tooltip explaining auto-save */}
-                <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
-                  <p className="font-semibold mb-1">Auto-Save Enabled</p>
-                  <p className="text-slate-300">Your progress is automatically saved as you make changes. No need to manually save unless you want to force a sync.</p>
-                </div>
+                {/* Manual save button */}
+                <button
+                  onClick={handleSave}
+                  disabled={saveStatus === 'saving' || (!isDirty && saveStatus !== 'error')}
+                  className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                    saveStatus === 'saving' || (!isDirty && saveStatus !== 'error')
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-brand-orange text-white hover:bg-brand-orange-600 shadow-sm hover:shadow-md'
+                  }`}
+                >
+                  {saveStatus === 'saving' ? (
+                    <>
+                      <Loader2 className="animate-spin h-4 w-4" />
+                      <span className="hidden sm:inline">Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      <span className="hidden sm:inline">Save Now</span>
+                    </>
+                  )}
+                </button>
               </div>
-              {/* Manual save button (as fallback) */}
-              <button
-                onClick={handleSave}
-                disabled={saveStatus === 'saving' || (!isDirty && saveStatus !== 'error')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
-                  saveStatus === 'saving' || (!isDirty && saveStatus !== 'error')
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-teal-600 text-white hover:bg-teal-700 shadow-sm hover:shadow-md'
-                }`}
-              >
-                {saveStatus === 'saving' ? (
-                  <>
-                    <Loader2 className="animate-spin h-4 w-4" />
-                    <span>Saving...</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4" />
-                    <span>Save Now</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+        }
+      />
 
-          {/* Progress Bar */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">Overall Progress</span>
-              <span className="text-sm font-bold text-teal-600">{completedCount}/5 steps</span>
-            </div>
-            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-teal-600 transition-all duration-300"
-                style={{ width: `${progressPercent}%` }}
-              />
+        {/* Progress Bar */}
+        <div className="bg-white border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-6">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Overall Progress</span>
+                <span className="text-sm font-bold text-brand-orange">{completedCount}/5 steps</span>
+              </div>
+              <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-brand-orange transition-all duration-300"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
       {/* SWOT Integration - Expandable Inline Summary */}
-      <div className="bg-teal-50 border-b-2 border-teal-200">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="bg-gray-100 border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <button
             onClick={() => setShowSwotSummary(!showSwotSummary)}
-            className="w-full py-4 flex items-center justify-between hover:bg-teal-100/50 transition-colors rounded-lg"
+            className="w-full py-4 flex items-center justify-between hover:bg-gray-200/50 transition-colors rounded-lg"
           >
             <div className="flex items-center gap-3">
-              <TrendingUp className="w-5 h-5 text-teal-600" />
+              <TrendingUp className="w-5 h-5 text-brand-navy" />
               <div className="text-left">
                 <h3 className="text-base font-semibold text-gray-900">
-                  Your Strategic Context {swotItems.length > 0 && `(${swotItems.length} SWOT items)`}
+                  SWOT Insights {swotItems.length > 0 && <span className="text-gray-500 font-normal">({swotItems.length} items)</span>}
                 </h3>
                 <p className="text-sm text-gray-600">
-                  {showSwotSummary ? 'Hide' : 'Show'} your top strengths, weaknesses, opportunities, and threats
+                  {showSwotSummary ? 'Hide' : 'View'} your strengths, weaknesses, opportunities & threats to inform your strategy
                 </p>
               </div>
             </div>
             <ChevronDown
-              className={`w-5 h-5 text-teal-600 transition-transform ${showSwotSummary ? 'rotate-180' : ''}`}
+              className={`w-5 h-5 text-gray-500 transition-transform ${showSwotSummary ? 'rotate-180' : ''}`}
             />
           </button>
 
@@ -628,28 +626,28 @@ function StrategicPlanningContent() {
             <div className="pb-4">
               {loadingSwot ? (
                 <div className="text-center py-8">
-                  <Loader2 className="w-8 h-8 animate-spin text-teal-600 mx-auto mb-2" />
+                  <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-2" />
                   <p className="text-sm text-gray-600">Loading SWOT insights...</p>
                 </div>
               ) : swotItems.length === 0 ? (
-                <div className="bg-white rounded-lg p-6 text-center border-2 border-dashed border-teal-200">
-                  <AlertCircle className="w-12 h-12 text-teal-400 mx-auto mb-3" />
+                <div className="bg-white rounded-xl p-6 text-center border-2 border-dashed border-gray-300">
+                  <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                   <h4 className="text-base font-semibold text-gray-900 mb-2">No SWOT Analysis Yet</h4>
                   <p className="text-sm text-gray-600 mb-4">
                     Complete your SWOT analysis first to see strategic insights here
                   </p>
                   <Link
                     href="/swot"
-                    className="inline-flex items-center px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 transition-colors"
+                    className="inline-flex items-center px-4 py-2 bg-brand-navy hover:bg-brand-navy-700 text-white rounded-lg text-sm font-medium transition-colors"
                   >
                     Go to SWOT Analysis →
                   </Link>
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-3">
                     {/* Top Strengths */}
-                    <div className="bg-white rounded-lg p-4 border-2 border-green-200">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
                       <div className="flex items-center gap-2 mb-3">
                         <Shield className="w-4 h-4 text-green-600" />
                         <h4 className="font-semibold text-sm text-green-900">
@@ -671,7 +669,7 @@ function StrategicPlanningContent() {
                     </div>
 
                     {/* Top Weaknesses */}
-                    <div className="bg-white rounded-lg p-4 border-2 border-red-200">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
                       <div className="flex items-center gap-2 mb-3">
                         <AlertTriangleIcon className="w-4 h-4 text-red-600" />
                         <h4 className="font-semibold text-sm text-red-900">
@@ -693,10 +691,10 @@ function StrategicPlanningContent() {
                     </div>
 
                     {/* Top Opportunities */}
-                    <div className="bg-white rounded-lg p-4 border-2 border-teal-200">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
                       <div className="flex items-center gap-2 mb-3">
-                        <Target className="w-4 h-4 text-teal-600" />
-                        <h4 className="font-semibold text-sm text-teal-900">
+                        <Target className="w-4 h-4 text-brand-orange" />
+                        <h4 className="font-semibold text-sm text-brand-navy">
                           Top Opportunities ({topOpportunities.length})
                         </h4>
                       </div>
@@ -706,7 +704,7 @@ function StrategicPlanningContent() {
                         <ul className="space-y-2">
                           {topOpportunities.map(item => (
                             <li key={item.id} className="flex items-start text-sm text-gray-700">
-                              <span className="text-teal-600 mr-2 mt-0.5">•</span>
+                              <span className="text-brand-orange mr-2 mt-0.5">•</span>
                               <span>{item.title}</span>
                             </li>
                           ))}
@@ -715,10 +713,10 @@ function StrategicPlanningContent() {
                     </div>
 
                     {/* Top Threats */}
-                    <div className="bg-white rounded-lg p-4 border-2 border-orange-200">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
                       <div className="flex items-center gap-2 mb-3">
-                        <Lightbulb className="w-4 h-4 text-orange-600" />
-                        <h4 className="font-semibold text-sm text-orange-900">
+                        <Lightbulb className="w-4 h-4 text-brand-orange-600" />
+                        <h4 className="font-semibold text-sm text-brand-orange-900">
                           Top Threats ({topThreats.length})
                         </h4>
                       </div>
@@ -728,7 +726,7 @@ function StrategicPlanningContent() {
                         <ul className="space-y-2">
                           {topThreats.map(item => (
                             <li key={item.id} className="flex items-start text-sm text-gray-700">
-                              <span className="text-orange-600 mr-2 mt-0.5">•</span>
+                              <span className="text-brand-orange-600 mr-2 mt-0.5">•</span>
                               <span>{item.title}</span>
                             </li>
                           ))}
@@ -743,7 +741,7 @@ function StrategicPlanningContent() {
                       href="/swot"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center text-sm text-teal-600 hover:text-teal-800 font-medium"
+                      className="inline-flex items-center text-sm text-brand-orange hover:text-brand-orange-800 font-medium"
                     >
                       View full SWOT analysis in new tab
                       <span className="ml-1">↗</span>
@@ -758,7 +756,7 @@ function StrategicPlanningContent() {
 
       {/* Step Navigation */}
       <div className="bg-white border-b sticky top-0 z-40">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between overflow-x-auto py-3">
             {dynamicSteps.map((step, index) => {
               const isActive = currentStep === step.num
@@ -796,29 +794,29 @@ function StrategicPlanningContent() {
                     onClick={() => setCurrentStep(step.num)}
                     className={`flex flex-col items-center px-3 py-2 rounded-lg whitespace-nowrap transition-all min-w-[100px] ${
                       isActive
-                        ? 'bg-teal-100 text-teal-800 font-medium ring-2 ring-teal-400'
+                        ? 'bg-brand-navy-50 text-brand-navy font-medium ring-2 ring-brand-navy-300'
                         : isComplete
-                        ? 'bg-green-50 text-green-700 border border-green-200'
+                        ? 'bg-brand-teal-50 text-brand-teal border border-brand-teal-200'
                         : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     <div className="flex items-center space-x-2">
                       {isComplete && !isActive ? (
-                        <CheckCircle className="w-4 h-4 text-green-600" />
+                        <CheckCircle className="w-4 h-4 text-brand-teal" />
                       ) : (
                         <Icon className="w-4 h-4" />
                       )}
                       <span className="text-sm hidden sm:inline">{step.label}</span>
                       {isComplete && !isActive && (
-                        <span className="ml-1 text-xs text-green-600 font-medium hidden lg:inline">✓</span>
+                        <span className="ml-1 text-xs text-brand-teal font-medium hidden lg:inline">✓</span>
                       )}
                     </div>
                     {/* Requirement hint subtitle */}
                     <span className={`text-xs mt-1 hidden md:inline ${
                       isComplete
-                        ? 'text-green-600'
+                        ? 'text-brand-teal'
                         : isActive
-                        ? 'text-teal-600'
+                        ? 'text-brand-navy'
                         : 'text-gray-400'
                     }`}>
                       {isComplete ? '✓ Complete' : getRequirementHint(step.num)}
@@ -826,7 +824,7 @@ function StrategicPlanningContent() {
                   </button>
 
                   {index < dynamicSteps.length - 1 && (
-                    <div className={`hidden sm:block mx-2 w-8 h-0.5 ${isComplete ? 'bg-green-400' : 'bg-gray-300'}`} />
+                    <div className={`hidden sm:block mx-2 w-8 h-0.5 ${isComplete ? 'bg-brand-teal' : 'bg-gray-300'}`} />
                   )}
                 </div>
               )
@@ -836,15 +834,15 @@ function StrategicPlanningContent() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Step Header */}
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
             <div className="flex items-center gap-3">
               {currentStepInfo && (
                 <>
-                  <currentStepInfo.icon className="w-6 h-6 text-teal-600" />
-                  <h2 className="text-2xl font-bold text-gray-900">
+                  <currentStepInfo.icon className="w-5 h-5 sm:w-6 sm:h-6 text-brand-orange flex-shrink-0" />
+                  <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">
                     Step {currentStep}: {currentStepInfo.title}
                   </h2>
                 </>
@@ -852,18 +850,19 @@ function StrategicPlanningContent() {
             </div>
             <button
               onClick={() => setShowStepHelp(!showStepHelp)}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-teal-700 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors"
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-brand-orange-700 bg-brand-orange-50 rounded-lg hover:bg-brand-orange-100 transition-colors flex-shrink-0"
             >
               <HelpCircle className="w-4 h-4" />
-              {showStepHelp ? 'Hide' : 'Show'} Coaching Tips
+              <span className="hidden sm:inline">{showStepHelp ? 'Hide' : 'Show'} Coaching Tips</span>
+              <span className="sm:hidden">{showStepHelp ? 'Hide' : 'Show'} Tips</span>
             </button>
           </div>
-          <p className="text-base text-gray-600 ml-9">{currentStepInfo?.description}</p>
+          <p className="text-sm sm:text-base text-gray-600 sm:ml-9">{currentStepInfo?.description}</p>
         </div>
 
         {/* Coaching Help Section */}
         {showStepHelp && STEP_COACHING[currentStep] && (
-          <div className="mb-6 bg-amber-50 border-2 border-amber-200 rounded-lg p-6">
+          <div className="mb-6 bg-amber-50 border-2 border-amber-200 rounded-xl p-4 sm:p-6">
             <div className="flex items-center gap-2 mb-4">
               <Brain className="w-5 h-5 text-amber-700" />
               <h3 className="text-lg font-semibold text-amber-900">Strategic Coaching for This Step</h3>
@@ -898,9 +897,9 @@ function StrategicPlanningContent() {
         )}
 
         {/* Step Content */}
-        <div className="bg-white rounded-lg shadow-sm">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
           {currentStep === 1 && (
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <Step1GoalsAndKPIs
                 financialData={financialData}
                 updateFinancialValue={updateFinancialValue}
@@ -923,7 +922,7 @@ function StrategicPlanningContent() {
           )}
 
           {currentStep === 2 && (
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <Step2StrategicIdeas
                 strategicIdeas={strategicIdeas}
                 setStrategicIdeas={setStrategicIdeas}
@@ -933,7 +932,7 @@ function StrategicPlanningContent() {
           )}
 
           {currentStep === 3 && (
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <Step3PrioritizeInitiatives
                 strategicIdeas={strategicIdeas}
                 twelveMonthInitiatives={twelveMonthInitiatives}
@@ -944,7 +943,7 @@ function StrategicPlanningContent() {
           )}
 
           {currentStep === 4 && (
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <Step4AnnualPlan
                 twelveMonthInitiatives={twelveMonthInitiatives}
                 annualPlanByQuarter={annualPlanByQuarter}
@@ -961,7 +960,7 @@ function StrategicPlanningContent() {
           )}
 
           {currentStep === 5 && (
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <Step5SprintPlanning
                 annualPlanByQuarter={annualPlanByQuarter}
                 setAnnualPlanByQuarter={setAnnualPlanByQuarter}
@@ -983,7 +982,7 @@ function StrategicPlanningContent() {
 
         {/* Validation Warning */}
         {showValidationWarning && !currentStepComplete && (
-          <div className="mt-6 p-4 bg-amber-50 border-2 border-amber-300 rounded-lg flex items-start gap-3">
+          <div className="mt-6 p-4 sm:p-6 bg-amber-50 border-2 border-amber-300 rounded-xl flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
               <h4 className="font-semibold text-amber-900">Complete this step to continue</h4>
@@ -999,21 +998,21 @@ function StrategicPlanningContent() {
         )}
 
         {/* Navigation Buttons */}
-        <div className="flex items-center justify-between mt-8">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mt-8">
           <button
             onClick={() => setCurrentStep((prev) => Math.max(1, prev - 1) as StepNumber)}
             disabled={!canGoPrevious}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`flex items-center justify-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
               canGoPrevious
-                ? 'bg-gray-200 text-gray-900 hover:bg-gray-300'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                ? 'bg-white border border-gray-300 hover:bg-gray-50 text-gray-700'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
             }`}
           >
             <ChevronLeft className="w-5 h-5" />
             <span>Previous</span>
           </button>
 
-          <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center order-last sm:order-none">
             <span className="text-sm text-gray-600">
               Step {currentStep} of {dynamicSteps.length}
             </span>
@@ -1027,15 +1026,16 @@ function StrategicPlanningContent() {
           <button
             onClick={handleNextClick}
             disabled={!canGoNext}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`flex items-center justify-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
               !canGoNext
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
                 : currentStepComplete
-                ? 'bg-teal-600 text-white hover:bg-teal-700'
-                : 'bg-amber-500 text-white hover:bg-amber-600'
+                ? 'bg-brand-orange hover:bg-brand-orange-600 text-white'
+                : 'bg-amber-500 hover:bg-amber-600 text-white'
             }`}
           >
-            <span>{currentStepComplete ? 'Next' : 'Complete to Continue'}</span>
+            <span className="hidden sm:inline">{currentStepComplete ? 'Next' : 'Complete to Continue'}</span>
+            <span className="sm:hidden">{currentStepComplete ? 'Next' : 'Complete'}</span>
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
@@ -1045,7 +1045,7 @@ function StrategicPlanningContent() {
           <div className="mt-8 space-y-4">
             {/* Full Completion Message */}
             {step1Complete && step2Complete && step3Complete && step4Complete && step5Complete && (
-              <div className="p-6 bg-green-50 border-2 border-green-200 rounded-lg">
+              <div className="p-4 sm:p-6 bg-green-50 border-2 border-green-200 rounded-xl">
                 <div className="flex items-start gap-3">
                   <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
                   <div>
@@ -1061,8 +1061,8 @@ function StrategicPlanningContent() {
             )}
 
             {/* Step Completion Summary */}
-            <div className="p-6 bg-slate-50 border border-slate-200 rounded-lg">
-              <h3 className="text-sm font-bold text-slate-900 mb-4 uppercase tracking-wide">Strategic Plan Summary</h3>
+            <div className="p-4 sm:p-6 bg-white rounded-xl shadow-sm border border-gray-200">
+              <h3 className="text-sm font-bold text-brand-navy mb-4 uppercase tracking-wide">Strategic Plan Summary</h3>
               <div className="space-y-3">
                 {/* Step 1 Summary */}
                 <div className={`flex items-start gap-3 p-3 rounded-lg ${step1Complete ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
@@ -1167,12 +1167,12 @@ function StrategicPlanningContent() {
 
               {/* Progress Stats */}
               <div className="mt-4 pt-4 border-t border-slate-200 flex items-center justify-between">
-                <span className="text-sm text-slate-600">
-                  Overall Progress: <span className="font-bold text-slate-900">{completedCount}/5 steps</span>
+                <span className="text-sm text-gray-600">
+                  Overall Progress: <span className="font-bold text-brand-navy">{completedCount}/5 steps</span>
                 </span>
                 <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden">
                   <div
-                    className={`h-full transition-all duration-300 ${completedCount === 5 ? 'bg-green-500' : 'bg-teal-500'}`}
+                    className={`h-full transition-all duration-300 ${completedCount === 5 ? 'bg-green-500' : 'bg-brand-orange-500'}`}
                     style={{ width: `${progressPercent}%` }}
                   />
                 </div>
@@ -1183,8 +1183,8 @@ function StrategicPlanningContent() {
       </div>
 
       {/* Footer */}
-      <div className="bg-slate-50 border-t mt-12 py-8">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <div className="bg-gray-50 border-t mt-12 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <p className="text-sm text-gray-600">
             Need help? Contact your coaching team or check our guidance resources
           </p>
@@ -1198,7 +1198,7 @@ export default function StrategicPlanningPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
       </div>
     }>
       <StrategicPlanningContent />

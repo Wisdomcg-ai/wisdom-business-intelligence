@@ -368,25 +368,25 @@ export default function Step3ActivityInventory({
             <p className="text-xs text-amber-600 mt-1">{formatCurrency(summary.stopDoingCost * 12)}/year</p>
           </div>
 
-          <div className="bg-teal-50 rounded-lg border border-teal-200 p-4">
-            <div className="flex items-center gap-2 text-teal-600 text-sm mb-1">
+          <div className="bg-brand-orange-50 rounded-lg border border-brand-orange-200 p-4">
+            <div className="flex items-center gap-2 text-brand-orange text-sm mb-1">
               <CheckCircle className="w-4 h-4" />
               Added to Stop List
             </div>
-            <p className="text-2xl font-bold text-teal-700">{summary.selectedCount}</p>
-            <p className="text-xs text-teal-600 mt-1">Ready for action plan</p>
+            <p className="text-2xl font-bold text-brand-orange-700">{summary.selectedCount}</p>
+            <p className="text-xs text-brand-orange mt-1">Ready for action plan</p>
           </div>
         </div>
       )}
 
       {/* Import from Time Log */}
       {hasTimeLogData && Object.keys(timeLogSummary).length > 0 && (
-        <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+        <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
-            <Clock className="w-5 h-5 text-teal-600 flex-shrink-0 mt-0.5" />
+            <Clock className="w-5 h-5 text-brand-orange flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="text-teal-900 font-medium">Import from Time Log</p>
-              <p className="text-teal-700 text-sm mt-1">
+              <p className="text-brand-navy font-medium">Import from Time Log</p>
+              <p className="text-brand-orange-700 text-sm mt-1">
                 We found {Object.keys(timeLogSummary).filter(k => {
                   if (k === 'break') return false
                   if (/^\d+$/.test(k)) return false
@@ -406,7 +406,7 @@ export default function Step3ActivityInventory({
                   })
                   .slice(0, 6)
                   .map(([id, hours]) => (
-                    <span key={id} className="px-2 py-1 bg-white rounded text-xs text-teal-700 border border-teal-200">
+                    <span key={id} className="px-2 py-1 bg-white rounded text-xs text-brand-orange-700 border border-brand-orange-200">
                       {getActivityLabel(id)}: {hours}h/week
                     </span>
                   ))}
@@ -415,7 +415,7 @@ export default function Step3ActivityInventory({
                 <button
                   onClick={handleImportFromTimeLog}
                   disabled={isImporting}
-                  className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 transition-colors"
                 >
                   {isImporting ? (
                     <>
@@ -464,7 +464,7 @@ export default function Step3ActivityInventory({
 
       {/* Add Activity Form */}
       {isAdding ? (
-        <div className="bg-white border-2 border-teal-200 rounded-lg p-4 space-y-4">
+        <div className="bg-white border-2 border-brand-orange-200 rounded-lg p-4 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-medium text-gray-900">Add New Activity</h3>
             <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
@@ -482,7 +482,7 @@ export default function Step3ActivityInventory({
               value={newActivityName}
               onChange={(e) => setNewActivityName(e.target.value)}
               placeholder="e.g., Responding to client emails"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
               autoFocus
             />
           </div>
@@ -496,7 +496,7 @@ export default function Step3ActivityInventory({
               <select
                 value={newFrequency}
                 onChange={(e) => setNewFrequency(e.target.value as Frequency)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
               >
                 {FREQUENCY_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -515,7 +515,7 @@ export default function Step3ActivityInventory({
                 onChange={(e) => setNewDuration(parseInt(e.target.value) || 0)}
                 min={5}
                 step={5}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
               />
             </div>
           </div>
@@ -567,7 +567,7 @@ export default function Step3ActivityInventory({
                   onClick={() => setNewFocusFunnel(newFocusFunnel === opt.value ? '' : opt.value)}
                   className={`px-3 py-1.5 rounded-lg text-sm transition-colors flex items-center gap-1 ${
                     newFocusFunnel === opt.value
-                      ? 'bg-teal-600 text-white'
+                      ? 'bg-brand-orange text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
@@ -583,7 +583,7 @@ export default function Step3ActivityInventory({
             <button
               onClick={handleAddActivity}
               disabled={!newActivityName.trim() || !newZone}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <Check className="w-4 h-4" />
               Add Activity
@@ -599,7 +599,7 @@ export default function Step3ActivityInventory({
       ) : (
         <button
           onClick={() => setIsAdding(true)}
-          className="w-full py-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-teal-400 hover:text-teal-600 transition-colors flex items-center justify-center gap-2"
+          className="w-full py-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-brand-orange-400 hover:text-brand-orange transition-colors flex items-center justify-center gap-2"
         >
           <Plus className="w-5 h-5" />
           Add Activity
@@ -638,15 +638,15 @@ export default function Step3ActivityInventory({
                     isDropTarget && draggedZone
                       ? `ring-2 ring-offset-2 ${
                           draggedZone === 'genius' ? 'ring-green-400 bg-green-50' :
-                          draggedZone === 'excellence' ? 'ring-teal-400 bg-teal-50' :
+                          draggedZone === 'excellence' ? 'ring-brand-orange-400 bg-brand-orange-50' :
                           draggedZone === 'competence' ? 'ring-amber-400 bg-amber-50' :
                           'ring-red-400 bg-red-50'
                         }`
                       : isDropTarget && draggedFocusFunnel
                       ? `ring-2 ring-offset-2 ${
                           draggedFocusFunnel === 'eliminate' ? 'ring-red-400 bg-red-50' :
-                          draggedFocusFunnel === 'automate' ? 'ring-purple-400 bg-purple-50' :
-                          draggedFocusFunnel === 'delegate' ? 'ring-blue-400 bg-blue-50' :
+                          draggedFocusFunnel === 'automate' ? 'ring-brand-navy-400 bg-brand-navy-50' :
+                          draggedFocusFunnel === 'delegate' ? 'ring-brand-orange-400 bg-brand-orange-50' :
                           'ring-green-400 bg-green-50'
                         }`
                       : `${zoneStyle.borderColor} ${zoneStyle.bgColor}`
@@ -690,7 +690,7 @@ export default function Step3ActivityInventory({
                       <div className="flex justify-end">
                         <button
                           onClick={() => setEditingId(null)}
-                          className="px-3 py-1 bg-teal-600 text-white rounded text-sm"
+                          className="px-3 py-1 bg-brand-orange text-white rounded text-sm"
                         >
                           Done
                         </button>
@@ -733,8 +733,8 @@ export default function Step3ActivityInventory({
                         {/* Suggested decision for low-value zones */}
                         {(activity.zone === 'incompetence' || activity.zone === 'competence') && (
                           <div className="mt-2 flex items-center gap-2">
-                            <TrendingUp className="w-4 h-4 text-teal-600" />
-                            <span className="text-sm text-teal-700">
+                            <TrendingUp className="w-4 h-4 text-brand-orange" />
+                            <span className="text-sm text-brand-orange-700">
                               Suggested: <strong>{getSuggestedDecision(activity.zone, activity.focus_funnel_outcome)}</strong>
                             </span>
                           </div>
@@ -744,7 +744,7 @@ export default function Step3ActivityInventory({
                         {/* Add to Stop Doing button */}
                         {onSelectActivity && activity.zone !== 'genius' && (
                           isActivitySelected(activity.id) ? (
-                            <div className="flex items-center gap-1 text-teal-600 px-3 py-1.5">
+                            <div className="flex items-center gap-1 text-brand-orange px-3 py-1.5">
                               <CheckCircle className="w-4 h-4" />
                               <span className="text-sm font-medium">Added</span>
                             </div>
@@ -752,7 +752,7 @@ export default function Step3ActivityInventory({
                             <button
                               onClick={() => handleSelectForStopDoing(activity)}
                               disabled={isSelecting === activity.id}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700 disabled:opacity-50 transition-colors"
+                              className="flex items-center gap-1 px-3 py-1.5 bg-brand-orange text-white rounded-lg text-sm hover:bg-brand-orange-600 disabled:opacity-50 transition-colors"
                               title="Add to Stop Doing list"
                             >
                               {isSelecting === activity.id ? (
@@ -843,14 +843,14 @@ export default function Step3ActivityInventory({
             {FOCUS_FUNNEL_OPTIONS.map((option) => {
               const isDragging = draggedFocusFunnel === option.value
               const bgColor = option.value === 'eliminate' ? 'bg-red-50' :
-                              option.value === 'automate' ? 'bg-purple-50' :
-                              option.value === 'delegate' ? 'bg-blue-50' : 'bg-green-50'
+                              option.value === 'automate' ? 'bg-brand-navy-50' :
+                              option.value === 'delegate' ? 'bg-brand-orange-50' : 'bg-green-50'
               const borderColor = option.value === 'eliminate' ? 'border-red-200' :
-                                  option.value === 'automate' ? 'border-purple-200' :
-                                  option.value === 'delegate' ? 'border-blue-200' : 'border-green-200'
+                                  option.value === 'automate' ? 'border-brand-navy-200' :
+                                  option.value === 'delegate' ? 'border-brand-orange-200' : 'border-green-200'
               const textColor = option.value === 'eliminate' ? 'text-red-700' :
-                                option.value === 'automate' ? 'text-purple-700' :
-                                option.value === 'delegate' ? 'text-blue-700' : 'text-green-700'
+                                option.value === 'automate' ? 'text-brand-navy' :
+                                option.value === 'delegate' ? 'text-brand-orange-700' : 'text-green-700'
               return (
                 <div
                   key={option.value}

@@ -93,7 +93,7 @@ export function XeroConnect({ userId }: XeroConnectProps) {
         {!isLoading && connections.length === 0 && (
           <Button 
             onClick={handleConnect}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-brand-orange hover:bg-brand-orange-600"
           >
             Connect Xero
           </Button>

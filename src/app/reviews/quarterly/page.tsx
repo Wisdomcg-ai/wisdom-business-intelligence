@@ -300,9 +300,9 @@ export default function QuarterlyReviewPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-teal-600 mx-auto mb-4" />
+          <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading quarterly review...</p>
         </div>
       </div>
@@ -311,7 +311,7 @@ export default function QuarterlyReviewPage() {
 
   if (!currentQuarter) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-600">Unable to determine current quarter</p>
         </div>
@@ -320,7 +320,7 @@ export default function QuarterlyReviewPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -334,7 +334,7 @@ export default function QuarterlyReviewPage() {
             <button
               onClick={handleCompleteQuarter}
               disabled={isSaving}
-              className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium disabled:opacity-50"
+              className="flex items-center gap-2 px-6 py-3 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 font-medium disabled:opacity-50"
             >
               {isSaving ? (
                 <>
@@ -352,12 +352,12 @@ export default function QuarterlyReviewPage() {
 
           {/* Progress Summary */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+            <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-4">
               <div className="flex items-center gap-3">
-                <Target className="w-8 h-8 text-teal-600" />
+                <Target className="w-8 h-8 text-brand-orange" />
                 <div>
-                  <p className="text-sm text-teal-700 font-medium">Total Initiatives</p>
-                  <p className="text-2xl font-bold text-teal-900">{initiatives.length}</p>
+                  <p className="text-sm text-brand-orange-700 font-medium">Total Initiatives</p>
+                  <p className="text-2xl font-bold text-brand-navy">{initiatives.length}</p>
                 </div>
               </div>
             </div>
@@ -382,12 +382,12 @@ export default function QuarterlyReviewPage() {
               </div>
             </div>
 
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <div className="bg-brand-navy-50 border border-brand-navy-200 rounded-lg p-4">
               <div className="flex items-center gap-3">
-                <Award className="w-8 h-8 text-purple-600" />
+                <Award className="w-8 h-8 text-brand-navy" />
                 <div>
-                  <p className="text-sm text-purple-700 font-medium">KPIs Tracked</p>
-                  <p className="text-2xl font-bold text-purple-900">{kpis.length}</p>
+                  <p className="text-sm text-brand-navy-700 font-medium">KPIs Tracked</p>
+                  <p className="text-2xl font-bold text-brand-navy">{kpis.length}</p>
                 </div>
               </div>
             </div>
@@ -413,7 +413,7 @@ export default function QuarterlyReviewPage() {
                   onClick={() => setActiveSection(section.id)}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-all ${
                     isActive
-                      ? 'bg-teal-100 text-teal-800 font-medium'
+                      ? 'bg-brand-orange-100 text-brand-orange-800 font-medium'
                       : 'text-gray-600 hover:bg-gray-100'
                   }`}
                 >
@@ -431,18 +431,18 @@ export default function QuarterlyReviewPage() {
         {activeSection === 'initiatives' && (
           <div className="space-y-4">
             <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-              <h2 className="text-xl font-semibold text-slate-900 mb-4">Initiative Progress</h2>
-              <p className="text-sm text-slate-600 mb-6">
+              <h2 className="text-xl font-semibold text-brand-navy mb-4">Initiative Progress</h2>
+              <p className="text-sm text-gray-600 mb-6">
                 Update the status and progress of each initiative for this quarter
               </p>
 
               {initiatives.length === 0 ? (
                 <div className="text-center py-12">
                   <Target className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="text-slate-600">No initiatives assigned to this quarter</p>
+                  <p className="text-gray-600">No initiatives assigned to this quarter</p>
                   <button
                     onClick={() => router.push('/goals?step=5')}
-                    className="mt-4 text-teal-600 hover:text-teal-700 font-medium"
+                    className="mt-4 text-brand-orange hover:text-brand-orange-700 font-medium"
                   >
                     Assign initiatives →
                   </button>
@@ -452,8 +452,8 @@ export default function QuarterlyReviewPage() {
                   {initiatives.map((initiative) => {
                     const isExpanded = expandedInitiatives.has(initiative.id)
                     const statusColors = {
-                      not_started: 'bg-slate-100 text-slate-700 border-slate-300',
-                      in_progress: 'bg-teal-100 text-teal-700 border-teal-300',
+                      not_started: 'bg-slate-100 text-gray-700 border-slate-300',
+                      in_progress: 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-300',
                       completed: 'bg-green-100 text-green-700 border-green-300',
                       cancelled: 'bg-red-100 text-red-700 border-red-300',
                       on_hold: 'bg-amber-100 text-amber-700 border-amber-300'
@@ -465,12 +465,12 @@ export default function QuarterlyReviewPage() {
                         className="border border-slate-200 rounded-lg overflow-hidden"
                       >
                         <div
-                          className="p-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                          className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
                           onClick={() => toggleInitiative(initiative.id)}
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1">
-                              <h3 className="font-medium text-slate-900 mb-2">{initiative.title}</h3>
+                              <h3 className="font-medium text-brand-navy mb-2">{initiative.title}</h3>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className={`inline-block px-2 py-1 text-xs rounded border font-medium ${statusColors[initiative.status || 'not_started']}`}>
                                   {(initiative.status || 'not_started').replace('_', ' ').toUpperCase()}
@@ -478,30 +478,30 @@ export default function QuarterlyReviewPage() {
                                 {initiative.priority && (
                                   <span className={`inline-block px-2 py-1 text-xs rounded ${
                                     initiative.priority === 'high'
-                                      ? 'bg-orange-100 text-orange-700'
+                                      ? 'bg-brand-orange-100 text-brand-orange-700'
                                       : initiative.priority === 'medium'
-                                      ? 'bg-teal-100 text-teal-700'
-                                      : 'bg-slate-100 text-slate-600'
+                                      ? 'bg-brand-orange-100 text-brand-orange-700'
+                                      : 'bg-slate-100 text-gray-600'
                                   }`}>
                                     {initiative.priority.toUpperCase()} PRIORITY
                                   </span>
                                 )}
                               </div>
                             </div>
-                            <button className="text-slate-400 hover:text-slate-600">
+                            <button className="text-slate-400 hover:text-gray-600">
                               {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                             </button>
                           </div>
 
                           {/* Progress Bar */}
                           <div className="mt-3">
-                            <div className="flex items-center justify-between text-xs text-slate-600 mb-1">
+                            <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
                               <span>Progress</span>
                               <span>{initiative.progressPercentage || 0}%</span>
                             </div>
                             <div className="w-full bg-slate-200 rounded-full h-2">
                               <div
-                                className="bg-teal-600 h-2 rounded-full transition-all"
+                                className="bg-brand-orange h-2 rounded-full transition-all"
                                 style={{ width: `${initiative.progressPercentage || 0}%` }}
                               />
                             </div>
@@ -509,22 +509,22 @@ export default function QuarterlyReviewPage() {
                         </div>
 
                         {isExpanded && (
-                          <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-4">
+                          <div className="p-4 border-t border-slate-200 bg-gray-50 space-y-4">
                             {initiative.description && (
                               <div>
-                                <p className="text-sm text-slate-700">{initiative.description}</p>
+                                <p className="text-sm text-gray-700">{initiative.description}</p>
                               </div>
                             )}
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
                                   Status
                                 </label>
                                 <select
                                   value={initiative.status || 'not_started'}
                                   onChange={(e) => updateInitiativeStatus(initiative.id, e.target.value as InitiativeStatus)}
-                                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                                 >
                                   <option value="not_started">Not Started</option>
                                   <option value="in_progress">In Progress</option>
@@ -535,7 +535,7 @@ export default function QuarterlyReviewPage() {
                               </div>
 
                               <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
                                   Progress (%)
                                 </label>
                                 <input
@@ -561,18 +561,18 @@ export default function QuarterlyReviewPage() {
 
         {activeSection === 'kpis' && (
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-            <h2 className="text-xl font-semibold text-slate-900 mb-4">KPI Actuals</h2>
-            <p className="text-sm text-slate-600 mb-6">
+            <h2 className="text-xl font-semibold text-brand-navy mb-4">KPI Actuals</h2>
+            <p className="text-sm text-gray-600 mb-6">
               Enter the actual values achieved for each KPI this quarter
             </p>
 
             {kpis.length === 0 ? (
               <div className="text-center py-12">
                 <TrendingUp className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-slate-600">No KPIs configured</p>
+                <p className="text-gray-600">No KPIs configured</p>
                 <button
                   onClick={() => router.push('/goals?step=1')}
-                  className="mt-4 text-teal-600 hover:text-teal-700 font-medium"
+                  className="mt-4 text-brand-orange hover:text-brand-orange-700 font-medium"
                 >
                   Add KPIs →
                 </button>
@@ -583,12 +583,12 @@ export default function QuarterlyReviewPage() {
                   <div key={kpi.id} className="border border-slate-200 rounded-lg p-4">
                     <div className="flex items-start justify-between gap-4 mb-3">
                       <div className="flex-1">
-                        <h3 className="font-medium text-slate-900">{kpi.friendlyName || kpi.name}</h3>
-                        <p className="text-sm text-slate-600 mt-1">Target: {kpi.year1Target} {kpi.unit}</p>
+                        <h3 className="font-medium text-brand-navy">{kpi.friendlyName || kpi.name}</h3>
+                        <p className="text-sm text-gray-600 mt-1">Target: {kpi.year1Target} {kpi.unit}</p>
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Actual Value Achieved
                       </label>
                       <input
@@ -596,7 +596,7 @@ export default function QuarterlyReviewPage() {
                         value={kpiActuals[kpi.id] || ''}
                         onChange={(e) => updateKPIActual(kpi.id, parseFloat(e.target.value) || 0)}
                         placeholder={`Enter actual ${kpi.unit}`}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                       />
                     </div>
                   </div>
@@ -609,14 +609,14 @@ export default function QuarterlyReviewPage() {
         {activeSection === 'reflections' && (
           <div className="space-y-4">
             <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-              <h2 className="text-xl font-semibold text-slate-900 mb-4">Quarterly Reflections</h2>
-              <p className="text-sm text-slate-600 mb-6">
+              <h2 className="text-xl font-semibold text-brand-navy mb-4">Quarterly Reflections</h2>
+              <p className="text-sm text-gray-600 mb-6">
                 Capture key learnings, wins, and adjustments for the quarter
               </p>
 
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-900 mb-2">
+                  <label className="block text-sm font-medium text-brand-navy mb-2">
                     🎉 Wins - What went well?
                   </label>
                   <textarea
@@ -624,12 +624,12 @@ export default function QuarterlyReviewPage() {
                     onChange={(e) => setWins(e.target.value)}
                     rows={4}
                     placeholder="What are you proud of this quarter? What successes did you achieve?"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-900 mb-2">
+                  <label className="block text-sm font-medium text-brand-navy mb-2">
                     🚧 Challenges - What didn't go well?
                   </label>
                   <textarea
@@ -637,12 +637,12 @@ export default function QuarterlyReviewPage() {
                     onChange={(e) => setChallenges(e.target.value)}
                     rows={4}
                     placeholder="What obstacles did you face? What slowed you down?"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-900 mb-2">
+                  <label className="block text-sm font-medium text-brand-navy mb-2">
                     💡 Learnings - What did you learn?
                   </label>
                   <textarea
@@ -650,12 +650,12 @@ export default function QuarterlyReviewPage() {
                     onChange={(e) => setLearnings(e.target.value)}
                     rows={4}
                     placeholder="What insights did you gain? What would you do differently?"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-900 mb-2">
+                  <label className="block text-sm font-medium text-brand-navy mb-2">
                     🔧 Adjustments - What will you change?
                   </label>
                   <textarea
@@ -663,12 +663,12 @@ export default function QuarterlyReviewPage() {
                     onChange={(e) => setAdjustments(e.target.value)}
                     rows={4}
                     placeholder="Based on this quarter, what adjustments will you make going forward?"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-900 mb-2">
+                  <label className="block text-sm font-medium text-brand-navy mb-2">
                     📝 Overall Reflection
                   </label>
                   <textarea
@@ -676,7 +676,7 @@ export default function QuarterlyReviewPage() {
                     onChange={(e) => setOverallReflection(e.target.value)}
                     rows={4}
                     placeholder="Any other thoughts, observations, or notes about this quarter?"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
               </div>
@@ -685,25 +685,25 @@ export default function QuarterlyReviewPage() {
         )}
 
         {/* Next Steps */}
-        <div className="mt-8 bg-teal-50 border border-teal-200 rounded-lg p-6">
+        <div className="mt-8 bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-6">
           <div className="flex items-start gap-4">
-            <ArrowRight className="w-6 h-6 text-teal-600 flex-shrink-0 mt-1" />
+            <ArrowRight className="w-6 h-6 text-brand-orange flex-shrink-0 mt-1" />
             <div>
-              <h3 className="font-semibold text-teal-900 mb-2">Next Steps</h3>
-              <p className="text-sm text-teal-800 mb-4">
+              <h3 className="font-semibold text-brand-navy mb-2">Next Steps</h3>
+              <p className="text-sm text-brand-orange-800 mb-4">
                 After completing this review, you'll create a snapshot and can plan the next quarter.
               </p>
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleCompleteQuarter}
                   disabled={isSaving}
-                  className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium disabled:opacity-50"
+                  className="px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 font-medium disabled:opacity-50"
                 >
                   {isSaving ? 'Saving...' : 'Complete Quarter & Save Snapshot'}
                 </button>
                 <button
                   onClick={() => router.push('/goals?step=5')}
-                  className="px-4 py-2 bg-white text-teal-600 border border-teal-300 rounded-lg hover:bg-teal-50 font-medium"
+                  className="px-4 py-2 bg-white text-brand-orange border border-brand-orange-300 rounded-lg hover:bg-brand-orange-50 font-medium"
                 >
                   Plan Next Quarter
                 </button>

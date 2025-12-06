@@ -97,7 +97,7 @@ export default function ClientEngagementChart({ data }: ClientEngagementChartPro
                     <td className="px-3 py-2 text-center">
                       <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
                         client.engagement >= 80 ? 'bg-green-100 text-green-700' :
-                        client.engagement >= 60 ? 'bg-teal-100 text-teal-700' :
+                        client.engagement >= 60 ? 'bg-brand-orange-100 text-brand-orange-700' :
                         client.engagement >= 40 ? 'bg-yellow-100 text-yellow-700' :
                         'bg-red-100 text-red-700'
                       }`}>

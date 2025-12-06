@@ -54,7 +54,7 @@ export function TodaySchedule({ sessions, onStartSession, onViewPrep }: TodaySch
       case 'completed':
         return 'bg-gray-100 text-gray-600 border-gray-200'
       default:
-        return 'bg-indigo-100 text-indigo-700 border-indigo-200'
+        return 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-200'
     }
   }
 
@@ -85,7 +85,7 @@ export function TodaySchedule({ sessions, onStartSession, onViewPrep }: TodaySch
       {/* Header */}
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="bg-indigo-600 p-2 rounded-lg">
+          <div className="bg-brand-orange p-2 rounded-lg">
             <Calendar className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -98,7 +98,7 @@ export function TodaySchedule({ sessions, onStartSession, onViewPrep }: TodaySch
         {nextSessionCountdown && (
           <div className="text-right">
             <p className="text-xs text-gray-500">Next session in</p>
-            <p className="text-lg font-bold text-indigo-600">{nextSessionCountdown}</p>
+            <p className="text-lg font-bold text-brand-orange">{nextSessionCountdown}</p>
           </div>
         )}
       </div>
@@ -111,7 +111,7 @@ export function TodaySchedule({ sessions, onStartSession, onViewPrep }: TodaySch
             <p className="text-gray-500">No sessions scheduled for today</p>
             <Link
               href="/coach/schedule"
-              className="text-indigo-600 hover:text-indigo-700 text-sm font-medium mt-2 inline-block"
+              className="text-brand-orange hover:text-brand-orange-700 text-sm font-medium mt-2 inline-block"
             >
               View full schedule
             </Link>
@@ -137,7 +137,7 @@ export function TodaySchedule({ sessions, onStartSession, onViewPrep }: TodaySch
                     <div className="flex items-center gap-2">
                       <Link
                         href={`/coach/clients/${session.clientId}`}
-                        className="font-medium text-gray-900 hover:text-indigo-600"
+                        className="font-medium text-gray-900 hover:text-brand-orange"
                       >
                         {session.clientName}
                       </Link>
@@ -179,7 +179,7 @@ export function TodaySchedule({ sessions, onStartSession, onViewPrep }: TodaySch
                       </button>
                       <button
                         onClick={() => onStartSession?.(session.id)}
-                        className="px-3 py-1.5 text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg transition-colors flex items-center gap-1"
+                        className="px-3 py-1.5 text-sm font-medium bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg transition-colors flex items-center gap-1"
                       >
                         <PlayCircle className="w-4 h-4" />
                         Start
@@ -215,7 +215,7 @@ export function TodaySchedule({ sessions, onStartSession, onViewPrep }: TodaySch
         <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
           <Link
             href="/coach/schedule"
-            className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center justify-center gap-1"
+            className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium flex items-center justify-center gap-1"
           >
             View full schedule
             <ChevronRight className="w-4 h-4" />

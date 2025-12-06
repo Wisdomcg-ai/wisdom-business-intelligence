@@ -34,14 +34,14 @@ interface QuestionBankProps {
 }
 
 const DEFAULT_CATEGORIES = [
-  { id: 'discovery', name: 'Discovery & Assessment', color: 'bg-blue-100 text-blue-700' },
-  { id: 'goals', name: 'Goals & Vision', color: 'bg-green-100 text-green-700' },
+  { id: 'discovery', name: 'Discovery & Assessment', color: 'bg-brand-orange-100 text-brand-orange-700' },
+  { id: 'goals', name: 'Goals & Vision', color: 'bg-brand-teal-100 text-brand-teal-700' },
   { id: 'challenges', name: 'Challenges & Obstacles', color: 'bg-red-100 text-red-700' },
-  { id: 'leadership', name: 'Leadership & Team', color: 'bg-purple-100 text-purple-700' },
-  { id: 'finances', name: 'Financial & Growth', color: 'bg-amber-100 text-amber-700' },
-  { id: 'operations', name: 'Operations & Systems', color: 'bg-slate-100 text-slate-700' },
-  { id: 'mindset', name: 'Mindset & Personal', color: 'bg-pink-100 text-pink-700' },
-  { id: 'accountability', name: 'Accountability & Actions', color: 'bg-indigo-100 text-indigo-700' }
+  { id: 'leadership', name: 'Leadership & Team', color: 'bg-brand-navy-100 text-brand-navy-700' },
+  { id: 'finances', name: 'Financial & Growth', color: 'bg-brand-orange-100 text-brand-orange-700' },
+  { id: 'operations', name: 'Operations & Systems', color: 'bg-gray-100 text-gray-700' },
+  { id: 'mindset', name: 'Mindset & Personal', color: 'bg-brand-navy-100 text-brand-navy-700' },
+  { id: 'accountability', name: 'Accountability & Actions', color: 'bg-brand-orange-100 text-brand-orange-700' }
 ]
 
 export function QuestionBank({
@@ -88,7 +88,7 @@ export function QuestionBank({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="rounded-xl shadow-sm border border-gray-200 bg-white overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <div>
@@ -99,7 +99,7 @@ export function QuestionBank({
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg shadow-sm transition-colors"
           >
             <Plus className="w-4 h-4" />
             Add Question
@@ -116,14 +116,14 @@ export function QuestionBank({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search questions..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
           />
         </div>
         <div className="relative">
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="appearance-none pl-10 pr-10 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            className="appearance-none pl-10 pr-10 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange bg-white"
           >
             <option value="">All Categories</option>
             {DEFAULT_CATEGORIES.map(cat => (
@@ -179,10 +179,10 @@ export function QuestionBank({
                       {categoryQuestions.map(question => (
                         <div
                           key={question.id}
-                          className="bg-white p-4 rounded-lg border border-gray-200 group hover:border-indigo-200 transition-colors"
+                          className="bg-white p-4 rounded-lg border border-gray-200 group hover:border-brand-orange-200 transition-colors"
                         >
                           <div className="flex items-start gap-3">
-                            <HelpCircle className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-0.5" />
+                            <HelpCircle className="w-5 h-5 text-brand-orange flex-shrink-0 mt-0.5" />
                             <div className="flex-1">
                               <p className="text-gray-900">{question.question}</p>
                               {question.subcategory && (
@@ -194,14 +194,14 @@ export function QuestionBank({
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
                                 onClick={() => copyToClipboard(question.question)}
-                                className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                className="p-1.5 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded transition-colors"
                                 title="Copy to clipboard"
                               >
                                 <Copy className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => setEditingQuestion(question)}
-                                className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                className="p-1.5 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded transition-colors"
                                 title="Edit"
                               >
                                 <Edit className="w-4 h-4" />
@@ -238,7 +238,7 @@ export function QuestionBank({
           </p>
           <button
             onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg shadow-sm transition-colors"
           >
             <Plus className="w-4 h-4" />
             Add Question
@@ -327,7 +327,7 @@ function QuestionModal({
               onChange={(e) => setQuestionText(e.target.value)}
               placeholder="What would success look like for you in 12 months?"
               rows={3}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange resize-none"
             />
           </div>
 
@@ -338,7 +338,7 @@ function QuestionModal({
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
             >
               {categories.map(cat => (
                 <option key={cat.id} value={cat.id}>{cat.name}</option>
@@ -355,7 +355,7 @@ function QuestionModal({
               value={subcategory}
               onChange={(e) => setSubcategory(e.target.value)}
               placeholder="e.g., First Session, Follow-up"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
             />
           </div>
         </div>
@@ -363,14 +363,14 @@ function QuestionModal({
         <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            className="px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={!questionText.trim() || saving}
-            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+            className="px-6 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg shadow-sm transition-colors disabled:opacity-50"
           >
             {saving ? 'Saving...' : question ? 'Save Changes' : 'Add Question'}
           </button>

@@ -29,7 +29,8 @@ import {
   ChevronDown,
   ChevronUp,
   User,
-  RotateCcw
+  RotateCcw,
+  CalendarCheck
 } from 'lucide-react'
 import WeeklyReviewService, {
   WeeklyReview,
@@ -42,6 +43,7 @@ import Link from 'next/link'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { StrategicPlanningService } from '@/app/goals/services/strategic-planning-service'
 import { FinancialService } from '@/app/goals/services/financial-service'
+import PageHeader from '@/components/ui/PageHeader'
 
 const DEFAULT_DISCIPLINES = [
   'Dashboard updated',
@@ -69,12 +71,12 @@ function RatingButtons({
 }: {
   value: number | null
   onChange: (val: number) => void
-  color?: 'teal' | 'amber' | 'purple'
+  color?: 'teal' | 'orange' | 'navy'
 }) {
   const colorClasses = {
-    teal: 'bg-teal-600 text-white',
-    amber: 'bg-amber-500 text-white',
-    purple: 'bg-purple-600 text-white'
+    teal: 'bg-brand-orange text-white',
+    orange: 'bg-brand-orange text-white',
+    navy: 'bg-brand-navy text-white'
   }
 
   return (
@@ -114,7 +116,7 @@ function ListInput({
   placeholder: string
   icon: typeof Trophy
   iconColor: string
-  addButtonColor?: 'teal' | 'amber' | 'purple' | 'red'
+  addButtonColor?: 'teal' | 'orange' | 'navy' | 'red'
 }) {
   const [newItem, setNewItem] = useState('')
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -146,9 +148,9 @@ function ListInput({
   }
 
   const buttonColors = {
-    teal: 'bg-teal-600 hover:bg-teal-700',
-    amber: 'bg-amber-600 hover:bg-amber-700',
-    purple: 'bg-purple-600 hover:bg-purple-700',
+    teal: 'bg-brand-orange hover:bg-brand-orange-600',
+    orange: 'bg-brand-orange hover:bg-brand-orange-600',
+    navy: 'bg-brand-navy hover:bg-brand-navy-700',
     red: 'bg-red-600 hover:bg-red-700'
   }
 
@@ -168,7 +170,7 @@ function ListInput({
                   if (e.key === 'Escape') cancelEdit()
                 }}
                 autoFocus
-                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               />
               <button onClick={saveEdit} className="text-green-600 hover:text-green-700">
                 <Check className="w-4 h-4" />
@@ -180,7 +182,7 @@ function ListInput({
           ) : (
             <>
               <span
-                className="flex-1 text-gray-800 text-sm cursor-pointer hover:text-teal-600"
+                className="flex-1 text-gray-800 text-sm cursor-pointer hover:text-brand-orange"
                 onClick={() => onUpdate && startEditing(idx, item)}
                 title={onUpdate ? "Click to edit" : undefined}
               >
@@ -209,7 +211,7 @@ function ListInput({
             }
           }}
           placeholder={placeholder}
-          className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+          className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
         />
         <button
           onClick={handleAdd}
@@ -729,9 +731,9 @@ export default function WeeklyReviewPage() {
 
   if (!mounted) {
     return (
-      <div className="p-8">
-        <div className="max-w-[1200px] mx-auto">
-          <div className="bg-white rounded-lg shadow-sm p-6">
+      <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
             <div className="h-8 bg-gray-200 rounded w-1/3 mb-4 animate-pulse"></div>
             <div className="h-4 bg-gray-100 rounded w-2/3 animate-pulse"></div>
           </div>
@@ -744,7 +746,7 @@ export default function WeeklyReviewPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-teal-600 mx-auto mb-4" />
+          <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading your weekly review...</p>
         </div>
       </div>
@@ -764,51 +766,53 @@ export default function WeeklyReviewPage() {
   const isCurrentWeek = currentWeekStart === WeeklyReviewService.getWeekStart()
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 sm:p-8">
-      <div className="max-w-[1200px] mx-auto">
-        {/* Header with Week Navigation */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">Weekly Reset</h1>
-              <p className="text-gray-500">Reflect, align, and plan for the week ahead</p>
-            </div>
-            <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Page Header */}
+        <PageHeader
+          title="Weekly Reset"
+          subtitle="Reflect, align, and plan for the week ahead"
+          icon={CalendarCheck}
+          actions={
+            <>
               <button
                 onClick={() => setShowHistory(!showHistory)}
-                className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors text-sm"
               >
                 <History className="w-4 h-4" />
-                <span className="text-sm font-medium">History</span>
+                <span className="hidden sm:inline font-medium">History</span>
               </button>
               {isSaving ? (
                 <div className="flex items-center text-gray-500">
-                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
-                  <span className="text-sm">Saving...</span>
+                  <Loader2 className="animate-spin h-4 w-4 sm:mr-2" />
+                  <span className="text-sm hidden sm:inline">Saving...</span>
                 </div>
               ) : (
-                <div className="text-sm text-green-600 font-medium">✓ Saved</div>
+                <div className="text-sm text-green-600 font-medium hidden sm:block">✓ Saved</div>
               )}
-            </div>
-          </div>
+            </>
+          }
+        />
 
-          {/* Week Selector */}
-          <div className="flex items-center justify-between bg-teal-50 border border-teal-200 rounded-xl p-4">
+        {/* Week Navigation */}
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-6">
+          <div className="flex items-center justify-between bg-brand-orange-50 border border-brand-orange-200 rounded-xl p-3 sm:p-4">
             <button
               onClick={() => navigateWeek('prev')}
-              className="p-2 hover:bg-teal-100 rounded-lg transition-colors"
+              className="p-2 hover:bg-brand-orange-100 rounded-lg transition-colors"
+              aria-label="Previous week"
             >
-              <ChevronLeft className="w-5 h-5 text-teal-700" />
+              <ChevronLeft className="w-5 h-5 text-brand-orange-700" />
             </button>
 
             <div className="text-center">
-              <div className="flex items-center justify-center gap-2">
-                <Calendar className="w-5 h-5 text-teal-700" />
-                <span className="text-lg font-semibold text-teal-900">
+              <div className="flex items-center justify-center gap-2 flex-wrap">
+                <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-brand-orange-700" />
+                <span className="text-sm sm:text-lg font-semibold text-brand-navy">
                   {formatDateRange(review.week_start_date, review.week_end_date)}
                 </span>
                 {isCurrentWeek && (
-                  <span className="px-2 py-1 bg-teal-600 text-white text-xs rounded-full font-medium">
+                  <span className="px-2 py-1 bg-brand-orange text-white text-xs rounded-full font-medium">
                     Current Week
                   </span>
                 )}
@@ -817,36 +821,37 @@ export default function WeeklyReviewPage() {
 
             <button
               onClick={() => navigateWeek('next')}
-              className="p-2 hover:bg-teal-100 rounded-lg transition-colors"
+              className="p-2 hover:bg-brand-orange-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isCurrentWeek}
+              aria-label="Next week"
             >
-              <ChevronRight className={`w-5 h-5 ${isCurrentWeek ? 'text-gray-400' : 'text-teal-700'}`} />
+              <ChevronRight className={`w-5 h-5 ${isCurrentWeek ? 'text-gray-400' : 'text-brand-orange-700'}`} />
             </button>
           </div>
         </div>
 
         {/* History View */}
         {showHistory && (
-          <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Review History</h2>
+          <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-6">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">Review History</h2>
             <div className="space-y-2 max-h-[300px] overflow-y-auto">
               {allReviews.map((r) => (
                 <button
                   key={r.id}
                   onClick={() => loadWeek(r.week_start_date)}
-                  className={`w-full flex items-center justify-between p-4 rounded-lg border transition-colors ${
+                  className={`w-full flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 sm:p-4 rounded-lg border transition-colors ${
                     r.week_start_date === currentWeekStart
-                      ? 'bg-teal-50 border-teal-300'
+                      ? 'bg-brand-orange-50 border-brand-orange-300'
                       : 'bg-white border-gray-200 hover:bg-gray-50'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <Calendar className="w-5 h-5 text-gray-600" />
-                    <span className="font-medium text-gray-900">
+                  <div className="flex items-center gap-3 mb-2 sm:mb-0">
+                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600 flex-shrink-0" />
+                    <span className="font-medium text-sm sm:text-base text-gray-900">
                       {formatDateRange(r.week_start_date, r.week_end_date)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 ml-7 sm:ml-0">
                     {r.week_rating && (
                       <div className="flex items-center gap-1">
                         <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
@@ -865,22 +870,20 @@ export default function WeeklyReviewPage() {
           </div>
         )}
 
-        {/* ============================================================================ */}
-        {/* TEAM REVIEWS PANEL - For owners/admins */}
-        {/* ============================================================================ */}
+        {/* Team Reviews Panel - For owners/admins */}
         {isOwnerOrAdmin && teamReviewStatus.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+          <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-6">
             <button
               onClick={() => setShowTeamPanel(!showTeamPanel)}
               className="w-full flex items-center justify-between"
             >
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Users className="w-5 h-5 text-blue-600" />
+                <div className="p-2 bg-brand-orange-100 rounded-lg">
+                  <Users className="w-4 h-4 sm:w-5 sm:h-5 text-brand-orange" />
                 </div>
                 <div className="text-left">
-                  <h2 className="text-xl font-bold text-gray-900">Team Reviews</h2>
-                  <p className="text-sm text-gray-500">
+                  <h2 className="text-lg sm:text-xl font-bold text-gray-900">Team Reviews</h2>
+                  <p className="text-xs sm:text-sm text-gray-500">
                     {teamReviewStatus.filter(m => m.isComplete).length} of {teamReviewStatus.length} complete
                   </p>
                 </div>
@@ -897,31 +900,31 @@ export default function WeeklyReviewPage() {
                 {teamReviewStatus.map((member) => (
                   <div
                     key={member.userId}
-                    className={`flex items-center justify-between p-4 rounded-lg border transition-colors ${
+                    className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 sm:p-4 rounded-lg border transition-colors gap-3 ${
                       viewingTeamMemberId === member.userId
-                        ? 'bg-blue-50 border-blue-300'
+                        ? 'bg-brand-orange-50 border-brand-orange-300'
                         : member.userId === userId
-                        ? 'bg-teal-50 border-teal-200'
+                        ? 'bg-brand-orange-50 border-brand-orange-200'
                         : 'bg-gray-50 border-gray-200'
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${
+                      <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 ${
                         member.isComplete ? 'bg-green-500' : member.hasReview ? 'bg-amber-500' : 'bg-gray-400'
                       }`}>
                         {member.userName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">
+                        <p className="font-medium text-sm sm:text-base text-gray-900">
                           {member.userName}
                           {member.userId === userId && (
-                            <span className="ml-2 text-xs text-teal-600">(You)</span>
+                            <span className="ml-2 text-xs text-brand-orange">(You)</span>
                           )}
                         </p>
                         <p className="text-xs text-gray-500 capitalize">{member.role}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap ml-12 sm:ml-0">
                       {member.weekRating && (
                         <div className="flex items-center gap-1">
                           <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
@@ -946,7 +949,7 @@ export default function WeeklyReviewPage() {
                           onClick={() => viewTeamMemberReview(member.userId)}
                           className={`p-2 rounded-lg transition-colors ${
                             viewingTeamMemberId === member.userId
-                              ? 'bg-blue-600 text-white'
+                              ? 'bg-brand-orange text-white'
                               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                           }`}
                           title="View review"
@@ -957,7 +960,7 @@ export default function WeeklyReviewPage() {
                       {member.userId === userId && viewingTeamMemberId !== null && (
                         <button
                           onClick={() => setViewingTeamMemberId(null)}
-                          className="px-3 py-1 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700"
+                          className="px-3 py-1 bg-brand-orange text-white text-xs sm:text-sm rounded-lg hover:bg-brand-orange-600"
                         >
                           Back to My Review
                         </button>
@@ -972,75 +975,73 @@ export default function WeeklyReviewPage() {
 
         {/* Viewing Other Team Member Banner */}
         {isViewingOther && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center justify-between">
+          <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-xl p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <User className="w-5 h-5 text-blue-600" />
-              <span className="font-medium text-blue-900">
+              <User className="w-5 h-5 text-brand-orange" />
+              <span className="font-medium text-sm sm:text-base text-brand-navy">
                 Viewing {viewingMemberName}&apos;s review (read-only)
               </span>
             </div>
             <button
               onClick={() => setViewingTeamMemberId(null)}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+              className="px-4 py-2 bg-brand-orange text-white text-sm font-medium rounded-lg hover:bg-brand-orange-600 w-full sm:w-auto"
             >
               Back to My Review
             </button>
           </div>
         )}
 
-        {/* ============================================================================ */}
         {/* SECTION 1: LOOK BACK */}
-        {/* ============================================================================ */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-amber-100 rounded-lg">
-              <ArrowRight className="w-5 h-5 text-amber-600 rotate-180" />
+              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 rotate-180" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">Look Back</h2>
-              <p className="text-sm text-gray-500">Reflect on the past week</p>
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900">Look Back</h2>
+              <p className="text-xs sm:text-sm text-gray-500">Reflect on the past week</p>
             </div>
           </div>
 
           {/* Energy & Week Rating */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <div className="bg-purple-50 rounded-xl p-5">
-              <label className="flex items-center gap-2 text-sm font-semibold text-purple-900 mb-3">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
+            <div className="bg-brand-navy/5 rounded-xl p-4 sm:p-5">
+              <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-brand-navy mb-3">
                 <Zap className="w-4 h-4" />
                 Energy Level (1-10)
               </label>
               <RatingButtons
                 value={displayedReview?.energy_rating ?? null}
                 onChange={(val) => !isViewingOther && updateReview({ energy_rating: val })}
-                color="purple"
+                color="navy"
               />
             </div>
 
-            <div className="bg-amber-50 rounded-xl p-5">
-              <label className="flex items-center gap-2 text-sm font-semibold text-amber-900 mb-3">
+            <div className="bg-brand-orange/10 rounded-xl p-4 sm:p-5">
+              <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-brand-orange-700 mb-3">
                 <Star className="w-4 h-4" />
                 Week Rating (1-10)
               </label>
               <RatingButtons
                 value={displayedReview?.week_rating ?? null}
                 onChange={(val) => !isViewingOther && updateReview({ week_rating: val })}
-                color="amber"
+                color="orange"
               />
               <textarea
                 value={displayedReview?.rating_reason || ''}
                 onChange={(e) => !isViewingOther && updateReview({ rating_reason: e.target.value })}
                 placeholder="Why did you give this rating?"
                 disabled={isViewingOther}
-                className="w-full mt-3 px-3 py-2 text-sm border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                className="w-full mt-3 px-3 py-2 text-sm border border-brand-orange/30 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                 rows={2}
               />
             </div>
           </div>
 
           {/* Wins & Challenges */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+              <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 mb-3">
                 <Trophy className="w-4 h-4 text-green-600" />
                 Wins & Highlights
               </label>
@@ -1056,8 +1057,8 @@ export default function WeeklyReviewPage() {
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-                <AlertTriangle className="w-4 h-4 text-orange-600" />
+              <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 mb-3">
+                <AlertTriangle className="w-4 h-4 text-brand-orange-600" />
                 Challenges & Frustrations
               </label>
               <ListInput
@@ -1067,15 +1068,15 @@ export default function WeeklyReviewPage() {
                 onUpdate={(idx, value) => updateReview({ challenges: review.challenges.map((c, i) => i === idx ? value : c) })}
                 placeholder="What was difficult?"
                 icon={AlertTriangle}
-                iconColor="text-orange-500"
-                addButtonColor="amber"
+                iconColor="text-brand-orange"
+                addButtonColor="orange"
               />
             </div>
           </div>
 
           {/* Key Learning */}
           <div className="mb-6">
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+            <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 mb-3">
               <Lightbulb className="w-4 h-4 text-yellow-600" />
               Key Learning
             </label>
@@ -1083,15 +1084,15 @@ export default function WeeklyReviewPage() {
               value={review.key_learning}
               onChange={(e) => updateReview({ key_learning: e.target.value })}
               placeholder="What was the most important thing you learned this week?"
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               rows={2}
             />
           </div>
 
           {/* Weekly Checklist */}
           <div>
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-              <CheckSquare className="w-4 h-4 text-teal-600" />
+            <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 mb-3">
+              <CheckSquare className="w-4 h-4 text-brand-orange" />
               Weekly Checklist
             </label>
             <div className="space-y-2">
@@ -1106,19 +1107,19 @@ export default function WeeklyReviewPage() {
                       type="checkbox"
                       checked={discipline.completed}
                       onChange={() => toggleDiscipline(idx)}
-                      className="w-5 h-5 text-teal-600 rounded focus:ring-2 focus:ring-teal-500"
+                      className="w-5 h-5 text-brand-orange rounded focus:ring-2 focus:ring-brand-orange"
                     />
                     {is90DayPlan ? (
                       <Link
                         href="/goals?step=5"
-                        className={`flex-1 text-sm ${discipline.completed ? 'text-gray-500 line-through' : 'text-teal-600 hover:text-teal-800'} underline`}
+                        className={`flex-1 text-sm ${discipline.completed ? 'text-gray-500 line-through' : 'text-brand-orange hover:text-brand-orange-800'} underline`}
                       >
                         {discipline.discipline}
                       </Link>
                     ) : isDashboard ? (
                       <Link
                         href="/business-dashboard"
-                        className={`flex-1 text-sm ${discipline.completed ? 'text-gray-500 line-through' : 'text-teal-600 hover:text-teal-800'} underline`}
+                        className={`flex-1 text-sm ${discipline.completed ? 'text-gray-500 line-through' : 'text-brand-orange hover:text-brand-orange-800'} underline`}
                       >
                         {discipline.discipline}
                       </Link>
@@ -1145,12 +1146,12 @@ export default function WeeklyReviewPage() {
                   onChange={(e) => setNewDiscipline(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addDiscipline()}
                   placeholder="+ Add custom item..."
-                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 />
                 <button
                   onClick={addDiscipline}
                   disabled={!newDiscipline.trim()}
-                  className="px-3 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-2 bg-brand-orange text-white text-sm font-medium rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Add
                 </button>
@@ -1159,58 +1160,56 @@ export default function WeeklyReviewPage() {
           </div>
         </div>
 
-        {/* ============================================================================ */}
         {/* SECTION 2: ALIGN */}
-        {/* ============================================================================ */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-indigo-100 rounded-lg">
-              <Compass className="w-5 h-5 text-indigo-600" />
+            <div className="p-2 bg-brand-orange-100 rounded-lg">
+              <Compass className="w-4 h-4 sm:w-5 sm:h-5 text-brand-orange" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">Align</h2>
-              <p className="text-sm text-gray-500">Check in with your 90-day plan</p>
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900">Align</h2>
+              <p className="text-xs sm:text-sm text-gray-500">Check in with your 90-day plan</p>
             </div>
           </div>
 
           {/* 90-Day Financial Targets */}
           <div className="mb-6">
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+            <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 mb-3">
               <DollarSign className="w-4 h-4 text-green-600" />
               90-Day Financial Targets
             </label>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-emerald-50 rounded-xl p-4 text-center">
-                <p className="text-xs text-emerald-600 font-medium mb-1">Revenue</p>
-                <p className="text-lg font-bold text-emerald-700">{formatCurrency(quarterlyTargets.revenue)}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+              <div className="bg-brand-teal-50 rounded-xl p-3 sm:p-4 text-center">
+                <p className="text-xs text-brand-teal-700 font-medium mb-1">Revenue</p>
+                <p className="text-base sm:text-lg font-bold text-brand-teal-800">{formatCurrency(quarterlyTargets.revenue)}</p>
               </div>
-              <div className="bg-teal-50 rounded-xl p-4 text-center">
-                <p className="text-xs text-teal-600 font-medium mb-1">Gross Profit</p>
-                <p className="text-lg font-bold text-teal-700">{formatCurrency(quarterlyTargets.grossProfit)}</p>
+              <div className="bg-brand-orange-50 rounded-xl p-3 sm:p-4 text-center">
+                <p className="text-xs text-brand-orange font-medium mb-1">Gross Profit</p>
+                <p className="text-base sm:text-lg font-bold text-brand-orange-700">{formatCurrency(quarterlyTargets.grossProfit)}</p>
               </div>
-              <div className="bg-blue-50 rounded-xl p-4 text-center">
-                <p className="text-xs text-blue-600 font-medium mb-1">Net Profit</p>
-                <p className="text-lg font-bold text-blue-700">{formatCurrency(quarterlyTargets.netProfit)}</p>
+              <div className="bg-brand-orange-50 rounded-xl p-3 sm:p-4 text-center">
+                <p className="text-xs text-brand-orange font-medium mb-1">Net Profit</p>
+                <p className="text-base sm:text-lg font-bold text-brand-orange-700">{formatCurrency(quarterlyTargets.netProfit)}</p>
               </div>
             </div>
             {!quarterlyTargets.revenue && (
               <p className="text-xs text-gray-500 mt-2">
-                <Link href="/goals?step=5" className="text-teal-600 hover:underline">Set your 90-day targets</Link> to see them here.
+                <Link href="/goals?step=5" className="text-brand-orange hover:underline">Set your 90-day targets</Link> to see them here.
               </p>
             )}
           </div>
 
           {/* Rocks Progress */}
           <div className="mb-6">
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-              <Mountain className="w-4 h-4 text-indigo-600" />
+            <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 mb-3">
+              <Mountain className="w-4 h-4 text-brand-orange" />
               Rock Progress Check
             </label>
             {rocks.length === 0 ? (
               <div className="bg-gray-50 rounded-xl p-4 text-center">
                 <p className="text-sm text-gray-500">
                   No rocks found for this quarter.{' '}
-                  <Link href="/goals?step=5" className="text-teal-600 hover:underline">Add rocks</Link> in your 90-day plan.
+                  <Link href="/goals?step=5" className="text-brand-orange hover:underline">Add rocks</Link> in your 90-day plan.
                 </p>
               </div>
             ) : (
@@ -1229,7 +1228,7 @@ export default function WeeklyReviewPage() {
                           onChange={(e) => updateRockProgress(rock.id, { status: e.target.value as RockProgress['status'] })}
                           className={`text-sm px-3 py-1.5 rounded-lg border-0 font-medium ${
                             progress?.status === 'completed' ? 'bg-green-100 text-green-700' :
-                            progress?.status === 'on_track' ? 'bg-teal-100 text-teal-700' :
+                            progress?.status === 'on_track' ? 'bg-brand-orange-100 text-brand-orange-700' :
                             progress?.status === 'at_risk' ? 'bg-amber-100 text-amber-700' :
                             'bg-red-100 text-red-700'
                           }`}
@@ -1244,7 +1243,7 @@ export default function WeeklyReviewPage() {
                         value={progress?.progressNotes || ''}
                         onChange={(e) => updateRockProgress(rock.id, { progressNotes: e.target.value })}
                         placeholder="Progress notes..."
-                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent mb-2"
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent mb-2"
                         rows={2}
                       />
                       <div className="flex items-center gap-2">
@@ -1274,39 +1273,37 @@ export default function WeeklyReviewPage() {
 
           {/* Alignment Notes */}
           <div>
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-              <Target className="w-4 h-4 text-indigo-600" />
+            <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 mb-3">
+              <Target className="w-4 h-4 text-brand-orange" />
               Overall Alignment Notes
             </label>
             <textarea
               value={review.alignment_notes}
               onChange={(e) => updateReview({ alignment_notes: e.target.value })}
               placeholder="How aligned are you with your 90-day plan? Any strategic adjustments needed?"
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               rows={2}
             />
           </div>
         </div>
 
-        {/* ============================================================================ */}
         {/* SECTION 3: PLAN FORWARD */}
-        {/* ============================================================================ */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-teal-100 rounded-lg">
-              <ArrowRight className="w-5 h-5 text-teal-600" />
+            <div className="p-2 bg-brand-orange-100 rounded-lg">
+              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-brand-orange" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">Plan Forward</h2>
-              <p className="text-sm text-gray-500">Set up for a successful week</p>
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900">Plan Forward</h2>
+              <p className="text-xs sm:text-sm text-gray-500">Set up for a successful week</p>
             </div>
           </div>
 
           {/* Last Week's Goals Review - only show if there are goals from last week */}
           {review.last_week_goals && review.last_week_goals.length > 0 && (
-            <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-xl">
-              <label className="flex items-center gap-2 text-sm font-semibold text-purple-700 mb-3">
-                <History className="w-4 h-4 text-purple-600" />
+            <div className="mb-6 p-3 sm:p-4 bg-brand-navy/5 border border-brand-navy/20 rounded-xl">
+              <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-brand-navy mb-3">
+                <History className="w-4 h-4 text-brand-navy" />
                 Last Week&apos;s Goals - Did you achieve them?
               </label>
               <div className="space-y-2">
@@ -1320,7 +1317,7 @@ export default function WeeklyReviewPage() {
                         updatedGoals[idx] = { ...goal, achieved: !goal.achieved }
                         updateReview({ last_week_goals: updatedGoals })
                       }}
-                      className="w-5 h-5 text-purple-600 rounded focus:ring-2 focus:ring-purple-500"
+                      className="w-5 h-5 text-brand-orange rounded focus:ring-2 focus:ring-brand-orange"
                     />
                     <span className={`flex-1 text-sm ${goal.achieved ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
                       {goal.goal}
@@ -1328,12 +1325,12 @@ export default function WeeklyReviewPage() {
                     {goal.achieved ? (
                       <Check className="w-4 h-4 text-green-500" />
                     ) : (
-                      <span className="text-xs text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">Pending</span>
+                      <span className="text-xs text-brand-orange bg-brand-orange/10 px-2 py-0.5 rounded-full">Pending</span>
                     )}
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-purple-600 mt-2">
+              <p className="text-xs text-brand-navy/70 mt-2">
                 Incomplete goals will automatically carry forward to this week&apos;s priorities
               </p>
             </div>
@@ -1341,8 +1338,8 @@ export default function WeeklyReviewPage() {
 
           {/* Top 3 Priorities */}
           <div className="mb-6">
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-              <Target className="w-4 h-4 text-teal-600" />
+            <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 mb-3">
+              <Target className="w-4 h-4 text-brand-orange" />
               Top Priorities (connected to rocks)
             </label>
             <div className="space-y-2 mb-3">
@@ -1355,12 +1352,12 @@ export default function WeeklyReviewPage() {
                       type="checkbox"
                       checked={priority.completed}
                       onChange={() => toggleTopPriorityComplete(priority.id)}
-                      className="w-5 h-5 text-teal-600 rounded focus:ring-2 focus:ring-teal-500"
+                      className="w-5 h-5 text-brand-orange rounded focus:ring-2 focus:ring-brand-orange"
                       disabled={isEditing}
                     />
                     {isEditing ? (
                       <div className="flex-1 flex items-center gap-2">
-                        <span className="font-semibold text-teal-600">#{idx + 1}</span>
+                        <span className="font-semibold text-brand-orange">#{idx + 1}</span>
                         <input
                           type="text"
                           value={editingPriorityText}
@@ -1370,13 +1367,13 @@ export default function WeeklyReviewPage() {
                             if (e.key === 'Escape') cancelEditingPriority()
                           }}
                           autoFocus
-                          className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-teal-500"
+                          className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-brand-orange"
                         />
                         {rocks.length > 0 && (
                           <select
                             value={editingPriorityRockId || ''}
                             onChange={(e) => setEditingPriorityRockId(e.target.value || undefined)}
-                            className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-teal-500"
+                            className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-brand-orange"
                           >
                             <option value="">No rock</option>
                             {rocks.map(rock => (
@@ -1394,11 +1391,11 @@ export default function WeeklyReviewPage() {
                     ) : (
                       <>
                         <span
-                          className={`flex-1 text-sm cursor-pointer hover:text-teal-600 ${priority.completed ? 'text-gray-500 line-through' : 'text-gray-900'}`}
+                          className={`flex-1 text-sm cursor-pointer hover:text-brand-orange ${priority.completed ? 'text-gray-500 line-through' : 'text-gray-900'}`}
                           onClick={() => startEditingPriority(priority)}
                           title="Click to edit"
                         >
-                          <span className="font-semibold text-teal-600 mr-2">#{idx + 1}</span>
+                          <span className="font-semibold text-brand-orange mr-2">#{idx + 1}</span>
                           {priority.priority}
                           {priority.carriedForward && (
                             <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full inline-flex items-center gap-1">
@@ -1407,7 +1404,7 @@ export default function WeeklyReviewPage() {
                             </span>
                           )}
                           {linkedRock && (
-                            <span className="ml-2 px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded-full">
+                            <span className="ml-2 px-2 py-0.5 bg-brand-orange-100 text-brand-orange-700 text-xs rounded-full">
                               {linkedRock.title}
                             </span>
                           )}
@@ -1425,7 +1422,7 @@ export default function WeeklyReviewPage() {
               })}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-teal-600 w-6">
+              <span className="text-sm font-semibold text-brand-orange w-6">
                 #{(review.top_priorities || []).length + 1}
               </span>
               <input
@@ -1434,13 +1431,13 @@ export default function WeeklyReviewPage() {
                 onChange={(e) => setNewPriorityText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddPriority()}
                 placeholder="Add priority..."
-                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               />
               {rocks.length > 0 && (
                 <select
                   value={newPriorityRockId}
                   onChange={(e) => setNewPriorityRockId(e.target.value)}
-                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 >
                   <option value="">Link to rock...</option>
                   {rocks.map(rock => (
@@ -1451,7 +1448,7 @@ export default function WeeklyReviewPage() {
               <button
                 onClick={handleAddPriority}
                 disabled={!newPriorityText.trim()}
-                className="px-3 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-2 bg-brand-orange text-white text-sm font-medium rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Add
               </button>
@@ -1460,7 +1457,7 @@ export default function WeeklyReviewPage() {
 
           {/* Other Priorities */}
           <div className="mb-6">
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+            <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 mb-3">
               <CheckSquare className="w-4 h-4 text-gray-600" />
               Other Weekly Goals
             </label>
@@ -1477,21 +1474,21 @@ export default function WeeklyReviewPage() {
 
           {/* Important Dates */}
           <div className="mb-6">
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-              <CalendarDays className="w-4 h-4 text-purple-600" />
+            <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 mb-3">
+              <CalendarDays className="w-4 h-4 text-brand-navy" />
               Important Dates & Deadlines
             </label>
             <div className="space-y-2 mb-3">
               {(review.important_dates || []).map((item, idx) => (
-                <div key={idx} className="flex items-center gap-2 p-3 bg-purple-50 rounded-lg group">
-                  <Calendar className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                <div key={idx} className="flex items-center gap-2 p-3 bg-brand-navy/5 rounded-lg group">
+                  <Calendar className="w-4 h-4 text-brand-navy flex-shrink-0" />
                   {editingDateIdx === idx ? (
                     <>
                       <input
                         type="date"
                         value={editingDateValue}
                         onChange={(e) => setEditingDateValue(e.target.value)}
-                        className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                        className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-brand-orange"
                       />
                       <input
                         type="text"
@@ -1502,7 +1499,7 @@ export default function WeeklyReviewPage() {
                           if (e.key === 'Escape') cancelEditingDate()
                         }}
                         autoFocus
-                        className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                        className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-brand-orange"
                       />
                       <button onClick={saveEditingDate} className="text-green-600 hover:text-green-700">
                         <Check className="w-4 h-4" />
@@ -1514,14 +1511,14 @@ export default function WeeklyReviewPage() {
                   ) : (
                     <>
                       <span
-                        className="font-medium text-sm text-gray-900 cursor-pointer hover:text-purple-600"
+                        className="font-medium text-sm text-gray-900 cursor-pointer hover:text-brand-orange"
                         onClick={() => startEditingDate(idx)}
                         title="Click to edit"
                       >
                         {item.date}
                       </span>
                       <span
-                        className="text-sm text-gray-600 cursor-pointer hover:text-purple-600"
+                        className="text-sm text-gray-600 cursor-pointer hover:text-brand-orange"
                         onClick={() => startEditingDate(idx)}
                         title="Click to edit"
                       >
@@ -1543,7 +1540,7 @@ export default function WeeklyReviewPage() {
                 type="date"
                 value={newDate}
                 onChange={(e) => setNewDate(e.target.value)}
-                className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               />
               <input
                 type="text"
@@ -1551,12 +1548,12 @@ export default function WeeklyReviewPage() {
                 onChange={(e) => setNewDateDesc(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && addImportantDate()}
                 placeholder="Description..."
-                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               />
               <button
                 onClick={addImportantDate}
                 disabled={!newDate || !newDateDesc.trim()}
-                className="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-brand-navy text-white text-sm font-medium rounded-lg hover:bg-brand-navy-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Add
               </button>
@@ -1564,9 +1561,9 @@ export default function WeeklyReviewPage() {
           </div>
 
           {/* Start/Stop Doing */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+              <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 mb-3">
                 <TrendingUp className="w-4 h-4 text-green-600" />
                 Start Doing
               </label>
@@ -1582,7 +1579,7 @@ export default function WeeklyReviewPage() {
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+              <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 mb-3">
                 <TrendingDown className="w-4 h-4 text-red-600" />
                 Stop Doing
               </label>
@@ -1601,13 +1598,13 @@ export default function WeeklyReviewPage() {
 
           {/* Questions for Coach */}
           <div>
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-              <MessageCircle className="w-4 h-4 text-blue-600" />
+            <label className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 mb-3">
+              <MessageCircle className="w-4 h-4 text-brand-orange" />
               Questions for Coach
             </label>
             <div className="space-y-2 mb-3">
               {(review.coach_questions || []).map((q, idx) => (
-                <div key={idx} className="p-3 bg-blue-50 rounded-lg group">
+                <div key={idx} className="p-3 bg-brand-orange-50 rounded-lg group">
                   <div className="flex items-start justify-between">
                     <p className="text-sm text-gray-900">{q.question}</p>
                     <button
@@ -1620,7 +1617,7 @@ export default function WeeklyReviewPage() {
                   <span className={`inline-block mt-2 px-2 py-0.5 text-xs rounded-full font-medium ${
                     q.priority === 'high' ? 'bg-red-100 text-red-700' :
                     q.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-teal-100 text-teal-700'
+                    'bg-brand-orange-100 text-brand-orange-700'
                   }`}>
                     {q.priority.toUpperCase()}
                   </span>
@@ -1632,7 +1629,7 @@ export default function WeeklyReviewPage() {
                 value={newQuestion}
                 onChange={(e) => setNewQuestion(e.target.value)}
                 placeholder="What question do you have for your coach?"
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                 rows={2}
               />
               <div className="flex items-center gap-2">
@@ -1645,7 +1642,7 @@ export default function WeeklyReviewPage() {
                         newQuestionPriority === priority
                           ? priority === 'high' ? 'bg-red-600 text-white' :
                             priority === 'medium' ? 'bg-yellow-500 text-white' :
-                            'bg-teal-600 text-white'
+                            'bg-brand-orange text-white'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
@@ -1656,7 +1653,7 @@ export default function WeeklyReviewPage() {
                 <button
                   onClick={addCoachQuestion}
                   disabled={!newQuestion.trim()}
-                  className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-1.5 bg-brand-orange text-white text-sm font-medium rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Add Question
                 </button>
@@ -1667,7 +1664,7 @@ export default function WeeklyReviewPage() {
 
         {/* Mark as Complete Button */}
         {!isViewingOther && (
-          <div className="bg-white rounded-xl shadow-sm p-6">
+          <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
             <button
               onClick={() => {
                 const isCompleting = !review.is_completed
@@ -1677,10 +1674,10 @@ export default function WeeklyReviewPage() {
                   submitter_name: isCompleting ? currentUserName : review.submitter_name
                 })
               }}
-              className={`w-full py-4 rounded-xl font-bold text-lg transition-colors ${
+              className={`w-full py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-colors ${
                 review.is_completed
                   ? 'bg-green-600 text-white hover:bg-green-700'
-                  : 'bg-teal-600 text-white hover:bg-teal-700'
+                  : 'bg-brand-orange text-white hover:bg-brand-orange-600'
               }`}
             >
               {review.is_completed ? '✓ Review Completed' : 'Mark as Complete'}
@@ -1690,8 +1687,8 @@ export default function WeeklyReviewPage() {
 
         {/* Read-only indicator when viewing other's review */}
         {isViewingOther && displayedReview && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
-            <p className="text-blue-800 font-medium">
+          <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-xl p-4 sm:p-6 text-center">
+            <p className="text-sm sm:text-base text-brand-navy font-medium">
               {displayedReview.is_completed
                 ? `✓ ${viewingMemberName} completed this review`
                 : `${viewingMemberName}'s review is in progress`
@@ -1699,7 +1696,7 @@ export default function WeeklyReviewPage() {
             </p>
             <button
               onClick={() => setViewingTeamMemberId(null)}
-              className="mt-4 px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700"
+              className="mt-4 px-6 py-2 bg-brand-orange text-white text-sm sm:text-base font-medium rounded-lg hover:bg-brand-orange-600"
             >
               Back to My Review
             </button>

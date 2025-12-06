@@ -63,7 +63,7 @@ export function ActionCard({
   const getPriorityColor = (priority: ActionItem['priority']) => {
     switch (priority) {
       case 'urgent': return 'text-red-600 bg-red-100'
-      case 'high': return 'text-orange-600 bg-orange-100'
+      case 'high': return 'text-brand-orange-600 bg-brand-orange-100'
       case 'medium': return 'text-yellow-600 bg-yellow-100'
       case 'low': return 'text-gray-600 bg-gray-100'
     }
@@ -74,7 +74,7 @@ export function ActionCard({
       return <CheckCircle className="w-5 h-5 text-green-600" />
     }
     if (action.status === 'in_progress') {
-      return <Clock className="w-5 h-5 text-indigo-600" />
+      return <Clock className="w-5 h-5 text-brand-orange" />
     }
     if (isOverdue) {
       return <AlertTriangle className="w-5 h-5 text-red-600" />
@@ -104,7 +104,7 @@ export function ActionCard({
           ? 'bg-gray-50 border-gray-200'
           : isOverdue
             ? 'bg-red-50 border-red-200'
-            : 'bg-white border-gray-200 hover:border-indigo-300'
+            : 'bg-white border-gray-200 hover:border-brand-orange-300'
       }`}>
         <button
           onClick={() => onToggleComplete?.(action.id)}
@@ -140,7 +140,7 @@ export function ActionCard({
         ? 'border-gray-200 opacity-75'
         : isOverdue
           ? 'border-red-200 ring-1 ring-red-100'
-          : 'border-gray-200 hover:border-indigo-300 hover:shadow-sm'
+          : 'border-gray-200 hover:border-brand-orange-300 hover:shadow-sm'
     }`}>
       <div className="flex items-start gap-4">
         {/* Status Toggle */}
@@ -149,7 +149,7 @@ export function ActionCard({
           className={`mt-0.5 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
             action.status === 'completed'
               ? 'bg-green-500 border-green-500 text-white'
-              : 'border-gray-300 hover:border-indigo-500'
+              : 'border-gray-300 hover:border-brand-orange'
           }`}
         >
           {action.status === 'completed' && <CheckCircle className="w-4 h-4" />}
@@ -215,7 +215,7 @@ export function ActionCard({
             {/* Client */}
             <Link
               href={`/coach/clients/${action.businessId}`}
-              className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-indigo-600"
+              className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-brand-orange"
             >
               <Building2 className="w-4 h-4" />
               {action.businessName}

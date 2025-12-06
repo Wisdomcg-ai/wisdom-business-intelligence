@@ -48,7 +48,7 @@ export default function ScenarioSelector({
     } else if (isPessimistic) {
       return <div className="w-2 h-2 bg-red-500 rounded-full" />
     } else {
-      return <div className="w-2 h-2 bg-teal-500 rounded-full" />
+      return <div className="w-2 h-2 bg-brand-orange-500 rounded-full" />
     }
   }
 
@@ -77,7 +77,7 @@ export default function ScenarioSelector({
       {/* Dropdown Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-between w-full px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors"
+        className="flex items-center justify-between w-full px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-orange transition-colors"
       >
         <div className="flex items-center gap-2">
           {activeScenario && getScenarioIcon(activeScenario)}
@@ -85,7 +85,7 @@ export default function ScenarioSelector({
             {activeScenario ? activeScenario.name : 'Select Scenario'}
           </span>
           {activeScenario && activeScenario.is_active && (
-            <span className="px-2 py-0.5 text-xs font-medium text-teal-700 bg-teal-100 rounded-full">
+            <span className="px-2 py-0.5 text-xs font-medium text-brand-orange-700 bg-brand-orange-100 rounded-full">
               Active
             </span>
           )}
@@ -111,7 +111,7 @@ export default function ScenarioSelector({
                   onCreateScenario()
                   setIsOpen(false)
                 }}
-                className="flex items-center gap-2 w-full px-3 py-2 text-sm font-medium text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm font-medium text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 Create New Scenario
@@ -135,7 +135,7 @@ export default function ScenarioSelector({
                       onClick={() => handleSelectScenario(scenario)}
                       className={`flex items-center justify-between w-full px-3 py-2 text-sm rounded-lg transition-colors ${
                         activeScenario?.id === scenario.id
-                          ? 'bg-teal-50 text-teal-900'
+                          ? 'bg-brand-orange-50 text-brand-navy'
                           : 'text-gray-700 hover:bg-gray-50'
                       }`}
                     >
@@ -148,7 +148,7 @@ export default function ScenarioSelector({
                           </div>
                         </div>
                         {activeScenario?.id === scenario.id && (
-                          <Check className="w-4 h-4 text-teal-600" />
+                          <Check className="w-4 h-4 text-brand-orange" />
                         )}
                       </div>
                     </button>
@@ -204,7 +204,7 @@ export default function ScenarioSelector({
                   <span className="text-gray-600">Baseline</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-teal-500 rounded-full" />
+                  <div className="w-2 h-2 bg-brand-orange-500 rounded-full" />
                   <span className="text-gray-600">Realistic</span>
                 </div>
                 <div className="flex items-center gap-2">

@@ -24,8 +24,8 @@ interface Step5ActionPlanProps {
 const STATUS_OPTIONS: { value: StopDoingStatus; label: string; color: string; bgColor: string }[] = [
   { value: 'identified', label: 'Identified', color: 'text-gray-600', bgColor: 'bg-gray-100' },
   { value: 'in_progress', label: 'In Progress', color: 'text-amber-600', bgColor: 'bg-amber-100' },
-  { value: 'delegated', label: 'Delegated', color: 'text-blue-600', bgColor: 'bg-blue-100' },
-  { value: 'automated', label: 'Automated', color: 'text-purple-600', bgColor: 'bg-purple-100' },
+  { value: 'delegated', label: 'Delegated', color: 'text-brand-orange', bgColor: 'bg-brand-orange-100' },
+  { value: 'automated', label: 'Automated', color: 'text-brand-navy', bgColor: 'bg-brand-navy-50' },
   { value: 'eliminated', label: 'Eliminated', color: 'text-red-600', bgColor: 'bg-red-100' },
   { value: 'completed', label: 'Completed', color: 'text-green-600', bgColor: 'bg-green-100' }
 ]
@@ -87,49 +87,49 @@ export default function Step5ActionPlan({
       </div>
 
       {/* Progress Overview */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-6 text-white">
+      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-6 text-white">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div className="text-center">
-            <div className="flex items-center justify-center gap-2 text-teal-100 text-sm mb-1">
+            <div className="flex items-center justify-center gap-2 text-brand-orange-100 text-sm mb-1">
               <Clock className="w-4 h-4" />
               Hours Freed
             </div>
             <p className="text-3xl font-bold">{Math.round(totalHoursFreed * 10) / 10}h</p>
-            <p className="text-teal-200 text-xs mt-1">per month</p>
+            <p className="text-brand-orange-200 text-xs mt-1">per month</p>
           </div>
 
           <div className="text-center">
-            <div className="flex items-center justify-center gap-2 text-teal-100 text-sm mb-1">
+            <div className="flex items-center justify-center gap-2 text-brand-orange-100 text-sm mb-1">
               <DollarSign className="w-4 h-4" />
               Value Created
             </div>
             <p className="text-3xl font-bold">{formatCurrency(totalSavings)}</p>
-            <p className="text-teal-200 text-xs mt-1">per month</p>
+            <p className="text-brand-orange-200 text-xs mt-1">per month</p>
           </div>
 
           <div className="text-center">
-            <div className="flex items-center justify-center gap-2 text-teal-100 text-sm mb-1">
+            <div className="flex items-center justify-center gap-2 text-brand-orange-100 text-sm mb-1">
               <TrendingUp className="w-4 h-4" />
               In Progress
             </div>
             <p className="text-3xl font-bold">{inProgressCount}</p>
-            <p className="text-teal-200 text-xs mt-1">items active</p>
+            <p className="text-brand-orange-200 text-xs mt-1">items active</p>
           </div>
 
           <div className="text-center bg-white/10 rounded-lg py-3">
-            <div className="flex items-center justify-center gap-2 text-teal-100 text-sm mb-1">
+            <div className="flex items-center justify-center gap-2 text-brand-orange-100 text-sm mb-1">
               <CheckCircle2 className="w-4 h-4" />
               Completed
             </div>
             <p className="text-3xl font-bold">{completedCount}/{totalItems}</p>
-            <p className="text-teal-200 text-xs mt-1">{progressPercentage}% done</p>
+            <p className="text-brand-orange-200 text-xs mt-1">{progressPercentage}% done</p>
           </div>
         </div>
 
         {/* Progress Bar */}
         {totalItems > 0 && (
           <div className="mt-4">
-            <div className="h-2 bg-teal-800 rounded-full overflow-hidden">
+            <div className="h-2 bg-brand-orange-800 rounded-full overflow-hidden">
               <div
                 className="h-full bg-white transition-all duration-500"
                 style={{ width: `${progressPercentage}%` }}
@@ -156,7 +156,7 @@ export default function Step5ActionPlan({
       {/* Action Items */}
       <div className="space-y-4">
         <h3 className="font-medium text-gray-900 flex items-center gap-2">
-          <Target className="w-5 h-5 text-teal-600" />
+          <Target className="w-5 h-5 text-brand-orange" />
           Stop Doing Items ({stopDoingItems.length})
         </h3>
 
@@ -203,7 +203,7 @@ export default function Step5ActionPlan({
                           <span>{Math.round((item.monthly_hours || 0) * 10) / 10}h/month</span>
                           <span>{formatCurrency(item.opportunity_cost_monthly || 0)}/month</span>
                           {item.suggested_decision && (
-                            <span className="text-teal-600">→ {item.suggested_decision}</span>
+                            <span className="text-brand-orange">→ {item.suggested_decision}</span>
                           )}
                         </div>
                       </div>
@@ -254,7 +254,7 @@ export default function Step5ActionPlan({
                             value={item.delegate_to || ''}
                             onChange={(e) => onUpdateItem(item.id, { delegate_to: e.target.value })}
                             placeholder="e.g., Virtual Assistant, Team Member"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
                           />
                         </div>
 
@@ -267,7 +267,7 @@ export default function Step5ActionPlan({
                             type="date"
                             value={item.target_date || ''}
                             onChange={(e) => onUpdateItem(item.id, { target_date: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
                           />
                         </div>
                       </div>
@@ -286,7 +286,7 @@ export default function Step5ActionPlan({
                               value={item.delegation_rate || ''}
                               onChange={(e) => onUpdateItem(item.id, { delegation_rate: parseFloat(e.target.value) || 0 })}
                               placeholder="0"
-                              className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                              className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
                             />
                           </div>
                           <span className="text-sm text-gray-500">/hour</span>
@@ -310,7 +310,7 @@ export default function Step5ActionPlan({
                           onChange={(e) => onUpdateItem(item.id, { notes: e.target.value })}
                           placeholder="Add any notes about this item..."
                           rows={2}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
                         />
                       </div>
 

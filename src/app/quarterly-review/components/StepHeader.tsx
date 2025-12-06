@@ -19,9 +19,9 @@ export function StepHeader({ step, subtitle, estimatedTime, tip }: StepHeaderPro
     <div className="mb-8">
       {/* Part Badge */}
       {part && PART_LABELS[part] && (
-        <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm font-medium mb-3">
+        <div className="inline-flex items-center gap-2 bg-brand-orange-50 text-brand-orange-700 px-3 py-1 rounded-full text-sm font-medium mb-3">
           <span>Part {part}</span>
-          <span className="text-blue-400">•</span>
+          <span className="text-brand-orange-400">•</span>
           <span>{partLabel}</span>
         </div>
       )}
@@ -45,7 +45,7 @@ export function StepHeader({ step, subtitle, estimatedTime, tip }: StepHeaderPro
           </div>
         )}
         {tip && (
-          <div className="flex items-center gap-1.5 bg-slate-50 text-slate-600 px-3 py-1 rounded-lg">
+          <div className="flex items-center gap-1.5 bg-gray-50 text-gray-600 px-3 py-1 rounded-lg">
             <HelpCircle className="w-4 h-4" />
             <span>{tip}</span>
           </div>

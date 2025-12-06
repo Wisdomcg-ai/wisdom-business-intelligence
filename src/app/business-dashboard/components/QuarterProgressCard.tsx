@@ -89,7 +89,7 @@ export default function QuarterProgressCard({
   formatCurrency
 }: QuarterProgressCardProps) {
   return (
-    <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+    <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-6 mb-6">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">{currentQuarterInfo.label} Progress</h2>
@@ -101,14 +101,14 @@ export default function QuarterProgressCard({
           <div className="text-sm text-gray-600">{currentQuarterInfo.months}</div>
           <div className="w-48 h-2 bg-gray-200 rounded-full mt-2">
             <div
-              className="h-2 bg-teal-600 rounded-full transition-all"
+              className="h-2 bg-brand-orange rounded-full transition-all"
               style={{ width: `${progress.percentComplete}%` }}
             />
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
         <MetricCard
           label="Revenue"
           target={revenueTarget}

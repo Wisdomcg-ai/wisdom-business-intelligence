@@ -211,7 +211,7 @@ export function CreateActionModal({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search clients..."
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
 
@@ -231,12 +231,12 @@ export function CreateActionModal({
                       }}
                       className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-colors ${
                         selectedClientId === client.id
-                          ? 'border-indigo-600 bg-indigo-50'
-                          : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
+                          ? 'border-brand-orange bg-brand-orange-50'
+                          : 'border-gray-200 hover:border-brand-orange-300 hover:bg-gray-50'
                       }`}
                     >
                       <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-                        <Building2 className="w-5 h-5 text-slate-600" />
+                        <Building2 className="w-5 h-5 text-gray-600" />
                       </div>
                       <div className="flex-1 text-left">
                         <p className="font-medium text-gray-900">{client.businessName}</p>
@@ -245,7 +245,7 @@ export function CreateActionModal({
                         )}
                       </div>
                       {selectedClientId === client.id && (
-                        <Check className="w-5 h-5 text-indigo-600" />
+                        <Check className="w-5 h-5 text-brand-orange" />
                       )}
                     </button>
                   ))
@@ -259,9 +259,9 @@ export function CreateActionModal({
             <div className="p-6 space-y-5">
               {/* Selected Client */}
               {selectedClient && (
-                <div className="flex items-center gap-4 p-4 bg-indigo-50 rounded-xl">
-                  <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-                    <Building2 className="w-5 h-5 text-indigo-600" />
+                <div className="flex items-center gap-4 p-4 bg-brand-orange-50 rounded-xl">
+                  <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+                    <Building2 className="w-5 h-5 text-brand-orange" />
                   </div>
                   <div className="flex-1">
                     <p className="font-medium text-gray-900">{selectedClient.businessName}</p>
@@ -269,7 +269,7 @@ export function CreateActionModal({
                   {!preselectedClientId && (
                     <button
                       onClick={() => setStep(1)}
-                      className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                      className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
                     >
                       Change
                     </button>
@@ -282,7 +282,7 @@ export function CreateActionModal({
                 <button
                   onClick={() => setShowTemplates(!showTemplates)}
                   className={`flex items-center gap-2 text-sm font-medium transition-colors ${
-                    showTemplates ? 'text-indigo-600' : 'text-gray-600 hover:text-indigo-600'
+                    showTemplates ? 'text-brand-orange' : 'text-gray-600 hover:text-brand-orange'
                   }`}
                 >
                   <FileText className="w-4 h-4" />
@@ -295,7 +295,7 @@ export function CreateActionModal({
                       <button
                         key={template.id}
                         onClick={() => applyTemplate(template)}
-                        className="text-left p-3 border border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+                        className="text-left p-3 border border-gray-200 rounded-lg hover:border-brand-orange-300 hover:bg-brand-orange-50 transition-colors"
                       >
                         <p className="font-medium text-gray-900 text-sm">{template.title}</p>
                         {template.category && (
@@ -317,7 +317,7 @@ export function CreateActionModal({
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="What needs to be done?"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
 
@@ -331,7 +331,7 @@ export function CreateActionModal({
                   onChange={(e) => setDescription(e.target.value)}
                   rows={2}
                   placeholder="Add more details..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
 
@@ -350,7 +350,7 @@ export function CreateActionModal({
                       className={`py-2 rounded-lg text-sm font-medium transition-colors ${
                         priority === p
                           ? p === 'urgent' ? 'bg-red-600 text-white' :
-                            p === 'high' ? 'bg-orange-500 text-white' :
+                            p === 'high' ? 'bg-brand-orange text-white' :
                             p === 'medium' ? 'bg-yellow-500 text-white' :
                             'bg-gray-600 text-white'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -396,7 +396,7 @@ export function CreateActionModal({
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
                   min={new Date().toISOString().split('T')[0]}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
 
@@ -408,7 +408,7 @@ export function CreateActionModal({
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 >
                   <option value="">Select category</option>
                   {categories.map(cat => (
@@ -434,7 +434,7 @@ export function CreateActionModal({
               <button
                 onClick={step === 1 ? () => {} : handleCreate}
                 disabled={step === 1 || !title.trim() || saving}
-                className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-6 py-2.5 bg-brand-orange text-white rounded-lg font-medium shadow-sm hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? (
                   <>

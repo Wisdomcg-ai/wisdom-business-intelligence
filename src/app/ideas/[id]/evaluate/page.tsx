@@ -328,7 +328,7 @@ export default function IdeasFilterPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-amber-500 mx-auto mb-3" />
           <p className="text-gray-600">Loading evaluation...</p>
@@ -339,7 +339,7 @@ export default function IdeasFilterPage() {
 
   if (error || !idea) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-3" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">{error || 'Idea not found'}</h2>
@@ -355,7 +355,7 @@ export default function IdeasFilterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-[1000px] mx-auto px-4 sm:px-6 py-4">
@@ -382,7 +382,7 @@ export default function IdeasFilterPage() {
                   </>
                 ) : lastSaved ? (
                   <>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    <CheckCircle2 className="w-4 h-4 text-brand-teal" />
                     <span>Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </>
                 ) : (
@@ -468,11 +468,11 @@ export default function IdeasFilterPage() {
               <div className="space-y-2">
                 {(formData.pros || []).map((pro, i) => (
                   <div key={i} className="flex items-center gap-2 group">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-brand-teal flex-shrink-0" />
                     <span className="flex-1 text-sm text-gray-700 py-2">{pro}</span>
                     <button
                       onClick={() => removeFromList(formData.pros || [], i, (items) => setFormData({ ...formData, pros: items }))}
-                      className="p-1 opacity-0 group-hover:opacity-100 hover:bg-emerald-100 rounded transition-opacity"
+                      className="p-1 opacity-0 group-hover:opacity-100 hover:bg-brand-teal-100 rounded transition-opacity"
                     >
                       <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
                     </button>
@@ -486,7 +486,7 @@ export default function IdeasFilterPage() {
                     value={newPro}
                     onChange={(e) => setNewPro(e.target.value)}
                     placeholder="Type a pro and press Enter..."
-                    className="flex-1 py-2 text-sm border-0 border-b border-gray-200 focus:border-emerald-500 focus:ring-0 bg-transparent placeholder:text-gray-400"
+                    className="flex-1 py-2 text-sm border-0 border-b border-gray-200 focus:border-brand-teal focus:ring-0 bg-transparent placeholder:text-gray-400"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newPro.trim()) {
                         e.preventDefault();
@@ -949,11 +949,11 @@ export default function IdeasFilterPage() {
               <div className="space-y-2">
                 {(formData.upside_risks || []).map((risk, i) => (
                   <div key={i} className="flex items-center gap-2 group">
-                    <TrendingUp className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <TrendingUp className="w-4 h-4 text-brand-teal flex-shrink-0" />
                     <span className="flex-1 text-sm text-gray-700 py-2">{risk}</span>
                     <button
                       onClick={() => removeFromList(formData.upside_risks || [], i, (items) => setFormData({ ...formData, upside_risks: items }))}
-                      className="p-1 opacity-0 group-hover:opacity-100 hover:bg-emerald-100 rounded transition-opacity"
+                      className="p-1 opacity-0 group-hover:opacity-100 hover:bg-brand-teal-100 rounded transition-opacity"
                     >
                       <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
                     </button>
@@ -967,7 +967,7 @@ export default function IdeasFilterPage() {
                     value={newUpside}
                     onChange={(e) => setNewUpside(e.target.value)}
                     placeholder="Type an upside risk and press Enter..."
-                    className="flex-1 py-2 text-sm border-0 border-b border-gray-200 focus:border-emerald-500 focus:ring-0 bg-transparent placeholder:text-gray-400"
+                    className="flex-1 py-2 text-sm border-0 border-b border-gray-200 focus:border-brand-teal focus:ring-0 bg-transparent placeholder:text-gray-400"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newUpside.trim()) {
                         e.preventDefault();
@@ -1042,18 +1042,18 @@ export default function IdeasFilterPage() {
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {([
-                  { value: 'proceed', label: 'Proceed', icon: CheckCircle2, color: 'emerald' },
+                  { value: 'proceed', label: 'Proceed', icon: CheckCircle2, color: 'teal' },
                   { value: 'reject', label: 'Reject', icon: XCircle, color: 'red' },
-                  { value: 'park', label: 'Park', icon: PauseCircle, color: 'purple' },
-                  { value: 'needs_more_info', label: 'Need More Info', icon: HelpCircle, color: 'amber' }
+                  { value: 'park', label: 'Park', icon: PauseCircle, color: 'navy' },
+                  { value: 'needs_more_info', label: 'Need More Info', icon: HelpCircle, color: 'orange' }
                 ] as const).map((option) => {
                   const Icon = option.icon;
                   const isSelected = formData.decision === option.value;
                   const colorClasses = {
-                    emerald: isSelected ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 hover:border-emerald-300',
+                    teal: isSelected ? 'border-brand-teal bg-brand-teal-50 text-brand-teal-700' : 'border-gray-200 hover:border-brand-teal-300',
                     red: isSelected ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 hover:border-red-300',
-                    purple: isSelected ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 hover:border-purple-300',
-                    amber: isSelected ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-gray-200 hover:border-amber-300'
+                    navy: isSelected ? 'border-brand-navy bg-brand-navy-50 text-brand-navy-700' : 'border-gray-200 hover:border-brand-navy-300',
+                    orange: isSelected ? 'border-brand-orange bg-brand-orange-50 text-brand-orange-700' : 'border-gray-200 hover:border-brand-orange-300'
                   };
 
                   return (
@@ -1088,7 +1088,7 @@ export default function IdeasFilterPage() {
               <button
                 onClick={() => handleSave(true)}
                 disabled={saving || !formData.decision}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? (
                   <Loader2 className="w-5 h-5 animate-spin" />

@@ -202,17 +202,17 @@ export default function Step3PrioritizeInitiatives({
   return (
     <div className="space-y-6">
       {/* Task Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-4 text-white">
+      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-4 text-white">
         <p className="text-base font-medium">
           📋 <strong>YOUR TASK:</strong> Drag 8-20 initiatives from left → right to select your Year 1 priorities
         </p>
-        <p className="text-sm text-teal-100 mt-1">
+        <p className="text-sm text-brand-orange-100 mt-1">
           Choose initiatives that will have the biggest impact on your 3-year goals. You can reorder by dragging within the priority list.
         </p>
       </div>
 
       {/* Header with Selection Status */}
-      <div className="bg-gradient-to-r from-teal-50 to-slate-50 border-2 border-teal-200 rounded-lg p-4">
+      <div className="bg-gradient-to-r from-brand-orange-50 to-slate-50 border-2 border-brand-orange-200 rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div>
@@ -257,10 +257,10 @@ export default function Step3PrioritizeInitiatives({
       {/* Two Column Layout: Category List (Left) | Priority List (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr,auto,1fr] gap-4 lg:gap-2">
         {/* Visual Flow Indicator - Mobile (Hidden on Desktop) */}
-        <div className="flex items-center justify-center gap-2 lg:hidden py-3 bg-teal-50 rounded-lg border border-teal-200">
-          <span className="text-sm font-medium text-teal-700">Available</span>
-          <ArrowRight className="w-5 h-5 text-teal-600" />
-          <span className="text-sm font-medium text-teal-700">Your Priorities</span>
+        <div className="flex items-center justify-center gap-2 lg:hidden py-3 bg-brand-orange-50 rounded-lg border border-brand-orange-200">
+          <span className="text-sm font-medium text-brand-orange-700">Available</span>
+          <ArrowRight className="w-5 h-5 text-brand-orange" />
+          <span className="text-sm font-medium text-brand-orange-700">Your Priorities</span>
         </div>
         {/* LEFT: Single Column Category List */}
         <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden">
@@ -294,7 +294,7 @@ export default function Step3PrioritizeInitiatives({
                           <h4 className={`text-sm font-bold ${categoryStyle.textColor}`}>{categoryStyle.shortLabel}</h4>
                         </div>
                         {count > 0 && (
-                          <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-2 bg-teal-600 text-white text-xs font-bold rounded-full">
+                          <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-2 bg-brand-orange text-white text-xs font-bold rounded-full">
                             {count}
                           </span>
                         )}
@@ -322,7 +322,7 @@ export default function Step3PrioritizeInitiatives({
                                 className={`group flex items-start gap-2 p-3 ${cardStyles.container}`}
                               >
                                 <GripVertical className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
-                                  isUserIdea ? 'text-slate-400 group-hover:text-slate-600' : 'text-teal-200 group-hover:text-white'
+                                  isUserIdea ? 'text-slate-400 group-hover:text-gray-600' : 'text-brand-orange-200 group-hover:text-white'
                                 }`} />
 
                                 <div className="flex-1 min-w-0">
@@ -353,7 +353,7 @@ export default function Step3PrioritizeInitiatives({
 
         {/* CENTER: Arrow Indicator (Desktop Only) */}
         <div className="hidden lg:flex flex-col items-center justify-center py-20">
-          <div className="flex flex-col items-center gap-2 text-teal-600">
+          <div className="flex flex-col items-center gap-2 text-brand-orange">
             <ArrowRight className="w-8 h-8 animate-pulse" />
             <span className="text-xs font-semibold uppercase tracking-wide writing-mode-vertical rotate-180" style={{ writingMode: 'vertical-rl' }}>
               Drag to add
@@ -364,11 +364,11 @@ export default function Step3PrioritizeInitiatives({
         {/* RIGHT: Priority List */}
         <div className="space-y-4">
           <div
-            className="bg-white border-2 border-teal-300 rounded-lg overflow-hidden"
+            className="bg-white border-2 border-brand-orange-300 rounded-lg overflow-hidden"
             onDragOver={handleDragOver}
             onDrop={handleDropOnPriority}
           >
-            <div className="px-4 py-3 bg-teal-50 border-b-2 border-teal-200 sticky top-0 z-10">
+            <div className="px-4 py-3 bg-brand-orange-50 border-b-2 border-brand-orange-200 sticky top-0 z-10">
               <h3 className="text-sm font-bold text-gray-900">
                 Your Year 1 Priorities ({selectedCount}/20)
               </h3>
@@ -379,21 +379,21 @@ export default function Step3PrioritizeInitiatives({
               {selectedCount === 0 ? (
                 <div className={`flex items-center justify-center h-[400px] border-2 border-dashed rounded-lg transition-all ${
                   draggedInitiative
-                    ? 'border-teal-500 bg-teal-100 scale-[1.02]'
-                    : 'border-teal-300 bg-teal-50/50'
+                    ? 'border-brand-orange-500 bg-brand-orange-100 scale-[1.02]'
+                    : 'border-brand-orange-300 bg-brand-orange-50/50'
                 }`}>
                   <div className="text-center">
-                    <div className={`flex items-center justify-center gap-3 mb-4 ${draggedInitiative ? 'text-teal-600' : 'text-gray-400'}`}>
+                    <div className={`flex items-center justify-center gap-3 mb-4 ${draggedInitiative ? 'text-brand-orange' : 'text-gray-400'}`}>
                       <ArrowRight className={`w-8 h-8 ${draggedInitiative ? 'animate-bounce' : 'animate-pulse'}`} />
                     </div>
-                    <p className={`text-base font-semibold ${draggedInitiative ? 'text-teal-700' : 'text-gray-600'}`}>
+                    <p className={`text-base font-semibold ${draggedInitiative ? 'text-brand-orange-700' : 'text-gray-600'}`}>
                       {draggedInitiative ? 'Drop here to add!' : 'Drag initiatives here'}
                     </p>
-                    <p className={`text-sm mt-1 ${draggedInitiative ? 'text-teal-600' : 'text-gray-400'}`}>
+                    <p className={`text-sm mt-1 ${draggedInitiative ? 'text-brand-orange' : 'text-gray-400'}`}>
                       {draggedInitiative ? 'Release to add to your Year 1 priorities' : 'Select 8-20 initiatives from the left'}
                     </p>
                     <div className="mt-4 flex items-center justify-center gap-2 text-xs text-gray-400">
-                      <span className="w-2 h-2 rounded-full bg-teal-400 animate-ping"></span>
+                      <span className="w-2 h-2 rounded-full bg-brand-orange animate-ping"></span>
                       <span>Drag & drop to select</span>
                     </div>
                   </div>
@@ -413,7 +413,7 @@ export default function Step3PrioritizeInitiatives({
                           onDragStart={() => handleDragStartFromPriority(index)}
                           onDragOver={(e) => handleDragOverInPriority(e, index)}
                           onDragEnd={handleDragEnd}
-                          className={`flex items-start gap-3 p-3 bg-white border-2 border-slate-200 rounded-lg hover:bg-teal-50 hover:border-teal-300 transition-all cursor-move ${
+                          className={`flex items-start gap-3 p-3 bg-white border-2 border-slate-200 rounded-lg hover:bg-brand-orange-50 hover:border-brand-orange-300 transition-all cursor-move ${
                             draggedIndex === index ? 'opacity-50' : ''
                           }`}
                         >
@@ -421,7 +421,7 @@ export default function Step3PrioritizeInitiatives({
                           <GripVertical className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
 
                           {/* Priority Number */}
-                          <div className="flex items-center justify-center w-7 h-7 bg-teal-600 text-white rounded-full text-sm font-bold flex-shrink-0">
+                          <div className="flex items-center justify-center w-7 h-7 bg-brand-orange text-white rounded-full text-sm font-bold flex-shrink-0">
                             {index + 1}
                           </div>
 
@@ -468,10 +468,10 @@ export default function Step3PrioritizeInitiatives({
 
           {/* Balance Stats - Collapsible */}
           {selectedCount > 0 && (
-            <div className="bg-white border-2 border-teal-200 rounded-lg overflow-hidden">
+            <div className="bg-white border-2 border-brand-orange-200 rounded-lg overflow-hidden">
               <button
                 onClick={() => setShowBalance(!showBalance)}
-                className="w-full px-4 py-3 bg-teal-50 border-b-2 border-teal-100 flex items-center justify-between hover:bg-teal-100 transition-colors"
+                className="w-full px-4 py-3 bg-brand-orange-50 border-b-2 border-brand-orange-100 flex items-center justify-between hover:bg-brand-orange-100 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <h3 className="text-sm font-bold text-gray-900">Balance & Distribution</h3>

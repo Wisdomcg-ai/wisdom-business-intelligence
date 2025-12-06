@@ -7,6 +7,7 @@ import { MessageThread, type Message } from '@/components/coach/messages/Message
 import { MessageComposer } from '@/components/coach/messages/MessageComposer'
 import { BroadcastModal } from '@/components/coach/messages/BroadcastModal'
 import { uploadMessageAttachment } from '@/lib/services/messageAttachments'
+import PageHeader from '@/components/ui/PageHeader'
 import {
   Loader2,
   MessageSquare,
@@ -333,7 +334,7 @@ export default function MessagesPage() {
     return (
       <div className="h-[calc(100vh-64px)] flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-500">Loading messages...</p>
         </div>
       </div>
@@ -341,70 +342,73 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-64px)] flex flex-col">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-white flex items-center justify-between flex-shrink-0">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
-          <p className="text-gray-500 mt-1">
-            {conversations.length} conversations &middot; {totalUnread} unread
-          </p>
-        </div>
-        <button
-          onClick={() => setShowBroadcastModal(true)}
-          className="flex items-center gap-2 px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
-        >
-          <Radio className="w-4 h-4" />
-          Broadcast
-        </button>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Container with consistent width */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Page Header */}
+        <PageHeader
+          title="Messages"
+          subtitle={`${conversations.length} conversations · ${totalUnread} unread`}
+          icon={MessageSquare}
+          actions={
+            <button
+              onClick={() => setShowBroadcastModal(true)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg shadow-sm hover:bg-brand-orange-600 transition-colors"
+            >
+              <Radio className="w-4 h-4" />
+              <span className="hidden sm:inline">Broadcast</span>
+            </button>
+          }
+          variant="simple"
+        />
 
-      {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Conversation List */}
-        <div className="w-80 flex-shrink-0">
-          <ConversationList
-            conversations={conversations}
-            selectedId={selectedConversation?.id}
-            onSelect={setSelectedConversation}
-            onToggleStar={handleToggleStar}
-          />
-        </div>
+        {/* Main Content Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-[calc(100vh-280px)] sm:h-[calc(100vh-240px)] flex flex-col sm:flex-row">
+          {/* Conversation List */}
+          <div className="w-full sm:w-80 flex-shrink-0 border-b sm:border-b-0 sm:border-r border-gray-200">
+            <ConversationList
+              conversations={conversations}
+              selectedId={selectedConversation?.id}
+              onSelect={setSelectedConversation}
+              onToggleStar={handleToggleStar}
+            />
+          </div>
 
-        {/* Message Thread */}
-        <div className="flex-1 flex flex-col bg-gray-50">
-          {selectedConversation ? (
-            <>
-              {loadingMessages ? (
-                <div className="flex-1 flex items-center justify-center">
-                  <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
-                </div>
-              ) : (
-                <MessageThread
-                  messages={messages}
-                  businessId={selectedConversation.businessId}
-                  businessName={selectedConversation.businessName}
-                  currentUserId={currentUserId}
+          {/* Message Thread */}
+          <div className="flex-1 flex flex-col bg-gray-50">
+            {selectedConversation ? (
+              <>
+                {loadingMessages ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <Loader2 className="w-6 h-6 animate-spin text-brand-orange" />
+                  </div>
+                ) : (
+                  <MessageThread
+                    messages={messages}
+                    businessId={selectedConversation.businessId}
+                    businessName={selectedConversation.businessName}
+                    currentUserId={currentUserId}
+                  />
+                )}
+                <MessageComposer
+                  onSend={handleSendMessage}
+                  templates={messageTemplates}
                 />
-              )}
-              <MessageComposer
-                onSend={handleSendMessage}
-                templates={messageTemplates}
-              />
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <MessageSquare className="w-8 h-8 text-gray-400" />
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center p-4">
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <MessageSquare className="w-8 h-8 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-medium text-gray-900 mb-1">No conversation selected</h3>
+                  <p className="text-sm sm:text-base text-gray-500">
+                    Select a conversation from the list to start messaging
+                  </p>
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-1">No conversation selected</h3>
-                <p className="text-gray-500">
-                  Select a conversation from the list to start messaging
-                </p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 

@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import {
   LayoutDashboard,
   Building2,
@@ -58,30 +59,29 @@ export function ClientSidebar({ businessName = 'My Business', userName = 'User',
   return (
     <aside className={`${isExpanded ? 'w-64' : 'w-[72px]'} bg-white border-r border-gray-200 flex flex-col h-screen fixed left-0 top-0 z-40 transition-all duration-300`}>
       {/* Logo/Brand */}
-      <div className={`${isExpanded ? 'p-5' : 'p-3'} border-b border-gray-100`}>
-        <div className={`flex items-center ${isExpanded ? 'gap-3' : 'justify-center'}`}>
-          <div className="w-10 h-10 bg-teal-600 rounded-xl flex items-center justify-center flex-shrink-0">
-            <span className="text-lg font-bold text-white">W</span>
-          </div>
-          {isExpanded && (
-            <div>
-              <h1 className="font-bold text-lg text-gray-900">Wisdom</h1>
-              <p className="text-xs text-gray-500">Business Intelligence</p>
-            </div>
-          )}
-        </div>
+      <div className={`${isExpanded ? 'p-4' : 'p-3'} border-b border-gray-100 bg-brand-navy`}>
+        <Link href="/dashboard" className={`flex items-center ${isExpanded ? '' : 'justify-center'}`}>
+          <Image
+            src="/images/logo-wbi.png"
+            alt="WisdomBi"
+            width={410}
+            height={170}
+            className={`${isExpanded ? 'h-12' : 'h-10'} w-auto`}
+            priority
+          />
+        </Link>
       </div>
 
       {/* Business Name */}
-      <div className={`${isExpanded ? 'px-5' : 'px-3'} py-4 bg-teal-50 border-b border-teal-100`}>
+      <div className={`${isExpanded ? 'px-5' : 'px-3'} py-4 bg-brand-orange-50 border-b border-brand-orange-100`}>
         <div className={`flex items-center ${isExpanded ? 'gap-3' : 'justify-center'}`}>
-          <div className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center flex-shrink-0" title={!isExpanded ? businessName : undefined}>
+          <div className="w-8 h-8 bg-brand-orange rounded-lg flex items-center justify-center flex-shrink-0" title={!isExpanded ? businessName : undefined}>
             <Building2 className="w-4 h-4 text-white" />
           </div>
           {isExpanded && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-gray-900 truncate">{businessName}</p>
-              <p className="text-xs text-teal-600">Client Portal</p>
+              <p className="text-xs text-brand-orange">Client Portal</p>
             </div>
           )}
         </div>
@@ -100,11 +100,11 @@ export function ClientSidebar({ businessName = 'My Business', userName = 'User',
                 title={!isExpanded ? item.label : undefined}
                 className={`flex items-center ${isExpanded ? 'gap-3 px-3' : 'justify-center px-2'} py-2.5 rounded-lg transition-colors group ${
                   active
-                    ? 'bg-teal-50 text-teal-700 border border-teal-200'
+                    ? 'bg-brand-orange-50 text-brand-orange-700 border border-brand-orange-200'
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }`}
               >
-                <Icon className={`w-5 h-5 flex-shrink-0 ${active ? 'text-teal-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
+                <Icon className={`w-5 h-5 flex-shrink-0 ${active ? 'text-brand-orange' : 'text-gray-400 group-hover:text-gray-600'}`} />
                 {isExpanded && <span className="font-medium">{item.label}</span>}
               </Link>
             )
@@ -117,9 +117,9 @@ export function ClientSidebar({ businessName = 'My Business', userName = 'User',
             <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
               Your Coach
             </div>
-            <div className="mt-2 mx-3 p-4 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl border border-teal-100">
+            <div className="mt-2 mx-3 p-4 bg-gradient-to-br from-brand-orange-50 to-amber-50 rounded-xl border border-brand-orange-100">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-teal-600 rounded-full flex items-center justify-center">
+                <div className="w-10 h-10 bg-brand-orange rounded-full flex items-center justify-center">
                   <User className="w-5 h-5 text-white" />
                 </div>
                 <div>
@@ -130,14 +130,14 @@ export function ClientSidebar({ businessName = 'My Business', userName = 'User',
               <div className="space-y-2">
                 <Link
                   href="/messages"
-                  className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg text-sm text-teal-700 hover:bg-teal-50 transition-colors border border-teal-100"
+                  className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg text-sm text-brand-orange-700 hover:bg-brand-orange-50 transition-colors border border-brand-orange-100"
                 >
                   <MessageSquare className="w-4 h-4" />
                   Message Coach
                 </Link>
                 <Link
                   href="/schedule-session"
-                  className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg text-sm text-teal-700 hover:bg-teal-50 transition-colors border border-teal-100"
+                  className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg text-sm text-brand-orange-700 hover:bg-brand-orange-50 transition-colors border border-brand-orange-100"
                 >
                   <Calendar className="w-4 h-4" />
                   Request Session
@@ -152,7 +152,7 @@ export function ClientSidebar({ businessName = 'My Business', userName = 'User',
             <Link
               href="/messages"
               title={`Message ${coach.name}`}
-              className="flex items-center justify-center p-2.5 rounded-lg text-gray-600 hover:bg-teal-50 hover:text-teal-700 transition-colors"
+              className="flex items-center justify-center p-2.5 rounded-lg text-gray-600 hover:bg-brand-orange-50 hover:text-brand-orange-700 transition-colors"
             >
               <User className="w-5 h-5" />
             </Link>
@@ -194,7 +194,7 @@ export function ClientSidebar({ businessName = 'My Business', userName = 'User',
           title={!isExpanded ? 'Settings' : undefined}
           className={`flex items-center ${isExpanded ? 'gap-3 px-3' : 'justify-center px-2'} py-2.5 rounded-lg transition-colors ${
             pathname === '/settings'
-              ? 'bg-teal-50 text-teal-700 border border-teal-200'
+              ? 'bg-brand-orange-50 text-brand-orange-700 border border-brand-orange-200'
               : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
           }`}
         >
@@ -215,7 +215,7 @@ export function ClientSidebar({ businessName = 'My Business', userName = 'User',
       {/* User Info */}
       <div className={`${isExpanded ? 'p-4' : 'p-2'} border-t border-gray-100 bg-gray-50`}>
         <div className={`flex items-center ${isExpanded ? 'gap-3' : 'justify-center'}`}>
-          <div className="w-9 h-9 bg-teal-600 rounded-full flex items-center justify-center flex-shrink-0" title={!isExpanded ? userName : undefined}>
+          <div className="w-9 h-9 bg-brand-orange rounded-full flex items-center justify-center flex-shrink-0" title={!isExpanded ? userName : undefined}>
             <span className="text-sm font-semibold text-white">{userName.charAt(0).toUpperCase()}</span>
           </div>
           {isExpanded && (

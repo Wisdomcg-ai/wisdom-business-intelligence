@@ -318,7 +318,7 @@ function KPITable({ kpis, yearType, currentYear, updateKPIValue, deleteKPI, onAd
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-gray-900 text-sm leading-tight">{kpi.name}</span>
                       {kpi.isCustom && (
-                        <span className="text-[9px] px-1.5 py-0.5 bg-teal-600 text-white rounded font-bold">CUSTOM</span>
+                        <span className="text-[9px] px-1.5 py-0.5 bg-brand-orange text-white rounded font-bold">CUSTOM</span>
                       )}
                     </div>
                     <span className="text-xs text-gray-600 leading-tight">{kpi.friendlyName}</span>
@@ -499,7 +499,7 @@ function KPISelectionModal({
                                 <div className="flex items-center gap-2 mb-1">
                                   <p className="font-semibold text-gray-900">{kpi.name}</p>
                                   {kpi.isCustom && (
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-teal-600 text-white rounded font-bold">CUSTOM</span>
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-brand-orange text-white rounded font-bold">CUSTOM</span>
                                   )}
                                 </div>
                                 <p className="text-sm text-gray-600">{kpi.friendlyName}</p>
@@ -581,7 +581,7 @@ function KPISelectionModal({
                                     <span className="text-red-600">Poor: {kpi.benchmarks.poor}</span>
                                     <span className="text-yellow-600">Average: {kpi.benchmarks.average}</span>
                                     <span className="text-green-600">Good: {kpi.benchmarks.good}</span>
-                                    <span className="text-emerald-600">Excellent: {kpi.benchmarks.excellent}</span>
+                                    <span className="text-brand-teal">Excellent: {kpi.benchmarks.excellent}</span>
                                   </div>
                                 </div>
                               )}
@@ -605,7 +605,7 @@ function KPISelectionModal({
             </p>
             <button
               onClick={onCreateCustom}
-              className="flex items-center gap-2 px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium text-xs transition-colors shadow-sm"
+              className="flex items-center gap-2 px-3 py-1.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 font-medium text-xs transition-colors shadow-sm"
             >
               <Sparkles className="w-3 h-3" />
               Create Custom KPI

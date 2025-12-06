@@ -52,9 +52,9 @@ export function ClientQuickList({
   const getStatusDot = (status: Client['status']) => {
     switch (status) {
       case 'active':
-        return 'bg-green-400'
+        return 'bg-brand-teal'
       case 'pending':
-        return 'bg-yellow-400'
+        return 'bg-amber-400'
       case 'at-risk':
         return 'bg-red-400'
       default:
@@ -104,7 +104,7 @@ export function ClientQuickList({
       <div className="px-5 py-4 border-b border-gray-100">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="bg-indigo-600 p-2 rounded-lg">
+            <div className="bg-brand-orange p-2 rounded-lg">
               <Building2 className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -114,7 +114,7 @@ export function ClientQuickList({
           </div>
           <Link
             href="/coach/clients"
-            className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+            className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
           >
             View all
           </Link>
@@ -128,7 +128,7 @@ export function ClientQuickList({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search clients..."
-            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
           />
         </div>
 
@@ -140,7 +140,7 @@ export function ClientQuickList({
               onClick={() => setStatusFilter(status)}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                 statusFilter === status
-                  ? 'bg-indigo-600 text-white'
+                  ? 'bg-brand-orange text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
@@ -173,7 +173,7 @@ export function ClientQuickList({
                   <div className="min-w-0">
                     <Link
                       href={`/coach/clients/${client.id}`}
-                      className="font-medium text-gray-900 hover:text-indigo-600 truncate block"
+                      className="font-medium text-gray-900 hover:text-brand-orange truncate block"
                     >
                       {client.businessName}
                     </Link>
@@ -193,7 +193,7 @@ export function ClientQuickList({
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {/* Badges */}
                   {(client.unreadMessages ?? 0) > 0 && (
-                    <span className="bg-rose-100 text-rose-700 text-xs font-medium px-2 py-0.5 rounded-full">
+                    <span className="bg-brand-orange-100 text-brand-orange text-xs font-medium px-2 py-0.5 rounded-full">
                       {client.unreadMessages} msg
                     </span>
                   )}
@@ -206,8 +206,8 @@ export function ClientQuickList({
                   {/* Health Score */}
                   {client.healthScore !== undefined && (
                     <div className={`text-xs font-bold px-2 py-0.5 rounded ${
-                      client.healthScore >= 70 ? 'bg-green-100 text-green-700' :
-                      client.healthScore >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                      client.healthScore >= 70 ? 'bg-brand-teal-100 text-brand-teal' :
+                      client.healthScore >= 50 ? 'bg-amber-100 text-amber-700' :
                       'bg-red-100 text-red-700'
                     }`}>
                       {client.healthScore}%
@@ -218,21 +218,21 @@ export function ClientQuickList({
                   <div className="flex items-center gap-1 ml-2">
                     <button
                       onClick={() => onMessageClient?.(client.id)}
-                      className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      className="p-1.5 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
                       title="Message"
                     >
                       <MessageSquare className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => onScheduleSession?.(client.id)}
-                      className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      className="p-1.5 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
                       title="Schedule"
                     >
                       <Calendar className="w-4 h-4" />
                     </button>
                     <Link
                       href={`/coach/clients/${client.id}`}
-                      className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      className="p-1.5 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
                       title="View"
                     >
                       <ChevronRight className="w-4 h-4" />
@@ -249,7 +249,7 @@ export function ClientQuickList({
       <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
         <Link
           href="/coach/clients/new"
-          className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center justify-center gap-1"
+          className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium flex items-center justify-center gap-1"
         >
           Add new client
           <ChevronRight className="w-4 h-4" />

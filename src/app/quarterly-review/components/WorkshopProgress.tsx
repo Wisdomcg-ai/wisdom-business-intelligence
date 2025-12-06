@@ -48,11 +48,11 @@ export function WorkshopProgress({
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-gray-600">Progress</span>
-          <span className="text-sm font-bold text-teal-600">{progressPercentage}%</span>
+          <span className="text-sm font-bold text-brand-orange">{progressPercentage}%</span>
         </div>
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
-            className="h-full bg-teal-600 rounded-full transition-all duration-500"
+            className="h-full bg-brand-orange rounded-full transition-all duration-500"
             style={{ width: `${progressPercentage}%` }}
           />
         </div>
@@ -69,11 +69,11 @@ export function WorkshopProgress({
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-gray-700">Overall Progress</span>
-          <span className="text-sm font-bold text-teal-600">{progressPercentage}%</span>
+          <span className="text-sm font-bold text-brand-orange">{progressPercentage}%</span>
         </div>
         <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
           <div
-            className="h-full bg-teal-600 rounded-full transition-all duration-500"
+            className="h-full bg-brand-orange rounded-full transition-all duration-500"
             style={{ width: `${progressPercentage}%` }}
           />
         </div>
@@ -88,14 +88,14 @@ export function WorkshopProgress({
             currentStep === 'prework'
               ? 'bg-slate-100 border border-slate-200'
               : stepsCompleted.includes('prework')
-              ? 'bg-slate-50 border border-slate-200'
+              ? 'bg-gray-50 border border-slate-200'
               : 'bg-gray-50 border border-gray-200'
           } ${canNavigateToStep?.('prework') ? 'cursor-pointer hover:bg-opacity-80' : 'cursor-default'}`}
         >
           {stepsCompleted.includes('prework') ? (
-            <CheckCircle2 className="w-5 h-5 text-slate-600 flex-shrink-0" />
+            <CheckCircle2 className="w-5 h-5 text-gray-600 flex-shrink-0" />
           ) : currentStep === 'prework' ? (
-            <PlayCircle className="w-5 h-5 text-teal-600 flex-shrink-0" />
+            <PlayCircle className="w-5 h-5 text-brand-orange flex-shrink-0" />
           ) : (
             <Circle className="w-5 h-5 text-gray-400 flex-shrink-0" />
           )}
@@ -117,14 +117,14 @@ export function WorkshopProgress({
             <div key={part.number} className="border border-gray-200 rounded-lg overflow-hidden">
               {/* Part Header */}
               <div className={`px-4 py-3 flex items-center justify-between ${
-                isPartComplete ? 'bg-slate-100' : isPartActive ? 'bg-slate-50' : 'bg-gray-50'
+                isPartComplete ? 'bg-slate-100' : isPartActive ? 'bg-gray-50' : 'bg-gray-50'
               }`}>
                 <div className="flex items-center gap-2">
                   <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                     isPartComplete
-                      ? 'bg-teal-600 text-white'
+                      ? 'bg-brand-orange text-white'
                       : isPartActive
-                      ? 'bg-teal-500 text-white'
+                      ? 'bg-brand-orange-500 text-white'
                       : 'bg-gray-300 text-gray-600'
                   }`}>
                     {part.number}
@@ -151,22 +151,22 @@ export function WorkshopProgress({
                       disabled={!canNavigate}
                       className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
                         status === 'current'
-                          ? 'bg-blue-50'
+                          ? 'bg-brand-orange-50'
                           : status === 'completed'
                           ? 'bg-white'
                           : 'bg-white'
                       } ${canNavigate ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default opacity-60'}`}
                     >
                       {status === 'completed' ? (
-                        <CheckCircle2 className="w-4 h-4 text-slate-600 flex-shrink-0" />
+                        <CheckCircle2 className="w-4 h-4 text-gray-600 flex-shrink-0" />
                       ) : status === 'current' ? (
-                        <PlayCircle className="w-4 h-4 text-slate-600 flex-shrink-0" />
+                        <PlayCircle className="w-4 h-4 text-gray-600 flex-shrink-0" />
                       ) : (
                         <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
                       )}
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm truncate ${
-                          status === 'current' ? 'font-medium text-blue-900' : 'text-gray-700'
+                          status === 'current' ? 'font-medium text-brand-navy' : 'text-gray-700'
                         }`}>
                           {step}. {STEP_LABELS[step].replace(/^\d+\.\d+\s*/, '')}
                         </p>

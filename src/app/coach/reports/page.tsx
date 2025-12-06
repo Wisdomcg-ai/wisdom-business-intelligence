@@ -4,12 +4,12 @@ import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { CoachPerformance } from '@/components/coach/reports/CoachPerformance'
 import { ClientProgressTable, type ClientProgress } from '@/components/coach/reports/ClientProgressTable'
+import PageHeader from '@/components/ui/PageHeader'
 import {
   Loader2,
   Download,
   FileText,
-  Calendar,
-  Filter,
+  BarChart3,
   RefreshCw
 } from 'lucide-react'
 
@@ -290,98 +290,103 @@ Last Session: ${client.lastSessionDate ? new Date(client.lastSessionDate).toLoca
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
-          <p className="text-gray-500">Loading reports...</p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
+            <p className="text-gray-500">Loading reports...</p>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
-          <p className="text-gray-500 mt-1">
-            Track performance and client progress
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <select
-            value={dateRange}
-            onChange={(e) => setDateRange(e.target.value as typeof dateRange)}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="week">Last 7 days</option>
-            <option value="month">Last 30 days</option>
-            <option value="quarter">Last 90 days</option>
-            <option value="year">Last year</option>
-          </select>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="p-2 text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
-          <button
-            onClick={handleExportReport}
-            className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Export
-          </button>
-        </div>
-      </div>
-
-      {/* Quick Summary */}
-      {summaryStats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl p-5 text-white">
-            <p className="text-indigo-100 text-sm">Avg Client Health</p>
-            <p className="text-3xl font-bold mt-1">{summaryStats.avgHealth}%</p>
-          </div>
-          <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl p-5 text-white">
-            <p className="text-amber-100 text-sm">At-Risk Clients</p>
-            <p className="text-3xl font-bold mt-1">{summaryStats.atRiskCount}</p>
-          </div>
-          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white">
-            <p className="text-green-100 text-sm">Total Sessions</p>
-            <p className="text-3xl font-bold mt-1">{summaryStats.totalSessions}</p>
-          </div>
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-5 text-white">
-            <p className="text-purple-100 text-sm">Avg Goals Progress</p>
-            <p className="text-3xl font-bold mt-1">{summaryStats.avgGoalsProgress}%</p>
-          </div>
-        </div>
-      )}
-
-      {/* Coach Performance */}
-      {performanceData && (
-        <CoachPerformance data={performanceData} period={dateRange} />
-      )}
-
-      {/* Client Progress Table */}
-      <ClientProgressTable
-        clients={clientProgress}
-        onGenerateReport={handleGenerateClientReport}
+      <PageHeader
+        title="Reports & Analytics"
+        subtitle="Track performance and client progress"
+        icon={BarChart3}
+        variant="simple"
+        actions={
+          <>
+            <select
+              value={dateRange}
+              onChange={(e) => setDateRange(e.target.value as typeof dateRange)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
+            >
+              <option value="week">Last 7 days</option>
+              <option value="month">Last 30 days</option>
+              <option value="quarter">Last 90 days</option>
+              <option value="year">Last year</option>
+            </select>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="p-2 text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              title="Refresh data"
+            >
+              <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={handleExportReport}
+              className="flex items-center gap-2 px-4 py-2 text-sm sm:text-base text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Export</span>
+            </button>
+          </>
+        }
       />
 
-      {/* Empty State */}
-      {clientProgress.length === 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <FileText className="w-8 h-8 text-gray-400" />
+      <div className="space-y-6">
+        {/* Quick Summary */}
+        {summaryStats && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-gradient-to-br from-brand-orange to-brand-navy rounded-xl p-4 sm:p-5 text-white">
+              <p className="text-brand-orange-100 text-sm">Avg Client Health</p>
+              <p className="text-2xl sm:text-3xl font-bold mt-1">{summaryStats.avgHealth}%</p>
+            </div>
+            <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl p-4 sm:p-5 text-white">
+              <p className="text-amber-100 text-sm">At-Risk Clients</p>
+              <p className="text-2xl sm:text-3xl font-bold mt-1">{summaryStats.atRiskCount}</p>
+            </div>
+            <div className="bg-gradient-to-br from-brand-teal to-brand-teal-600 rounded-xl p-4 sm:p-5 text-white">
+              <p className="text-brand-teal-100 text-sm">Total Sessions</p>
+              <p className="text-2xl sm:text-3xl font-bold mt-1">{summaryStats.totalSessions}</p>
+            </div>
+            <div className="bg-gradient-to-br from-brand-navy to-brand-navy-600 rounded-xl p-4 sm:p-5 text-white">
+              <p className="text-brand-navy-100 text-sm">Avg Goals Progress</p>
+              <p className="text-2xl sm:text-3xl font-bold mt-1">{summaryStats.avgGoalsProgress}%</p>
+            </div>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-1">No client data available</h3>
-          <p className="text-gray-500">
-            Add clients to start tracking their progress and generating reports.
-          </p>
-        </div>
-      )}
+        )}
+
+        {/* Coach Performance */}
+        {performanceData && (
+          <CoachPerformance data={performanceData} period={dateRange} />
+        )}
+
+        {/* Client Progress Table */}
+        <ClientProgressTable
+          clients={clientProgress}
+          onGenerateReport={handleGenerateClientReport}
+        />
+
+        {/* Empty State */}
+        {clientProgress.length === 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-8 sm:p-12 text-center">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileText className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-1">No client data available</h3>
+            <p className="text-gray-500">
+              Add clients to start tracking their progress and generating reports.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

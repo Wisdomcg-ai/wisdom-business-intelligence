@@ -4,9 +4,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { 
-  ChevronDown, 
+import {
+  ChevronDown,
   ChevronRight,
   Home,
   FileText,
@@ -223,12 +224,20 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
       <div className="w-64 bg-white shadow-lg flex flex-col h-screen fixed left-0 top-0">
-        <div className="p-6 border-b">
-          <h2 className="font-bold text-2xl text-gray-900">Business Coaching Platform</h2>
-          <p className="text-xs text-gray-500 mt-1">Your Growth Operating System</p>
+        <div className="p-4 border-b bg-brand-navy">
+          <Link href="/dashboard" className="block">
+            <Image
+              src="/images/logo-tight.png"
+              alt="WisdomBi"
+              width={550}
+              height={300}
+              className="h-16 w-auto"
+              priority
+            />
+          </Link>
         </div>
         
         <nav className="flex-1 overflow-y-auto">
@@ -273,11 +282,11 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
                         href={item.href}
                         className={`flex items-center px-4 py-2 text-sm transition-colors ${
                           isActive
-                            ? 'bg-teal-50 text-teal-600 border-l-2 border-teal-600' 
-                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            ? 'bg-brand-orange-50 text-brand-orange border-l-2 border-brand-orange'
+                            : 'text-gray-600 hover:bg-gray-50 hover:text-brand-navy'
                         }`}
                       >
-                        <Icon className="h-4 w-4 mr-3 flex-shrink-0" />
+                        <Icon className={`h-4 w-4 mr-3 flex-shrink-0 ${isActive ? 'text-brand-orange' : ''}`} />
                         <span>{item.name}</span>
                       </Link>
                     );
@@ -290,43 +299,43 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
 
         <div className="p-4 border-t bg-gray-50">
           <div className="flex justify-center gap-3 mb-2">
-            <Link href="/privacy" className="text-xs text-gray-500 hover:text-teal-600">
+            <Link href="/privacy" className="text-xs text-gray-500 hover:text-brand-orange">
               Privacy
             </Link>
             <span className="text-gray-300">•</span>
-            <Link href="/terms" className="text-xs text-gray-500 hover:text-teal-600">
+            <Link href="/terms" className="text-xs text-gray-500 hover:text-brand-orange">
               Terms
             </Link>
             <span className="text-gray-300">•</span>
-            <Link href="/help" className="text-xs text-gray-500 hover:text-teal-600">
+            <Link href="/help" className="text-xs text-gray-500 hover:text-brand-orange">
               Help
             </Link>
           </div>
           <p className="text-xs text-gray-400 text-center">
-            © 2025 Wisdom Coaching
+            © 2025 WisdomBi
           </p>
         </div>
       </div>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col ml-64">
-        {/* Blue Metrics Bar */}
-        <div className="bg-gradient-to-r from-teal-600 to-teal-700 text-white px-6 py-4">
+        {/* Brand Metrics Bar */}
+        <div className="bg-gradient-to-r from-brand-navy to-brand-navy-800 text-white px-6 py-4">
           <div className="grid grid-cols-4 gap-6">
             <div className="text-center">
-              <p className="text-xs uppercase text-teal-200 mb-1">Assessment</p>
+              <p className="text-xs uppercase text-brand-orange-300 mb-1">Assessment</p>
               <p className="text-2xl font-bold">{businessData.assessmentScore}%</p>
             </div>
             <div className="text-center">
-              <p className="text-xs uppercase text-teal-200 mb-1">Stage</p>
+              <p className="text-xs uppercase text-brand-orange-300 mb-1">Stage</p>
               <p className="text-2xl font-bold">{businessData.stage}</p>
             </div>
             <div className="text-center">
-              <p className="text-xs uppercase text-teal-200 mb-1">Rev Target</p>
+              <p className="text-xs uppercase text-brand-orange-300 mb-1">Rev Target</p>
               <p className="text-2xl font-bold">{formatCurrency(businessData.revenueTarget)}</p>
             </div>
             <div className="text-center">
-              <p className="text-xs uppercase text-teal-200 mb-1">Net Profit Target</p>
+              <p className="text-xs uppercase text-brand-orange-300 mb-1">Net Profit Target</p>
               <p className="text-2xl font-bold">{formatCurrency(businessData.profitTarget)}</p>
             </div>
           </div>

@@ -92,8 +92,8 @@ export function WorkshopNav({
             className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold transition-colors ${
               canGoForward
                 ? isLastStep
-                  ? 'bg-teal-600 text-white hover:bg-teal-700'
-                  : 'bg-teal-600 text-white hover:bg-teal-700'
+                  ? 'bg-brand-orange text-white hover:bg-brand-orange-600'
+                  : 'bg-brand-orange text-white hover:bg-brand-orange-600'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             }`}
           >

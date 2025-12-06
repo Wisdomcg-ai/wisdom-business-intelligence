@@ -23,6 +23,7 @@ export interface EngineConfig {
 }
 
 // 8 Business Engines Configuration
+// Using consistent brand colors: Navy (#172238) as base, Orange (#F5821F) as accent
 export const BUSINESS_ENGINES: EngineConfig[] = [
   {
     id: 'attract',
@@ -32,10 +33,10 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
     maxScore: 40,
     icon: Target,
     colorClasses: {
-      bg: 'bg-blue-600',
-      bgLight: 'bg-blue-100',
-      text: 'text-blue-600',
-      border: 'border-blue-500'
+      bg: 'bg-brand-navy',
+      bgLight: 'bg-brand-navy-50',
+      text: 'text-brand-navy',
+      border: 'border-brand-navy'
     },
     description: 'Marketing & Lead Generation'
   },
@@ -47,10 +48,10 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
     maxScore: 40,
     icon: TrendingUp,
     colorClasses: {
-      bg: 'bg-green-600',
-      bgLight: 'bg-green-100',
-      text: 'text-green-600',
-      border: 'border-green-500'
+      bg: 'bg-brand-navy',
+      bgLight: 'bg-brand-navy-50',
+      text: 'text-brand-navy',
+      border: 'border-brand-navy'
     },
     description: 'Sales & Closing'
   },
@@ -62,10 +63,10 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
     maxScore: 40,
     icon: CheckCircle,
     colorClasses: {
-      bg: 'bg-purple-600',
-      bgLight: 'bg-purple-100',
-      text: 'text-purple-600',
-      border: 'border-purple-500'
+      bg: 'bg-brand-navy',
+      bgLight: 'bg-brand-navy-50',
+      text: 'text-brand-navy',
+      border: 'border-brand-navy'
     },
     description: 'Client Experience & Results'
   },
@@ -77,10 +78,10 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
     maxScore: 40,
     icon: Users,
     colorClasses: {
-      bg: 'bg-indigo-600',
-      bgLight: 'bg-indigo-100',
-      text: 'text-indigo-600',
-      border: 'border-indigo-500'
+      bg: 'bg-brand-navy',
+      bgLight: 'bg-brand-navy-50',
+      text: 'text-brand-navy',
+      border: 'border-brand-navy'
     },
     description: 'Team, Culture, Hiring'
   },
@@ -92,10 +93,10 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
     maxScore: 40,
     icon: Settings,
     colorClasses: {
-      bg: 'bg-slate-600',
-      bgLight: 'bg-slate-100',
-      text: 'text-slate-600',
-      border: 'border-slate-500'
+      bg: 'bg-brand-navy',
+      bgLight: 'bg-brand-navy-50',
+      text: 'text-brand-navy',
+      border: 'border-brand-navy'
     },
     description: 'Operations, Process, Tech'
   },
@@ -107,10 +108,10 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
     maxScore: 30,
     icon: DollarSign,
     colorClasses: {
-      bg: 'bg-emerald-600',
-      bgLight: 'bg-emerald-100',
-      text: 'text-emerald-600',
-      border: 'border-emerald-500'
+      bg: 'bg-brand-navy',
+      bgLight: 'bg-brand-navy-50',
+      text: 'text-brand-navy',
+      border: 'border-brand-navy'
     },
     description: 'Money, Metrics, Wealth'
   },
@@ -122,10 +123,10 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
     maxScore: 30,
     icon: Award,
     colorClasses: {
-      bg: 'bg-amber-600',
-      bgLight: 'bg-amber-100',
-      text: 'text-amber-600',
-      border: 'border-amber-500'
+      bg: 'bg-brand-navy',
+      bgLight: 'bg-brand-navy-50',
+      text: 'text-brand-navy',
+      border: 'border-brand-navy'
     },
     description: 'Vision, Strategy, You'
   },
@@ -137,10 +138,10 @@ export const BUSINESS_ENGINES: EngineConfig[] = [
     maxScore: 40,
     icon: Clock,
     colorClasses: {
-      bg: 'bg-cyan-600',
-      bgLight: 'bg-cyan-100',
-      text: 'text-cyan-600',
-      border: 'border-cyan-500'
+      bg: 'bg-brand-navy',
+      bgLight: 'bg-brand-navy-50',
+      text: 'text-brand-navy',
+      border: 'border-brand-navy'
     },
     description: 'Freedom, Productivity, Leverage'
   }
@@ -196,15 +197,16 @@ export function getHealthStatus(percentage: number): string {
 }
 
 // Get color class for score percentage
+// Uses green for success (80%+), orange for moderate (60-79%), red for needs attention (<60%)
 export function getScoreColorClass(percentage: number): string {
-  if (percentage >= 80) return 'text-green-600'
-  if (percentage >= 60) return 'text-yellow-600'
+  if (percentage >= 80) return 'text-brand-teal'
+  if (percentage >= 60) return 'text-brand-orange'
   return 'text-red-600'
 }
 
 // Get background color class for score percentage
 export function getScoreBgColorClass(percentage: number): string {
-  if (percentage >= 80) return 'bg-green-500'
-  if (percentage >= 60) return 'bg-yellow-500'
+  if (percentage >= 80) return 'bg-brand-teal'
+  if (percentage >= 60) return 'bg-brand-orange'
   return 'bg-red-500'
 }

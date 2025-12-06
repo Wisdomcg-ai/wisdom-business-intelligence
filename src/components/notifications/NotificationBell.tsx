@@ -132,7 +132,7 @@ export default function NotificationBell() {
                 {unreadCount > 0 && (
                   <button
                     onClick={markAllAsRead}
-                    className="text-xs text-teal-600 hover:text-teal-700 font-medium"
+                    className="text-xs text-brand-orange hover:text-brand-orange-700 font-medium"
                   >
                     Mark all read
                   </button>
@@ -150,7 +150,7 @@ export default function NotificationBell() {
             <div className="overflow-y-auto flex-1">
               {loading ? (
                 <div className="p-8 text-center">
-                  <div className="animate-spin w-8 h-8 border-4 border-teal-600 border-t-transparent rounded-full mx-auto" />
+                  <div className="animate-spin w-8 h-8 border-4 border-brand-orange border-t-transparent rounded-full mx-auto" />
                 </div>
               ) : notifications.length === 0 ? (
                 <div className="p-8 text-center">
@@ -163,7 +163,7 @@ export default function NotificationBell() {
                     <div
                       key={notification.id}
                       className={`p-4 hover:bg-gray-50 transition-colors ${
-                        !notification.read ? 'bg-teal-50' : ''
+                        !notification.read ? 'bg-brand-orange-50' : ''
                       }`}
                     >
                       <div className="flex items-start gap-3">
@@ -204,7 +204,7 @@ export default function NotificationBell() {
                                     markAsRead(notification.id)
                                   }
                                 }}
-                                className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1"
+                                className="text-xs text-brand-orange hover:text-brand-orange-700 font-medium flex items-center gap-1"
                               >
                                 View
                                 <ExternalLink className="w-3 h-3" />
@@ -225,7 +225,7 @@ export default function NotificationBell() {
                 <Link
                   href="/notifications"
                   onClick={() => setShowDropdown(false)}
-                  className="text-sm text-teal-600 hover:text-teal-700 font-medium"
+                  className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
                 >
                   View all notifications
                 </Link>

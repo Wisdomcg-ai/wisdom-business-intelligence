@@ -66,7 +66,7 @@ export function PersonalCommitmentsStep({ review, onUpdate }: PersonalCommitment
       />
 
       {/* Quote */}
-      <div className="bg-slate-50 rounded-xl border border-gray-200 p-6 mb-6">
+      <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-6">
         <blockquote className="text-lg text-gray-800 italic mb-2">
           "The goal isn't to build a business that runs you ragged. It's to build a business that gives you the life you want."
         </blockquote>
@@ -77,7 +77,7 @@ export function PersonalCommitmentsStep({ review, onUpdate }: PersonalCommitment
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-            <Clock className="w-5 h-5 text-slate-600" />
+            <Clock className="w-5 h-5 text-gray-600" />
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">Work Hours Target</h3>
@@ -93,7 +93,7 @@ export function PersonalCommitmentsStep({ review, onUpdate }: PersonalCommitment
             placeholder="40"
             min={0}
             max={80}
-            className="w-24 px-4 py-3 border border-gray-200 rounded-xl text-center text-2xl font-bold focus:ring-2 focus:ring-blue-500"
+            className="w-24 px-4 py-3 border border-gray-200 rounded-xl text-center text-2xl font-bold focus:ring-2 focus:ring-brand-orange"
           />
           <div className="text-sm text-gray-600">
             <p>hours per week</p>
@@ -122,7 +122,7 @@ export function PersonalCommitmentsStep({ review, onUpdate }: PersonalCommitment
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-            <Calendar className="w-5 h-5 text-slate-600" />
+            <Calendar className="w-5 h-5 text-gray-600" />
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">Days Off Planned</h3>
@@ -142,7 +142,7 @@ export function PersonalCommitmentsStep({ review, onUpdate }: PersonalCommitment
               onChange={(e) => updateField('daysOffPlanned', parseInt(e.target.value) || null)}
               placeholder="10"
               min={0}
-              className="w-24 px-4 py-3 border border-gray-200 rounded-xl text-center text-xl font-bold focus:ring-2 focus:ring-blue-500"
+              className="w-24 px-4 py-3 border border-gray-200 rounded-xl text-center text-xl font-bold focus:ring-2 focus:ring-brand-orange"
             />
             {review.days_off_taken !== null && (
               <p className="text-xs text-gray-500 mt-2">
@@ -161,12 +161,12 @@ export function PersonalCommitmentsStep({ review, onUpdate }: PersonalCommitment
                 type="date"
                 value={newDate}
                 onChange={(e) => setNewDate(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange"
               />
               <button
                 onClick={addDayOff}
                 disabled={!newDate}
-                className="px-3 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:bg-gray-200"
+                className="px-3 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 disabled:bg-gray-200"
               >
                 <Plus className="w-4 h-4" />
               </button>
@@ -178,7 +178,7 @@ export function PersonalCommitmentsStep({ review, onUpdate }: PersonalCommitment
                 {commitments.daysOffScheduled?.map(date => (
                   <span
                     key={date}
-                    className="inline-flex items-center gap-1 bg-slate-100 text-slate-800 px-2 py-1 rounded text-sm"
+                    className="inline-flex items-center gap-1 bg-slate-100 text-brand-navy px-2 py-1 rounded text-sm"
                   >
                     {formatDate(date)}
                     <button
@@ -199,7 +199,7 @@ export function PersonalCommitmentsStep({ review, onUpdate }: PersonalCommitment
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-            <Heart className="w-5 h-5 text-slate-600" />
+            <Heart className="w-5 h-5 text-gray-600" />
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">Personal Goal</h3>
@@ -212,7 +212,7 @@ export function PersonalCommitmentsStep({ review, onUpdate }: PersonalCommitment
           onChange={(e) => updateField('personalGoal', e.target.value)}
           placeholder="e.g., Run a half marathon, Read 5 books, Take family on holiday, Start meditating daily..."
           rows={3}
-          className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+          className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
         />
 
         <p className="text-xs text-gray-500 mt-2">
@@ -221,9 +221,9 @@ export function PersonalCommitmentsStep({ review, onUpdate }: PersonalCommitment
       </div>
 
       {/* Summary Card */}
-      <div className="mt-6 bg-slate-50 rounded-xl border border-gray-200 p-6">
+      <div className="mt-6 bg-gray-50 rounded-xl border border-gray-200 p-6">
         <h4 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
-          <Sparkles className="w-5 h-5 text-slate-600" />
+          <Sparkles className="w-5 h-5 text-gray-600" />
           Q{nextQ.quarter} Personal Commitment Summary
         </h4>
 

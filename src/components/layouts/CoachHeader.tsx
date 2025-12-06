@@ -76,7 +76,7 @@ export function CoachHeader({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search clients, sessions, actions..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm"
                   />
                 </div>
               </form>
@@ -89,7 +89,7 @@ export function CoachHeader({
             <div className="relative">
               <button
                 onClick={() => setShowQuickAdd(!showQuickAdd)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors font-medium text-sm"
+                className="flex items-center gap-2 px-4 py-2.5 bg-brand-orange text-white rounded-xl hover:bg-brand-orange-600 transition-colors font-medium text-sm"
               >
                 <Plus className="w-4 h-4" />
                 <span className="hidden sm:inline">Quick Add</span>
@@ -150,7 +150,7 @@ export function CoachHeader({
                     <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                       <h3 className="font-semibold text-gray-900">Notifications</h3>
                       {unreadCount > 0 && (
-                        <span className="text-xs text-indigo-600 font-medium">{unreadCount} new</span>
+                        <span className="text-xs text-brand-orange font-medium">{unreadCount} new</span>
                       )}
                     </div>
                     <div className="max-h-96 overflow-y-auto">
@@ -164,12 +164,12 @@ export function CoachHeader({
                           <div
                             key={notification.id}
                             className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer ${
-                              !notification.read ? 'bg-indigo-50/50' : ''
+                              !notification.read ? 'bg-brand-orange-50/50' : ''
                             }`}
                           >
                             <div className="flex items-start gap-3">
                               <div className={`w-2 h-2 rounded-full mt-2 ${
-                                notification.read ? 'bg-gray-300' : 'bg-indigo-600'
+                                notification.read ? 'bg-gray-300' : 'bg-brand-orange'
                               }`} />
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-gray-900">{notification.title}</p>
@@ -182,7 +182,7 @@ export function CoachHeader({
                       )}
                     </div>
                     <div className="px-4 py-3 border-t border-gray-100 bg-gray-50">
-                      <button className="text-sm text-indigo-600 hover:text-indigo-700 font-medium w-full text-center">
+                      <button className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium w-full text-center">
                         View all notifications
                       </button>
                     </div>

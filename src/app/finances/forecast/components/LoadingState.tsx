@@ -17,15 +17,15 @@ export function LoadingSpinner({ className = '' }: { className?: string }) {
 export function LoadingState({ message = 'Loading forecast...', fullPage = true }: LoadingStateProps) {
   if (fullPage) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-teal-50 via-white to-teal-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-brand-orange-50 via-white to-brand-orange-50 flex items-center justify-center">
         <div className="text-center">
           <div className="mb-6 flex justify-center">
             <div className="relative">
-              <div className="w-20 h-20 bg-teal-100 rounded-full flex items-center justify-center">
-                <TrendingUp className="w-10 h-10 text-teal-600" />
+              <div className="w-20 h-20 bg-brand-orange-100 rounded-full flex items-center justify-center">
+                <TrendingUp className="w-10 h-10 text-brand-orange" />
               </div>
               <div className="absolute top-0 left-0 w-20 h-20">
-                <LoadingSpinner className="w-20 h-20 text-teal-600" />
+                <LoadingSpinner className="w-20 h-20 text-brand-orange" />
               </div>
             </div>
           </div>
@@ -41,7 +41,7 @@ export function LoadingState({ message = 'Loading forecast...', fullPage = true 
   return (
     <div className="flex items-center justify-center py-12">
       <div className="text-center">
-        <LoadingSpinner className="w-8 h-8 text-teal-600 mx-auto mb-3" />
+        <LoadingSpinner className="w-8 h-8 text-brand-orange mx-auto mb-3" />
         <p className="text-sm text-gray-600">{message}</p>
       </div>
     </div>

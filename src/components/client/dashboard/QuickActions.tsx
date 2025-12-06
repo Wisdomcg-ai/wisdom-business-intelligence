@@ -29,8 +29,8 @@ const defaultActions: QuickAction[] = [
     description: 'Track your strategic goals',
     href: '/goals',
     icon: Target,
-    color: 'text-teal-600',
-    bgColor: 'bg-teal-50'
+    color: 'text-brand-orange',
+    bgColor: 'bg-brand-orange-50'
   },
   {
     id: 'actions',
@@ -38,8 +38,8 @@ const defaultActions: QuickAction[] = [
     description: 'View pending tasks',
     href: '/actions',
     icon: ListChecks,
-    color: 'text-amber-600',
-    bgColor: 'bg-amber-50'
+    color: 'text-brand-navy',
+    bgColor: 'bg-brand-navy-50'
   },
   {
     id: 'financials',
@@ -47,8 +47,8 @@ const defaultActions: QuickAction[] = [
     description: 'Financial forecasts',
     href: '/finances/forecast',
     icon: TrendingUp,
-    color: 'text-green-600',
-    bgColor: 'bg-green-50'
+    color: 'text-brand-teal',
+    bgColor: 'bg-brand-teal-50'
   },
   {
     id: 'documents',
@@ -56,8 +56,8 @@ const defaultActions: QuickAction[] = [
     description: 'Access shared files',
     href: '/documents',
     icon: FileText,
-    color: 'text-blue-600',
-    bgColor: 'bg-blue-50'
+    color: 'text-brand-orange',
+    bgColor: 'bg-brand-orange-50'
   },
   {
     id: 'messages',
@@ -65,8 +65,8 @@ const defaultActions: QuickAction[] = [
     description: 'Chat with your coach',
     href: '/messages',
     icon: MessageSquare,
-    color: 'text-purple-600',
-    bgColor: 'bg-purple-50'
+    color: 'text-brand-navy',
+    bgColor: 'bg-brand-navy-50'
   },
   {
     id: 'sessions',
@@ -74,8 +74,8 @@ const defaultActions: QuickAction[] = [
     description: 'View session history',
     href: '/sessions',
     icon: Calendar,
-    color: 'text-indigo-600',
-    bgColor: 'bg-indigo-50'
+    color: 'text-brand-orange',
+    bgColor: 'bg-brand-orange-50'
   }
 ]
 
@@ -115,7 +115,7 @@ export function QuickActions({
             <Link
               key={action.id}
               href={action.href}
-              className="group relative p-4 rounded-xl border border-gray-100 hover:border-teal-200 hover:shadow-sm transition-all"
+              className="group relative p-4 rounded-xl border border-gray-100 hover:border-brand-orange-200 hover:shadow-sm transition-all"
             >
               {badge !== null && (
                 <span className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
@@ -125,7 +125,7 @@ export function QuickActions({
               <div className={`w-10 h-10 ${action.bgColor} rounded-lg flex items-center justify-center mb-3`}>
                 <Icon className={`w-5 h-5 ${action.color}`} />
               </div>
-              <h4 className="font-medium text-gray-900 group-hover:text-teal-600 transition-colors">
+              <h4 className="font-medium text-gray-900 group-hover:text-brand-orange transition-colors">
                 {action.label}
               </h4>
               <p className="text-xs text-gray-500 mt-0.5">{action.description}</p>

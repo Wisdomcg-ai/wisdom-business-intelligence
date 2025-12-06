@@ -170,7 +170,7 @@ export function SessionPrepChecklist({
                     className={`mt-0.5 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
                       item.completed
                         ? 'bg-green-500 border-green-500 text-white'
-                        : 'border-gray-300 hover:border-indigo-500'
+                        : 'border-gray-300 hover:border-brand-orange'
                     }`}
                   >
                     {item.completed && <CheckCircle className="w-4 h-4" />}
@@ -189,7 +189,7 @@ export function SessionPrepChecklist({
                   {item.link && item.linkLabel && (
                     <Link
                       href={item.link}
-                      className="flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-700 font-medium flex-shrink-0"
+                      className="flex items-center gap-1 text-sm text-brand-orange hover:text-brand-orange-700 font-medium flex-shrink-0"
                     >
                       {item.linkLabel}
                       <ExternalLink className="w-3.5 h-3.5" />
@@ -210,7 +210,7 @@ export function SessionPrepChecklist({
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
               placeholder="Key points to discuss, questions to ask, goals for this session..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange text-sm"
             />
           </div>
 

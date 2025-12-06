@@ -101,8 +101,8 @@ export default function GoalsPanel({
     <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
-            <Target className="w-5 h-5 text-teal-600" />
+          <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+            <Target className="w-5 h-5 text-brand-orange" />
           </div>
           <div>
             <h2 className="text-lg font-bold text-gray-900">FY{forecast.fiscal_year} Financial Goals</h2>
@@ -137,7 +137,7 @@ export default function GoalsPanel({
               </button>
               <button
                 onClick={handleSave}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors"
               >
                 <Check className="w-4 h-4" />
                 Save Goals
@@ -149,14 +149,14 @@ export default function GoalsPanel({
             <>
               <button
                 onClick={onImportFromAnnualPlan}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-orange bg-brand-orange-50 rounded-lg hover:bg-brand-orange-100 transition-colors"
               >
                 <TrendingUp className="w-4 h-4" />
                 Import from Annual Plan
               </button>
               <button
                 onClick={() => setIsEditing(true)}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors"
               >
                 <DollarSign className="w-4 h-4" />
                 Set Goals Manually
@@ -180,7 +180,7 @@ export default function GoalsPanel({
               type="number"
               value={editedGoals.revenue}
               onChange={(e) => setEditedGoals({ ...editedGoals, revenue: parseFloat(e.target.value) || 0 })}
-              className="w-full px-3 py-2 text-2xl font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+              className="w-full px-3 py-2 text-2xl font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
               placeholder="0"
             />
           ) : (
@@ -218,7 +218,7 @@ export default function GoalsPanel({
         {/* Gross Profit Goal */}
         <div className="border border-gray-200 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="w-5 h-5 text-teal-600" />
+            <TrendingUp className="w-5 h-5 text-brand-orange" />
             <h3 className="text-sm font-medium text-gray-700">Gross Profit</h3>
           </div>
 
@@ -228,7 +228,7 @@ export default function GoalsPanel({
                 type="number"
                 value={editedGoals.grossProfit}
                 onChange={(e) => setEditedGoals({ ...editedGoals, grossProfit: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 text-2xl font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 mb-2"
+                className="w-full px-3 py-2 text-2xl font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 mb-2"
                 placeholder="0"
               />
               {editedGoals.revenue > 0 && (
@@ -280,7 +280,7 @@ export default function GoalsPanel({
         {/* Net Profit Goal */}
         <div className="border border-gray-200 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-3">
-            <Target className="w-5 h-5 text-purple-600" />
+            <Target className="w-5 h-5 text-brand-navy" />
             <h3 className="text-sm font-medium text-gray-700">Net Profit</h3>
           </div>
 
@@ -290,7 +290,7 @@ export default function GoalsPanel({
                 type="number"
                 value={editedGoals.netProfit}
                 onChange={(e) => setEditedGoals({ ...editedGoals, netProfit: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 text-2xl font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 mb-2"
+                className="w-full px-3 py-2 text-2xl font-bold text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 mb-2"
                 placeholder="0"
               />
               {editedGoals.revenue > 0 && (

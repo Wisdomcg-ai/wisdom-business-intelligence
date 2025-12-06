@@ -94,7 +94,7 @@ function ReviewContent() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto mb-4"></div>
           <p className="text-gray-600">Loading review...</p>
         </div>
       </div>
@@ -108,7 +108,7 @@ function ReviewContent() {
           <p className="text-red-600 mb-4">{error}</p>
           <button
             onClick={() => router.push('/quarterly-review')}
-            className="text-teal-600 hover:underline"
+            className="text-brand-orange hover:underline"
           >
             Go back
           </button>
@@ -300,7 +300,7 @@ export default function ReviewPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange"></div>
       </div>
     }>
       <ReviewContent />

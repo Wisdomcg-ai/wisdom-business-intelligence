@@ -143,9 +143,9 @@ export default function AccountabilityChartPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto mb-4"></div>
           <p className="text-gray-600">Loading accountability chart...</p>
         </div>
       </div>
@@ -153,14 +153,14 @@ export default function AccountabilityChartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8">
+    <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-6xl mx-auto px-4">
         {/* Header */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-start gap-4">
-              <div className="p-3 bg-teal-100 rounded-lg">
-                <Users className="w-6 h-6 text-teal-600" />
+              <div className="p-3 bg-brand-orange-100 rounded-lg">
+                <Users className="w-6 h-6 text-brand-orange" />
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">Accountability Chart</h1>
@@ -220,7 +220,7 @@ export default function AccountabilityChartPage() {
                           type="text"
                           value={role.person}
                           onChange={(e) => updateRole(index, 'person', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                           placeholder="Name or 'You'"
                         />
                       </td>
@@ -229,7 +229,7 @@ export default function AccountabilityChartPage() {
                           type="text"
                           value={role.responsibilities}
                           onChange={(e) => updateRole(index, 'responsibilities', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                           placeholder="Main duties"
                         />
                       </td>
@@ -238,7 +238,7 @@ export default function AccountabilityChartPage() {
                           type="text"
                           value={role.success_metric}
                           onChange={(e) => updateRole(index, 'success_metric', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                           placeholder="KPI or measure"
                         />
                       </td>
@@ -261,7 +261,7 @@ export default function AccountabilityChartPage() {
                 setFormData(prev => ({ ...prev, culture_description: e.target.value }));
                 handleFieldChange();
               }}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               rows={5}
               placeholder="Describe your ideal workplace culture, team dynamics, values in action, and working environment..."
             />
@@ -282,7 +282,7 @@ export default function AccountabilityChartPage() {
                 saveData();
                 router.push('/team/hiring-roadmap');
               }}
-              className="px-8 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium"
+              className="px-8 py-3 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 font-medium"
             >
               Continue to Hiring Roadmap →
             </button>

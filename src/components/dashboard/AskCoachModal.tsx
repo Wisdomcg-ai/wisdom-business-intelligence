@@ -83,7 +83,7 @@ export default function AskCoachModal({ isOpen, onClose, onSubmit }: AskCoachMod
                 placeholder="Type your question here..."
                 rows={6}
                 disabled={isSubmitting}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:opacity-50 disabled:bg-gray-50"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent disabled:opacity-50 disabled:bg-gray-50"
               />
             </div>
 
@@ -136,7 +136,7 @@ export default function AskCoachModal({ isOpen, onClose, onSubmit }: AskCoachMod
             <button
               onClick={handleSubmit}
               disabled={isSubmitting || !question.trim()}
-              className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {isSubmitting ? (
                 <>

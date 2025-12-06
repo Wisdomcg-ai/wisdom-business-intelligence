@@ -88,9 +88,9 @@ function UpdatePasswordContent() {
   // Loading state while verifying token
   if (isVerifying) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-teal-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-brand-navy via-brand-navy-800 to-brand-navy-900 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-teal-600 mx-auto" />
+          <Loader2 className="h-8 w-8 animate-spin text-brand-orange mx-auto" />
           <p className="text-gray-600 mt-4">Verifying reset link...</p>
         </div>
       </div>
@@ -100,7 +100,7 @@ function UpdatePasswordContent() {
   // Invalid or expired token
   if (tokenError) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-teal-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-brand-navy via-brand-navy-800 to-brand-navy-900 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
           <div className="text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
@@ -112,7 +112,7 @@ function UpdatePasswordContent() {
             </p>
             <Link
               href="/auth/reset-password"
-              className="inline-flex items-center justify-center w-full bg-teal-600 text-white py-2 px-4 rounded-lg hover:bg-teal-700 font-medium"
+              className="inline-flex items-center justify-center w-full bg-brand-orange text-white py-2 px-4 rounded-lg hover:bg-brand-orange-600 font-medium"
             >
               Request New Reset Link
             </Link>
@@ -125,7 +125,7 @@ function UpdatePasswordContent() {
   // Success state
   if (success) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-teal-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-brand-navy via-brand-navy-800 to-brand-navy-900 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
           <div className="text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
@@ -135,7 +135,7 @@ function UpdatePasswordContent() {
             <p className="text-gray-600 mb-6">
               Your password has been successfully updated. Redirecting you to login...
             </p>
-            <Loader2 className="h-6 w-6 animate-spin text-teal-600 mx-auto" />
+            <Loader2 className="h-6 w-6 animate-spin text-brand-orange mx-auto" />
           </div>
         </div>
       </div>
@@ -143,11 +143,11 @@ function UpdatePasswordContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-brand-navy via-brand-navy-800 to-brand-navy-900 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-teal-100 rounded-full mb-4">
-            <Lock className="h-8 w-8 text-teal-600" />
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-orange-100 rounded-full mb-4">
+            <Lock className="h-8 w-8 text-brand-orange" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Set New Password</h1>
           <p className="text-gray-600 mt-2">
@@ -173,7 +173,7 @@ function UpdatePasswordContent() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                 placeholder="Enter new password"
                 required
                 minLength={6}
@@ -195,7 +195,7 @@ function UpdatePasswordContent() {
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                 placeholder="Confirm new password"
                 required
                 minLength={6}
@@ -207,7 +207,7 @@ function UpdatePasswordContent() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-teal-600 text-white py-2 px-4 rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium"
+            className="w-full bg-brand-orange text-white py-2 px-4 rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium"
           >
             {isLoading ? (
               <>
@@ -226,9 +226,9 @@ function UpdatePasswordContent() {
 
 function LoadingFallback() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-brand-navy via-brand-navy-800 to-brand-navy-900 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
-        <Loader2 className="h-8 w-8 animate-spin text-teal-600 mx-auto" />
+        <Loader2 className="h-8 w-8 animate-spin text-brand-orange mx-auto" />
         <p className="text-gray-600 mt-4">Loading...</p>
       </div>
     </div>

@@ -62,7 +62,7 @@ export default function QuarterlySummaryPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
       </div>
     );
   }
@@ -72,7 +72,7 @@ export default function QuarterlySummaryPage() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <p className="text-red-600 mb-4">Review not found</p>
-          <Link href="/quarterly-review" className="text-teal-600 hover:underline">
+          <Link href="/quarterly-review" className="text-brand-orange hover:underline">
             Go back
           </Link>
         </div>
@@ -128,45 +128,45 @@ export default function QuarterlySummaryPage() {
       {/* Pre-Work Summary */}
       <section className="mb-8">
         <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-slate-600" />
+          <Calendar className="w-5 h-5 text-gray-600" />
           Pre-Work Reflection
         </h2>
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="grid md:grid-cols-4 gap-4 mb-6">
-            <div className="text-center p-3 bg-slate-50 rounded-lg">
+            <div className="text-center p-3 bg-gray-50 rounded-lg">
               <div className="text-2xl font-bold text-gray-900">{review.last_quarter_rating || '—'}/10</div>
               <div className="text-xs text-gray-600">Quarter Rating</div>
             </div>
-            <div className="text-center p-3 bg-slate-50 rounded-lg">
+            <div className="text-center p-3 bg-gray-50 rounded-lg">
               <div className="text-2xl font-bold text-gray-900">{review.energy_level || '—'}/10</div>
               <div className="text-xs text-gray-600">Energy Level</div>
             </div>
-            <div className="text-center p-3 bg-slate-50 rounded-lg">
+            <div className="text-center p-3 bg-gray-50 rounded-lg">
               <div className="text-2xl font-bold text-gray-900">{review.hours_worked_avg || '—'}</div>
               <div className="text-xs text-gray-600">Avg Hours/Week</div>
             </div>
-            <div className="text-center p-3 bg-slate-50 rounded-lg">
+            <div className="text-center p-3 bg-gray-50 rounded-lg">
               <div className="text-2xl font-bold text-gray-900">{review.days_off_taken || '—'}</div>
               <div className="text-xs text-gray-600">Days Off</div>
             </div>
           </div>
 
           {review.biggest_win && (
-            <div className="mb-4 p-4 bg-slate-50 rounded-lg">
+            <div className="mb-4 p-4 bg-gray-50 rounded-lg">
               <p className="text-xs font-medium text-gray-600 mb-1">Biggest Win</p>
               <p className="text-gray-700">{review.biggest_win}</p>
             </div>
           )}
 
           {review.biggest_challenge && (
-            <div className="mb-4 p-4 bg-slate-50 rounded-lg">
+            <div className="mb-4 p-4 bg-gray-50 rounded-lg">
               <p className="text-xs font-medium text-gray-600 mb-1">Biggest Challenge</p>
               <p className="text-gray-700">{review.biggest_challenge}</p>
             </div>
           )}
 
           {review.key_learning && (
-            <div className="p-4 bg-slate-50 rounded-lg">
+            <div className="p-4 bg-gray-50 rounded-lg">
               <p className="text-xs font-medium text-gray-600 mb-1">Key Learning</p>
               <p className="text-gray-700">{review.key_learning}</p>
             </div>
@@ -178,15 +178,15 @@ export default function QuarterlySummaryPage() {
       {actionReplay && (
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-slate-600" />
+            <BarChart3 className="w-5 h-5 text-gray-600" />
             Action Replay
           </h2>
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="grid md:grid-cols-2 gap-4">
               {/* Worked */}
-              <div className="p-4 bg-slate-50 rounded-lg">
+              <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle2 className="w-4 h-4 text-slate-600" />
+                  <CheckCircle2 className="w-4 h-4 text-gray-600" />
                   <span className="font-medium text-gray-900">What Worked</span>
                 </div>
                 <ul className="space-y-1">
@@ -197,9 +197,9 @@ export default function QuarterlySummaryPage() {
               </div>
 
               {/* Didn't Work */}
-              <div className="p-4 bg-slate-50 rounded-lg">
+              <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-2 mb-2">
-                  <XCircle className="w-4 h-4 text-slate-600" />
+                  <XCircle className="w-4 h-4 text-gray-600" />
                   <span className="font-medium text-gray-900">Didn't Work</span>
                 </div>
                 <ul className="space-y-1">
@@ -210,9 +210,9 @@ export default function QuarterlySummaryPage() {
               </div>
 
               {/* Planned But Didn't */}
-              <div className="p-4 bg-slate-50 rounded-lg">
+              <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-2 mb-2">
-                  <AlertTriangle className="w-4 h-4 text-slate-600" />
+                  <AlertTriangle className="w-4 h-4 text-gray-600" />
                   <span className="font-medium text-gray-900">Planned But Didn't</span>
                 </div>
                 <ul className="space-y-1">
@@ -223,9 +223,9 @@ export default function QuarterlySummaryPage() {
               </div>
 
               {/* New Ideas */}
-              <div className="p-4 bg-slate-50 rounded-lg">
+              <div className="p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-2 mb-2">
-                  <Lightbulb className="w-4 h-4 text-slate-600" />
+                  <Lightbulb className="w-4 h-4 text-gray-600" />
                   <span className="font-medium text-gray-900">New Ideas</span>
                 </div>
                 <ul className="space-y-1">
@@ -237,7 +237,7 @@ export default function QuarterlySummaryPage() {
             </div>
 
             {actionReplay.keyInsight && (
-              <div className="mt-4 p-4 bg-slate-50 rounded-lg">
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                 <p className="text-xs font-medium text-gray-600 mb-1">Key Insight</p>
                 <p className="text-gray-800 font-medium">{actionReplay.keyInsight}</p>
               </div>
@@ -250,20 +250,20 @@ export default function QuarterlySummaryPage() {
       {targets && (
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-slate-600" />
+            <DollarSign className="w-5 h-5 text-gray-600" />
             Q{nextQ.quarter} {nextQ.year} Targets
           </h2>
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="grid grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-slate-50 rounded-lg">
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
                 <div className="text-2xl font-bold text-gray-900">{formatCurrency(targets.revenue)}</div>
                 <div className="text-sm text-gray-600">Revenue</div>
               </div>
-              <div className="text-center p-4 bg-slate-50 rounded-lg">
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
                 <div className="text-2xl font-bold text-gray-900">{formatCurrency(targets.grossProfit)}</div>
                 <div className="text-sm text-gray-600">Gross Profit</div>
               </div>
-              <div className="text-center p-4 bg-slate-50 rounded-lg">
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
                 <div className="text-2xl font-bold text-gray-900">{formatCurrency(targets.netProfit)}</div>
                 <div className="text-sm text-gray-600">Net Profit</div>
               </div>
@@ -290,14 +290,14 @@ export default function QuarterlySummaryPage() {
       {review.quarterly_rocks && review.quarterly_rocks.length > 0 && (
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Mountain className="w-5 h-5 text-slate-600" />
+            <Mountain className="w-5 h-5 text-gray-600" />
             Q{nextQ.quarter} Rocks (90-Day Sprint)
           </h2>
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="space-y-4">
               {review.quarterly_rocks.map((rock, index) => (
                 <div key={rock.id} className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                  <span className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 bg-teal-600">
+                  <span className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 bg-brand-orange">
                     {index + 1}
                   </span>
                   <div className="flex-1">
@@ -320,27 +320,27 @@ export default function QuarterlySummaryPage() {
       {commitments && (
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Clock className="w-5 h-5 text-slate-600" />
+            <Clock className="w-5 h-5 text-gray-600" />
             Personal Commitments
           </h2>
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="grid grid-cols-3 gap-4 mb-4">
-              <div className="text-center p-4 bg-slate-50 rounded-lg">
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
                 <div className="text-2xl font-bold text-gray-900">{commitments.hoursPerWeekTarget || '—'}</div>
                 <div className="text-sm text-gray-600">Hours/Week</div>
               </div>
-              <div className="text-center p-4 bg-slate-50 rounded-lg">
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
                 <div className="text-2xl font-bold text-gray-900">{commitments.daysOffPlanned || '—'}</div>
                 <div className="text-sm text-gray-600">Days Off Planned</div>
               </div>
-              <div className="text-center p-4 bg-slate-50 rounded-lg">
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
                 <div className="text-2xl font-bold text-gray-900">{commitments.daysOffScheduled?.length || 0}</div>
                 <div className="text-sm text-gray-600">Days Scheduled</div>
               </div>
             </div>
 
             {commitments.personalGoal && (
-              <div className="p-4 bg-slate-50 rounded-lg">
+              <div className="p-4 bg-gray-50 rounded-lg">
                 <p className="text-xs font-medium text-gray-600 mb-1">Personal Goal</p>
                 <p className="text-gray-800 font-medium">{commitments.personalGoal}</p>
               </div>
@@ -353,7 +353,7 @@ export default function QuarterlySummaryPage() {
       <div className="text-center pt-8 border-t border-gray-200">
         <Link
           href="/quarterly-review"
-          className="inline-flex items-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700"
+          className="inline-flex items-center gap-2 px-6 py-3 bg-brand-orange text-white rounded-xl font-medium hover:bg-brand-orange-600"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Quarterly Reviews

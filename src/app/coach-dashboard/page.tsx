@@ -121,7 +121,7 @@ export default function CoachDashboard() {
       case 'STABLE':
         return { color: 'bg-yellow-400', emoji: '🟡', textColor: 'text-yellow-600' };
       case 'BUILDING':
-        return { color: 'bg-orange-400', emoji: '🟠', textColor: 'text-orange-600' };
+        return { color: 'bg-brand-orange-400', emoji: '🟠', textColor: 'text-brand-orange-600' };
       case 'STRUGGLING':
         return { color: 'bg-red-400', emoji: '🔴', textColor: 'text-red-500' };
       case 'URGENT':
@@ -176,9 +176,9 @@ export default function CoachDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-teal-50 via-white to-purple-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-brand-orange-50 via-white to-brand-navy-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading clients...</p>
         </div>
       </div>
@@ -186,13 +186,13 @@ export default function CoachDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 via-white to-purple-50">
+    <div className="min-h-screen bg-gradient-to-br from-brand-orange-50 via-white to-brand-navy-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-teal-600 to-purple-600 bg-clip-text text-transparent">
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-brand-orange to-brand-navy bg-clip-text text-transparent">
                 Coach Dashboard
               </h1>
               <p className="text-gray-600 mt-1">Manage your client portfolio</p>
@@ -217,12 +217,12 @@ export default function CoachDashboard() {
           
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
             <h3 className="text-sm font-medium text-gray-500 mb-2">Average Health Score</h3>
-            <p className="text-3xl font-bold text-teal-600">{analytics.averageScore.toFixed(1)}%</p>
+            <p className="text-3xl font-bold text-brand-orange">{analytics.averageScore.toFixed(1)}%</p>
           </div>
           
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
             <h3 className="text-sm font-medium text-gray-500 mb-2">Needing Attention</h3>
-            <p className="text-3xl font-bold text-orange-600">{analytics.needingAttention}</p>
+            <p className="text-3xl font-bold text-brand-orange-600">{analytics.needingAttention}</p>
             <p className="text-xs text-gray-500 mt-1">Struggling or Urgent</p>
           </div>
           
@@ -261,14 +261,14 @@ export default function CoachDashboard() {
                 placeholder="Search clients..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
               />
             </div>
             
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange"
             >
               <option value="all">All Status</option>
               <option value="thriving">Thriving</option>
@@ -282,7 +282,7 @@ export default function CoachDashboard() {
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange"
             >
               <option value="activity">Sort by Activity</option>
               <option value="name">Sort by Name</option>
@@ -341,7 +341,7 @@ export default function CoachDashboard() {
                       <span className="text-sm text-gray-600">Last Assessment</span>
                       <span className={`text-sm font-medium ${
                         client.latest_assessment.days_since > 90 ? 'text-red-600' :
-                        client.latest_assessment.days_since > 60 ? 'text-orange-600' :
+                        client.latest_assessment.days_since > 60 ? 'text-brand-orange-600' :
                         'text-green-600'
                       }`}>
                         {client.latest_assessment.days_since === 0 ? 'Today' :
@@ -374,7 +374,7 @@ export default function CoachDashboard() {
                       e.stopPropagation();
                       router.push(`/business-profile?id=${client.id}`);
                     }}
-                    className="flex-1 px-3 py-2 text-sm bg-teal-50 text-teal-600 rounded-lg hover:bg-teal-100 transition-colors"
+                    className="flex-1 px-3 py-2 text-sm bg-brand-orange-50 text-brand-orange rounded-lg hover:bg-brand-orange-100 transition-colors"
                   >
                     View Profile
                   </button>
@@ -384,7 +384,7 @@ export default function CoachDashboard() {
                       // TODO: Implement scheduling
                       alert('Scheduling feature coming soon!');
                     }}
-                    className="flex-1 px-3 py-2 text-sm bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-colors"
+                    className="flex-1 px-3 py-2 text-sm bg-brand-navy-50 text-brand-navy rounded-lg hover:bg-brand-navy-100 transition-colors"
                   >
                     Schedule
                   </button>
@@ -401,7 +401,7 @@ export default function CoachDashboard() {
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm('')}
-                className="mt-4 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                className="mt-4 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
               >
                 Clear Search
               </button>
@@ -411,7 +411,7 @@ export default function CoachDashboard() {
 
         {/* Alert Section */}
         {(analytics.needingAttention > 0 || analytics.overdue > 0) && (
-          <div className="mt-8 bg-white rounded-xl shadow-lg p-6 border-2 border-orange-200">
+          <div className="mt-8 bg-white rounded-xl shadow-lg p-6 border-2 border-brand-orange-200">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">⚠️ Requires Attention</h3>
             <div className="space-y-3">
               {clients.filter(c => c.latest_assessment?.health_status === 'URGENT').map(client => (
@@ -421,9 +421,9 @@ export default function CoachDashboard() {
                 </div>
               ))}
               {clients.filter(c => !c.latest_assessment || c.latest_assessment.days_since > 90).map(client => (
-                <div key={client.id} className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
-                  <span className="font-medium text-orange-900">{client.business_name}</span>
-                  <span className="text-sm text-orange-600">
+                <div key={client.id} className="flex justify-between items-center p-3 bg-brand-orange-50 rounded-lg">
+                  <span className="font-medium text-brand-orange-900">{client.business_name}</span>
+                  <span className="text-sm text-brand-orange-600">
                     {!client.latest_assessment ? 'Never assessed' : `${client.latest_assessment.days_since} days overdue`}
                   </span>
                 </div>

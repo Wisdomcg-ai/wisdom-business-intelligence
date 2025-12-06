@@ -15,6 +15,7 @@ import {
   Loader2,
   Upload
 } from 'lucide-react'
+import { PageHeader } from '@/components/ui/PageHeader'
 
 interface SessionNote {
   id: string
@@ -215,9 +216,9 @@ export default function ClientSessionsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-teal-600 mx-auto mb-4" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-500">Loading sessions...</p>
         </div>
       </div>
@@ -225,40 +226,39 @@ export default function ClientSessionsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Session Notes</h1>
-            <p className="text-gray-600 mt-1">
-              Notes from your coaching sessions
-            </p>
-          </div>
-          {coachId && (
-            <button
-              onClick={startNewSession}
-              disabled={creating}
-              className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium disabled:opacity-50"
-            >
-              {creating ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Plus className="w-5 h-5" />
-              )}
-              Start Session
-            </button>
-          )}
-        </div>
+        <PageHeader
+          title="Session Notes"
+          subtitle="Notes from your coaching sessions"
+          icon={FileText}
+          actions={
+            coachId ? (
+              <button
+                onClick={startNewSession}
+                disabled={creating}
+                className="flex items-center gap-2 px-4 py-2.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium disabled:opacity-50"
+              >
+                {creating ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Plus className="w-5 h-5" />
+                )}
+                Start Session
+              </button>
+            ) : undefined
+          }
+        />
 
         {/* Sessions List */}
         {sessions.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="bg-white rounded-xl border border-gray-200 p-8 sm:p-12 text-center">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <FileText className="w-8 h-8 text-gray-400" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Sessions Yet</h3>
-            <p className="text-gray-500 mb-6">
+            <h3 className="text-lg sm:text-xl font-medium text-gray-900 mb-2">No Sessions Yet</h3>
+            <p className="text-sm sm:text-base text-gray-500 mb-6">
               {coachId
                 ? 'Start your first session to begin tracking notes with your coach.'
                 : 'You need a coach assigned to start recording sessions.'}
@@ -267,7 +267,7 @@ export default function ClientSessionsPage() {
               <button
                 onClick={startNewSession}
                 disabled={creating}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
               >
                 <Plus className="w-5 h-5" />
                 Start First Session
@@ -293,41 +293,41 @@ export default function ClientSessionsPage() {
                     <div
                       key={session.id}
                       onClick={() => router.push(`/sessions/${session.id}`)}
-                      className="bg-white rounded-xl border border-gray-200 p-5 hover:border-teal-300 hover:shadow-md transition-all cursor-pointer group"
+                      className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 hover:border-brand-orange-300 hover:shadow-md transition-all cursor-pointer group"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                          <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
                             session.status === 'active'
                               ? 'bg-green-100'
                               : 'bg-gray-100'
                           }`}>
                             {session.status === 'active' ? (
-                              <Play className="w-6 h-6 text-green-600" />
+                              <Play className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
                             ) : (
-                              <CheckCircle className="w-6 h-6 text-gray-600" />
+                              <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600" />
                             )}
                           </div>
-                          <div>
-                            <h3 className="font-semibold text-gray-900 group-hover:text-teal-600 transition-colors">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-semibold text-base sm:text-lg text-gray-900 group-hover:text-brand-orange transition-colors">
                               Coaching Session
                             </h3>
-                            <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 text-xs sm:text-sm text-gray-500">
                               {session.duration_minutes && (
                                 <span className="flex items-center gap-1">
-                                  <Clock className="w-4 h-4" />
+                                  <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                   {session.duration_minutes} min
                                 </span>
                               )}
                               {session.client_rating && (
                                 <span className="flex items-center gap-1">
-                                  <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                                  <Star className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-yellow-500 fill-yellow-500" />
                                   {session.client_rating}/5
                                 </span>
                               )}
                               {session.transcript_name && (
                                 <span className="flex items-center gap-1">
-                                  <Upload className="w-4 h-4" />
+                                  <Upload className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                   Transcript
                                 </span>
                               )}
@@ -335,25 +335,25 @@ export default function ClientSessionsPage() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 sm:flex-shrink-0">
                           {session.status === 'active' ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
-                              <Play className="w-3.5 h-3.5" />
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs sm:text-sm font-medium">
+                              <Play className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                               Active
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm font-medium">
-                              <CheckCircle className="w-3.5 h-3.5" />
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs sm:text-sm font-medium">
+                              <CheckCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                               Completed
                             </span>
                           )}
-                          <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-teal-600 transition-colors" />
+                          <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-brand-orange transition-colors" />
                         </div>
                       </div>
 
                       {/* Preview */}
                       {(session.discussion_points || session.client_commitments) && (
-                        <p className="mt-3 text-sm text-gray-600 line-clamp-2 pl-16">
+                        <p className="mt-3 text-sm text-gray-600 line-clamp-2 sm:pl-16">
                           {session.discussion_points || session.client_commitments}
                         </p>
                       )}

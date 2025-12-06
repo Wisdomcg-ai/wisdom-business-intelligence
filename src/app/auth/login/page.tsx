@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, Mail, Lock, Building2, AlertCircle } from 'lucide-react'
 import { getUserSystemRole } from '@/lib/auth/roles'
@@ -101,18 +102,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-brand-navy via-brand-navy-800 to-brand-navy-900 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-teal-100 rounded-full mb-4">
-            <Building2 className="h-8 w-8 text-teal-600" />
-          </div>
+          <Image
+            src="/images/logo-tight.png"
+            alt="WisdomBi"
+            width={550}
+            height={300}
+            className="h-24 w-auto mx-auto mb-4"
+          />
           <h1 className="text-2xl font-bold text-gray-900">
             {isSignUp ? 'Create Your Account' : 'Welcome Back'}
           </h1>
           <p className="text-gray-600 mt-2">
-            {isSignUp 
-              ? 'Start your strategic planning journey' 
+            {isSignUp
+              ? 'Start your strategic planning journey'
               : 'Sign in to continue your strategic planning'}
           </p>
         </div>
@@ -142,7 +147,7 @@ export default function LoginPage() {
                   type="text"
                   value={formData.companyName}
                   onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
                   placeholder="Your Company Name"
                   required={isSignUp}
                 />
@@ -160,7 +165,7 @@ export default function LoginPage() {
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
                 placeholder="you@company.com"
                 required
               />
@@ -177,7 +182,7 @@ export default function LoginPage() {
                 type="password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
                 placeholder="••••••••"
                 required
                 minLength={6}
@@ -190,7 +195,7 @@ export default function LoginPage() {
             )}
             {!isSignUp && (
               <div className="text-right mt-1">
-                <a href="/auth/reset-password" className="text-sm text-teal-600 hover:text-teal-700">
+                <a href="/auth/reset-password" className="text-sm text-brand-orange hover:text-brand-orange-700">
                   Forgot password?
                 </a>
               </div>
@@ -200,7 +205,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-teal-600 text-white py-2 px-4 rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium"
+            className="w-full bg-brand-orange text-white py-2 px-4 rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium"
           >
             {isLoading ? (
               <>
@@ -245,7 +250,7 @@ export default function LoginPage() {
               setError(null)
               setSuccess(null)
             }}
-            className="text-teal-600 hover:text-teal-700 font-medium"
+            className="text-brand-orange hover:text-brand-orange-700 font-medium"
           >
             {isSignUp ? 'Sign In' : 'Sign Up'}
           </button>
@@ -256,15 +261,15 @@ export default function LoginPage() {
           {isSignUp && (
             <p className="mb-2">
               By signing up, you agree to our{' '}
-              <a href="/terms" className="text-teal-600 hover:text-teal-700">Terms</a>
+              <a href="/terms" className="text-brand-orange hover:text-brand-orange-700">Terms</a>
               {' '}and{' '}
-              <a href="/privacy" className="text-teal-600 hover:text-teal-700">Privacy Policy</a>
+              <a href="/privacy" className="text-brand-orange hover:text-brand-orange-700">Privacy Policy</a>
             </p>
           )}
           <div className="flex justify-center gap-4">
-            <a href="/privacy" className="hover:text-gray-700">Privacy Policy</a>
+            <a href="/privacy" className="hover:text-brand-orange">Privacy Policy</a>
             <span>•</span>
-            <a href="/terms" className="hover:text-gray-700">Terms of Service</a>
+            <a href="/terms" className="hover:text-brand-orange">Terms of Service</a>
           </div>
         </div>
       </div>

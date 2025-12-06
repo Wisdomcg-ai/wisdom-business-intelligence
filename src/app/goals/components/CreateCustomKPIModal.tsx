@@ -119,10 +119,10 @@ export default function CreateCustomKPIModal({
         </div>
 
         {/* Info Banner */}
-        <div className="mx-6 mt-6 p-4 bg-teal-50 border border-teal-200 rounded-lg">
+        <div className="mx-6 mt-6 p-4 bg-brand-orange-50 border border-brand-orange-200 rounded-lg">
           <div className="flex gap-3">
-            <Info className="w-5 h-5 text-teal-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-teal-900">
+            <Info className="w-5 h-5 text-brand-orange flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-brand-navy">
               <p className="font-semibold mb-1">Growing the KPI Library</p>
               <p>Your custom KPI will be immediately available to your business. After admin approval, it will become available to all users on the platform!</p>
             </div>
@@ -143,7 +143,7 @@ export default function CreateCustomKPIModal({
                   onClick={() => setIsNewCategory(false)}
                   className={`flex-1 px-4 py-2 rounded-lg border-2 transition-colors ${
                     !isNewCategory
-                      ? 'border-teal-500 bg-teal-50 text-teal-900'
+                      ? 'border-brand-orange-500 bg-brand-orange-50 text-brand-navy'
                       : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                   }`}
                 >
@@ -154,7 +154,7 @@ export default function CreateCustomKPIModal({
                   onClick={() => setIsNewCategory(true)}
                   className={`flex-1 px-4 py-2 rounded-lg border-2 transition-colors ${
                     isNewCategory
-                      ? 'border-teal-500 bg-teal-50 text-teal-900'
+                      ? 'border-brand-orange-500 bg-brand-orange-50 text-brand-navy'
                       : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                   }`}
                 >
@@ -167,7 +167,7 @@ export default function CreateCustomKPIModal({
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   required
                 >
                   <option value="">Select a category...</option>
@@ -181,7 +181,7 @@ export default function CreateCustomKPIModal({
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                   placeholder="e.g., Customer Success, Innovation, Quality"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   required
                 />
               )}
@@ -198,7 +198,7 @@ export default function CreateCustomKPIModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g., Net Promoter Score, Time to Resolution"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
               required
             />
 
@@ -223,7 +223,7 @@ export default function CreateCustomKPIModal({
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-gray-900">{kpi.name}</span>
                             {kpi.isCustom && (
-                              <span className="text-[9px] px-1.5 py-0.5 bg-teal-600 text-white rounded font-bold">
+                              <span className="text-[9px] px-1.5 py-0.5 bg-brand-orange text-white rounded font-bold">
                                 CUSTOM
                               </span>
                             )}
@@ -261,7 +261,7 @@ export default function CreateCustomKPIModal({
                   onClick={() => setUnit(u)}
                   className={`px-4 py-3 rounded-lg border-2 transition-colors ${
                     unit === u
-                      ? 'border-teal-500 bg-teal-50 text-teal-900 font-semibold'
+                      ? 'border-brand-orange-500 bg-brand-orange-50 text-brand-navy font-semibold'
                       : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                   }`}
                 >
@@ -281,7 +281,7 @@ export default function CreateCustomKPIModal({
             <select
               value={frequency}
               onChange={(e) => setFrequency(e.target.value as any)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
               required
             >
               <option value="daily">Daily</option>
@@ -302,7 +302,7 @@ export default function CreateCustomKPIModal({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Explain what this KPI measures and why it matters..."
               rows={3}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
             />
           </div>
 
@@ -326,7 +326,7 @@ export default function CreateCustomKPIModal({
             <button
               type="submit"
               disabled={isSaving}
-              className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSaving ? 'Creating...' : 'Create Custom KPI'}
             </button>

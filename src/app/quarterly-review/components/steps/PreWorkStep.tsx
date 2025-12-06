@@ -118,8 +118,8 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
             onClick={() => handleChange(field, num)}
             className={`w-10 h-10 rounded-lg text-sm font-semibold transition-all ${
               value === num
-                ? 'bg-teal-600 text-white shadow-md scale-110'
-                : 'bg-gray-100 text-gray-600 hover:bg-teal-50 hover:text-teal-700'
+                ? 'bg-brand-orange text-white shadow-md scale-110'
+                : 'bg-gray-100 text-gray-600 hover:bg-brand-orange-50 hover:text-brand-orange-700'
             }`}
           >
             {num}
@@ -138,14 +138,14 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
       />
 
       {/* Progress Overview */}
-      <div className="bg-gradient-to-r from-teal-50 to-slate-50 rounded-xl border border-teal-200 p-4 mb-6">
+      <div className="bg-gradient-to-r from-brand-orange-50 to-slate-50 rounded-xl border border-brand-orange-200 p-4 mb-6">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-gray-700">Overall Progress</span>
-          <span className="text-sm font-bold text-teal-700">{totalCompletion}% complete</span>
+          <span className="text-sm font-bold text-brand-orange-700">{totalCompletion}% complete</span>
         </div>
         <div className="h-2 bg-white rounded-full overflow-hidden">
           <div
-            className="h-full bg-teal-600 rounded-full transition-all duration-500"
+            className="h-full bg-brand-orange rounded-full transition-all duration-500"
             style={{ width: `${totalCompletion}%` }}
           />
         </div>
@@ -165,7 +165,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
               onClick={() => setActiveSection(section.id)}
               className={`relative p-4 rounded-xl border-2 text-left transition-all ${
                 isActive
-                  ? 'bg-teal-50 border-teal-500 shadow-md'
+                  ? 'bg-brand-orange-50 border-brand-orange-500 shadow-md'
                   : isComplete
                   ? 'bg-green-50 border-green-300 hover:border-green-400'
                   : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50'
@@ -174,7 +174,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
               {/* Step Number Badge */}
               <div className={`absolute -top-2 -left-2 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
                 isActive
-                  ? 'bg-teal-600 text-white'
+                  ? 'bg-brand-orange text-white'
                   : isComplete
                   ? 'bg-green-500 text-white'
                   : 'bg-gray-200 text-gray-600'
@@ -189,7 +189,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
               <div className="flex items-start gap-3">
                 <div className={`p-2 rounded-lg ${
                   isActive
-                    ? 'bg-teal-100 text-teal-700'
+                    ? 'bg-brand-orange-100 text-brand-orange-700'
                     : isComplete
                     ? 'bg-green-100 text-green-700'
                     : 'bg-gray-100 text-gray-600'
@@ -198,7 +198,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className={`font-semibold text-sm ${
-                    isActive ? 'text-teal-900' : isComplete ? 'text-green-900' : 'text-gray-900'
+                    isActive ? 'text-brand-navy' : isComplete ? 'text-green-900' : 'text-gray-900'
                   }`}>
                     {section.label}
                   </h3>
@@ -210,7 +210,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
                     <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all ${
-                          isComplete ? 'bg-green-500' : 'bg-teal-500'
+                          isComplete ? 'bg-green-500' : 'bg-brand-orange-500'
                         }`}
                         style={{ width: `${completion.percentage}%` }}
                       />
@@ -235,8 +235,8 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
             const Icon = section.icon;
             return (
               <>
-                <div className="p-2.5 bg-teal-100 rounded-xl">
-                  <Icon className="w-6 h-6 text-teal-700" />
+                <div className="p-2.5 bg-brand-orange-100 rounded-xl">
+                  <Icon className="w-6 h-6 text-brand-orange-700" />
                 </div>
                 <div>
                   <h2 className="font-bold text-lg text-gray-900">{section.label}</h2>
@@ -268,7 +268,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
                 onChange={(e) => handleChange('biggest_win', e.target.value)}
                 placeholder="Describe your most significant achievement..."
                 rows={3}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 resize-none"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 resize-none"
               />
             </div>
 
@@ -283,14 +283,14 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
                 onChange={(e) => handleChange('biggest_challenge', e.target.value)}
                 placeholder="What obstacle or difficulty stood out most?"
                 rows={3}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 resize-none"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 resize-none"
               />
             </div>
 
             {/* Key Learning */}
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <BookOpen className="w-4 h-4 text-purple-500" />
+                <BookOpen className="w-4 h-4 text-brand-navy" />
                 What was your key learning?
               </label>
               <textarea
@@ -298,7 +298,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
                 onChange={(e) => handleChange('key_learning', e.target.value)}
                 placeholder="What important lesson will you take forward?"
                 rows={3}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 resize-none"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 resize-none"
               />
             </div>
           </div>
@@ -309,7 +309,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
             {/* Hours Worked */}
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <Clock className="w-4 h-4 text-blue-500" />
+                <Clock className="w-4 h-4 text-brand-orange" />
                 Average hours worked per week last quarter
               </label>
               <input
@@ -319,7 +319,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
                 placeholder="e.g., 45"
                 min={0}
                 max={168}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
               />
             </div>
 
@@ -335,7 +335,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
                 onChange={(e) => handleChange('days_off_taken', parseInt(e.target.value) || null)}
                 placeholder="e.g., 10"
                 min={0}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
               />
             </div>
 
@@ -352,7 +352,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
               'purpose_alignment',
               review.purpose_alignment,
               'How aligned do you feel with your business purpose? (1 = Lost, 10 = Fully aligned)',
-              <Target className="w-4 h-4 text-purple-500" />
+              <Target className="w-4 h-4 text-brand-navy" />
             )}
           </div>
         )}
@@ -362,7 +362,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
             {/* One Thing for Success */}
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <Target className="w-4 h-4 text-teal-600" />
+                <Target className="w-4 h-4 text-brand-orange" />
                 If you could only achieve ONE thing next quarter, what would make the biggest impact?
               </label>
               <textarea
@@ -370,7 +370,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
                 onChange={(e) => handleChange('one_thing_for_success', e.target.value)}
                 placeholder="What single achievement would move the needle most?"
                 rows={4}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 resize-none"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 resize-none"
               />
             </div>
 
@@ -385,7 +385,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
                 onChange={(e) => handleChange('coach_support_needed', e.target.value)}
                 placeholder="What areas would you like coaching focus on?"
                 rows={4}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 resize-none"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 resize-none"
               />
             </div>
           </div>
@@ -400,7 +400,7 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
           {!isLastSection ? (
             <button
               onClick={goToNextSection}
-              className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors"
+              className="flex items-center gap-2 px-5 py-2.5 bg-brand-orange text-white rounded-lg font-medium hover:bg-brand-orange-600 transition-colors"
             >
               Next: {SECTIONS[currentSectionIndex + 1].label}
               <ChevronRight className="w-4 h-4" />

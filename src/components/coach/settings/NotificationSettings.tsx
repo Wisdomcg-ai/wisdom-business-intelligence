@@ -74,7 +74,7 @@ export function NotificationSettings({ preferences: initialPrefs, onSave }: Noti
       <button
         onClick={() => onChange(!enabled)}
         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-          enabled ? 'bg-indigo-600' : 'bg-gray-200'
+          enabled ? 'bg-brand-orange' : 'bg-gray-200'
         }`}
       >
         <span
@@ -87,7 +87,7 @@ export function NotificationSettings({ preferences: initialPrefs, onSave }: Noti
   )
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="rounded-xl shadow-sm border border-gray-200 bg-white overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-200">
         <h3 className="font-semibold text-gray-900">Notification Settings</h3>
         <p className="text-sm text-gray-500 mt-1">Control how and when you receive notifications</p>
@@ -97,8 +97,8 @@ export function NotificationSettings({ preferences: initialPrefs, onSave }: Noti
         {/* Email Notifications */}
         <div>
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Mail className="w-5 h-5 text-blue-600" />
+            <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+              <Mail className="w-5 h-5 text-brand-orange" />
             </div>
             <div>
               <h4 className="font-medium text-gray-900">Email Notifications</h4>
@@ -158,8 +158,8 @@ export function NotificationSettings({ preferences: initialPrefs, onSave }: Noti
         {/* Push Notifications */}
         <div>
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-              <Bell className="w-5 h-5 text-purple-600" />
+            <div className="w-10 h-10 bg-brand-navy-50 rounded-lg flex items-center justify-center">
+              <Bell className="w-5 h-5 text-brand-navy" />
             </div>
             <div>
               <h4 className="font-medium text-gray-900">Push Notifications</h4>
@@ -210,8 +210,8 @@ export function NotificationSettings({ preferences: initialPrefs, onSave }: Noti
         {/* Reminder Timing */}
         <div>
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
-              <Calendar className="w-5 h-5 text-amber-600" />
+            <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+              <Calendar className="w-5 h-5 text-brand-orange" />
             </div>
             <div>
               <h4 className="font-medium text-gray-900">Reminder Timing</h4>
@@ -233,7 +233,7 @@ export function NotificationSettings({ preferences: initialPrefs, onSave }: Noti
                     sessionReminder: parseInt(e.target.value)
                   }
                 })}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
               >
                 <option value={1}>1 hour before</option>
                 <option value={2}>2 hours before</option>
@@ -254,7 +254,7 @@ export function NotificationSettings({ preferences: initialPrefs, onSave }: Noti
                     actionDue: parseInt(e.target.value)
                   }
                 })}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
               >
                 <option value={1}>1 day before</option>
                 <option value={2}>2 days before</option>
@@ -273,7 +273,7 @@ export function NotificationSettings({ preferences: initialPrefs, onSave }: Noti
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-6 py-2.5 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg transition-colors disabled:opacity-50"
           >
             {saving ? (
               <Loader2 className="w-4 h-4 animate-spin" />

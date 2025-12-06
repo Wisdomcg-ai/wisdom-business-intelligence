@@ -5,6 +5,7 @@ import { Users, Calendar, CheckCircle, TrendingUp, Loader2, BarChart3 } from 'lu
 import SessionFrequencyChart from '@/components/analytics/SessionFrequencyChart'
 import ActionCompletionChart from '@/components/analytics/ActionCompletionChart'
 import ClientEngagementChart from '@/components/analytics/ClientEngagementChart'
+import PageHeader from '@/components/ui/PageHeader'
 
 interface CoachAnalytics {
   overview: {
@@ -59,7 +60,7 @@ export default function CoachAnalyticsPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 text-teal-600 animate-spin mx-auto mb-4" />
+          <Loader2 className="w-12 h-12 text-brand-orange animate-spin mx-auto mb-4" />
           <p className="text-gray-600">Loading analytics...</p>
         </div>
       </div>
@@ -77,24 +78,25 @@ export default function CoachAnalyticsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Coach Performance Analytics</h1>
-        <p className="text-sm text-gray-600 mt-1">Track your coaching impact and client engagement</p>
-      </div>
+      <PageHeader
+        title="Coach Performance Analytics"
+        subtitle="Track your coaching impact and client engagement"
+        icon={BarChart3}
+      />
 
       {/* Key Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {/* Total Clients */}
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
           <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-teal-100 rounded-lg">
-              <Users className="w-5 h-5 text-teal-600" />
+            <div className="p-2 bg-brand-orange-100 rounded-lg flex-shrink-0">
+              <Users className="w-5 h-5 text-brand-orange" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm text-gray-600">Total Clients</p>
-              <p className="text-2xl font-bold text-gray-900">{analytics.overview.totalClients}</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{analytics.overview.totalClients}</p>
             </div>
           </div>
           <p className="text-xs text-gray-500">
@@ -103,28 +105,28 @@ export default function CoachAnalyticsPage() {
         </div>
 
         {/* Total Sessions */}
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
           <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-green-100 rounded-lg">
+            <div className="p-2 bg-green-100 rounded-lg flex-shrink-0">
               <Calendar className="w-5 h-5 text-green-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm text-gray-600">Total Sessions</p>
-              <p className="text-2xl font-bold text-gray-900">{analytics.overview.totalSessions}</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{analytics.overview.totalSessions}</p>
             </div>
           </div>
           <p className="text-xs text-gray-500">Last 12 months</p>
         </div>
 
         {/* Action Completion */}
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
           <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <CheckCircle className="w-5 h-5 text-purple-600" />
+            <div className="p-2 bg-brand-teal-100 rounded-lg flex-shrink-0">
+              <CheckCircle className="w-5 h-5 text-brand-teal-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm text-gray-600">Action Completion</p>
-              <p className="text-2xl font-bold text-gray-900">{analytics.overview.overallCompletionRate}%</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{analytics.overview.overallCompletionRate}%</p>
             </div>
           </div>
           <p className="text-xs text-gray-500">
@@ -133,14 +135,14 @@ export default function CoachAnalyticsPage() {
         </div>
 
         {/* Response Time */}
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
           <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-orange-100 rounded-lg">
-              <TrendingUp className="w-5 h-5 text-orange-600" />
+            <div className="p-2 bg-brand-orange-100 rounded-lg flex-shrink-0">
+              <TrendingUp className="w-5 h-5 text-brand-orange-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm text-gray-600">Avg Session Gap</p>
-              <p className="text-2xl font-bold text-gray-900">
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">
                 {analytics.overview.avgResponseTime ? `${analytics.overview.avgResponseTime}d` : 'N/A'}
               </p>
             </div>
@@ -150,14 +152,14 @@ export default function CoachAnalyticsPage() {
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Session Frequency */}
         <SessionFrequencyChart data={analytics.charts.sessionsOverTime} />
 
         {/* Action Completion Over Time */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Action Completion Trend</h3>
-          <p className="text-sm text-gray-600 mb-6">Completion rate percentage over time</p>
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2 sm:mb-4">Action Completion Trend</h3>
+          <p className="text-sm text-gray-600 mb-4 sm:mb-6">Completion rate percentage over time</p>
 
           {analytics.charts.actionCompletion.length > 0 ? (
             <div className="space-y-3">
@@ -172,9 +174,9 @@ export default function CoachAnalyticsPage() {
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div
                         className={`h-2 rounded-full ${
-                          item.rate >= 75 ? 'bg-green-500' :
-                          item.rate >= 50 ? 'bg-teal-500' :
-                          'bg-orange-500'
+                          item.rate >= 75 ? 'bg-brand-teal' :
+                          item.rate >= 50 ? 'bg-brand-orange-500' :
+                          'bg-brand-orange'
                         }`}
                         style={{ width: `${item.rate}%` }}
                       />
@@ -195,13 +197,15 @@ export default function CoachAnalyticsPage() {
       </div>
 
       {/* Client Engagement */}
-      <ClientEngagementChart data={analytics.charts.clientEngagement} />
+      <div className="mb-6">
+        <ClientEngagementChart data={analytics.charts.clientEngagement} />
+      </div>
 
       {/* Performance Insights */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-6 text-white">
-        <h3 className="text-lg font-semibold mb-4">Performance Insights</h3>
+      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-xl p-4 sm:p-6 text-white">
+        <h3 className="text-lg sm:text-xl font-semibold mb-4">Performance Insights</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
+          <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
             <p className="text-sm font-medium mb-2">Client Growth</p>
             <p className="text-sm opacity-90">
               {analytics.overview.activeClients >= 5
@@ -210,7 +214,7 @@ export default function CoachAnalyticsPage() {
             </p>
           </div>
 
-          <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
+          <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
             <p className="text-sm font-medium mb-2">Session Frequency</p>
             <p className="text-sm opacity-90">
               {analytics.overview.avgResponseTime && analytics.overview.avgResponseTime <= 14
@@ -219,7 +223,7 @@ export default function CoachAnalyticsPage() {
             </p>
           </div>
 
-          <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
+          <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
             <p className="text-sm font-medium mb-2">Client Accountability</p>
             <p className="text-sm opacity-90">
               {analytics.overview.overallCompletionRate >= 70

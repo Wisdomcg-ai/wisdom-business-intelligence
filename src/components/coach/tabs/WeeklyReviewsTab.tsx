@@ -99,7 +99,7 @@ export function WeeklyReviewsTab({ businessId, businessName }: WeeklyReviewsTabP
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
       </div>
     )
   }
@@ -126,12 +126,12 @@ export function WeeklyReviewsTab({ businessId, businessName }: WeeklyReviewsTabP
 
           <div className="text-center">
             <div className="flex items-center justify-center gap-2">
-              <Calendar className="w-5 h-5 text-indigo-600" />
+              <Calendar className="w-5 h-5 text-brand-orange" />
               <span className="text-lg font-semibold text-gray-900">
                 {formatDateRange(currentWeekStart)}
               </span>
               {isCurrentWeek && (
-                <span className="px-2 py-1 bg-indigo-600 text-white text-xs rounded-full font-medium">
+                <span className="px-2 py-1 bg-brand-orange text-white text-xs rounded-full font-medium">
                   Current Week
                 </span>
               )}
@@ -151,8 +151,8 @@ export function WeeklyReviewsTab({ businessId, businessName }: WeeklyReviewsTabP
       {/* Completion Summary */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="flex items-center gap-4 mb-4">
-          <div className="p-3 bg-indigo-100 rounded-xl">
-            <Users className="w-6 h-6 text-indigo-600" />
+          <div className="p-3 bg-brand-orange-100 rounded-xl">
+            <Users className="w-6 h-6 text-brand-orange" />
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">Team Completion</h3>
@@ -165,7 +165,7 @@ export function WeeklyReviewsTab({ businessId, businessName }: WeeklyReviewsTabP
         {/* Progress Bar */}
         <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
           <div
-            className="bg-indigo-600 h-3 rounded-full transition-all"
+            className="bg-brand-orange h-3 rounded-full transition-all"
             style={{ width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%` }}
           />
         </div>
@@ -245,7 +245,7 @@ export function WeeklyReviewsTab({ businessId, businessName }: WeeklyReviewsTabP
                   <div className="flex items-center gap-4">
                     {review.energy_rating && (
                       <div className="flex items-center gap-1">
-                        <Zap className="w-4 h-4 text-purple-500" />
+                        <Zap className="w-4 h-4 text-brand-orange" />
                         <span className="text-sm font-medium text-gray-700">{review.energy_rating}/10</span>
                       </div>
                     )}
@@ -304,13 +304,13 @@ export function WeeklyReviewsTab({ businessId, businessName }: WeeklyReviewsTabP
                     {review.challenges.length > 0 && (
                       <div>
                         <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
-                          <AlertTriangle className="w-4 h-4 text-orange-600" />
+                          <AlertTriangle className="w-4 h-4 text-brand-orange-600" />
                           Challenges
                         </h4>
                         <ul className="space-y-1">
                           {review.challenges.map((challenge, idx) => (
                             <li key={idx} className="flex items-start gap-2 text-sm text-gray-600">
-                              <AlertTriangle className="w-4 h-4 text-orange-500 flex-shrink-0 mt-0.5" />
+                              <AlertTriangle className="w-4 h-4 text-brand-orange flex-shrink-0 mt-0.5" />
                               {challenge}
                             </li>
                           ))}
@@ -333,13 +333,13 @@ export function WeeklyReviewsTab({ businessId, businessName }: WeeklyReviewsTabP
                     {review.top_priorities.length > 0 && (
                       <div>
                         <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
-                          <Target className="w-4 h-4 text-teal-600" />
+                          <Target className="w-4 h-4 text-brand-orange" />
                           Top Priorities
                         </h4>
                         <ul className="space-y-1">
                           {review.top_priorities.map((priority, idx) => (
                             <li key={priority.id} className="flex items-center gap-2 text-sm text-gray-600">
-                              <span className="w-5 h-5 bg-teal-100 text-teal-700 rounded flex items-center justify-center text-xs font-semibold">
+                              <span className="w-5 h-5 bg-brand-orange-100 text-brand-orange-700 rounded flex items-center justify-center text-xs font-semibold">
                                 {idx + 1}
                               </span>
                               <span className={priority.completed ? 'line-through text-gray-400' : ''}>
@@ -356,17 +356,17 @@ export function WeeklyReviewsTab({ businessId, businessName }: WeeklyReviewsTabP
                     {review.coach_questions.length > 0 && (
                       <div>
                         <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
-                          <MessageCircle className="w-4 h-4 text-blue-600" />
+                          <MessageCircle className="w-4 h-4 text-brand-orange" />
                           Questions for Coach
                         </h4>
                         <div className="space-y-2">
                           {review.coach_questions.map((q, idx) => (
-                            <div key={idx} className="bg-blue-50 rounded-lg p-3">
+                            <div key={idx} className="bg-brand-orange-50 rounded-lg p-3">
                               <p className="text-sm text-gray-700">{q.question}</p>
                               <span className={`inline-block mt-2 px-2 py-0.5 text-xs rounded-full font-medium ${
                                 q.priority === 'high' ? 'bg-red-100 text-red-700' :
                                 q.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                                'bg-teal-100 text-teal-700'
+                                'bg-brand-orange-100 text-brand-orange-700'
                               }`}>
                                 {q.priority.toUpperCase()}
                               </span>

@@ -51,7 +51,7 @@ export function ActionMenu({ items, trigger, align = 'right' }: ActionMenuProps)
       ) : (
         <button
           onClick={() => setOpen(!open)}
-          className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+          className="p-2 text-slate-400 hover:text-gray-600 hover:bg-slate-100 rounded-lg transition-colors"
         >
           <MoreHorizontal className="w-5 h-5" />
         </button>
@@ -84,7 +84,7 @@ export function ActionMenu({ items, trigger, align = 'right' }: ActionMenuProps)
                     ? 'text-slate-300 cursor-not-allowed'
                     : item.variant === 'danger'
                       ? 'text-red-600 hover:bg-red-50'
-                      : 'text-slate-700 hover:bg-slate-50'
+                      : 'text-gray-700 hover:bg-gray-50'
                   }
                 `}
               >

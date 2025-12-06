@@ -41,8 +41,8 @@ export function RecentMessages({ messages }: RecentMessagesProps) {
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-            <MessageSquare className="w-5 h-5 text-purple-600" />
+          <div className="w-10 h-10 bg-brand-navy-50 rounded-lg flex items-center justify-center">
+            <MessageSquare className="w-5 h-5 text-brand-navy" />
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">Recent Messages</h3>
@@ -51,7 +51,7 @@ export function RecentMessages({ messages }: RecentMessagesProps) {
         </div>
         <Link
           href="/messages"
-          className="text-sm text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1"
+          className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium flex items-center gap-1"
         >
           View all
           <ChevronRight className="w-4 h-4" />
@@ -67,7 +67,7 @@ export function RecentMessages({ messages }: RecentMessagesProps) {
           <p className="text-sm text-gray-500 mb-4">Start a conversation with your coach</p>
           <Link
             href="/messages"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors text-sm font-medium"
           >
             <MessageSquare className="w-4 h-4" />
             Send Message
@@ -80,12 +80,12 @@ export function RecentMessages({ messages }: RecentMessagesProps) {
               key={message.id}
               href="/messages"
               className={`block px-6 py-4 hover:bg-gray-50 transition-colors ${
-                !message.isRead && message.senderType === 'coach' ? 'bg-teal-50/50' : ''
+                !message.isRead && message.senderType === 'coach' ? 'bg-brand-orange-50/50' : ''
               }`}
             >
               <div className="flex gap-3">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  message.senderType === 'coach' ? 'bg-teal-600' : 'bg-gray-200'
+                  message.senderType === 'coach' ? 'bg-brand-orange' : 'bg-gray-200'
                 }`}>
                   <User className={`w-4 h-4 ${
                     message.senderType === 'coach' ? 'text-white' : 'text-gray-500'
@@ -107,7 +107,7 @@ export function RecentMessages({ messages }: RecentMessagesProps) {
                   </p>
                 </div>
                 {!message.isRead && message.senderType === 'coach' && (
-                  <div className="w-2 h-2 bg-teal-500 rounded-full flex-shrink-0 mt-2" />
+                  <div className="w-2 h-2 bg-brand-orange-500 rounded-full flex-shrink-0 mt-2" />
                 )}
               </div>
             </Link>
@@ -119,7 +119,7 @@ export function RecentMessages({ messages }: RecentMessagesProps) {
         <div className="p-4 border-t border-gray-100">
           <Link
             href="/messages"
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-teal-200 text-teal-700 rounded-lg hover:bg-teal-50 transition-colors font-medium text-sm"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-brand-orange-200 text-brand-orange-700 rounded-lg hover:bg-brand-orange-50 transition-colors font-medium text-sm"
           >
             <MessageSquare className="w-4 h-4" />
             Open Messages

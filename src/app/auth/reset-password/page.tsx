@@ -38,7 +38,7 @@ export default function ResetPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-teal-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-brand-navy via-brand-navy-800 to-brand-navy-900 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
           <div className="text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
@@ -54,7 +54,7 @@ export default function ResetPasswordPage() {
             </p>
             <Link
               href="/auth/login"
-              className="inline-flex items-center text-teal-600 hover:text-teal-700 font-medium"
+              className="inline-flex items-center text-brand-orange hover:text-brand-orange-700 font-medium"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Login
@@ -66,11 +66,11 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-brand-navy via-brand-navy-800 to-brand-navy-900 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-teal-100 rounded-full mb-4">
-            <Mail className="h-8 w-8 text-teal-600" />
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-orange-100 rounded-full mb-4">
+            <Mail className="h-8 w-8 text-brand-orange" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Reset Your Password</h1>
           <p className="text-gray-600 mt-2">
@@ -96,7 +96,7 @@ export default function ResetPasswordPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                 placeholder="you@company.com"
                 required
                 disabled={isLoading}
@@ -107,7 +107,7 @@ export default function ResetPasswordPage() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-teal-600 text-white py-2 px-4 rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium"
+            className="w-full bg-brand-orange text-white py-2 px-4 rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium"
           >
             {isLoading ? (
               <>
@@ -122,7 +122,7 @@ export default function ResetPasswordPage() {
 
         <p className="text-center mt-6 text-sm text-gray-600">
           Remember your password?{' '}
-          <Link href="/auth/login" className="text-teal-600 hover:text-teal-700 font-medium">
+          <Link href="/auth/login" className="text-brand-orange hover:text-brand-orange-700 font-medium">
             Sign In
           </Link>
         </p>

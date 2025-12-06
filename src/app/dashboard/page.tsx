@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Target, TrendingUp } from 'lucide-react'
+import { Target, TrendingUp, LayoutDashboard } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useDashboardData } from './hooks/useDashboardData'
 import {
@@ -18,6 +18,7 @@ import {
 } from './components'
 import { getQuarterDisplayName } from './utils/formatters'
 import OnboardingChecklist from '@/components/onboarding/OnboardingChecklist'
+import PageLayout, { PageGrid } from '@/components/ui/PageLayout'
 
 export default function DashboardPage() {
   const supabase = createClient()
@@ -28,7 +29,7 @@ export default function DashboardPage() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [lastMessage, setLastMessage] = useState<{ preview: string; time: string } | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(true)
-  const [onboardingComplete, setOnboardingComplete] = useState(false)
+  const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null) // null = still checking
 
   // Update last login timestamp when dashboard loads
   useEffect(() => {
@@ -154,32 +155,38 @@ export default function DashboardPage() {
   // Show skeleton while loading
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
+      <PageLayout>
         <DashboardSkeleton />
-      </div>
+      </PageLayout>
     )
   }
 
   // Show error state
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
+      <PageLayout>
         <DashboardError error={error} onRetry={refresh} />
-      </div>
+      </PageLayout>
     )
   }
 
   // Show onboarding-only view until setup is complete
-  if (!onboardingComplete && showOnboarding) {
+  // Only show when explicitly false (checked and incomplete), not when null (still checking)
+  if (onboardingComplete === false && showOnboarding) {
     return (
-      <div className="min-h-screen bg-slate-50">
-        <div className="max-w-2xl mx-auto p-6 pt-12">
-          {/* Welcome Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to Your Dashboard</h1>
-            <p className="text-gray-600">
-              Complete these steps to set up your business intelligence and unlock your personalized dashboard.
-            </p>
+      <PageLayout maxWidth="2xl">
+        <div className="space-y-6">
+          {/* Navy Page Header */}
+          <div className="bg-brand-navy rounded-xl px-6 py-5">
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 bg-white/10 rounded-lg flex items-center justify-center">
+                <LayoutDashboard className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-white">Welcome to Your Dashboard</h1>
+                <p className="text-sm text-white/70 mt-0.5">Complete these steps to set up your business intelligence and unlock your personalized dashboard.</p>
+              </div>
+            </div>
           </div>
 
           {/* Onboarding Checklist */}
@@ -189,32 +196,30 @@ export default function DashboardPage() {
           />
 
           {/* Coach Messages - always show so they can communicate */}
-          <div className="mt-8">
-            <CoachMessagesCard
-              onOpenChat={() => setIsChatOpen(true)}
-              unreadCount={unreadCount}
-              lastMessagePreview={lastMessage?.preview}
-              lastMessageTime={lastMessage?.time}
-              hasCoach={!!coachId}
-            />
-          </div>
-
-          {/* Chat Drawer */}
-          <ChatDrawer
-            isOpen={isChatOpen}
-            onClose={handleChatClose}
-            businessId={messagesBusinessId}
-            userId={userId}
-            coachId={coachId}
+          <CoachMessagesCard
+            onOpenChat={() => setIsChatOpen(true)}
+            unreadCount={unreadCount}
+            lastMessagePreview={lastMessage?.preview}
+            lastMessageTime={lastMessage?.time}
+            hasCoach={!!coachId}
           />
         </div>
-      </div>
+
+        {/* Chat Drawer */}
+        <ChatDrawer
+          isOpen={isChatOpen}
+          onClose={handleChatClose}
+          businessId={messagesBusinessId}
+          userId={userId}
+          coachId={coachId}
+        />
+      </PageLayout>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-[1600px] mx-auto p-6 space-y-6">
+    <PageLayout maxWidth="7xl">
+      <div className="space-y-6">
         {/* Smart Insight Header */}
         <InsightHeader
           insight={data.insight}
@@ -225,7 +230,7 @@ export default function DashboardPage() {
         <SessionActionsCard userId={userId} />
 
         {/* Top Row: Annual Goals, 90-Day Goals, Quarterly Rocks */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <PageGrid columns={3} gap="md">
           <GoalsCard
             title="Annual Goals"
             goals={data.annualGoals}
@@ -258,10 +263,10 @@ export default function DashboardPage() {
             quarterDaysRemaining={data.quarterDaysRemaining}
             isShowingPlanningQuarter={data.isShowingPlanningQuarter}
           />
-        </div>
+        </PageGrid>
 
         {/* Second Row: Weekly Priorities, Coach Messages */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <PageGrid columns={2} gap="md">
           <WeeklyPrioritiesCard weeklyGoals={data.weeklyGoals} />
           <CoachMessagesCard
             onOpenChat={() => setIsChatOpen(true)}
@@ -270,7 +275,7 @@ export default function DashboardPage() {
             lastMessageTime={lastMessage?.time}
             hasCoach={!!coachId}
           />
-        </div>
+        </PageGrid>
 
         {/* Suggested Actions */}
         <SuggestedActions actions={data.suggestedActions} />
@@ -284,6 +289,6 @@ export default function DashboardPage() {
           coachId={coachId}
         />
       </div>
-    </div>
+    </PageLayout>
   )
 }

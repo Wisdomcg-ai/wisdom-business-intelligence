@@ -12,21 +12,21 @@ export default function WeeklyPrioritiesCard({ weeklyGoals }: WeeklyPrioritiesCa
   const totalCount = weeklyGoals.length
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-xl shadow-sm border-l-4 border-l-brand-navy border border-gray-200 overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-100">
+      <div className="px-5 py-4 border-b border-gray-100 bg-brand-navy/5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-teal-100 rounded-lg flex items-center justify-center">
-              <Calendar className="h-4 w-4 text-teal-600" />
+            <div className="w-9 h-9 bg-brand-navy/10 rounded-lg flex items-center justify-center">
+              <Calendar className="h-4 w-4 text-brand-navy" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">This Week's Focus</h3>
+              <h3 className="font-semibold text-brand-navy">This Week's Focus</h3>
               <p className="text-xs text-gray-500">Your top priorities</p>
             </div>
           </div>
           {totalCount > 0 && (
-            <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded">
+            <span className="text-xs font-medium text-brand-navy bg-brand-navy/10 px-2 py-1 rounded">
               {completedCount}/{totalCount} done
             </span>
           )}
@@ -44,7 +44,7 @@ export default function WeeklyPrioritiesCard({ weeklyGoals }: WeeklyPrioritiesCa
               >
                 <div className="mt-0.5 flex-shrink-0">
                   <Circle className="h-5 w-5 text-gray-300 group-hover:hidden" />
-                  <CheckCircle2 className="h-5 w-5 text-teal-500 hidden group-hover:block" />
+                  <CheckCircle2 className="h-5 w-5 text-green-500 hidden group-hover:block" />
                 </div>
                 <span className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors flex-1">
                   {goal}
@@ -54,21 +54,21 @@ export default function WeeklyPrioritiesCard({ weeklyGoals }: WeeklyPrioritiesCa
 
             <Link
               href="/reviews/weekly"
-              className="flex items-center justify-center gap-1 text-sm font-medium text-teal-600 hover:text-teal-700 pt-3 mt-2 border-t border-gray-100"
+              className="flex items-center justify-center gap-1 text-sm font-medium text-brand-navy hover:text-brand-navy-700 pt-3 mt-2 border-t border-gray-100"
             >
               Weekly review <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         ) : (
           <div className="text-center py-6">
-            <div className="w-12 h-12 mx-auto mb-3 bg-gray-100 rounded-lg flex items-center justify-center">
-              <Calendar className="h-6 w-6 text-gray-400" />
+            <div className="w-12 h-12 mx-auto mb-3 bg-brand-navy/10 rounded-lg flex items-center justify-center">
+              <Calendar className="h-6 w-6 text-brand-navy/50" />
             </div>
-            <p className="text-gray-600 font-medium mb-1">No weekly priorities set</p>
-            <p className="text-sm text-gray-400 mb-4">Complete a weekly review to set your focus</p>
+            <p className="text-gray-700 font-medium mb-1">No weekly priorities set</p>
+            <p className="text-sm text-gray-500 mb-4">Complete a weekly review to set your focus</p>
             <Link
               href="/reviews/weekly"
-              className="inline-flex items-center px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors"
+              className="inline-flex items-center px-4 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
             >
               Start Weekly Review
             </Link>

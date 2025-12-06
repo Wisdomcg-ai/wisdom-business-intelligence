@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { RefreshCw, AlertTriangle, Target, Calendar, PartyPopper } from 'lucide-react'
+import { RefreshCw, AlertTriangle, Target, Calendar, PartyPopper, LayoutDashboard } from 'lucide-react'
 import type { DashboardInsight } from '../types'
 
 interface InsightHeaderProps {
@@ -28,24 +28,27 @@ function getInsightStyle(priority: DashboardInsight['priority']) {
   switch (priority) {
     case 'high':
       return {
-        bg: 'bg-amber-50',
-        border: 'border-amber-200',
-        iconBg: 'bg-amber-100',
-        iconColor: 'text-amber-600'
+        bg: 'bg-brand-orange/10',
+        border: 'border-brand-orange/30',
+        iconBg: 'bg-brand-orange/20',
+        iconColor: 'text-brand-orange',
+        textColor: 'text-brand-orange-700'
       }
     case 'medium':
       return {
-        bg: 'bg-gray-50',
-        border: 'border-gray-200',
-        iconBg: 'bg-gray-100',
-        iconColor: 'text-gray-600'
+        bg: 'bg-brand-navy/5',
+        border: 'border-brand-navy/20',
+        iconBg: 'bg-brand-navy/10',
+        iconColor: 'text-brand-navy',
+        textColor: 'text-brand-navy'
       }
     case 'low':
       return {
-        bg: 'bg-teal-50',
-        border: 'border-teal-200',
-        iconBg: 'bg-teal-100',
-        iconColor: 'text-teal-600'
+        bg: 'bg-brand-orange/10',
+        border: 'border-brand-orange/30',
+        iconBg: 'bg-brand-orange/20',
+        iconColor: 'text-brand-orange',
+        textColor: 'text-brand-orange-700'
       }
   }
 }
@@ -63,15 +66,39 @@ export default function InsightHeader({ insight, onRefresh }: InsightHeaderProps
   const style = getInsightStyle(activeInsight.priority)
 
   return (
-    <div className={`${style.bg} rounded-lg border ${style.border} p-5`}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-4 flex-1">
+    <div className="space-y-4">
+      {/* Navy Page Header */}
+      <div className="bg-brand-navy rounded-xl px-6 py-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-11 h-11 bg-white/10 rounded-lg flex items-center justify-center">
+              <LayoutDashboard className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-white">Dashboard</h1>
+              <p className="text-sm text-white/70 mt-0.5">Your business at a glance</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+            title="Refresh"
+          >
+            <RefreshCw className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Smart Insight Card */}
+      <div className={`${style.bg} rounded-xl border ${style.border} p-5`}>
+        <div className="flex items-start gap-4">
           <div className={`w-10 h-10 ${style.iconBg} rounded-lg flex items-center justify-center flex-shrink-0`}>
             <Icon className={`h-5 w-5 ${style.iconColor}`} />
           </div>
 
           <div className="flex-1 min-w-0">
-            <h2 className="font-semibold text-gray-900 mb-1">
+            <h2 className={`font-semibold ${style.textColor} mb-1`}>
               {activeInsight.title}
             </h2>
             <p className="text-sm text-gray-600">
@@ -81,22 +108,13 @@ export default function InsightHeader({ insight, onRefresh }: InsightHeaderProps
             {activeInsight.actionLabel && activeInsight.actionHref && (
               <Link
                 href={activeInsight.actionHref}
-                className="inline-flex items-center mt-3 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors"
+                className="inline-flex items-center mt-3 px-4 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
               >
                 {activeInsight.actionLabel}
               </Link>
             )}
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={onRefresh}
-          className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-white transition-colors flex-shrink-0"
-          title="Refresh"
-        >
-          <RefreshCw className="h-5 w-5" />
-        </button>
       </div>
     </div>
   )

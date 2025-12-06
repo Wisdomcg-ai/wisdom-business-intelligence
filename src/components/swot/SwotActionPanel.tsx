@@ -142,7 +142,7 @@ export function SwotActionPanel({ swotAnalysisId, swotItems }: SwotActionPanelPr
   const getPriorityColor = (priority: Priority) => {
     switch (priority) {
       case 'critical': return 'text-red-700 bg-red-100';
-      case 'high': return 'text-orange-700 bg-orange-100';
+      case 'high': return 'text-brand-orange-700 bg-brand-orange-100';
       case 'medium': return 'text-yellow-700 bg-yellow-100';
       case 'low': return 'text-green-700 bg-green-100';
       default: return 'text-gray-700 bg-gray-100';
@@ -153,10 +153,10 @@ export function SwotActionPanel({ swotAnalysisId, swotItems }: SwotActionPanelPr
   const getStatusColor = (status: SwotActionItem['status']) => {
     switch (status) {
       case 'completed': return 'text-green-700 bg-green-100';
-      case 'in-progress': return 'text-teal-700 bg-teal-100';
+      case 'in-progress': return 'text-brand-orange-700 bg-brand-orange-100';
       case 'pending': return 'text-yellow-700 bg-yellow-100';
       case 'cancelled': return 'text-gray-700 bg-gray-100';
-      case 'deferred': return 'text-purple-700 bg-purple-100';
+      case 'deferred': return 'text-brand-navy-700 bg-brand-navy-100';
       default: return 'text-gray-700 bg-gray-100';
     }
   };
@@ -173,7 +173,7 @@ export function SwotActionPanel({ swotAnalysisId, swotItems }: SwotActionPanelPr
           <h3 className="text-lg font-semibold text-gray-900">Action Items</h3>
           <button
             onClick={() => setIsCreating(!isCreating)}
-            className="p-1.5 bg-teal-600 text-white rounded-md hover:bg-teal-700"
+            className="p-1.5 bg-brand-orange text-white rounded-md hover:bg-brand-orange-600"
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -185,7 +185,7 @@ export function SwotActionPanel({ swotAnalysisId, swotItems }: SwotActionPanelPr
             <Clock className="h-3 w-3 mr-1" />
             {pendingActions} Pending
           </span>
-          <span className="flex items-center text-teal-600">
+          <span className="flex items-center text-brand-orange">
             <AlertCircle className="h-3 w-3 mr-1" />
             {inProgressActions} In Progress
           </span>
@@ -198,7 +198,7 @@ export function SwotActionPanel({ swotAnalysisId, swotItems }: SwotActionPanelPr
       
       {/* Create Form */}
       {isCreating && (
-        <div className="px-6 py-4 border-b border-gray-200 bg-teal-50">
+        <div className="px-6 py-4 border-b border-gray-200 bg-brand-orange-50">
           {/* SWOT Item Selection */}
           <div className="mb-3">
             <label className="text-xs font-medium text-gray-700">Related SWOT Item</label>
@@ -211,7 +211,7 @@ export function SwotActionPanel({ swotAnalysisId, swotItems }: SwotActionPanelPr
                   setActionType(getDefaultActionType(item.category));
                 }
               }}
-              className="w-full mt-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full mt-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
             >
               <option value="">Select a SWOT item...</option>
               {swotItems.map(item => (
@@ -228,7 +228,7 @@ export function SwotActionPanel({ swotAnalysisId, swotItems }: SwotActionPanelPr
             placeholder="Action title..."
             value={actionTitle}
             onChange={(e) => setActionTitle(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 mb-2"
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange mb-2"
           />
           
           {/* Action Description */}
@@ -236,7 +236,7 @@ export function SwotActionPanel({ swotAnalysisId, swotItems }: SwotActionPanelPr
             placeholder="Description (optional)..."
             value={actionDescription}
             onChange={(e) => setActionDescription(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 mb-2 resize-none"
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange mb-2 resize-none"
             rows={2}
           />
           
@@ -247,7 +247,7 @@ export function SwotActionPanel({ swotAnalysisId, swotItems }: SwotActionPanelPr
               <select
                 value={actionType}
                 onChange={(e) => setActionType(e.target.value as ActionType)}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-orange"
               >
                 <option value="leverage">Leverage</option>
                 <option value="improve">Improve</option>
@@ -261,7 +261,7 @@ export function SwotActionPanel({ swotAnalysisId, swotItems }: SwotActionPanelPr
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as Priority)}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-orange"
               >
                 <option value="critical">Critical</option>
                 <option value="high">High</option>
@@ -278,13 +278,13 @@ export function SwotActionPanel({ swotAnalysisId, swotItems }: SwotActionPanelPr
               placeholder="Assigned to..."
               value={assignedTo}
               onChange={(e) => setAssignedTo(e.target.value)}
-              className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-orange"
             />
             <input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-orange"
             />
           </div>
           
@@ -306,7 +306,7 @@ export function SwotActionPanel({ swotAnalysisId, swotItems }: SwotActionPanelPr
               disabled={!actionTitle.trim() || !selectedItem}
               className={`px-3 py-1.5 text-sm text-white rounded-md ${
                 actionTitle.trim() && selectedItem
-                  ? 'bg-teal-600 hover:bg-teal-700'
+                  ? 'bg-brand-orange hover:bg-brand-orange-600'
                   : 'bg-gray-400 cursor-not-allowed'
               }`}
             >
@@ -378,7 +378,7 @@ export function SwotActionPanel({ swotAnalysisId, swotItems }: SwotActionPanelPr
                     <select
                       value={action.status}
                       onChange={(e) => handleUpdateStatus(action.id, e.target.value as SwotActionItem['status'])}
-                      className="ml-2 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      className="ml-2 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-orange"
                     >
                       <option value="pending">Pending</option>
                       <option value="in-progress">In Progress</option>

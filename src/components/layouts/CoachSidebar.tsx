@@ -70,7 +70,7 @@ export function CoachSidebar({ clients = [], userName = 'Coach', onLogout }: Coa
       {/* Logo/Brand */}
       <div className="p-5 border-b border-slate-700">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-brand-orange rounded-xl flex items-center justify-center">
             <span className="text-lg font-bold">W</span>
           </div>
           <div>
@@ -92,7 +92,7 @@ export function CoachSidebar({ clients = [], userName = 'Coach', onLogout }: Coa
                 href={item.href}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${
                   active
-                    ? 'bg-indigo-600 text-white'
+                    ? 'bg-brand-orange text-white'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                 }`}
               >
@@ -152,14 +152,14 @@ export function CoachSidebar({ clients = [], userName = 'Coach', onLogout }: Coa
               {clients.length > 8 && (
                 <Link
                   href="/coach/clients"
-                  className="flex items-center gap-3 px-3 py-2 text-sm text-indigo-400 hover:text-indigo-300"
+                  className="flex items-center gap-3 px-3 py-2 text-sm text-brand-orange-400 hover:text-brand-orange-300"
                 >
                   View all {clients.length} clients
                 </Link>
               )}
 
               {clients.length === 0 && (
-                <p className="px-3 py-2 text-sm text-slate-500">No clients yet</p>
+                <p className="px-3 py-2 text-sm text-gray-500">No clients yet</p>
               )}
             </div>
           )}
@@ -172,7 +172,7 @@ export function CoachSidebar({ clients = [], userName = 'Coach', onLogout }: Coa
           href="/coach/settings"
           className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
             pathname === '/coach/settings'
-              ? 'bg-indigo-600 text-white'
+              ? 'bg-brand-orange text-white'
               : 'text-slate-300 hover:bg-slate-800 hover:text-white'
           }`}
         >
@@ -192,7 +192,7 @@ export function CoachSidebar({ clients = [], userName = 'Coach', onLogout }: Coa
       {/* User Info */}
       <div className="p-4 border-t border-slate-700 bg-slate-800/50">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-indigo-600 rounded-full flex items-center justify-center">
+          <div className="w-9 h-9 bg-brand-orange rounded-full flex items-center justify-center">
             <span className="text-sm font-semibold">{userName.charAt(0).toUpperCase()}</span>
           </div>
           <div className="flex-1 min-w-0">

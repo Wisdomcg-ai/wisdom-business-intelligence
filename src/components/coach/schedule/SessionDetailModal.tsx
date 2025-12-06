@@ -116,14 +116,14 @@ export function SessionDetailModal({
                   ? 'bg-green-100'
                   : session.status === 'cancelled'
                     ? 'bg-gray-100'
-                    : 'bg-indigo-100'
+                    : 'bg-brand-orange-100'
               }`}>
                 <TypeIcon className={`w-5 h-5 ${
                   session.status === 'completed'
                     ? 'text-green-600'
                     : session.status === 'cancelled'
                       ? 'text-gray-500'
-                      : 'text-indigo-600'
+                      : 'text-brand-orange'
                 }`} />
               </div>
               <div>
@@ -133,7 +133,7 @@ export function SessionDetailModal({
                     ? 'text-green-600'
                     : session.status === 'cancelled'
                       ? 'text-gray-500'
-                      : 'text-indigo-600'
+                      : 'text-brand-orange'
                 }`}>
                   {session.status === 'completed' && 'Completed'}
                   {session.status === 'cancelled' && 'Cancelled'}
@@ -157,7 +157,7 @@ export function SessionDetailModal({
               className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
             >
               <div className="w-12 h-12 bg-slate-200 rounded-xl flex items-center justify-center">
-                <Building2 className="w-6 h-6 text-slate-600" />
+                <Building2 className="w-6 h-6 text-gray-600" />
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-gray-900">{session.businessName}</h3>
@@ -291,7 +291,7 @@ export function SessionDetailModal({
                   </button>
                   <button
                     onClick={() => onReschedule?.(session.id)}
-                    className="p-2 text-gray-400 hover:text-indigo-600 rounded-lg transition-colors"
+                    className="p-2 text-gray-400 hover:text-brand-orange rounded-lg transition-colors"
                     title="Reschedule"
                   >
                     <Edit2 className="w-5 h-5" />
@@ -308,7 +308,7 @@ export function SessionDetailModal({
                   ) : (
                     <button
                       onClick={() => onStartSession?.(session.id)}
-                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                      className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
                     >
                       <Play className="w-4 h-4" />
                       Start Session
@@ -329,7 +329,7 @@ export function SessionDetailModal({
                 </span>
                 <Link
                   href={`/coach/clients/${session.businessId}?tab=sessions`}
-                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                  className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
                 >
                   View All Sessions
                 </Link>

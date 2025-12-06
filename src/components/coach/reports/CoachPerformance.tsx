@@ -41,7 +41,7 @@ export function CoachPerformance({ data, period = 'month' }: CoachPerformancePro
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900">Coach Performance</h2>
-        <select className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <select className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange">
           <option value="month">This Month</option>
           <option value="quarter">This Quarter</option>
           <option value="year">This Year</option>
@@ -58,16 +58,16 @@ export function CoachPerformance({ data, period = 'month' }: CoachPerformancePro
             label: 'vs last month'
           }}
           icon={Calendar}
-          iconColor="text-indigo-600"
-          iconBgColor="bg-indigo-100"
+          iconColor="text-brand-orange"
+          iconBgColor="bg-brand-orange-100"
         />
         <MetricCard
           title="Active Clients"
           value={data.activeClients}
           subtitle={`of ${data.totalClients} total`}
           icon={Users}
-          iconColor="text-blue-600"
-          iconBgColor="bg-blue-100"
+          iconColor="text-brand-orange"
+          iconBgColor="bg-brand-orange-100"
         />
         <MetricCard
           title="Client Retention"
@@ -86,8 +86,8 @@ export function CoachPerformance({ data, period = 'month' }: CoachPerformancePro
           value={`${data.responseTime}h`}
           subtitle="to client messages"
           icon={MessageSquare}
-          iconColor="text-purple-600"
-          iconBgColor="bg-purple-100"
+          iconColor="text-brand-navy"
+          iconBgColor="bg-brand-navy-50"
         />
       </div>
 
@@ -96,8 +96,8 @@ export function CoachPerformance({ data, period = 'month' }: CoachPerformancePro
         <h3 className="font-semibold text-gray-900 mb-4">Activity Summary</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
-              <Clock className="w-5 h-5 text-amber-600" />
+            <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+              <Clock className="w-5 h-5 text-brand-orange" />
             </div>
             <div>
               <p className="text-xl font-bold text-gray-900">{data.avgSessionDuration}m</p>
@@ -105,8 +105,8 @@ export function CoachPerformance({ data, period = 'month' }: CoachPerformancePro
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <Target className="w-5 h-5 text-green-600" />
+            <div className="w-10 h-10 bg-brand-teal-100 rounded-lg flex items-center justify-center">
+              <Target className="w-5 h-5 text-brand-teal" />
             </div>
             <div>
               <p className="text-xl font-bold text-gray-900">{data.goalsCompleted}</p>
@@ -114,8 +114,8 @@ export function CoachPerformance({ data, period = 'month' }: CoachPerformancePro
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-indigo-600" />
+            <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-brand-orange" />
             </div>
             <div>
               <p className="text-xl font-bold text-gray-900">{data.actionsCompleted}</p>
@@ -123,8 +123,8 @@ export function CoachPerformance({ data, period = 'month' }: CoachPerformancePro
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <MessageSquare className="w-5 h-5 text-blue-600" />
+            <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+              <MessageSquare className="w-5 h-5 text-brand-orange" />
             </div>
             <div>
               <p className="text-xl font-bold text-gray-900">{data.messagesThisWeek}</p>

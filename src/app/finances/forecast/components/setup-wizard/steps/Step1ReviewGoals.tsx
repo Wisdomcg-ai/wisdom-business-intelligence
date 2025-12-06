@@ -52,14 +52,14 @@ export default function Step1ReviewGoals({
   return (
     <div className="space-y-6">
       {/* Teaching Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-5 text-white">
+      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-5 text-white">
         <div className="flex items-start gap-4">
           <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
             <Target className="w-5 h-5 text-white" />
           </div>
           <div>
             <h3 className="font-bold text-lg mb-1">Step 1: Confirm Your Financial Goals</h3>
-            <p className="text-teal-100 text-sm">
+            <p className="text-brand-orange-100 text-sm">
               Your forecast starts with the goals you set in your business plan. Let's make sure
               we're building towards the right targets.
             </p>
@@ -91,7 +91,7 @@ export default function Step1ReviewGoals({
               <CheckCircle className="w-5 h-5 text-green-600" />
               <span className="text-sm font-medium text-gray-700">
                 Goals imported from{' '}
-                <span className="text-teal-600">Goals & Targets Wizard</span>
+                <span className="text-brand-orange">Goals & Targets Wizard</span>
               </span>
               {data.goalsLastUpdated && (
                 <span className="text-xs text-gray-500">
@@ -102,7 +102,7 @@ export default function Step1ReviewGoals({
             <button
               onClick={onImportFromGoalsWizard}
               disabled={isImporting}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm text-teal-600 hover:bg-teal-50 rounded-lg transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${isImporting ? 'animate-spin' : ''}`} />
               Refresh
@@ -112,10 +112,10 @@ export default function Step1ReviewGoals({
           {/* Goals Cards */}
           <div className="grid grid-cols-3 gap-4">
             {/* Revenue Goal */}
-            <div className="bg-white border-2 border-teal-200 rounded-xl p-5">
+            <div className="bg-white border-2 border-brand-orange-200 rounded-xl p-5">
               <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center">
-                  <DollarSign className="w-4 h-4 text-teal-600" />
+                <div className="w-8 h-8 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+                  <DollarSign className="w-4 h-4 text-brand-orange" />
                 </div>
                 <span className="text-sm font-medium text-gray-600">Revenue Goal</span>
               </div>
@@ -147,8 +147,8 @@ export default function Step1ReviewGoals({
             {/* Net Profit Goal */}
             <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center">
-                  <Target className="w-4 h-4 text-teal-600" />
+                <div className="w-8 h-8 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+                  <Target className="w-4 h-4 text-brand-orange" />
                 </div>
                 <span className="text-sm font-medium text-gray-600">Net Profit Goal</span>
               </div>
@@ -156,8 +156,8 @@ export default function Step1ReviewGoals({
                 {formatCurrency(data.netProfitGoal)}
               </div>
               <div className="flex items-center gap-1 text-xs">
-                <Percent className="w-3 h-3 text-teal-600" />
-                <span className="text-teal-600 font-medium">{netMargin}% margin</span>
+                <Percent className="w-3 h-3 text-brand-orange" />
+                <span className="text-brand-orange font-medium">{netMargin}% margin</span>
               </div>
             </div>
           </div>
@@ -165,26 +165,26 @@ export default function Step1ReviewGoals({
           {/* What This Means */}
           <div className="bg-gray-50 rounded-lg p-4">
             <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-              <ArrowRight className="w-4 h-4 text-teal-600" />
+              <ArrowRight className="w-4 h-4 text-brand-orange" />
               What This Means for Your Forecast
             </h4>
             <ul className="space-y-2 text-sm text-gray-700">
               <li className="flex items-start gap-2">
-                <span className="text-teal-600 font-bold">•</span>
+                <span className="text-brand-orange font-bold">•</span>
                 <span>
                   You need to generate <strong>{formatCurrency(data.revenueGoal / 12)}/month</strong> in revenue
                   (if evenly distributed)
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-teal-600 font-bold">•</span>
+                <span className="text-brand-orange font-bold">•</span>
                 <span>
                   Your cost of sales budget is <strong>{formatCurrency(data.revenueGoal - data.grossProfitGoal)}</strong> for the year
                   ({(100 - parseFloat(grossMargin)).toFixed(1)}% of revenue)
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-teal-600 font-bold">•</span>
+                <span className="text-brand-orange font-bold">•</span>
                 <span>
                   You can spend up to <strong>{formatCurrency(data.grossProfitGoal - data.netProfitGoal)}</strong> on
                   operating expenses to hit your profit target
@@ -224,14 +224,14 @@ export default function Step1ReviewGoals({
             <button
               onClick={onImportFromGoalsWizard}
               disabled={isImporting}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${isImporting ? 'animate-spin' : ''}`} />
               Import from Goals Wizard
             </button>
             <a
               href="/goals"
-              className="flex items-center gap-2 px-4 py-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
             >
               <ExternalLink className="w-4 h-4" />
               Go to Goals Wizard

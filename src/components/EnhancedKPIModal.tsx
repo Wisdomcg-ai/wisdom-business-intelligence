@@ -1019,12 +1019,12 @@ const categoryIcons: Record<BusinessFunction, JSX.Element> = {
 }
 
 const categoryColors: Record<BusinessFunction, string> = {
-  ATTRACT: 'bg-purple-100 text-purple-800 border-purple-200',
-  CONVERT: 'bg-teal-100 text-teal-800 border-teal-200',
+  ATTRACT: 'bg-brand-navy/10 text-brand-navy border-brand-navy/20',
+  CONVERT: 'bg-brand-orange-100 text-brand-orange-800 border-brand-orange-200',
   DELIVER: 'bg-green-100 text-green-800 border-green-200',
-  DELIGHT: 'bg-pink-100 text-pink-800 border-pink-200',
-  PEOPLE: 'bg-orange-100 text-orange-800 border-orange-200',
-  PROFIT: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  DELIGHT: 'bg-brand-orange-50 text-brand-orange-700 border-brand-orange-100',
+  PEOPLE: 'bg-brand-orange/10 text-brand-orange-700 border-brand-orange/20',
+  PROFIT: 'bg-brand-orange-100 text-brand-orange-800 border-brand-orange-200',
   SYSTEMS: 'bg-gray-100 text-gray-800 border-gray-200'
 }
 
@@ -1156,7 +1156,7 @@ export default function EnhancedKPIModal({ isOpen, onClose, onSave, businessProf
               onClick={() => setSelectionMode('quick')}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                 selectionMode === 'quick'
-                  ? 'bg-teal-600 text-white'
+                  ? 'bg-brand-orange text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -1167,7 +1167,7 @@ export default function EnhancedKPIModal({ isOpen, onClose, onSave, businessProf
               onClick={() => setSelectionMode('guided')}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                 selectionMode === 'guided'
-                  ? 'bg-teal-600 text-white'
+                  ? 'bg-brand-orange text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -1178,7 +1178,7 @@ export default function EnhancedKPIModal({ isOpen, onClose, onSave, businessProf
               onClick={() => setSelectionMode('power')}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                 selectionMode === 'power'
-                  ? 'bg-teal-600 text-white'
+                  ? 'bg-brand-orange text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -1199,7 +1199,7 @@ export default function EnhancedKPIModal({ isOpen, onClose, onSave, businessProf
                   onClick={() => setSelectedCategory(null)}
                   className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
                     !selectedCategory
-                      ? 'bg-teal-100 text-teal-800'
+                      ? 'bg-brand-orange-100 text-brand-orange-800'
                       : 'hover:bg-gray-100 text-gray-700'
                   }`}
                 >
@@ -1211,7 +1211,7 @@ export default function EnhancedKPIModal({ isOpen, onClose, onSave, businessProf
                     onClick={() => setSelectedCategory(category as BusinessFunction)}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${
                       selectedCategory === category
-                        ? 'bg-teal-100 text-teal-800'
+                        ? 'bg-brand-orange-100 text-brand-orange-800'
                         : 'hover:bg-gray-100 text-gray-700'
                     }`}
                   >
@@ -1238,7 +1238,7 @@ export default function EnhancedKPIModal({ isOpen, onClose, onSave, businessProf
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Search KPIs..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   />
                 </div>
               </div>
@@ -1256,7 +1256,7 @@ export default function EnhancedKPIModal({ isOpen, onClose, onSave, businessProf
                   </p>
                   <button
                     onClick={selectQuickStart}
-                    className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+                    className="px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600"
                   >
                     Select All 5 Essential KPIs
                   </button>
@@ -1329,7 +1329,7 @@ export default function EnhancedKPIModal({ isOpen, onClose, onSave, businessProf
               disabled={selectedKPIs.size === 0}
               className={`px-6 py-2 rounded-lg font-medium transition-colors ${
                 selectedKPIs.size > 0
-                  ? 'bg-teal-600 text-white hover:bg-teal-700'
+                  ? 'bg-brand-orange text-white hover:bg-brand-orange-600'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
             >
@@ -1358,7 +1358,7 @@ function KPICard({
 }) {
   return (
     <div className={`border rounded-lg p-4 transition-all ${
-      isSelected ? 'border-teal-500 bg-teal-50' : 'border-gray-200 bg-white hover:border-gray-300'
+      isSelected ? 'border-brand-orange-500 bg-brand-orange-50' : 'border-gray-200 bg-white hover:border-gray-300'
     }`}>
       <div className="flex items-start justify-between">
         <div className="flex-1">
@@ -1367,7 +1367,7 @@ function KPICard({
               type="checkbox"
               checked={isSelected}
               onChange={onToggle}
-              className="w-5 h-5 text-teal-600 rounded focus:ring-teal-500"
+              className="w-5 h-5 text-brand-orange rounded focus:ring-brand-orange"
             />
             <div className="ml-3">
               <h4 className="font-semibold text-gray-900">{kpi.name}</h4>

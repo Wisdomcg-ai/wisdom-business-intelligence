@@ -55,15 +55,15 @@ export default function Step2HourlyRate({
       </div>
 
       {/* Formula Explanation */}
-      <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+      <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-4">
         <div className="flex items-start gap-3">
-          <Calculator className="w-5 h-5 text-teal-600 flex-shrink-0 mt-0.5" />
+          <Calculator className="w-5 h-5 text-brand-orange flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-teal-900 font-medium">The Simple Formula</p>
-            <p className="text-teal-800 text-sm mt-1">
+            <p className="text-brand-navy font-medium">The Simple Formula</p>
+            <p className="text-brand-orange-800 text-sm mt-1">
               <strong>Target Income</strong> ÷ <strong>Working Weeks</strong> ÷ <strong>Hours per Week</strong> = <strong>Your Hourly Rate</strong>
             </p>
-            <p className="text-teal-700 text-sm mt-2">
+            <p className="text-brand-orange-700 text-sm mt-2">
               Tasks that can be done for less than your hourly rate should be delegated or eliminated.
             </p>
           </div>
@@ -88,7 +88,7 @@ export default function Step2HourlyRate({
               value={targetAnnualIncome ? targetAnnualIncome.toLocaleString() : ''}
               onChange={(e) => onTargetIncomeChange(parseCurrencyInput(e.target.value))}
               placeholder="e.g., 250,000"
-              className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-lg"
+              className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange text-lg"
             />
           </div>
         </div>
@@ -109,7 +109,7 @@ export default function Step2HourlyRate({
             placeholder="e.g., 48"
             min={1}
             max={52}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-lg"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange text-lg"
           />
           <div className="mt-2 flex flex-wrap gap-2">
             {[44, 46, 48, 50].map((weeks) => (
@@ -118,7 +118,7 @@ export default function Step2HourlyRate({
                 onClick={() => onWorkingWeeksChange(weeks)}
                 className={`px-3 py-1 text-sm rounded-lg transition-colors ${
                   workingWeeksPerYear === weeks
-                    ? 'bg-teal-600 text-white'
+                    ? 'bg-brand-orange text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
@@ -144,7 +144,7 @@ export default function Step2HourlyRate({
             placeholder="e.g., 40"
             min={1}
             max={80}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-lg"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange text-lg"
           />
           <div className="mt-2 flex flex-wrap gap-2">
             {[30, 35, 40, 45, 50].map((hours) => (
@@ -153,7 +153,7 @@ export default function Step2HourlyRate({
                 onClick={() => onHoursPerWeekChange(hours)}
                 className={`px-3 py-1 text-sm rounded-lg transition-colors ${
                   hoursPerWeek === hours
-                    ? 'bg-teal-600 text-white'
+                    ? 'bg-brand-orange text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
@@ -165,35 +165,35 @@ export default function Step2HourlyRate({
       </div>
 
       {/* Result */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-6 text-white">
+      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-6 text-white">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Annual Hours */}
           <div className="text-center">
-            <p className="text-teal-100 text-sm">Annual Hours</p>
+            <p className="text-brand-orange-100 text-sm">Annual Hours</p>
             <p className="text-2xl font-bold mt-1">
               {annualHours.toLocaleString()}h
             </p>
-            <p className="text-teal-200 text-xs mt-1">
+            <p className="text-brand-orange-200 text-xs mt-1">
               {workingWeeksPerYear} weeks × {hoursPerWeek}h
             </p>
           </div>
 
           {/* Target Income */}
           <div className="text-center">
-            <p className="text-teal-100 text-sm">Target Income</p>
+            <p className="text-brand-orange-100 text-sm">Target Income</p>
             <p className="text-2xl font-bold mt-1">
               {formatCurrency(targetAnnualIncome)}
             </p>
-            <p className="text-teal-200 text-xs mt-1">per year</p>
+            <p className="text-brand-orange-200 text-xs mt-1">per year</p>
           </div>
 
           {/* Hourly Rate */}
           <div className="text-center bg-white/10 rounded-lg p-4">
-            <p className="text-teal-100 text-sm">Your Hourly Rate</p>
+            <p className="text-brand-orange-100 text-sm">Your Hourly Rate</p>
             <p className="text-4xl font-bold mt-1">
               {formatCurrency(calculatedHourlyRate)}
             </p>
-            <p className="text-teal-200 text-xs mt-1">per hour</p>
+            <p className="text-brand-orange-200 text-xs mt-1">per hour</p>
           </div>
         </div>
       </div>
@@ -214,7 +214,7 @@ export default function Step2HourlyRate({
         <button
           onClick={onSave}
           disabled={isSaving || calculatedHourlyRate <= 0}
-          className="px-8 py-3 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-8 py-3 bg-brand-orange text-white rounded-lg font-medium hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSaving ? 'Saving...' : 'Save & Continue'}
         </button>

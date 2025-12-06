@@ -86,7 +86,7 @@ export default function FinancialProgressChart({ data }: FinancialProgressChartP
                 <div className="text-gray-600">
                   {formatCurrency(item.current)} / {formatCurrency(item.target)}
                 </div>
-                <div className={`font-semibold ${item.progress >= 75 ? 'text-green-600' : 'text-orange-600'}`}>
+                <div className={`font-semibold ${item.progress >= 75 ? 'text-green-600' : 'text-brand-orange-600'}`}>
                   {item.progress}%
                 </div>
               </div>

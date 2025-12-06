@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
-import { Calculator, Plus, Trash2, ChevronDown, ChevronUp, Edit2 } from 'lucide-react'
+import PageHeader from '@/components/ui/PageHeader'
+import { Calculator, Plus, Trash2, ChevronDown, ChevronUp, Edit2, Target } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import ProfitCalculator from '@/components/ProfitCalculator'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
@@ -372,28 +373,29 @@ export default function VisionTargetsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-gray-50">
         <Navigation />
         <div className="flex justify-center items-center h-[calc(100vh-64px)]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange"></div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       <Navigation />
-      
-      <div className="max-w-6xl mx-auto p-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Vision & Targets</h1>
-          <p className="mt-2 text-gray-600">Define your long-term vision and measurable goals</p>
-        </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <PageHeader
+          title="Vision & Targets"
+          subtitle="Define your long-term vision and measurable goals"
+          icon={Target}
+        />
 
         {/* 3-Year Goals */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">3-Year Goals</h2>
+        <div className="bg-white rounded-xl shadow-md p-4 sm:p-6 mb-6">
+          <h2 className="text-lg sm:text-xl font-semibold mb-4">3-Year Goals</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -406,7 +408,7 @@ export default function VisionTargetsPage() {
                   type="number"
                   value={formData.three_year_revenue || ''}
                   onChange={(e) => handleInputChange('three_year_revenue', Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   placeholder="5000000"
                 />
               </div>
@@ -420,7 +422,7 @@ export default function VisionTargetsPage() {
                 type="number"
                 value={formData.three_year_team_size || ''}
                 onChange={(e) => handleInputChange('three_year_team_size', Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 placeholder="25"
               />
             </div>
@@ -434,7 +436,7 @@ export default function VisionTargetsPage() {
                   type="number"
                   value={formData.three_year_gross_margin_percent || ''}
                   onChange={(e) => handleInputChange('three_year_gross_margin_percent', Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   placeholder="45"
                 />
                 <span className="ml-2">%</span>
@@ -450,7 +452,7 @@ export default function VisionTargetsPage() {
                   type="number"
                   value={formData.three_year_net_margin_percent || ''}
                   onChange={(e) => handleInputChange('three_year_net_margin_percent', Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   placeholder="20"
                 />
                 <span className="ml-2">%</span>
@@ -464,7 +466,7 @@ export default function VisionTargetsPage() {
               <textarea
                 value={formData.three_year_strategic_position || ''}
                 onChange={(e) => handleInputChange('three_year_strategic_position', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 rows={2}
                 placeholder="Market leader in our region, known for innovation and customer service..."
               />
@@ -477,7 +479,7 @@ export default function VisionTargetsPage() {
               <textarea
                 value={formData.three_year_capabilities || ''}
                 onChange={(e) => handleInputChange('three_year_capabilities', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 rows={2}
                 placeholder="Advanced data analytics, AI integration, international expansion capabilities..."
               />
@@ -486,15 +488,15 @@ export default function VisionTargetsPage() {
         </div>
 
         {/* 1-Year Goals */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">1-Year Goals</h2>
+        <div className="bg-white rounded-xl shadow-md p-4 sm:p-6 mb-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+            <h2 className="text-lg sm:text-xl font-semibold">1-Year Goals</h2>
             <button
               onClick={() => setShowCalculator(true)}
-              className="flex items-center px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700"
+              className="flex items-center justify-center px-4 py-2 bg-brand-orange text-white rounded-md hover:bg-brand-orange-600"
             >
               <Calculator className="h-4 w-4 mr-2" />
-              Show Profit Calculator
+              <span className="text-sm sm:text-base">Show Profit Calculator</span>
             </button>
           </div>
           
@@ -509,7 +511,7 @@ export default function VisionTargetsPage() {
                   type="number"
                   value={formData.one_year_revenue || ''}
                   onChange={(e) => handleInputChange('one_year_revenue', Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   placeholder="1500000"
                 />
               </div>
@@ -525,7 +527,7 @@ export default function VisionTargetsPage() {
                   type="number"
                   value={formData.one_year_gross_profit || ''}
                   onChange={(e) => handleInputChange('one_year_gross_profit', Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   placeholder="600000"
                 />
               </div>
@@ -540,7 +542,7 @@ export default function VisionTargetsPage() {
                   type="number"
                   value={formData.one_year_gross_margin_percent || ''}
                   onChange={(e) => handleInputChange('one_year_gross_margin_percent', Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   placeholder="40"
                 />
                 <span className="ml-2">%</span>
@@ -557,7 +559,7 @@ export default function VisionTargetsPage() {
                   type="number"
                   value={formData.one_year_net_profit || ''}
                   onChange={(e) => handleInputChange('one_year_net_profit', Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   placeholder="225000"
                 />
               </div>
@@ -572,7 +574,7 @@ export default function VisionTargetsPage() {
                   type="number"
                   value={formData.one_year_net_margin_percent || ''}
                   onChange={(e) => handleInputChange('one_year_net_margin_percent', Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   placeholder="15"
                 />
                 <span className="ml-2">%</span>
@@ -582,9 +584,9 @@ export default function VisionTargetsPage() {
         </div>
 
         {/* KPIs */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Key Performance Indicators (KPIs)</h2>
+        <div className="bg-white rounded-xl shadow-md p-4 sm:p-6 mb-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+            <h2 className="text-lg sm:text-xl font-semibold">Key Performance Indicators (KPIs)</h2>
             <button
               onClick={addCategory}
               className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
@@ -646,7 +648,7 @@ export default function VisionTargetsPage() {
                         addKPI(category)
                         if (!isExpanded) toggleCategory(category)
                       }}
-                      className="p-1 text-teal-600 hover:bg-teal-50 rounded"
+                      className="p-1 text-brand-orange hover:bg-brand-orange-50 rounded"
                     >
                       <Plus className="h-5 w-5" />
                     </button>
@@ -661,7 +663,7 @@ export default function VisionTargetsPage() {
                 {isExpanded && (
                   <div className="px-4 pb-4">
                     {category === 'People & Team' && categoryKPIs.length === 0 && (
-                      <div className="mb-3 p-3 bg-teal-50 rounded text-sm">
+                      <div className="mb-3 p-3 sm:p-4 bg-brand-orange-50 rounded text-sm">
                         <p className="font-medium mb-2">Suggested People Metrics:</p>
                         <div className="flex flex-wrap gap-2">
                           {PEOPLE_METRICS.map(metric => (
@@ -681,7 +683,7 @@ export default function VisionTargetsPage() {
                                   kpis: [...(prev.kpis || []), newKPI]
                                 }))
                               }}
-                              className="px-2 py-1 bg-white border border-teal-300 rounded text-xs hover:bg-teal-100"
+                              className="px-2 py-1 bg-white border border-brand-orange-300 rounded text-xs hover:bg-brand-orange-100"
                             >
                               + {metric}
                             </button>
@@ -694,7 +696,7 @@ export default function VisionTargetsPage() {
                       <p className="text-gray-500 text-sm">No KPIs yet. Click + to add one.</p>
                     ) : (
                       <div className="space-y-3">
-                        <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-600 mb-2">
+                        <div className="hidden sm:grid grid-cols-12 gap-2 text-xs font-medium text-gray-600 mb-2">
                           <div className="col-span-4">KPI Name</div>
                           <div className="col-span-2">Frequency</div>
                           <div className="col-span-2">Current</div>
@@ -702,45 +704,59 @@ export default function VisionTargetsPage() {
                           <div className="col-span-1"></div>
                         </div>
                         {categoryKPIs.map(kpi => (
-                          <div key={kpi.id} className="grid grid-cols-12 gap-2 items-center">
-                            <input
-                              type="text"
-                              value={kpi.name}
-                              onChange={(e) => updateKPI(kpi.id, 'name', e.target.value)}
-                              className="col-span-4 px-2 py-1 border border-gray-300 rounded text-sm"
-                              placeholder="KPI Name"
-                            />
-                            <select
-                              value={kpi.frequency}
-                              onChange={(e) => updateKPI(kpi.id, 'frequency', e.target.value)}
-                              className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm"
-                            >
-                              {FREQUENCIES.map(freq => (
-                                <option key={freq.value} value={freq.value}>
-                                  {freq.label}
-                                </option>
-                              ))}
-                            </select>
-                            <input
-                              type="text"
-                              value={kpi.current_value}
-                              onChange={(e) => updateKPI(kpi.id, 'current_value', e.target.value)}
-                              className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm"
-                              placeholder="Current"
-                            />
-                            <input
-                              type="text"
-                              value={kpi.target_value}
-                              onChange={(e) => updateKPI(kpi.id, 'target_value', e.target.value)}
-                              className="col-span-3 px-2 py-1 border border-gray-300 rounded text-sm"
-                              placeholder="Target"
-                            />
-                            <button
-                              onClick={() => deleteKPI(kpi.id)}
-                              className="col-span-1 text-red-500 hover:text-red-700"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                          <div key={kpi.id} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-gray-50 sm:bg-transparent p-3 sm:p-0 rounded-lg sm:rounded-none">
+                            <div className="sm:col-span-4">
+                              <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">KPI Name</label>
+                              <input
+                                type="text"
+                                value={kpi.name}
+                                onChange={(e) => updateKPI(kpi.id, 'name', e.target.value)}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                placeholder="KPI Name"
+                              />
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Frequency</label>
+                              <select
+                                value={kpi.frequency}
+                                onChange={(e) => updateKPI(kpi.id, 'frequency', e.target.value)}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                              >
+                                {FREQUENCIES.map(freq => (
+                                  <option key={freq.value} value={freq.value}>
+                                    {freq.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Current</label>
+                              <input
+                                type="text"
+                                value={kpi.current_value}
+                                onChange={(e) => updateKPI(kpi.id, 'current_value', e.target.value)}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                placeholder="Current"
+                              />
+                            </div>
+                            <div className="sm:col-span-3">
+                              <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Target</label>
+                              <input
+                                type="text"
+                                value={kpi.target_value}
+                                onChange={(e) => updateKPI(kpi.id, 'target_value', e.target.value)}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                placeholder="Target"
+                              />
+                            </div>
+                            <div className="sm:col-span-1 flex justify-center">
+                              <button
+                                onClick={() => deleteKPI(kpi.id)}
+                                className="text-red-500 hover:text-red-700 p-2"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -753,17 +769,17 @@ export default function VisionTargetsPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-between">
+        <div className="flex flex-col sm:flex-row justify-between gap-3">
           <button
             onClick={() => router.push('/goals/forecast')}
-            className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 order-2 sm:order-1"
           >
             Next: Quarterly Forecast →
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-6 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 disabled:opacity-50"
+            className="px-6 py-2 bg-brand-orange text-white rounded-md hover:bg-brand-orange-600 disabled:opacity-50 order-1 sm:order-2"
           >
             {saving ? 'Saving...' : 'Save Vision & Targets'}
           </button>

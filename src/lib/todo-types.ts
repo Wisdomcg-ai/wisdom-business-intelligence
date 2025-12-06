@@ -84,14 +84,14 @@ export const CATEGORY_ICONS: Record<TodoCategory, string> = {
   Personal: 'User'
 };
 
-// Category colors for UI
+// Category colors for UI - Using brand colors
 export const CATEGORY_COLORS: Record<TodoCategory, string> = {
-  Operations: 'bg-purple-100 text-purple-800',
-  Finance: 'bg-green-100 text-green-800',
-  Marketing: 'bg-blue-100 text-blue-800',
-  Leadership: 'bg-orange-100 text-orange-800',
+  Operations: 'bg-brand-navy-50 text-brand-navy',
+  Finance: 'bg-brand-orange-50 text-brand-orange-700',
+  Marketing: 'bg-brand-navy-50 text-brand-navy',
+  Leadership: 'bg-brand-orange-50 text-brand-orange-700',
   Admin: 'bg-gray-100 text-gray-800',
-  Personal: 'bg-pink-100 text-pink-800'
+  Personal: 'bg-gray-100 text-gray-700'
 };
 
 // Effort size labels
@@ -101,11 +101,11 @@ export const EFFORT_LABELS: Record<TodoEffortSize, string> = {
   initiative: 'Initiative (weeks)'
 };
 
-// Effort size colors
+// Effort size colors - Using brand colors
 export const EFFORT_COLORS: Record<TodoEffortSize, string> = {
-  quick_win: 'bg-emerald-100 text-emerald-800',
-  project: 'bg-sky-100 text-sky-800',
-  initiative: 'bg-indigo-100 text-indigo-800'
+  quick_win: 'bg-brand-teal/10 text-brand-teal',
+  project: 'bg-brand-orange-50 text-brand-orange-700',
+  initiative: 'bg-brand-navy-50 text-brand-navy'
 };
 
 // Helper functions

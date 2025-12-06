@@ -149,7 +149,7 @@ export function CalendarView({
             <h2 className="text-lg font-semibold text-gray-900">{formatHeaderDate()}</h2>
             <button
               onClick={goToToday}
-              className="px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+              className="px-3 py-1.5 text-sm font-medium text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
             >
               Today
             </button>
@@ -180,7 +180,7 @@ export function CalendarView({
                   onClick={() => onViewModeChange(mode)}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     viewMode === mode
-                      ? 'bg-white shadow text-indigo-600'
+                      ? 'bg-white shadow text-brand-orange'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
@@ -281,14 +281,14 @@ function MonthView({
               className={`min-h-[100px] p-2 border rounded-lg cursor-pointer transition-colors ${
                 isCurrentMonth ? 'bg-white' : 'bg-gray-50'
               } ${
-                isToday(date) ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-gray-200'
+                isToday(date) ? 'border-brand-orange ring-1 ring-brand-orange' : 'border-gray-200'
               } ${
-                isSelected(date) ? 'bg-indigo-50' : 'hover:bg-gray-50'
+                isSelected(date) ? 'bg-brand-orange-50' : 'hover:bg-gray-50'
               }`}
             >
               <div className={`text-sm font-medium mb-1 ${
                 isCurrentMonth ? 'text-gray-900' : 'text-gray-400'
-              } ${isToday(date) ? 'text-indigo-600' : ''}`}>
+              } ${isToday(date) ? 'text-brand-orange' : ''}`}>
                 {date.getDate()}
               </div>
 
@@ -308,7 +308,7 @@ function MonthView({
                           ? 'bg-green-100 text-green-700'
                           : session.status === 'cancelled'
                             ? 'bg-gray-100 text-gray-500 line-through'
-                            : 'bg-indigo-100 text-indigo-700'
+                            : 'bg-brand-orange-100 text-brand-orange-700'
                       }`}
                     >
                       <div className="flex items-center gap-1">
@@ -359,12 +359,12 @@ function WeekView({
           {data.map((date, idx) => (
             <div
               key={idx}
-              className={`p-3 text-center ${isToday(date) ? 'bg-indigo-50' : ''}`}
+              className={`p-3 text-center ${isToday(date) ? 'bg-brand-orange-50' : ''}`}
             >
               <div className="text-sm text-gray-500">
                 {date.toLocaleDateString('en-AU', { weekday: 'short' })}
               </div>
-              <div className={`text-lg font-semibold ${isToday(date) ? 'text-indigo-600' : 'text-gray-900'}`}>
+              <div className={`text-lg font-semibold ${isToday(date) ? 'text-brand-orange' : 'text-gray-900'}`}>
                 {date.getDate()}
               </div>
             </div>
@@ -384,7 +384,7 @@ function WeekView({
                   key={idx}
                   onClick={() => onTimeSlotClick?.(date, hour)}
                   className={`p-1 min-h-[60px] border-r border-gray-100 cursor-pointer hover:bg-gray-50 ${
-                    isToday(date) ? 'bg-indigo-50/30' : ''
+                    isToday(date) ? 'bg-brand-orange-50/30' : ''
                   }`}
                 >
                   {hourSessions.map(session => {
@@ -401,7 +401,7 @@ function WeekView({
                             ? 'bg-green-100 text-green-700'
                             : session.status === 'cancelled'
                               ? 'bg-gray-100 text-gray-500'
-                              : 'bg-indigo-100 text-indigo-700'
+                              : 'bg-brand-orange-100 text-brand-orange-700'
                         }`}
                       >
                         <div className="flex items-center gap-1 font-medium">
@@ -468,13 +468,13 @@ function DayView({
                         ? 'bg-green-50 border border-green-200'
                         : session.status === 'cancelled'
                           ? 'bg-gray-50 border border-gray-200'
-                          : 'bg-indigo-50 border border-indigo-200'
+                          : 'bg-brand-orange-50 border border-brand-orange-200'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Icon className={`w-4 h-4 ${
-                          session.status === 'completed' ? 'text-green-600' : 'text-indigo-600'
+                          session.status === 'completed' ? 'text-green-600' : 'text-brand-orange'
                         }`} />
                         <span className="font-medium text-gray-900">{session.businessName}</span>
                       </div>

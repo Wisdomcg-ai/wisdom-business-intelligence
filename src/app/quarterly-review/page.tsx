@@ -16,6 +16,7 @@ import {
   Target
 } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import PageHeader from '@/components/ui/PageHeader';
 
 export default function QuarterlyReviewPage() {
   const router = useRouter();
@@ -94,33 +95,32 @@ export default function QuarterlyReviewPage() {
   if (isLoading || contextLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-[1600px] mx-auto px-6 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Quarterly Review</h1>
-        <p className="text-gray-600">
-          A guided 4-hour process to reflect, analyze, and plan for the next quarter
-        </p>
-      </div>
+      <PageHeader
+        title="Quarterly Review"
+        subtitle="A guided 4-hour process to reflect, analyze, and plan for the next quarter"
+        icon={Calendar}
+      />
 
       {/* Current Quarter Card */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 mb-8">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-teal-600 mb-2">
+      <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 text-brand-orange mb-2">
               <Calendar className="w-5 h-5" />
               <span className="font-semibold">{getQuarterLabel(quarter, year)}</span>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
               {currentQuarterReview ? 'Continue Your Review' : 'Start Your Quarterly Review'}
             </h2>
-            <p className="text-gray-600 mb-6 max-w-lg">
+            <p className="text-sm sm:text-base text-gray-600 mb-6 max-w-lg">
               {currentQuarterReview
                 ? `You're ${Math.round((currentQuarterReview.steps_completed?.length || 0) / 14 * 100)}% complete. Pick up where you left off.`
                 : 'Reflect on last quarter, analyze what worked, and set clear targets for the next 90 days.'
@@ -128,10 +128,10 @@ export default function QuarterlyReviewPage() {
             </p>
 
             {/* Review Overview */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6">
               <div className="flex items-center gap-3 text-gray-600">
-                <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-                  <Clock className="w-5 h-5 text-slate-600" />
+                <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Clock className="w-5 h-5 text-gray-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Duration</p>
@@ -139,8 +139,8 @@ export default function QuarterlyReviewPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3 text-gray-600">
-                <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-                  <CheckCircle2 className="w-5 h-5 text-slate-600" />
+                <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <CheckCircle2 className="w-5 h-5 text-gray-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Steps</p>
@@ -153,7 +153,7 @@ export default function QuarterlyReviewPage() {
             {currentQuarterReview ? (
               <button
                 onClick={() => continueReview(currentQuarterReview.id)}
-                className="inline-flex items-center gap-2 bg-teal-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-teal-700 transition-colors"
+                className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
               >
                 <PlayCircle className="w-5 h-5" />
                 Continue Review
@@ -162,7 +162,7 @@ export default function QuarterlyReviewPage() {
             ) : (
               <button
                 onClick={startNewReview}
-                className="inline-flex items-center gap-2 bg-teal-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-teal-700 transition-colors"
+                className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
               >
                 <PlayCircle className="w-5 h-5" />
                 Start {getQuarterLabel(quarter, year)} Review
@@ -173,7 +173,7 @@ export default function QuarterlyReviewPage() {
 
           {/* Progress Ring (if in progress) */}
           {currentQuarterReview && currentQuarterReview.status !== 'completed' && (
-            <div className="hidden md:block">
+            <div className="flex justify-center lg:block">
               <div className="relative w-32 h-32">
                 <svg className="w-full h-full transform -rotate-90">
                   <circle
@@ -207,7 +207,7 @@ export default function QuarterlyReviewPage() {
       </div>
 
       {/* Review Parts Overview */}
-      <div className="grid md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
         {[
           { part: 1, title: 'Reflection', icon: FileText, desc: 'Review last quarter' },
           { part: 2, title: 'Analysis', icon: BarChart3, desc: 'What worked & what didn\'t' },
@@ -216,38 +216,38 @@ export default function QuarterlyReviewPage() {
         ].map(({ part, title, icon: Icon, desc }) => (
           <div
             key={part}
-            className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow"
+            className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-5 hover:shadow-md transition-shadow"
           >
             <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center mb-3">
-              <Icon className="w-5 h-5 text-slate-600" />
+              <Icon className="w-5 h-5 text-gray-600" />
             </div>
-            <h3 className="font-semibold text-gray-900 mb-1">Part {part}: {title}</h3>
-            <p className="text-sm text-gray-500">{desc}</p>
+            <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-1">Part {part}: {title}</h3>
+            <p className="text-xs sm:text-sm text-gray-500">{desc}</p>
           </div>
         ))}
       </div>
 
       {/* Past Reviews */}
       {pastReviews.length > 0 && (
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Past Reviews</h2>
+        <div className="space-y-6">
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Past Reviews</h2>
           <div className="space-y-3">
             {pastReviews.map(review => (
               <div
                 key={review.id}
-                className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between hover:shadow-sm transition-shadow"
+                className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:shadow-md transition-shadow"
               >
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                  <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${
                     review.status === 'completed' ? 'bg-slate-100' : 'bg-gray-50'
                   }`}>
                     {review.status === 'completed' ? (
-                      <CheckCircle2 className="w-6 h-6 text-slate-600" />
+                      <CheckCircle2 className="w-6 h-6 text-gray-600" />
                     ) : (
                       <Clock className="w-6 h-6 text-gray-400" />
                     )}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h3 className="font-semibold text-gray-900">
                       {getQuarterLabel(review.quarter, review.year)}
                     </h3>
@@ -261,7 +261,7 @@ export default function QuarterlyReviewPage() {
                 </div>
                 <button
                   onClick={() => review.status === 'completed' ? viewReview(review.id) : continueReview(review.id)}
-                  className="text-teal-600 hover:text-teal-700 font-medium text-sm flex items-center gap-1"
+                  className="text-brand-orange hover:text-brand-orange-700 font-medium text-sm flex items-center gap-1 flex-shrink-0"
                 >
                   {review.status === 'completed' ? 'View Summary' : 'Continue'}
                   <ChevronRight className="w-4 h-4" />

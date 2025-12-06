@@ -86,7 +86,7 @@ export function MessageThread({
       case 'delivered':
         return <CheckCheck className="w-3.5 h-3.5 text-gray-400" />
       case 'read':
-        return <CheckCheck className="w-3.5 h-3.5 text-indigo-500" />
+        return <CheckCheck className="w-3.5 h-3.5 text-brand-orange" />
     }
   }
 
@@ -109,15 +109,15 @@ export function MessageThread({
           className="flex items-center gap-3 group"
         >
           <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
-            <Building2 className="w-5 h-5 text-slate-600" />
+            <Building2 className="w-5 h-5 text-gray-600" />
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">
+            <h3 className="font-semibold text-gray-900 group-hover:text-brand-orange transition-colors">
               {businessName}
             </h3>
             <p className="text-sm text-gray-500">View client profile</p>
           </div>
-          <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-indigo-600 transition-colors" />
+          <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-brand-orange transition-colors" />
         </Link>
       </div>
 
@@ -163,7 +163,7 @@ export function MessageThread({
                       {/* Avatar */}
                       {!isOwn && showAvatar ? (
                         <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center flex-shrink-0">
-                          <Building2 className="w-4 h-4 text-slate-600" />
+                          <Building2 className="w-4 h-4 text-gray-600" />
                         </div>
                       ) : !isOwn ? (
                         <div className="w-8" />
@@ -179,7 +179,7 @@ export function MessageThread({
                         <div
                           className={`px-4 py-2.5 rounded-2xl ${
                             isOwn
-                              ? 'bg-indigo-600 text-white rounded-br-md'
+                              ? 'bg-brand-orange text-white rounded-br-md'
                               : 'bg-white text-gray-900 rounded-bl-md shadow-sm border border-gray-100'
                           }`}
                         >
@@ -190,7 +190,7 @@ export function MessageThread({
                           {/* Attachment */}
                           {message.attachmentUrl && (
                             <div className={`${message.content ? 'mt-2 pt-2 border-t' : ''} ${
-                              isOwn ? 'border-indigo-500' : 'border-gray-200'
+                              isOwn ? 'border-brand-orange' : 'border-gray-200'
                             }`}>
                               {message.attachmentType?.startsWith('image/') ? (
                                 <a
@@ -212,7 +212,7 @@ export function MessageThread({
                                   rel="noopener noreferrer"
                                   className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
                                     isOwn
-                                      ? 'bg-indigo-500 hover:bg-indigo-400 text-white'
+                                      ? 'bg-brand-orange-500 hover:bg-brand-orange-400 text-white'
                                       : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
                                   }`}
                                 >
@@ -220,7 +220,7 @@ export function MessageThread({
                                   <div className="flex-1 min-w-0">
                                     <p className="text-sm font-medium truncate">{message.attachmentName}</p>
                                     {message.attachmentSize && (
-                                      <p className={`text-xs ${isOwn ? 'text-indigo-200' : 'text-gray-500'}`}>
+                                      <p className={`text-xs ${isOwn ? 'text-brand-orange-200' : 'text-gray-500'}`}>
                                         {formatFileSize(message.attachmentSize)}
                                       </p>
                                     )}

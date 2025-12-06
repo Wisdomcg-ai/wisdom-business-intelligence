@@ -144,14 +144,14 @@ export default function Step4OperatingCosts({
   return (
     <div className="space-y-6">
       {/* Teaching Banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-teal-700 rounded-lg p-5 text-white">
+      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-5 text-white">
         <div className="flex items-start gap-4">
           <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
             <Wallet className="w-5 h-5 text-white" />
           </div>
           <div>
             <h3 className="font-bold text-lg mb-1">Step 4: Plan Your Operating Costs</h3>
-            <p className="text-teal-100 text-sm">
+            <p className="text-brand-orange-100 text-sm">
               Operating expenses eat into your gross profit. Let's be intentional about
               each cost category and ensure you have budget for what matters.
             </p>
@@ -178,7 +178,7 @@ export default function Step4OperatingCosts({
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Calculator className="w-4 h-4 text-teal-600" />
+            <Calculator className="w-4 h-4 text-brand-orange" />
             <span className="text-xs font-medium text-gray-500 uppercase">OpEx Budget</span>
           </div>
           <div className="text-xl font-bold text-gray-900">
@@ -191,7 +191,7 @@ export default function Step4OperatingCosts({
 
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="w-4 h-4 text-blue-600" />
+            <DollarSign className="w-4 h-4 text-brand-orange" />
             <span className="text-xs font-medium text-gray-500 uppercase">Wages (OpEx)</span>
           </div>
           <div className="text-xl font-bold text-gray-900">
@@ -204,7 +204,7 @@ export default function Step4OperatingCosts({
 
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Wallet className="w-4 h-4 text-orange-600" />
+            <Wallet className="w-4 h-4 text-brand-orange-600" />
             <span className="text-xs font-medium text-gray-500 uppercase">Other OpEx</span>
           </div>
           <div className="text-xl font-bold text-gray-900">
@@ -293,7 +293,7 @@ export default function Step4OperatingCosts({
                         onChange={(e) => handleUpdateCategory(category.id, {
                           method: e.target.value as OpExMethod
                         })}
-                        className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                       >
                         {Object.entries(METHOD_LABELS).map(([value, label]) => (
                           <option key={value} value={value}>{label}</option>
@@ -328,7 +328,7 @@ export default function Step4OperatingCosts({
                                 onChange={(e) => handleUpdateCategory(category.id, {
                                   methodValue: parseFloat(e.target.value) || 0
                                 })}
-                                className="w-24 px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-teal-500"
+                                className="w-24 px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-orange"
                               />
                               <span className="text-sm text-gray-500">%</span>
                             </div>
@@ -348,7 +348,7 @@ export default function Step4OperatingCosts({
                                 onChange={(e) => handleUpdateCategory(category.id, {
                                   methodValue: parseFloat(e.target.value) || 0
                                 })}
-                                className="w-32 px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-teal-500"
+                                className="w-32 px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-orange"
                               />
                             </div>
                           </div>
@@ -367,7 +367,7 @@ export default function Step4OperatingCosts({
                                 onChange={(e) => handleUpdateCategory(category.id, {
                                   methodValue: parseFloat(e.target.value) || 0
                                 })}
-                                className="w-24 px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-teal-500"
+                                className="w-24 px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-orange"
                               />
                               <span className="text-sm text-gray-500">% of {formatCurrency(data.revenueGoal)}</span>
                             </div>
@@ -385,7 +385,7 @@ export default function Step4OperatingCosts({
                               notes: e.target.value
                             })}
                             placeholder="e.g., New office lease"
-                            className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-teal-500"
+                            className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-orange"
                           />
                         </div>
                       </div>
@@ -430,24 +430,24 @@ export default function Step4OperatingCosts({
       {/* How We'll Use This */}
       <div className="bg-gray-50 rounded-lg p-4">
         <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-          <ArrowRight className="w-4 h-4 text-teal-600" />
+          <ArrowRight className="w-4 h-4 text-brand-orange" />
           How We'll Use This Data
         </h4>
         <ul className="space-y-2 text-sm text-gray-700">
           <li className="flex items-start gap-2">
-            <span className="text-teal-600 font-bold">•</span>
+            <span className="text-brand-orange font-bold">•</span>
             <span>
               Each category will become a line in your P&L forecast
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="text-teal-600 font-bold">•</span>
+            <span className="text-brand-orange font-bold">•</span>
             <span>
               <strong>"Match Prior Year"</strong> uses seasonal patterns from FY{fiscalYear - 1}
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="text-teal-600 font-bold">•</span>
+            <span className="text-brand-orange font-bold">•</span>
             <span>
               <strong>"% of Revenue"</strong> is great for variable costs that scale with sales
             </span>

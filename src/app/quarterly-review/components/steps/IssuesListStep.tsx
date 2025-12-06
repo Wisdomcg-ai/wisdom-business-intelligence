@@ -118,7 +118,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
   const resolvedCount = issues.filter(i => isResolved(i.id)).length;
 
   const getPriorityColor = (priority: string) => {
-    return 'bg-slate-100 text-slate-700 border-slate-200';
+    return 'bg-slate-100 text-gray-700 border-slate-200';
   };
 
   if (isLoading) {
@@ -130,7 +130,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
           estimatedTime={25}
         />
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
         </div>
       </div>
     );
@@ -146,7 +146,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
       />
 
       {/* Progress */}
-      <div className="bg-slate-50 rounded-xl p-4 mb-6 flex items-center justify-between">
+      <div className="bg-gray-50 rounded-xl p-4 mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
             resolvedCount === issues.length && issues.length > 0
@@ -154,9 +154,9 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
               : 'bg-slate-100'
           }`}>
             {resolvedCount === issues.length && issues.length > 0 ? (
-              <CheckCircle2 className="w-5 h-5 text-slate-600" />
+              <CheckCircle2 className="w-5 h-5 text-gray-600" />
             ) : (
-              <AlertTriangle className="w-5 h-5 text-slate-600" />
+              <AlertTriangle className="w-5 h-5 text-gray-600" />
             )}
           </div>
           <div>
@@ -178,12 +178,12 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
             onChange={(e) => setNewIssue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addNewIssue()}
             placeholder="Add a new issue to discuss..."
-            className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent"
           />
           <button
             onClick={addNewIssue}
             disabled={!newIssue.trim()}
-            className="px-4 py-3 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700 disabled:bg-gray-200 disabled:cursor-not-allowed flex items-center gap-2"
+            className="px-4 py-3 bg-brand-orange text-white rounded-xl font-medium hover:bg-brand-orange-600 disabled:bg-gray-200 disabled:cursor-not-allowed flex items-center gap-2"
           >
             <Plus className="w-5 h-5" />
             Add
@@ -193,8 +193,8 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
 
       {/* Issues List */}
       {issues.length === 0 ? (
-        <div className="bg-slate-50 rounded-xl p-8 text-center border border-gray-200">
-          <CheckCircle2 className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+        <div className="bg-gray-50 rounded-xl p-8 text-center border border-gray-200">
+          <CheckCircle2 className="w-12 h-12 text-gray-600 mx-auto mb-3" />
           <h3 className="font-semibold text-gray-900 mb-2">No Pending Issues!</h3>
           <p className="text-gray-700">
             Great job! Add any new issues that need to be resolved above.
@@ -211,7 +211,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
               <div
                 key={issue.id}
                 className={`rounded-xl border overflow-hidden transition-all ${
-                  resolved ? 'bg-slate-50 border-slate-200' : 'bg-white border-gray-200'
+                  resolved ? 'bg-gray-50 border-slate-200' : 'bg-white border-gray-200'
                 }`}
               >
                 {/* Issue Header */}
@@ -222,9 +222,9 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-3">
                       {resolved ? (
-                        <CheckCircle2 className="w-5 h-5 text-slate-600 mt-0.5 flex-shrink-0" />
+                        <CheckCircle2 className="w-5 h-5 text-gray-600 mt-0.5 flex-shrink-0" />
                       ) : (
-                        <AlertTriangle className="w-5 h-5 text-slate-500 mt-0.5 flex-shrink-0" />
+                        <AlertTriangle className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
                       )}
                       <div>
                         <h4 className={`font-semibold ${resolved ? 'text-gray-900' : 'text-gray-900'}`}>
@@ -247,7 +247,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
                         </div>
                       </div>
                     </div>
-                    <span className={`text-xs font-medium ${isActive ? 'text-blue-600' : 'text-gray-400'}`}>
+                    <span className={`text-xs font-medium ${isActive ? 'text-brand-orange' : 'text-gray-400'}`}>
                       {isActive ? 'Collapse' : 'Expand'}
                     </span>
                   </div>
@@ -259,7 +259,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
                     {/* Solution */}
                     <div>
                       <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                        <MessageSquare className="w-4 h-4 text-blue-500" />
+                        <MessageSquare className="w-4 h-4 text-brand-orange" />
                         Solution (What's the root cause and solution?)
                       </label>
                       <textarea
@@ -267,7 +267,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
                         onChange={(e) => updateResolution(issue.id, issue.title, 'solution', e.target.value)}
                         placeholder="Describe the solution after discussing the root cause..."
                         rows={3}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
                       />
                     </div>
 
@@ -275,7 +275,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
                       {/* Owner */}
                       <div>
                         <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                          <User className="w-4 h-4 text-slate-500" />
+                          <User className="w-4 h-4 text-gray-500" />
                           Owner
                         </label>
                         <input
@@ -283,21 +283,21 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
                           value={resolution?.owner || ''}
                           onChange={(e) => updateResolution(issue.id, issue.title, 'owner', e.target.value)}
                           placeholder="Who owns this?"
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                         />
                       </div>
 
                       {/* Due Date */}
                       <div>
                         <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                          <Calendar className="w-4 h-4 text-slate-500" />
+                          <Calendar className="w-4 h-4 text-gray-500" />
                           Due Date
                         </label>
                         <input
                           type="date"
                           value={resolution?.dueDate || ''}
                           onChange={(e) => updateResolution(issue.id, issue.title, 'dueDate', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                         />
                       </div>
                     </div>
@@ -321,9 +321,9 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
       )}
 
       {/* IDS Guide */}
-      <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-gray-200">
+      <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
         <div className="flex items-start gap-3">
-          <Lightbulb className="w-5 h-5 text-slate-600 mt-0.5" />
+          <Lightbulb className="w-5 h-5 text-gray-600 mt-0.5" />
           <div>
             <h4 className="font-medium text-gray-900">IDS Framework</h4>
             <ul className="mt-2 text-sm text-gray-700 space-y-1">

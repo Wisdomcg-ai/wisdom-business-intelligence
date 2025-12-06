@@ -7,10 +7,12 @@ import { CalendarView, type CalendarSession } from '@/components/coach/schedule/
 import { SessionDetailModal } from '@/components/coach/schedule/SessionDetailModal'
 import { ScheduleSessionModal } from '@/components/coach/schedule/ScheduleSessionModal'
 import { UpcomingSessions } from '@/components/coach/schedule/UpcomingSessions'
+import PageHeader from '@/components/ui/PageHeader'
 import {
   Plus,
   Loader2,
-  Settings
+  Settings,
+  Calendar
 } from 'lucide-react'
 
 type ViewMode = 'month' | 'week' | 'day'
@@ -219,9 +221,9 @@ function ScheduleContent() {
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex items-center justify-center min-h-[400px]">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-500">Loading schedule...</p>
         </div>
       </div>
@@ -229,36 +231,36 @@ function ScheduleContent() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Schedule</h1>
-          <p className="text-gray-500 mt-1">
-            {todaysSessions.length} sessions today &middot; {thisWeekSessions.length} this week
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <Settings className="w-4 h-4" />
-            Availability
-          </button>
-          <button
-            onClick={() => {
-              setScheduleInitialDate(undefined)
-              setScheduleInitialHour(undefined)
-              setShowScheduleModal(true)
-            }}
-            className="flex items-center gap-2 px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Schedule Session
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Schedule"
+        subtitle={`${todaysSessions.length} sessions today · ${thisWeekSessions.length} this week`}
+        icon={Calendar}
+        actions={
+          <>
+            <button className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+              <Settings className="w-4 h-4" />
+              <span className="hidden sm:inline">Availability</span>
+            </button>
+            <button
+              onClick={() => {
+                setScheduleInitialDate(undefined)
+                setScheduleInitialHour(undefined)
+                setShowScheduleModal(true)
+              }}
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm sm:text-base text-white bg-brand-orange rounded-lg shadow-sm hover:bg-brand-orange-600 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Schedule Session</span>
+              <span className="sm:hidden">Schedule</span>
+            </button>
+          </>
+        }
+      />
 
       {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
         {/* Calendar */}
         <div className="lg:col-span-3">
           <CalendarView
@@ -280,12 +282,12 @@ function ScheduleContent() {
           />
 
           {/* Quick Stats */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="font-semibold text-gray-900 mb-4">This Month</h3>
+          <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 text-base sm:text-lg">This Month</h3>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-gray-600">Scheduled</span>
-                <span className="font-semibold text-gray-900">
+                <span className="text-sm sm:text-base text-gray-600">Scheduled</span>
+                <span className="text-sm sm:text-base font-semibold text-gray-900">
                   {sessions.filter(s => {
                     const sessionDate = new Date(s.scheduledAt)
                     return sessionDate.getMonth() === today.getMonth() &&
@@ -295,8 +297,8 @@ function ScheduleContent() {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-600">Completed</span>
-                <span className="font-semibold text-green-600">
+                <span className="text-sm sm:text-base text-gray-600">Completed</span>
+                <span className="text-sm sm:text-base font-semibold text-green-600">
                   {sessions.filter(s => {
                     const sessionDate = new Date(s.scheduledAt)
                     return sessionDate.getMonth() === today.getMonth() &&
@@ -306,8 +308,8 @@ function ScheduleContent() {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-600">Cancelled</span>
-                <span className="font-semibold text-gray-500">
+                <span className="text-sm sm:text-base text-gray-600">Cancelled</span>
+                <span className="text-sm sm:text-base font-semibold text-gray-500">
                   {sessions.filter(s => {
                     const sessionDate = new Date(s.scheduledAt)
                     return sessionDate.getMonth() === today.getMonth() &&
@@ -355,7 +357,7 @@ export default function SchedulePage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
       </div>
     }>
       <ScheduleContent />

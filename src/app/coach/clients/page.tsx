@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { ClientCard, type ClientCardData } from '@/components/coach/ClientCard'
 import { ClientTable, type ClientTableData } from '@/components/coach/ClientTable'
+import PageHeader from '@/components/ui/PageHeader'
 import {
   Search,
   LayoutGrid,
@@ -19,7 +20,8 @@ import {
   AlertCircle,
   Mail,
   Send,
-  CheckCircle
+  CheckCircle,
+  Users
 } from 'lucide-react'
 
 type ViewMode = 'grid' | 'list'
@@ -220,9 +222,9 @@ function ClientsListContent() {
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex items-center justify-center min-h-[400px]">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-500">Loading clients...</p>
         </div>
       </div>
@@ -230,24 +232,47 @@ function ClientsListContent() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      {/* Page Header */}
+      <PageHeader
+        title="Clients"
+        subtitle={`${stats.total} total • ${stats.active} active • ${stats.atRisk} at-risk`}
+        icon={Users}
+        actions={
+          <>
+            <button className="flex items-center gap-2 px-4 py-2 text-sm sm:text-base bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors">
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Export</span>
+            </button>
+            <Link
+              href="/coach/clients/new"
+              className="flex items-center gap-2 px-4 py-2 text-sm sm:text-base bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg shadow-sm transition-colors"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span className="hidden sm:inline">Add Client</span>
+              <span className="sm:hidden">Add</span>
+            </Link>
+          </>
+        }
+      />
+
       {/* Unassigned Clients Alert */}
       {unassignedClients.length > 0 && (
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+        <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-xl p-4 sm:p-6">
           <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" />
+            <AlertCircle className="w-5 h-5 text-brand-orange mt-0.5 flex-shrink-0" />
             <div className="flex-1">
-              <h3 className="font-semibold text-orange-800">
+              <h3 className="font-semibold text-brand-orange-800 text-base sm:text-lg">
                 {unassignedClients.length} Unassigned Client{unassignedClients.length > 1 ? 's' : ''}
               </h3>
-              <p className="text-sm text-orange-700 mt-1">
+              <p className="text-sm text-brand-orange-700 mt-1">
                 These clients don&apos;t have a coach assigned. Claim them to add to your roster.
               </p>
               <div className="mt-3 space-y-2">
                 {unassignedClients.map(client => (
                   <div
                     key={client.id}
-                    className="flex items-center justify-between bg-white rounded-lg px-4 py-3 border border-orange-200"
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white rounded-lg px-4 py-3 border border-brand-orange-200"
                   >
                     <div>
                       <p className="font-medium text-gray-900">{client.business_name || 'Unnamed Business'}</p>
@@ -258,7 +283,7 @@ function ClientsListContent() {
                     <button
                       onClick={() => claimClient(client.id)}
                       disabled={claimingId === client.id}
-                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                      className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg shadow-sm transition-colors disabled:opacity-50"
                     >
                       {claimingId === client.id ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -277,21 +302,21 @@ function ClientsListContent() {
 
       {/* Pending Invitations Alert */}
       {pendingInvitations.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-xl p-4 sm:p-6">
           <div className="flex items-start gap-3">
-            <Mail className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+            <Mail className="w-5 h-5 text-brand-orange mt-0.5 flex-shrink-0" />
             <div className="flex-1">
-              <h3 className="font-semibold text-blue-800">
+              <h3 className="font-semibold text-brand-navy text-base sm:text-lg">
                 {pendingInvitations.length} Pending Invitation{pendingInvitations.length > 1 ? 's' : ''}
               </h3>
-              <p className="text-sm text-blue-700 mt-1">
+              <p className="text-sm text-brand-orange-700 mt-1">
                 These clients have accounts but haven&apos;t received their login credentials yet.
               </p>
               <div className="mt-3 space-y-2">
                 {pendingInvitations.map(client => (
                   <div
                     key={client.id}
-                    className="flex items-center justify-between bg-white rounded-lg px-4 py-3 border border-blue-200"
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white rounded-lg px-4 py-3 border border-brand-orange-200"
                   >
                     <div>
                       <p className="font-medium text-gray-900">{client.business_name || 'Unnamed Business'}</p>
@@ -302,7 +327,7 @@ function ClientsListContent() {
                     <button
                       onClick={() => sendInvitation(client.id, client.business_name)}
                       disabled={sendingInvitationId === client.id}
-                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg shadow-sm transition-colors disabled:opacity-50"
                     >
                       {sendingInvitationId === client.id ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -321,10 +346,10 @@ function ClientsListContent() {
 
       {/* Invitation Success/Error Messages */}
       {invitationSuccess && (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 sm:p-6">
           <div className="flex items-center gap-3">
-            <CheckCircle className="w-5 h-5 text-green-600" />
-            <p className="text-green-800">
+            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+            <p className="text-sm sm:text-base text-green-800">
               Invitation email sent successfully to <strong>{invitationSuccess}</strong>
             </p>
           </div>
@@ -332,40 +357,17 @@ function ClientsListContent() {
       )}
 
       {invitationError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 sm:p-6">
           <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600" />
-            <p className="text-red-800">{invitationError}</p>
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            <p className="text-sm sm:text-base text-red-800">{invitationError}</p>
           </div>
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Clients</h1>
-          <p className="text-gray-500 mt-1">
-            {stats.total} total &middot; {stats.active} active &middot; {stats.atRisk} at-risk
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <Download className="w-4 h-4" />
-            Export
-          </button>
-          <Link
-            href="/coach/clients/new"
-            className="flex items-center gap-2 px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            <UserPlus className="w-4 h-4" />
-            Add Client
-          </Link>
-        </div>
-      </div>
-
       {/* Search and Filters */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <div className="flex items-center gap-4">
+      <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
           {/* Search */}
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -374,7 +376,7 @@ function ClientsListContent() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search clients by name or industry..."
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
             />
           </div>
 
@@ -383,16 +385,18 @@ function ClientsListContent() {
             <button
               onClick={() => setViewMode('grid')}
               className={`p-2 rounded-md transition-colors ${
-                viewMode === 'grid' ? 'bg-white shadow text-indigo-600' : 'text-gray-500 hover:text-gray-700'
+                viewMode === 'grid' ? 'bg-white shadow text-brand-orange' : 'text-gray-500 hover:text-gray-700'
               }`}
+              aria-label="Grid view"
             >
               <LayoutGrid className="w-5 h-5" />
             </button>
             <button
               onClick={() => setViewMode('list')}
               className={`p-2 rounded-md transition-colors ${
-                viewMode === 'list' ? 'bg-white shadow text-indigo-600' : 'text-gray-500 hover:text-gray-700'
+                viewMode === 'list' ? 'bg-white shadow text-brand-orange' : 'text-gray-500 hover:text-gray-700'
               }`}
+              aria-label="List view"
             >
               <List className="w-5 h-5" />
             </button>
@@ -401,16 +405,16 @@ function ClientsListContent() {
           {/* Filter Button */}
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg transition-colors ${
+            className={`flex items-center justify-center gap-2 px-4 py-2.5 border rounded-lg transition-colors text-sm sm:text-base ${
               hasActiveFilters
-                ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                ? 'bg-brand-orange-50 border-brand-orange-300 text-brand-orange-700'
                 : 'border-gray-300 text-gray-700 hover:bg-gray-50'
             }`}
           >
             <Filter className="w-4 h-4" />
-            Filters
+            <span className="hidden sm:inline">Filters</span>
             {hasActiveFilters && (
-              <span className="w-5 h-5 bg-indigo-600 text-white text-xs rounded-full flex items-center justify-center">
+              <span className="w-5 h-5 bg-brand-orange text-white text-xs rounded-full flex items-center justify-center">
                 {[statusFilter !== 'all', industryFilter !== 'all'].filter(Boolean).length}
               </span>
             )}
@@ -427,7 +431,7 @@ function ClientsListContent() {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 >
                   <option value="all">All</option>
                   <option value="active">Active</option>
@@ -444,7 +448,7 @@ function ClientsListContent() {
                   <select
                     value={industryFilter}
                     onChange={(e) => setIndustryFilter(e.target.value)}
-                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   >
                     <option value="all">All Industries</option>
                     {industries.map(industry => (
@@ -470,15 +474,15 @@ function ClientsListContent() {
       </div>
 
       {/* Status Quick Filters */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {(['all', 'active', 'at-risk', 'pending'] as const).map(status => (
           <button
             key={status}
             onClick={() => setStatusFilter(status)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               statusFilter === status
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                ? 'bg-brand-orange hover:bg-brand-orange-600 text-white shadow-sm'
+                : 'bg-white border border-gray-300 hover:bg-gray-50 text-gray-700'
             }`}
           >
             {status === 'all' ? 'All' : status === 'at-risk' ? 'At Risk' : status.charAt(0).toUpperCase() + status.slice(1)}
@@ -498,7 +502,7 @@ function ClientsListContent() {
 
       {/* Client Grid/List */}
       {viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {filteredClients.map(client => (
             <ClientCard
               key={client.id}
@@ -509,21 +513,23 @@ function ClientsListContent() {
           ))}
         </div>
       ) : (
-        <ClientTable
-          clients={filteredClients as ClientTableData[]}
-          onMessage={(id) => console.log('Message client:', id)}
-          onSchedule={(id) => console.log('Schedule session:', id)}
-        />
+        <div className="overflow-x-auto">
+          <ClientTable
+            clients={filteredClients as ClientTableData[]}
+            onMessage={(id) => console.log('Message client:', id)}
+            onSchedule={(id) => console.log('Schedule session:', id)}
+          />
+        </div>
       )}
 
       {/* Empty State */}
       {filteredClients.length === 0 && !loading && (
-        <div className="text-center py-12">
+        <div className="text-center py-12 px-4">
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Search className="w-8 h-8 text-gray-400" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-1">No clients found</h3>
-          <p className="text-gray-500 mb-4">
+          <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-1">No clients found</h3>
+          <p className="text-sm sm:text-base text-gray-500 mb-4">
             {hasActiveFilters
               ? 'Try adjusting your filters to find what you\'re looking for.'
               : 'Get started by adding your first client.'}
@@ -531,14 +537,14 @@ function ClientsListContent() {
           {hasActiveFilters ? (
             <button
               onClick={clearFilters}
-              className="text-indigo-600 hover:text-indigo-700 font-medium"
+              className="text-brand-orange hover:text-brand-orange-600 font-medium text-sm sm:text-base"
             >
               Clear all filters
             </button>
           ) : (
             <Link
               href="/coach/clients/new"
-              className="inline-flex items-center gap-2 px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm sm:text-base bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg shadow-sm"
             >
               <UserPlus className="w-4 h-4" />
               Add your first client
@@ -554,7 +560,7 @@ export default function ClientsListPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
       </div>
     }>
       <ClientsListContent />

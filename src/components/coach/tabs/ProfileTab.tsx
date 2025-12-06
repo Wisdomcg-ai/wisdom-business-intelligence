@@ -145,7 +145,7 @@ export function ProfileTab({
         {!isEditing ? (
           <button
             onClick={() => setIsEditing(true)}
-            className="flex items-center gap-2 px-4 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
           >
             <Edit2 className="w-4 h-4" />
             Edit Profile
@@ -162,7 +162,7 @@ export function ProfileTab({
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg transition-colors disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
               {saving ? 'Saving...' : 'Save Changes'}
@@ -189,7 +189,7 @@ export function ProfileTab({
                   type="text"
                   value={editData.businessName || ''}
                   onChange={(e) => setEditData({ ...editData, businessName: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               ) : (
                 <p className="text-gray-900 font-medium">{businessName}</p>
@@ -204,7 +204,7 @@ export function ProfileTab({
                   type="text"
                   value={editData.legalName || ''}
                   onChange={(e) => setEditData({ ...editData, legalName: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               ) : (
                 <p className="text-gray-900">{legalName || '--'}</p>
@@ -219,7 +219,7 @@ export function ProfileTab({
                   type="text"
                   value={editData.industry || ''}
                   onChange={(e) => setEditData({ ...editData, industry: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               ) : (
                 <p className="text-gray-900">{industry || '--'}</p>
@@ -234,7 +234,7 @@ export function ProfileTab({
                   type="number"
                   value={editData.yearsInBusiness || ''}
                   onChange={(e) => setEditData({ ...editData, yearsInBusiness: parseInt(e.target.value) || undefined })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               ) : (
                 <p className="text-gray-900">{yearsInBusiness ? `${yearsInBusiness} years` : '--'}</p>
@@ -248,7 +248,7 @@ export function ProfileTab({
                 <select
                   value={editData.businessModel || ''}
                   onChange={(e) => setEditData({ ...editData, businessModel: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 >
                   <option value="">Select model</option>
                   <option value="B2B (Business to Business)">B2B (Business to Business)</option>
@@ -271,13 +271,13 @@ export function ProfileTab({
                   type="url"
                   value={editData.website || ''}
                   onChange={(e) => setEditData({ ...editData, website: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   placeholder="https://"
                 />
               ) : (
                 <p className="text-gray-900">
                   {website ? (
-                    <a href={website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+                    <a href={website} target="_blank" rel="noopener noreferrer" className="text-brand-orange hover:underline">
                       {website}
                     </a>
                   ) : '--'}
@@ -293,7 +293,7 @@ export function ProfileTab({
                   value={editData.address || ''}
                   onChange={(e) => setEditData({ ...editData, address: e.target.value })}
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               ) : (
                 <p className="text-gray-900">{address || '--'}</p>
@@ -319,7 +319,7 @@ export function ProfileTab({
                   type="number"
                   value={editData.annualRevenue || ''}
                   onChange={(e) => setEditData({ ...editData, annualRevenue: parseInt(e.target.value) || undefined })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   placeholder="750000"
                 />
               ) : (
@@ -335,7 +335,7 @@ export function ProfileTab({
                   type="number"
                   value={editData.revenueGrowthRate || ''}
                   onChange={(e) => setEditData({ ...editData, revenueGrowthRate: parseInt(e.target.value) || undefined })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   placeholder="20"
                 />
               ) : (
@@ -351,7 +351,7 @@ export function ProfileTab({
                   type="number"
                   value={editData.grossMargin || ''}
                   onChange={(e) => setEditData({ ...editData, grossMargin: parseInt(e.target.value) || undefined })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   placeholder="30"
                 />
               ) : (
@@ -367,7 +367,7 @@ export function ProfileTab({
                   type="number"
                   value={editData.netMargin || ''}
                   onChange={(e) => setEditData({ ...editData, netMargin: parseInt(e.target.value) || undefined })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   placeholder="15"
                 />
               ) : (
@@ -383,7 +383,7 @@ export function ProfileTab({
                   type="number"
                   value={editData.employeeCount || ''}
                   onChange={(e) => setEditData({ ...editData, employeeCount: parseInt(e.target.value) || undefined })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               ) : (
                 <p className="text-gray-900">{employeeCount !== undefined ? `${employeeCount} people` : '--'}</p>
@@ -398,7 +398,7 @@ export function ProfileTab({
                   type="number"
                   value={editData.totalCustomers || ''}
                   onChange={(e) => setEditData({ ...editData, totalCustomers: parseInt(e.target.value) || undefined })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               ) : (
                 <p className="text-gray-900">{totalCustomers !== undefined ? totalCustomers : '--'}</p>
@@ -427,7 +427,7 @@ export function ProfileTab({
               <label className="block text-sm font-medium text-gray-600 mb-1">Email</label>
               <p className="text-gray-900">
                 {ownerEmail ? (
-                  <a href={`mailto:${ownerEmail}`} className="text-indigo-600 hover:underline">
+                  <a href={`mailto:${ownerEmail}`} className="text-brand-orange hover:underline">
                     {ownerEmail}
                   </a>
                 ) : '--'}
@@ -442,12 +442,12 @@ export function ProfileTab({
                   type="tel"
                   value={editData.ownerPhone || ''}
                   onChange={(e) => setEditData({ ...editData, ownerPhone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               ) : (
                 <p className="text-gray-900">
                   {ownerPhone ? (
-                    <a href={`tel:${ownerPhone}`} className="text-indigo-600 hover:underline">
+                    <a href={`tel:${ownerPhone}`} className="text-brand-orange hover:underline">
                       {ownerPhone}
                     </a>
                   ) : '--'}
@@ -473,7 +473,7 @@ export function ProfileTab({
                 <select
                   value={editData.programType || ''}
                   onChange={(e) => setEditData({ ...editData, programType: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 >
                   <option value="">Select program</option>
                   <option value="1:1 Coaching">1:1 Coaching</option>
@@ -493,7 +493,7 @@ export function ProfileTab({
                   <select
                     value={editData.sessionFrequency || ''}
                     onChange={(e) => setEditData({ ...editData, sessionFrequency: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   >
                     <option value="">Select frequency</option>
                     <option value="Weekly">Weekly</option>
@@ -514,7 +514,7 @@ export function ProfileTab({
                   type="date"
                   value={editData.engagementStartDate || ''}
                   onChange={(e) => setEditData({ ...editData, engagementStartDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               ) : (
                 <p className="text-gray-900">{formatDate(engagementStartDate)}</p>
@@ -541,7 +541,7 @@ export function ProfileTab({
                 onChange={(e) => setEditData({ ...editData, notes: e.target.value })}
                 rows={6}
                 placeholder="Add private notes about this client..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
               />
             ) : (
               <p className="text-gray-700 whitespace-pre-wrap">

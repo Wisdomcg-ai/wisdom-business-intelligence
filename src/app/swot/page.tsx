@@ -15,8 +15,9 @@ import {
 import { SwotGrid } from '@/components/swot/SwotGrid';
 import { QuarterSelector } from '@/components/swot/QuarterSelector';
 import { createBrowserClient } from '@supabase/ssr';
-import { CheckCircle, AlertCircle, Download, History, TrendingUp } from 'lucide-react';
+import { CheckCircle, AlertCircle, Download, History, TrendingUp, Target } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import PageHeader from '@/components/ui/PageHeader';
 
 export default function SwotPage() {
   const router = useRouter();
@@ -532,9 +533,9 @@ export default function SwotPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading SWOT Analysis...</p>
         </div>
       </div>
@@ -542,95 +543,85 @@ export default function SwotPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="py-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">SWOT Analysis</h1>
-                <p className="mt-1 text-sm text-gray-500">
-                  Strategic analysis for {currentQuarter.label}
-                </p>
-              </div>
-
-              <div className="flex items-center space-x-4">
-                {/* Auto-save indicator */}
-                {lastSaved && (
-                  <div className="flex items-center text-sm text-gray-500">
-                    <CheckCircle className="h-4 w-4 text-green-500 mr-1" />
-                    Saved {lastSaved.toLocaleTimeString()}
-                  </div>
-                )}
-
-                {/* Quarter Selector */}
-                <QuarterSelector
-                  currentQuarter={currentQuarter}
-                  onQuarterChange={setCurrentQuarter}
-                  yearType={yearType}
-                />
-
-                {/* Action Buttons */}
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => router.push('/swot/history')}
-                    className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                  >
-                    <History className="h-4 w-4 mr-2" />
-                    History
-                  </button>
-
-                  <button
-                    onClick={() => router.push('/swot/compare')}
-                    className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                  >
-                    <TrendingUp className="h-4 w-4 mr-2" />
-                    Compare
-                  </button>
-
-                  <button
-                    onClick={handleExport}
-                    className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Export
-                  </button>
-
+    <div className="min-h-screen bg-gray-50">
+      {/* Page Container */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {/* Header */}
+        <PageHeader
+          title="SWOT Analysis"
+          subtitle={`Strategic analysis for ${currentQuarter.label}`}
+          icon={Target}
+          actions={
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+              {/* Auto-save indicator */}
+              {lastSaved && (
+                <div className="flex items-center justify-center text-xs sm:text-sm text-gray-500 px-3 py-2 bg-white rounded-lg border border-gray-200">
+                  <CheckCircle className="h-4 w-4 text-green-500 mr-1.5 flex-shrink-0" />
+                  <span className="hidden sm:inline">Saved {lastSaved.toLocaleTimeString()}</span>
+                  <span className="sm:hidden">Saved</span>
                 </div>
+              )}
+
+              {/* Quarter Selector */}
+              <QuarterSelector
+                currentQuarter={currentQuarter}
+                onQuarterChange={setCurrentQuarter}
+                yearType={yearType}
+              />
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => router.push('/swot/history')}
+                  className="inline-flex items-center justify-center px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors flex-1 sm:flex-initial"
+                >
+                  <History className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">History</span>
+                </button>
+
+                <button
+                  onClick={() => router.push('/swot/compare')}
+                  className="inline-flex items-center justify-center px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors flex-1 sm:flex-initial"
+                >
+                  <TrendingUp className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Compare</span>
+                </button>
+
+                <button
+                  onClick={handleExport}
+                  className="inline-flex items-center justify-center px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors flex-1 sm:flex-initial"
+                >
+                  <Download className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Export</span>
+                </button>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
+          }
+        />
 
-      {/* Error Alert */}
-      {error && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
-          <div className="bg-red-50 border border-red-200 rounded-md p-4">
+        {/* Error Alert */}
+        {error && (
+          <div className="rounded-xl shadow-sm border border-red-200 bg-red-50 p-4 sm:p-5 mb-6">
             <div className="flex">
-              <AlertCircle className="h-5 w-5 text-red-400" />
+              <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
               <div className="ml-3">
                 <p className="text-sm text-red-800">{error}</p>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-
-      {/* Trends Section */}
-      {recurringItems.size > 0 && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-          <div className="bg-amber-50 border-2 border-amber-200 rounded-lg p-4">
-            <div className="flex items-start justify-between">
+        {/* Trends Section */}
+        {recurringItems.size > 0 && (
+          <div className="rounded-xl shadow-sm border border-amber-200 bg-amber-50 p-4 sm:p-5 mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
               <div className="flex items-center space-x-2">
-                <TrendingUp className="h-5 w-5 text-amber-600" />
-                <h3 className="text-lg font-semibold text-amber-900">Recurring Items Detected</h3>
+                <TrendingUp className="h-5 w-5 text-amber-600 flex-shrink-0" />
+                <h3 className="text-base sm:text-lg font-semibold text-amber-900">Recurring Items Detected</h3>
               </div>
               <button
                 onClick={() => setShowTrends(!showTrends)}
-                className="text-sm text-amber-700 hover:text-amber-900 font-medium"
+                className="text-sm text-amber-700 hover:text-amber-900 font-medium text-left sm:text-right"
               >
                 {showTrends ? 'Hide Details' : 'Show Details'}
               </button>
@@ -642,7 +633,7 @@ export default function SwotPage() {
             </p>
 
             {showTrends && (
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 {Array.from(recurringItems.entries()).map(([itemId, count]) => {
                   const item = [
                     ...swotItems.strengths,
@@ -656,12 +647,12 @@ export default function SwotPage() {
                   const categoryColors: Record<SwotCategory, string> = {
                     strength: 'bg-green-100 text-green-800 border-green-300',
                     weakness: 'bg-red-100 text-red-800 border-red-300',
-                    opportunity: 'bg-teal-100 text-teal-800 border-teal-300',
-                    threat: 'bg-orange-100 text-orange-800 border-orange-300'
+                    opportunity: 'bg-brand-orange-100 text-brand-orange-800 border-brand-orange-300',
+                    threat: 'bg-brand-orange-100 text-brand-orange-800 border-orange-300'
                   };
 
                   return (
-                    <div key={itemId} className={`p-3 rounded border ${categoryColors[item.category]}`}>
+                    <div key={itemId} className={`p-3 rounded-lg border ${categoryColors[item.category]}`}>
                       <p className="text-xs font-semibold uppercase mb-1">{item.category}</p>
                       <p className="text-sm font-medium">{item.title}</p>
                       <p className="text-xs mt-1">Appeared in {count} previous quarter{count > 1 ? 's' : ''}</p>
@@ -671,11 +662,9 @@ export default function SwotPage() {
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Main SWOT Grid */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 pb-12">
+        {/* Main SWOT Grid */}
         <SwotGrid
           items={swotItems}
           onAddItem={handleAddItem}
@@ -689,33 +678,33 @@ export default function SwotPage() {
         {(swotItems.strengths.length > 0 || swotItems.weaknesses.length > 0 ||
           swotItems.opportunities.length > 0 || swotItems.threats.length > 0) && (
           <div className="mt-8">
-            <div className="bg-white rounded-lg shadow-sm p-6 border-2 border-teal-200">
-              <div className="flex items-start justify-between mb-4">
+            <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4 sm:mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Strategy Formation</h2>
-                  <p className="text-base text-gray-600 mt-1">
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Strategy Formation</h2>
+                  <p className="text-sm sm:text-base text-gray-600 mt-1">
                     Turn your SWOT analysis into actionable strategies
                   </p>
                 </div>
               </div>
 
-              <div className="mb-6 p-4 bg-teal-50 rounded-lg border border-teal-200">
-                <p className="text-base font-medium text-gray-800 mb-2">💡 How to Form Strategies:</p>
-                <p className="text-base text-gray-700 mb-3">
+              <div className="mb-6 p-4 bg-brand-orange-50 rounded-xl border border-brand-orange-200">
+                <p className="text-sm sm:text-base font-medium text-gray-800 mb-2">How to Form Strategies:</p>
+                <p className="text-sm sm:text-base text-gray-700 mb-3">
                   The power of SWOT comes from combining insights across quadrants. Use these frameworks to create strategies:
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 {/* SO Strategy */}
-                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                  <h3 className="text-lg font-semibold text-green-800 mb-2">
+                <div className="p-4 bg-green-50 rounded-xl border border-green-200">
+                  <h3 className="text-base sm:text-lg font-semibold text-green-800 mb-2">
                     SO: Strength + Opportunity
                   </h3>
                   <p className="text-sm text-gray-700 mb-3">
                     Use your <strong>strengths</strong> to capitalize on <strong>opportunities</strong>
                   </p>
-                  <div className="text-sm text-gray-600 space-y-1">
+                  <div className="text-xs sm:text-sm text-gray-600 space-y-1">
                     <p className="font-medium">Example:</p>
                     <p className="italic">
                       Strength: "Experienced team" + Opportunity: "New market opening"
@@ -725,14 +714,14 @@ export default function SwotPage() {
                 </div>
 
                 {/* WO Strategy */}
-                <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                  <h3 className="text-lg font-semibold text-yellow-800 mb-2">
+                <div className="p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+                  <h3 className="text-base sm:text-lg font-semibold text-yellow-800 mb-2">
                     WO: Weakness + Opportunity
                   </h3>
                   <p className="text-sm text-gray-700 mb-3">
                     Overcome <strong>weaknesses</strong> to capture <strong>opportunities</strong>
                   </p>
-                  <div className="text-sm text-gray-600 space-y-1">
+                  <div className="text-xs sm:text-sm text-gray-600 space-y-1">
                     <p className="font-medium">Example:</p>
                     <p className="italic">
                       Weakness: "No marketing expertise" + Opportunity: "Growing demand"
@@ -742,14 +731,14 @@ export default function SwotPage() {
                 </div>
 
                 {/* ST Strategy */}
-                <div className="p-4 bg-teal-50 rounded-lg border border-teal-200">
-                  <h3 className="text-lg font-semibold text-teal-800 mb-2">
+                <div className="p-4 bg-brand-orange-50 rounded-xl border border-brand-orange-200">
+                  <h3 className="text-base sm:text-lg font-semibold text-brand-orange-800 mb-2">
                     ST: Strength + Threat
                   </h3>
                   <p className="text-sm text-gray-700 mb-3">
                     Use your <strong>strengths</strong> to mitigate <strong>threats</strong>
                   </p>
-                  <div className="text-sm text-gray-600 space-y-1">
+                  <div className="text-xs sm:text-sm text-gray-600 space-y-1">
                     <p className="font-medium">Example:</p>
                     <p className="italic">
                       Strength: "Long-term contracts" + Threat: "New competitor"
@@ -759,14 +748,14 @@ export default function SwotPage() {
                 </div>
 
                 {/* WT Strategy */}
-                <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-                  <h3 className="text-lg font-semibold text-red-800 mb-2">
+                <div className="p-4 bg-red-50 rounded-xl border border-red-200">
+                  <h3 className="text-base sm:text-lg font-semibold text-red-800 mb-2">
                     WT: Weakness + Threat
                   </h3>
                   <p className="text-sm text-gray-700 mb-3">
                     Minimize <strong>weaknesses</strong> and avoid <strong>threats</strong>
                   </p>
-                  <div className="text-sm text-gray-600 space-y-1">
+                  <div className="text-xs sm:text-sm text-gray-600 space-y-1">
                     <p className="font-medium">Example:</p>
                     <p className="italic">
                       Weakness: "Outdated technology" + Threat: "Customer expectations rising"
@@ -776,9 +765,9 @@ export default function SwotPage() {
                 </div>
               </div>
 
-              <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <p className="text-base font-medium text-gray-800 mb-2">🎯 Next Steps:</p>
-                <ol className="text-base text-gray-700 list-decimal list-inside space-y-1">
+              <div className="mt-6 p-4 rounded-xl shadow-sm border border-gray-200 bg-gray-50">
+                <p className="text-sm sm:text-base font-medium text-gray-800 mb-2">Next Steps:</p>
+                <ol className="text-sm sm:text-base text-gray-700 list-decimal list-inside space-y-1">
                   <li>Review your SWOT items above</li>
                   <li>Identify 2-3 key strategy combinations that make sense for your business</li>
                   <li>Turn these into specific, measurable goals (use the Goals page)</li>

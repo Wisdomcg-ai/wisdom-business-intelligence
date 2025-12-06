@@ -73,8 +73,8 @@ export default function ProfitCalculator({
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-teal-100 rounded-lg">
-                <Calculator className="w-6 h-6 text-teal-600" />
+              <div className="p-2 bg-brand-orange-100 rounded-lg">
+                <Calculator className="w-6 h-6 text-brand-orange" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900">Profit Calculator</h3>
             </div>
@@ -87,7 +87,7 @@ export default function ProfitCalculator({
           </div>
 
           <div className="space-y-6">
-            <div className="bg-teal-50 rounded-lg p-4">
+            <div className="bg-brand-orange-50 rounded-lg p-4">
               <h4 className="font-semibold mb-2">Industry Benchmarks</h4>
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>

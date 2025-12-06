@@ -126,13 +126,13 @@ export function BroadcastModal({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search clients..."
-                    className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
                   />
                 </div>
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
-                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 >
                   <option value="all">All Status</option>
                   <option value="active">Active</option>
@@ -152,7 +152,7 @@ export function BroadcastModal({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={selectAll}
-                    className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                    className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
                   >
                     Select All
                   </button>
@@ -179,7 +179,7 @@ export function BroadcastModal({
                         key={client.id}
                         className={`flex items-center gap-4 p-4 cursor-pointer transition-colors ${
                           selectedClientIds.includes(client.id)
-                            ? 'bg-indigo-50'
+                            ? 'bg-brand-orange-50'
                             : 'hover:bg-gray-50'
                         }`}
                       >
@@ -187,10 +187,10 @@ export function BroadcastModal({
                           type="checkbox"
                           checked={selectedClientIds.includes(client.id)}
                           onChange={() => toggleClient(client.id)}
-                          className="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                          className="w-5 h-5 text-brand-orange border-gray-300 rounded focus:ring-brand-orange"
                         />
                         <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-                          <Building2 className="w-5 h-5 text-slate-600" />
+                          <Building2 className="w-5 h-5 text-gray-600" />
                         </div>
                         <div className="flex-1">
                           <p className="font-medium text-gray-900">{client.businessName}</p>
@@ -217,17 +217,17 @@ export function BroadcastModal({
           {step === 2 && (
             <div className="p-6">
               {/* Selected Recipients Summary */}
-              <div className="mb-4 p-4 bg-indigo-50 rounded-xl">
+              <div className="mb-4 p-4 bg-brand-orange-50 rounded-xl">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Users className="w-5 h-5 text-indigo-600" />
-                    <span className="font-medium text-indigo-900">
+                    <Users className="w-5 h-5 text-brand-orange" />
+                    <span className="font-medium text-brand-orange-900">
                       {selectedClientIds.length} recipients
                     </span>
                   </div>
                   <button
                     onClick={() => setStep(1)}
-                    className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                    className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
                   >
                     Edit
                   </button>
@@ -242,7 +242,7 @@ export function BroadcastModal({
                     </span>
                   ))}
                   {selectedClients.length > 5 && (
-                    <span className="px-2 py-1 text-sm text-indigo-600">
+                    <span className="px-2 py-1 text-sm text-brand-orange">
                       +{selectedClients.length - 5} more
                     </span>
                   )}
@@ -259,7 +259,7 @@ export function BroadcastModal({
                   onChange={(e) => setMessage(e.target.value)}
                   rows={6}
                   placeholder="Type your message here..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
                 <p className="mt-2 text-xs text-gray-500">
                   This message will be sent to all selected clients individually.
@@ -298,7 +298,7 @@ export function BroadcastModal({
                 <button
                   onClick={() => setStep(2)}
                   disabled={selectedClientIds.length === 0}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-6 py-2.5 bg-brand-orange text-white rounded-lg font-medium shadow-sm hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Continue
                   <Check className="w-4 h-4" />
@@ -307,7 +307,7 @@ export function BroadcastModal({
                 <button
                   onClick={handleSend}
                   disabled={sending || !message.trim()}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-6 py-2.5 bg-brand-orange text-white rounded-lg font-medium shadow-sm hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {sending ? (
                     <>

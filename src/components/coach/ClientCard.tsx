@@ -59,18 +59,18 @@ export function ClientCard({ client, onMessage, onSchedule }: ClientCardProps) {
   const statusStyles = getStatusStyles(client.status)
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 hover:border-indigo-300 hover:shadow-lg transition-all group">
+    <div className="bg-white rounded-xl border border-gray-200 hover:border-brand-orange-300 hover:shadow-lg transition-all group">
       <div className="p-5">
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-              <Building2 className="w-5 h-5 text-slate-600" />
+              <Building2 className="w-5 h-5 text-gray-600" />
             </div>
             <div>
               <Link
                 href={`/coach/clients/${client.id}/view/dashboard`}
-                className="font-semibold text-gray-900 hover:text-indigo-600 transition-colors"
+                className="font-semibold text-gray-900 hover:text-brand-orange transition-colors"
               >
                 {client.businessName}
               </Link>
@@ -100,7 +100,7 @@ export function ClientCard({ client, onMessage, onSchedule }: ClientCardProps) {
             <span>Last: {formatDate(client.lastSessionDate) || 'Never'}</span>
           </div>
           {client.nextSessionDate && (
-            <div className="flex items-center gap-1.5 text-indigo-600">
+            <div className="flex items-center gap-1.5 text-brand-orange">
               <Calendar className="w-4 h-4" />
               <span>Next: {formatDate(client.nextSessionDate)}</span>
             </div>
@@ -117,7 +117,7 @@ export function ClientCard({ client, onMessage, onSchedule }: ClientCardProps) {
               </span>
             )}
             {(client.unreadMessages ?? 0) > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+              <span className="inline-flex items-center gap-1 px-2 py-1 bg-brand-orange-50 text-brand-orange-700 rounded-full text-xs font-medium">
                 <MessageSquare className="w-3 h-3" />
                 {client.unreadMessages} unread
               </span>
@@ -134,7 +134,7 @@ export function ClientCard({ client, onMessage, onSchedule }: ClientCardProps) {
         <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
           <Link
             href={`/coach/clients/${client.id}/view/dashboard`}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-brand-orange hover:bg-brand-orange-600 rounded-lg transition-colors"
           >
             <Eye className="w-4 h-4" />
             Open

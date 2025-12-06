@@ -150,8 +150,8 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return <ChevronUp className="w-4 h-4 text-gray-300" />
     return sortDirection === 'asc'
-      ? <ChevronUp className="w-4 h-4 text-indigo-600" />
-      : <ChevronDown className="w-4 h-4 text-indigo-600" />
+      ? <ChevronUp className="w-4 h-4 text-brand-orange" />
+      : <ChevronDown className="w-4 h-4 text-brand-orange" />
   }
 
   const formatDate = (dateString: string | null): string => {
@@ -179,7 +179,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'active':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700"><CheckCircle className="w-3 h-3" />Active</span>
+        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-brand-teal-100 text-brand-teal"><CheckCircle className="w-3 h-3" />Active</span>
       case 'at-risk':
         return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700"><AlertTriangle className="w-3 h-3" />At Risk</span>
       case 'pending':
@@ -195,10 +195,10 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
     }
 
     const colors: Record<string, string> = {
-      'THRIVING': 'bg-green-100 text-green-700',
-      'STRONG': 'bg-green-50 text-green-600',
-      'STABLE': 'bg-yellow-100 text-yellow-700',
-      'BUILDING': 'bg-orange-100 text-orange-700',
+      'THRIVING': 'bg-brand-teal-100 text-brand-teal',
+      'STRONG': 'bg-brand-teal-50 text-brand-teal',
+      'STABLE': 'bg-amber-100 text-amber-700',
+      'BUILDING': 'bg-brand-orange-100 text-brand-orange-700',
       'STRUGGLING': 'bg-red-100 text-red-700',
       'URGENT': 'bg-red-200 text-red-800'
     }
@@ -215,10 +215,10 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
 
   const getRoadmapBadge = (level: string, revenue: number | null) => {
     const colors: Record<string, string> = {
-      'Foundation': 'bg-slate-100 text-slate-700 border-slate-200',
-      'Traction': 'bg-blue-100 text-blue-700 border-blue-200',
-      'Growth': 'bg-purple-100 text-purple-700 border-purple-200',
-      'Scale': 'bg-indigo-100 text-indigo-700 border-indigo-200',
+      'Foundation': 'bg-slate-100 text-gray-700 border-slate-200',
+      'Traction': 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-200',
+      'Growth': 'bg-brand-navy-50 text-brand-navy border-brand-navy-200',
+      'Scale': 'bg-brand-teal-100 text-brand-teal border-brand-teal-200',
       'Mastery': 'bg-amber-100 text-amber-700 border-amber-200'
     }
 
@@ -243,10 +243,10 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
 
   const getActivityIndicator = (daysSince: number) => {
     if (daysSince <= 3) {
-      return <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /><span className="text-green-700 text-sm font-medium">{daysSince === 0 ? 'Today' : `${daysSince}d`}</span></div>
+      return <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-brand-teal animate-pulse" /><span className="text-brand-teal text-sm font-medium">{daysSince === 0 ? 'Today' : `${daysSince}d`}</span></div>
     }
     if (daysSince <= 7) {
-      return <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-400" /><span className="text-gray-600 text-sm">{daysSince}d</span></div>
+      return <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-brand-teal" /><span className="text-gray-600 text-sm">{daysSince}d</span></div>
     }
     if (daysSince <= 14) {
       return <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-amber-400" /><span className="text-amber-600 text-sm font-medium">{daysSince}d</span></div>
@@ -267,7 +267,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         <div className="p-8 text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-orange mx-auto" />
           <p className="mt-4 text-gray-500">Loading client data...</p>
         </div>
       </div>
@@ -281,7 +281,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <Users className="w-5 h-5 text-indigo-600" />
+              <Users className="w-5 h-5 text-brand-orange" />
               Client Overview
             </h2>
             <p className="text-sm text-gray-500 mt-1">
@@ -296,7 +296,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
               <div className="text-xs text-gray-500 uppercase tracking-wide">Total</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">{stats.active}</div>
+              <div className="text-2xl font-bold text-brand-teal">{stats.active}</div>
               <div className="text-xs text-gray-500 uppercase tracking-wide">Active</div>
             </div>
             {stats.needsAttention > 0 && (
@@ -324,7 +324,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
               placeholder="Search clients..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
             />
           </div>
 
@@ -334,7 +334,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
             >
               <option value="all">All Clients</option>
               <option value="needs-attention">Needs Attention</option>
@@ -449,7 +449,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
                     <div>
                       <Link
                         href={`/coach/clients/${client.id}/view/dashboard`}
-                        className="font-medium text-gray-900 hover:text-indigo-600 transition-colors"
+                        className="font-medium text-gray-900 hover:text-brand-orange transition-colors"
                       >
                         {client.businessName}
                       </Link>
@@ -517,7 +517,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
                       <>
                         {client.openLoopsCount > 0 && (
                           <span className="inline-flex items-center gap-1 text-sm text-gray-600">
-                            <div className="w-4 h-4 rounded-full bg-blue-100 flex items-center justify-center text-xs font-medium text-blue-700">
+                            <div className="w-4 h-4 rounded-full bg-brand-orange-100 flex items-center justify-center text-xs font-medium text-brand-orange-700">
                               {client.openLoopsCount}
                             </div>
                             <span className="text-xs text-gray-500">loops</span>
@@ -525,7 +525,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
                         )}
                         {client.openIssuesCount > 0 && (
                           <span className="inline-flex items-center gap-1 text-sm text-gray-600">
-                            <div className="w-4 h-4 rounded-full bg-orange-100 flex items-center justify-center text-xs font-medium text-orange-700">
+                            <div className="w-4 h-4 rounded-full bg-brand-orange-100 flex items-center justify-center text-xs font-medium text-brand-orange-700">
                               {client.openIssuesCount}
                             </div>
                             <span className="text-xs text-gray-500">issues</span>
@@ -542,7 +542,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
                 <td className="px-4 py-4 text-center">
                   <Link
                     href={`/coach/clients/${client.id}/view/dashboard`}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-brand-orange hover:text-brand-orange-700 hover:bg-brand-orange-50 rounded-lg transition-colors"
                   >
                     <Eye className="w-4 h-4" />
                     View
@@ -573,7 +573,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
         <div className="flex items-center justify-between text-xs text-gray-500">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
+              <div className="w-2 h-2 rounded-full bg-brand-teal" />
               Active (0-7 days)
             </span>
             <span className="flex items-center gap-1.5">

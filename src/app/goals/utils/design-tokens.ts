@@ -20,24 +20,24 @@ export const BRAND_COLORS = {
 
 // Semantic Colors (using Tailwind classes for consistency)
 export const SEMANTIC_COLORS = {
-  primary: 'teal',
-  success: 'green',
+  primary: 'brand-orange',
+  success: 'brand-teal',
   warning: 'amber',
   danger: 'red',
-  info: 'blue'
+  info: 'brand-navy'
 }
 
-// Avatar Colors for Team Members - Professional teal/slate tones
+// Avatar Colors for Team Members - Professional navy/orange tones
 export const AVATAR_COLORS = [
-  'bg-teal-600',
-  'bg-teal-500',
+  'bg-brand-navy',
+  'bg-brand-navy-700',
   'bg-slate-600',
   'bg-slate-500',
-  'bg-teal-700',
+  'bg-brand-orange',
+  'bg-brand-orange-700',
   'bg-slate-700',
-  'bg-teal-800',
   'bg-slate-800',
-  'bg-teal-400',
+  'bg-brand-navy-600',
   'bg-slate-400'
 ] as const
 
@@ -147,39 +147,39 @@ export const CATEGORY_STYLES: Record<InitiativeCategory, {
 // Source Badge Styles
 export const SOURCE_STYLES = {
   user: {
-    bg: 'bg-slate-800',
+    bg: 'bg-brand-navy',
     text: 'text-white',
     label: 'YOUR IDEA'
   },
   roadmap: {
-    bg: 'bg-teal-600',
+    bg: 'bg-brand-orange',
     text: 'text-white',
     label: 'ROADMAP'
   },
   ai: {
-    bg: 'bg-purple-600',
+    bg: 'bg-brand-navy-700',
     text: 'text-white',
     label: 'AI SUGGESTED'
   }
 }
 
-// Initiative Card Styles - Using teal-based design system
+// Initiative Card Styles - Using brand-based design system
 export const CARD_STYLES = {
   userIdea: {
     // Light card with subtle border - for user's own ideas
-    base: 'bg-white border-2 border-slate-200 hover:border-teal-300 hover:shadow-md',
+    base: 'bg-white border-2 border-slate-200 hover:border-brand-orange-300 hover:shadow-md',
     text: 'text-slate-900',
     subtext: 'text-slate-600'
   },
   roadmapSuggestion: {
-    // Teal-tinted card - for roadmap suggestions
-    base: 'bg-teal-600 border-2 border-teal-600 shadow-md hover:bg-teal-700 hover:shadow-lg',
+    // Brand-tinted card - for roadmap suggestions
+    base: 'bg-brand-orange border-2 border-brand-orange shadow-md hover:bg-brand-orange-600 hover:shadow-lg',
     text: 'text-white',
-    subtext: 'text-teal-100'
+    subtext: 'text-brand-orange-100'
   },
   selected: {
     // Highlighted when selected/in priority list
-    base: 'bg-teal-50 border-2 border-teal-400 shadow-md',
+    base: 'bg-brand-orange-50 border-2 border-brand-orange-400 shadow-md',
     text: 'text-slate-900',
     subtext: 'text-slate-600'
   },

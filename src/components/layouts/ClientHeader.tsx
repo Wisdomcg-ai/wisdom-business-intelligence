@@ -49,11 +49,11 @@ export function ClientHeader({
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
       case 'message':
-        return <MessageSquare className="w-4 h-4 text-teal-600" />
+        return <MessageSquare className="w-4 h-4 text-brand-orange" />
       case 'action':
         return <CheckCircle className="w-4 h-4 text-amber-600" />
       case 'session':
-        return <Calendar className="w-4 h-4 text-blue-600" />
+        return <Calendar className="w-4 h-4 text-brand-orange" />
       default:
         return <AlertCircle className="w-4 h-4 text-gray-600" />
     }
@@ -76,7 +76,7 @@ export function ClientHeader({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search..."
-              className="w-80 pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-80 pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
             />
           </form>
         )}
@@ -87,7 +87,7 @@ export function ClientHeader({
         {/* Quick Actions */}
         <Link
           href="/messages"
-          className="flex items-center gap-2 px-4 py-2 text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors"
+          className="flex items-center gap-2 px-4 py-2 text-brand-orange-700 bg-brand-orange-50 hover:bg-brand-orange-100 rounded-lg transition-colors"
         >
           <MessageSquare className="w-4 h-4" />
           <span className="text-sm font-medium">Message Coach</span>
@@ -135,7 +135,7 @@ export function ClientHeader({
                       <div
                         key={notification.id}
                         className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${
-                          !notification.read ? 'bg-teal-50/50' : ''
+                          !notification.read ? 'bg-brand-orange-50/50' : ''
                         }`}
                       >
                         <div className="flex gap-3">
@@ -155,7 +155,7 @@ export function ClientHeader({
                             </p>
                           </div>
                           {!notification.read && (
-                            <div className="w-2 h-2 bg-teal-500 rounded-full flex-shrink-0 mt-2" />
+                            <div className="w-2 h-2 bg-brand-orange-500 rounded-full flex-shrink-0 mt-2" />
                           )}
                         </div>
                       </div>
@@ -165,7 +165,7 @@ export function ClientHeader({
 
                 {notifications.length > 0 && (
                   <div className="p-3 border-t border-gray-100">
-                    <button className="w-full py-2 text-sm text-teal-600 hover:text-teal-700 font-medium">
+                    <button className="w-full py-2 text-sm text-brand-orange hover:text-brand-orange-700 font-medium">
                       Mark all as read
                     </button>
                   </div>

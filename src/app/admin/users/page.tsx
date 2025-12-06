@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import AdminLayout from '@/components/admin/AdminLayout'
 import { RoleBadge } from '@/components/admin/Badge'
 import { ToastProvider, useToast } from '@/components/admin/Toast'
+import PageHeader from '@/components/ui/PageHeader'
 import {
   Users,
   Search,
@@ -128,47 +129,48 @@ function UsersContent() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-teal-500 animate-spin" />
-          <p className="text-slate-500 text-sm">Loading users...</p>
+          <Loader2 className="w-8 h-8 text-brand-orange-500 animate-spin" />
+          <p className="text-gray-500 text-sm">Loading users...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">User Management</h1>
-        <p className="text-slate-500 mt-1">Search for users and reset their passwords</p>
-      </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <PageHeader
+        title="User Management"
+        subtitle="Search for users and reset their passwords"
+        icon={Users}
+        variant="simple"
+      />
 
       {/* Search Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center">
-            <Key className="w-6 h-6 text-teal-600" />
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6">
+        <div className="flex items-center gap-3 mb-4 sm:mb-6">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-brand-orange-100 rounded-xl flex items-center justify-center">
+            <Key className="w-5 h-5 sm:w-6 sm:h-6 text-brand-orange" />
           </div>
           <div>
-            <h2 className="font-semibold text-slate-900">Password Reset</h2>
-            <p className="text-sm text-slate-500">Search for a user to reset their password</p>
+            <h2 className="text-base sm:text-lg font-semibold text-brand-navy">Password Reset</h2>
+            <p className="text-xs sm:text-sm text-gray-500">Search for a user to reset their password</p>
           </div>
         </div>
 
         {/* Search Input */}
-        <div className="relative mb-6">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+        <div className="relative mb-4 sm:mb-6">
+          <Search className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search by email or name..."
-            className="w-full pl-12 pr-4 py-4 bg-slate-50 border-0 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all"
+            className="w-full pl-10 sm:pl-12 pr-10 sm:pr-12 py-3 sm:py-4 bg-gray-50 border-0 rounded-xl text-sm placeholder-slate-400 focus:ring-2 focus:ring-brand-orange focus:bg-white transition-all"
           />
           {searchTerm && (
             <button
               onClick={() => setSearchTerm('')}
-              className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+              className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-gray-600"
             >
               <X className="w-4 h-4" />
             </button>
@@ -177,7 +179,7 @@ function UsersContent() {
 
         {/* Search Hint */}
         {searchTerm.length > 0 && searchTerm.length < 2 && (
-          <div className="flex items-center gap-2 text-sm text-slate-500 mb-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
             <AlertCircle className="w-4 h-4" />
             Type at least 2 characters to search...
           </div>
@@ -186,31 +188,31 @@ function UsersContent() {
         {/* Results */}
         {searchTerm.length >= 2 && (
           <div>
-            <p className="text-sm text-slate-500 mb-4">
+            <p className="text-xs sm:text-sm text-gray-500 mb-4">
               {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''} found
               {filteredUsers.length === 20 && ' (showing first 20)'}
             </p>
 
             {filteredUsers.length === 0 ? (
-              <div className="text-center py-8">
-                <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-slate-500">No users found matching "{searchTerm}"</p>
+              <div className="text-center py-8 sm:py-12">
+                <Users className="w-10 h-10 sm:w-12 sm:h-12 text-slate-300 mx-auto mb-3" />
+                <p className="text-sm sm:text-base text-gray-500">No users found matching "{searchTerm}"</p>
               </div>
             ) : (
               <div className="space-y-2">
                 {filteredUsers.map((user) => (
                   <div
                     key={user.id}
-                    className="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors"
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 p-3 sm:p-4 bg-gray-50 rounded-xl hover:bg-slate-100 transition-colors"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-gradient-to-br from-teal-400 to-emerald-500 rounded-xl flex items-center justify-center text-white font-semibold">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-brand-orange-400 to-emerald-500 rounded-xl flex items-center justify-center text-white text-sm sm:text-base font-semibold flex-shrink-0">
                         {user.first_name?.[0] || user.email[0].toUpperCase()}
                         {user.last_name?.[0] || ''}
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-slate-900">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm sm:text-base font-medium text-brand-navy truncate">
                             {user.first_name && user.last_name
                               ? `${user.first_name} ${user.last_name}`
                               : user.email.split('@')[0]}
@@ -219,15 +221,16 @@ function UsersContent() {
                             <RoleBadge role={user.system_role as 'super_admin' | 'coach' | 'client'} />
                           )}
                         </div>
-                        <p className="text-sm text-slate-500">{user.email}</p>
+                        <p className="text-xs sm:text-sm text-gray-500 truncate">{user.email}</p>
                       </div>
                     </div>
                     <button
                       onClick={() => setSelectedUser(user)}
-                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-teal-600 text-white font-medium text-sm rounded-xl hover:bg-teal-700 transition-colors shadow-lg shadow-teal-500/20"
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-orange text-white font-medium text-xs sm:text-sm rounded-lg hover:bg-brand-orange-600 shadow-sm transition-colors w-full sm:w-auto flex-shrink-0"
                     >
                       <Key className="w-4 h-4" />
-                      Reset Password
+                      <span className="hidden sm:inline">Reset Password</span>
+                      <span className="sm:hidden">Reset</span>
                     </button>
                   </div>
                 ))}
@@ -238,19 +241,19 @@ function UsersContent() {
 
         {/* Empty state when no search */}
         {searchTerm.length === 0 && (
-          <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl">
-            <Search className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-600 font-medium mb-1">Search for a user</p>
-            <p className="text-sm text-slate-400">Enter an email or name to find users and reset their passwords</p>
+          <div className="text-center py-8 sm:py-12 border-2 border-dashed border-slate-200 rounded-xl">
+            <Search className="w-10 h-10 sm:w-12 sm:h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-sm sm:text-base text-gray-600 font-medium mb-1">Search for a user</p>
+            <p className="text-xs sm:text-sm text-slate-400">Enter an email or name to find users and reset their passwords</p>
           </div>
         )}
       </div>
 
       {/* All Users Count */}
-      <div className="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Users className="w-5 h-5 text-slate-400" />
-          <span className="text-sm text-slate-600">
+      <div className="bg-gray-50 rounded-xl p-3 sm:p-4 flex items-center justify-between">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Users className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
+          <span className="text-xs sm:text-sm text-gray-600">
             <strong>{users.length}</strong> total users in the system
           </span>
         </div>
@@ -258,50 +261,50 @@ function UsersContent() {
 
       {/* Reset Password Modal */}
       {selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={closeModal} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-            <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-900">Reset Password</h2>
-              <button onClick={closeModal} className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100">
+          <div className="relative bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-lg sm:text-xl font-semibold text-brand-navy">Reset Password</h2>
+              <button onClick={closeModal} className="p-2 text-slate-400 hover:text-gray-600 rounded-lg hover:bg-slate-100">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {resetResult ? (
               /* Success State */
-              <div className="p-6 text-center">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Check className="w-8 h-8 text-green-600" />
+              <div className="p-4 sm:p-6 text-center">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Check className="w-7 h-7 sm:w-8 sm:h-8 text-green-600" />
                 </div>
 
                 {resetResult.type === 'email' ? (
                   <>
-                    <h3 className="text-lg font-semibold text-slate-900 mb-2">Reset Email Sent!</h3>
-                    <p className="text-slate-500 mb-6">
+                    <h3 className="text-base sm:text-lg font-semibold text-brand-navy mb-2">Reset Email Sent!</h3>
+                    <p className="text-sm sm:text-base text-gray-500 mb-6">
                       A password reset link has been sent to<br />
-                      <strong className="text-slate-900">{selectedUser.email}</strong>
+                      <strong className="text-brand-navy break-all">{selectedUser.email}</strong>
                     </p>
                   </>
                 ) : (
                   <>
-                    <h3 className="text-lg font-semibold text-slate-900 mb-2">Password Reset!</h3>
-                    <p className="text-sm text-slate-500 mb-4">Share these credentials with the user:</p>
+                    <h3 className="text-base sm:text-lg font-semibold text-brand-navy mb-2">Password Reset!</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 mb-4">Share these credentials with the user:</p>
 
-                    <div className="bg-slate-50 rounded-xl p-4 text-left mb-4">
+                    <div className="bg-gray-50 rounded-xl p-3 sm:p-4 text-left mb-4">
                       <div className="mb-3">
-                        <p className="text-xs text-slate-500">Email</p>
-                        <p className="font-medium text-slate-900">{selectedUser.email}</p>
+                        <p className="text-xs text-gray-500">Email</p>
+                        <p className="text-sm sm:text-base font-medium text-brand-navy break-all">{selectedUser.email}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-slate-500">New Password</p>
+                        <p className="text-xs text-gray-500">New Password</p>
                         <div className="flex items-center gap-2 mt-1">
-                          <code className="flex-1 bg-white px-3 py-2 rounded-lg border border-slate-200 font-mono text-sm">
+                          <code className="flex-1 bg-white px-2 sm:px-3 py-2 rounded-lg border border-slate-200 font-mono text-xs sm:text-sm break-all">
                             {resetResult.password}
                           </code>
                           <button
                             onClick={copyPassword}
-                            className="p-2 text-slate-500 hover:text-teal-600 hover:bg-slate-100 rounded-lg transition-colors"
+                            className="p-2 text-gray-500 hover:text-brand-orange hover:bg-slate-100 rounded-lg transition-colors flex-shrink-0"
                           >
                             {copiedPassword ? <Check className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5" />}
                           </button>
@@ -309,80 +312,80 @@ function UsersContent() {
                       </div>
                     </div>
 
-                    <p className="text-xs text-slate-500 mb-4">They should change their password after logging in.</p>
+                    <p className="text-xs text-gray-500 mb-4">They should change their password after logging in.</p>
                   </>
                 )}
 
                 <button
                   onClick={closeModal}
-                  className="w-full py-3 bg-teal-600 text-white font-medium rounded-xl hover:bg-teal-700 transition-colors"
+                  className="w-full py-2.5 sm:py-3 bg-brand-orange text-white font-medium text-sm sm:text-base rounded-lg hover:bg-brand-orange-600 shadow-sm transition-colors"
                 >
                   Done
                 </button>
               </div>
             ) : (
               /* Selection State */
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 {/* User Info */}
-                <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl mb-6">
-                  <div className="w-12 h-12 bg-gradient-to-br from-teal-400 to-emerald-500 rounded-xl flex items-center justify-center text-white font-semibold">
+                <div className="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-gray-50 rounded-xl mb-4 sm:mb-6">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-brand-orange-400 to-emerald-500 rounded-xl flex items-center justify-center text-white text-sm sm:text-base font-semibold flex-shrink-0">
                     {selectedUser.first_name?.[0] || selectedUser.email[0].toUpperCase()}
                     {selectedUser.last_name?.[0] || ''}
                   </div>
-                  <div>
-                    <p className="font-medium text-slate-900">
+                  <div className="min-w-0">
+                    <p className="text-sm sm:text-base font-medium text-brand-navy truncate">
                       {selectedUser.first_name && selectedUser.last_name
                         ? `${selectedUser.first_name} ${selectedUser.last_name}`
                         : selectedUser.email.split('@')[0]}
                     </p>
-                    <p className="text-sm text-slate-500">{selectedUser.email}</p>
+                    <p className="text-xs sm:text-sm text-gray-500 truncate">{selectedUser.email}</p>
                   </div>
                 </div>
 
-                <p className="text-sm text-slate-600 mb-4">Choose how to reset the password:</p>
+                <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">Choose how to reset the password:</p>
 
                 {/* Reset Options */}
                 <div className="space-y-3">
                   <button
                     onClick={() => handleResetPassword('email')}
                     disabled={resetting}
-                    className="w-full flex items-center gap-4 p-4 border border-slate-200 rounded-xl hover:border-teal-500 hover:bg-teal-50 transition-all disabled:opacity-50 group"
+                    className="w-full flex items-center gap-3 sm:gap-4 p-3 sm:p-4 border border-slate-200 rounded-xl hover:border-brand-orange-500 hover:bg-brand-orange-50 transition-all disabled:opacity-50 group"
                   >
-                    <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center group-hover:bg-teal-500 transition-colors">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-brand-orange-100 rounded-xl flex items-center justify-center group-hover:bg-brand-orange-500 transition-colors flex-shrink-0">
                       {resetting && resetMethod === 'email' ? (
-                        <Loader2 className="w-5 h-5 text-teal-600 group-hover:text-white animate-spin" />
+                        <Loader2 className="w-5 h-5 text-brand-orange group-hover:text-white animate-spin" />
                       ) : (
-                        <Send className="w-5 h-5 text-teal-600 group-hover:text-white transition-colors" />
+                        <Send className="w-5 h-5 text-brand-orange group-hover:text-white transition-colors" />
                       )}
                     </div>
-                    <div className="text-left flex-1">
-                      <p className="font-medium text-slate-900">Send Reset Email</p>
-                      <p className="text-sm text-slate-500">User will receive an email with a reset link</p>
+                    <div className="text-left flex-1 min-w-0">
+                      <p className="text-sm sm:text-base font-medium text-brand-navy">Send Reset Email</p>
+                      <p className="text-xs sm:text-sm text-gray-500">User will receive an email with a reset link</p>
                     </div>
                   </button>
 
                   <button
                     onClick={() => handleResetPassword('generate')}
                     disabled={resetting}
-                    className="w-full flex items-center gap-4 p-4 border border-slate-200 rounded-xl hover:border-amber-500 hover:bg-amber-50 transition-all disabled:opacity-50 group"
+                    className="w-full flex items-center gap-3 sm:gap-4 p-3 sm:p-4 border border-slate-200 rounded-xl hover:border-amber-500 hover:bg-amber-50 transition-all disabled:opacity-50 group"
                   >
-                    <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center group-hover:bg-amber-500 transition-colors">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-xl flex items-center justify-center group-hover:bg-amber-500 transition-colors flex-shrink-0">
                       {resetting && resetMethod === 'generate' ? (
                         <Loader2 className="w-5 h-5 text-amber-600 group-hover:text-white animate-spin" />
                       ) : (
                         <Key className="w-5 h-5 text-amber-600 group-hover:text-white transition-colors" />
                       )}
                     </div>
-                    <div className="text-left flex-1">
-                      <p className="font-medium text-slate-900">Generate Temporary Password</p>
-                      <p className="text-sm text-slate-500">Get a password to share with the user directly</p>
+                    <div className="text-left flex-1 min-w-0">
+                      <p className="text-sm sm:text-base font-medium text-brand-navy">Generate Temporary Password</p>
+                      <p className="text-xs sm:text-sm text-gray-500">Get a password to share with the user directly</p>
                     </div>
                   </button>
                 </div>
 
                 <button
                   onClick={closeModal}
-                  className="w-full mt-4 py-2.5 text-slate-600 hover:text-slate-800 transition-colors"
+                  className="w-full mt-4 py-2.5 text-sm sm:text-base text-gray-600 hover:text-brand-navy transition-colors"
                 >
                   Cancel
                 </button>

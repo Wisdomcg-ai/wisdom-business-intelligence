@@ -61,7 +61,7 @@ export default function XeroConnectionPanel({
             type="button"
             onClick={onSync}
             disabled={isSaving}
-            className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors disabled:opacity-50"
+            className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-brand-orange bg-brand-orange-50 rounded-lg hover:bg-brand-orange-100 transition-colors disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
             <span>Sync from Xero</span>
@@ -81,7 +81,7 @@ export default function XeroConnectionPanel({
         <button
           type="button"
           onClick={onOpenCSVImport}
-          className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors"
+          className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-brand-orange bg-brand-orange-50 rounded-lg hover:bg-brand-orange-100 transition-colors"
         >
           <Upload className="w-4 h-4" />
           <span>Import CSV</span>
@@ -89,7 +89,7 @@ export default function XeroConnectionPanel({
         <button
           type="button"
           onClick={onConnect}
-          className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors"
+          className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors"
         >
           <LinkIcon className="w-4 h-4" />
           <span>Connect Xero</span>

@@ -413,14 +413,14 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
   return (
     <div className="space-y-6">
       {/* Payroll Settings */}
-      <div className="bg-gradient-to-br from-teal-50 to-teal-50 rounded-xl shadow-lg border-2 border-teal-200">
+      <div className="bg-gradient-to-br from-brand-orange-50 to-brand-orange-50 rounded-xl shadow-lg border-2 border-brand-orange-200">
         <div
-          className="p-6 border-b-2 border-teal-200 bg-white/50 backdrop-blur-sm cursor-pointer hover:bg-white/70 transition-colors"
+          className="p-6 border-b-2 border-brand-orange-200 bg-white/50 backdrop-blur-sm cursor-pointer hover:bg-white/70 transition-colors"
           onClick={() => setIsPayrollSettingsExpanded(!isPayrollSettingsExpanded)}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-teal-500 rounded-lg">
+              <div className="p-2 bg-brand-orange-500 rounded-lg">
                 <Settings className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -430,7 +430,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                 </p>
               </div>
             </div>
-            <button className="p-2 hover:bg-teal-100 rounded-lg transition-colors">
+            <button className="p-2 hover:bg-brand-orange-100 rounded-lg transition-colors">
               {isPayrollSettingsExpanded ? (
                 <ChevronUp className="w-6 h-6 text-gray-600" />
               ) : (
@@ -452,7 +452,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
               <select
                 value={payrollFrequency}
                 onChange={(e) => setPayrollFrequency(e.target.value as PayrollFrequency)}
-                className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-teal-100 focus:border-teal-500 transition-all duration-200 hover:border-teal-400 cursor-pointer appearance-none font-medium"
+                className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-brand-orange-100 focus:border-brand-orange-500 transition-all duration-200 hover:border-brand-orange-400 cursor-pointer appearance-none font-medium"
               >
                 <option value="weekly">📅 Weekly</option>
                 <option value="fortnightly">📅 Fortnightly</option>
@@ -476,7 +476,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                 <select
                   value={payDay}
                   onChange={(e) => setPayDay(e.target.value as PayDay)}
-                  className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-teal-100 focus:border-teal-500 transition-all duration-200 hover:border-teal-400 cursor-pointer appearance-none font-medium"
+                  className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-brand-orange-100 focus:border-brand-orange-500 transition-all duration-200 hover:border-brand-orange-400 cursor-pointer appearance-none font-medium"
                 >
                   <option value="monday">Monday</option>
                   <option value="tuesday">Tuesday</option>
@@ -508,7 +508,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                 step="0.1"
                 min="0"
                 max="100"
-                className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-teal-100 focus:border-teal-500 transition-all duration-200 hover:border-teal-400 font-medium"
+                className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-brand-orange-100 focus:border-brand-orange-500 transition-all duration-200 hover:border-brand-orange-400 font-medium"
               />
               <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-gray-600 font-semibold">
                 %
@@ -518,10 +518,10 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
         </div>
 
         {/* P&L Forecast Mapping - Inside Payroll Settings */}
-        <div className="border-t-2 border-teal-200 bg-white/50 backdrop-blur-sm">
-          <div className="p-6 border-b-2 border-teal-200">
+        <div className="border-t-2 border-brand-orange-200 bg-white/50 backdrop-blur-sm">
+          <div className="p-6 border-b-2 border-brand-orange-200">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-teal-500 rounded-lg">
+              <div className="p-2 bg-brand-orange-500 rounded-lg">
                 <LinkIcon className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -546,7 +546,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                     <select
                       value={wagesOpexLineId}
                       onChange={(e) => setWagesOpexLineId(e.target.value)}
-                      className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-teal-100 focus:border-teal-500 transition-all duration-200 hover:border-teal-400 cursor-pointer appearance-none font-medium"
+                      className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-brand-orange-100 focus:border-brand-orange-500 transition-all duration-200 hover:border-brand-orange-400 cursor-pointer appearance-none font-medium"
                     >
                       <option value="">-- Select P&L Line --</option>
                       {plLines
@@ -565,7 +565,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowCreateOpexWagesLine(true); }}
-                    className="text-sm text-teal-600 hover:text-teal-700 font-medium"
+                    className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
                   >
                     + Create new line
                   </button>
@@ -582,7 +582,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                   <div className="flex gap-2">
                     <button
                       onClick={handleCreateWagesOpexLine}
-                      className="px-3 py-1 text-sm bg-teal-600 text-white rounded hover:bg-teal-700"
+                      className="px-3 py-1 text-sm bg-brand-orange text-white rounded hover:bg-brand-orange-600"
                     >
                       Create
                     </button>
@@ -608,7 +608,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                     <select
                       value={wagesCogsLineId}
                       onChange={(e) => setWagesCogsLineId(e.target.value)}
-                      className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-teal-100 focus:border-teal-500 transition-all duration-200 hover:border-teal-400 cursor-pointer appearance-none font-medium"
+                      className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-brand-orange-100 focus:border-brand-orange-500 transition-all duration-200 hover:border-brand-orange-400 cursor-pointer appearance-none font-medium"
                     >
                       <option value="">-- Select P&L Line --</option>
                       {plLines
@@ -627,7 +627,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowCreateCogsWagesLine(true); }}
-                    className="text-sm text-teal-600 hover:text-teal-700 font-medium"
+                    className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
                   >
                     + Create new line
                   </button>
@@ -644,7 +644,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                   <div className="flex gap-2">
                     <button
                       onClick={handleCreateWagesCogsLine}
-                      className="px-3 py-1 text-sm bg-teal-600 text-white rounded hover:bg-teal-700"
+                      className="px-3 py-1 text-sm bg-brand-orange text-white rounded hover:bg-brand-orange-600"
                     >
                       Create
                     </button>
@@ -670,7 +670,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                     <select
                       value={superOpexLineId}
                       onChange={(e) => setSuperOpexLineId(e.target.value)}
-                      className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-teal-100 focus:border-teal-500 transition-all duration-200 hover:border-teal-400 cursor-pointer appearance-none font-medium"
+                      className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-brand-orange-100 focus:border-brand-orange-500 transition-all duration-200 hover:border-brand-orange-400 cursor-pointer appearance-none font-medium"
                     >
                       <option value="">-- Select P&L Line --</option>
                       {plLines
@@ -689,7 +689,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowCreateOpexSuperLine(true); }}
-                    className="text-sm text-teal-600 hover:text-teal-700 font-medium"
+                    className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
                   >
                     + Create new line
                   </button>
@@ -706,7 +706,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                   <div className="flex gap-2">
                     <button
                       onClick={handleCreateSuperOpexLine}
-                      className="px-3 py-1 text-sm bg-teal-600 text-white rounded hover:bg-teal-700"
+                      className="px-3 py-1 text-sm bg-brand-orange text-white rounded hover:bg-brand-orange-600"
                     >
                       Create
                     </button>
@@ -732,7 +732,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                     <select
                       value={superCogsLineId}
                       onChange={(e) => setSuperCogsLineId(e.target.value)}
-                      className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-teal-100 focus:border-teal-500 transition-all duration-200 hover:border-teal-400 cursor-pointer appearance-none font-medium"
+                      className="w-full px-4 py-3 text-base bg-white border-2 border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-brand-orange-100 focus:border-brand-orange-500 transition-all duration-200 hover:border-brand-orange-400 cursor-pointer appearance-none font-medium"
                     >
                       <option value="">-- Select P&L Line --</option>
                       {plLines
@@ -751,7 +751,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowCreateCogsSuperLine(true); }}
-                    className="text-sm text-teal-600 hover:text-teal-700 font-medium"
+                    className="text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
                   >
                     + Create new line
                   </button>
@@ -768,7 +768,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                   <div className="flex gap-2">
                     <button
                       onClick={handleCreateSuperCogsLine}
-                      className="px-3 py-1 text-sm bg-teal-600 text-white rounded hover:bg-teal-700"
+                      className="px-3 py-1 text-sm bg-brand-orange text-white rounded hover:bg-brand-orange-600"
                     >
                       Create
                     </button>
@@ -819,7 +819,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
             <thead>
               <tr className="border-b-2 border-gray-300 bg-gray-50">
                 {/* Employee Info Group */}
-                <th colSpan={5} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r-2 border-gray-300 bg-teal-50">
+                <th colSpan={5} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r-2 border-gray-300 bg-brand-orange-50">
                   Employee Information
                 </th>
                 {/* Salary Input Group */}
@@ -884,7 +884,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                       value={emp.employee_name}
                       onChange={(e) => updateEmployee(idx, 'employee_name', e.target.value)}
                       placeholder="Employee name"
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-brand-orange focus:border-brand-orange-500"
                     />
                   </td>
 
@@ -893,7 +893,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                     <select
                       value={emp.classification}
                       onChange={(e) => updateEmployee(idx, 'classification', e.target.value as WageClassification)}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-brand-orange focus:border-brand-orange-500"
                     >
                       <option value="opex">OpEx</option>
                       <option value="cogs">COGS</option>
@@ -906,7 +906,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                       type="date"
                       value={formatDateForInput(emp.start_date)}
                       onChange={(e) => updateEmployee(idx, 'start_date', formatDateForStorage(e.target.value))}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-brand-orange focus:border-brand-orange-500"
                     />
                   </td>
 
@@ -917,7 +917,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                       value={formatDateForInput(emp.end_date)}
                       onChange={(e) => updateEmployee(idx, 'end_date', formatDateForStorage(e.target.value))}
                       placeholder="Ongoing"
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-brand-orange focus:border-brand-orange-500"
                     />
                   </td>
 
@@ -928,7 +928,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                       value={emp.position || ''}
                       onChange={(e) => updateEmployee(idx, 'position', e.target.value)}
                       placeholder="Position"
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-brand-orange focus:border-brand-orange-500"
                     />
                   </td>
 
@@ -1006,7 +1006,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
         <div className="p-4 border-t border-gray-200">
           <button
             onClick={addEmployee}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-teal-600 hover:text-teal-700 hover:bg-teal-50 font-medium rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm text-brand-orange hover:text-brand-orange-700 hover:bg-brand-orange-50 font-medium rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
             <span>Add Employee</span>
@@ -1084,8 +1084,8 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
                   )
                 })}
               </tr>
-              <tr className="bg-teal-50 font-bold border-t-2 border-gray-300">
-                <td className="sticky left-0 z-10 bg-teal-50 px-6 py-3 border-r-2 border-gray-300 text-gray-900">
+              <tr className="bg-brand-orange-50 font-bold border-t-2 border-gray-300">
+                <td className="sticky left-0 z-10 bg-brand-orange-50 px-6 py-3 border-r-2 border-gray-300 text-gray-900">
                   Total Payroll Cost
                 </td>
                 {monthColumns.filter(c => c.isForecast).map((col) => {

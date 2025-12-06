@@ -34,6 +34,7 @@ import {
   type CreateIssueInput
 } from '@/lib/services/issuesService';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import { PageHeader } from '@/components/ui/PageHeader';
 
 type IssueStatus = 'new' | 'identified' | 'in-discussion' | 'solving' | 'solved';
 type FilterStatus = 'all' | IssueStatus;
@@ -41,24 +42,24 @@ type FilterStatus = 'all' | IssueStatus;
 const STATUS_CONFIG = {
   'new': {
     label: 'New',
-    color: 'bg-slate-100 text-slate-700 border-slate-200',
+    color: 'bg-slate-100 text-gray-700 border-slate-200',
     borderColor: 'border-l-slate-400',
     icon: AlertCircle,
-    bgHover: 'hover:bg-slate-50'
+    bgHover: 'hover:bg-gray-50'
   },
   'identified': {
     label: 'Identified',
-    color: 'bg-teal-100 text-teal-700 border-teal-200',
-    borderColor: 'border-l-teal-500',
+    color: 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-200',
+    borderColor: 'border-l-brand-orange',
     icon: Target,
-    bgHover: 'hover:bg-teal-50'
+    bgHover: 'hover:bg-brand-orange-50'
   },
   'in-discussion': {
     label: 'In Discussion',
-    color: 'bg-purple-100 text-purple-700 border-purple-200',
-    borderColor: 'border-l-purple-500',
+    color: 'bg-brand-navy-50 text-brand-navy border-brand-navy-200',
+    borderColor: 'border-l-brand-navy',
     icon: MessageCircle,
-    bgHover: 'hover:bg-purple-50'
+    bgHover: 'hover:bg-brand-navy-50'
   },
   'solving': {
     label: 'Solving',
@@ -69,17 +70,17 @@ const STATUS_CONFIG = {
   },
   'solved': {
     label: 'Solved',
-    color: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    borderColor: 'border-l-emerald-500',
+    color: 'bg-brand-teal-50 text-brand-teal border-brand-teal-200',
+    borderColor: 'border-l-brand-teal',
     icon: CheckCircle2,
-    bgHover: 'hover:bg-emerald-50'
+    bgHover: 'hover:bg-brand-teal-50'
   }
 };
 
 // Skeleton loader for cards
 function IssueCardSkeleton() {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 animate-pulse">
+    <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 animate-pulse">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 space-y-3">
           <div className="h-5 bg-gray-200 rounded w-3/4"></div>
@@ -120,7 +121,7 @@ function PriorityBadge({ priority }: { priority: number | null }) {
 
   const colors = {
     1: 'bg-red-100 text-red-700 border-red-200 ring-1 ring-red-200',
-    2: 'bg-orange-100 text-orange-700 border-orange-200',
+    2: 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-200',
     3: 'bg-yellow-100 text-yellow-700 border-yellow-200'
   };
 
@@ -167,13 +168,13 @@ function IssueCard({
         transition-all duration-200 hover:shadow-md
       `}
     >
-      <div className="p-5">
+      <div className="p-4 sm:p-5">
         <div className="flex items-start justify-between gap-4">
           {/* Main content */}
           <div className="flex-1 min-w-0">
             {/* Title row with badges */}
             <div className="flex flex-wrap items-center gap-2 mb-2">
-              <h3 className="font-semibold text-gray-900 text-lg">{issue.title}</h3>
+              <h3 className="font-semibold text-gray-900 text-base sm:text-lg">{issue.title}</h3>
               {issue.priority && issue.priority <= 3 && (
                 <PriorityBadge priority={issue.priority} />
               )}
@@ -188,11 +189,11 @@ function IssueCard({
 
             {/* Root cause highlight if identified */}
             {issue.root_cause && (
-              <div className="flex items-start gap-2 p-2 mb-3 bg-teal-50 border border-teal-100 rounded-lg">
-                <Target className="w-4 h-4 text-teal-600 flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2 p-2 mb-3 bg-brand-orange-50 border border-brand-orange-100 rounded-lg">
+                <Target className="w-4 h-4 text-brand-orange flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs font-medium text-teal-700">Root Cause:</p>
-                  <p className="text-sm text-teal-800">{issue.root_cause}</p>
+                  <p className="text-xs font-medium text-brand-orange-700">Root Cause:</p>
+                  <p className="text-sm text-brand-orange-800">{issue.root_cause}</p>
                 </div>
               </div>
             )}
@@ -201,7 +202,7 @@ function IssueCard({
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={issue.status as IssueStatus} size="sm" />
               {issue.owner && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-slate-100 text-slate-600">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-slate-100 text-gray-600">
                   <User className="w-3 h-3" />
                   {issue.owner}
                 </span>
@@ -219,13 +220,13 @@ function IssueCard({
                 )}
                 {issue.root_cause && (
                   <div>
-                    <p className="text-xs font-semibold text-teal-600 uppercase tracking-wide mb-1">Root Cause</p>
+                    <p className="text-xs font-semibold text-brand-orange uppercase tracking-wide mb-1">Root Cause</p>
                     <p className="text-gray-700">{issue.root_cause}</p>
                   </div>
                 )}
                 {issue.solution && (
                   <div>
-                    <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1">Solution</p>
+                    <p className="text-xs font-semibold text-brand-teal uppercase tracking-wide mb-1">Solution</p>
                     <p className="text-gray-700">{issue.solution}</p>
                   </div>
                 )}
@@ -272,7 +273,7 @@ function IssueCard({
                         >
                           {p ? (
                             <>
-                              <span className={`font-bold ${p === 1 ? 'text-red-600' : p === 2 ? 'text-orange-600' : 'text-yellow-600'}`}>
+                              <span className={`font-bold ${p === 1 ? 'text-red-600' : p === 2 ? 'text-brand-orange-600' : 'text-yellow-600'}`}>
                                 P{p}
                               </span>
                               {p === 1 && <span className="text-xs text-gray-500">Top</span>}
@@ -280,7 +281,7 @@ function IssueCard({
                           ) : (
                             <span className="text-gray-500">No priority</span>
                           )}
-                          {issue.priority === p && <Check className="w-4 h-4 ml-auto text-emerald-600" />}
+                          {issue.priority === p && <Check className="w-4 h-4 ml-auto text-brand-teal" />}
                         </button>
                       ))}
                     </div>
@@ -323,7 +324,7 @@ function IssueCard({
                         >
                           <Icon className="w-4 h-4" />
                           {cfg.label}
-                          {issue.status === key && <Check className="w-4 h-4 ml-auto text-emerald-600" />}
+                          {issue.status === key && <Check className="w-4 h-4 ml-auto text-brand-teal" />}
                         </button>
                       );
                     })}
@@ -334,7 +335,7 @@ function IssueCard({
 
             <button
               onClick={onEdit}
-              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              className="p-2 text-gray-500 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
               title="Edit"
             >
               <Edit3 className="w-5 h-5" />
@@ -343,7 +344,7 @@ function IssueCard({
             {!isSolvedTab && (
               <button
                 onClick={onSolve}
-                className="p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                className="p-2 text-gray-500 hover:text-brand-teal hover:bg-brand-teal-50 rounded-lg transition-colors"
                 title="Mark as solved"
               >
                 <CheckCircle2 className="w-5 h-5" />
@@ -448,64 +449,64 @@ function IDSInfoBox() {
   }
 
   return (
-    <div className="bg-teal-50 border border-teal-200 rounded-xl overflow-hidden">
+    <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-xl overflow-hidden">
       <button
         onClick={toggleInfo}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-teal-100 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-brand-orange-100 transition-colors"
       >
         <div className="flex items-center gap-3">
-          <div className="p-1.5 bg-teal-100 rounded-lg">
-            <Info className="h-4 w-4 text-teal-600" />
+          <div className="p-1.5 bg-brand-orange-100 rounded-lg">
+            <Info className="h-4 w-4 text-brand-orange" />
           </div>
-          <span className="font-medium text-teal-900">How to Use Your Issues List</span>
+          <span className="font-medium text-brand-navy">How to Use Your Issues List</span>
         </div>
         {expanded ? (
-          <ChevronUp className="h-5 w-5 text-teal-600" />
+          <ChevronUp className="h-5 w-5 text-brand-orange" />
         ) : (
-          <ChevronDown className="h-5 w-5 text-teal-600" />
+          <ChevronDown className="h-5 w-5 text-brand-orange" />
         )}
       </button>
 
       {expanded && (
-        <div className="px-4 py-4 border-t border-teal-200 bg-white text-sm text-gray-700 space-y-4">
+        <div className="px-4 py-4 border-t border-brand-orange-200 bg-white text-sm text-gray-700 space-y-4">
           {/* Workflow Steps */}
           <div className="space-y-2">
             <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-6 h-6 bg-slate-200 text-slate-700 rounded-full flex items-center justify-center text-xs font-bold">1</span>
+              <span className="flex-shrink-0 w-6 h-6 bg-slate-200 text-gray-700 rounded-full flex items-center justify-center text-xs font-bold">1</span>
               <p><strong>Capture issues as they come up</strong> — don't try to solve them in the moment</p>
             </div>
             <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-6 h-6 bg-slate-200 text-slate-700 rounded-full flex items-center justify-center text-xs font-bold">2</span>
+              <span className="flex-shrink-0 w-6 h-6 bg-slate-200 text-gray-700 rounded-full flex items-center justify-center text-xs font-bold">2</span>
               <p><strong>Before your weekly meeting</strong>, rank your top 3 as P1, P2, P3</p>
             </div>
             <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-6 h-6 bg-slate-200 text-slate-700 rounded-full flex items-center justify-center text-xs font-bold">3</span>
+              <span className="flex-shrink-0 w-6 h-6 bg-slate-200 text-gray-700 rounded-full flex items-center justify-center text-xs font-bold">3</span>
               <p><strong>In the meeting, IDS each one</strong> with your team:</p>
             </div>
           </div>
 
           {/* IDS Breakdown */}
-          <div className="grid grid-cols-3 gap-3 ml-9">
-            <div className="p-3 bg-teal-50 rounded-lg border border-teal-100">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 ml-9">
+            <div className="p-3 bg-brand-orange-50 rounded-lg border border-brand-orange-100">
               <div className="flex items-center gap-2 mb-1">
-                <Target className="w-4 h-4 text-teal-600" />
-                <span className="font-semibold text-teal-800">Identify</span>
+                <Target className="w-4 h-4 text-brand-orange" />
+                <span className="font-semibold text-brand-orange-800">Identify</span>
               </div>
-              <p className="text-xs text-teal-700">Find the real root cause, not just the symptom</p>
+              <p className="text-xs text-brand-orange-700">Find the real root cause, not just the symptom</p>
             </div>
-            <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
+            <div className="p-3 bg-brand-navy-50 rounded-lg border border-brand-navy-200">
               <div className="flex items-center gap-2 mb-1">
-                <MessageCircle className="w-4 h-4 text-purple-600" />
-                <span className="font-semibold text-purple-800">Discuss</span>
+                <MessageCircle className="w-4 h-4 text-brand-navy" />
+                <span className="font-semibold text-brand-navy">Discuss</span>
               </div>
-              <p className="text-xs text-purple-700">Everyone shares their thoughts openly</p>
+              <p className="text-xs text-brand-navy">Everyone shares their thoughts openly</p>
             </div>
-            <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+            <div className="p-3 bg-brand-teal-50 rounded-lg border border-brand-teal-200">
               <div className="flex items-center gap-2 mb-1">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span className="font-semibold text-emerald-800">Solve</span>
+                <CheckCircle2 className="w-4 h-4 text-brand-teal" />
+                <span className="font-semibold text-brand-teal">Solve</span>
               </div>
-              <p className="text-xs text-emerald-700">Decide, assign to-dos, and move on</p>
+              <p className="text-xs text-brand-teal">Decide, assign to-dos, and move on</p>
             </div>
           </div>
 
@@ -725,125 +726,120 @@ export default function IssuesListPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Issues List</h1>
-              <p className="text-sm text-gray-600 mt-1">Identify, discuss, and solve your business challenges</p>
-            </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {/* Header */}
+        <PageHeader
+          title="Issues List"
+          subtitle="Identify, discuss, and solve your business challenges"
+          icon={AlertCircle}
+          actions={
             <button
               onClick={() => {
                 resetForm();
                 setShowForm(true);
               }}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium shadow-sm"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium shadow-sm"
             >
               <Plus className="h-5 w-5" />
               <span>Add Issue</span>
             </button>
-          </div>
+          }
+        />
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'all'
-                  ? 'border-teal-500 bg-teal-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-              <p className="text-xs font-medium text-gray-600">Total Issues</p>
-            </button>
-            <button
-              onClick={() => { setStatusFilter('all'); setSortBy('priority'); }}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                sortBy === 'priority' && statusFilter === 'all'
-                  ? 'border-red-500 bg-red-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-red-600">{stats.topPriority}</p>
-              <p className="text-xs font-medium text-gray-600">Top 3 Priority</p>
-            </button>
-            <button
-              onClick={() => setStatusFilter('new')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'new'
-                  ? 'border-slate-500 bg-slate-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-slate-600">{stats.new}</p>
-              <p className="text-xs font-medium text-gray-600">New</p>
-            </button>
-            <button
-              onClick={() => setStatusFilter('identified')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'identified'
-                  ? 'border-teal-500 bg-teal-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-teal-600">{stats.identified}</p>
-              <p className="text-xs font-medium text-gray-600">Identified</p>
-            </button>
-            <button
-              onClick={() => setStatusFilter('in-discussion')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'in-discussion'
-                  ? 'border-purple-500 bg-purple-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-purple-600">{stats.inDiscussion}</p>
-              <p className="text-xs font-medium text-gray-600">In Discussion</p>
-            </button>
-            <button
-              onClick={() => setStatusFilter('solving')}
-              className={`p-3 rounded-xl border-2 transition-all ${
-                statusFilter === 'solving'
-                  ? 'border-amber-500 bg-amber-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <p className="text-2xl font-bold text-amber-600">{stats.solving}</p>
-              <p className="text-xs font-medium text-gray-600">Solving</p>
-            </button>
-          </div>
-
-          {/* Tabs */}
-          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
-            <button
-              onClick={() => setActiveTab('active')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === 'active'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Active ({issues.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('solved')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === 'solved'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Solved ({solvedIssues.length})
-            </button>
-          </div>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`p-3 rounded-xl border-2 transition-all ${
+              statusFilter === 'all'
+                ? 'border-brand-orange-500 bg-brand-orange-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
+            <p className="text-xs font-medium text-gray-600">Total Issues</p>
+          </button>
+          <button
+            onClick={() => { setStatusFilter('all'); setSortBy('priority'); }}
+            className={`p-3 rounded-xl border-2 transition-all ${
+              sortBy === 'priority' && statusFilter === 'all'
+                ? 'border-red-500 bg-red-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-red-600">{stats.topPriority}</p>
+            <p className="text-xs font-medium text-gray-600">Top 3 Priority</p>
+          </button>
+          <button
+            onClick={() => setStatusFilter('new')}
+            className={`p-3 rounded-xl border-2 transition-all ${
+              statusFilter === 'new'
+                ? 'border-slate-500 bg-gray-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-gray-600">{stats.new}</p>
+            <p className="text-xs font-medium text-gray-600">New</p>
+          </button>
+          <button
+            onClick={() => setStatusFilter('identified')}
+            className={`p-3 rounded-xl border-2 transition-all ${
+              statusFilter === 'identified'
+                ? 'border-brand-orange-500 bg-brand-orange-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-brand-orange">{stats.identified}</p>
+            <p className="text-xs font-medium text-gray-600">Identified</p>
+          </button>
+          <button
+            onClick={() => setStatusFilter('in-discussion')}
+            className={`p-3 rounded-xl border-2 transition-all ${
+              statusFilter === 'in-discussion'
+                ? 'border-brand-navy bg-brand-navy-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-brand-navy">{stats.inDiscussion}</p>
+            <p className="text-xs font-medium text-gray-600">In Discussion</p>
+          </button>
+          <button
+            onClick={() => setStatusFilter('solving')}
+            className={`p-3 rounded-xl border-2 transition-all ${
+              statusFilter === 'solving'
+                ? 'border-amber-500 bg-amber-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+          >
+            <p className="text-xl sm:text-2xl font-bold text-amber-600">{stats.solving}</p>
+            <p className="text-xs font-medium text-gray-600">Solving</p>
+          </button>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6">
+        {/* Tabs */}
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit mb-6">
+          <button
+            onClick={() => setActiveTab('active')}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeTab === 'active'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Active ({issues.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('solved')}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeTab === 'solved'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Solved ({solvedIssues.length})
+          </button>
+        </div>
         {/* IDS Info Box */}
         <div className="mb-6">
           <IDSInfoBox />
@@ -858,13 +854,13 @@ export default function IssuesListPage() {
               placeholder="Search issues..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
             />
           </div>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
+            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent bg-white"
           >
             <option value="priority">By Priority</option>
             <option value="newest">Newest First</option>
@@ -876,7 +872,7 @@ export default function IssuesListPage() {
                 setStatusFilter('all');
                 setSearchQuery('');
               }}
-              className="px-4 py-2.5 text-teal-600 hover:text-teal-700 font-medium"
+              className="px-4 py-2.5 text-brand-orange hover:text-brand-orange-700 font-medium"
             >
               Clear filters
             </button>
@@ -908,13 +904,13 @@ export default function IssuesListPage() {
           </div>
         ) : filteredIssues.length === 0 ? (
           /* Empty State */
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="bg-white rounded-xl border border-gray-200 p-6 sm:p-12 text-center">
             {(activeTab === 'active' ? issues : solvedIssues).length === 0 ? (
               <>
-                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                <div className="w-16 h-16 bg-brand-teal-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle2 className="w-8 h-8 text-brand-teal" />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
                   {activeTab === 'active' ? 'No active issues' : 'No solved issues yet'}
                 </h3>
                 <p className="text-gray-600 mb-6 max-w-md mx-auto">
@@ -928,7 +924,7 @@ export default function IssuesListPage() {
                       resetForm();
                       setShowForm(true);
                     }}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium"
                   >
                     <Plus className="h-5 w-5" />
                     Add your first issue
@@ -940,7 +936,7 @@ export default function IssuesListPage() {
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Search className="w-8 h-8 text-gray-400" />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">No matching issues</h3>
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">No matching issues</h3>
                 <p className="text-gray-600 mb-4">
                   Try adjusting your search or filter criteria
                 </p>
@@ -949,7 +945,7 @@ export default function IssuesListPage() {
                     setSearchQuery('');
                     setStatusFilter('all');
                   }}
-                  className="text-teal-600 hover:text-teal-700 font-medium"
+                  className="text-brand-orange hover:text-brand-orange-700 font-medium"
                 >
                   Clear filters
                 </button>
@@ -981,12 +977,12 @@ export default function IssuesListPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl">
             {/* Modal Header */}
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-teal-100 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-teal-600" />
+                <div className="p-2 bg-brand-orange-100 rounded-lg">
+                  <AlertCircle className="w-5 h-5 text-brand-orange" />
                 </div>
-                <h2 className="text-xl font-bold text-gray-900">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900">
                   {editingId ? 'Edit Issue' : 'Add New Issue'}
                 </h2>
               </div>
@@ -998,7 +994,7 @@ export default function IssuesListPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-5">
               {/* Title */}
               <div>
                 <label className="block text-sm font-semibold text-gray-900 mb-2">
@@ -1010,13 +1006,13 @@ export default function IssuesListPage() {
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   placeholder="e.g., High staff turnover"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent text-lg"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent text-lg"
                   autoFocus
                 />
               </div>
 
               {/* Priority & Owner Row */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-2">
                     Priority <span className="text-gray-400 font-normal">(1-3 for IDS)</span>
@@ -1024,7 +1020,7 @@ export default function IssuesListPage() {
                   <select
                     value={formData.priority || ''}
                     onChange={(e) => setFormData({ ...formData, priority: e.target.value ? parseInt(e.target.value) : null })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   >
                     <option value="">No priority</option>
                     <option value="1">P1 (Top Priority)</option>
@@ -1041,7 +1037,7 @@ export default function IssuesListPage() {
                     value={formData.owner}
                     onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
                     placeholder="Me, Sarah, Mike, etc."
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   />
                 </div>
               </div>
@@ -1056,7 +1052,7 @@ export default function IssuesListPage() {
                   onChange={(e) => setFormData({ ...formData, stated_problem: e.target.value || null })}
                   placeholder="E.g., We're losing customers month over month"
                   rows={2}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
                 />
               </div>
 
@@ -1070,7 +1066,7 @@ export default function IssuesListPage() {
                   onChange={(e) => setFormData({ ...formData, root_cause: e.target.value || null })}
                   placeholder="E.g., No structured customer onboarding process"
                   rows={2}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
                 />
               </div>
 
@@ -1084,13 +1080,13 @@ export default function IssuesListPage() {
                   onChange={(e) => setFormData({ ...formData, solution: e.target.value || null })}
                   placeholder="E.g., Create and implement a 30-day onboarding checklist"
                   rows={2}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
                 />
               </div>
 
               {/* Tip */}
-              <div className="bg-teal-50 border border-teal-200 rounded-lg p-3">
-                <p className="text-xs text-teal-800">
+              <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-3">
+                <p className="text-xs text-brand-orange-800">
                   <strong>Focus on root cause.</strong> Add the issue now, then work through root cause
                   and solution during your weekly IDS session with your team.
                 </p>
@@ -1107,7 +1103,7 @@ export default function IssuesListPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-3 text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors font-medium"
+                  className="flex-1 px-4 py-3 text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors font-medium"
                 >
                   {editingId ? 'Save Changes' : 'Add Issue'}
                 </button>

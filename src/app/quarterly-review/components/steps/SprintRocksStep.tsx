@@ -86,9 +86,9 @@ export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
       />
 
       {/* Guidelines */}
-      <div className="bg-slate-50 rounded-xl border border-gray-200 p-4 mb-6">
+      <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 mb-6">
         <h4 className="font-medium text-gray-900 flex items-center gap-2 mb-2">
-          <Mountain className="w-4 h-4 text-slate-600" />
+          <Mountain className="w-4 h-4 text-gray-600" />
           What Makes a Great Rock?
         </h4>
         <ul className="text-sm text-gray-700 space-y-1">
@@ -107,10 +107,10 @@ export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
         </h3>
         <div className={`px-3 py-1 rounded-full text-sm font-medium ${
           rocks.length >= 3 && rocks.length <= 5
-            ? 'bg-slate-100 text-slate-700'
+            ? 'bg-slate-100 text-gray-700'
             : rocks.length > 5
-            ? 'bg-slate-100 text-slate-700'
-            : 'bg-slate-100 text-slate-700'
+            ? 'bg-slate-100 text-gray-700'
+            : 'bg-slate-100 text-gray-700'
         }`}>
           {rocks.length} / 3-5 Rocks
         </div>
@@ -125,7 +125,7 @@ export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
             <p className="text-gray-500 mb-4">Add your 3-5 most important priorities for the quarter</p>
             <button
               onClick={addRock}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg font-medium hover:bg-brand-orange-600"
             >
               <Plus className="w-4 h-4" />
               Add First Rock
@@ -150,7 +150,7 @@ export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
                 </div>
 
                 {/* Priority Number */}
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 bg-teal-600">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 bg-brand-orange">
                   {index + 1}
                 </div>
 
@@ -162,7 +162,7 @@ export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
                     value={rock.title}
                     onChange={(e) => updateRock(rock.id, 'title', e.target.value)}
                     placeholder="Rock title - What will you achieve?"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg font-medium focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   />
 
                   {/* Done Definition */}
@@ -176,7 +176,7 @@ export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
                       onChange={(e) => updateRock(rock.id, 'doneDefinition', e.target.value)}
                       placeholder="Describe the specific, measurable outcome..."
                       rows={2}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
                     />
                   </div>
 
@@ -192,7 +192,7 @@ export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
                         value={rock.owner}
                         onChange={(e) => updateRock(rock.id, 'owner', e.target.value)}
                         placeholder="Who's responsible?"
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                       />
                     </div>
                     <div className="flex-1">
@@ -205,7 +205,7 @@ export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
                         value={rock.linkedInitiativeId || ''}
                         onChange={(e) => updateRock(rock.id, 'linkedInitiativeId', e.target.value)}
                         placeholder="Which initiative does this support?"
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                       />
                     </div>
                   </div>
@@ -228,7 +228,7 @@ export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
       {rocks.length > 0 && rocks.length < 7 && (
         <button
           onClick={addRock}
-          className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-colors flex items-center justify-center gap-2"
+          className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 hover:border-brand-orange-400 hover:text-brand-orange transition-colors flex items-center justify-center gap-2"
         >
           <Plus className="w-5 h-5" />
           Add Another Rock
@@ -237,7 +237,7 @@ export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
 
       {/* Warning if too many rocks */}
       {rocks.length > 5 && (
-        <div className="mt-4 p-4 bg-slate-50 rounded-xl border border-gray-200">
+        <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
           <p className="text-gray-700 text-sm flex items-center gap-2">
             <span className="text-gray-600">⚠️</span>
             You have more than 5 rocks. Consider reducing to maintain focus.

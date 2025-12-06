@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Link2, CheckCircle, XCircle, RefreshCw, Trash2, ExternalLink, Plus, Settings } from 'lucide-react'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
+import PageHeader from '@/components/ui/PageHeader'
 
 interface Integration {
   id: string
@@ -152,9 +153,9 @@ export default function IntegrationsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Link2 className="w-8 h-8 text-teal-600 animate-pulse mx-auto mb-4" />
+          <Link2 className="w-8 h-8 text-brand-orange animate-pulse mx-auto mb-4" />
           <p className="text-gray-600">Loading integrations...</p>
         </div>
       </div>
@@ -162,30 +163,22 @@ export default function IntegrationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 sm:p-8">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-teal-600 to-teal-700 px-6 py-8">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
-                <Link2 className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-white">Integrations</h1>
-                <p className="text-teal-100 text-sm">Connect your business tools and services</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <PageHeader
+          title="Integrations"
+          subtitle="Connect your business tools and services"
+          icon={Link2}
+        />
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-5">
             <div className="flex items-center gap-3">
               <CheckCircle className="w-8 h-8 text-green-500" />
               <div>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">
                   {integrations.filter(i => i.status === 'connected').length}
                 </p>
                 <p className="text-sm text-gray-600">Connected</p>
@@ -193,11 +186,11 @@ export default function IntegrationsPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-5">
+          <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-5">
             <div className="flex items-center gap-3">
               <XCircle className="w-8 h-8 text-gray-400" />
               <div>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">
                   {integrations.filter(i => i.status === 'disconnected').length}
                 </p>
                 <p className="text-sm text-gray-600">Available</p>
@@ -205,11 +198,11 @@ export default function IntegrationsPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-5">
+          <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-5">
             <div className="flex items-center gap-3">
-              <Link2 className="w-8 h-8 text-teal-600" />
+              <Link2 className="w-8 h-8 text-brand-orange" />
               <div>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">
                   {integrations.length}
                 </p>
                 <p className="text-sm text-gray-600">Total Integrations</p>
@@ -219,19 +212,19 @@ export default function IntegrationsPage() {
         </div>
 
         {/* Integrations Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {integrations.map((integration) => (
             <div
               key={integration.id}
-              className={`bg-white rounded-lg border-2 p-6 transition-all ${
+              className={`rounded-xl shadow-sm border bg-white p-4 sm:p-6 transition-all ${
                 integration.status === 'connected'
                   ? 'border-green-500'
-                  : 'border-gray-200 hover:border-teal-400 hover:shadow-md'
+                  : 'border-gray-200 hover:border-brand-orange-400 hover:shadow-md'
               }`}
             >
               {/* Icon and Status */}
               <div className="flex items-start justify-between mb-4">
-                <div className="text-4xl">{integration.icon}</div>
+                <div className="text-3xl sm:text-4xl">{integration.icon}</div>
                 {integration.status === 'connected' ? (
                   <span className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
                     <CheckCircle className="w-3 h-3" />
@@ -245,7 +238,7 @@ export default function IntegrationsPage() {
               </div>
 
               {/* Name and Description */}
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
                 {integration.name}
               </h3>
               <p className="text-sm text-gray-600 mb-4">
@@ -273,7 +266,7 @@ export default function IntegrationsPage() {
                       <button
                         onClick={handleSyncXero}
                         disabled={syncing}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-orange text-white text-sm font-medium rounded-lg hover:bg-brand-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                       >
                         <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
                         {syncing ? 'Syncing...' : 'Sync Now'}
@@ -281,7 +274,7 @@ export default function IntegrationsPage() {
                       <button
                         onClick={handleDisconnectXero}
                         disabled={syncing}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 border-2 border-red-600 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                         Disconnect
@@ -290,7 +283,7 @@ export default function IntegrationsPage() {
                   ) : (
                     <button
                       onClick={handleConnectXero}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-orange text-white text-sm font-medium rounded-lg hover:bg-brand-orange-600 transition-colors"
                     >
                       <Plus className="w-4 h-4" />
                       Connect {integration.name}
@@ -310,16 +303,16 @@ export default function IntegrationsPage() {
         </div>
 
         {/* Help Section */}
-        <div className="bg-teal-50 border border-teal-200 rounded-lg p-6">
+        <div className="rounded-xl shadow-sm border border-brand-orange-200 bg-brand-orange-50 p-4 sm:p-6">
           <div className="flex items-start gap-3">
-            <Settings className="w-5 h-5 text-teal-600 flex-shrink-0 mt-0.5" />
+            <Settings className="w-5 h-5 text-brand-orange flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="text-sm font-semibold text-teal-900 mb-2">Need Help with Integrations?</h3>
-              <p className="text-sm text-teal-700 mb-3">
+              <h3 className="text-sm sm:text-base font-semibold text-brand-navy mb-2">Need Help with Integrations?</h3>
+              <p className="text-sm text-brand-orange-700 mb-3">
                 Integrations sync data automatically to keep your business insights up to date. Some integrations require
                 admin access to your third-party accounts.
               </p>
-              <ul className="text-sm text-teal-600 space-y-1">
+              <ul className="text-sm text-brand-orange space-y-1">
                 <li>• Data syncs automatically every 24 hours</li>
                 <li>• You can manually sync anytime</li>
                 <li>• Disconnect integrations anytime without data loss</li>

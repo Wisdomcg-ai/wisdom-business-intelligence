@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import PageHeader from '@/components/ui/PageHeader'
 import {
   ArrowLeft,
   Calendar,
@@ -20,7 +21,8 @@ import {
   Plus,
   CheckCircle2,
   User,
-  UserCircle
+  UserCircle,
+  MessageSquare
 } from 'lucide-react'
 
 interface SessionAction {
@@ -319,9 +321,9 @@ export default function ClientSessionDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-teal-600 mx-auto mb-4" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-500">Loading session...</p>
         </div>
       </div>
@@ -330,14 +332,14 @@ export default function ClientSessionDetailPage() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-gray-900 mb-2">Session Not Found</h2>
           <p className="text-gray-600 mb-4">This session may have been deleted or you don't have access.</p>
           <Link
             href="/sessions"
-            className="text-teal-600 hover:text-teal-700 font-medium"
+            className="text-brand-orange hover:text-brand-orange-700 font-medium"
           >
             Back to Sessions
           </Link>
@@ -347,88 +349,56 @@ export default function ClientSessionDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link
-                href="/sessions"
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </Link>
-              <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-xl font-bold text-gray-900">
-                    Coaching Session
-                  </h1>
-                  {session.status === 'active' ? (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-green-100 text-green-700 rounded-full text-sm font-medium">
-                      <Play className="w-3.5 h-3.5" />
-                      Active
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-gray-100 text-gray-600 rounded-full text-sm font-medium">
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      Completed
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="w-4 h-4" />
-                    {formatDate(session.session_date)}
-                  </span>
-                  {session.duration_minutes && (
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-4 h-4" />
-                      {session.duration_minutes} min
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <PageHeader
+          title="Coaching Session"
+          subtitle={`${formatDate(session.session_date)}${session.duration_minutes ? ` • ${session.duration_minutes} min` : ''}`}
+          icon={MessageSquare}
+          backLink={{ href: '/sessions', label: 'Back to Sessions' }}
+          badge={session.status === 'active' ? 'Active' : 'Completed'}
+          badgeColor={session.status === 'active' ? 'teal' : 'gray'}
+          actions={
             <div className="flex items-center gap-2 text-sm text-gray-500">
               {saving ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Saving...</span>
+                  <span className="hidden sm:inline">Saving...</span>
                 </>
               ) : hasUnsavedChanges ? (
                 <>
                   <div className="w-2 h-2 rounded-full bg-amber-400" />
-                  <span>Unsaved changes</span>
+                  <span className="hidden sm:inline">Unsaved changes</span>
                 </>
               ) : lastSaved ? (
                 <>
                   <CheckCircle className="w-4 h-4 text-green-500" />
-                  <span>Saved</span>
+                  <span className="hidden sm:inline">Saved</span>
                 </>
               ) : null}
             </div>
-          </div>
-        </div>
+          }
+          variant="simple"
+        />
       </div>
 
       {/* Content */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Left Column - Coach's Notes (Read-only) */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
             {/* Discussion Points from Coach */}
             {session.discussion_points && (
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
                 <div className="flex items-center gap-2 mb-3">
                   <Eye className="w-4 h-4 text-gray-400" />
                   <label className="block text-sm font-semibold text-gray-900">
                     Discussion Points
                   </label>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-gray-700 whitespace-pre-wrap">{session.discussion_points}</p>
+                <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+                  <p className="text-sm sm:text-base text-gray-700 whitespace-pre-wrap">{session.discussion_points}</p>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">From your coach</p>
               </div>
@@ -436,29 +406,29 @@ export default function ClientSessionDetailPage() {
 
             {/* Client Commitments from Coach */}
             {session.client_commitments && (
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
                 <div className="flex items-center gap-2 mb-3">
                   <CheckCircle className="w-4 h-4 text-gray-400" />
                   <label className="block text-sm font-semibold text-gray-900">
                     Your Commitments
                   </label>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-gray-700 whitespace-pre-wrap">{session.client_commitments}</p>
+                <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+                  <p className="text-sm sm:text-base text-gray-700 whitespace-pre-wrap">{session.client_commitments}</p>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">Action items from your coach</p>
               </div>
             )}
 
             {/* Session Actions */}
-            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+            <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 shadow-sm">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-                  <Target className="w-5 h-5 text-slate-600" />
+                <div className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-100 rounded-lg flex items-center justify-center">
+                  <Target className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">Session Actions</h3>
-                  <p className="text-sm text-gray-500">Commitments from this session</p>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Session Actions</h3>
+                  <p className="text-xs sm:text-sm text-gray-500">Commitments from this session</p>
                 </div>
               </div>
 
@@ -555,7 +525,7 @@ export default function ClientSessionDetailPage() {
                 <label className="block text-xs font-medium text-gray-700 mb-2">
                   Add an Action
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="text"
                     value={newActionText}
@@ -568,24 +538,26 @@ export default function ClientSessionDetailPage() {
                       }
                     }}
                   />
-                  <input
-                    type="date"
-                    value={newActionDueDate}
-                    onChange={(e) => setNewActionDueDate(e.target.value)}
-                    className="w-36 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent text-sm"
-                  />
-                  <button
-                    onClick={addAction}
-                    disabled={!newActionText.trim() || addingAction}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {addingAction ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Plus className="w-4 h-4" />
-                    )}
-                    Add
-                  </button>
+                  <div className="flex gap-2">
+                    <input
+                      type="date"
+                      value={newActionDueDate}
+                      onChange={(e) => setNewActionDueDate(e.target.value)}
+                      className="flex-1 sm:w-36 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent text-sm"
+                    />
+                    <button
+                      onClick={addAction}
+                      disabled={!newActionText.trim() || addingAction}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                    >
+                      {addingAction ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Plus className="w-4 h-4" />
+                      )}
+                      <span className="hidden sm:inline">Add</span>
+                    </button>
+                  </div>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
                   Both you and your coach can add actions
@@ -594,12 +566,12 @@ export default function ClientSessionDetailPage() {
             </div>
 
             {/* Your Input Section */}
-            <div className="bg-teal-50 rounded-xl border border-teal-200 p-6">
-              <h3 className="text-sm font-semibold text-teal-900 mb-4">Your Input</h3>
+            <div className="bg-brand-orange-50 rounded-xl border border-brand-orange-200 p-4 sm:p-6">
+              <h3 className="text-sm sm:text-base font-semibold text-brand-navy mb-4">Your Input</h3>
 
               {/* Rating */}
-              <div className="mb-6">
-                <label className="block text-xs font-medium text-teal-800 mb-2">
+              <div className="mb-4 sm:mb-6">
+                <label className="block text-xs sm:text-sm font-medium text-brand-orange-800 mb-2">
                   How would you rate this session?
                 </label>
                 <div className="flex items-center gap-2">
@@ -610,7 +582,7 @@ export default function ClientSessionDetailPage() {
                       className="focus:outline-none transition-transform hover:scale-110"
                     >
                       <Star
-                        className={`w-8 h-8 ${
+                        className={`w-7 h-7 sm:w-8 sm:h-8 ${
                           clientRating && star <= clientRating
                             ? 'text-yellow-500 fill-yellow-500'
                             : 'text-gray-300 hover:text-yellow-400'
@@ -619,14 +591,14 @@ export default function ClientSessionDetailPage() {
                     </button>
                   ))}
                   {clientRating && (
-                    <span className="ml-2 text-sm text-teal-700">{clientRating}/5</span>
+                    <span className="ml-2 text-sm text-brand-orange-700">{clientRating}/5</span>
                   )}
                 </div>
               </div>
 
               {/* Takeaways */}
               <div className="mb-4">
-                <label className="block text-xs font-medium text-teal-800 mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-brand-orange-800 mb-2">
                   Key Takeaways
                 </label>
                 <textarea
@@ -634,13 +606,13 @@ export default function ClientSessionDetailPage() {
                   onChange={(e) => setClientTakeaways(e.target.value)}
                   placeholder="What were your main takeaways from this session?"
                   rows={4}
-                  className="w-full px-4 py-3 border border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none bg-white"
+                  className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-brand-orange-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none bg-white text-sm sm:text-base"
                 />
               </div>
 
               {/* Notes */}
               <div className="mb-4">
-                <label className="block text-xs font-medium text-teal-800 mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-brand-orange-800 mb-2">
                   Your Notes
                 </label>
                 <textarea
@@ -648,14 +620,14 @@ export default function ClientSessionDetailPage() {
                   onChange={(e) => setClientNotes(e.target.value)}
                   placeholder="Any additional notes from the session..."
                   rows={4}
-                  className="w-full px-4 py-3 border border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none bg-white"
+                  className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-brand-orange-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none bg-white text-sm sm:text-base"
                 />
               </div>
 
               {/* Feedback */}
               {session.status === 'completed' && (
                 <div>
-                  <label className="block text-xs font-medium text-teal-800 mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-brand-orange-800 mb-2">
                     Feedback for your coach (optional)
                   </label>
                   <textarea
@@ -663,7 +635,7 @@ export default function ClientSessionDetailPage() {
                     onChange={(e) => setClientFeedback(e.target.value)}
                     placeholder="Any feedback or suggestions for future sessions?"
                     rows={3}
-                    className="w-full px-4 py-3 border border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none bg-white"
+                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-brand-orange-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none bg-white text-sm sm:text-base"
                   />
                 </div>
               )}
@@ -671,53 +643,53 @@ export default function ClientSessionDetailPage() {
           </div>
 
           {/* Right Column - Sidebar */}
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Transcript */}
             {session.transcript_url && (
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <h3 className="text-sm font-semibold text-gray-900 mb-4">Transcript</h3>
+              <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+                <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-4">Transcript</h3>
                 <a
                   href={session.transcript_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                 >
-                  <FileText className="w-8 h-8 text-teal-600" />
+                  <FileText className="w-8 h-8 text-brand-orange" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">
                       {session.transcript_name || 'Session Transcript'}
                     </p>
-                    <p className="text-xs text-teal-600">Click to view</p>
+                    <p className="text-xs text-brand-orange">Click to view</p>
                   </div>
                 </a>
               </div>
             )}
 
             {/* Session Info */}
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h3 className="text-sm font-semibold text-gray-900 mb-4">Session Info</h3>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+              <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-4">Session Info</h3>
 
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Date</span>
-                  <span className="text-gray-900">
+                  <span className="text-gray-900 text-right">
                     {new Date(session.session_date + 'T00:00:00').toLocaleDateString('en-AU')}
                   </span>
                 </div>
                 {session.duration_minutes && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Duration</span>
-                    <span className="text-gray-900">{session.duration_minutes} minutes</span>
+                    <span className="text-gray-900 text-right">{session.duration_minutes} minutes</span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span className="text-gray-600">Status</span>
-                  <span className="text-gray-900 capitalize">{session.status}</span>
+                  <span className="text-gray-900 capitalize text-right">{session.status}</span>
                 </div>
                 {session.completed_at && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Completed</span>
-                    <span className="text-gray-900">
+                    <span className="text-gray-900 text-right">
                       {new Date(session.completed_at).toLocaleDateString('en-AU')}
                     </span>
                   </div>
@@ -726,9 +698,9 @@ export default function ClientSessionDetailPage() {
             </div>
 
             {/* Tips */}
-            <div className="bg-blue-50 rounded-xl border border-blue-200 p-6">
-              <h3 className="text-sm font-semibold text-blue-900 mb-3">Tips</h3>
-              <ul className="space-y-2 text-sm text-blue-800">
+            <div className="bg-brand-orange-50 rounded-xl border border-brand-orange-200 p-4 sm:p-6">
+              <h3 className="text-sm sm:text-base font-semibold text-brand-navy mb-3">Tips</h3>
+              <ul className="space-y-2 text-xs sm:text-sm text-brand-navy">
                 <li className="flex items-start gap-2">
                   <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                   <span>Take notes during the session for best recall</span>

@@ -72,9 +72,9 @@ const CATEGORY_CONFIG = {
     title: 'Opportunities',
     description: 'External positive factors you can capitalize on',
     icon: Target,
-    color: 'text-teal-700',
-    bgColor: 'bg-teal-50',
-    borderColor: 'border-teal-200',
+    color: 'text-brand-orange-700',
+    bgColor: 'bg-brand-orange-50',
+    borderColor: 'border-brand-orange-200',
     placeholder: 'e.g., New market segment, partnership...'
   },
   threat: {
@@ -82,9 +82,9 @@ const CATEGORY_CONFIG = {
     title: 'Threats',
     description: 'External negative factors that could cause problems',
     icon: Lightbulb,
-    color: 'text-orange-700',
-    bgColor: 'bg-orange-50',
-    borderColor: 'border-orange-200',
+    color: 'text-brand-orange-700',
+    bgColor: 'bg-brand-orange-50',
+    borderColor: 'border-brand-orange-200',
     placeholder: 'e.g., New competitor, economic downturn...'
   }
 };
@@ -425,7 +425,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
               value={newItemTitle}
               onChange={(e) => setNewItemTitle(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddItem(category)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 mb-2"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange mb-2"
               autoFocus
             />
             <div className="flex justify-end space-x-2">
@@ -443,7 +443,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
                 disabled={!newItemTitle.trim()}
                 className={`px-3 py-1 text-sm text-white rounded-md ${
                   newItemTitle.trim()
-                    ? 'bg-teal-600 hover:bg-teal-700'
+                    ? 'bg-brand-orange hover:bg-brand-orange-600'
                     : 'bg-gray-400 cursor-not-allowed'
                 }`}
               >
@@ -509,7 +509,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
           estimatedTime={20}
         />
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
         </div>
       </div>
     );
@@ -549,7 +549,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
         <div className="grid md:grid-cols-2 gap-6">
           {/* Current Quarter */}
           <div>
-            <div className="text-sm font-semibold text-teal-700 mb-3 bg-teal-50 px-4 py-2 rounded-lg border border-teal-200">
+            <div className="text-sm font-semibold text-brand-orange-700 mb-3 bg-brand-orange-50 px-4 py-2 rounded-lg border border-brand-orange-200">
               Q{review.quarter} {review.year} — Just Completed
             </div>
             <div className="space-y-4">
@@ -656,7 +656,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
               {previousSwot && (
                 <button
                   onClick={() => setShowComparison(true)}
-                  className="inline-flex items-center gap-2 bg-teal-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-teal-700 transition-colors"
+                  className="inline-flex items-center gap-2 bg-brand-orange text-white px-5 py-2.5 rounded-lg font-medium hover:bg-brand-orange-600 transition-colors"
                 >
                   <GitCompare className="w-5 h-5" />
                   Compare with Last Quarter
@@ -687,7 +687,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
       />
 
       {/* Instructions */}
-      <div className="bg-slate-50 rounded-lg p-4 mb-6 border border-slate-200">
+      <div className="bg-gray-50 rounded-lg p-4 mb-6 border border-slate-200">
         <p className="text-gray-700">
           <strong>Think fresh.</strong> Don't try to remember last quarter's SWOT.
           What are your strengths, weaknesses, opportunities, and threats <em>right now</em>?
@@ -714,7 +714,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
         <button
           onClick={handleSaveSwot}
           disabled={getTotalItems() === 0 || isSaving}
-          className="inline-flex items-center gap-2 bg-teal-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-lg font-medium hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {isSaving ? (
             <>

@@ -121,7 +121,7 @@ export default function ExecutionStatusCard() {
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold text-gray-900">{totalIssues}</span>
             {topPriorityIssues > 0 && (
-              <span className="text-sm text-orange-600 font-medium">({topPriorityIssues} priority)</span>
+              <span className="text-sm text-brand-orange-600 font-medium">({topPriorityIssues} priority)</span>
             )}
           </div>
         </div>

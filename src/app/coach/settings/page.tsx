@@ -19,8 +19,10 @@ import {
   Calendar,
   FileText,
   HelpCircle,
-  Loader2
+  Loader2,
+  Settings
 } from 'lucide-react'
+import { PageHeader } from '@/components/ui/PageHeader'
 
 type SettingsTab = 'profile' | 'notifications' | 'calendar' | 'templates' | 'questions'
 
@@ -336,27 +338,30 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
-          <p className="text-gray-500">Loading settings...</p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
+            <p className="text-sm sm:text-base text-gray-500">Loading settings...</p>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-500 mt-1">Manage your profile, preferences, and templates</p>
-      </div>
+      <PageHeader
+        title="Settings"
+        subtitle="Manage your profile, preferences, and templates"
+        icon={Settings}
+      />
 
-      <div className="flex gap-6">
+      <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
         {/* Sidebar Navigation */}
-        <div className="w-64 flex-shrink-0">
-          <nav className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="w-full lg:w-64 flex-shrink-0">
+          <nav className="rounded-xl shadow-sm border border-gray-200 bg-white overflow-hidden">
             {tabs.map(tab => {
               const Icon = tab.icon
               const isActive = activeTab === tab.id
@@ -366,12 +371,12 @@ export default function SettingsPage() {
                   onClick={() => setActiveTab(tab.id)}
                   className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
                     isActive
-                      ? 'bg-indigo-50 text-indigo-600 border-l-2 border-indigo-600'
+                      ? 'bg-brand-orange-50 text-brand-orange border-l-2 border-brand-orange'
                       : 'text-gray-700 hover:bg-gray-50 border-l-2 border-transparent'
                   }`}
                 >
-                  <Icon className={`w-5 h-5 ${isActive ? 'text-indigo-600' : 'text-gray-400'}`} />
-                  <span className="font-medium">{tab.label}</span>
+                  <Icon className={`w-5 h-5 ${isActive ? 'text-brand-orange' : 'text-gray-400'}`} />
+                  <span className="text-sm sm:text-base font-medium">{tab.label}</span>
                 </button>
               )
             })}

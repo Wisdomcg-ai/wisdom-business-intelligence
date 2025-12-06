@@ -29,24 +29,24 @@ function getPriorityStyle(priority: SuggestedAction['priority']) {
   switch (priority) {
     case 'high':
       return {
-        bg: 'bg-amber-50 hover:bg-amber-100',
-        border: 'border-amber-200',
-        iconBg: 'bg-amber-100',
-        iconColor: 'text-amber-600'
+        bg: 'bg-brand-orange/5 hover:bg-brand-orange/10',
+        border: 'border-brand-orange/20',
+        iconBg: 'bg-brand-orange/10',
+        iconColor: 'text-brand-orange'
       }
     case 'medium':
       return {
-        bg: 'bg-gray-50 hover:bg-gray-100',
-        border: 'border-gray-200',
-        iconBg: 'bg-gray-100',
-        iconColor: 'text-gray-600'
+        bg: 'bg-brand-navy/5 hover:bg-brand-navy/10',
+        border: 'border-brand-navy/10',
+        iconBg: 'bg-brand-navy/10',
+        iconColor: 'text-brand-navy'
       }
     case 'low':
       return {
         bg: 'bg-white hover:bg-gray-50',
         border: 'border-gray-200',
-        iconBg: 'bg-teal-100',
-        iconColor: 'text-teal-600'
+        iconBg: 'bg-brand-navy/10',
+        iconColor: 'text-brand-navy'
       }
   }
 }
@@ -82,14 +82,14 @@ export default function SuggestedActions({ actions }: SuggestedActionsProps) {
   const displayActions = actions && actions.length > 0 ? actions : defaultActions
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100">
+    <div className="bg-white rounded-xl shadow-sm border-l-4 border-l-brand-navy border border-gray-200 overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100 bg-brand-navy/5">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-gray-100 rounded-lg flex items-center justify-center">
-            <Zap className="h-4 w-4 text-gray-600" />
+          <div className="w-9 h-9 bg-brand-navy/10 rounded-lg flex items-center justify-center">
+            <Zap className="h-4 w-4 text-brand-navy" />
           </div>
           <div>
-            <h3 className="font-semibold text-gray-900">Suggested Actions</h3>
+            <h3 className="font-semibold text-brand-navy">Suggested Actions</h3>
             <p className="text-xs text-gray-500">Based on your current priorities</p>
           </div>
         </div>
@@ -114,7 +114,7 @@ export default function SuggestedActions({ actions }: SuggestedActionsProps) {
                   <p className="text-sm font-medium text-gray-900">{action.label}</p>
                   <p className="text-xs text-gray-500">{action.description}</p>
                 </div>
-                <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-teal-600 transition-colors flex-shrink-0" />
+                <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-brand-navy transition-colors flex-shrink-0" />
               </Link>
             )
           })}

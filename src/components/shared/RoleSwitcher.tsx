@@ -56,24 +56,24 @@ export default function RoleSwitcher({ currentRole, userName }: RoleSwitcherProp
       label: 'Admin Portal',
       icon: Shield,
       href: '/admin',
-      color: 'text-teal-600',
-      bgColor: 'bg-teal-100'
+      color: 'text-brand-orange',
+      bgColor: 'bg-brand-orange-100'
     },
     {
       role: 'coach',
       label: 'Coach Portal',
       icon: Briefcase,
       href: '/coach/clients',
-      color: 'text-indigo-600',
-      bgColor: 'bg-indigo-100'
+      color: 'text-brand-orange',
+      bgColor: 'bg-brand-orange-100'
     },
     {
       role: 'client',
       label: 'My Business',
       icon: Building,
       href: '/dashboard',
-      color: 'text-teal-600',
-      bgColor: 'bg-teal-100'
+      color: 'text-brand-orange',
+      bgColor: 'bg-brand-orange-100'
     }
   ]
 

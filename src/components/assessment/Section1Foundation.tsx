@@ -34,7 +34,7 @@ function Section1Foundation({ formData, updateFormData, onNext }: Section1Props)
         
         <button 
           onClick={onNext}
-          className="bg-teal-600 text-white px-6 py-2 rounded"
+          className="bg-brand-orange text-white px-6 py-2 rounded"
         >
           Continue →
         </button>

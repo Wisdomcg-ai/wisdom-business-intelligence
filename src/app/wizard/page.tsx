@@ -176,7 +176,7 @@ export default function WizardPage() {
 
   if (wizard.currentStep === 'name') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-teal-50 to-teal-50 p-8">
+      <div className="min-h-screen bg-gradient-to-br from-brand-orange-50 to-brand-orange-50 p-8">
         <div className="max-w-2xl mx-auto">
           <div className="bg-white rounded-lg shadow-lg p-12 text-center">
             <h1 className="text-4xl font-bold text-gray-900 mb-4">
@@ -197,13 +197,13 @@ export default function WizardPage() {
                     processName: e.target.value,
                   }))
                 }
-                className="w-full px-6 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-indigo-600 text-lg"
+                className="w-full px-6 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-brand-orange text-lg"
                 autoFocus
               />
 
               <button
                 type="submit"
-                className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold text-lg"
+                className="w-full px-6 py-3 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition font-semibold text-lg"
               >
                 Start Mapping →
               </button>
@@ -219,13 +219,13 @@ export default function WizardPage() {
   // ────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       <div className="grid grid-cols-2 gap-8 p-8" style={{ minHeight: '100vh' }}>
         
         {/* LEFT SIDE: QUESTIONS & FORM */}
         <div className="space-y-6">
           {/* Header */}
-          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-indigo-600">
+          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-brand-orange">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
               {wizard.processName}
             </h1>
@@ -258,7 +258,7 @@ export default function WizardPage() {
                       activityName: e.target.value,
                     }))
                   }
-                  className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-indigo-600"
+                  className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-brand-orange"
                   autoFocus
                 />
               </div>
@@ -276,7 +276,7 @@ export default function WizardPage() {
                       swimlane: e.target.value,
                     }))
                   }
-                  className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-indigo-600"
+                  className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-brand-orange"
                 >
                   <option value="Sales">Sales</option>
                   <option value="Operations">Operations</option>
@@ -330,7 +330,7 @@ export default function WizardPage() {
               {/* Submit Button */}
               <button
                 type="submit"
-                className="w-full px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition font-semibold"
+                className="w-full px-4 py-2 bg-brand-orange text-white rounded hover:bg-brand-orange-600 transition font-semibold"
               >
                 + Add Activity
               </button>
@@ -346,7 +346,7 @@ export default function WizardPage() {
               <div className="space-y-2">
                 {wizard.activities.map((activity, idx) => (
                   <div key={activity.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded">
-                    <div className="flex-shrink-0 w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                    <div className="flex-shrink-0 w-6 h-6 bg-brand-orange text-white rounded-full flex items-center justify-center text-sm font-bold">
                       {idx + 1}
                     </div>
                     <div className="flex-1">

@@ -155,7 +155,7 @@ export function OpenLoopsStep({ review, onUpdate }: OpenLoopsStepProps) {
           estimatedTime={20}
         />
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
         </div>
       </div>
     );
@@ -172,23 +172,23 @@ export function OpenLoopsStep({ review, onUpdate }: OpenLoopsStepProps) {
 
       {/* Decision Stats */}
       <div className="grid grid-cols-5 gap-2 mb-6">
-        <div className="bg-slate-50 rounded-lg p-3 text-center">
+        <div className="bg-gray-50 rounded-lg p-3 text-center">
           <div className="text-xl font-bold text-gray-900">{stats.complete}</div>
           <div className="text-xs text-gray-600">Complete</div>
         </div>
-        <div className="bg-slate-50 rounded-lg p-3 text-center">
+        <div className="bg-gray-50 rounded-lg p-3 text-center">
           <div className="text-xl font-bold text-gray-900">{stats.delegate}</div>
           <div className="text-xs text-gray-600">Delegate</div>
         </div>
-        <div className="bg-slate-50 rounded-lg p-3 text-center">
+        <div className="bg-gray-50 rounded-lg p-3 text-center">
           <div className="text-xl font-bold text-gray-900">{stats.delete}</div>
           <div className="text-xs text-gray-600">Delete</div>
         </div>
-        <div className="bg-slate-50 rounded-lg p-3 text-center">
+        <div className="bg-gray-50 rounded-lg p-3 text-center">
           <div className="text-xl font-bold text-gray-900">{stats.defer}</div>
           <div className="text-xs text-gray-600">Defer</div>
         </div>
-        <div className="bg-slate-50 rounded-lg p-3 text-center">
+        <div className="bg-gray-50 rounded-lg p-3 text-center">
           <div className="text-xl font-bold text-gray-900">{stats.undecided}</div>
           <div className="text-xs text-gray-600">Undecided</div>
         </div>
@@ -196,8 +196,8 @@ export function OpenLoopsStep({ review, onUpdate }: OpenLoopsStepProps) {
 
       {/* Open Loops List */}
       {openLoops.length === 0 ? (
-        <div className="bg-slate-50 rounded-xl p-8 text-center border border-gray-200">
-          <CheckCircle2 className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+        <div className="bg-gray-50 rounded-xl p-8 text-center border border-gray-200">
+          <CheckCircle2 className="w-12 h-12 text-gray-600 mx-auto mb-3" />
           <h3 className="font-semibold text-gray-900 mb-2">No Open Loops!</h3>
           <p className="text-gray-700">
             Great job! You have no unresolved open loops.
@@ -213,7 +213,7 @@ export function OpenLoopsStep({ review, onUpdate }: OpenLoopsStepProps) {
                 key={loop.id}
                 className={`rounded-xl border p-4 transition-all ${
                   decision
-                    ? 'bg-slate-50 border-slate-200'
+                    ? 'bg-gray-50 border-slate-200'
                     : 'bg-white border-gray-200'
                 }`}
               >
@@ -237,13 +237,13 @@ export function OpenLoopsStep({ review, onUpdate }: OpenLoopsStepProps) {
                     loop={loop}
                     decision="complete"
                     icon={CheckCircle2}
-                    color="bg-teal-600 text-white"
+                    color="bg-brand-orange text-white"
                   />
                   <DecisionButton
                     loop={loop}
                     decision="delegate"
                     icon={UserPlus}
-                    color="bg-teal-500 text-white"
+                    color="bg-brand-orange-500 text-white"
                   />
                   <DecisionButton
                     loop={loop}
@@ -272,7 +272,7 @@ export function OpenLoopsStep({ review, onUpdate }: OpenLoopsStepProps) {
                           value={decision.delegateTo || ''}
                           onChange={(e) => updateDelegateTo(loop.id, e.target.value)}
                           placeholder="Name of person..."
-                          className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange"
                         />
                       </div>
                     )}
@@ -285,7 +285,7 @@ export function OpenLoopsStep({ review, onUpdate }: OpenLoopsStepProps) {
                         <select
                           value={decision.deferToQuarter || ''}
                           onChange={(e) => updateDeferTo(loop.id, e.target.value)}
-                          className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange"
                         >
                           <option value="">Select quarter...</option>
                           <option value={`Q${review.quarter === 4 ? 1 : review.quarter + 1} ${review.quarter === 4 ? review.year + 1 : review.year}`}>
@@ -308,7 +308,7 @@ export function OpenLoopsStep({ review, onUpdate }: OpenLoopsStepProps) {
                         value={decision.notes || ''}
                         onChange={(e) => updateNotes(loop.id, e.target.value)}
                         placeholder="Any additional notes..."
-                        className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange"
                       />
                     </div>
                   </div>
@@ -320,9 +320,9 @@ export function OpenLoopsStep({ review, onUpdate }: OpenLoopsStepProps) {
       )}
 
       {/* Guidance */}
-      <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-gray-200">
+      <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
         <div className="flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-slate-600 mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-gray-600 mt-0.5" />
           <div>
             <h4 className="font-medium text-gray-900">Decision Guide</h4>
             <ul className="mt-2 text-sm text-gray-700 space-y-1">

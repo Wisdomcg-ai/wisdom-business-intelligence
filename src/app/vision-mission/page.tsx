@@ -12,6 +12,7 @@ import {
   getWordCount
 } from '@/lib/vision-mission/constants';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import PageHeader from '@/components/ui/PageHeader';
 
 interface VisionMissionData {
   mission_statement: string;
@@ -227,9 +228,9 @@ export default function VisionMissionPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto mb-4"></div>
           <p className="text-gray-600">Loading vision and mission...</p>
         </div>
       </div>
@@ -241,24 +242,15 @@ export default function VisionMissionPage() {
   const filledValuesCount = formData.core_values.filter(v => v.trim().length > 0).length;
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8">
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-8">
       <Toaster position="top-right" />
 
-      <div className="max-w-5xl mx-auto px-4">
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-teal-100 rounded-lg">
-                <Lightbulb className="w-6 h-6 text-teal-600" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Vision, Mission & Values</h1>
-                <p className="mt-2 text-gray-600">
-                  Define where you're going and what principles guide your business
-                </p>
-              </div>
-            </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <PageHeader
+          title="Vision, Mission & Values"
+          subtitle="Define where you're going and what principles guide your business"
+          icon={Lightbulb}
+          actions={
             <div className="flex flex-col items-end gap-1">
               {saving && (
                 <span className="text-sm text-gray-500 flex items-center gap-2">
@@ -275,25 +267,25 @@ export default function VisionMissionPage() {
                 <span className="text-sm text-amber-600">Unsaved changes</span>
               )}
             </div>
-          </div>
-        </div>
+          }
+        />
 
         <div className="space-y-6">
           {/* Vision Statement */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <TrendingUp className="w-5 h-5 text-green-600" />
+                <div className="p-2 bg-brand-teal-50 rounded-lg flex-shrink-0">
+                  <TrendingUp className="w-5 h-5 text-brand-teal" />
                 </div>
-                <div>
-                  <h2 className="text-2xl font-semibold text-gray-800">Vision (Your 5-10 Year Picture)</h2>
-                  <p className="text-base text-gray-600">Paint a picture of where you're headed</p>
+                <div className="min-w-0">
+                  <h2 className="text-lg sm:text-2xl font-semibold text-gray-800">Vision (Your 5-10 Year Picture)</h2>
+                  <p className="text-sm sm:text-base text-gray-600">Paint a picture of where you're headed</p>
                 </div>
               </div>
               <button
                 onClick={() => toggleHelp('vision')}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
                 aria-label="Toggle help"
               >
                 <Info className="w-5 h-5" />
@@ -301,13 +293,13 @@ export default function VisionMissionPage() {
             </div>
 
             {showHelp.vision && (
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <p className="text-base font-medium text-gray-800 mb-2">💡 Jim Collins' Big Hairy Audacious Goal (BHAG):</p>
-                <p className="text-base text-gray-700 mb-3">
+              <div className="mb-4 p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-sm sm:text-base font-medium text-gray-800 mb-2">💡 Jim Collins' Big Hairy Audacious Goal (BHAG):</p>
+                <p className="text-sm sm:text-base text-gray-700 mb-3">
                   Your vision doesn't have to be BIG to everyone—<span className="font-semibold">big for YOU means what stretches YOU</span>. Paint a vivid picture of what success looks like in 5-10 years.
                 </p>
-                <p className="text-base font-medium text-gray-800 mb-1">Examples (all equally valid):</p>
-                <ul className="text-base text-gray-700 list-disc list-inside space-y-1 ml-2">
+                <p className="text-sm sm:text-base font-medium text-gray-800 mb-1">Examples (all equally valid):</p>
+                <ul className="text-sm sm:text-base text-gray-700 list-disc list-inside space-y-1 ml-2">
                   <li>"A team of 8 skilled people doing work we're proud of, serving 50 loyal clients"</li>
                   <li>"Known as the go-to experts in our county, with a 6-month waitlist"</li>
                   <li>"$2M revenue, 20 employees, and recognized as a great place to work"</li>
@@ -324,7 +316,7 @@ export default function VisionMissionPage() {
                   handleFieldChange();
                 }
               }}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
               rows={4}
               placeholder="In 5-10 years, we will be..."
               maxLength={VALIDATION.VISION_MAX_CHARS}
@@ -345,20 +337,20 @@ export default function VisionMissionPage() {
           </div>
 
           {/* Mission Statement */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <Compass className="w-5 h-5 text-purple-600" />
+                <div className="p-2 bg-brand-navy-50 rounded-lg flex-shrink-0">
+                  <Compass className="w-5 h-5 text-brand-navy" />
                 </div>
-                <div>
-                  <h2 className="text-2xl font-semibold text-gray-800">Mission (Your Why)</h2>
-                  <p className="text-base text-gray-600">Why does your business exist? What impact do you want to make?</p>
+                <div className="min-w-0">
+                  <h2 className="text-lg sm:text-2xl font-semibold text-gray-800">Mission (Your Why)</h2>
+                  <p className="text-sm sm:text-base text-gray-600">Why does your business exist? What impact do you want to make?</p>
                 </div>
               </div>
               <button
                 onClick={() => toggleHelp('mission')}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
                 aria-label="Toggle help"
               >
                 <Info className="w-5 h-5" />
@@ -366,17 +358,17 @@ export default function VisionMissionPage() {
             </div>
 
             {showHelp.mission && (
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <p className="text-base font-medium text-gray-800 mb-2">✏️ Simon Sinek's "Start With Why":</p>
-                <p className="text-base text-gray-700 mb-3">
+              <div className="mb-4 p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-sm sm:text-base font-medium text-gray-800 mb-2">✏️ Simon Sinek's "Start With Why":</p>
+                <p className="text-sm sm:text-base text-gray-700 mb-3">
                   People don't buy WHAT you do, they buy WHY you do it. Your mission should capture your purpose, cause, or belief—the reason you exist beyond making money.
                 </p>
-                <p className="text-base font-medium text-gray-800 mb-1">Framework:</p>
-                <p className="text-base text-gray-700 italic mb-2">
+                <p className="text-sm sm:text-base font-medium text-gray-800 mb-1">Framework:</p>
+                <p className="text-sm sm:text-base text-gray-700 italic mb-2">
                   "We believe [your belief/cause]. We do this by [what you do] for [who], so they can [transformation/benefit]."
                 </p>
-                <p className="text-base font-medium text-gray-800 mb-1">Example:</p>
-                <p className="text-base text-gray-700 italic">
+                <p className="text-sm sm:text-base font-medium text-gray-800 mb-1">Example:</p>
+                <p className="text-sm sm:text-base text-gray-700 italic">
                   "We believe every homeowner deserves work done right the first time. We deliver quality craftsmanship to families in our community, so they can love their homes and trust who they let in."
                 </p>
               </div>
@@ -390,7 +382,7 @@ export default function VisionMissionPage() {
                   handleFieldChange();
                 }
               }}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
               rows={4}
               placeholder="We believe [your belief]... We do this by [what you do] for [who], so they can [benefit]..."
               maxLength={VALIDATION.MISSION_MAX_CHARS}
@@ -411,20 +403,20 @@ export default function VisionMissionPage() {
           </div>
 
           {/* Core Values */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-yellow-100 rounded-lg">
-                  <Star className="w-5 h-5 text-yellow-600" />
+                <div className="p-2 bg-brand-orange-50 rounded-lg flex-shrink-0">
+                  <Star className="w-5 h-5 text-brand-orange" />
                 </div>
-                <div>
-                  <h2 className="text-2xl font-semibold text-gray-800">Core Values</h2>
-                  <p className="text-base text-gray-600">The principles that guide your team</p>
+                <div className="min-w-0">
+                  <h2 className="text-lg sm:text-2xl font-semibold text-gray-800">Core Values</h2>
+                  <p className="text-sm sm:text-base text-gray-600">The principles that guide your team</p>
                 </div>
               </div>
               <button
                 onClick={() => toggleHelp('values')}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
                 aria-label="Toggle help"
               >
                 <Info className="w-5 h-5" />
@@ -432,47 +424,47 @@ export default function VisionMissionPage() {
             </div>
 
             {showHelp.values && (
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <p className="text-base text-gray-700 mb-3">
+              <div className="mb-4 p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-sm sm:text-base text-gray-700 mb-3">
                   Choose 3-5 values with "we statements" that show how you live them daily.
                 </p>
-                <p className="text-base font-medium text-gray-800 mb-1">Example:</p>
-                <p className="text-base text-gray-700 italic">
+                <p className="text-sm sm:text-base font-medium text-gray-800 mb-1">Example:</p>
+                <p className="text-sm sm:text-base text-gray-700 italic">
                   "Integrity - We do the right thing even when no one's watching"
                 </p>
               </div>
             )}
 
             {/* Quick Action Buttons */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-4">
               <button
                 onClick={() => setShowValuesLibrary(true)}
-                className="px-4 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium flex items-center justify-center gap-2 transition-colors"
+                className="px-4 py-3 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
               >
                 <Sparkles className="w-4 h-4" />
                 Browse Values Library (35 values)
               </button>
               <button
                 onClick={() => setShowCustomValueHelper(true)}
-                className="px-4 py-3 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-200 font-medium flex items-center justify-center gap-2 transition-colors"
+                className="px-4 py-3 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 Add Your Own Value
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               {formData.core_values.map((value, index) => (
                 <div key={index} className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-600 w-6">{index + 1}.</span>
+                  <span className="text-sm font-medium text-gray-600 w-6 flex-shrink-0">{index + 1}.</span>
                   <div className="flex-1 relative">
                     <input
                       type="text"
                       value={value}
                       onChange={(e) => handleCoreValueChange(index, e.target.value)}
                       placeholder={index < VALIDATION.MIN_VALUES ? 'Required' : 'Optional'}
-                      className={`w-full px-3 py-2 pr-8 border rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent ${
-                        index < VALIDATION.MIN_VALUES ? 'border-teal-300 bg-teal-50' : 'border-gray-300'
+                      className={`w-full px-3 py-2 pr-8 border rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent ${
+                        index < VALIDATION.MIN_VALUES ? 'border-brand-orange-300 bg-brand-orange-50' : 'border-gray-300'
                       }`}
                     />
                     {value.trim().length > 0 && (
@@ -506,10 +498,10 @@ export default function VisionMissionPage() {
           </div>
 
           {/* Navigation */}
-          <div className="flex justify-start items-center pb-8">
+          <div className="flex justify-start items-center pb-4 sm:pb-8">
             <button
               onClick={() => router.push('/dashboard')}
-              className="flex items-center gap-2 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-2 px-4 sm:px-6 py-2 sm:py-3 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors text-sm sm:text-base"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to Dashboard
@@ -526,27 +518,27 @@ export default function VisionMissionPage() {
             if (e.target === e.currentTarget) setShowCustomValueHelper(false);
           }}
         >
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-2xl font-bold text-gray-900">Add Your Own Value</h3>
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Add Your Own Value</h3>
               <button
                 onClick={() => setShowCustomValueHelper(false)}
-                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
                 aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="mb-6 p-4 bg-teal-50 rounded-lg border border-teal-200">
-              <p className="text-base font-medium text-gray-800 mb-2">📝 How to write a great "We Statement":</p>
-              <ol className="text-base text-gray-700 list-decimal list-inside space-y-1">
+            <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-brand-orange-50 rounded-lg border border-brand-orange-200">
+              <p className="text-sm sm:text-base font-medium text-gray-800 mb-2">📝 How to write a great "We Statement":</p>
+              <ol className="text-sm sm:text-base text-gray-700 list-decimal list-inside space-y-1">
                 <li>Start with "We" to show it's about the whole team</li>
                 <li>Use action words that describe behaviors</li>
                 <li>Make it specific and observable (not vague)</li>
               </ol>
-              <p className="text-base text-gray-700 mt-3 font-medium">Example:</p>
-              <p className="text-base text-gray-600 italic">"Integrity - We do the right thing even when no one's watching"</p>
+              <p className="text-sm sm:text-base text-gray-700 mt-3 font-medium">Example:</p>
+              <p className="text-sm sm:text-base text-gray-600 italic">"Integrity - We do the right thing even when no one's watching"</p>
             </div>
 
             <div className="space-y-4">
@@ -559,7 +551,7 @@ export default function VisionMissionPage() {
                   value={customValueName}
                   onChange={(e) => setCustomValueName(e.target.value)}
                   placeholder="e.g., Integrity, Innovation, Teamwork"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   maxLength={50}
                 />
               </div>
@@ -572,7 +564,7 @@ export default function VisionMissionPage() {
                   value={customValueStatement}
                   onChange={(e) => setCustomValueStatement(e.target.value)}
                   placeholder="We..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
                   rows={3}
                   maxLength={200}
                 />
@@ -582,16 +574,16 @@ export default function VisionMissionPage() {
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className="flex flex-col sm:flex-row gap-3 mt-4 sm:mt-6">
               <button
                 onClick={() => setShowCustomValueHelper(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex-1 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={addCustomValue}
-                className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                className="flex-1 px-4 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg transition-colors"
               >
                 Add Value
               </button>
@@ -608,16 +600,16 @@ export default function VisionMissionPage() {
             if (e.target === e.currentTarget) setShowValuesLibrary(false);
           }}
         >
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-gray-200">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-4 sm:p-6 border-b border-gray-200">
               <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-900">Core Values Library</h3>
-                  <p className="text-sm text-gray-600 mt-1">35 values with "we statements" - click to add</p>
+                <div className="min-w-0">
+                  <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Core Values Library</h3>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-1">35 values with "we statements" - click to add</p>
                 </div>
                 <button
                   onClick={() => setShowValuesLibrary(false)}
-                  className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                  className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
                   aria-label="Close library"
                 >
                   <X className="w-5 h-5" />
@@ -631,7 +623,7 @@ export default function VisionMissionPage() {
                     onClick={() => setSelectedCategory(cat)}
                     className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
                       selectedCategory === cat
-                        ? 'bg-teal-600 text-white'
+                        ? 'bg-brand-orange text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
@@ -641,8 +633,8 @@ export default function VisionMissionPage() {
               </div>
             </div>
 
-            <div className="p-6 overflow-y-auto flex-1">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 {filteredValues.map((value, idx) => {
                   const isAdded = formData.core_values.some(v => v.includes(value.name));
                   return (
@@ -650,23 +642,23 @@ export default function VisionMissionPage() {
                       key={idx}
                       onClick={() => addValueFromLibrary(value.name, value.weStatement)}
                       disabled={isAdded}
-                      className={`text-left p-4 border-2 rounded-lg transition-all group ${
+                      className={`text-left p-3 sm:p-4 border-2 rounded-lg transition-all group ${
                         isAdded
-                          ? 'border-amber-300 bg-amber-50 cursor-not-allowed'
-                          : 'border-gray-200 hover:border-teal-400 hover:bg-teal-50'
+                          ? 'border-brand-teal-300 bg-brand-teal-50 cursor-not-allowed'
+                          : 'border-gray-200 hover:border-brand-orange-400 hover:bg-brand-orange-50'
                       }`}
                     >
                       <div className="flex items-start justify-between mb-2">
-                        <h4 className={`font-semibold ${
-                          isAdded ? 'text-amber-700' : 'text-gray-900 group-hover:text-teal-600'
+                        <h4 className={`font-semibold text-sm sm:text-base ${
+                          isAdded ? 'text-brand-teal-700' : 'text-gray-900 group-hover:text-brand-orange'
                         }`}>
                           {value.name}
                         </h4>
                         {isAdded && (
-                          <CheckCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                          <CheckCircle className="w-4 h-4 text-brand-teal flex-shrink-0" />
                         )}
                       </div>
-                      <p className="text-sm text-gray-700 italic">
+                      <p className="text-xs sm:text-sm text-gray-700 italic">
                         "{value.weStatement}"
                       </p>
                     </button>

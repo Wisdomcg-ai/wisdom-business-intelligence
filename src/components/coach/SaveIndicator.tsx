@@ -75,9 +75,9 @@ export function SaveIndicator({
       return {
         icon: <Cloud className="w-4 h-4 text-slate-400" />,
         text: `Saved ${getTimeAgo(lastSaved)}`,
-        bgColor: 'bg-slate-50',
+        bgColor: 'bg-gray-50',
         borderColor: 'border-slate-200',
-        textColor: 'text-slate-500'
+        textColor: 'text-gray-500'
       }
     }
 

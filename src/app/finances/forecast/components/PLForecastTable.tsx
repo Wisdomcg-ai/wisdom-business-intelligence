@@ -512,7 +512,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                 : 'Setup Mode - Configure your forecast assumptions and methods'
               }
               {isSaving && (
-                <span className="ml-2 text-teal-600 text-xs">
+                <span className="ml-2 text-brand-orange text-xs">
                   • Saving...
                 </span>
               )}
@@ -569,7 +569,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
               onClick={() => setHistoricalDataLocked(!historicalDataLocked)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 historicalDataLocked
-                  ? 'bg-teal-50 text-teal-700 hover:bg-teal-100'
+                  ? 'bg-brand-orange-50 text-brand-orange-700 hover:bg-brand-orange-100'
                   : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
               }`}
             >
@@ -592,7 +592,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                 onClick={() => setShowFormulas(!showFormulas)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   showFormulas
-                    ? 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                    ? 'bg-brand-navy-50 text-brand-navy-700 hover:bg-brand-navy-100'
                     : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
                 }`}
                 title={showFormulas ? 'Show values' : 'Show formulas'}
@@ -621,14 +621,14 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                   <React.Fragment key={col.key}>
                     <th
                       className={`sticky top-0 px-4 py-3 text-right text-xs font-medium uppercase tracking-wider min-w-[140px] ${
-                        col.isActual ? 'bg-teal-50 text-teal-700' : 'bg-green-50 text-green-700'
+                        col.isActual ? 'bg-brand-orange-50 text-brand-orange-700' : 'bg-green-50 text-green-700'
                       } ${isLastActual ? 'border-r-2 border-gray-300' : ''}`}
                     >
                       {col.label}
                     </th>
                     {isLastActual && viewMode === 'setup' && (
                       <>
-                        <th className="sticky top-0 px-4 py-3 text-right text-xs font-medium text-teal-700 uppercase tracking-wider min-w-[160px] bg-teal-100">
+                        <th className="sticky top-0 px-4 py-3 text-right text-xs font-medium text-brand-orange-700 uppercase tracking-wider min-w-[160px] bg-brand-orange-100">
                           FY25 Total
                         </th>
                         <th className="sticky top-0 px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider min-w-[120px] bg-amber-50">
@@ -637,9 +637,9 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                         <th className="sticky top-0 px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider min-w-[140px] bg-amber-50">
                           FY25 Avg/Mo
                         </th>
-                        <th className="sticky top-0 px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase tracking-wider min-w-[180px] bg-slate-100 border-r-2 border-slate-300">
+                        <th className="sticky top-0 px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider min-w-[180px] bg-slate-100 border-r-2 border-slate-300">
                           <div className="flex items-center gap-2">
-                            <TrendingUp className="w-4 h-4 text-slate-600" />
+                            <TrendingUp className="w-4 h-4 text-gray-600" />
                             Method
                           </div>
                         </th>
@@ -665,14 +665,14 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                   <React.Fragment key={col.key}>
                     <th
                       className={`sticky top-[52px] px-4 py-2 text-right text-xs font-medium text-gray-500 ${
-                        col.isActual ? 'bg-teal-50' : 'bg-green-50'
+                        col.isActual ? 'bg-brand-orange-50' : 'bg-green-50'
                       } ${isLastActual ? 'border-r-2 border-gray-300' : ''}`}
                     >
                       {col.isActual ? 'Actual' : 'Forecast'}
                     </th>
                     {isLastActual && viewMode === 'setup' && (
                       <>
-                        <th className="sticky top-[52px] px-4 py-2 text-right text-xs font-medium text-gray-500 bg-teal-100">
+                        <th className="sticky top-[52px] px-4 py-2 text-right text-xs font-medium text-gray-500 bg-brand-orange-100">
                           Actual
                         </th>
                         <th className="sticky top-[52px] px-4 py-2 text-right text-xs font-medium text-gray-500 bg-amber-50">
@@ -681,7 +681,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                         <th className="sticky top-[52px] px-4 py-2 text-right text-xs font-medium text-gray-500 bg-amber-50">
                           Analysis
                         </th>
-                        <th className="sticky top-[52px] px-4 py-2 text-left text-xs font-medium text-gray-500 bg-slate-50 border-r-2 border-gray-400 min-w-[320px]">
+                        <th className="sticky top-[52px] px-4 py-2 text-left text-xs font-medium text-gray-500 bg-gray-50 border-r-2 border-gray-400 min-w-[320px]">
                           Forecast Approach
                         </th>
                       </>
@@ -707,7 +707,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                       <div className="flex items-center justify-between">
                         <button
                           onClick={() => toggleCategory(category)}
-                          className="flex items-center space-x-2 hover:text-teal-600 transition-colors"
+                          className="flex items-center space-x-2 hover:text-brand-orange transition-colors"
                         >
                           {isExpanded ? (
                             <ChevronDown className="w-4 h-4" />
@@ -718,7 +718,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                         </button>
                         <button
                           onClick={() => addLine(category)}
-                          className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-teal-600 bg-teal-50 rounded hover:bg-teal-100 transition-colors"
+                          className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-brand-orange bg-brand-orange-50 rounded hover:bg-brand-orange-100 transition-colors"
                           title="Add new row"
                         >
                           <Plus className="w-3 h-3" />
@@ -743,7 +743,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                           </td>
                           {isLastActual && viewMode === 'setup' && (
                             <>
-                              <td className="px-4 py-3 text-right text-sm font-bold text-gray-900 bg-teal-100">
+                              <td className="px-4 py-3 text-right text-sm font-bold text-gray-900 bg-brand-orange-100">
                                 {formatCurrency(calculateCategoryFY25Total(category))}
                               </td>
                               <td className="px-4 py-3 text-right text-sm text-gray-500 bg-amber-50">
@@ -752,7 +752,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                               <td className="px-4 py-3 text-right text-sm text-gray-500 bg-amber-50">
                                 —
                               </td>
-                              <td className="px-4 py-3 text-sm text-gray-500 bg-slate-50 border-r-2 border-gray-400">
+                              <td className="px-4 py-3 text-sm text-gray-500 bg-gray-50 border-r-2 border-gray-400">
                                 —
                               </td>
                             </>
@@ -776,7 +776,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                               type="text"
                               value={line.account_name}
                               onChange={(e) => updateLineName(globalIdx, e.target.value)}
-                              className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                              className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-brand-orange focus:border-brand-orange-500"
                             />
                             <button
                               onClick={() => {
@@ -816,7 +816,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                                   {cellFormulas.has(cellKey) && !isEditing && (
                                     <div className="absolute -left-1 top-0 bottom-0 flex items-center">
                                       <div className="relative">
-                                        <FunctionSquare className="w-3 h-3 text-purple-600" />
+                                        <FunctionSquare className="w-3 h-3 text-brand-navy" />
                                         <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
                                           {cellFormulas.get(cellKey)}
                                         </div>
@@ -854,16 +854,16 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                                         e.currentTarget.blur()
                                       }
                                     }}
-                                    className={`w-full px-2 py-1 text-sm text-right border border-gray-300 rounded focus:ring-1 focus:ring-teal-500 focus:border-teal-500 ${
+                                    className={`w-full px-2 py-1 text-sm text-right border border-gray-300 rounded focus:ring-1 focus:ring-brand-orange focus:border-brand-orange-500 ${
                                       isDisabled ? 'bg-gray-50 cursor-not-allowed text-gray-500' : ''
-                                    } ${cellFormulas.has(cellKey) ? 'bg-purple-50' : ''}`}
+                                    } ${cellFormulas.has(cellKey) ? 'bg-brand-navy-50' : ''}`}
                                     placeholder="$0 or =formula"
                                   />
                                 </div>
                               </td>
                               {isLastActual && viewMode === 'setup' && (
                                 <>
-                                  <td className="px-4 py-2 text-right text-sm font-medium text-gray-700 bg-teal-100">
+                                  <td className="px-4 py-2 text-right text-sm font-medium text-gray-700 bg-brand-orange-100">
                                     {formatCurrency(calculateLineFY25Total(line))}
                                   </td>
                                   <td className="px-4 py-2 text-right text-xs text-gray-600 bg-amber-50">
@@ -879,7 +879,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                                       : '—'}
                                   </td>
                                   {viewMode === 'setup' && (
-                                    <td className="px-4 py-2 bg-slate-50 border-r-2 border-gray-400">
+                                    <td className="px-4 py-2 bg-gray-50 border-r-2 border-gray-400">
                                       {category === 'Operating Expenses' ? (
                                         <OpExLineControls
                                           forecastMethod={line.forecast_method}
@@ -920,7 +920,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                       <td colSpan={monthColumns.length + 3} className="px-6 py-2">
                         <button
                           onClick={() => addLine(category)}
-                          className="flex items-center space-x-2 text-sm text-teal-600 hover:text-teal-700 font-medium"
+                          className="flex items-center space-x-2 text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
                         >
                           <Plus className="w-4 h-4" />
                           <span>Add Line</span>
@@ -953,7 +953,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                               </td>
                               {isLastActual && viewMode === 'setup' && (
                                 <>
-                                  <td className="px-4 py-3 text-right text-sm font-bold text-gray-900 bg-teal-100">
+                                  <td className="px-4 py-3 text-right text-sm font-bold text-gray-900 bg-brand-orange-100">
                                     {formatCurrency(calculateGrossProfitFY25Total())}
                                   </td>
                                   <td className="px-4 py-3 text-right text-xs text-gray-600 bg-amber-50">
@@ -962,7 +962,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                                   <td className="px-4 py-3 text-right text-xs text-gray-600 bg-amber-50">
                                     —
                                   </td>
-                                  <td className="px-4 py-3 text-xs text-gray-500 bg-slate-50 border-r-2 border-gray-400">
+                                  <td className="px-4 py-3 text-xs text-gray-500 bg-gray-50 border-r-2 border-gray-400">
                                     Auto
                                   </td>
                                 </>
@@ -992,14 +992,14 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                             <React.Fragment key={col.key}>
                               <td
                                 className={`px-4 py-3 text-right text-sm font-semibold ${
-                                  grossMargin >= 50 ? 'text-green-700' : grossMargin >= 30 ? 'text-teal-700' : 'text-amber-700'
+                                  grossMargin >= 50 ? 'text-green-700' : grossMargin >= 30 ? 'text-brand-orange-700' : 'text-amber-700'
                                 } ${isLastActual ? 'border-r-2 border-gray-300' : ''}`}
                               >
                                 {grossMargin.toFixed(1)}%
                               </td>
                               {isLastActual && viewMode === 'setup' && (
                                 <>
-                                  <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900 bg-teal-100">
+                                  <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900 bg-brand-orange-100">
                                     {(() => {
                                       const fy25Revenue = calculateCategoryFY25Total('Revenue')
                                       const fy25GP = calculateGrossProfitFY25Total()
@@ -1013,7 +1013,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                                   <td className="px-4 py-3 text-right text-xs text-gray-600 bg-amber-50">
                                     —
                                   </td>
-                                  <td className="px-4 py-3 text-xs text-gray-500 bg-slate-50 border-r-2 border-gray-400">
+                                  <td className="px-4 py-3 text-xs text-gray-500 bg-gray-50 border-r-2 border-gray-400">
                                     Auto
                                   </td>
                                 </>
@@ -1060,7 +1060,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                       <>
                         <td className={`px-4 py-3 text-right text-sm font-bold ${
                           calculateNetProfitFY25Total() >= 0 ? 'text-green-700' : 'text-red-700'
-                        } bg-teal-100`}>
+                        } bg-brand-orange-100`}>
                           {formatCurrency(calculateNetProfitFY25Total())}
                         </td>
                         <td className="px-4 py-3 text-right text-xs text-gray-600 bg-amber-50">
@@ -1069,7 +1069,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                         <td className="px-4 py-3 text-right text-xs text-gray-600 bg-amber-50">
                           —
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500 bg-slate-50 border-r-2 border-gray-400">
+                        <td className="px-4 py-3 text-xs text-gray-500 bg-gray-50 border-r-2 border-gray-400">
                           Auto
                         </td>
                       </>
@@ -1085,8 +1085,8 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
             </tr>
 
             {/* Net Margin % */}
-            <tr className="bg-teal-50 border-b-2 border-gray-500">
-              <td className="sticky left-0 z-10 bg-teal-50 px-6 py-3 border-r-2 border-gray-300 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
+            <tr className="bg-brand-orange-50 border-b-2 border-gray-500">
+              <td className="sticky left-0 z-10 bg-brand-orange-50 px-6 py-3 border-r-2 border-gray-300 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                 <span className="text-gray-900 font-semibold italic">Net Margin %</span>
               </td>
               {monthColumns.map((col, idx) => {
@@ -1101,14 +1101,14 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                   <React.Fragment key={col.key}>
                     <td
                       className={`px-4 py-3 text-right text-sm font-semibold ${
-                        netMargin >= 20 ? 'text-green-700' : netMargin >= 10 ? 'text-teal-700' : netMargin >= 0 ? 'text-amber-700' : 'text-red-700'
+                        netMargin >= 20 ? 'text-green-700' : netMargin >= 10 ? 'text-brand-orange-700' : netMargin >= 0 ? 'text-amber-700' : 'text-red-700'
                       } ${isLastActual ? 'border-r-2 border-gray-300' : ''}`}
                     >
                       {netMargin.toFixed(1)}%
                     </td>
                     {isLastActual && viewMode === 'setup' && (
                       <>
-                        <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900 bg-teal-100">
+                        <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900 bg-brand-orange-100">
                           {(() => {
                             const fy25Revenue = calculateCategoryFY25Total('Revenue')
                             const fy25NP = calculateNetProfitFY25Total()
@@ -1122,7 +1122,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                         <td className="px-4 py-3 text-right text-xs text-gray-600 bg-amber-50">
                           —
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500 bg-slate-50 border-r-2 border-gray-400">
+                        <td className="px-4 py-3 text-xs text-gray-500 bg-gray-50 border-r-2 border-gray-400">
                           Auto
                         </td>
                       </>

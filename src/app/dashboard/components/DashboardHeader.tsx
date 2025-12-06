@@ -22,11 +22,11 @@ export default function DashboardHeader({ onRefresh, rocksOnTrack = 0, rocksAtRi
     <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-teal-600 text-sm font-medium mb-1">Command Centre</p>
-          <h1 className="text-2xl font-bold text-slate-800">
+          <p className="text-brand-orange text-sm font-medium mb-1">Command Centre</p>
+          <h1 className="text-2xl font-bold text-brand-navy">
             {getGreeting()}
           </h1>
-          <p className="text-slate-500 text-sm mt-1">
+          <p className="text-gray-500 text-sm mt-1">
             {new Date().toLocaleDateString('en-AU', {
               weekday: 'long',
               day: 'numeric',
@@ -42,14 +42,14 @@ export default function DashboardHeader({ onRefresh, rocksOnTrack = 0, rocksAtRi
             <div className="hidden md:flex items-center gap-3">
               {rocksOnTrack > 0 && (
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-teal-500"></div>
-                  <span className="text-sm text-slate-600">{rocksOnTrack} on track</span>
+                  <div className="w-2 h-2 rounded-full bg-brand-orange-500"></div>
+                  <span className="text-sm text-gray-600">{rocksOnTrack} on track</span>
                 </div>
               )}
               {rocksAtRisk > 0 && (
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-                  <span className="text-sm text-slate-600">{rocksAtRisk} need attention</span>
+                  <span className="text-sm text-gray-600">{rocksAtRisk} need attention</span>
                 </div>
               )}
             </div>
@@ -58,7 +58,7 @@ export default function DashboardHeader({ onRefresh, rocksOnTrack = 0, rocksAtRi
           <button
             type="button"
             onClick={onRefresh}
-            className="p-2 rounded-lg text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+            className="p-2 rounded-lg text-slate-400 hover:text-brand-orange hover:bg-brand-orange-50 transition-colors"
             title="Refresh"
           >
             <RefreshCw className="h-5 w-5" />

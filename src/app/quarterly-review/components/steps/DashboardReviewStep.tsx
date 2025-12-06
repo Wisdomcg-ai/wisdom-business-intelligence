@@ -54,7 +54,7 @@ const ACTION_COLUMN_CONFIG: Record<ActionColumn, {
     title: 'New Ideas',
     description: 'Insights for next quarter',
     icon: Lightbulb,
-    iconColor: 'text-blue-500',
+    iconColor: 'text-brand-orange',
     placeholder: 'e.g., Partner with complementary businesses'
   }
 };
@@ -564,7 +564,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
           estimatedTime={15}
         />
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
         </div>
       </div>
     );
@@ -609,11 +609,11 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
 
       {/* Financial Performance */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
-        <div className="bg-gradient-to-r from-teal-50 to-slate-50 px-5 py-4 border-b border-gray-200">
+        <div className="bg-gradient-to-r from-brand-orange-50 to-slate-50 px-5 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-teal-600" />
+                <DollarSign className="w-5 h-5 text-brand-orange" />
                 <h3 className="font-semibold text-gray-900">Financial Performance</h3>
               </div>
               <p className="text-sm text-gray-600 mt-1">
@@ -628,7 +628,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
             {hasTargetsFromPlan && (
               <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                 targetsSource === 'quarterly'
-                  ? 'bg-teal-100 text-teal-700'
+                  ? 'bg-brand-orange-100 text-brand-orange-700'
                   : 'bg-amber-100 text-amber-700'
               }`}>
                 {targetsSource === 'quarterly' ? 'From Sprint Plan' : 'From Annual Goals'}
@@ -642,15 +642,15 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
           {hasTargetsFromPlan && (
             <div className={`rounded-lg p-3 mb-4 border ${
               targetsSource === 'quarterly'
-                ? 'bg-blue-50 border-blue-200'
+                ? 'bg-brand-orange-50 border-brand-orange-200'
                 : 'bg-amber-50 border-amber-200'
             }`}>
               <div className="flex items-start gap-2">
                 <AlertCircle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
-                  targetsSource === 'quarterly' ? 'text-blue-600' : 'text-amber-600'
+                  targetsSource === 'quarterly' ? 'text-brand-orange' : 'text-amber-600'
                 }`} />
                 <p className={`text-sm ${
-                  targetsSource === 'quarterly' ? 'text-blue-700' : 'text-amber-700'
+                  targetsSource === 'quarterly' ? 'text-brand-orange-700' : 'text-amber-700'
                 }`}>
                   {targetsSource === 'quarterly'
                     ? 'Targets loaded from your 90-day sprint plan. Enter your actual results for the quarter.'
@@ -677,7 +677,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
             {financials.map((metric) => {
               const variance = calculateVariance(metric.target, metric.actual);
               return (
-                <div key={metric.id} className="grid grid-cols-12 gap-4 items-center bg-slate-50 rounded-lg p-3">
+                <div key={metric.id} className="grid grid-cols-12 gap-4 items-center bg-gray-50 rounded-lg p-3">
                   <div className="col-span-3">
                     <span className="font-medium text-gray-900">{metric.label}</span>
                   </div>
@@ -694,7 +694,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
                         value={metric.target ? formatCurrency(metric.target) : ''}
                         onChange={(e) => updateFinancialTarget(metric.id, parseCurrencyInput(e.target.value))}
                         placeholder="$0"
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                       />
                     )}
                   </div>
@@ -704,7 +704,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
                       value={metric.actual ? formatCurrency(metric.actual) : ''}
                       onChange={(e) => updateFinancialActual(metric.id, parseCurrencyInput(e.target.value))}
                       placeholder="$0"
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 bg-white"
                     />
                   </div>
                   <div className="col-span-3">
@@ -725,7 +725,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
             <div className="mt-4 pt-4 border-t border-gray-200">
               <p className="text-sm text-gray-500">
                 No targets found from your 90-day sprint plan.{' '}
-                <Link href="/goals" className="text-teal-600 hover:text-teal-700 font-medium">
+                <Link href="/goals" className="text-brand-orange hover:text-brand-orange-700 font-medium">
                   Set up your targets →
                 </Link>
               </p>
@@ -740,7 +740,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-slate-600" />
+                <BarChart3 className="w-5 h-5 text-gray-600" />
                 <h3 className="font-semibold text-gray-900">Core Business Metrics</h3>
               </div>
               <p className="text-sm text-gray-600 mt-1">
@@ -750,7 +750,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
               </p>
             </div>
             {hasCoreMetricsFromPlan && (
-              <span className="text-xs px-2 py-1 rounded-full font-medium bg-teal-100 text-teal-700">
+              <span className="text-xs px-2 py-1 rounded-full font-medium bg-brand-orange-100 text-brand-orange-700">
                 From Goals
               </span>
             )}
@@ -760,10 +760,10 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
         <div className="p-5">
           {/* Info banner if metrics loaded from plan */}
           {hasCoreMetricsFromPlan && (
-            <div className="rounded-lg p-3 mb-4 border bg-blue-50 border-blue-200">
+            <div className="rounded-lg p-3 mb-4 border bg-brand-orange-50 border-brand-orange-200">
               <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-600" />
-                <p className="text-sm text-blue-700">
+                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0 text-brand-orange" />
+                <p className="text-sm text-brand-orange-700">
                   Targets loaded from your Year 1 goals. Enter your actual results for this quarter.
                 </p>
               </div>
@@ -787,13 +787,13 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
               const displayVariance = isInverseMetric ? -variance : variance;
 
               return (
-                <div key={metric.id} className="grid grid-cols-12 gap-4 items-center bg-slate-50 rounded-lg p-3">
+                <div key={metric.id} className="grid grid-cols-12 gap-4 items-center bg-gray-50 rounded-lg p-3">
                   <div className="col-span-4 flex items-center gap-2">
-                    {metric.id === 'leadsPerMonth' && <TrendingUp className="w-4 h-4 text-blue-500" />}
+                    {metric.id === 'leadsPerMonth' && <TrendingUp className="w-4 h-4 text-brand-orange" />}
                     {metric.id === 'conversionRate' && <Target className="w-4 h-4 text-green-500" />}
                     {metric.id === 'avgTransactionValue' && <DollarSign className="w-4 h-4 text-amber-500" />}
-                    {metric.id === 'teamHeadcount' && <Users className="w-4 h-4 text-purple-500" />}
-                    {metric.id === 'ownerHoursPerWeek' && <Clock className="w-4 h-4 text-rose-500" />}
+                    {metric.id === 'teamHeadcount' && <Users className="w-4 h-4 text-brand-navy" />}
+                    {metric.id === 'ownerHoursPerWeek' && <Clock className="w-4 h-4 text-red-500" />}
                     <span className="font-medium text-gray-900 text-sm">{metric.label}</span>
                   </div>
                   <div className="col-span-2 text-center">
@@ -814,7 +814,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
                         value={formatCoreMetricValue(metric, metric.actual)}
                         onChange={(e) => updateCoreMetricActual(metric.id, parseCoreMetricInput(metric, e.target.value))}
                         placeholder={metric.format === 'currency' ? '$0' : metric.format === 'percentage' ? '0%' : '0'}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 bg-white"
                       />
                       {metric.unit && metric.format !== 'currency' && metric.format !== 'percentage' && (
                         <span className="text-xs text-gray-500 whitespace-nowrap">{metric.unit}</span>
@@ -839,7 +839,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
             <div className="mt-4 pt-4 border-t border-gray-200">
               <p className="text-sm text-gray-500">
                 No core metrics found from your strategic plan.{' '}
-                <Link href="/goals" className="text-teal-600 hover:text-teal-700 font-medium">
+                <Link href="/goals" className="text-brand-orange hover:text-brand-orange-700 font-medium">
                   Set up your targets →
                 </Link>
               </p>
@@ -850,18 +850,18 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
 
       {/* KPIs from Plan */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
-        <div className="bg-slate-50 px-5 py-4 border-b border-gray-200">
+        <div className="bg-gray-50 px-5 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <Target className="w-5 h-5 text-slate-600" />
+                <Target className="w-5 h-5 text-gray-600" />
                 <h3 className="font-semibold text-gray-900">Key Performance Indicators</h3>
               </div>
               <p className="text-sm text-gray-600 mt-1">Review your KPIs from your strategic plan</p>
             </div>
             <Link
               href="/goals"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-teal-600 hover:text-teal-700"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-brand-orange hover:text-brand-orange-700"
             >
               Edit KPIs
               <ExternalLink className="w-3.5 h-3.5" />
@@ -879,7 +879,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
               </p>
               <Link
                 href="/goals"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg text-sm font-medium hover:bg-brand-orange-600"
               >
                 Set Up KPIs
                 <ExternalLink className="w-4 h-4" />
@@ -907,7 +907,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
                       const variance = calculateVariance(target, actual);
 
                       return (
-                        <div key={kpi.kpi_id} className="grid grid-cols-12 gap-4 items-center bg-slate-50 rounded-lg p-3">
+                        <div key={kpi.kpi_id} className="grid grid-cols-12 gap-4 items-center bg-gray-50 rounded-lg p-3">
                           <div className="col-span-4">
                             <span className="font-medium text-gray-900 text-sm">
                               {kpi.friendly_name || kpi.name}
@@ -932,7 +932,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
                                   updateKpiActual(kpi.kpi_id, val);
                                 }}
                                 placeholder={kpi.unit === 'currency' || kpi.unit === '$' ? '$0' : '0'}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                               />
                               {getKpiDisplayUnit(kpi.unit) && (
                                 <span className="text-xs text-gray-500 whitespace-nowrap">{getKpiDisplayUnit(kpi.unit)}</span>
@@ -960,9 +960,9 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
 
       {/* Commentary */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="bg-slate-50 px-5 py-4 border-b border-gray-200">
+        <div className="bg-gray-50 px-5 py-4 border-b border-gray-200">
           <div className="flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-slate-600" />
+            <MessageSquare className="w-5 h-5 text-gray-600" />
             <h3 className="font-semibold text-gray-900">Performance Commentary</h3>
           </div>
           <p className="text-sm text-gray-600 mt-1">What drove these results?</p>
@@ -970,12 +970,12 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
 
         <div className="p-5">
           {/* Prompts */}
-          <div className="bg-teal-50 rounded-lg p-4 mb-4 border border-teal-200">
+          <div className="bg-brand-orange-50 rounded-lg p-4 mb-4 border border-brand-orange-200">
             <div className="flex items-start gap-2">
-              <Lightbulb className="w-4 h-4 text-teal-600 mt-0.5 flex-shrink-0" />
-              <div className="text-sm text-teal-800">
+              <Lightbulb className="w-4 h-4 text-brand-orange mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-brand-orange-800">
                 <p className="font-medium mb-1">Consider discussing:</p>
-                <ul className="space-y-0.5 text-teal-700">
+                <ul className="space-y-0.5 text-brand-orange-700">
                   <li>• What contributed to hitting or missing targets?</li>
                   <li>• Any external factors that impacted performance?</li>
                   <li>• What surprised you about the results?</li>
@@ -989,7 +989,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
             onChange={(e) => setCommentary(e.target.value)}
             placeholder="Add your observations and insights about this quarter's performance..."
             rows={4}
-            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 resize-none"
+            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 resize-none"
           />
         </div>
       </div>
@@ -998,7 +998,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
       <div className="mt-8">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-slate-600" />
+            <Sparkles className="w-5 h-5 text-gray-600" />
           </div>
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Action Replay</h2>
@@ -1014,7 +1014,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
             const items = actionReplay[column];
 
             return (
-              <div key={column} className="bg-slate-50 rounded-xl border border-gray-200 p-4 flex flex-col">
+              <div key={column} className="bg-gray-50 rounded-xl border border-gray-200 p-4 flex flex-col">
                 <div className="flex items-center gap-2 mb-3">
                   <Icon className={`w-5 h-5 ${config.iconColor}`} />
                   <div>
@@ -1053,7 +1053,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
                     onChange={(e) => setNewItems({ ...newItems, [column]: e.target.value })}
                     onKeyDown={(e) => handleActionKeyDown(e, column)}
                     placeholder={config.placeholder}
-                    className="flex-1 text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    className="flex-1 text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   />
                   <button
                     onClick={() => addActionItem(column)}
@@ -1073,9 +1073,9 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
         </div>
 
         {/* Key Insight */}
-        <div className="bg-gradient-to-r from-teal-50 to-slate-50 rounded-xl border border-teal-200 p-6">
+        <div className="bg-gradient-to-r from-brand-orange-50 to-slate-50 rounded-xl border border-brand-orange-200 p-6">
           <div className="flex items-center gap-2 mb-4">
-            <Sparkles className="w-5 h-5 text-teal-600" />
+            <Sparkles className="w-5 h-5 text-brand-orange" />
             <div>
               <h3 className="font-semibold text-gray-900">Key Insight</h3>
               <p className="text-sm text-gray-500">What's the ONE thing you'll take forward from this reflection?</p>
@@ -1086,7 +1086,7 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
             onChange={(e) => updateKeyInsight(e.target.value)}
             placeholder="Summarize your most important learning from this action replay..."
             rows={3}
-            className="w-full px-4 py-3 border border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none bg-white"
+            className="w-full px-4 py-3 border border-brand-orange-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none bg-white"
           />
         </div>
       </div>

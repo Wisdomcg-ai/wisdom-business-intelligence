@@ -137,7 +137,7 @@ export default function XeroConnectPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-teal-600 mx-auto mb-4" />
+          <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -145,7 +145,7 @@ export default function XeroConnectPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
+    <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -192,7 +192,7 @@ export default function XeroConnectPage() {
               <div className="border-t pt-4 flex space-x-3">
                 <button
                   onClick={() => window.location.href = '/finances/forecast'}
-                  className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium"
+                  className="flex-1 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium"
                 >
                   Go to Financial Forecast
                 </button>
@@ -229,7 +229,7 @@ export default function XeroConnectPage() {
                 <button
                   onClick={connectToXero}
                   disabled={loading}
-                  className="w-full px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium disabled:opacity-50 flex items-center justify-center space-x-2"
+                  className="w-full px-6 py-3 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium disabled:opacity-50 flex items-center justify-center space-x-2"
                 >
                   <ExternalLink className="w-5 h-5" />
                   <span>{loading ? 'Redirecting...' : 'Connect to Xero'}</span>
@@ -244,7 +244,7 @@ export default function XeroConnectPage() {
                 ? 'bg-green-100 text-green-800'
                 : message.includes('Disconnected') || message.includes('Failed') || message.includes('denied') || message.includes('error')
                 ? 'bg-red-100 text-red-800'
-                : 'bg-teal-100 text-teal-800'
+                : 'bg-brand-orange-100 text-brand-orange-800'
             }`}>
               {message}
             </div>
@@ -252,8 +252,8 @@ export default function XeroConnectPage() {
         </div>
 
         {/* Help Text */}
-        <div className="mt-6 p-4 bg-teal-50 rounded-lg">
-          <p className="text-sm text-teal-800">
+        <div className="mt-6 p-4 bg-brand-orange-50 rounded-lg">
+          <p className="text-sm text-brand-orange-800">
             <strong>Note:</strong> You'll be redirected to Xero to authorize access.
             Make sure you're logged into the correct Xero organization before connecting.
           </p>

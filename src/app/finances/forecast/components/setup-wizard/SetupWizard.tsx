@@ -330,7 +330,7 @@ export default function SetupWizard({
                     onClick={() => isClickable && goToStep(index)}
                     disabled={!isClickable}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${isActive
-                        ? 'bg-teal-50 text-teal-700'
+                        ? 'bg-brand-orange-50 text-brand-orange-700'
                         : isCompleted
                           ? 'text-green-700 hover:bg-green-50'
                           : isClickable
@@ -339,7 +339,7 @@ export default function SetupWizard({
                       }`}
                   >
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isActive
-                        ? 'bg-teal-600 text-white'
+                        ? 'bg-brand-orange text-white'
                         : isCompleted
                           ? 'bg-green-600 text-white'
                           : 'bg-gray-200 text-gray-500'
@@ -351,7 +351,7 @@ export default function SetupWizard({
                       )}
                     </div>
                     <div className="hidden lg:block text-left">
-                      <div className={`text-sm font-medium ${isActive ? 'text-teal-700' : ''}`}>
+                      <div className={`text-sm font-medium ${isActive ? 'text-brand-orange-700' : ''}`}>
                         {step.title}
                       </div>
                       <div className="text-xs text-gray-400">
@@ -394,7 +394,7 @@ export default function SetupWizard({
             <button
               onClick={goForward}
               disabled={!canGoForward}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
               <ChevronRight className="w-4 h-4" />

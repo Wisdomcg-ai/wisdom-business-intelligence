@@ -10,14 +10,14 @@ interface HealthScoreGaugeProps {
 export default function HealthScoreGauge({ score, previousScore }: HealthScoreGaugeProps) {
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-green-600'
-    if (score >= 60) return 'text-teal-600'
+    if (score >= 60) return 'text-brand-orange'
     if (score >= 40) return 'text-yellow-600'
     return 'text-red-600'
   }
 
   const getScoreBgColor = (score: number) => {
     if (score >= 80) return 'bg-green-100'
-    if (score >= 60) return 'bg-teal-100'
+    if (score >= 60) return 'bg-brand-orange-100'
     if (score >= 40) return 'bg-yellow-100'
     return 'bg-red-100'
   }

@@ -203,13 +203,13 @@ export default function Step4AnalyzeSelect({
           <p className="text-xs text-amber-600 mt-1">{formatCurrency(summary.stopDoingCost * 12)}/year</p>
         </div>
 
-        <div className="bg-teal-50 rounded-lg border border-teal-200 p-4">
-          <div className="flex items-center gap-2 text-teal-600 text-sm mb-1">
+        <div className="bg-brand-orange-50 rounded-lg border border-brand-orange-200 p-4">
+          <div className="flex items-center gap-2 text-brand-orange text-sm mb-1">
             <CheckCircle className="w-4 h-4" />
             Selected Items
           </div>
-          <p className="text-2xl font-bold text-teal-700">{summary.selectedCount}</p>
-          <p className="text-xs text-teal-600 mt-1">Ready for action plan</p>
+          <p className="text-2xl font-bold text-brand-orange-700">{summary.selectedCount}</p>
+          <p className="text-xs text-brand-orange mt-1">Ready for action plan</p>
         </div>
       </div>
 
@@ -220,7 +220,7 @@ export default function Step4AnalyzeSelect({
           <select
             value={filterZone}
             onChange={(e) => setFilterZone(e.target.value as Zone | 'all')}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange"
           >
             <option value="all">All Zones</option>
             {ZONE_OPTIONS.map((opt) => (
@@ -243,7 +243,7 @@ export default function Step4AnalyzeSelect({
                 onClick={() => toggleSort(field)}
                 className={`px-3 py-1.5 text-sm rounded-lg flex items-center gap-1 transition-colors ${
                   sortField === field
-                    ? 'bg-teal-600 text-white'
+                    ? 'bg-brand-orange text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
@@ -280,7 +280,7 @@ export default function Step4AnalyzeSelect({
                 key={activity.id}
                 className={`bg-white border-2 rounded-lg p-4 transition-all ${
                   isSelected
-                    ? 'border-teal-500 bg-teal-50/30'
+                    ? 'border-brand-orange-500 bg-brand-orange-50/30'
                     : `${zoneStyle.borderColor} hover:shadow-md`
                 }`}
               >
@@ -320,8 +320,8 @@ export default function Step4AnalyzeSelect({
                     {/* Suggestion */}
                     {metrics.suggestedDecision && (
                       <div className="mt-2 flex items-center gap-2">
-                        <TrendingUp className="w-4 h-4 text-teal-600" />
-                        <span className="text-sm text-teal-700">
+                        <TrendingUp className="w-4 h-4 text-brand-orange" />
+                        <span className="text-sm text-brand-orange-700">
                           Suggested: <strong>{metrics.suggestedDecision}</strong>
                         </span>
                       </div>
@@ -331,7 +331,7 @@ export default function Step4AnalyzeSelect({
                   {/* Right: Selection */}
                   <div className="flex items-center">
                     {isSelected ? (
-                      <div className="flex items-center gap-2 text-teal-600">
+                      <div className="flex items-center gap-2 text-brand-orange">
                         <CheckCircle className="w-6 h-6" />
                         <span className="text-sm font-medium">Selected</span>
                       </div>
@@ -342,7 +342,7 @@ export default function Step4AnalyzeSelect({
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                           activity.zone === 'genius'
                             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : 'bg-teal-600 text-white hover:bg-teal-700'
+                            : 'bg-brand-orange text-white hover:bg-brand-orange-600'
                         }`}
                         title={activity.zone === 'genius' ? 'Keep doing Genius zone activities!' : 'Add to Stop Doing list'}
                       >

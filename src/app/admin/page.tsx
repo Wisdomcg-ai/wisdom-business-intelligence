@@ -7,6 +7,7 @@ import AdminLayout from '@/components/admin/AdminLayout'
 import { StatsCard } from '@/components/admin/StatsCard'
 import { Badge } from '@/components/admin/Badge'
 import { ToastProvider, useToast } from '@/components/admin/Toast'
+import PageHeader from '@/components/ui/PageHeader'
 import {
   Building2,
   Users,
@@ -22,7 +23,8 @@ import {
   CheckCircle,
   Calendar,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  LayoutDashboard
 } from 'lucide-react'
 
 interface DashboardStats {
@@ -160,29 +162,31 @@ function DashboardContent() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-teal-500 animate-spin" />
-          <p className="text-slate-500 text-sm">Loading dashboard...</p>
+          <Loader2 className="w-8 h-8 text-brand-orange-500 animate-spin" />
+          <p className="text-gray-500 text-sm">Loading dashboard...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-8">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-slate-500 mt-1">Overview of your coaching business</p>
-        </div>
-        <Link
-          href="/admin/clients/new"
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white font-medium rounded-xl hover:bg-teal-700 transition-colors shadow-lg shadow-teal-500/20"
-        >
-          <Plus className="w-4 h-4" />
-          Add New Client
-        </Link>
-      </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6 sm:space-y-8">
+      <PageHeader
+        title="Dashboard"
+        subtitle="Overview of your coaching business"
+        icon={LayoutDashboard}
+        variant="simple"
+        actions={
+          <Link
+            href="/admin/clients/new"
+            className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-brand-orange text-white font-medium text-sm sm:text-base rounded-lg hover:bg-brand-orange-600 shadow-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Add New Client</span>
+            <span className="sm:hidden">Add Client</span>
+          </Link>
+        }
+      />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -197,36 +201,36 @@ function DashboardContent() {
           title="Active Clients"
           value={stats.activeClients}
           icon={CheckCircle}
-          iconColor="green"
+          iconColor="teal"
           subtitle={`${Math.round((stats.activeClients / Math.max(stats.totalClients, 1)) * 100)}% of total`}
         />
         <StatsCard
           title="Coaches"
           value={stats.totalCoaches}
           icon={Briefcase}
-          iconColor="purple"
+          iconColor="navy"
           onClick={() => window.location.href = '/admin/coaches'}
         />
         <StatsCard
           title="New This Month"
           value={stats.newThisMonth}
           icon={TrendingUp}
-          iconColor="blue"
+          iconColor="orange"
         />
       </div>
 
       {/* Alert Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Pending Invitations */}
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
                 <Mail className="w-5 h-5 text-amber-600" />
               </div>
               <div>
-                <h2 className="font-semibold text-slate-900">Pending Invitations</h2>
-                <p className="text-sm text-slate-500">{stats.pendingInvitations} clients awaiting invite</p>
+                <h2 className="font-semibold text-brand-navy text-base sm:text-lg">Pending Invitations</h2>
+                <p className="text-xs sm:text-sm text-gray-500">{stats.pendingInvitations} clients awaiting invite</p>
               </div>
             </div>
             {stats.pendingInvitations > 0 && (
@@ -236,34 +240,34 @@ function DashboardContent() {
 
           <div className="divide-y divide-slate-100">
             {pendingInvitations.length === 0 ? (
-              <div className="px-6 py-8 text-center">
+              <div className="px-4 sm:px-6 py-8 text-center">
                 <CheckCircle className="w-10 h-10 text-green-500 mx-auto mb-2" />
-                <p className="text-slate-600 font-medium">All caught up!</p>
-                <p className="text-slate-400 text-sm">No pending invitations</p>
+                <p className="text-gray-600 font-medium text-sm sm:text-base">All caught up!</p>
+                <p className="text-slate-400 text-xs sm:text-sm">No pending invitations</p>
               </div>
             ) : (
               pendingInvitations.map((client) => (
-                <div key={client.id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-                      <Building2 className="w-5 h-5 text-slate-500" />
+                <div key={client.id} className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <Building2 className="w-5 h-5 text-gray-500" />
                     </div>
-                    <div>
-                      <p className="font-medium text-slate-900">{client.business_name}</p>
-                      <p className="text-sm text-slate-500">Added {formatDate(client.created_at)}</p>
+                    <div className="min-w-0">
+                      <p className="font-medium text-brand-navy text-sm sm:text-base truncate">{client.business_name}</p>
+                      <p className="text-xs sm:text-sm text-gray-500">Added {formatDate(client.created_at)}</p>
                     </div>
                   </div>
                   <button
                     onClick={() => sendInvitation(client.id, client.business_name)}
                     disabled={sendingInvitation === client.id}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 font-medium text-sm rounded-lg hover:bg-amber-200 transition-colors disabled:opacity-50"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 font-medium text-sm rounded-lg hover:bg-amber-200 transition-colors disabled:opacity-50 flex-shrink-0"
                   >
                     {sendingInvitation === client.id ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <Send className="w-4 h-4" />
                     )}
-                    Send Invite
+                    <span>Send Invite</span>
                   </button>
                 </div>
               ))
@@ -271,10 +275,10 @@ function DashboardContent() {
           </div>
 
           {stats.pendingInvitations > 5 && (
-            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50">
+            <div className="px-4 sm:px-6 py-3 border-t border-slate-100 bg-gray-50">
               <Link
                 href="/admin/clients?filter=pending-invite"
-                className="text-sm text-teal-600 hover:text-teal-700 font-medium inline-flex items-center gap-1"
+                className="text-xs sm:text-sm text-brand-orange hover:text-brand-orange-700 font-medium inline-flex items-center gap-1"
               >
                 View all {stats.pendingInvitations} pending
                 <ArrowRight className="w-4 h-4" />
@@ -284,15 +288,15 @@ function DashboardContent() {
         </div>
 
         {/* Unassigned Clients */}
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
                 <AlertCircle className="w-5 h-5 text-red-600" />
               </div>
               <div>
-                <h2 className="font-semibold text-slate-900">Unassigned Clients</h2>
-                <p className="text-sm text-slate-500">{stats.unassignedClients} clients need a coach</p>
+                <h2 className="font-semibold text-brand-navy text-base sm:text-lg">Unassigned Clients</h2>
+                <p className="text-xs sm:text-sm text-gray-500">{stats.unassignedClients} clients need a coach</p>
               </div>
             </div>
             {stats.unassignedClients > 0 && (
@@ -302,29 +306,29 @@ function DashboardContent() {
 
           <div className="divide-y divide-slate-100">
             {unassignedClients.length === 0 ? (
-              <div className="px-6 py-8 text-center">
+              <div className="px-4 sm:px-6 py-8 text-center">
                 <CheckCircle className="w-10 h-10 text-green-500 mx-auto mb-2" />
-                <p className="text-slate-600 font-medium">All assigned!</p>
-                <p className="text-slate-400 text-sm">Every client has a coach</p>
+                <p className="text-gray-600 font-medium text-sm sm:text-base">All assigned!</p>
+                <p className="text-slate-400 text-xs sm:text-sm">Every client has a coach</p>
               </div>
             ) : (
               unassignedClients.map((client) => (
-                <div key={client.id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-                      <Building2 className="w-5 h-5 text-slate-500" />
+                <div key={client.id} className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <Building2 className="w-5 h-5 text-gray-500" />
                     </div>
-                    <div>
-                      <p className="font-medium text-slate-900">{client.business_name}</p>
-                      <p className="text-sm text-slate-500">{client.industry || 'No industry set'}</p>
+                    <div className="min-w-0">
+                      <p className="font-medium text-brand-navy text-sm sm:text-base truncate">{client.business_name}</p>
+                      <p className="text-xs sm:text-sm text-gray-500">{client.industry || 'No industry set'}</p>
                     </div>
                   </div>
                   <Link
                     href={`/coach/clients/${client.id}?tab=profile`}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 font-medium text-sm rounded-lg hover:bg-slate-200 transition-colors"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-gray-700 font-medium text-sm rounded-lg hover:bg-slate-200 transition-colors flex-shrink-0"
                   >
                     <UserPlus className="w-4 h-4" />
-                    Assign
+                    <span>Assign</span>
                   </Link>
                 </div>
               ))
@@ -332,10 +336,10 @@ function DashboardContent() {
           </div>
 
           {stats.unassignedClients > 5 && (
-            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50">
+            <div className="px-4 sm:px-6 py-3 border-t border-slate-100 bg-gray-50">
               <Link
                 href="/admin/clients?filter=unassigned"
-                className="text-sm text-teal-600 hover:text-teal-700 font-medium inline-flex items-center gap-1"
+                className="text-xs sm:text-sm text-brand-orange hover:text-brand-orange-700 font-medium inline-flex items-center gap-1"
               >
                 View all {stats.unassignedClients} unassigned
                 <ArrowRight className="w-4 h-4" />
@@ -346,58 +350,58 @@ function DashboardContent() {
       </div>
 
       {/* Quick Links */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6">
-        <h2 className="font-semibold text-slate-900 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6">
+        <h2 className="font-semibold text-brand-navy mb-4 text-base sm:text-lg">Quick Actions</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <Link
             href="/admin/clients/new"
-            className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50 transition-all"
+            className="group flex items-center gap-3 sm:gap-4 p-4 rounded-xl border border-slate-200 hover:border-brand-orange-500 hover:bg-brand-orange-50 transition-all"
           >
-            <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center group-hover:bg-teal-500 transition-colors">
-              <Plus className="w-6 h-6 text-teal-600 group-hover:text-white transition-colors" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-brand-orange-100 rounded-xl flex items-center justify-center group-hover:bg-brand-orange-500 transition-colors flex-shrink-0">
+              <Plus className="w-5 h-5 sm:w-6 sm:h-6 text-brand-orange group-hover:text-white transition-colors" />
             </div>
-            <div>
-              <p className="font-medium text-slate-900">Add Client</p>
-              <p className="text-sm text-slate-500">Create new business</p>
+            <div className="min-w-0">
+              <p className="font-medium text-brand-navy text-sm sm:text-base">Add Client</p>
+              <p className="text-xs sm:text-sm text-gray-500">Create new business</p>
             </div>
           </Link>
 
           <Link
             href="/admin/coaches"
-            className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-purple-500 hover:bg-purple-50 transition-all"
+            className="group flex items-center gap-3 sm:gap-4 p-4 rounded-xl border border-slate-200 hover:border-brand-navy-500 hover:bg-brand-navy-50 transition-all"
           >
-            <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center group-hover:bg-purple-500 transition-colors">
-              <Briefcase className="w-6 h-6 text-purple-600 group-hover:text-white transition-colors" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-brand-navy-100 rounded-xl flex items-center justify-center group-hover:bg-brand-navy-500 transition-colors flex-shrink-0">
+              <Briefcase className="w-5 h-5 sm:w-6 sm:h-6 text-brand-navy group-hover:text-white transition-colors" />
             </div>
-            <div>
-              <p className="font-medium text-slate-900">Manage Coaches</p>
-              <p className="text-sm text-slate-500">Add or edit coaches</p>
+            <div className="min-w-0">
+              <p className="font-medium text-brand-navy text-sm sm:text-base">Manage Coaches</p>
+              <p className="text-xs sm:text-sm text-gray-500">Add or edit coaches</p>
             </div>
           </Link>
 
           <Link
             href="/admin/users"
-            className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50 transition-all"
+            className="group flex items-center gap-3 sm:gap-4 p-4 rounded-xl border border-slate-200 hover:border-brand-orange hover:bg-brand-orange-50 transition-all"
           >
-            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-500 transition-colors">
-              <Users className="w-6 h-6 text-blue-600 group-hover:text-white transition-colors" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-brand-orange-100 rounded-xl flex items-center justify-center group-hover:bg-brand-orange-500 transition-colors flex-shrink-0">
+              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-brand-orange group-hover:text-white transition-colors" />
             </div>
-            <div>
-              <p className="font-medium text-slate-900">User Management</p>
-              <p className="text-sm text-slate-500">Reset passwords</p>
+            <div className="min-w-0">
+              <p className="font-medium text-brand-navy text-sm sm:text-base">User Management</p>
+              <p className="text-xs sm:text-sm text-gray-500">Reset passwords</p>
             </div>
           </Link>
 
           <Link
             href="/coach/clients"
-            className="group flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 transition-all"
+            className="group flex items-center gap-3 sm:gap-4 p-4 rounded-xl border border-slate-200 hover:border-brand-orange hover:bg-brand-orange-50 transition-all"
           >
-            <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center group-hover:bg-indigo-500 transition-colors">
-              <ExternalLink className="w-6 h-6 text-indigo-600 group-hover:text-white transition-colors" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-brand-orange-100 rounded-xl flex items-center justify-center group-hover:bg-brand-orange-500 transition-colors flex-shrink-0">
+              <ExternalLink className="w-5 h-5 sm:w-6 sm:h-6 text-brand-orange group-hover:text-white transition-colors" />
             </div>
-            <div>
-              <p className="font-medium text-slate-900">Coach Portal</p>
-              <p className="text-sm text-slate-500">View as coach</p>
+            <div className="min-w-0">
+              <p className="font-medium text-brand-navy text-sm sm:text-base">Coach Portal</p>
+              <p className="text-xs sm:text-sm text-gray-500">View as coach</p>
             </div>
           </Link>
         </div>

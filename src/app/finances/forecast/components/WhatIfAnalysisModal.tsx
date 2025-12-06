@@ -121,9 +121,9 @@ export default function WhatIfAnalysisModal({
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-teal-50 to-teal-50">
+          <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-brand-orange-50 to-brand-orange-50">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-teal-600 rounded-lg flex items-center justify-center">
+              <div className="w-12 h-12 bg-brand-orange rounded-lg flex items-center justify-center">
                 <TrendingUp className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -144,19 +144,19 @@ export default function WhatIfAnalysisModal({
             <div className="grid grid-cols-2 gap-6">
               {/* Left: Controls */}
               <div className="space-y-6">
-                <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
-                  <h3 className="text-sm font-bold text-teal-900 mb-2 flex items-center gap-2">
+                <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-4">
+                  <h3 className="text-sm font-bold text-brand-navy mb-2 flex items-center gap-2">
                     <AlertCircle className="w-4 h-4" />
                     How to Use
                   </h3>
-                  <div className="text-xs text-teal-800 space-y-2">
+                  <div className="text-xs text-brand-orange-800 space-y-2">
                     <p>1. Adjust the sliders below to model different scenarios</p>
                     <p>2. See the real-time impact on your profitability</p>
                     <p className="font-semibold mt-3">3. Then choose an action:</p>
                     <div className="ml-3 space-y-1">
-                      <p>• <span className="font-semibold text-green-700">Apply to Forecast</span> - Update current forecast</p>
-                      <p>• <span className="font-semibold text-purple-700">Save as New Version</span> - Create new version</p>
-                      <p>• <span className="font-semibold text-teal-700">Save as Scenario</span> - Compare later</p>
+                      <p>• <span className="font-semibold text-brand-teal-700">Apply to Forecast</span> - Update current forecast</p>
+                      <p>• <span className="font-semibold text-brand-navy-700">Save as New Version</span> - Create new version</p>
+                      <p>• <span className="font-semibold text-brand-orange-700">Save as Scenario</span> - Compare later</p>
                     </div>
                   </div>
                 </div>
@@ -265,7 +265,7 @@ export default function WhatIfAnalysisModal({
                 <h3 className="text-lg font-bold text-gray-900 mb-4">Impact Analysis</h3>
 
                 {/* Revenue Impact */}
-                <div className="border-2 border-teal-200 rounded-lg p-4 bg-teal-50">
+                <div className="border-2 border-brand-orange-200 rounded-lg p-4 bg-brand-orange-50">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium text-gray-700">Revenue</span>
                     {revenueChange !== 0 && (
@@ -281,7 +281,7 @@ export default function WhatIfAnalysisModal({
                       </div>
                     )}
                   </div>
-                  <div className="text-2xl font-bold text-teal-900">
+                  <div className="text-2xl font-bold text-brand-navy">
                     {formatCurrency(adjustedRevenue, forecast.currency || 'AUD')}
                   </div>
                   <div className="text-xs text-gray-600 mt-1">
@@ -315,7 +315,7 @@ export default function WhatIfAnalysisModal({
                 </div>
 
                 {/* Net Profit Impact */}
-                <div className="border-2 border-purple-200 rounded-lg p-4 bg-purple-50">
+                <div className="border-2 border-brand-navy-200 rounded-lg p-4 bg-brand-navy-50">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium text-gray-700">Net Profit</span>
                     {netProfitChange !== 0 && (
@@ -331,7 +331,7 @@ export default function WhatIfAnalysisModal({
                       </div>
                     )}
                   </div>
-                  <div className={`text-2xl font-bold ${adjustedNetProfit < 0 ? 'text-red-900' : 'text-purple-900'}`}>
+                  <div className={`text-2xl font-bold ${adjustedNetProfit < 0 ? 'text-red-900' : 'text-brand-navy-900'}`}>
                     {formatCurrency(adjustedNetProfit, forecast.currency || 'AUD')}
                   </div>
                   <div className="text-xs text-gray-600 mt-1">
@@ -345,7 +345,7 @@ export default function WhatIfAnalysisModal({
                   <ul className="space-y-2 text-xs text-gray-700">
                     {Math.abs(netProfitChange) > baselineNetProfit * 0.2 && (
                       <li className="flex items-start gap-2">
-                        <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
+                        <AlertCircle className="w-4 h-4 text-brand-orange mt-0.5 flex-shrink-0" />
                         <span>
                           Net profit changes by <strong>{((netProfitChange / baselineNetProfit) * 100).toFixed(0)}%</strong> with these adjustments
                         </span>
@@ -404,7 +404,7 @@ export default function WhatIfAnalysisModal({
                 <button
                   onClick={() => setShowActionMenu(true)}
                   disabled={!hasChanges}
-                  className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  className="px-4 py-2 text-sm font-medium text-white bg-brand-navy rounded-lg hover:bg-brand-navy-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   Save as New Version
                 </button>
@@ -414,7 +414,7 @@ export default function WhatIfAnalysisModal({
               <button
                 onClick={() => setShowSaveDialog(true)}
                 disabled={!hasChanges}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4" />
                 Save as Scenario
@@ -432,7 +432,7 @@ export default function WhatIfAnalysisModal({
                   value={scenarioName}
                   onChange={(e) => setScenarioName(e.target.value)}
                   placeholder="e.g., Optimistic, Conservative, Best Case"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
                   autoFocus
                 />
                 <div className="flex items-center justify-end gap-3">
@@ -447,7 +447,7 @@ export default function WhatIfAnalysisModal({
                   </button>
                   <button
                     onClick={handleSaveScenario}
-                    className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors"
+                    className="px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors"
                   >
                     Save Scenario
                   </button>
@@ -470,7 +470,7 @@ export default function WhatIfAnalysisModal({
                   value={versionName}
                   onChange={(e) => setVersionName(e.target.value)}
                   placeholder="e.g., Q2 Forecast Update, Mid-Year Revision"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-teal-500 focus:border-purple-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-brand-orange focus:border-brand-navy-500"
                   autoFocus
                 />
                 <div className="flex items-center justify-end gap-3">
@@ -485,7 +485,7 @@ export default function WhatIfAnalysisModal({
                   </button>
                   <button
                     onClick={handleSaveAsNewVersion}
-                    className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors"
+                    className="px-4 py-2 text-sm font-medium text-white bg-brand-navy rounded-lg hover:bg-brand-navy-700 transition-colors"
                   >
                     Create Version
                   </button>
@@ -518,7 +518,7 @@ export default function WhatIfAnalysisModal({
           appearance: none;
           width: 20px;
           height: 20px;
-          background: #9333ea;
+          background: #172238;
           cursor: pointer;
           border-radius: 50%;
         }
