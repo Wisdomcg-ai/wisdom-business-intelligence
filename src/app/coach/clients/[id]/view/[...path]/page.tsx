@@ -36,8 +36,7 @@ const getPageComponent = (path: string[]) => {
 
     // Finances
     'finances/forecast': () => import('@/app/finances/forecast/page'),
-    'finances/budget': () => import('@/app/financials/page'),
-    'financials': () => import('@/app/financials/page'),
+    'finances/budget': () => import('@/app/finances/forecast/page'),
 
     // Reviews
     'reviews/weekly': () => import('@/app/reviews/weekly/page'),

@@ -155,7 +155,7 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
     'EXECUTE & GROW': {
       label: 'Execute & Grow',
       items: [
-        { name: 'Business Dashboard', href: '/financials', icon: BarChart3 },
+        { name: 'Business Dashboard', href: '/business-dashboard', icon: BarChart3 },
         { name: 'Daily Disciplines', href: '/daily-disciplines', icon: Flame },
         { name: 'Open Loops', href: '/open-loops', icon: Layers },
         { name: 'Issues List', href: '/issues-list', icon: AlertCircle },
