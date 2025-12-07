@@ -378,7 +378,7 @@ function StrategicPlanningContent() {
   if (!mounted) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="animate-pulse">
             <div className="h-8 bg-gray-200 rounded w-1/3 mb-2"></div>
             <div className="h-4 bg-gray-200 rounded w-1/4 mb-6"></div>
@@ -513,6 +513,7 @@ function StrategicPlanningContent() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <PageHeader
+        variant="banner"
         title="Goals & Planning"
         subtitle={currentStepInfo ? `Step ${currentStep}: ${currentStepInfo.title}` : "Build your 3-year roadmap, step by step"}
         icon={Target}
@@ -582,7 +583,7 @@ function StrategicPlanningContent() {
 
         {/* Progress Bar */}
         <div className="bg-white border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-6">
+          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <div className="space-y-2">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700">Overall Progress</span>
@@ -600,7 +601,7 @@ function StrategicPlanningContent() {
 
       {/* SWOT Integration - Expandable Inline Summary */}
       <div className="bg-gray-100 border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
           <button
             onClick={() => setShowSwotSummary(!showSwotSummary)}
             className="w-full py-4 flex items-center justify-between hover:bg-gray-200/50 transition-colors rounded-lg"
@@ -657,11 +658,11 @@ function StrategicPlanningContent() {
                       {topStrengths.length === 0 ? (
                         <p className="text-sm text-gray-500 italic">No strengths identified</p>
                       ) : (
-                        <ul className="space-y-2">
+                        <ul className="space-y-2 pl-1">
                           {topStrengths.map(item => (
                             <li key={item.id} className="flex items-start text-sm text-gray-700">
-                              <span className="text-green-600 mr-2 mt-0.5">•</span>
-                              <span>{item.title}</span>
+                              <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-2.5 mt-1.5 flex-shrink-0"></span>
+                              <span className="leading-relaxed">{item.title}</span>
                             </li>
                           ))}
                         </ul>
@@ -679,11 +680,11 @@ function StrategicPlanningContent() {
                       {topWeaknesses.length === 0 ? (
                         <p className="text-sm text-gray-500 italic">No weaknesses identified</p>
                       ) : (
-                        <ul className="space-y-2">
+                        <ul className="space-y-2 pl-1">
                           {topWeaknesses.map(item => (
                             <li key={item.id} className="flex items-start text-sm text-gray-700">
-                              <span className="text-red-600 mr-2 mt-0.5">•</span>
-                              <span>{item.title}</span>
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-500 mr-2.5 mt-1.5 flex-shrink-0"></span>
+                              <span className="leading-relaxed">{item.title}</span>
                             </li>
                           ))}
                         </ul>
@@ -701,11 +702,11 @@ function StrategicPlanningContent() {
                       {topOpportunities.length === 0 ? (
                         <p className="text-sm text-gray-500 italic">No opportunities identified</p>
                       ) : (
-                        <ul className="space-y-2">
+                        <ul className="space-y-2 pl-1">
                           {topOpportunities.map(item => (
                             <li key={item.id} className="flex items-start text-sm text-gray-700">
-                              <span className="text-brand-orange mr-2 mt-0.5">•</span>
-                              <span>{item.title}</span>
+                              <span className="w-1.5 h-1.5 rounded-full bg-brand-orange mr-2.5 mt-1.5 flex-shrink-0"></span>
+                              <span className="leading-relaxed">{item.title}</span>
                             </li>
                           ))}
                         </ul>
@@ -723,11 +724,11 @@ function StrategicPlanningContent() {
                       {topThreats.length === 0 ? (
                         <p className="text-sm text-gray-500 italic">No threats identified</p>
                       ) : (
-                        <ul className="space-y-2">
+                        <ul className="space-y-2 pl-1">
                           {topThreats.map(item => (
                             <li key={item.id} className="flex items-start text-sm text-gray-700">
-                              <span className="text-brand-orange-600 mr-2 mt-0.5">•</span>
-                              <span>{item.title}</span>
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-2.5 mt-1.5 flex-shrink-0"></span>
+                              <span className="leading-relaxed">{item.title}</span>
                             </li>
                           ))}
                         </ul>
@@ -756,8 +757,8 @@ function StrategicPlanningContent() {
 
       {/* Step Navigation */}
       <div className="bg-white border-b sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between overflow-x-auto py-3">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center py-3">
             {dynamicSteps.map((step, index) => {
               const isActive = currentStep === step.num
               const isComplete = stepCompletion[step.num - 1]
@@ -789,42 +790,41 @@ function StrategicPlanningContent() {
               }
 
               return (
-                <div key={step.num} className="flex items-center">
+                <div key={step.num} className="flex items-center flex-1">
                   <button
                     onClick={() => setCurrentStep(step.num)}
-                    className={`flex flex-col items-center px-3 py-2 rounded-lg whitespace-nowrap transition-all min-w-[100px] ${
+                    className={`flex flex-col items-center gap-1.5 p-2 rounded-lg transition-all w-full group ${
                       isActive
-                        ? 'bg-brand-navy-50 text-brand-navy font-medium ring-2 ring-brand-navy-300'
-                        : isComplete
-                        ? 'bg-brand-teal-50 text-brand-teal border border-brand-teal-200'
-                        : 'text-gray-600 hover:bg-gray-100'
+                        ? 'bg-brand-orange-50'
+                        : 'hover:bg-gray-50'
                     }`}
                   >
-                    <div className="flex items-center space-x-2">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all group-hover:scale-105 ${
+                      isActive
+                        ? 'bg-brand-orange text-white shadow-md'
+                        : isComplete
+                        ? 'bg-brand-orange-100 text-brand-orange'
+                        : 'bg-gray-100 text-gray-400'
+                    }`}>
                       {isComplete && !isActive ? (
-                        <CheckCircle className="w-4 h-4 text-brand-teal" />
+                        <CheckCircle className="w-5 h-5" />
                       ) : (
-                        <Icon className="w-4 h-4" />
-                      )}
-                      <span className="text-sm hidden sm:inline">{step.label}</span>
-                      {isComplete && !isActive && (
-                        <span className="ml-1 text-xs text-brand-teal font-medium hidden lg:inline">✓</span>
+                        <Icon className="w-5 h-5" />
                       )}
                     </div>
-                    {/* Requirement hint subtitle */}
-                    <span className={`text-xs mt-1 hidden md:inline ${
-                      isComplete
-                        ? 'text-brand-teal'
-                        : isActive
-                        ? 'text-brand-navy'
+                    <span className={`text-xs font-medium text-center transition-colors hidden sm:block ${
+                      isActive
+                        ? 'text-brand-orange'
+                        : isComplete
+                        ? 'text-brand-navy-700'
                         : 'text-gray-400'
                     }`}>
-                      {isComplete ? '✓ Complete' : getRequirementHint(step.num)}
+                      {step.label}
                     </span>
                   </button>
 
                   {index < dynamicSteps.length - 1 && (
-                    <div className={`hidden sm:block mx-2 w-8 h-0.5 ${isComplete ? 'bg-brand-teal' : 'bg-gray-300'}`} />
+                    <div className={`hidden sm:block h-0.5 w-full transition-colors ${isComplete ? 'bg-brand-orange' : 'bg-gray-200'}`} />
                   )}
                 </div>
               )
@@ -834,7 +834,7 @@ function StrategicPlanningContent() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Step Header */}
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
@@ -1184,7 +1184,7 @@ function StrategicPlanningContent() {
 
       {/* Footer */}
       <div className="bg-gray-50 border-t mt-12 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <p className="text-sm text-gray-600">
             Need help? Contact your coaching team or check our guidance resources
           </p>

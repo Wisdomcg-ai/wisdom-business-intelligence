@@ -400,7 +400,7 @@ export default function TeamMembersPage() {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-[1000px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
         </div>
@@ -409,9 +409,10 @@ export default function TeamMembersPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div className="max-w-[1000px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
       {/* Header */}
       <PageHeader
+        variant="banner"
         title="Team Members"
         subtitle={`Manage who has access to ${businessName}`}
         icon={Users}

@@ -18,6 +18,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { CheckCircle, AlertCircle, Download, History, TrendingUp, Target } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import PageHeader from '@/components/ui/PageHeader';
+import type { SaveStatus } from '@/hooks/useAutoSave';
 
 export default function SwotPage() {
   const router = useRouter();
@@ -544,61 +545,54 @@ export default function SwotPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Page Container */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Header */}
-        <PageHeader
-          title="SWOT Analysis"
-          subtitle={`Strategic analysis for ${currentQuarter.label}`}
-          icon={Target}
-          actions={
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
-              {/* Auto-save indicator */}
-              {lastSaved && (
-                <div className="flex items-center justify-center text-xs sm:text-sm text-gray-500 px-3 py-2 bg-white rounded-lg border border-gray-200">
-                  <CheckCircle className="h-4 w-4 text-green-500 mr-1.5 flex-shrink-0" />
-                  <span className="hidden sm:inline">Saved {lastSaved.toLocaleTimeString()}</span>
-                  <span className="sm:hidden">Saved</span>
-                </div>
-              )}
+      {/* Header */}
+      <PageHeader
+        variant="banner"
+        title="SWOT Analysis"
+        subtitle={`Strategic analysis for ${currentQuarter.label}`}
+        icon={Target}
+        saveIndicator={{ status: (saving ? 'saving' : lastSaved ? 'saved' : 'idle') as SaveStatus, lastSaved }}
+        actions={
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+            {/* Quarter Selector */}
+            <QuarterSelector
+              currentQuarter={currentQuarter}
+              onQuarterChange={setCurrentQuarter}
+              yearType={yearType}
+            />
 
-              {/* Quarter Selector */}
-              <QuarterSelector
-                currentQuarter={currentQuarter}
-                onQuarterChange={setCurrentQuarter}
-                yearType={yearType}
-              />
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => router.push('/swot/history')}
+                className="inline-flex items-center justify-center px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors flex-1 sm:flex-initial"
+              >
+                <History className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">History</span>
+              </button>
 
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => router.push('/swot/history')}
-                  className="inline-flex items-center justify-center px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors flex-1 sm:flex-initial"
-                >
-                  <History className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">History</span>
-                </button>
+              <button
+                onClick={() => router.push('/swot/compare')}
+                className="inline-flex items-center justify-center px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors flex-1 sm:flex-initial"
+              >
+                <TrendingUp className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Compare</span>
+              </button>
 
-                <button
-                  onClick={() => router.push('/swot/compare')}
-                  className="inline-flex items-center justify-center px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors flex-1 sm:flex-initial"
-                >
-                  <TrendingUp className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Compare</span>
-                </button>
-
-                <button
-                  onClick={handleExport}
-                  className="inline-flex items-center justify-center px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors flex-1 sm:flex-initial"
-                >
-                  <Download className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Export</span>
-                </button>
-              </div>
+              <button
+                onClick={handleExport}
+                className="inline-flex items-center justify-center px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors flex-1 sm:flex-initial"
+              >
+                <Download className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Export</span>
+              </button>
             </div>
+          </div>
           }
         />
 
+      {/* Page Container */}
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Error Alert */}
         {error && (
           <div className="rounded-xl shadow-sm border border-red-200 bg-red-50 p-4 sm:p-5 mb-6">

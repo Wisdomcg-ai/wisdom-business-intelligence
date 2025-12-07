@@ -251,10 +251,10 @@ export default function CoachSessionsPage() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <PageHeader
+          variant="banner"
           title="Session Notes"
           subtitle="Collaborative notes from coaching sessions"
           icon={FileText}
-          variant="simple"
           actions={
             <button
               onClick={() => setShowNewSessionModal(true)}

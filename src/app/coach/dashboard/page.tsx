@@ -349,35 +349,36 @@ export default function CoachDashboardPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="space-y-6 sm:space-y-8">
-        {/* Page Header */}
-        <PageHeader
-          title="Dashboard"
-          subtitle="Overview of your coaching clients"
-          icon={LayoutDashboard}
-          actions={
-            <>
-              <button
-                onClick={() => loadDashboardData(true)}
-                disabled={refreshing}
-                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline">Refresh</span>
-              </button>
-              <Link
-                href="/coach/clients/new"
-                className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-600 text-white text-sm font-medium rounded-lg shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">Add Client</span>
-                <span className="sm:hidden">Add</span>
-              </Link>
-            </>
-          }
-        />
+    <div className="min-h-screen bg-gray-50">
+      {/* Page Header */}
+      <PageHeader
+        variant="banner"
+        title="Dashboard"
+        subtitle="Overview of your coaching clients"
+        icon={LayoutDashboard}
+        actions={
+          <>
+            <button
+              onClick={() => loadDashboardData(true)}
+              disabled={refreshing}
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+            <Link
+              href="/coach/clients/new"
+              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-600 text-white text-sm font-medium rounded-lg shadow-sm transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Add Client</span>
+              <span className="sm:hidden">Add</span>
+            </Link>
+          </>
+        }
+      />
 
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 sm:space-y-8">
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <StatsCard

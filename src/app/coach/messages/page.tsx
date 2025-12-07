@@ -344,9 +344,10 @@ export default function MessagesPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Container with consistent width */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Page Header */}
         <PageHeader
+          variant="banner"
           title="Messages"
           subtitle={`${conversations.length} conversations · ${totalUnread} unread`}
           icon={MessageSquare}
@@ -359,7 +360,6 @@ export default function MessagesPage() {
               <span className="hidden sm:inline">Broadcast</span>
             </button>
           }
-          variant="simple"
         />
 
         {/* Main Content Card */}

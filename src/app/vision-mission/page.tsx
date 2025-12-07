@@ -13,6 +13,7 @@ import {
 } from '@/lib/vision-mission/constants';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import PageHeader from '@/components/ui/PageHeader';
+import type { SaveStatus } from '@/hooks/useAutoSave';
 
 interface VisionMissionData {
   mission_statement: string;
@@ -245,38 +246,16 @@ export default function VisionMissionPage() {
     <div className="min-h-screen bg-gray-50">
       <Toaster position="top-right" />
 
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-brand-navy to-brand-navy-700 text-white border-b-4 border-brand-orange">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-brand-orange rounded-xl flex items-center justify-center">
-                <Lightbulb className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold">Vision, Mission & Values</h1>
-                <p className="text-white/70">Define where you're going and what principles guide your business</p>
-              </div>
-            </div>
-            <div className="flex flex-col items-end gap-1 hidden sm:flex">
-              {saving && (
-                <span className="text-sm text-white/70 flex items-center gap-2">
-                  <Save className="h-4 w-4 animate-pulse" />
-                  Saving...
-                </span>
-              )}
-              {!saving && lastSaved && (
-                <span className="text-sm text-brand-orange">
-                  ✓ Saved {lastSaved.toLocaleTimeString()}
-                </span>
-              )}
-              {hasUnsavedChanges && !saving && (
-                <span className="text-sm text-amber-400">Unsaved changes</span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        variant="banner"
+        title="Vision, Mission & Values"
+        subtitle="Define where you're going and what principles guide your business"
+        icon={Lightbulb}
+        saveIndicator={{
+          status: (saving ? 'saving' : hasUnsavedChanges ? 'idle' : lastSaved ? 'saved' : 'idle') as SaveStatus,
+          lastSaved
+        }}
+      />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
 
@@ -295,11 +274,12 @@ export default function VisionMissionPage() {
               </div>
               <button
                 onClick={() => toggleHelp('vision')}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-orange-100 hover:bg-brand-orange-200 text-brand-orange-700 rounded-lg transition-colors flex-shrink-0 text-sm font-medium"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg transition-colors flex-shrink-0 text-sm font-medium shadow-sm"
                 aria-label="Toggle help"
               >
                 <Info className="w-4 h-4" />
-                <span className="hidden sm:inline">Help</span>
+                <span className="hidden sm:inline">Tips</span>
+                <span className="sm:hidden">?</span>
               </button>
             </div>
 
@@ -361,11 +341,12 @@ export default function VisionMissionPage() {
               </div>
               <button
                 onClick={() => toggleHelp('mission')}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-orange-100 hover:bg-brand-orange-200 text-brand-orange-700 rounded-lg transition-colors flex-shrink-0 text-sm font-medium"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg transition-colors flex-shrink-0 text-sm font-medium shadow-sm"
                 aria-label="Toggle help"
               >
                 <Info className="w-4 h-4" />
-                <span className="hidden sm:inline">Help</span>
+                <span className="hidden sm:inline">Tips</span>
+                <span className="sm:hidden">?</span>
               </button>
             </div>
 
@@ -428,11 +409,12 @@ export default function VisionMissionPage() {
               </div>
               <button
                 onClick={() => toggleHelp('values')}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-orange-100 hover:bg-brand-orange-200 text-brand-orange-700 rounded-lg transition-colors flex-shrink-0 text-sm font-medium"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg transition-colors flex-shrink-0 text-sm font-medium shadow-sm"
                 aria-label="Toggle help"
               >
                 <Info className="w-4 h-4" />
-                <span className="hidden sm:inline">Help</span>
+                <span className="hidden sm:inline">Tips</span>
+                <span className="sm:hidden">?</span>
               </button>
             </div>
 

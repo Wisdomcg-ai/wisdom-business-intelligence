@@ -161,23 +161,25 @@ export default function ManageAssessments() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-6 sm:py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <PageHeader
-          title="Manage Assessments"
-          subtitle="Track and review your business health assessments over time"
-          icon={ClipboardList}
-          backLink={{ href: '/dashboard', label: 'Back to Dashboard' }}
-          actions={
-            <button
-              onClick={() => router.push('/assessment')}
-              className="flex items-center px-4 py-2 bg-gradient-to-r from-brand-orange to-brand-orange-700 text-white rounded-lg hover:from-brand-orange-700 hover:to-brand-orange-800 transition-all duration-200 shadow-lg text-sm sm:text-base"
-            >
-              <Plus className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-              New Assessment
-            </button>
-          }
-        />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <PageHeader
+        variant="banner"
+        title="Manage Assessments"
+        subtitle="Track and review your business health assessments over time"
+        icon={ClipboardList}
+        backLink={{ href: '/dashboard', label: 'Back to Dashboard' }}
+        actions={
+          <button
+            onClick={() => router.push('/assessment')}
+            className="flex items-center px-4 py-2 bg-gradient-to-r from-brand-orange to-brand-orange-700 text-white rounded-lg hover:from-brand-orange-700 hover:to-brand-orange-800 transition-all duration-200 shadow-lg text-sm sm:text-base"
+          >
+            <Plus className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+            New Assessment
+          </button>
+        }
+      />
+
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Action Bar */}
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

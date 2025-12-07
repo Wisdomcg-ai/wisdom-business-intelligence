@@ -3,11 +3,12 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Save, CheckCircle } from 'lucide-react'
+import { Save, CheckCircle, Compass } from 'lucide-react'
 import Link from 'next/link'
 import { SwotGrid } from '@/components/swot/SwotGrid'
 import type { SwotCategory, SwotItem, SwotGridData } from '@/lib/swot/types'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
+import PageHeader from '@/components/ui/PageHeader'
 
 interface SwotAnalysis {
   id: string
@@ -333,59 +334,43 @@ export default function SwotDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <Link href="/swot/history" className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-4">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to History
-          </Link>
+      <PageHeader
+        variant="banner"
+        title={`SWOT Analysis - ${getQuarterLabel(analysis.quarter, analysis.year)}`}
+        subtitle={`Created ${new Date(analysis.created_at).toLocaleDateString()} • Score: ${analysis.swot_score}%`}
+        icon={Compass}
+        backLink={{ href: '/swot/history', label: 'Back to History' }}
+        badge={analysis.status === 'final' ? 'Final' : undefined}
+        badgeColor="teal"
+        actions={
+          <div className="flex items-center gap-3">
+            {lastSaved && (
+              <span className="text-sm text-white/70 flex items-center gap-1">
+                <CheckCircle className="h-4 w-4 text-brand-orange" />
+                Saved {lastSaved.toLocaleTimeString()}
+              </span>
+            )}
 
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                SWOT Analysis - {getQuarterLabel(analysis.quarter, analysis.year)}
-              </h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Created {new Date(analysis.created_at).toLocaleDateString()} • Score: {analysis.swot_score}%
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {lastSaved && (
-                <span className="text-sm text-gray-500 flex items-center gap-1">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                  Saved {lastSaved.toLocaleTimeString()}
-                </span>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="inline-flex items-center px-4 py-2 border border-white/30 rounded-lg text-sm font-medium text-white bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-50"
+            >
+              {saving ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save
+                </>
               )}
-
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-brand-orange hover:bg-brand-orange-600 disabled:opacity-50"
-              >
-                {saving ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save
-                  </>
-                )}
-              </button>
-
-              {analysis.status === 'final' && (
-                <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  Final
-                </span>
-              )}
-            </div>
+            </button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Error Alert */}
       {error && (

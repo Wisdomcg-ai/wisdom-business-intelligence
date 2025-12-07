@@ -253,10 +253,10 @@ function ClientsContent() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
       {/* Page Header */}
       <PageHeader
+        variant="banner"
         title="Clients"
         subtitle={`${clients.length} total clients`}
         icon={Building2}
-        variant="simple"
         actions={
           <Link
             href="/admin/clients/new"

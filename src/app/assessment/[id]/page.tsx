@@ -15,7 +15,8 @@ import {
   Clock,
   RefreshCw,
   History,
-  Activity
+  Activity,
+  ChevronRight
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 
@@ -159,32 +160,34 @@ export default function AssessmentResultsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-orange-50 via-white to-purple-50">
+      <PageHeader
+        variant="banner"
+        title="Assessment Results"
+        subtitle={`Completed ${new Date(assessment.created_at).toLocaleDateString()} • ${timeSince.text}`}
+        icon={Activity}
+        badge={healthStatus.label}
+        badgeColor={
+          healthStatus.label === 'THRIVING' || healthStatus.label === 'STRONG' ? 'teal' :
+          healthStatus.label === 'STABLE' ? 'orange' : 'gray'
+        }
+        backLink={{
+          href: '/dashboard',
+          label: 'Back to Dashboard'
+        }}
+        actions={
+          <button
+            onClick={() => router.push('/assessment/history')}
+            className="inline-flex items-center px-3 sm:px-4 py-2 text-sm font-medium text-white bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+          >
+            <History className="w-4 h-4 mr-2" />
+            <span className="hidden sm:inline">View History</span>
+            <span className="sm:hidden">History</span>
+          </button>
+        }
+      />
+
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        <PageHeader
-          title="Assessment Results"
-          subtitle={`Completed ${new Date(assessment.created_at).toLocaleDateString()} • ${timeSince.text}`}
-          icon={Activity}
-          badge={healthStatus.label}
-          badgeColor={
-            healthStatus.label === 'THRIVING' || healthStatus.label === 'STRONG' ? 'teal' :
-            healthStatus.label === 'STABLE' ? 'orange' : 'gray'
-          }
-          backLink={{
-            href: '/dashboard',
-            label: 'Back to Dashboard'
-          }}
-          actions={
-            <button
-              onClick={() => router.push('/assessment/history')}
-              className="inline-flex items-center px-3 sm:px-4 py-2 text-sm font-medium text-white bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
-            >
-              <History className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">View History</span>
-              <span className="sm:hidden">History</span>
-            </button>
-          }
-        />
         {/* Time Since Assessment Banner */}
         {timeSince.shouldRetake && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-6 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -358,53 +361,24 @@ export default function AssessmentResultsPage() {
               </ul>
             </div>
 
-            {/* Next Steps */}
-            <div className="bg-brand-orange-50 border-l-4 border-brand-orange-500 p-4 sm:p-6 rounded-lg">
-              <div className="flex items-center mb-3">
-                <TrendingUp className="w-5 h-5 text-brand-orange mr-2 flex-shrink-0" />
-                <h3 className="text-sm sm:text-base font-semibold text-brand-navy">Next Steps</h3>
-              </div>
-              <ul className="text-xs sm:text-sm text-brand-orange-800 space-y-2">
-                <li className="flex items-center">
-                  <div className="w-2 h-2 bg-brand-orange-500 rounded-full mr-2" />
-                  Set specific improvement goals
-                </li>
-                <li className="flex items-center">
-                  <div className="w-2 h-2 bg-brand-orange-500 rounded-full mr-2" />
-                  Focus on priority areas first
-                </li>
-                <li className="flex items-center">
-                  <div className="w-2 h-2 bg-brand-orange-500 rounded-full mr-2" />
-                  Schedule regular progress reviews
-                </li>
-              </ul>
-            </div>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="bg-gradient-to-r from-brand-orange to-purple-600 rounded-xl shadow-xl p-6 sm:p-8 text-white">
-          <div className="text-center mb-4 sm:mb-6">
-            <h2 className="text-xl sm:text-2xl font-bold mb-2">Ready to Take Action?</h2>
-            <p className="text-sm sm:text-base text-brand-orange-100">
-              Transform your assessment insights into actionable business improvements
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            <button
-              onClick={() => router.push('/strategic-goals')}
-              className="bg-white text-brand-orange font-semibold py-3 px-4 sm:px-6 rounded-lg hover:bg-brand-orange-50 transition-colors text-sm sm:text-base"
-            >
-              Set Strategic Goals
-            </button>
-            <button
-              onClick={() => router.push('/assessment?new=true')}
-              className="bg-brand-orange-700 text-white font-semibold py-3 px-4 sm:px-6 rounded-lg hover:bg-brand-orange-800 transition-colors text-sm sm:text-base"
-            >
-              Retake Assessment
-            </button>
-          </div>
+        <div className="flex justify-center gap-4">
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="flex items-center gap-2 px-8 py-4 bg-brand-navy text-white rounded-xl font-semibold hover:bg-brand-navy-800 transition-colors shadow-lg"
+          >
+            Return to Dashboard
+            <ChevronRight className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => router.push('/assessment?new=true')}
+            className="flex items-center gap-2 px-6 py-4 border-2 border-brand-navy text-brand-navy rounded-xl font-semibold hover:bg-brand-navy-50 transition-colors"
+          >
+            Retake Assessment
+          </button>
         </div>
       </div>
     </div>

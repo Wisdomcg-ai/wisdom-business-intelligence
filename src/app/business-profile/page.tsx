@@ -511,44 +511,46 @@ export default function EnhancedBusinessProfile() {
   const partners = ownerInfo.partners || []
 
   return (
-    <div className="min-h-screen bg-brand-navy-50 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-brand-navy-50">
       {/* Toast Notifications */}
       <Toaster position="top-right" />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <PageHeader
-          title="Business Profile"
-          subtitle="Build your comprehensive business context to power personalized insights"
-          icon={Building2}
-          backLink={{ href: '/dashboard', label: 'Back to Dashboard' }}
-          actions={
-            <div className={`text-right px-4 sm:px-6 py-3 sm:py-4 rounded-xl border shadow-sm flex-shrink-0 ${
-              calculateCompletion() === 100
-                ? 'bg-green-50 border-green-200'
-                : 'bg-white border-brand-navy-100'
+      {/* Header */}
+      <PageHeader
+        variant="banner"
+        title="Business Profile"
+        subtitle="Build your comprehensive business context to power personalized insights"
+        icon={Building2}
+        backLink={{ href: '/dashboard', label: 'Back to Dashboard' }}
+        saveIndicator={{ status: saveStatus, lastSaved }}
+        actions={
+          <div className={`text-right px-4 sm:px-6 py-3 sm:py-4 rounded-xl border shadow-sm flex-shrink-0 ${
+            calculateCompletion() === 100
+              ? 'bg-green-50 border-green-200'
+              : 'bg-white border-brand-navy-100'
+          }`}>
+            <div className={`text-2xl sm:text-3xl font-bold ${
+              calculateCompletion() === 100 ? 'text-green-600' :
+              calculateCompletion() >= 80 ? 'text-brand-orange' :
+              calculateCompletion() >= 50 ? 'text-brand-orange-500' : 'text-brand-navy-300'
             }`}>
-              <div className={`text-2xl sm:text-3xl font-bold ${
-                calculateCompletion() === 100 ? 'text-green-600' :
-                calculateCompletion() >= 80 ? 'text-brand-orange' :
-                calculateCompletion() >= 50 ? 'text-brand-orange-500' : 'text-brand-navy-300'
-              }`}>
-                {calculateCompletion()}%
-              </div>
-              <div className={`text-sm mt-1 font-semibold ${
-                calculateCompletion() === 100 ? 'text-green-700' : 'text-brand-navy-500'
-              }`}>
-                {calculateCompletion() === 100 ? '✓ Complete!' : 'Complete'}
-              </div>
-              {lastSaved && (
-                <div className="text-xs text-brand-navy-400 mt-2">
-                  Saved {lastSaved.toLocaleTimeString()}
-                </div>
-              )}
+              {calculateCompletion()}%
             </div>
-          }
-        />
+            <div className={`text-sm mt-1 font-semibold ${
+              calculateCompletion() === 100 ? 'text-green-700' : 'text-brand-navy-500'
+            }`}>
+              {calculateCompletion() === 100 ? '✓ Complete!' : 'Complete'}
+            </div>
+            {lastSaved && (
+              <div className="text-xs text-brand-navy-400 mt-2">
+                Saved {lastSaved.toLocaleTimeString()}
+              </div>
+            )}
+          </div>
+        }
+      />
 
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 p-4 sm:p-6 lg:p-8">
         {/* Progress Steps */}
         <div className="bg-white rounded-xl border border-brand-navy-100 shadow-sm p-4 sm:p-6 mb-6">
           {/* Mobile: Show current step indicator */}

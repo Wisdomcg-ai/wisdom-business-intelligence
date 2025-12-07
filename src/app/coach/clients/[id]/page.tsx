@@ -766,11 +766,11 @@ export default function ClientFilePage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
         {/* Header */}
         <PageHeader
+          variant="banner"
           title={business.business_name}
           subtitle={subtitleParts.join(' • ')}
           icon={Building2}
           backLink={{ href: '/coach/clients', label: 'Back to Clients' }}
-          variant="simple"
           actions={
             <div className="flex items-center gap-2 sm:gap-3">
               {statusBadge}

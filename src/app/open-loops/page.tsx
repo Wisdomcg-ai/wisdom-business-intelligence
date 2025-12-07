@@ -524,27 +524,28 @@ export default function OpenLoopsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Main Content Container */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Page Header */}
-        <PageHeader
-          title="Open Loops"
-          subtitle="Track your in-progress projects and initiatives"
-          icon={Repeat}
-          actions={
-            <button
-              onClick={() => {
-                resetForm();
-                setShowForm(true);
-              }}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium shadow-sm"
-            >
-              <Plus className="h-5 w-5" />
-              <span>Add Loop</span>
-            </button>
-          }
-        />
+      {/* Page Header */}
+      <PageHeader
+        variant="banner"
+        title="Open Loops"
+        subtitle="Track your in-progress projects and initiatives"
+        icon={Repeat}
+        actions={
+          <button
+            onClick={() => {
+              resetForm();
+              setShowForm(true);
+            }}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium shadow-sm"
+          >
+            <Plus className="h-5 w-5" />
+            <span>Add Loop</span>
+          </button>
+        }
+      />
 
+      {/* Main Content Container */}
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
           <button

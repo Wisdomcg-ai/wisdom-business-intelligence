@@ -218,10 +218,10 @@ function CoachesContent() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <PageHeader
+        variant="banner"
         title="Coaches"
         subtitle={`${coaches.length} team member${coaches.length !== 1 ? 's' : ''}`}
         icon={Users}
-        variant="simple"
         actions={
           <button
             onClick={() => setShowAddModal(true)}

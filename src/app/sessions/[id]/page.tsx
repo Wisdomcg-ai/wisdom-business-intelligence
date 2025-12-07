@@ -353,6 +353,7 @@ export default function ClientSessionDetailPage() {
       {/* Header */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <PageHeader
+          variant="banner"
           title="Coaching Session"
           subtitle={`${formatDate(session.session_date)}${session.duration_minutes ? ` • ${session.duration_minutes} min` : ''}`}
           icon={MessageSquare}
@@ -379,7 +380,6 @@ export default function ClientSessionDetailPage() {
               ) : null}
             </div>
           }
-          variant="simple"
         />
       </div>
 

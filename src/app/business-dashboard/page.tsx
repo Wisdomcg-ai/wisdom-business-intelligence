@@ -131,7 +131,7 @@ export default function BusinessDashboardPage() {
   const visibleKpis = kpis.filter(kpi => isKpiVisible(kpi.id))
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-gray-50">
       <style jsx>{`
         input[type='number']::-webkit-inner-spin-button,
         input[type='number']::-webkit-outer-spin-button {
@@ -142,39 +142,40 @@ export default function BusinessDashboardPage() {
           -moz-appearance: textfield;
         }
       `}</style>
-      <div className="max-w-7xl mx-auto">
-        {/* Page Header */}
-        <PageHeader
-          title="KPI Dashboard"
-          subtitle="Track your weekly progress against annual targets"
-          icon={TrendingUp}
-          actions={
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              {/* Lock/Unlock Button */}
-              <button
-                onClick={() => setPastWeeksUnlocked(!pastWeeksUnlocked)}
-                className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
-                  pastWeeksUnlocked
-                    ? 'bg-amber-600 text-white hover:bg-amber-700'
-                    : 'bg-gray-600 text-white hover:bg-gray-700'
-                }`}
-              >
-                {pastWeeksUnlocked ? (
-                  <>
-                    <Unlock className="w-4 h-4" />
-                    <span className="hidden sm:inline">Lock</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock className="w-4 h-4" />
-                    <span className="hidden sm:inline">Edit Past</span>
-                  </>
-                )}
-              </button>
-            </div>
-          }
-        />
+      {/* Page Header */}
+      <PageHeader
+        variant="banner"
+        title="KPI Dashboard"
+        subtitle="Track your weekly progress against annual targets"
+        icon={TrendingUp}
+        actions={
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {/* Lock/Unlock Button */}
+            <button
+              onClick={() => setPastWeeksUnlocked(!pastWeeksUnlocked)}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+                pastWeeksUnlocked
+                  ? 'bg-amber-600 text-white hover:bg-amber-700'
+                  : 'bg-gray-600 text-white hover:bg-gray-700'
+              }`}
+            >
+              {pastWeeksUnlocked ? (
+                <>
+                  <Unlock className="w-4 h-4" />
+                  <span className="hidden sm:inline">Lock</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-4 h-4" />
+                  <span className="hidden sm:inline">Edit Past</span>
+                </>
+              )}
+            </button>
+          </div>
+        }
+      />
 
+      <div className="max-w-[1800px] mx-auto p-4 sm:p-6 lg:p-8">
         {/* Quarter Progress Summary */}
         {currentQuarterInfo && (
           <QuarterProgressCard

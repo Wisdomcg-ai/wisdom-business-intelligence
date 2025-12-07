@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Calendar, TrendingUp, Eye, Clock, AlertTriangle, Target, Shield, Lightbulb } from 'lucide-react'
+import { Calendar, TrendingUp, Eye, Clock, AlertTriangle, Target, Shield, Lightbulb, History } from 'lucide-react'
 import Link from 'next/link'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
+import PageHeader from '@/components/ui/PageHeader'
 
 interface SwotAnalysis {
   id: string
@@ -109,32 +110,22 @@ export default function SwotHistoryPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <Link href="/swot" className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-4">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Current SWOT
-          </Link>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">SWOT History</h1>
-              <p className="mt-1 text-base text-gray-600">
-                Track your strategic evolution over time
-              </p>
-            </div>
-
-            <button
-              onClick={() => router.push('/swot/compare')}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              <TrendingUp className="h-4 w-4 mr-2" />
-              Compare Quarters
-            </button>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        variant="banner"
+        title="SWOT History"
+        subtitle="Track your strategic evolution over time"
+        icon={History}
+        backLink={{ href: '/swot', label: 'Back to Current SWOT' }}
+        actions={
+          <button
+            onClick={() => router.push('/swot/compare')}
+            className="inline-flex items-center px-4 py-2 border border-white/30 rounded-lg text-sm font-medium text-white bg-white/10 hover:bg-white/20 transition-colors"
+          >
+            <TrendingUp className="h-4 w-4 mr-2" />
+            Compare Quarters
+          </button>
+        }
+      />
 
       {/* Error Alert */}
       {error && (

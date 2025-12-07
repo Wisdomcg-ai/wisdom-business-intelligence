@@ -77,14 +77,16 @@ export default function FinancialsPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+    <div className="min-h-screen bg-gray-50">
       <PageHeader
+        variant="banner"
         title="Financial Dashboard"
         subtitle={activeBusiness?.name || "Track your financial metrics and performance"}
         icon={DollarSign}
       />
 
-      {loading || contextLoading ? (
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {loading || contextLoading ? (
         <div className="text-center py-12">Loading...</div>
       ) : metrics ? (
         <div className="space-y-6">
@@ -171,6 +173,7 @@ export default function FinancialsPage() {
           </Link>
         </div>
       )}
+      </div>
     </div>
   );
 }

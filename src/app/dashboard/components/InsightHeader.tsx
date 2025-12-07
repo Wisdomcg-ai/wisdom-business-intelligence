@@ -66,32 +66,35 @@ export default function InsightHeader({ insight, onRefresh }: InsightHeaderProps
   const style = getInsightStyle(activeInsight.priority)
 
   return (
-    <div className="space-y-4">
-      {/* Navy Page Header */}
-      <div className="bg-brand-navy rounded-xl px-6 py-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-11 h-11 bg-white/10 rounded-lg flex items-center justify-center">
-              <LayoutDashboard className="h-5 w-5 text-white" />
+    <div>
+      {/* Navy Page Header - Banner Style */}
+      <div className="bg-brand-navy border-b-4 border-brand-orange">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-brand-orange rounded-xl flex items-center justify-center">
+                <LayoutDashboard className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+                <p className="text-white/70 mt-0.5">Your business at a glance</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">Dashboard</h1>
-              <p className="text-sm text-white/70 mt-0.5">Your business at a glance</p>
-            </div>
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+              title="Refresh"
+            >
+              <RefreshCw className="h-5 w-5" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onRefresh}
-            className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
-            title="Refresh"
-          >
-            <RefreshCw className="h-5 w-5" />
-          </button>
         </div>
       </div>
 
       {/* Smart Insight Card */}
-      <div className={`${style.bg} rounded-xl border ${style.border} p-5`}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <div className={`${style.bg} rounded-xl border ${style.border} p-5`}>
         <div className="flex items-start gap-4">
           <div className={`w-10 h-10 ${style.iconBg} rounded-lg flex items-center justify-center flex-shrink-0`}>
             <Icon className={`h-5 w-5 ${style.iconColor}`} />
@@ -114,6 +117,7 @@ export default function InsightHeader({ insight, onRefresh }: InsightHeaderProps
               </Link>
             )}
           </div>
+        </div>
         </div>
       </div>
     </div>

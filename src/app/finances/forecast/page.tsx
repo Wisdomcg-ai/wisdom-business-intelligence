@@ -804,24 +804,10 @@ export default function FinancialForecastPage() {
 
   return (
     <>
-      <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto">
-        {/* Error Banner */}
-        {error && !isLoading && (
-          <div className="mb-4 sm:mb-6">
-            <ErrorState
-              error={error}
-              onRetry={() => {
-                setError(null)
-                loadInitialData()
-              }}
-              title="Error"
-            />
-          </div>
-        )}
-
+      <div className="min-h-screen bg-gray-50">
         {/* Page Header */}
         <PageHeader
+          variant="banner"
           title="Financial Forecast"
           subtitle={forecast.name}
           icon={TrendingUp}
@@ -856,6 +842,21 @@ export default function FinancialForecastPage() {
             </>
           }
         />
+
+        <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
+          {/* Error Banner */}
+          {error && !isLoading && (
+            <div className="mb-4 sm:mb-6">
+              <ErrorState
+                error={error}
+                onRetry={() => {
+                  setError(null)
+                  loadInitialData()
+                }}
+                title="Error"
+              />
+            </div>
+          )}
 
         {/* Last Saved Indicator */}
         {!isSaving && forecast && forecast.updated_at && (

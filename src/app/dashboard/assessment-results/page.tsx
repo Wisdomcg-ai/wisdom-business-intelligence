@@ -3,7 +3,6 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft,
   Download,
   TrendingUp,
   TrendingDown,
@@ -23,6 +22,7 @@ import { createClient } from '@/lib/supabase/client';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { BUSINESS_ENGINES, TOTAL_MAX_SCORE } from '@/lib/assessment/constants';
+import PageHeader from '@/components/ui/PageHeader';
 
 interface Assessment {
   id: string;
@@ -61,9 +61,11 @@ function RadarChart({ sections, previousSections }: {
   sections: { name: string; score: number; max: number }[];
   previousSections?: { name: string; score: number; max: number }[] | null;
 }) {
-  const size = 440;
+  // Balanced sizing: displaySize/viewBox ratio controls scale
+  // overflow:visible allows labels to extend beyond SVG bounds
+  const size = 500;
   const center = size / 2;
-  const radius = 110;
+  const radius = 165; // Larger chart - labels can overflow
   const levels = 5;
 
   const angleStep = (2 * Math.PI) / sections.length;
@@ -101,8 +103,11 @@ function RadarChart({ sections, previousSections }: {
     return 'middle';
   };
 
+  // Display size controls how big it renders, viewBox keeps label room
+  const displaySize = 460;
+
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="mx-auto max-w-full">
+    <svg width={displaySize} height={displaySize} viewBox={`0 0 ${size} ${size}`} className="mx-auto max-w-full" style={{ overflow: 'visible' }}>
       {/* Background levels */}
       {Array.from({ length: levels }).map((_, level) => {
         const levelRadius = ((level + 1) / levels) * radius;
@@ -195,14 +200,14 @@ function RadarChart({ sections, previousSections }: {
       {/* Labels */}
       {sections.map((section, i) => {
         const angle = angleStep * i - Math.PI / 2;
-        const labelRadius = radius + 65;
+        const labelRadius = radius + 55; // Labels at ~150px from center in viewBox
         const x = center + labelRadius * Math.cos(angle);
         const y = center + labelRadius * Math.sin(angle);
         const percentage = Math.round((section.score / section.max) * 100);
         const textAnchor = getTextAnchor(angle + Math.PI / 2);
 
-        // Adjust x position based on text anchor
-        const xOffset = textAnchor === 'start' ? 8 : textAnchor === 'end' ? -8 : 0;
+        // Adjust x position based on text anchor for better label visibility
+        const xOffset = textAnchor === 'start' ? 5 : textAnchor === 'end' ? -5 : 0;
 
         return (
           <g key={section.name}>
@@ -210,15 +215,15 @@ function RadarChart({ sections, previousSections }: {
               x={x + xOffset}
               y={y - 6}
               textAnchor={textAnchor}
-              className="text-[12px] font-semibold fill-gray-800"
+              className="text-[15px] font-semibold fill-gray-800"
             >
               {section.name}
             </text>
             <text
               x={x + xOffset}
-              y={y + 10}
+              y={y + 12}
               textAnchor={textAnchor}
-              className="text-[12px] font-bold fill-brand-orange"
+              className="text-[15px] font-bold fill-brand-orange"
             >
               {percentage}%
             </text>
@@ -264,6 +269,7 @@ function AnimatedCounter({ value, duration = 1500 }: { value: number; duration?:
 function AssessmentResultsContent() {
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [previousAssessment, setPreviousAssessment] = useState<Assessment | null>(null);
+  const [businessProfile, setBusinessProfile] = useState<{ annual_revenue: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showContent, setShowContent] = useState(false);
@@ -336,10 +342,11 @@ function AssessmentResultsContent() {
 
       setAssessment(data);
 
-      // Load previous assessment for comparison
+      // Load previous assessment and business profile for comparison
       if (data) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
+          // Load previous assessment
           const { data: prevAssessments } = await supabase
             .from('assessments')
             .select('*')
@@ -352,6 +359,17 @@ function AssessmentResultsContent() {
           if (prevAssessments && prevAssessments.length > 0) {
             setPreviousAssessment(prevAssessments[0]);
           }
+
+          // Load business profile for revenue stage comparison
+          const { data: profile } = await supabase
+            .from('business_profiles')
+            .select('annual_revenue')
+            .eq('user_id', user.id)
+            .single();
+
+          if (profile) {
+            setBusinessProfile(profile);
+          }
         }
       }
     } catch (error) {
@@ -362,14 +380,27 @@ function AssessmentResultsContent() {
     }
   }
 
+  // Get badge styles based on the unified stage system
+  function getStageBadgeStyles(stageId: string): string {
+    switch (stageId) {
+      case 'mastery': return 'bg-purple-100 text-purple-700 border-purple-200';
+      case 'scale': return 'bg-green-100 text-green-700 border-green-200';
+      case 'growth': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'traction': return 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-200';
+      case 'foundation': return 'bg-brand-navy-100 text-brand-navy-700 border-brand-navy-200';
+      default: return 'bg-gray-100 text-gray-600 border-gray-200';
+    }
+  }
+
+  // Legacy function for backwards compatibility
   function getHealthStatusBadgeStyles(status: string): string {
     switch (status?.toUpperCase()) {
-      case 'THRIVING': return 'bg-green-100 text-green-700 border-green-200';
-      case 'STRONG': return 'bg-green-50 text-green-600 border-green-200';
-      case 'STABLE': return 'bg-yellow-50 text-yellow-700 border-yellow-200';
-      case 'BUILDING': return 'bg-brand-orange-50 text-brand-orange-700 border-brand-orange-200';
-      case 'STRUGGLING': return 'bg-red-50 text-red-600 border-red-200';
-      case 'URGENT': return 'bg-red-100 text-red-700 border-red-200';
+      case 'THRIVING': return getStageBadgeStyles('mastery');
+      case 'STRONG': return getStageBadgeStyles('scale');
+      case 'STABLE': return getStageBadgeStyles('growth');
+      case 'BUILDING': return getStageBadgeStyles('traction');
+      case 'STRUGGLING': return getStageBadgeStyles('traction');
+      case 'URGENT': return getStageBadgeStyles('foundation');
       default: return 'bg-gray-100 text-gray-600 border-gray-200';
     }
   }
@@ -381,38 +412,101 @@ function AssessmentResultsContent() {
     return 'stroke-red-500';
   }
 
+  // Get operations stage from assessment percentage (unified with roadmap stages)
+  function getOperationsStage(percentage: number): { id: string; title: string; description: string; level: number } {
+    if (percentage >= 85) {
+      return {
+        id: 'mastery',
+        title: 'Mastery',
+        description: 'Your business operations are world-class. Focus on optimization, innovation, and helping others reach this level.',
+        level: 5
+      };
+    } else if (percentage >= 70) {
+      return {
+        id: 'scale',
+        title: 'Scale',
+        description: 'Strong operational foundation in place. Your systems can support significant growth and team expansion.',
+        level: 4
+      };
+    } else if (percentage >= 50) {
+      return {
+        id: 'growth',
+        title: 'Growth',
+        description: 'Good progress across your engines. Focus on strengthening weaker areas to unlock your next level.',
+        level: 3
+      };
+    } else if (percentage >= 30) {
+      return {
+        id: 'traction',
+        title: 'Traction',
+        description: 'Building momentum! You have foundations in place - now systematize and strengthen to support growth.',
+        level: 2
+      };
+    } else {
+      return {
+        id: 'foundation',
+        title: 'Foundation',
+        description: 'You\'ve identified key areas to build. Focus on 2-3 high-impact engines to create momentum.',
+        level: 1
+      };
+    }
+  }
+
+  // Get revenue stage from annual revenue (matches roadmap stages)
+  function getRevenueStage(annualRevenue: number): { id: string; title: string; range: string; level: number } {
+    if (annualRevenue >= 10000000) {
+      return { id: 'mastery', title: 'Mastery', range: '$10M+', level: 5 };
+    } else if (annualRevenue >= 5000000) {
+      return { id: 'scale', title: 'Scale', range: '$5M-$10M', level: 4 };
+    } else if (annualRevenue >= 1000000) {
+      return { id: 'growth', title: 'Growth', range: '$1M-$5M', level: 3 };
+    } else if (annualRevenue >= 500000) {
+      return { id: 'traction', title: 'Traction', range: '$500K-$1M', level: 2 };
+    } else {
+      return { id: 'foundation', title: 'Foundation', range: '$0-$500K', level: 1 };
+    }
+  }
+
+  // Compare operations score to revenue stage and provide coaching insight
+  function getStageGapAnalysis(operationsLevel: number, revenueLevel: number): { type: 'ahead' | 'behind' | 'aligned'; message: string; recommendation: string } {
+    const gap = operationsLevel - revenueLevel;
+
+    if (gap >= 1) {
+      return {
+        type: 'ahead',
+        message: 'Your operations are ahead of your revenue',
+        recommendation: 'Great news! Your systems can support growth. Focus on revenue-generating activities and marketing to unlock your next level.'
+      };
+    } else if (gap <= -1) {
+      return {
+        type: 'behind',
+        message: 'Your revenue has outpaced your operations',
+        recommendation: 'Priority: Strengthen your foundations before pushing for more growth. Complete the builds in your current roadmap stage.'
+      };
+    } else {
+      return {
+        type: 'aligned',
+        message: 'Your operations match your revenue stage',
+        recommendation: 'You\'re on track! Continue building both your systems and revenue together.'
+      };
+    }
+  }
+
+  // Legacy function for backwards compatibility with health_status field
   function getHealthStatusText(status: string): { title: string; description: string } {
     switch (status?.toUpperCase()) {
       case 'THRIVING':
-        return {
-          title: 'Thriving',
-          description: 'Your business is firing on all cylinders! Focus on maintaining excellence and scaling strategically.'
-        };
+        return getOperationsStage(90);
       case 'STRONG':
-        return {
-          title: 'Strong',
-          description: 'Solid foundation in place. Optimize key areas to accelerate growth.'
-        };
+        return getOperationsStage(75);
       case 'STABLE':
-        return {
-          title: 'Stable',
-          description: 'Good progress with clear improvement opportunities. Prioritize the highest-impact areas.'
-        };
+        return getOperationsStage(60);
       case 'BUILDING':
-        return {
-          title: 'Building',
-          description: 'Foundation developing. Focus on strengthening critical business fundamentals.'
-        };
+        return getOperationsStage(45);
       case 'STRUGGLING':
-        return {
-          title: 'Struggling',
-          description: 'Significant gaps identified. Create an action plan to address the most critical areas first.'
-        };
+        return getOperationsStage(35);
       case 'URGENT':
-        return {
-          title: 'Urgent',
-          description: 'Critical issues identified. Stabilize and strengthen your foundation immediately.'
-        };
+        return getOperationsStage(15);
       default:
         return { title: 'Unknown', description: 'Assessment status not available' };
     }
@@ -483,11 +577,11 @@ function AssessmentResultsContent() {
     doc.setTextColor(0, 0, 0);
     doc.text(`${assessment.total_score}/${TOTAL_MAX_SCORE} points`, 70, yPos + 12);
 
-    const healthStatus = getHealthStatusText(assessment.health_status);
+    const pdfOperationsStage = getOperationsStage(assessment.percentage);
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(245, 130, 31);
-    doc.text(healthStatus.title.toUpperCase(), 70, yPos + 21);
+    doc.text(pdfOperationsStage.title.toUpperCase(), 70, yPos + 21);
 
     doc.setTextColor(0, 0, 0);
     yPos += 35;
@@ -568,7 +662,11 @@ function AssessmentResultsContent() {
     );
   }
 
-  const healthStatus = getHealthStatusText(assessment.health_status);
+  // Use the unified stage system based on actual percentage
+  const operationsStage = getOperationsStage(assessment.percentage);
+  const revenueStage = businessProfile ? getRevenueStage(businessProfile.annual_revenue) : null;
+  const gapAnalysis = revenueStage ? getStageGapAnalysis(operationsStage.level, revenueStage.level) : null;
+
   const sections = BUSINESS_ENGINES.map(engine => ({
     name: engine.name,
     score: (assessment as any)[`${engine.id}_score`] || 0,
@@ -616,68 +714,44 @@ function AssessmentResultsContent() {
         .delay-500 { animation-delay: 0.5s; }
       `}</style>
 
-      {/* Header */}
-      <div className="bg-brand-navy">
-        <div className="max-w-[1600px] mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
+      <PageHeader
+        variant="banner"
+        title="Assessment Results"
+        subtitle={`Completed ${new Date(assessment.created_at).toLocaleDateString('en-US', {
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric'
+        })}`}
+        icon={BarChart3}
+        backLink={{ href: '/dashboard', label: 'Back to Dashboard' }}
+        badge={previousAssessment ? 'vs. Previous' : undefined}
+        badgeColor="navy"
+        actions={
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => router.push('/dashboard')}
-              className="flex items-center text-white/70 hover:text-white transition-colors"
+              onClick={() => router.push('/assessment/history')}
+              className="flex items-center gap-2 px-4 py-2 text-white/80 hover:text-white transition-colors"
             >
-              <ArrowLeft className="w-5 h-5 mr-2" />
-              Back to Dashboard
+              <Clock className="w-4 h-4" />
+              History
             </button>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push('/assessment/history')}
-                className="flex items-center gap-2 px-4 py-2 text-white/80 hover:text-white transition-colors"
-              >
-                <Clock className="w-4 h-4" />
-                History
-              </button>
-              <button
-                onClick={() => router.push('/assessment?new=true')}
-                className="flex items-center gap-2 px-4 py-2.5 bg-white/10 text-white rounded-xl hover:bg-white/20 transition-colors"
-              >
-                <RefreshCw className="w-4 h-4" />
-                Retake Assessment
-              </button>
-              <button
-                onClick={downloadPDF}
-                className="flex items-center gap-2 px-4 py-2.5 bg-brand-orange text-white rounded-xl hover:bg-brand-orange-600 transition-colors font-medium"
-              >
-                <Download className="w-4 h-4" />
-                Download PDF
-              </button>
-            </div>
+            <button
+              onClick={() => router.push('/assessment?new=true')}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white/10 text-white rounded-xl hover:bg-white/20 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Retake Assessment
+            </button>
+            <button
+              onClick={downloadPDF}
+              className="flex items-center gap-2 px-4 py-2.5 bg-brand-orange text-white rounded-xl hover:bg-brand-orange-600 transition-colors font-medium"
+            >
+              <Download className="w-4 h-4" />
+              Download PDF
+            </button>
           </div>
-
-          <div className="mt-8 pb-4">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center">
-                <BarChart3 className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-2xl font-bold text-white">Assessment Results</h1>
-                  {previousAssessment && (
-                    <span className="px-2.5 py-1 bg-white/10 rounded-full text-xs text-white/80">
-                      vs. Previous
-                    </span>
-                  )}
-                </div>
-                <p className="text-white/60 text-sm">
-                  Completed {new Date(assessment.created_at).toLocaleDateString('en-US', {
-                    month: 'long',
-                    day: 'numeric',
-                    year: 'numeric'
-                  })}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       <div className="max-w-[1600px] mx-auto px-6 py-8">
         {/* Top Stats Row */}
@@ -716,9 +790,9 @@ function AssessmentResultsContent() {
                 </div>
               </div>
 
-              <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border font-semibold ${getHealthStatusBadgeStyles(assessment.health_status)}`}>
+              <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border font-semibold ${getStageBadgeStyles(operationsStage.id)}`}>
                 <Award className="w-4 h-4" />
-                {healthStatus.title}
+                {operationsStage.title}
               </div>
 
               {/* Trend Indicator */}
@@ -738,16 +812,45 @@ function AssessmentResultsContent() {
               )}
 
               <p className="text-sm text-gray-600 mt-4 leading-relaxed">
-                {healthStatus.description}
+                {operationsStage.description}
               </p>
 
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <div className="text-sm text-gray-500">Total Points</div>
-                <div className="text-2xl font-bold text-brand-navy">
-                  {showContent ? <AnimatedCounter value={assessment.total_score} duration={1200} /> : 0}
-                  <span className="text-gray-400 font-normal">/{TOTAL_MAX_SCORE}</span>
+              {/* Gap Indicator - Revenue vs Operations */}
+              {gapAnalysis && revenueStage && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <div className={`rounded-lg p-3 text-left ${
+                    gapAnalysis.type === 'ahead' ? 'bg-green-50 border border-green-200' :
+                    gapAnalysis.type === 'behind' ? 'bg-amber-50 border border-amber-200' :
+                    'bg-blue-50 border border-blue-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded ${getStageBadgeStyles(operationsStage.id)}`}>
+                          Operations: {operationsStage.title}
+                        </span>
+                        <span className="text-gray-400">vs</span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded ${getStageBadgeStyles(revenueStage.id)}`}>
+                          Revenue: {revenueStage.title}
+                        </span>
+                      </div>
+                    </div>
+                    <p className={`text-xs font-medium mb-1 ${
+                      gapAnalysis.type === 'ahead' ? 'text-green-700' :
+                      gapAnalysis.type === 'behind' ? 'text-amber-700' :
+                      'text-blue-700'
+                    }`}>
+                      {gapAnalysis.message}
+                    </p>
+                    <p className={`text-xs leading-relaxed ${
+                      gapAnalysis.type === 'ahead' ? 'text-green-600' :
+                      gapAnalysis.type === 'behind' ? 'text-amber-600' :
+                      'text-blue-600'
+                    }`}>
+                      {gapAnalysis.recommendation}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -905,7 +1008,6 @@ function AssessmentResultsContent() {
                           </div>
                         )}
                       </div>
-                      <div className="text-xs text-gray-500">{section.score}/{section.max}</div>
                     </div>
                   </div>
 

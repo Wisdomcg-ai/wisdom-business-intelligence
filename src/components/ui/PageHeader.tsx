@@ -1,12 +1,18 @@
 'use client'
 
-import { ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react'
+import { ChevronLeft, ChevronRight, type LucideIcon, Check, Loader2, AlertCircle, Cloud } from 'lucide-react'
 import Link from 'next/link'
 import { type ReactNode } from 'react'
+import { SaveStatus, getSaveStatusText } from '@/hooks/useAutoSave'
 
 interface BreadcrumbItem {
   label: string
   href?: string
+}
+
+interface SaveIndicatorConfig {
+  status: SaveStatus
+  lastSaved: Date | null
 }
 
 interface PageHeaderProps {
@@ -30,9 +36,11 @@ interface PageHeaderProps {
   /** Breadcrumb navigation */
   breadcrumbs?: BreadcrumbItem[]
   /** Visual variant */
-  variant?: 'default' | 'compact' | 'simple'
+  variant?: 'default' | 'compact' | 'simple' | 'banner'
   /** Additional className */
   className?: string
+  /** Auto-save indicator configuration */
+  saveIndicator?: SaveIndicatorConfig
 }
 
 /**
@@ -75,13 +83,65 @@ export default function PageHeader({
   backLink,
   breadcrumbs,
   variant = 'default',
-  className = ''
+  className = '',
+  saveIndicator
 }: PageHeaderProps) {
   const badgeColors = {
     teal: 'bg-brand-teal/20 text-brand-teal',
     orange: 'bg-brand-orange-100 text-brand-orange-700',
     navy: 'bg-white/20 text-white',
     gray: 'bg-gray-100 text-gray-700'
+  }
+
+  // Helper to render save indicator
+  const renderSaveIndicator = (isBanner: boolean = false) => {
+    if (!saveIndicator) return null
+
+    const { status, lastSaved } = saveIndicator
+    const text = getSaveStatusText(status, lastSaved)
+
+    // Don't show if idle and no text
+    if (status === 'idle' && !text) return null
+
+    const getIcon = () => {
+      switch (status) {
+        case 'saving':
+          return <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        case 'saved':
+          return <Check className="w-3.5 h-3.5" />
+        case 'error':
+          return <AlertCircle className="w-3.5 h-3.5" />
+        case 'idle':
+          return lastSaved ? <Cloud className="w-3.5 h-3.5" /> : null
+        default:
+          return null
+      }
+    }
+
+    const getColors = () => {
+      if (isBanner) {
+        switch (status) {
+          case 'saving': return 'text-white/80 bg-white/10'
+          case 'saved': return 'text-green-300 bg-green-500/20'
+          case 'error': return 'text-red-300 bg-red-500/20'
+          default: return 'text-white/60 bg-white/5'
+        }
+      } else {
+        switch (status) {
+          case 'saving': return 'text-amber-600 bg-amber-50'
+          case 'saved': return 'text-green-600 bg-green-50'
+          case 'error': return 'text-red-600 bg-red-50'
+          default: return 'text-gray-500 bg-gray-50'
+        }
+      }
+    }
+
+    return (
+      <div className={`flex items-center gap-1.5 text-xs ${getColors()} px-2.5 py-1 rounded-full`}>
+        {getIcon()}
+        <span>{text}</span>
+      </div>
+    )
   }
 
   // Simple variant - minimal styling, no navy background
@@ -138,11 +198,10 @@ export default function PageHeader({
               )}
             </div>
           </div>
-          {actions && (
-            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-              {actions}
-            </div>
-          )}
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            {renderSaveIndicator(false)}
+            {actions}
+          </div>
         </div>
       </div>
     )
@@ -173,11 +232,46 @@ export default function PageHeader({
               )}
             </div>
           </div>
-          {actions && (
-            <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {renderSaveIndicator(true)}
+            {actions}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Banner variant - full-width edge-to-edge navy header with orange border
+  if (variant === 'banner') {
+    return (
+      <div className={`bg-brand-navy border-b-4 border-brand-orange ${className}`}>
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-4 min-w-0">
+              {Icon && (
+                <div className="w-12 h-12 bg-brand-orange rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Icon className="h-6 w-6 text-white" />
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h1 className="text-2xl font-bold text-white">{title}</h1>
+                  {badge && (
+                    <span className={`text-xs font-medium px-2 py-1 rounded-full ${badgeColors[badgeColor]}`}>
+                      {badge}
+                    </span>
+                  )}
+                </div>
+                {subtitle && (
+                  <p className="text-white/70 mt-0.5">{subtitle}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+              {renderSaveIndicator(true)}
               {actions}
             </div>
-          )}
+          </div>
         </div>
       </div>
     )
@@ -238,11 +332,10 @@ export default function PageHeader({
               )}
             </div>
           </div>
-          {actions && (
-            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 flex-wrap sm:flex-nowrap">
-              {actions}
-            </div>
-          )}
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 flex-wrap sm:flex-nowrap">
+            {renderSaveIndicator(true)}
+            {actions}
+          </div>
         </div>
       </div>
     </div>

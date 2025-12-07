@@ -151,14 +151,15 @@ function SettingsContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <PageHeader
-          title="Settings"
-          subtitle="Manage your account, team, and integrations"
-          icon={Settings}
-        />
+      {/* Header */}
+      <PageHeader
+        variant="banner"
+        title="Settings"
+        subtitle="Manage your account, team, and integrations"
+        icon={Settings}
+      />
 
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
           {/* Left Sidebar Navigation */}
           <nav className="lg:w-64 flex-shrink-0">

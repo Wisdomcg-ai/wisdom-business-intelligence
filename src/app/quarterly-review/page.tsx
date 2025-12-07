@@ -101,15 +101,17 @@ export default function QuarterlyReviewPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <PageHeader
+        variant="banner"
         title="Quarterly Review"
         subtitle="A guided 4-hour process to reflect, analyze, and plan for the next quarter"
         icon={Calendar}
       />
 
-      {/* Current Quarter Card */}
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {/* Current Quarter Card */}
       <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8">
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
           <div className="flex-1">
@@ -271,6 +273,7 @@ export default function QuarterlyReviewPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

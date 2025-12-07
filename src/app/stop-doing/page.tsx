@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { JargonTooltip } from '@/components/ui/Tooltip'
 import PageHeader from '@/components/ui/PageHeader'
+import type { SaveStatus } from '@/hooks/useAutoSave'
 import { useStopDoingList } from './hooks/useStopDoingList'
 import Step1TimeLog from './components/Step1TimeLog'
 import Step2HourlyRate from './components/Step2HourlyRate'
@@ -58,6 +59,7 @@ export default function StopDoingPage() {
 
     // Auto-save
     saveStatus,
+    lastSaved,
 
     // Step 1: Time Logs
     timeLogs,
@@ -169,27 +171,20 @@ export default function StopDoingPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Header */}
-        <PageHeader
-          title="Stop Doing List"
-          subtitle="Identify and eliminate low-value activities to reclaim your time"
-          icon={Ban}
-          actions={
-            saveStatus !== 'idle' && (
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
-                saveStatus === 'saving' ? 'bg-gray-100 text-gray-600' :
-                saveStatus === 'saved' ? 'bg-green-100 text-green-700' :
-                'bg-red-100 text-red-700'
-              }`}>
-                {saveStatus === 'saving' && <Loader2 className="w-4 h-4 animate-spin" />}
-                {saveStatus === 'saved' && <Check className="w-4 h-4" />}
-                {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : 'Error saving'}
-              </div>
-            )
-          }
-        />
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <PageHeader
+        variant="banner"
+        title="Stop Doing List"
+        subtitle="Identify and eliminate low-value activities to reclaim your time"
+        icon={Ban}
+        saveIndicator={{
+          status: saveStatus as SaveStatus,
+          lastSaved
+        }}
+      />
 
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Step Navigation */}
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6 gap-4 overflow-x-auto">
@@ -343,6 +338,7 @@ export default function StopDoingPage() {
             </div>
           </div>
         )}
+      </div>
     </div>
   )
 }

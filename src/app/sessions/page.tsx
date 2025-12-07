@@ -227,30 +227,31 @@ export default function ClientSessionsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Header */}
-        <PageHeader
-          title="Session Notes"
-          subtitle="Notes from your coaching sessions"
-          icon={FileText}
-          actions={
-            coachId ? (
-              <button
-                onClick={startNewSession}
-                disabled={creating}
-                className="flex items-center gap-2 px-4 py-2.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium disabled:opacity-50"
-              >
-                {creating ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Plus className="w-5 h-5" />
-                )}
-                Start Session
+      {/* Header */}
+      <PageHeader
+        variant="banner"
+        title="Session Notes"
+        subtitle="Notes from your coaching sessions"
+        icon={FileText}
+        actions={
+          coachId ? (
+            <button
+              onClick={startNewSession}
+              disabled={creating}
+              className="flex items-center gap-2 px-4 py-2.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium disabled:opacity-50"
+            >
+              {creating ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Plus className="w-5 h-5" />
+              )}
+              Start Session
               </button>
             ) : undefined
           }
         />
 
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Sessions List */}
         {sessions.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-8 sm:p-12 text-center">

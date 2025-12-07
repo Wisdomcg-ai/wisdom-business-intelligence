@@ -19,8 +19,10 @@ import {
   Save,
   Loader2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  ClipboardCheck
 } from 'lucide-react'
+import PageHeader from '@/components/ui/PageHeader'
 
 export default function QuarterlyReviewPage() {
   const router = useRouter()
@@ -321,36 +323,35 @@ export default function QuarterlyReviewPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
+      <PageHeader
+        variant="banner"
+        title="Quarterly Review"
+        subtitle={`${currentQuarter.quarter} ${currentQuarter.year} • Review progress and plan ahead`}
+        icon={ClipboardCheck}
+        actions={
+          <button
+            onClick={handleCompleteQuarter}
+            disabled={isSaving}
+            className="flex items-center gap-2 px-6 py-3 bg-white/10 border border-white/30 text-white rounded-lg hover:bg-white/20 font-medium disabled:opacity-50 transition-colors"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-5 h-5" />
+                Complete Quarter
+              </>
+            )}
+          </button>
+        }
+      />
+
+      {/* Progress Summary */}
       <div className="bg-white border-b">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Quarterly Review</h1>
-              <p className="text-gray-600 mt-1">
-                {currentQuarter.quarter} {currentQuarter.year} • Review progress and plan ahead
-              </p>
-            </div>
-            <button
-              onClick={handleCompleteQuarter}
-              disabled={isSaving}
-              className="flex items-center gap-2 px-6 py-3 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 font-medium disabled:opacity-50"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-5 h-5" />
-                  Complete Quarter
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Progress Summary */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-4">
               <div className="flex items-center gap-3">

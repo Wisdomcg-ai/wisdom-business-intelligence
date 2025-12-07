@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import { TrendingUp } from 'lucide-react';
+import PageHeader from '@/components/ui/PageHeader';
 
 export default function QuarterlyForecastPage() {
   const router = useRouter();
@@ -249,20 +251,13 @@ export default function QuarterlyForecastPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Quarterly Forecast</h1>
-              <p className="text-gray-600 mt-1">Project your quarterly financial performance</p>
-            </div>
-            <Link href="/goals" className="text-gray-600 hover:text-gray-900">
-              Back to Goals
-            </Link>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        variant="banner"
+        title="Quarterly Forecast"
+        subtitle="Project your quarterly financial performance"
+        icon={TrendingUp}
+        backLink={{ href: '/goals', label: 'Back to Goals' }}
+      />
 
       {/* Form */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

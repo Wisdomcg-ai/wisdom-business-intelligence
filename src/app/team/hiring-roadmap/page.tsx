@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Save, Plus, Trash2, UserPlus } from 'lucide-react';
+import { Save, Plus, Trash2, UserPlus, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import PageHeader from '@/components/ui/PageHeader';
 
 interface HiringPriority {
   role: string;
@@ -173,43 +174,36 @@ export default function HiringRoadmapPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <UserPlus className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Hiring Roadmap</h1>
-                <p className="mt-2 text-gray-600">
-                  Plan your hiring priorities and retention strategy
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col items-end gap-1">
-              {saving && (
-                <span className="text-sm text-gray-500 flex items-center gap-2">
-                  <Save className="h-4 w-4 animate-pulse" />
-                  Saving...
-                </span>
-              )}
-              {!saving && lastSaved && (
-                <span className="text-sm text-green-600">
-                  ✓ Saved {lastSaved.toLocaleTimeString()}
-                </span>
-              )}
-              {hasUnsavedChanges && !saving && (
-                <span className="text-sm text-amber-600">Unsaved changes</span>
-              )}
-              {errorMessage && (
-                <span className="text-sm text-red-600">Error: {errorMessage}</span>
-              )}
-            </div>
+    <div className="min-h-screen bg-gray-50">
+      <PageHeader
+        variant="banner"
+        title="Hiring Roadmap"
+        subtitle="Plan your hiring priorities and retention strategy"
+        icon={UserPlus}
+        actions={
+          <div className="flex flex-col items-end gap-1">
+            {saving && (
+              <span className="text-sm text-white/70 flex items-center gap-2">
+                <Save className="h-4 w-4 animate-pulse" />
+                Saving...
+              </span>
+            )}
+            {!saving && lastSaved && (
+              <span className="text-sm text-brand-orange">
+                ✓ Saved {lastSaved.toLocaleTimeString()}
+              </span>
+            )}
+            {hasUnsavedChanges && !saving && (
+              <span className="text-sm text-amber-400">Unsaved changes</span>
+            )}
+            {errorMessage && (
+              <span className="text-sm text-red-400">Error: {errorMessage}</span>
+            )}
           </div>
-        </div>
+        }
+      />
+
+      <div className="max-w-6xl mx-auto px-4 py-8">
 
         <div className="space-y-6">
           {/* Hiring Priorities */}

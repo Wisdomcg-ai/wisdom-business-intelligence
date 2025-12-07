@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import EnhancedKPIModal from '@/components/EnhancedKPIModal'
-import { Target, TrendingUp, DollarSign, Users, Package, Heart, Settings, Check, AlertCircle, ChevronRight, Edit, Trash2, Plus } from 'lucide-react'
+import PageHeader from '@/components/ui/PageHeader'
+import { Target, TrendingUp, DollarSign, Users, Package, Heart, Settings, Check, AlertCircle, ChevronRight, Edit, Trash2, Plus, BarChart2 } from 'lucide-react'
 
 // This is your complete KPI Selection page
 export default function KPISelectionPage() {
@@ -186,25 +187,13 @@ export default function KPISelectionPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">KPI Dashboard</h1>
-              <p className="text-sm text-gray-600 mt-1">
-                Track what matters for {businessProfile.business_name}
-              </p>
-            </div>
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="text-gray-600 hover:text-gray-900"
-            >
-              Back to Dashboard
-            </button>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        variant="banner"
+        title="KPI Dashboard"
+        subtitle={`Track what matters for ${businessProfile.business_name}`}
+        icon={BarChart2}
+        backLink={{ href: '/dashboard', label: 'Back to Dashboard' }}
+      />
 
       {/* Business Context Bar */}
       <div className="bg-brand-orange-50 border-b border-brand-orange-100">
@@ -253,7 +242,7 @@ export default function KPISelectionPage() {
         {/* Action Bar */}
         <div className="mb-8 flex justify-between items-center">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900">Your KPIs</h2>
+            <h2 className="text-xl font-bold text-brand-navy">Your KPIs</h2>
             <p className="text-sm text-gray-600 mt-1">
               {selectedKPIs.length > 0 
                 ? `Tracking ${selectedKPIs.length} key metrics`
@@ -292,7 +281,7 @@ export default function KPISelectionPage() {
               <div key={kpi.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow">
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900">{kpi.name}</h3>
+                    <h3 className="font-semibold text-brand-navy">{kpi.name}</h3>
                     <p className="text-sm text-gray-600 mt-1">{kpi.friendlyName}</p>
                   </div>
                   <button
@@ -338,7 +327,7 @@ export default function KPISelectionPage() {
           // Empty State
           <div className="bg-white rounded-lg shadow-sm border-2 border-dashed border-gray-300 p-12 text-center">
             <Target className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No KPIs Selected</h3>
+            <h3 className="text-lg font-semibold text-brand-navy mb-2">No KPIs Selected</h3>
             <p className="text-gray-600 mb-6 max-w-md mx-auto">
               Start tracking your business performance by selecting the key metrics that matter most to your success.
             </p>
@@ -355,7 +344,7 @@ export default function KPISelectionPage() {
         {/* Quick Stats */}
         {selectedKPIs.length > 0 && (
           <div className="mt-8 bg-gray-100 rounded-lg p-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">KPI Overview</h3>
+            <h3 className="text-sm font-semibold text-brand-navy mb-4">KPI Overview</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-white rounded p-3">
                 <p className="text-xs text-gray-600">Total KPIs</p>

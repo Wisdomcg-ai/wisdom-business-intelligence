@@ -766,34 +766,35 @@ export default function WeeklyReviewPage() {
   const isCurrentWeek = currentWeekStart === WeeklyReviewService.getWeekStart()
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Page Header */}
-        <PageHeader
-          title="Weekly Reset"
-          subtitle="Reflect, align, and plan for the week ahead"
-          icon={CalendarCheck}
-          actions={
-            <>
-              <button
-                onClick={() => setShowHistory(!showHistory)}
-                className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors text-sm"
-              >
-                <History className="w-4 h-4" />
-                <span className="hidden sm:inline font-medium">History</span>
-              </button>
-              {isSaving ? (
-                <div className="flex items-center text-gray-500">
-                  <Loader2 className="animate-spin h-4 w-4 sm:mr-2" />
-                  <span className="text-sm hidden sm:inline">Saving...</span>
-                </div>
-              ) : (
-                <div className="text-sm text-green-600 font-medium hidden sm:block">✓ Saved</div>
-              )}
-            </>
-          }
-        />
+    <div className="min-h-screen bg-gray-50">
+      {/* Page Header */}
+      <PageHeader
+        variant="banner"
+        title="Weekly Reset"
+        subtitle="Reflect, align, and plan for the week ahead"
+        icon={CalendarCheck}
+        actions={
+          <>
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+            >
+              <History className="w-4 h-4" />
+              <span className="hidden sm:inline font-medium">History</span>
+            </button>
+            {isSaving ? (
+              <div className="flex items-center text-gray-500">
+                <Loader2 className="animate-spin h-4 w-4 sm:mr-2" />
+                <span className="text-sm hidden sm:inline">Saving...</span>
+              </div>
+            ) : (
+              <div className="text-sm text-green-600 font-medium hidden sm:block">✓ Saved</div>
+            )}
+          </>
+        }
+      />
 
+      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
         {/* Week Navigation */}
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-6">
           <div className="flex items-center justify-between bg-brand-orange-50 border border-brand-orange-200 rounded-xl p-3 sm:p-4">

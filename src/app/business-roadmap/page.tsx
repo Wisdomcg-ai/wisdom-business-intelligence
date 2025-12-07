@@ -104,28 +104,26 @@ export default function WisdomRoadmapTable() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Current Stage Banner - Always visible at top */}
-      {!isRoadmapComplete && hasSeenIntro && (
-        <div className="bg-gradient-to-r from-brand-navy to-brand-navy-700 text-white border-b-4 border-brand-orange">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-brand-orange rounded-xl flex items-center justify-center">
-                  <Target className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <div className="text-sm text-white/80 font-medium">Your Current Revenue Stage</div>
-                  <div className="text-2xl font-bold">{currentStageInfo.name} <span className="font-normal text-white/70">({currentStageInfo.range})</span></div>
-                </div>
-              </div>
-              <div className="text-right hidden sm:block">
-                <div className="text-3xl font-bold text-brand-orange">{getStageStats(currentStageId).percentage}%</div>
-                <div className="text-sm text-white/70">Stage Complete</div>
-              </div>
+      {/* Main Page Header Banner */}
+      <PageHeader
+        variant="banner"
+        title="The Wisdom Roadmap"
+        subtitle={isRoadmapComplete
+          ? 'Congratulations! You\'ve completed every build in the roadmap'
+          : `Your stage-by-stage guide to business freedom`}
+        icon={Map}
+        badge={isRoadmapComplete ? "MASTERED" : undefined}
+        badgeColor={isRoadmapComplete ? "orange" : undefined}
+        actions={
+          !isRoadmapComplete && hasSeenIntro ? (
+            <div className="text-right hidden sm:block">
+              <div className="text-xs text-white/70 mb-1">{currentStageInfo.name} Stage</div>
+              <div className="text-2xl font-bold text-brand-orange">{getStageStats(currentStageId).percentage}%</div>
+              <div className="text-xs text-white/70">Complete</div>
             </div>
-          </div>
-        </div>
-      )}
+          ) : undefined
+        }
+      />
 
       {/* Stage Change Celebration */}
       {stageChange?.changed && (
@@ -256,83 +254,71 @@ export default function WisdomRoadmapTable() {
         </div>
       )}
 
-      {/* Header */}
+      {/* Progress Bar & Controls */}
       <div className="bg-white border-b sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
-          <PageHeader
-            title="The Wisdom Roadmap"
-            subtitle={isRoadmapComplete
-              ? 'Congratulations! You\'ve completed every build in the roadmap'
-              : 'Your stage-by-stage guide to business freedom'}
-            icon={Map}
-            badge={isRoadmapComplete ? "MASTERED" : undefined}
-            badgeColor={isRoadmapComplete ? "orange" : undefined}
-            actions={
-              <div className="flex items-center gap-2 sm:gap-3">
-                {isSaving && (
-                  <span className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-500">
-                    <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
-                    <span className="hidden sm:inline">Saving...</span>
-                  </span>
-                )}
+          <div className="flex items-center justify-between gap-4 mb-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              {isSaving && (
+                <span className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-500">
+                  <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                  <span className="hidden sm:inline">Saving...</span>
+                </span>
+              )}
 
-                {/* View Mode Toggle */}
-                <div className="flex items-center bg-gray-100 rounded-lg p-0.5 sm:p-1">
-                  <button
-                    onClick={() => viewMode !== 'focus' && toggleViewMode()}
-                    className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
-                      viewMode === 'focus'
-                        ? 'bg-white text-brand-orange-700 shadow-sm font-medium'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                    <span className="hidden xs:inline">Focus</span>
-                  </button>
-                  <button
-                    onClick={() => viewMode !== 'full' && toggleViewMode()}
-                    className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
-                      viewMode === 'full'
-                        ? 'bg-white text-brand-orange-700 shadow-sm font-medium'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <Grid3X3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                    <span className="hidden xs:inline">Full</span>
-                  </button>
-                </div>
-
-                {hasSeenIntro && !isRoadmapComplete && (
-                  <button
-                    onClick={() => {/* Could reset intro */}}
-                    className="flex items-center gap-1.5 p-1.5 sm:px-3 sm:py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Show help"
-                  >
-                    <HelpCircle className="h-4 w-4" />
-                  </button>
-                )}
+              {/* View Mode Toggle */}
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 sm:p-1">
+                <button
+                  onClick={() => viewMode !== 'focus' && toggleViewMode()}
+                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
+                    viewMode === 'focus'
+                      ? 'bg-white text-brand-orange-700 shadow-sm font-medium'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <span className="hidden xs:inline">Focus</span>
+                </button>
+                <button
+                  onClick={() => viewMode !== 'full' && toggleViewMode()}
+                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
+                    viewMode === 'full'
+                      ? 'bg-white text-brand-orange-700 shadow-sm font-medium'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Grid3X3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <span className="hidden xs:inline">Full</span>
+                </button>
               </div>
-            }
-          />
 
-          {/* Progress Bar */}
-          <div className="mt-4">
-            <div className="flex items-center justify-between text-sm text-gray-600 mb-1">
-              <span>{completedCount} of {totalBuilds} builds complete</span>
+              {hasSeenIntro && !isRoadmapComplete && (
+                <button
+                  onClick={() => {/* Could reset intro */}}
+                  className="flex items-center gap-1.5 p-1.5 sm:px-3 sm:py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Show help"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            <div className="text-sm text-gray-600">
               <span className={isRoadmapComplete ? 'font-bold text-amber-600' : ''}>
-                {completionPercentage}%{isRoadmapComplete && ' 🏆'}
+                {completedCount}/{totalBuilds} builds {isRoadmapComplete && '🏆'}
               </span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all duration-500 ${
-                  isRoadmapComplete
-                    ? 'bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-500'
-                    : 'bg-brand-orange-500'
-                }`}
-                style={{ width: `${completionPercentage}%` }}
-              />
-            </div>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className={`h-2 rounded-full transition-all duration-500 ${
+                isRoadmapComplete
+                  ? 'bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-500'
+                  : 'bg-brand-orange-500'
+              }`}
+              style={{ width: `${completionPercentage}%` }}
+            />
           </div>
         </div>
       </div>
@@ -360,7 +346,7 @@ export default function WisdomRoadmapTable() {
             </div>
 
             {/* Stage Progress */}
-            <div className="mb-6">
+            <div className="mb-4">
               <div className="w-full bg-white/20 rounded-full h-3">
                 <div
                   className="bg-brand-orange h-3 rounded-full transition-all"
@@ -368,6 +354,38 @@ export default function WisdomRoadmapTable() {
                 />
               </div>
             </div>
+
+            {/* Stage Explanation */}
+            {(() => {
+              const fullStage = STAGES.find(s => s.id === currentStageId)
+              if (!fullStage) return null
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                  <div className="bg-white/10 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-white/90 mb-2 flex items-center gap-2">
+                      <Lightbulb className="w-4 h-4 text-brand-orange" />
+                      About This Stage
+                    </h4>
+                    <p className="text-sm text-white/80 leading-relaxed">{fullStage.description}</p>
+                    <p className="text-xs text-white/60 mt-2 italic">Focus: {fullStage.focus}</p>
+                  </div>
+                  <div className="bg-white/10 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-white/90 mb-2 flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-brand-orange" />
+                      Success Criteria
+                    </h4>
+                    <ul className="space-y-1">
+                      {fullStage.successCriteria.slice(0, 4).map((criteria, i) => (
+                        <li key={i} className="flex items-center gap-2 text-xs text-white/80">
+                          <div className="w-1.5 h-1.5 bg-brand-orange rounded-full flex-shrink-0" />
+                          {criteria}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Priority Builds */}
             <div className="bg-white rounded-xl p-4 sm:p-6 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6 mt-4">
@@ -637,7 +655,7 @@ export default function WisdomRoadmapTable() {
           </div>
 
           {/* Table */}
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto relative">
                 <table className="w-full border-collapse relative">
@@ -703,7 +721,7 @@ export default function WisdomRoadmapTable() {
                               <div className="flex items-center gap-2">
                                 <div className="font-bold text-sm text-gray-900">{stage.name}</div>
                                 {isCurrentStage && (
-                                  <span className="px-1.5 py-0.5 bg-brand-orange text-white text-xs font-medium rounded">
+                                  <span className="px-1.5 py-0.5 bg-brand-navy text-white text-xs font-medium rounded">
                                     You
                                   </span>
                                 )}
@@ -779,7 +797,7 @@ export default function WisdomRoadmapTable() {
                     <div className="flex items-center justify-between mb-2">
                       <div className="font-bold text-sm sm:text-base text-gray-900">{stage.name}</div>
                       {isCurrentStage && (
-                        <span className="px-1.5 py-0.5 bg-brand-orange-100 text-brand-orange-700 text-xs font-medium rounded">
+                        <span className="px-1.5 py-0.5 bg-brand-navy-50 text-brand-navy text-xs font-medium rounded">
                           Current
                         </span>
                       )}

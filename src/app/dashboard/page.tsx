@@ -218,77 +218,80 @@ export default function DashboardPage() {
   }
 
   return (
-    <PageLayout maxWidth="7xl">
-      <div className="space-y-6">
-        {/* Smart Insight Header */}
-        <InsightHeader
-          insight={data.insight}
-          onRefresh={refresh}
-        />
+    <div className="min-h-screen bg-gray-50">
+      {/* Smart Insight Header - Full Width Banner */}
+      <InsightHeader
+        insight={data.insight}
+        onRefresh={refresh}
+      />
 
-        {/* Actions from Coaching Session */}
-        <SessionActionsCard userId={userId} />
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <div className="space-y-6">
+          {/* Actions from Coaching Session */}
+          <SessionActionsCard userId={userId} />
 
-        {/* Top Row: Annual Goals, 90-Day Goals, Quarterly Rocks */}
-        <PageGrid columns={3} gap="md">
-          <GoalsCard
-            title="Annual Goals"
-            goals={data.annualGoals}
-            icon={Target}
-            emptyStateText="No annual goals set"
-            emptyStateCta="Set Your Goals"
-            emptyStateHref="/goals?step=1"
-            daysRemaining={data.yearDaysRemaining}
-            timeProgress={data.annualProgress}
-          />
+          {/* Top Row: Annual Goals, 90-Day Goals, Quarterly Rocks */}
+          <PageGrid columns={3} gap="md">
+            <GoalsCard
+              title="Annual Goals"
+              goals={data.annualGoals}
+              icon={Target}
+              emptyStateText="No annual goals set"
+              emptyStateCta="Set Your Goals"
+              emptyStateHref="/goals?step=1"
+              daysRemaining={data.yearDaysRemaining}
+              timeProgress={data.annualProgress}
+            />
 
-          <GoalsCard
-            title="90-Day Goals"
-            subtitle={getQuarterDisplayName(data.currentQuarter)}
-            goals={data.quarterlyGoals}
-            icon={TrendingUp}
-            emptyStateText="No quarterly targets set"
-            emptyStateCta="Create 90-Day Sprint"
-            emptyStateHref="/goals?step=4"
-            daysRemaining={data.quarterDaysRemaining}
-            timeProgress={data.quarterlyProgress}
-            isShowingPlanningQuarter={data.isShowingPlanningQuarter}
-          />
+            <GoalsCard
+              title="90-Day Goals"
+              subtitle={getQuarterDisplayName(data.currentQuarter)}
+              goals={data.quarterlyGoals}
+              icon={TrendingUp}
+              emptyStateText="No quarterly targets set"
+              emptyStateCta="Create 90-Day Sprint"
+              emptyStateHref="/goals?step=4"
+              daysRemaining={data.quarterDaysRemaining}
+              timeProgress={data.quarterlyProgress}
+              isShowingPlanningQuarter={data.isShowingPlanningQuarter}
+            />
 
-          <RocksCard
-            rocks={data.rocks}
-            currentQuarter={data.currentQuarter}
-            rocksNeedingAttention={data.rocksNeedingAttention}
-            rocksOnTrack={data.rocksOnTrack}
-            quarterDaysRemaining={data.quarterDaysRemaining}
-            isShowingPlanningQuarter={data.isShowingPlanningQuarter}
-          />
-        </PageGrid>
+            <RocksCard
+              rocks={data.rocks}
+              currentQuarter={data.currentQuarter}
+              rocksNeedingAttention={data.rocksNeedingAttention}
+              rocksOnTrack={data.rocksOnTrack}
+              quarterDaysRemaining={data.quarterDaysRemaining}
+              isShowingPlanningQuarter={data.isShowingPlanningQuarter}
+            />
+          </PageGrid>
 
-        {/* Second Row: Weekly Priorities, Coach Messages */}
-        <PageGrid columns={2} gap="md">
-          <WeeklyPrioritiesCard weeklyGoals={data.weeklyGoals} />
-          <CoachMessagesCard
-            onOpenChat={() => setIsChatOpen(true)}
-            unreadCount={unreadCount}
-            lastMessagePreview={lastMessage?.preview}
-            lastMessageTime={lastMessage?.time}
-            hasCoach={!!coachId}
-          />
-        </PageGrid>
+          {/* Second Row: Weekly Priorities, Coach Messages */}
+          <PageGrid columns={2} gap="md">
+            <WeeklyPrioritiesCard weeklyGoals={data.weeklyGoals} />
+            <CoachMessagesCard
+              onOpenChat={() => setIsChatOpen(true)}
+              unreadCount={unreadCount}
+              lastMessagePreview={lastMessage?.preview}
+              lastMessageTime={lastMessage?.time}
+              hasCoach={!!coachId}
+            />
+          </PageGrid>
 
-        {/* Suggested Actions */}
-        <SuggestedActions actions={data.suggestedActions} />
-
-        {/* Chat Drawer */}
-        <ChatDrawer
-          isOpen={isChatOpen}
-          onClose={handleChatClose}
-          businessId={messagesBusinessId}
-          userId={userId}
-          coachId={coachId}
-        />
+          {/* Suggested Actions */}
+          <SuggestedActions actions={data.suggestedActions} />
+        </div>
       </div>
-    </PageLayout>
+
+      {/* Chat Drawer */}
+      <ChatDrawer
+        isOpen={isChatOpen}
+        onClose={handleChatClose}
+        businessId={messagesBusinessId}
+        userId={userId}
+        coachId={coachId}
+      />
+    </div>
   )
 }

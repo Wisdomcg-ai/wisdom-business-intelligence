@@ -594,10 +594,11 @@ export default function OnePagePlan() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-4 sm:py-8">
+    <div className="min-h-screen bg-gray-50">
       {/* Page Header - Hidden when printing */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 print:hidden">
+      <div className="print:hidden">
         <PageHeader
+          variant="banner"
           title="One Page Strategic Plan"
           subtitle={`${data.companyName} • Year ${data.planYear} • ${data.yearType === 'FY' ? 'Financial Year' : 'Calendar Year'}`}
           icon={FileText}

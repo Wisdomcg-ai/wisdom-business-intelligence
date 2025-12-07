@@ -163,15 +163,16 @@ export default function IntegrationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-4 sm:py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-        {/* Header */}
-        <PageHeader
-          title="Integrations"
-          subtitle="Connect your business tools and services"
-          icon={Link2}
-        />
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <PageHeader
+        variant="banner"
+        title="Integrations"
+        subtitle="Connect your business tools and services"
+        icon={Link2}
+      />
 
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-6">
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-5">

@@ -146,6 +146,7 @@ function CreateGoalContent() {
       {/* Header */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <PageHeader
+          variant="banner"
           title={`Create ${goalType === 'annual' ? 'Annual Goal' : '90-Day Rock'}`}
           subtitle={goalType === 'annual'
             ? 'Set a strategic objective for the year'

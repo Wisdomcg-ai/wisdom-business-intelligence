@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, TrendingUp, TrendingDown, Minus, AlertCircle } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus, AlertCircle, GitCompare } from 'lucide-react'
 import Link from 'next/link'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
+import PageHeader from '@/components/ui/PageHeader'
 
 interface SwotAnalysis {
   id: string
@@ -208,22 +209,13 @@ export default function SwotComparePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <Link href="/swot" className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-4">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Current SWOT
-          </Link>
-
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Compare SWOT Analyses</h1>
-            <p className="mt-1 text-base text-gray-600">
-              Identify strategic shifts, recurring patterns, and areas of progress
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        variant="banner"
+        title="Compare SWOT Analyses"
+        subtitle="Identify strategic shifts, recurring patterns, and areas of progress"
+        icon={GitCompare}
+        backLink={{ href: '/swot', label: 'Back to Current SWOT' }}
+      />
 
       {/* Error Alert */}
       {error && (

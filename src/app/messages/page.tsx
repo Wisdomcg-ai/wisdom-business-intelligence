@@ -280,6 +280,7 @@ export default function MessagesPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <PageHeader
+        variant="banner"
         title="Messages"
         subtitle={coachId
           ? `Chat with ${coachName || 'your coach'}`
@@ -287,7 +288,7 @@ export default function MessagesPage() {
         icon={MessageSquare}
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         <div className="max-w-4xl mx-auto">
           <div className="flex flex-col h-[calc(100svh-12rem)] sm:h-[calc(100vh-12rem)]">
             {/* Chat Header */}

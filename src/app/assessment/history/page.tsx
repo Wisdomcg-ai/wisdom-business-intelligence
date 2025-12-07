@@ -109,6 +109,7 @@ export default function AssessmentHistory() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <PageHeader
+        variant="banner"
         title="Assessment History"
         subtitle="View and compare your previous business health assessments"
         icon={ClipboardList}

@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Sparkles, Target, TrendingUp, Users } from 'lucide-react';
+import { Sparkles, Target, TrendingUp, Users, Save } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import PageHeader from '@/components/ui/PageHeader';
 
 interface ValuePropData {
   target_demographics: string;
@@ -185,38 +186,30 @@ export default function ValuePropositionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4">
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="text-gray-500 hover:text-gray-700 flex items-center gap-2"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back to Dashboard
-            </button>
-            {saving && <span className="text-sm text-gray-500">Saving...</span>}
+    <div className="min-h-screen bg-gray-50">
+      <PageHeader
+        variant="banner"
+        title="Value Proposition & USP"
+        subtitle="Define your unique value, target customers, and competitive differentiation"
+        icon={Target}
+        actions={
+          <div className="flex flex-col items-end gap-1">
+            {saving && (
+              <span className="text-sm text-white/70 flex items-center gap-2">
+                <Save className="h-4 w-4 animate-pulse" />
+                Saving...
+              </span>
+            )}
             {!saving && lastSaved && (
-              <span className="text-sm text-green-600">
+              <span className="text-sm text-brand-orange">
                 ✓ Saved {lastSaved.toLocaleTimeString()}
               </span>
             )}
           </div>
-          
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-brand-orange-100 rounded-lg">
-              <Target className="w-6 h-6 text-brand-orange" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Value Proposition & USP</h1>
-              <p className="mt-2 text-gray-600">
-                Define your unique value, target customers, and competitive differentiation.
-              </p>
-            </div>
-          </div>
-        </div>
+        }
+      />
+
+      <div className="max-w-4xl mx-auto px-4 py-8">
 
         <div className="space-y-6">
           {/* Target Market */}

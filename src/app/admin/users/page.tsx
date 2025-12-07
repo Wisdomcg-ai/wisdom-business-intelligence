@@ -139,10 +139,10 @@ function UsersContent() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <PageHeader
+        variant="banner"
         title="User Management"
         subtitle="Search for users and reset their passwords"
         icon={Users}
-        variant="simple"
       />
 
       {/* Search Card */}

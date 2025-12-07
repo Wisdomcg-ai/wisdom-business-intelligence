@@ -222,7 +222,7 @@ function ClientsListContent() {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex items-center justify-center min-h-[400px]">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-500">Loading clients...</p>
@@ -232,9 +232,10 @@ function ClientsListContent() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       {/* Page Header */}
       <PageHeader
+        variant="banner"
         title="Clients"
         subtitle={`${stats.total} total • ${stats.active} active • ${stats.atRisk} at-risk`}
         icon={Users}
