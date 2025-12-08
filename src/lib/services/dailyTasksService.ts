@@ -1,6 +1,8 @@
 // /lib/services/dailyTasksService.ts
-// SIMPLIFIED DAILY TASKS SERVICE - Brain of the system
-// NOW WITH: Overdue detection, specific dates, days overdue tracking, and auto-archive
+// DAILY TASKS SERVICE - Supabase Integration
+// Handles: Overdue detection, specific dates, days overdue tracking, and auto-archive
+
+'use client'
 
 import { createClient } from '@/lib/supabase/client'
 
@@ -15,6 +17,7 @@ export type TaskDueDate = 'today' | 'tomorrow' | 'this-week' | 'next-week' | 'cu
 export interface DailyTask {
   id: string
   user_id: string
+  business_id?: string | null
   title: string
   priority: TaskPriority
   status: TaskStatus
@@ -24,7 +27,7 @@ export interface DailyTask {
   completed_at?: string | null
   created_at: string
   updated_at: string
-  archived_at?: string | null // New: when task was archived
+  archived_at?: string | null // When task was archived
 }
 
 export interface CreateDailyTaskInput {
@@ -76,7 +79,7 @@ export const DUE_DATE_CONFIG = {
 }
 
 // ============================================================================
-// UTILITY FUNCTIONS - Helper functions
+// UTILITY FUNCTIONS - Helper functions (no database access)
 // ============================================================================
 
 export function getPriorityLabel(priority: TaskPriority): string {
@@ -164,355 +167,412 @@ function wasCompletedToday(completedAt?: string | null): boolean {
 }
 
 /**
- * Auto-archive completed tasks from previous days
+ * Sort tasks: Overdue first, then by priority
  */
-function archiveOldCompletedTasks(): void {
-  if (typeof window === 'undefined') return
+function sortTasks(tasks: DailyTask[]): DailyTask[] {
+  return tasks.sort((a, b) => {
+    const aOverdue = isOverdue(a.due_date, a.specific_date) ? 1 : 0
+    const bOverdue = isOverdue(b.due_date, b.specific_date) ? 1 : 0
 
-  try {
-    const stored = localStorage.getItem('dailyTasks')
-    if (!stored) return
-
-    const tasks = JSON.parse(stored) as DailyTask[]
-    let updated = false
-
-    const updatedTasks = tasks.map(task => {
-      // If task is done and was NOT completed today, archive it
-      if (task.status === 'done' && task.completed_at && !wasCompletedToday(task.completed_at)) {
-        if (!task.archived_at) {
-          task.archived_at = new Date().toISOString()
-          updated = true
-        }
-      }
-      return task
-    })
-
-    if (updated) {
-      localStorage.setItem('dailyTasks', JSON.stringify(updatedTasks))
+    if (aOverdue !== bOverdue) {
+      return bOverdue - aOverdue // Overdue tasks first
     }
-  } catch (error) {
-    console.error('Error archiving old tasks:', error)
-  }
+
+    // Then sort by priority (critical > important > nice-to-do)
+    const priorityOrder = { critical: 0, important: 1, 'nice-to-do': 2 }
+    return priorityOrder[a.priority] - priorityOrder[b.priority]
+  })
 }
 
 // ============================================================================
-// MAIN FUNCTIONS - Create, read, update, delete tasks
+// SUPABASE SERVICE CLASS
 // ============================================================================
 
-/**
- * Get tasks for today (not completed, not archived) - sorted with overdue at top
- */
-export function getTodaysTasks(): DailyTask[] {
-  if (typeof window === 'undefined') return []
+class DailyTasksService {
+  private supabase = createClient()
 
-  try {
-    archiveOldCompletedTasks() // Run auto-archive first
-
-    const stored = localStorage.getItem('dailyTasks')
-    if (!stored) return []
-
-    const tasks = JSON.parse(stored) as DailyTask[]
-    const activeTasks = tasks.filter(task => task.status !== 'done' && !task.archived_at)
-
-    // Sort: Overdue first, then by priority
-    return activeTasks.sort((a, b) => {
-      const aOverdue = isOverdue(a.due_date, a.specific_date) ? 1 : 0
-      const bOverdue = isOverdue(b.due_date, b.specific_date) ? 1 : 0
-
-      if (aOverdue !== bOverdue) {
-        return bOverdue - aOverdue // Overdue tasks first
-      }
-
-      // Then sort by priority (critical > important > nice-to-do)
-      const priorityOrder = { critical: 0, important: 1, 'nice-to-do': 2 }
-      return priorityOrder[a.priority] - priorityOrder[b.priority]
-    })
-  } catch (error) {
-    console.error('Error loading today tasks:', error)
-    return []
-  }
-}
-
-/**
- * Get completed tasks from TODAY (not archived)
- */
-export function getTodaysCompletedTasks(): DailyTask[] {
-  if (typeof window === 'undefined') return []
-
-  try {
-    const stored = localStorage.getItem('dailyTasks')
-    if (!stored) return []
-
-    const tasks = JSON.parse(stored) as DailyTask[]
-    return tasks.filter(task => task.status === 'done' && !task.archived_at && wasCompletedToday(task.completed_at))
-  } catch (error) {
-    console.error('Error loading completed tasks:', error)
-    return []
-  }
-}
-
-/**
- * Get archived completed tasks (history)
- */
-export function getArchivedTasks(): DailyTask[] {
-  if (typeof window === 'undefined') return []
-
-  try {
-    const stored = localStorage.getItem('dailyTasks')
-    if (!stored) return []
-
-    const tasks = JSON.parse(stored) as DailyTask[]
-    return tasks.filter(task => task.archived_at).sort((a, b) => {
-      const aDate = new Date(a.archived_at || '').getTime()
-      const bDate = new Date(b.archived_at || '').getTime()
-      return bDate - aDate // Newest first
-    })
-  } catch (error) {
-    console.error('Error loading archived tasks:', error)
-    return []
-  }
-}
-
-/**
- * Get ALL tasks (active, completed, and archived)
- */
-export function getAllTasks(): DailyTask[] {
-  if (typeof window === 'undefined') return []
-
-  try {
-    const stored = localStorage.getItem('dailyTasks')
-    if (!stored) return []
-
-    return JSON.parse(stored) as DailyTask[]
-  } catch (error) {
-    console.error('Error loading all tasks:', error)
-    return []
-  }
-}
-
-/**
- * Create a new task
- */
-export function createTask(input: CreateDailyTaskInput): DailyTask {
-  const newTask: DailyTask = {
-    id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    user_id: 'local-user',
-    title: input.title,
-    priority: input.priority,
-    status: 'to-do',
-    due_date: input.due_date,
-    specific_date: input.specific_date || null,
-    open_loop_id: input.open_loop_id || null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    archived_at: null
+  /**
+   * Get current user ID
+   */
+  private async getUserId(): Promise<string | null> {
+    const { data: { user } } = await this.supabase.auth.getUser()
+    return user?.id || null
   }
 
-  try {
-    const allTasks = getAllTasks()
-    allTasks.push(newTask)
-    localStorage.setItem('dailyTasks', JSON.stringify(allTasks))
-  } catch (error) {
-    console.error('Error creating task:', error)
+  /**
+   * Get user's business ID (optional - for multi-business support)
+   */
+  private async getBusinessId(): Promise<string | null> {
+    const userId = await this.getUserId()
+    if (!userId) return null
+
+    const { data } = await this.supabase
+      .from('businesses')
+      .select('id')
+      .eq('user_id', userId)
+      .single()
+
+    return data?.id || null
   }
 
-  return newTask
-}
+  /**
+   * Auto-archive completed tasks from previous days
+   */
+  async archiveOldCompletedTasks(): Promise<void> {
+    const userId = await this.getUserId()
+    if (!userId) return
 
-/**
- * Update task status (to-do → in-progress → done)
- */
-export function updateTaskStatus(taskId: string, newStatus: TaskStatus): void {
-  try {
-    const allTasks = getAllTasks()
-    const task = allTasks.find(t => t.id === taskId)
+    const todayStart = getTodayDateString() + 'T00:00:00.000Z'
 
-    if (task) {
-      task.status = newStatus
-      if (newStatus === 'done') {
-        task.completed_at = new Date().toISOString()
-      } else if (newStatus === 'to-do') {
-        // If uncompleting, remove completion time and archive flag
-        task.completed_at = null
-        task.archived_at = null
-      }
-      task.updated_at = new Date().toISOString()
-      localStorage.setItem('dailyTasks', JSON.stringify(allTasks))
+    // Archive tasks that are done and completed before today
+    await this.supabase
+      .from('daily_tasks')
+      .update({
+        archived_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId)
+      .eq('status', 'done')
+      .is('archived_at', null)
+      .lt('completed_at', todayStart)
+  }
+
+  /**
+   * Get tasks for today (not completed, not archived) - sorted with overdue at top
+   */
+  async getTodaysTasks(): Promise<DailyTask[]> {
+    const userId = await this.getUserId()
+    if (!userId) return []
+
+    // Run auto-archive first
+    await this.archiveOldCompletedTasks()
+
+    const { data, error } = await this.supabase
+      .from('daily_tasks')
+      .select('*')
+      .eq('user_id', userId)
+      .neq('status', 'done')
+      .is('archived_at', null)
+      .order('created_at', { ascending: true })
+
+    if (error) {
+      console.error('[DailyTasks] Error loading tasks:', error)
+      return []
     }
-  } catch (error) {
-    console.error('Error updating task status:', error)
+
+    return sortTasks(data || [])
   }
-}
 
-/**
- * Update task priority
- */
-export function updateTaskPriority(taskId: string, newPriority: TaskPriority): void {
-  try {
-    const allTasks = getAllTasks()
-    const task = allTasks.find(t => t.id === taskId)
+  /**
+   * Get completed tasks from TODAY (not archived)
+   */
+  async getTodaysCompletedTasks(): Promise<DailyTask[]> {
+    const userId = await this.getUserId()
+    if (!userId) return []
 
-    if (task) {
-      task.priority = newPriority
-      task.updated_at = new Date().toISOString()
-      localStorage.setItem('dailyTasks', JSON.stringify(allTasks))
+    const { data, error } = await this.supabase
+      .from('daily_tasks')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'done')
+      .is('archived_at', null)
+      .order('completed_at', { ascending: false })
+
+    if (error) {
+      console.error('[DailyTasks] Error loading completed tasks:', error)
+      return []
     }
-  } catch (error) {
-    console.error('Error updating task priority:', error)
+
+    // Filter to only tasks completed today
+    return (data || []).filter(task => wasCompletedToday(task.completed_at))
+  }
+
+  /**
+   * Get archived completed tasks (history)
+   */
+  async getArchivedTasks(): Promise<DailyTask[]> {
+    const userId = await this.getUserId()
+    if (!userId) return []
+
+    const { data, error } = await this.supabase
+      .from('daily_tasks')
+      .select('*')
+      .eq('user_id', userId)
+      .not('archived_at', 'is', null)
+      .order('archived_at', { ascending: false })
+
+    if (error) {
+      console.error('[DailyTasks] Error loading archived tasks:', error)
+      return []
+    }
+
+    return data || []
+  }
+
+  /**
+   * Get ALL tasks (active, completed, and archived)
+   */
+  async getAllTasks(): Promise<DailyTask[]> {
+    const userId = await this.getUserId()
+    if (!userId) return []
+
+    const { data, error } = await this.supabase
+      .from('daily_tasks')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+
+    if (error) {
+      console.error('[DailyTasks] Error loading all tasks:', error)
+      return []
+    }
+
+    return data || []
+  }
+
+  /**
+   * Create a new task
+   */
+  async createTask(input: CreateDailyTaskInput): Promise<DailyTask | null> {
+    const userId = await this.getUserId()
+    if (!userId) {
+      console.error('[DailyTasks] No user ID - cannot create task')
+      return null
+    }
+
+    const businessId = await this.getBusinessId()
+
+    const newTask = {
+      user_id: userId,
+      business_id: businessId,
+      title: input.title,
+      priority: input.priority,
+      status: 'to-do' as TaskStatus,
+      due_date: input.due_date,
+      specific_date: input.specific_date || null,
+      open_loop_id: input.open_loop_id || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+
+    const { data, error } = await this.supabase
+      .from('daily_tasks')
+      .insert(newTask)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('[DailyTasks] Error creating task:', error)
+      return null
+    }
+
+    return data
+  }
+
+  /**
+   * Update task status (to-do → in-progress → done)
+   */
+  async updateTaskStatus(taskId: string, newStatus: TaskStatus): Promise<void> {
+    const userId = await this.getUserId()
+    if (!userId) return
+
+    const updates: Record<string, unknown> = {
+      status: newStatus,
+      updated_at: new Date().toISOString()
+    }
+
+    if (newStatus === 'done') {
+      updates.completed_at = new Date().toISOString()
+    } else if (newStatus === 'to-do') {
+      // If uncompleting, remove completion time and archive flag
+      updates.completed_at = null
+      updates.archived_at = null
+    }
+
+    const { error } = await this.supabase
+      .from('daily_tasks')
+      .update(updates)
+      .eq('id', taskId)
+      .eq('user_id', userId)
+
+    if (error) {
+      console.error('[DailyTasks] Error updating task status:', error)
+    }
+  }
+
+  /**
+   * Update task priority
+   */
+  async updateTaskPriority(taskId: string, newPriority: TaskPriority): Promise<void> {
+    const userId = await this.getUserId()
+    if (!userId) return
+
+    const { error } = await this.supabase
+      .from('daily_tasks')
+      .update({
+        priority: newPriority,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', taskId)
+      .eq('user_id', userId)
+
+    if (error) {
+      console.error('[DailyTasks] Error updating task priority:', error)
+    }
+  }
+
+  /**
+   * Update task due date
+   */
+  async updateTaskDueDate(
+    taskId: string,
+    newDueDate: TaskDueDate,
+    specificDate?: string | null
+  ): Promise<void> {
+    const userId = await this.getUserId()
+    if (!userId) return
+
+    const { error } = await this.supabase
+      .from('daily_tasks')
+      .update({
+        due_date: newDueDate,
+        specific_date: specificDate || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', taskId)
+      .eq('user_id', userId)
+
+    if (error) {
+      console.error('[DailyTasks] Error updating task due date:', error)
+    }
+  }
+
+  /**
+   * Delete a task permanently
+   */
+  async deleteTask(taskId: string): Promise<void> {
+    const userId = await this.getUserId()
+    if (!userId) return
+
+    const { error } = await this.supabase
+      .from('daily_tasks')
+      .delete()
+      .eq('id', taskId)
+      .eq('user_id', userId)
+
+    if (error) {
+      console.error('[DailyTasks] Error deleting task:', error)
+    }
+  }
+
+  /**
+   * Permanently delete archived tasks (cleanup)
+   */
+  async deleteArchivedTasks(): Promise<void> {
+    const userId = await this.getUserId()
+    if (!userId) return
+
+    const { error } = await this.supabase
+      .from('daily_tasks')
+      .delete()
+      .eq('user_id', userId)
+      .not('archived_at', 'is', null)
+
+    if (error) {
+      console.error('[DailyTasks] Error deleting archived tasks:', error)
+    }
+  }
+
+  /**
+   * Get tasks by priority
+   */
+  async getTasksByPriority(priority: TaskPriority): Promise<DailyTask[]> {
+    const tasks = await this.getTodaysTasks()
+    return tasks.filter(t => t.priority === priority)
+  }
+
+  /**
+   * Calculate stats including overdue
+   */
+  async calculateStats(): Promise<DailyTaskStats> {
+    const todaysTasks = await this.getTodaysTasks()
+    const completedTasks = await this.getTodaysCompletedTasks()
+    const completed = completedTasks.length
+    const overdue = todaysTasks.filter(t => isOverdue(t.due_date, t.specific_date)).length
+
+    return {
+      total: todaysTasks.length + completed,
+      critical: todaysTasks.filter(t => t.priority === 'critical').length,
+      important: todaysTasks.filter(t => t.priority === 'important').length,
+      niceTooDo: todaysTasks.filter(t => t.priority === 'nice-to-do').length,
+      completed,
+      completionRate:
+        todaysTasks.length + completed > 0
+          ? Math.round((completed / (todaysTasks.length + completed)) * 100)
+          : 0,
+      overdue
+    }
   }
 }
 
-/**
- * Update task due date
- */
-export function updateTaskDueDate(
+// Export singleton instance
+export const dailyTasksService = new DailyTasksService()
+
+// ============================================================================
+// BACKWARDS COMPATIBILITY - Export functions that wrap the service
+// These allow existing code to work without major refactoring
+// ============================================================================
+
+export async function getTodaysTasks(): Promise<DailyTask[]> {
+  return dailyTasksService.getTodaysTasks()
+}
+
+export async function getTodaysCompletedTasks(): Promise<DailyTask[]> {
+  return dailyTasksService.getTodaysCompletedTasks()
+}
+
+export async function getArchivedTasks(): Promise<DailyTask[]> {
+  return dailyTasksService.getArchivedTasks()
+}
+
+export async function getAllTasks(): Promise<DailyTask[]> {
+  return dailyTasksService.getAllTasks()
+}
+
+export async function createTask(input: CreateDailyTaskInput): Promise<DailyTask | null> {
+  return dailyTasksService.createTask(input)
+}
+
+export async function updateTaskStatus(taskId: string, newStatus: TaskStatus): Promise<void> {
+  return dailyTasksService.updateTaskStatus(taskId, newStatus)
+}
+
+export async function updateTaskPriority(taskId: string, newPriority: TaskPriority): Promise<void> {
+  return dailyTasksService.updateTaskPriority(taskId, newPriority)
+}
+
+export async function updateTaskDueDate(
   taskId: string,
   newDueDate: TaskDueDate,
   specificDate?: string | null
-): void {
-  try {
-    const allTasks = getAllTasks()
-    const task = allTasks.find(t => t.id === taskId)
-
-    if (task) {
-      task.due_date = newDueDate
-      task.specific_date = specificDate || null
-      task.updated_at = new Date().toISOString()
-      localStorage.setItem('dailyTasks', JSON.stringify(allTasks))
-    }
-  } catch (error) {
-    console.error('Error updating task due date:', error)
-  }
+): Promise<void> {
+  return dailyTasksService.updateTaskDueDate(taskId, newDueDate, specificDate)
 }
 
-/**
- * Delete a task permanently
- */
-export function deleteTask(taskId: string): void {
-  try {
-    const allTasks = getAllTasks()
-    const filtered = allTasks.filter(t => t.id !== taskId)
-    localStorage.setItem('dailyTasks', JSON.stringify(filtered))
-  } catch (error) {
-    console.error('Error deleting task:', error)
-  }
+export async function deleteTask(taskId: string): Promise<void> {
+  return dailyTasksService.deleteTask(taskId)
 }
 
-/**
- * Permanently delete archived tasks (cleanup)
- */
-export function deleteArchivedTasks(): void {
-  try {
-    const allTasks = getAllTasks()
-    const filtered = allTasks.filter(t => !t.archived_at)
-    localStorage.setItem('dailyTasks', JSON.stringify(filtered))
-  } catch (error) {
-    console.error('Error deleting archived tasks:', error)
-  }
+export async function deleteArchivedTasks(): Promise<void> {
+  return dailyTasksService.deleteArchivedTasks()
 }
 
-/**
- * Get tasks by priority
- */
-export function getTasksByPriority(priority: TaskPriority): DailyTask[] {
-  return getTodaysTasks().filter(t => t.priority === priority)
+export async function getTasksByPriority(priority: TaskPriority): Promise<DailyTask[]> {
+  return dailyTasksService.getTasksByPriority(priority)
 }
 
-/**
- * Calculate stats including overdue
- */
-export function calculateStats(): DailyTaskStats {
-  const todaysTasks = getTodaysTasks()
-  const completed = getTodaysCompletedTasks().length
-  const overdue = todaysTasks.filter(t => isOverdue(t.due_date, t.specific_date)).length
-
-  return {
-    total: todaysTasks.length + completed,
-    critical: todaysTasks.filter(t => t.priority === 'critical').length,
-    important: todaysTasks.filter(t => t.priority === 'important').length,
-    niceTooDo: todaysTasks.filter(t => t.priority === 'nice-to-do').length,
-    completed,
-    completionRate:
-      todaysTasks.length + completed > 0
-        ? Math.round((completed / (todaysTasks.length + completed)) * 100)
-        : 0,
-    overdue
-  }
+export async function calculateStats(): Promise<DailyTaskStats> {
+  return dailyTasksService.calculateStats()
 }
 
-/**
- * Load sample tasks for testing
- */
-export function loadSampleTasks(): void {
-  if (typeof window === 'undefined') return
-
-  const sampleTasks: DailyTask[] = [
-    {
-      id: 'task_sample_1',
-      user_id: 'local-user',
-      title: 'Call CRM vendor for pricing quote',
-      priority: 'critical',
-      status: 'to-do',
-      due_date: 'today',
-      specific_date: null,
-      open_loop_id: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      archived_at: null
-    },
-    {
-      id: 'task_sample_2',
-      user_id: 'local-user',
-      title: 'Fix checkout page CSS bug',
-      priority: 'critical',
-      status: 'to-do',
-      due_date: 'today',
-      specific_date: null,
-      open_loop_id: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      archived_at: null
-    },
-    {
-      id: 'task_sample_3',
-      user_id: 'local-user',
-      title: 'Review Q4 financial forecast',
-      priority: 'important',
-      status: 'to-do',
-      due_date: 'today',
-      specific_date: null,
-      open_loop_id: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      archived_at: null
-    },
-    {
-      id: 'task_sample_4',
-      user_id: 'local-user',
-      title: 'Schedule team standup',
-      priority: 'important',
-      status: 'to-do',
-      due_date: 'tomorrow',
-      specific_date: null,
-      open_loop_id: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      archived_at: null
-    },
-    {
-      id: 'task_sample_5',
-      user_id: 'local-user',
-      title: 'Update client status document',
-      priority: 'nice-to-do',
-      status: 'to-do',
-      due_date: 'this-week',
-      specific_date: null,
-      open_loop_id: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      archived_at: null
-    }
-  ]
-
-  localStorage.setItem('dailyTasks', JSON.stringify(sampleTasks))
-}
+// Remove loadSampleTasks - no longer needed with Supabase

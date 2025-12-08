@@ -3,7 +3,7 @@
 
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Plus, Check, Trash2, ChevronDown, Calendar, AlertCircle, RotateCcw, CheckSquare } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
 import {
@@ -15,12 +15,12 @@ import {
   updateTaskDueDate,
   deleteTask,
   calculateStats,
-  loadSampleTasks,
   isOverdue,
   calculateDaysOverdue,
   formatTaskDate,
   PRIORITY_CONFIG,
   DUE_DATE_CONFIG,
+  type DailyTask,
   type TaskPriority,
   type TaskStatus,
   type TaskDueDate
@@ -31,8 +31,8 @@ export default function TodoPage() {
   // STATE - Keep track of tasks, form visibility, loading state
   // ========================================================================
 
-  const [activeTasks, setActiveTasks] = useState<ReturnType<typeof getTodaysTasks>>([])
-  const [completedTasks, setCompletedTasks] = useState<ReturnType<typeof getTodaysCompletedTasks>>([])
+  const [activeTasks, setActiveTasks] = useState<DailyTask[]>([])
+  const [completedTasks, setCompletedTasks] = useState<DailyTask[]>([])
   const [stats, setStats] = useState({
     total: 0,
     critical: 0,
@@ -58,19 +58,17 @@ export default function TodoPage() {
   })
 
   // ========================================================================
-  // LOAD DATA - Get tasks from storage when page loads
+  // LOAD DATA - Get tasks from Supabase when page loads
   // ========================================================================
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const active = getTodaysTasks()
-      const completed = getTodaysCompletedTasks()
-      const newStats = calculateStats()
+      const [active, completed, newStats] = await Promise.all([
+        getTodaysTasks(),
+        getTodaysCompletedTasks(),
+        calculateStats()
+      ])
 
       setActiveTasks(active)
       setCompletedTasks(completed)
@@ -80,13 +78,17 @@ export default function TodoPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   // ========================================================================
   // FORM HANDLERS - Handle user actions
   // ========================================================================
 
-  function handleAddTask(e: React.FormEvent) {
+  async function handleAddTask(e: React.FormEvent) {
     e.preventDefault()
 
     if (!formData.title.trim()) {
@@ -98,7 +100,7 @@ export default function TodoPage() {
       const dueDate = formData.due_date === 'custom' ? 'custom' : formData.due_date
       const specificDate = formData.due_date === 'custom' ? formData.specific_date : null
 
-      createTask({
+      await createTask({
         title: formData.title.trim(),
         priority: formData.priority,
         due_date: dueDate,
@@ -115,60 +117,53 @@ export default function TodoPage() {
 
       setShowForm(false)
       setShowDatePicker(false)
-      loadData()
+      await loadData()
     } catch (error) {
       console.error('Error adding task:', error)
       alert('Failed to add task')
     }
   }
 
-  function handleStatusChange(taskId: string, newStatus: TaskStatus) {
+  async function handleStatusChange(taskId: string, newStatus: TaskStatus) {
     try {
-      updateTaskStatus(taskId, newStatus)
-      loadData()
+      await updateTaskStatus(taskId, newStatus)
+      await loadData()
     } catch (error) {
       console.error('Error updating task:', error)
       alert('Failed to update task')
     }
   }
 
-  function handlePriorityChange(taskId: string, newPriority: TaskPriority) {
+  async function handlePriorityChange(taskId: string, newPriority: TaskPriority) {
     try {
-      updateTaskPriority(taskId, newPriority)
-      loadData()
+      await updateTaskPriority(taskId, newPriority)
+      await loadData()
     } catch (error) {
       console.error('Error updating priority:', error)
       alert('Failed to update priority')
     }
   }
 
-  function handleChangeDueDate(taskId: string, newDueDate: TaskDueDate, specificDate?: string) {
+  async function handleChangeDueDate(taskId: string, newDueDate: TaskDueDate, specificDate?: string) {
     try {
-      updateTaskDueDate(taskId, newDueDate, specificDate || null)
+      await updateTaskDueDate(taskId, newDueDate, specificDate || null)
       setOpenDueDateDropdown(null)
-      loadData()
+      await loadData()
     } catch (error) {
       console.error('Error updating due date:', error)
       alert('Failed to update due date')
     }
   }
 
-  function handleDeleteTask(taskId: string) {
+  async function handleDeleteTask(taskId: string) {
     if (!confirm('Delete this task?')) return
 
     try {
-      deleteTask(taskId)
-      loadData()
+      await deleteTask(taskId)
+      await loadData()
     } catch (error) {
       console.error('Error deleting task:', error)
       alert('Failed to delete task')
-    }
-  }
-
-  function handleLoadSamples() {
-    if (confirm('Load sample tasks for testing?')) {
-      loadSampleTasks()
-      loadData()
     }
   }
 
@@ -176,7 +171,7 @@ export default function TodoPage() {
   // DUE DATE DROPDOWN COMPONENT
   // ========================================================================
 
-  function DueDateDropdown({ task }: { task: any }) {
+  function DueDateDropdown({ task }: { task: DailyTask }) {
     const isOpen = openDueDateDropdown === task.id
     const currentLabel = formatTaskDate(task.due_date, task.specific_date)
 
@@ -252,7 +247,7 @@ export default function TodoPage() {
   // TASK ITEM COMPONENT - Individual task display with overdue indicator
   // ========================================================================
 
-  function TaskItem({ task, isCompleted = false }: { task: any; isCompleted?: boolean }) {
+  function TaskItem({ task, isCompleted = false }: { task: DailyTask; isCompleted?: boolean }) {
     const priorityConfig = PRIORITY_CONFIG[task.priority as TaskPriority]
     const taskIsOverdue = isOverdue(task.due_date, task.specific_date)
     const daysOverdue = calculateDaysOverdue(task.due_date, task.specific_date)
