@@ -3,7 +3,8 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   Target, Calendar, Briefcase, Users, Plus, Trash2, Edit2, ChevronDown, ChevronUp,
-  Clock, CheckCircle2, AlertCircle, Flag, TrendingUp, GripVertical, UserPlus, X, Check
+  Clock, CheckCircle2, AlertCircle, Flag, TrendingUp, GripVertical, UserPlus, X, Check,
+  Settings
 } from 'lucide-react'
 import {
   StrategicInitiative,
@@ -57,7 +58,8 @@ export default function Step5SprintPlanning({
   planningQuarterInitiatives = 0,
   hasOperationalActivities = false
 }: Step5Props) {
-  const [activeTab, setActiveTab] = useState<'monthly' | 'initiatives' | 'operational'>('monthly')
+  const [activeTab, setActiveTab] = useState<'monthly' | 'initiatives' | 'operational'>('initiatives')
+  const [showAdvancedMode, setShowAdvancedMode] = useState(false)
 
   // Determine current quarter
   const today = new Date()
@@ -112,34 +114,48 @@ export default function Step5SprintPlanning({
     const quarterCustomers = parseFloat(quarterlyTargets['customers']?.[qKey] || '0') || 0
     const quarterEmployees = parseFloat(quarterlyTargets['teamHeadcount']?.[qKey] || '0') || 0
 
+    // Helper to distribute a quarterly value across 3 months so the sum equals the quarterly exactly
+    const distributeAcrossMonths = (quarterlyValue: number): [number, number, number] => {
+      if (!quarterlyValue || quarterlyValue === 0) return [0, 0, 0]
+      const month1 = Math.floor(quarterlyValue / 3)
+      const month2 = Math.floor(quarterlyValue / 3)
+      const month3 = quarterlyValue - month1 - month2 // Gets remainder to ensure exact sum
+      return [month1, month2, month3]
+    }
+
     // Only initialize if we have values and current state is all zeros
     if (quarterRevenue > 0 && monthlyTargets.month1.revenue === 0) {
+      const [rev1, rev2, rev3] = distributeAcrossMonths(quarterRevenue)
+      const [gp1, gp2, gp3] = distributeAcrossMonths(quarterGrossProfit)
+      const [np1, np2, np3] = distributeAcrossMonths(quarterNetProfit)
+      const [cust1, cust2, cust3] = distributeAcrossMonths(quarterCustomers)
+
       setMonthlyTargets({
         month1: {
-          revenue: Math.round(quarterRevenue / 3),
-          grossProfit: Math.round(quarterGrossProfit / 3),
+          revenue: rev1,
+          grossProfit: gp1,
           grossMargin: 0, // Will be auto-calculated
-          netProfit: Math.round(quarterNetProfit / 3),
+          netProfit: np1,
           netMargin: 0, // Will be auto-calculated
-          customers: Math.round(quarterCustomers / 3),
+          customers: cust1,
           employees: Math.round(quarterEmployees)
         },
         month2: {
-          revenue: Math.round(quarterRevenue / 3),
-          grossProfit: Math.round(quarterGrossProfit / 3),
+          revenue: rev2,
+          grossProfit: gp2,
           grossMargin: 0, // Will be auto-calculated
-          netProfit: Math.round(quarterNetProfit / 3),
+          netProfit: np2,
           netMargin: 0, // Will be auto-calculated
-          customers: Math.round(quarterCustomers / 3),
+          customers: cust2,
           employees: Math.round(quarterEmployees)
         },
         month3: {
-          revenue: Math.round(quarterRevenue / 3),
-          grossProfit: Math.round(quarterGrossProfit / 3),
+          revenue: rev3,
+          grossProfit: gp3,
           grossMargin: 0, // Will be auto-calculated
-          netProfit: Math.round(quarterNetProfit / 3),
+          netProfit: np3,
           netMargin: 0, // Will be auto-calculated
-          customers: Math.round(quarterCustomers / 3),
+          customers: cust3,
           employees: Math.round(quarterEmployees)
         }
       })
@@ -165,39 +181,48 @@ export default function Step5SprintPlanning({
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
 
   // Tab configuration with enhanced styling (must be after initiatives state)
-  const tabs = useMemo(() => [
-    {
-      id: 'monthly',
-      label: 'Monthly Goals',
-      icon: Target,
-      description: 'Break down quarterly targets into monthly goals',
-      color: 'from-slate-600 to-slate-700',
-      bgColor: 'bg-gray-50',
-      borderColor: 'border-slate-500',
-      textColor: 'text-gray-700'
-    },
-    {
-      id: 'initiatives',
-      label: 'Initiatives & Projects',
-      icon: Flag,
-      badge: initiatives.length,
-      description: 'Plan and track strategic initiatives',
-      color: 'from-brand-orange to-brand-orange-700',
-      bgColor: 'bg-brand-orange-50',
-      borderColor: 'border-brand-orange-500',
-      textColor: 'text-brand-orange-700'
-    },
-    {
-      id: 'operational',
-      label: 'Operational Plan',
-      icon: Briefcase,
-      description: 'Weekly execution and accountability',
-      color: 'from-slate-600 to-slate-700',
-      bgColor: 'bg-gray-50',
-      borderColor: 'border-slate-500',
-      textColor: 'text-gray-700'
-    }
-  ], [initiatives.length])
+  // Filter tabs based on advanced mode - monthly tab is hidden by default
+  const tabs = useMemo(() => {
+    const allTabs = [
+      {
+        id: 'monthly',
+        label: 'Monthly Breakdown',
+        icon: Calendar,
+        description: 'Break down quarterly targets into monthly goals',
+        color: 'from-slate-600 to-slate-700',
+        bgColor: 'bg-gray-50',
+        borderColor: 'border-slate-500',
+        textColor: 'text-gray-700',
+        advancedOnly: true
+      },
+      {
+        id: 'initiatives',
+        label: 'Initiatives & Projects',
+        icon: Flag,
+        badge: initiatives.length,
+        description: 'Plan and track strategic initiatives',
+        color: 'from-brand-orange to-brand-orange-700',
+        bgColor: 'bg-brand-orange-50',
+        borderColor: 'border-brand-orange-500',
+        textColor: 'text-brand-orange-700',
+        advancedOnly: false
+      },
+      {
+        id: 'operational',
+        label: 'Operational Plan',
+        icon: Briefcase,
+        description: 'Weekly execution and accountability',
+        color: 'from-slate-600 to-slate-700',
+        bgColor: 'bg-gray-50',
+        borderColor: 'border-slate-500',
+        textColor: 'text-gray-700',
+        advancedOnly: false
+      }
+    ]
+
+    // Filter out advanced-only tabs when not in advanced mode
+    return showAdvancedMode ? allTabs : allTabs.filter(tab => !tab.advancedOnly)
+  }, [initiatives.length, showAdvancedMode])
 
   // Sync FROM Annual Plan: Update local initiatives when Annual Plan changes
   // Only sync when annualPlanByQuarter changes, NOT when local initiatives change
@@ -321,6 +346,27 @@ export default function Step5SprintPlanning({
               updatedAt: new Date().toISOString()
             })
           }
+
+          // Add business partners from owner_info.partners
+          if (ownerInfo.partners && Array.isArray(ownerInfo.partners)) {
+            ownerInfo.partners.forEach((partner: any, index: number) => {
+              if (partner.name && partner.name.trim()) {
+                members.push({
+                  id: `partner-${businessId}-${index}`,
+                  name: partner.name,
+                  email: '',
+                  role: 'Partner',
+                  type: 'employee',
+                  initials: getInitials(partner.name),
+                  color: getColorForName(partner.name),
+                  businessId,
+                  userId: user.id,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString()
+                })
+              }
+            })
+          }
         }
 
         // Add team members from key_roles
@@ -437,9 +483,41 @@ export default function Step5SprintPlanning({
         </div>
       </div>
 
-      {/* Tab Navigation - Enhanced Design */}
-      <div className="bg-white rounded-lg shadow-md border-2 border-gray-200 overflow-hidden">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-0 divide-y md:divide-y-0 md:divide-x divide-gray-200">
+      {/* Main Layout with Sidebar */}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Sidebar - Quarterly Targets */}
+        <div className="lg:w-72 flex-shrink-0">
+          <QuarterlyTargetsSidebar
+            quarterlyTargets={quarterlyTargets}
+            currentQuarter={currentQuarter}
+            currentQuarterKey={currentQuarterKey}
+            kpis={kpis}
+            coreMetrics={coreMetrics}
+          />
+        </div>
+
+        {/* Main Content Area */}
+        <div className="flex-1 min-w-0">
+          {/* Advanced Mode Toggle */}
+          <div className="flex justify-end mb-2">
+            <button
+              onClick={() => setShowAdvancedMode(!showAdvancedMode)}
+              className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                showAdvancedMode
+                  ? 'bg-gray-200 text-gray-700'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              {showAdvancedMode ? 'Hide' : 'Show'} Monthly Goals
+            </button>
+          </div>
+
+          {/* Tab Navigation - Enhanced Design */}
+          <div className="bg-white rounded-lg shadow-md border-2 border-gray-200 overflow-hidden">
+        <div className={`grid grid-cols-1 gap-0 divide-y md:divide-y-0 md:divide-x divide-gray-200 ${
+          tabs.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'
+        }`}>
           {tabs.map(tab => {
             const Icon = tab.icon
             const isActive = activeTab === tab.id
@@ -538,6 +616,166 @@ export default function Step5SprintPlanning({
           )}
         </div>
       </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// =============================================================================
+// QUARTERLY TARGETS SIDEBAR
+// =============================================================================
+
+interface QuarterlyTargetsSidebarProps {
+  quarterlyTargets: Record<string, { q1: string; q2: string; q3: string; q4: string }>
+  currentQuarter: any
+  currentQuarterKey: string
+  kpis: KPIData[]
+  coreMetrics?: CoreMetricsData
+}
+
+function QuarterlyTargetsSidebar({
+  quarterlyTargets,
+  currentQuarter,
+  currentQuarterKey,
+  kpis,
+  coreMetrics
+}: QuarterlyTargetsSidebarProps) {
+  const qKey = currentQuarterKey as 'q1' | 'q2' | 'q3' | 'q4'
+
+  const getTarget = (metricKey: string): number => {
+    const value = quarterlyTargets[metricKey]?.[qKey]
+    return value ? parseFloat(value) || 0 : 0
+  }
+
+  const formatCurrencyCompact = (value: number): string => {
+    if (!value || isNaN(value)) return '$0'
+    if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`
+    if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`
+    return `$${Math.round(value).toLocaleString()}`
+  }
+
+  // Financial targets from Annual Plan
+  const revenue = getTarget('revenue')
+  const grossProfit = getTarget('grossProfit')
+  const netProfit = getTarget('netProfit')
+  const grossMarginTarget = getTarget('grossMargin')
+  const netMarginTarget = getTarget('netMargin')
+
+  // Core metrics from Annual Plan quarterly targets
+  const teamHeadcount = getTarget('teamHeadcount')
+  const leadsPerMonth = getTarget('leadsPerMonth')
+  const conversionRate = getTarget('conversionRate')
+  const avgTransactionValue = getTarget('avgTransactionValue')
+  const ownerHoursPerWeek = getTarget('ownerHoursPerWeek')
+
+  // Calculate margins from values if not explicitly set
+  const grossMargin = grossMarginTarget > 0 ? grossMarginTarget : (revenue > 0 ? (grossProfit / revenue) * 100 : 0)
+  const netMargin = netMarginTarget > 0 ? netMarginTarget : (revenue > 0 ? (netProfit / revenue) * 100 : 0)
+
+  // Check which core metrics have quarterly targets set (from Step 4 Annual Plan)
+  // Show metric if EITHER year1 target OR quarterly target is set
+  const hasLeads = leadsPerMonth > 0 || (coreMetrics?.leadsPerMonth?.year1 ?? 0) > 0
+  const hasConversion = conversionRate > 0 || (coreMetrics?.conversionRate?.year1 ?? 0) > 0
+  const hasATV = avgTransactionValue > 0 || (coreMetrics?.avgTransactionValue?.year1 ?? 0) > 0
+  const hasTeam = teamHeadcount > 0 || (coreMetrics?.teamHeadcount?.year1 ?? 0) > 0
+  const hasOwnerHours = ownerHoursPerWeek > 0 || (coreMetrics?.ownerHoursPerWeek?.year1 ?? 0) > 0
+
+  return (
+    <div className="bg-white border-2 border-brand-navy-200 rounded-xl overflow-hidden sticky top-4">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-brand-navy to-brand-navy-700 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Target className="w-4 h-4 text-white" />
+          <h3 className="text-sm font-bold text-white">{currentQuarter.label} Targets</h3>
+        </div>
+        <p className="text-xs text-white/70 mt-0.5">From Annual Plan</p>
+      </div>
+
+      {/* Financial Goals */}
+      <div className="p-4 border-b border-gray-200">
+        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Financial</h4>
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">Revenue</span>
+            <span className="text-sm font-bold text-gray-900">{formatCurrencyCompact(revenue)}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">Gross Profit</span>
+            <div className="text-right">
+              <span className="text-sm font-bold text-gray-900">{formatCurrencyCompact(grossProfit)}</span>
+              {grossMargin > 0 && <span className="text-xs text-gray-500 ml-1">({grossMargin.toFixed(0)}%)</span>}
+            </div>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">Net Profit</span>
+            <div className="text-right">
+              <span className="text-sm font-bold text-gray-900">{formatCurrencyCompact(netProfit)}</span>
+              {netMargin > 0 && <span className="text-xs text-gray-500 ml-1">({netMargin.toFixed(0)}%)</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Core Metrics - only show if any are configured */}
+      {(hasLeads || hasConversion || hasATV || hasTeam || hasOwnerHours) && (
+        <div className="p-4 border-b border-gray-200">
+          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Core Metrics</h4>
+          <div className="space-y-3">
+            {hasLeads && (
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Leads/Month</span>
+                <span className="text-sm font-bold text-gray-900">{Math.round(leadsPerMonth).toLocaleString()}</span>
+              </div>
+            )}
+            {hasConversion && (
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Conversion Rate</span>
+                <span className="text-sm font-bold text-gray-900">{conversionRate.toFixed(1)}%</span>
+              </div>
+            )}
+            {hasATV && (
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Avg Transaction</span>
+                <span className="text-sm font-bold text-gray-900">{formatCurrencyCompact(avgTransactionValue)}</span>
+              </div>
+            )}
+            {hasTeam && (
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Team Size</span>
+                <span className="text-sm font-bold text-gray-900">{Math.round(teamHeadcount)}</span>
+              </div>
+            )}
+            {hasOwnerHours && (
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Owner Hours/Wk</span>
+                <span className="text-sm font-bold text-gray-900">{Math.round(ownerHoursPerWeek)}h</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* KPIs */}
+      {kpis && kpis.length > 0 && (
+        <div className="p-4">
+          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">KPIs</h4>
+          <div className="space-y-2">
+            {kpis.slice(0, 5).map((kpi, idx) => {
+              // Step 4 stores KPI quarterly targets using kpi.id directly (not with kpi_ prefix)
+              const kpiTarget = quarterlyTargets[kpi.id]?.[qKey]
+              return (
+                <div key={kpi.id || idx} className="flex justify-between items-center">
+                  <span className="text-xs text-gray-600 truncate flex-1 mr-2">{kpi.name}</span>
+                  <span className="text-xs font-semibold text-gray-900 flex-shrink-0">
+                    {kpiTarget || kpi.year1Target || '-'}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

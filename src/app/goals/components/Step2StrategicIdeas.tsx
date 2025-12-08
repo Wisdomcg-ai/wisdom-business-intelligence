@@ -1,27 +1,14 @@
 'use client'
 
 import { StrategicInitiative, InitiativeCategory } from '../types'
-import { Plus, X, ChevronDown, ChevronUp, CheckCircle, Square, CheckSquare, HelpCircle } from 'lucide-react'
+import { Plus, X, HelpCircle, Map } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import { useRoadmapProgress } from '@/app/business-roadmap/hooks/useRoadmapProgress'
-import { STAGES } from '@/app/business-roadmap/data'
+import RoadmapSelectorModal from './RoadmapSelectorModal'
 
 interface Step2Props {
   strategicIdeas: StrategicInitiative[]
   setStrategicIdeas: (ideas: StrategicInitiative[]) => void
   currentRevenue?: number
-}
-
-// Map roadmap engines to our category system
-const ENGINE_TO_CATEGORY: Record<string, InitiativeCategory> = {
-  'attract': 'marketing',
-  'convert': 'operations',
-  'deliver': 'customer_experience',
-  'people': 'people',
-  'systems': 'systems',
-  'finance': 'finance',
-  'leadership': 'product',
-  'time': 'other'
 }
 
 const generateId = () => `idea-${Date.now()}-${Math.random()}`
@@ -101,105 +88,35 @@ export default function Step2StrategicIdeas({
   const [newTitle, setNewTitle] = useState('')
   const [newNotes, setNewNotes] = useState('')
   const [newEngine, setNewEngine] = useState<InitiativeCategory>('marketing')
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
   const [validationError, setValidationError] = useState('')
+  const [isRoadmapModalOpen, setIsRoadmapModalOpen] = useState(false)
 
-  // Roadmap progress tracking
-  const { completedBuilds, toggleBuild, isComplete } = useRoadmapProgress()
-
-  // Determine current stage based on revenue
-  const getCurrentStage = () => {
-    if (currentRevenue < 500000) return 'foundation'
-    if (currentRevenue < 1000000) return 'traction'
-    if (currentRevenue < 5000000) return 'growth'
-    if (currentRevenue < 10000000) return 'scale'
-    return 'mastery'
-  }
-
-  const currentStageId = getCurrentStage()
-  const currentStageIndex = STAGES.findIndex(s => s.id === currentStageId)
-
-  // Generate roadmap suggestions dynamically from STAGES data
-  const roadmapSuggestions = useMemo(() => {
-    const suggestions: StrategicInitiative[] = []
-
-    // Get current stage and all lower stages
-    const stagesToInclude = STAGES.slice(0, currentStageIndex + 1)
-
-    stagesToInclude.forEach((stage, stageIdx) => {
-      stage.builds.forEach(build => {
-        // Skip if completed (except current stage - show all current stage items)
-        const completed = isComplete(build.name)
-        if (completed && stageIdx < currentStageIndex) {
-          return // Skip completed items from lower stages
-        }
-
-        // Skip if already in user's ideas
-        const alreadyAdded = strategicIdeas.some(idea => idea.title === build.name)
-        if (alreadyAdded) return
-
-        // Convert to StrategicInitiative format
-        const category = ENGINE_TO_CATEGORY[build.engine] || 'misc'
-        suggestions.push({
-          id: `roadmap-${build.name.replace(/\s+/g, '-').toLowerCase()}`,
-          title: build.name,
-          description: build.outcome,
-          notes: build.toDo.join('\n'),
-          source: 'roadmap',
-          category,
-          order: suggestions.length
-        })
-      })
-    })
-
-    return suggestions
-  }, [currentRevenue, currentStageIndex, completedBuilds, strategicIdeas, isComplete])
-
-  // Group ideas and roadmap suggestions by engine
-  const idesByEngine = useMemo(() => {
-    const grouped: Record<InitiativeCategory, {
-      userIdeas: StrategicInitiative[]
-      roadmapSuggestions: StrategicInitiative[]
-    }> = {
-      marketing: { userIdeas: [], roadmapSuggestions: [] },
-      operations: { userIdeas: [], roadmapSuggestions: [] },
-      finance: { userIdeas: [], roadmapSuggestions: [] },
-      people: { userIdeas: [], roadmapSuggestions: [] },
-      systems: { userIdeas: [], roadmapSuggestions: [] },
-      product: { userIdeas: [], roadmapSuggestions: [] },
-      customer_experience: { userIdeas: [], roadmapSuggestions: [] },
-      other: { userIdeas: [], roadmapSuggestions: [] },
-      misc: { userIdeas: [], roadmapSuggestions: [] }
+  // Group ideas by engine (user ideas only, no auto-populated roadmap suggestions)
+  const ideasByEngine = useMemo(() => {
+    const grouped: Record<InitiativeCategory, StrategicInitiative[]> = {
+      marketing: [],
+      operations: [],
+      finance: [],
+      people: [],
+      systems: [],
+      product: [],
+      customer_experience: [],
+      other: [],
+      misc: []
     }
 
     // Group user ideas
     strategicIdeas.forEach(idea => {
       const category = idea.category || 'misc'
-      grouped[category].userIdeas.push(idea)
-    })
-
-    // Filter roadmap suggestions: current stage + uncompleted from lower stages
-    const filteredRoadmap = roadmapSuggestions.filter(suggestion => {
-      // Already added to user ideas?
-      const isAlreadyAdded = strategicIdeas.some(idea => idea.id === suggestion.id)
-      if (isAlreadyAdded) return false
-
-      // Is it completed?
-      const completed = isComplete(suggestion.title)
-
-      // Include if: (current stage OR lower stage AND not completed)
-      // We'd need stage info on the suggestion - for now include all uncompleted
-      return !completed
-    })
-
-    // Group filtered roadmap suggestions
-    filteredRoadmap.forEach(suggestion => {
-      const category = suggestion.category || 'misc'
-      grouped[category].roadmapSuggestions.push(suggestion)
+      grouped[category].push(idea)
     })
 
     return grouped
-  }, [strategicIdeas, roadmapSuggestions, completedBuilds, isComplete])
+  }, [strategicIdeas])
+
+  // Count items from roadmap vs user-created
+  const roadmapCount = strategicIdeas.filter(i => i.source === 'roadmap').length
+  const userCount = strategicIdeas.filter(i => i.source !== 'roadmap').length
 
   const handleAddIdea = () => {
     if (!newTitle.trim()) {
@@ -240,14 +157,13 @@ export default function Step2StrategicIdeas({
     setStrategicIdeas(strategicIdeas.filter(idea => idea.id !== ideaId))
   }
 
-  const toggleCardExpanded = (cardId: string) => {
-    const newExpanded = new Set(expandedCards)
-    if (newExpanded.has(cardId)) {
-      newExpanded.delete(cardId)
-    } else {
-      newExpanded.add(cardId)
-    }
-    setExpandedCards(newExpanded)
+  const handleAddFromRoadmap = (items: StrategicInitiative[]) => {
+    // Add roadmap items with proper ordering
+    const newItems = items.map((item, idx) => ({
+      ...item,
+      order: strategicIdeas.length + idx
+    }))
+    setStrategicIdeas([...strategicIdeas, ...newItems])
   }
 
   return (
@@ -344,30 +260,42 @@ export default function Step2StrategicIdeas({
         </div>
       </div>
 
-      {/* Summary */}
+      {/* Summary + Add from Roadmap Button */}
       <div className="bg-gradient-to-r from-brand-orange-50 to-brand-orange-50 border border-brand-orange-200 rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-gray-900">
               Total Ideas: <span className="text-lg text-brand-orange">{strategicIdeas.length}</span>
+              {strategicIdeas.length > 0 && (
+                <span className="text-gray-500 ml-2 font-normal">
+                  ({userCount} your ideas, {roadmapCount} from roadmap)
+                </span>
+              )}
             </p>
             <p className="text-xs text-gray-600 mt-1">
               Organize your strategic initiatives by business engine
             </p>
           </div>
+          <button
+            onClick={() => setIsRoadmapModalOpen(true)}
+            className="px-4 py-2 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-700 font-medium transition-colors flex items-center gap-2 text-sm"
+          >
+            <Map className="w-4 h-4" />
+            Add from Roadmap
+          </button>
         </div>
       </div>
 
       {/* 9-Grid Layout by Engine */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {ENGINES.map(engine => {
-          const { userIdeas, roadmapSuggestions: suggestions } = idesByEngine[engine.id]
-          const totalCount = userIdeas.length + suggestions.length
+          const userIdeas = ideasByEngine[engine.id]
+          const totalCount = userIdeas.length
 
           return (
             <div
               key={engine.id}
-              className={`border-2 rounded-lg overflow-hidden min-h-[500px] flex flex-col ${engine.color}`}
+              className={`border-2 rounded-lg overflow-hidden min-h-[300px] flex flex-col ${engine.color}`}
             >
               {/* Engine Header */}
               <div className="p-4 bg-white border-b-2 border-gray-200">
@@ -377,117 +305,70 @@ export default function Step2StrategicIdeas({
                     <h4 className="font-bold text-gray-900">{engine.name}</h4>
                     <p className="text-xs text-gray-600">{engine.subtitle}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      {userIdeas.length} ideas • {suggestions.length} suggestions
+                      {totalCount} idea{totalCount !== 1 ? 's' : ''}
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* Ideas and Suggestions List */}
-              <div className="p-3 space-y-2 max-h-[400px] overflow-y-auto bg-white">
+              {/* Ideas List */}
+              <div className="p-3 space-y-2 max-h-[400px] overflow-y-auto bg-white flex-1">
                 {totalCount === 0 ? (
-                  <div className="p-6 text-center">
-                    <p className="text-sm text-gray-400">No ideas yet</p>
-                    <p className="text-xs text-gray-400 mt-1">Add ideas above or select from roadmap</p>
+                  <div className="p-6 text-center h-full flex items-center justify-center">
+                    <div>
+                      <p className="text-sm text-gray-400">No ideas yet</p>
+                      <p className="text-xs text-gray-400 mt-1">Add ideas above or select from roadmap</p>
+                    </div>
                   </div>
                 ) : (
                   <>
-                    {/* User Ideas - Clean white card with slate border */}
-                    {userIdeas.map(idea => (
-                      <div
-                        key={idea.id}
-                        className="p-4 bg-white border-2 border-slate-200 rounded-lg shadow-sm hover:shadow-md hover:border-brand-orange-300 transition-all"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-base font-bold text-brand-navy leading-snug">{idea.title}</p>
-                            {idea.description && (
-                              <p className="text-sm text-gray-600 mt-2 leading-relaxed">{idea.description}</p>
-                            )}
-                            <span className="inline-block mt-3 px-2.5 py-1 bg-slate-800 text-white text-xs rounded-md font-semibold shadow-sm">
-                              YOUR IDEA
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => handleRemoveIdea(idea.id)}
-                            className="text-slate-400 hover:text-red-600 transition-colors flex-shrink-0"
-                            title="Remove idea"
-                          >
-                            <X className="w-5 h-5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* Roadmap Suggestions - Teal background with white text */}
-                    {suggestions.map(suggestion => {
-                      const isExpanded = expandedCards.has(suggestion.id)
-                      const completed = isComplete(suggestion.title)
+                    {/* User Ideas */}
+                    {userIdeas.map(idea => {
+                      const isFromRoadmap = idea.source === 'roadmap'
 
                       return (
                         <div
-                          key={suggestion.id}
-                          className="border-2 border-brand-orange rounded-lg overflow-hidden bg-brand-orange shadow-lg hover:bg-brand-orange-600 transition-colors"
+                          key={idea.id}
+                          className={`p-4 border-2 rounded-lg shadow-sm hover:shadow-md transition-all ${
+                            isFromRoadmap
+                              ? 'bg-brand-navy text-white border-brand-navy hover:bg-brand-navy-700'
+                              : 'bg-white border-slate-200 hover:border-brand-orange-300'
+                          }`}
                         >
-                          {/* Suggestion Header */}
-                          <div className="p-4">
-                            <div className="flex items-start gap-2">
-                              {/* Completion Checkbox */}
-                              <button
-                                onClick={() => toggleBuild(suggestion.title)}
-                                className="mt-0.5 flex-shrink-0"
-                                title={completed ? "Mark as incomplete" : "Mark as complete"}
-                              >
-                                {completed ? (
-                                  <CheckSquare className="w-5 h-5 text-green-300" />
-                                ) : (
-                                  <Square className="w-5 h-5 text-brand-orange-200 hover:text-white" />
-                                )}
-                              </button>
-
-                              <div className="flex-1 min-w-0">
-                                <p className="text-base font-bold text-white leading-snug">{suggestion.title}</p>
-                                {suggestion.description && (
-                                  <p className="text-sm text-brand-orange-100 mt-2 line-clamp-2 leading-relaxed">{suggestion.description}</p>
-                                )}
-                                <span className="inline-block mt-3 px-2.5 py-1 bg-brand-orange-800 text-white text-xs rounded-md font-semibold shadow-sm">
-                                  ROADMAP
-                                </span>
-                              </div>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-base font-bold leading-snug ${
+                                isFromRoadmap ? 'text-white' : 'text-brand-navy'
+                              }`}>
+                                {idea.title}
+                              </p>
+                              {idea.description && (
+                                <p className={`text-sm mt-2 leading-relaxed ${
+                                  isFromRoadmap ? 'text-white/80' : 'text-gray-600'
+                                }`}>
+                                  {idea.description}
+                                </p>
+                              )}
+                              <span className={`inline-block mt-3 px-2.5 py-1 text-xs rounded-md font-semibold shadow-sm ${
+                                isFromRoadmap
+                                  ? 'bg-white/20 text-white'
+                                  : 'bg-slate-800 text-white'
+                              }`}>
+                                {isFromRoadmap ? 'FROM ROADMAP' : 'YOUR IDEA'}
+                              </span>
                             </div>
-
-                            {/* Expand Button Only */}
-                            {suggestion.notes && (
-                              <div className="flex items-center gap-2 mt-3">
-                                <button
-                                  onClick={() => toggleCardExpanded(suggestion.id)}
-                                  className="text-xs text-white/80 hover:text-white font-semibold flex items-center gap-1"
-                                >
-                                  {isExpanded ? (
-                                    <>
-                                      <ChevronUp className="w-3 h-3" /> Hide Details
-                                    </>
-                                  ) : (
-                                    <>
-                                      <ChevronDown className="w-3 h-3" /> Show Details
-                                    </>
-                                  )}
-                                </button>
-                              </div>
-                            )}
+                            <button
+                              onClick={() => handleRemoveIdea(idea.id)}
+                              className={`transition-colors flex-shrink-0 ${
+                                isFromRoadmap
+                                  ? 'text-white/60 hover:text-white'
+                                  : 'text-slate-400 hover:text-red-600'
+                              }`}
+                              title="Remove idea"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
                           </div>
-
-                          {/* Expanded Details */}
-                          {isExpanded && suggestion.notes && (
-                            <div className="px-3 pb-3 pt-0 border-t border-brand-orange-500 bg-brand-orange-50">
-                              <div className="mt-3">
-                                <p className="text-xs font-semibold text-gray-700 mb-2">Implementation Steps:</p>
-                                <div className="text-xs text-gray-600 whitespace-pre-wrap">
-                                  {suggestion.notes}
-                                </div>
-                              </div>
-                            </div>
-                          )}
                         </div>
                       )
                     })}
@@ -498,6 +379,15 @@ export default function Step2StrategicIdeas({
           )
         })}
       </div>
+
+      {/* Roadmap Selector Modal */}
+      <RoadmapSelectorModal
+        isOpen={isRoadmapModalOpen}
+        onClose={() => setIsRoadmapModalOpen(false)}
+        onAddItems={handleAddFromRoadmap}
+        existingIdeas={strategicIdeas}
+        currentRevenue={currentRevenue}
+      />
     </div>
   )
 }

@@ -232,7 +232,7 @@ export default function DashboardPage() {
           <SessionActionsCard userId={userId} />
 
           {/* Top Row: Annual Goals, 90-Day Goals, Quarterly Rocks */}
-          <PageGrid columns={3} gap="md">
+          <PageGrid columns={3} gap="lg">
             <GoalsCard
               title="Annual Goals"
               goals={data.annualGoals}
@@ -268,7 +268,7 @@ export default function DashboardPage() {
           </PageGrid>
 
           {/* Second Row: Weekly Priorities, Coach Messages */}
-          <PageGrid columns={2} gap="md">
+          <PageGrid columns={2} gap="lg">
             <WeeklyPrioritiesCard weeklyGoals={data.weeklyGoals} />
             <CoachMessagesCard
               onOpenChat={() => setIsChatOpen(true)}

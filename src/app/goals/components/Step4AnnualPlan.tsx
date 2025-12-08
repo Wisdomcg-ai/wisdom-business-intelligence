@@ -102,6 +102,20 @@ export default function Step4AnnualPlan({
                 color: getColorForName(ownerInfo.owner_name)
               })
             }
+
+            // Add business partners from owner_info.partners
+            if (ownerInfo.partners && Array.isArray(ownerInfo.partners)) {
+              ownerInfo.partners.forEach((partner: any, index: number) => {
+                if (partner.name && partner.name.trim()) {
+                  members.push({
+                    id: `partner-${businessId}-${index}`,
+                    name: partner.name,
+                    initials: getInitials(partner.name),
+                    color: getColorForName(partner.name)
+                  })
+                }
+              })
+            }
           }
 
           // Add team members from key_roles
@@ -294,14 +308,14 @@ export default function Step4AnnualPlan({
   const handleRemoveFromQuarter = (initiativeId: string, quarterId: string) => {
     setAnnualPlanByQuarter({
       ...annualPlanByQuarter,
-      [quarterId]: annualPlanByQuarter[quarterId].filter(i => i.id !== initiativeId)
+      [quarterId]: (annualPlanByQuarter[quarterId] || []).filter(i => i.id !== initiativeId)
     })
   }
 
   // Assign person to initiative
   const handleAssignPerson = (initiativeId: string, quarterId: string, personId: string) => {
     console.log(`[Annual Plan] 👤 Assigning person ${personId} to initiative ${initiativeId} in ${quarterId}`)
-    const updatedQuarter = annualPlanByQuarter[quarterId].map(init =>
+    const updatedQuarter = (annualPlanByQuarter[quarterId] || []).map(init =>
       init.id === initiativeId ? { ...init, assignedTo: personId } : init
     )
     console.log('[Annual Plan] ✅ Updated initiatives:', updatedQuarter.map(i => ({ id: i.id, title: i.title, assignedTo: i.assignedTo })))

@@ -3,8 +3,6 @@
 import { StrategicInitiative, InitiativeCategory } from '../types'
 import { AlertCircle, Check, GripVertical, X, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import { useRoadmapProgress } from '@/app/business-roadmap/hooks/useRoadmapProgress'
-import { STAGES } from '@/app/business-roadmap/data'
 import { CATEGORY_ORDER, getCategoryStyle, getCardClasses, SOURCE_STYLES } from '../utils/design-tokens'
 
 interface Step3Props {
@@ -14,88 +12,26 @@ interface Step3Props {
   currentRevenue?: number
 }
 
-// Map roadmap engines to our category system
-const ENGINE_TO_CATEGORY: Record<string, InitiativeCategory> = {
-  'attract': 'marketing',
-  'convert': 'operations',
-  'deliver': 'customer_experience',
-  'people': 'people',
-  'systems': 'systems',
-  'finance': 'finance',
-  'leadership': 'product',
-  'time': 'other'
-}
-
 export default function Step3PrioritizeInitiatives({
   strategicIdeas,
   twelveMonthInitiatives,
   setTwelveMonthInitiatives,
-  currentRevenue = 0
 }: Step3Props) {
   const [draggedInitiative, setDraggedInitiative] = useState<StrategicInitiative | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [showBalance, setShowBalance] = useState(false)
 
-  // Roadmap progress tracking
-  const { completedBuilds, isComplete } = useRoadmapProgress()
-
-  // Determine current stage based on revenue
-  const getCurrentStage = () => {
-    if (currentRevenue < 500000) return 'foundation'
-    if (currentRevenue < 1000000) return 'traction'
-    if (currentRevenue < 5000000) return 'growth'
-    if (currentRevenue < 10000000) return 'scale'
-    return 'mastery'
-  }
-
-  const currentStageId = getCurrentStage()
-  const currentStageIndex = STAGES.findIndex(s => s.id === currentStageId)
-
-  // Generate roadmap suggestions dynamically from STAGES data (same as Step 2)
-  const roadmapSuggestions = useMemo(() => {
-    const suggestions: StrategicInitiative[] = []
-    const stagesToInclude = STAGES.slice(0, currentStageIndex + 1)
-
-    stagesToInclude.forEach((stage, stageIdx) => {
-      stage.builds.forEach(build => {
-        const completed = isComplete(build.name)
-        if (completed && stageIdx < currentStageIndex) return
-
-        // Skip if already in strategic ideas (user manually added it)
-        const alreadyInIdeas = strategicIdeas.some(idea => idea.title === build.name)
-        if (alreadyInIdeas) return
-
-        const category = ENGINE_TO_CATEGORY[build.engine] || 'misc'
-        suggestions.push({
-          id: `roadmap-${build.name.replace(/\s+/g, '-').toLowerCase()}`,
-          title: build.name,
-          description: build.outcome,
-          notes: build.toDo.join('\n'),
-          source: 'roadmap',
-          category,
-          order: suggestions.length
-        })
-      })
-    })
-
-    return suggestions
-  }, [currentRevenue, currentStageIndex, completedBuilds, strategicIdeas, isComplete])
-
-  // All available initiatives from Step 2 (user ideas + roadmap suggestions)
-  const allAvailableInitiatives = useMemo(() => {
-    return [...strategicIdeas, ...roadmapSuggestions]
-  }, [strategicIdeas, roadmapSuggestions])
-
   const selectedCount = twelveMonthInitiatives.length
   const isOverLimit = selectedCount > 20
   const isInRange = selectedCount >= 8 && selectedCount <= 20
 
-  // Available initiatives (exclude already selected)
+  // Available initiatives (exclude already selected) - now just uses strategicIdeas directly
+  // No more auto-merging of roadmap suggestions
   const availableInitiatives = useMemo(() => {
-    return allAvailableInitiatives.filter(
+    return strategicIdeas.filter(
       init => !twelveMonthInitiatives.some(selected => selected.id === init.id)
     )
-  }, [allAvailableInitiatives, twelveMonthInitiatives])
+  }, [strategicIdeas, twelveMonthInitiatives])
 
   // Group available initiatives by category
   const initiativesByCategory = useMemo(() => {
@@ -128,8 +64,10 @@ export default function Step3PrioritizeInitiatives({
       if (init.category) {
         categoryCount[init.category] = (categoryCount[init.category] || 0) + 1
       }
-      if (init.source) {
-        sourceCount[init.source] = (sourceCount[init.source] || 0) + 1
+      if (init.source === 'roadmap') {
+        sourceCount.roadmap += 1
+      } else {
+        sourceCount.strategic_ideas += 1
       }
     })
 
@@ -271,10 +209,10 @@ export default function Step3PrioritizeInitiatives({
             <p className="text-xs text-gray-600 mt-0.5">Drag initiatives to the priority list →</p>
           </div>
 
-          {allAvailableInitiatives.length === 0 ? (
+          {strategicIdeas.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-sm text-gray-600">
-                No initiatives yet. Go back to Step 2 to add strategic ideas and roadmap suggestions.
+                No initiatives yet. Go back to Step 2 to add strategic ideas.
               </p>
             </div>
           ) : (

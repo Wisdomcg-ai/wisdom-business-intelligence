@@ -356,11 +356,17 @@ export default function OnePagePlan() {
 
       // Calculate quarters based on year type
       const quarters = calculateQuarters(yearType, planYear)
-      const currentQuarterInfo = quarters.find(q => q.isCurrent) || quarters[0]
-      const currentQuarter = currentQuarterInfo.label // 'Q1', 'Q2', etc.
-      const currentQuarterLabel = `${currentQuarterInfo.label} (${currentQuarterInfo.months})`
+      // Find the PLANNING quarter (next quarter, not current) - users plan ahead
+      const currentQuarterIdx = quarters.findIndex(q => q.isCurrent)
+      const planningQuarterIdx = currentQuarterIdx >= 0
+        ? (currentQuarterIdx + 1) % 4
+        : 0
+      // Use planning quarter (next quarter) instead of current quarter
+      const planningQuarterInfo = quarters[planningQuarterIdx]
+      const currentQuarter = planningQuarterInfo.label // 'Q1', 'Q2', etc.
+      const currentQuarterLabel = `${planningQuarterInfo.label} (${planningQuarterInfo.months}) - Planning`
 
-      devLog('[One Page Plan] 📅 Year settings:', { yearType, planYear, currentQuarter, currentQuarterLabel })
+      devLog('[One Page Plan] 📅 Year settings:', { yearType, planYear, currentQuarter, currentQuarterLabel, planningForNextQuarter: true })
 
       // Load KPIs
       const { data: kpisData, error: kpiError } = await supabase
