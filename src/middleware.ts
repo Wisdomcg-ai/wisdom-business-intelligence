@@ -103,7 +103,20 @@ export async function middleware(request: NextRequest) {
     // Only check onboarding if not on exempt routes
     if (!isExemptRoute) {
       try {
-        // STEP 1: Check if business profile is completed
+        // FIRST: Check if user is a coach or super_admin - they can bypass onboarding
+        const { data: roleData } = await supabase
+          .from('system_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        // Coaches and super_admins can navigate freely without completing onboarding
+        if (roleData?.role === 'coach' || roleData?.role === 'super_admin') {
+          // Allow access - skip onboarding checks
+          return response
+        }
+
+        // STEP 1: Check if business profile is completed (clients only)
         const { data: businessProfile, error: profileError } = await supabase
           .from('business_profiles')
           .select('profile_completed')

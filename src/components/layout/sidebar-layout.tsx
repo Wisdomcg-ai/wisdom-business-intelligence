@@ -98,7 +98,8 @@ const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
       defaultOpen: true,
       items: [
         { label: 'Financial Forecast', href: '/finances/forecast', icon: TrendingUp },
-        { label: 'Budget vs Actual', href: '/finances/budget', icon: Banknote },
+        { label: 'Budget vs Actual', href: '/finances/budget', icon: Banknote, disabled: true, badge: 'Soon' },
+        { label: '13-Week Rolling Cashflow', href: '/finances/cashflow', icon: Banknote, disabled: true, badge: 'Soon' },
       ],
     },
     {
@@ -131,8 +132,8 @@ const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
           icon: LineChart,
           children: [
             { label: 'Value Proposition & USP', href: '/marketing/value-prop', icon: Target },
-            { label: 'Marketing Channels', href: '/marketing/channels', icon: LineChart },
-            { label: 'Content Planner', href: '/marketing/content', icon: FileText },
+            { label: 'Marketing Channels', href: '/marketing/channels', icon: LineChart, disabled: true, badge: 'Soon' },
+            { label: 'Content Planner', href: '/marketing/content', icon: FileText, disabled: true, badge: 'Soon' },
           ],
         },
         {
@@ -141,8 +142,8 @@ const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
           icon: Users,
           children: [
             { label: 'Accountability Chart', href: '/team/accountability', icon: Network },
-            { label: 'Org Chart Builder', href: '/team/org-chart', icon: Users },
-            { label: 'Team Performance', href: '/team-performance', icon: Activity },
+            { label: 'Org Chart Builder', href: '/team/org-chart', icon: Users, disabled: true, badge: 'Soon' },
+            { label: 'Team Performance', href: '/team-performance', icon: Activity, disabled: true, badge: 'Soon' },
             { label: 'Hiring Roadmap', href: '/team/hiring-roadmap', icon: Building2 },
           ],
         },
@@ -151,7 +152,7 @@ const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
           href: '/engines/systems',
           icon: Settings,
           children: [
-            { label: 'Systems & Processes', href: '/systems/processes', icon: Settings },
+            { label: 'Systems & Processes', href: '/systems/processes', icon: Settings, disabled: true, badge: 'Soon' },
           ],
         },
       ],
@@ -429,6 +430,11 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                                         >
                                           <ChildIcon className="h-4 w-4 mr-3 flex-shrink-0" />
                                           <span className="flex-1">{child.label}</span>
+                                          {child.badge && (
+                                            <span className="text-[10px] bg-white/20 text-white/70 px-1.5 py-0.5 rounded font-medium ml-2">
+                                              {child.badge}
+                                            </span>
+                                          )}
                                         </Link>
                                       )
                                     })}
@@ -444,7 +450,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                                 <Icon className="h-4 w-4 mr-3 flex-shrink-0" />
                                 <span className="flex-1">{item.label}</span>
                                 {item.badge && (
-                                  <span className={`text-xs px-2 py-0.5 rounded ${item.badge === 'Private' ? 'bg-white/10 text-white/60' : 'bg-brand-orange/30 text-brand-orange-300'}`}>
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${item.badge === 'Private' ? 'bg-white/10 text-white/60' : item.badge === 'Soon' ? 'bg-white/20 text-white/70' : 'bg-brand-orange/30 text-brand-orange-300'}`}>
                                     {item.badge}
                                   </span>
                                 )}
