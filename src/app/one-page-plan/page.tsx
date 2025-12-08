@@ -245,12 +245,21 @@ export default function OnePagePlan() {
       const ownerInfo = profile?.owner_info || {}
 
       // Build team members lookup map (ID -> name) from profile data
-      // This matches how Step690DaySprintV3 loads team members
+      // This matches how Step5SprintPlanning loads team members
       const teamMembersMap: Record<string, string> = {}
 
       // Add owner from owner_info
       if (ownerInfo.owner_name) {
         teamMembersMap[`owner-${businessId}`] = ownerInfo.owner_name
+      }
+
+      // Add business partners from owner_info.partners
+      if (ownerInfo.partners && Array.isArray(ownerInfo.partners)) {
+        ownerInfo.partners.forEach((partner: any, index: number) => {
+          if (partner.name && partner.name.trim()) {
+            teamMembersMap[`partner-${businessId}-${index}`] = partner.name
+          }
+        })
       }
 
       // Add team members from key_roles
@@ -260,6 +269,26 @@ export default function OnePagePlan() {
             teamMembersMap[`role-${businessId}-${index}`] = role.name
           }
         })
+      }
+
+      // Also load dynamically added team members from localStorage
+      // These are members added via Step5SprintPlanning with IDs like 'member-timestamp' or 'role-timestamp'
+      if (typeof window !== 'undefined') {
+        try {
+          const storedMembers = localStorage.getItem('team_members')
+          if (storedMembers) {
+            const members = JSON.parse(storedMembers)
+            if (Array.isArray(members)) {
+              members.forEach((member: any) => {
+                if (member.id && member.name) {
+                  teamMembersMap[member.id] = member.name
+                }
+              })
+            }
+          }
+        } catch (e) {
+          console.warn('[One Page Plan] Could not load team members from localStorage:', e)
+        }
       }
 
       devLog('[One Page Plan] 👥 Team Members Map:', teamMembersMap)
