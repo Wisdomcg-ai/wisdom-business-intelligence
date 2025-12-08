@@ -53,25 +53,31 @@ export class StrategicPlanningService {
 
       // Insert new initiatives
       if (initiatives.length > 0) {
-        const initiativesToInsert = initiatives.map((init, index) => ({
-          business_id: businessId,
-          user_id: userId,
-          title: init.title || 'Untitled',
-          description: init.description || null,
-          notes: init.notes || null,
-          category: init.category || null,
-          priority: init.priority || null,
-          estimated_effort: init.estimatedEffort || null,
-          step_type: stepType,
-          source: init.source || stepType,
-          timeline: init.timeline || null,
-          selected: init.selected || false,
-          order_index: init.order !== undefined ? init.order : index,
-          linked_kpis: init.linkedKPIs ? JSON.stringify(init.linkedKPIs) : null,
-          assigned_to: init.assignedTo || null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }))
+        const initiativesToInsert = initiatives.map((init, index) => {
+          // Type assertion to access extended fields
+          const initWithTasks = init as any
+          return {
+            business_id: businessId,
+            user_id: userId,
+            title: init.title || 'Untitled',
+            description: init.description || null,
+            notes: init.notes || null,
+            category: init.category || null,
+            priority: init.priority || null,
+            estimated_effort: init.estimatedEffort || null,
+            step_type: stepType,
+            source: init.source || stepType,
+            timeline: init.timeline || null,
+            selected: init.selected || false,
+            order_index: init.order !== undefined ? init.order : index,
+            linked_kpis: init.linkedKPIs ? JSON.stringify(init.linkedKPIs) : null,
+            assigned_to: init.assignedTo || null,
+            // V3: Task breakdown and project plan fields
+            tasks: initWithTasks.tasks || [],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }
+        })
 
         const { error: insertError } = await this.supabase
           .from('strategic_initiatives')
@@ -128,7 +134,9 @@ export class StrategicPlanningService {
         selected: row.selected || false,
         order: row.order_index !== undefined ? row.order_index : 0,
         linkedKPIs: row.linked_kpis ? JSON.parse(row.linked_kpis) : undefined,
-        assignedTo: row.assigned_to || undefined
+        assignedTo: row.assigned_to || undefined,
+        // V3: Task breakdown (JSONB column - already parsed by Supabase)
+        tasks: row.tasks || []
       }))
 
       console.log(`[Strategic Planning] 📥 Loaded ${initiatives.length} initiatives for ${stepType}`)
