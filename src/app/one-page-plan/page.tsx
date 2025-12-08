@@ -293,6 +293,80 @@ export default function OnePagePlan() {
 
       devLog('[One Page Plan] 👥 Team Members Map:', teamMembersMap)
 
+      // Create flexible lookup arrays for fallback matching
+      // This handles cases where assigned_to uses a different business ID or simple index
+      const teamMembersList: { id: string; name: string; type: string; index: number }[] = []
+
+      // Build a list of all team members with their types and indices
+      if (ownerInfo.owner_name) {
+        teamMembersList.push({ id: `owner-${businessId}`, name: ownerInfo.owner_name, type: 'owner', index: 0 })
+      }
+      if (ownerInfo.partners && Array.isArray(ownerInfo.partners)) {
+        ownerInfo.partners.forEach((partner: any, index: number) => {
+          if (partner.name && partner.name.trim()) {
+            teamMembersList.push({ id: `partner-${businessId}-${index}`, name: partner.name, type: 'partner', index })
+          }
+        })
+      }
+      if (profile?.key_roles && Array.isArray(profile.key_roles)) {
+        profile.key_roles.forEach((role: any, index: number) => {
+          if (role.name && role.name.trim()) {
+            teamMembersList.push({ id: `role-${businessId}-${index}`, name: role.name, type: 'role', index })
+          }
+        })
+      }
+
+      // Smart team member resolver that handles:
+      // 1. Direct ID match (exact match in teamMembersMap)
+      // 2. Type+index match (e.g., "role-different-business-id-3" matches role at index 3)
+      // 3. Simple numeric index (e.g., "1" matches team member at position 1)
+      const resolveTeamMember = (assignedTo: string): string => {
+        if (!assignedTo) return ''
+
+        // Try direct lookup first
+        if (teamMembersMap[assignedTo]) {
+          return teamMembersMap[assignedTo]
+        }
+
+        // Try matching by type and index (handles different business IDs)
+        // Pattern: type-businessId-index (e.g., "role-uuid-3", "partner-uuid-1")
+        const typeIndexMatch = assignedTo.match(/^(owner|partner|role)-[a-f0-9-]+-(\d+)$/)
+        if (typeIndexMatch) {
+          const [, type, indexStr] = typeIndexMatch
+          const index = parseInt(indexStr, 10)
+          const match = teamMembersList.find(m => m.type === type && m.index === index)
+          if (match) {
+            console.log(`[One Page Plan] ✅ Resolved "${assignedTo}" via type+index to "${match.name}"`)
+            return match.name
+          }
+        }
+
+        // Handle owner-only format (no index)
+        if (assignedTo.match(/^owner-[a-f0-9-]+$/)) {
+          const match = teamMembersList.find(m => m.type === 'owner')
+          if (match) {
+            console.log(`[One Page Plan] ✅ Resolved "${assignedTo}" via owner type to "${match.name}"`)
+            return match.name
+          }
+        }
+
+        // Try simple numeric index (for legacy data like "1", "2", etc.)
+        if (/^\d+$/.test(assignedTo)) {
+          const index = parseInt(assignedTo, 10)
+          if (index >= 0 && index < teamMembersList.length) {
+            const match = teamMembersList[index]
+            console.log(`[One Page Plan] ✅ Resolved "${assignedTo}" via numeric index to "${match.name}"`)
+            return match.name
+          }
+        }
+
+        // No match found, return original
+        console.log(`[One Page Plan] ⚠️ Could not resolve "${assignedTo}" - returning as-is`)
+        return assignedTo
+      }
+
+      devLog('[One Page Plan] 👥 Team Members List:', teamMembersList)
+
       // Get company name from businesses table
       // Use business ID when viewing as coach, otherwise use owner_id
       const { data: businessData } = activeBusiness?.id
@@ -544,21 +618,14 @@ export default function OnePagePlan() {
         strategicInitiatives: (initiatives || []).map((init: any) => ({
           title: init.title,
           quarters: [], // We'll need to load quarterly assignments
-          owner: init.assigned_to ? (teamMembersMap[init.assigned_to] || init.assigned_to) : undefined
+          owner: init.assigned_to ? resolveTeamMember(init.assigned_to) : undefined
         })),
 
-        quarterlyRocks: (quarterInitiatives || []).map((init: any) => {
-          // Debug: Log the assigned_to value and teamMembersMap lookup
-          if (init.assigned_to) {
-            console.log(`[One Page Plan] 🔍 Rock "${init.title}" assigned_to: "${init.assigned_to}", lookup result:`, teamMembersMap[init.assigned_to] || 'NOT FOUND')
-            console.log(`[One Page Plan] 🗺️ Available teamMembersMap keys:`, Object.keys(teamMembersMap))
-          }
-          return {
-            action: init.title,
-            owner: init.assigned_to ? (teamMembersMap[init.assigned_to] || init.assigned_to) : undefined,
-            dueDate: init.timeline
-          }
-        }),
+        quarterlyRocks: (quarterInitiatives || []).map((init: any) => ({
+          action: init.title,
+          owner: init.assigned_to ? resolveTeamMember(init.assigned_to) : undefined,
+          dueDate: init.timeline
+        })),
 
         currentQuarter,
         currentQuarterLabel,
