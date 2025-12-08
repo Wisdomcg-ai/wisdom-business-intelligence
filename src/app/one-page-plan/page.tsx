@@ -547,11 +547,18 @@ export default function OnePagePlan() {
           owner: init.assigned_to ? (teamMembersMap[init.assigned_to] || init.assigned_to) : undefined
         })),
 
-        quarterlyRocks: (quarterInitiatives || []).map((init: any) => ({
-          action: init.title,
-          owner: init.assigned_to ? (teamMembersMap[init.assigned_to] || init.assigned_to) : undefined,
-          dueDate: init.timeline
-        })),
+        quarterlyRocks: (quarterInitiatives || []).map((init: any) => {
+          // Debug: Log the assigned_to value and teamMembersMap lookup
+          if (init.assigned_to) {
+            console.log(`[One Page Plan] 🔍 Rock "${init.title}" assigned_to: "${init.assigned_to}", lookup result:`, teamMembersMap[init.assigned_to] || 'NOT FOUND')
+            console.log(`[One Page Plan] 🗺️ Available teamMembersMap keys:`, Object.keys(teamMembersMap))
+          }
+          return {
+            action: init.title,
+            owner: init.assigned_to ? (teamMembersMap[init.assigned_to] || init.assigned_to) : undefined,
+            dueDate: init.timeline
+          }
+        }),
 
         currentQuarter,
         currentQuarterLabel,
