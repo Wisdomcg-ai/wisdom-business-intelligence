@@ -26,6 +26,7 @@ export default function VisionMissionPage() {
   const supabase = createClient();
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
   const lastSavedDataRef = useRef<string>('');
+  const formDataRef = useRef<VisionMissionData | null>(null);
   const { activeBusiness, isLoading: contextLoading } = useBusinessContext();
 
   const [loading, setLoading] = useState(true);
@@ -48,6 +49,11 @@ export default function VisionMissionPage() {
     vision_statement: '',
     core_values: ['', '', '', '', '', '', '', '']
   });
+
+  // Keep ref in sync with state to avoid stale closures in auto-save
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
 
   const toggleHelp = (section: string) => {
     setShowHelp(prev => ({ ...prev, [section]: !prev[section] }));
@@ -171,9 +177,13 @@ export default function VisionMissionPage() {
   };
 
   const saveData = async () => {
+    // Use ref to get latest state and avoid stale closure
+    const currentFormData = formDataRef.current;
+    if (!currentFormData) return;
+
     const dataToSave = {
-      ...formData,
-      core_values: formData.core_values.filter(v => v.trim() !== '')
+      ...currentFormData,
+      core_values: currentFormData.core_values.filter(v => v.trim() !== '')
     };
 
     const currentDataString = JSON.stringify(dataToSave);
