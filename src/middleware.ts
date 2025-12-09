@@ -2,6 +2,9 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import crypto from 'crypto'
+
+const CSRF_TOKEN_NAME = 'csrf_token'
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
@@ -9,6 +12,18 @@ export async function middleware(request: NextRequest) {
       headers: request.headers,
     },
   })
+
+  // Set CSRF token if not present
+  if (!request.cookies.get(CSRF_TOKEN_NAME)) {
+    const csrfToken = crypto.randomBytes(32).toString('hex')
+    response.cookies.set(CSRF_TOKEN_NAME, csrfToken, {
+      httpOnly: false, // Must be readable by JavaScript
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: 60 * 60 * 24 // 24 hours
+    })
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

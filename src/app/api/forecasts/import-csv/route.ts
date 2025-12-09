@@ -2,6 +2,33 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerComponentClient } from '@/lib/supabase/server'
 import type { PLLine } from '@/app/finances/forecast/types'
 
+// Maximum lines allowed in a single import
+const MAX_IMPORT_LINES = 500
+
+// Validate a single line
+function validateLine(line: PLLine, index: number): string | null {
+  if (!line.account_name || typeof line.account_name !== 'string') {
+    return `Line ${index + 1}: account_name is required`
+  }
+  if (line.account_name.length > 255) {
+    return `Line ${index + 1}: account_name exceeds 255 characters`
+  }
+  if (line.category && line.category.length > 100) {
+    return `Line ${index + 1}: category exceeds 100 characters`
+  }
+  if (line.account_code && line.account_code.length > 50) {
+    return `Line ${index + 1}: account_code exceeds 50 characters`
+  }
+  // Validate month data if present
+  if (line.actual_months && typeof line.actual_months !== 'object') {
+    return `Line ${index + 1}: actual_months must be an object`
+  }
+  if (line.forecast_months && typeof line.forecast_months !== 'object') {
+    return `Line ${index + 1}: forecast_months must be an object`
+  }
+  return null
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createServerComponentClient()
@@ -23,6 +50,32 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields: forecastId, lines' },
         { status: 400 }
       )
+    }
+
+    // Validate line count
+    if (lines.length > MAX_IMPORT_LINES) {
+      return NextResponse.json(
+        { error: `Too many lines. Maximum allowed is ${MAX_IMPORT_LINES}` },
+        { status: 400 }
+      )
+    }
+
+    if (lines.length === 0) {
+      return NextResponse.json(
+        { error: 'No lines to import' },
+        { status: 400 }
+      )
+    }
+
+    // Validate each line
+    for (let i = 0; i < lines.length; i++) {
+      const validationError = validateLine(lines[i], i)
+      if (validationError) {
+        return NextResponse.json(
+          { error: validationError },
+          { status: 400 }
+        )
+      }
     }
 
     // Verify user owns this forecast

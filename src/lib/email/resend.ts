@@ -6,6 +6,20 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // Default from address - update this to your verified domain
 const DEFAULT_FROM = 'WisdomBI <noreply@mail.wisdombi.ai>';
 
+/**
+ * Escape HTML entities to prevent XSS in email templates
+ */
+function escapeHtml(text: string): string {
+  const htmlEntities: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  };
+  return text.replace(/[&<>"']/g, char => htmlEntities[char]);
+}
+
 // Brand colors
 const BRAND_ORANGE = '#F5821F';
 const BRAND_NAVY = '#172238';
@@ -102,6 +116,12 @@ export async function sendClientInvitation(params: {
 }): Promise<EmailResult> {
   const { to, clientName, coachName, businessName, loginUrl, tempPassword } = params;
 
+  // Escape user-provided content to prevent XSS
+  const safeClientName = escapeHtml(clientName);
+  const safeCoachName = escapeHtml(coachName);
+  const safeBusinessName = escapeHtml(businessName);
+  const safeTempPassword = tempPassword ? escapeHtml(tempPassword) : undefined;
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -114,9 +134,9 @@ export async function sendClientInvitation(params: {
 
       <h2 style="color: ${BRAND_NAVY};">Welcome to Your Business Intelligence Platform</h2>
 
-      <p>Hi ${clientName},</p>
+      <p>Hi ${safeClientName},</p>
 
-      <p><strong>${coachName}</strong> has invited you to join <strong>${businessName}</strong> on WisdomBI - your dedicated platform for tracking business goals, metrics, and growth.</p>
+      <p><strong>${safeCoachName}</strong> has invited you to join <strong>${safeBusinessName}</strong> on WisdomBI - your dedicated platform for tracking business goals, metrics, and growth.</p>
 
       <div style="background: ${BRAND_ORANGE_LIGHT}; border: 1px solid #fcd5b8; border-radius: 8px; padding: 20px; margin: 20px 0;">
         <p style="margin: 0 0 10px 0;"><strong>What you can do:</strong></p>
@@ -129,10 +149,10 @@ export async function sendClientInvitation(params: {
         </ul>
       </div>
 
-      ${tempPassword ? `
+      ${safeTempPassword ? `
       <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 20px; margin: 20px 0;">
         <p style="margin: 0 0 10px 0;"><strong>Your temporary password:</strong></p>
-        <code style="background: #fff; padding: 8px 16px; border-radius: 4px; font-size: 16px; display: inline-block;">${tempPassword}</code>
+        <code style="background: #fff; padding: 8px 16px; border-radius: 4px; font-size: 16px; display: inline-block;">${safeTempPassword}</code>
         <p style="margin: 10px 0 0 0; font-size: 14px; color: #92400e;">Please change this after your first login.</p>
       </div>
       ` : ''}
@@ -150,7 +170,7 @@ export async function sendClientInvitation(params: {
 
   return sendEmail({
     to,
-    subject: `${coachName} invited you to ${businessName} on WisdomBI`,
+    subject: `${safeCoachName} invited you to ${safeBusinessName} on WisdomBI`,
     html,
     replyTo: undefined, // Could add coach's email here
   });
@@ -165,6 +185,7 @@ export async function sendPasswordReset(params: {
   resetUrl: string;
 }): Promise<EmailResult> {
   const { to, name, resetUrl } = params;
+  const safeName = escapeHtml(name);
 
   const html = `
     <!DOCTYPE html>
@@ -178,7 +199,7 @@ export async function sendPasswordReset(params: {
 
       <h2 style="color: ${BRAND_NAVY}; text-align: center;">Reset Your Password</h2>
 
-      <p>Hi ${name},</p>
+      <p>Hi ${safeName},</p>
 
       <p>We received a request to reset your password. Click the button below to create a new password:</p>
 
@@ -212,6 +233,10 @@ export async function sendSessionReminder(params: {
   meetingLink?: string;
 }): Promise<EmailResult> {
   const { to, clientName, coachName, sessionDate, sessionTime, meetingLink } = params;
+  const safeClientName = escapeHtml(clientName);
+  const safeCoachName = escapeHtml(coachName);
+  const safeSessionDate = escapeHtml(sessionDate);
+  const safeSessionTime = escapeHtml(sessionTime);
 
   const html = `
     <!DOCTYPE html>
@@ -225,13 +250,13 @@ export async function sendSessionReminder(params: {
 
       <h2 style="color: ${BRAND_NAVY}; text-align: center;">Session Reminder</h2>
 
-      <p>Hi ${clientName},</p>
+      <p>Hi ${safeClientName},</p>
 
-      <p>This is a reminder about your upcoming coaching session with <strong>${coachName}</strong>.</p>
+      <p>This is a reminder about your upcoming coaching session with <strong>${safeCoachName}</strong>.</p>
 
       <div style="background: ${BRAND_ORANGE_LIGHT}; border: 1px solid #fcd5b8; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center;">
-        <p style="margin: 0; font-size: 18px; font-weight: 600; color: ${BRAND_ORANGE};">${sessionDate}</p>
-        <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold; color: ${BRAND_NAVY};">${sessionTime}</p>
+        <p style="margin: 0; font-size: 18px; font-weight: 600; color: ${BRAND_ORANGE};">${safeSessionDate}</p>
+        <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold; color: ${BRAND_NAVY};">${safeSessionTime}</p>
       </div>
 
       ${meetingLink ? getPrimaryButton(meetingLink, 'Join Meeting') : ''}
@@ -247,7 +272,7 @@ export async function sendSessionReminder(params: {
 
   return sendEmail({
     to,
-    subject: `Reminder: Coaching session with ${coachName} on ${sessionDate}`,
+    subject: `Reminder: Coaching session with ${safeCoachName} on ${safeSessionDate}`,
     html,
   });
 }
@@ -263,6 +288,9 @@ export async function sendMessageNotification(params: {
   dashboardUrl: string;
 }): Promise<EmailResult> {
   const { to, recipientName, senderName, messagePreview, dashboardUrl } = params;
+  const safeRecipientName = escapeHtml(recipientName);
+  const safeSenderName = escapeHtml(senderName);
+  const safeMessagePreview = escapeHtml(messagePreview);
 
   const html = `
     <!DOCTYPE html>
@@ -274,12 +302,12 @@ export async function sendMessageNotification(params: {
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
       ${getEmailHeader()}
 
-      <p>Hi ${recipientName},</p>
+      <p>Hi ${safeRecipientName},</p>
 
-      <p>You have a new message from <strong>${senderName}</strong>:</p>
+      <p>You have a new message from <strong>${safeSenderName}</strong>:</p>
 
       <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_ORANGE}; padding: 15px 20px; margin: 20px 0; border-radius: 0 8px 8px 0;">
-        <p style="margin: 0; color: #4b5563; font-style: italic;">"${messagePreview}"</p>
+        <p style="margin: 0; color: #4b5563; font-style: italic;">"${safeMessagePreview}"</p>
       </div>
 
       ${getPrimaryButton(dashboardUrl, 'View Message')}
@@ -291,7 +319,7 @@ export async function sendMessageNotification(params: {
 
   return sendEmail({
     to,
-    subject: `New message from ${senderName}`,
+    subject: `New message from ${safeSenderName}`,
     html,
   });
 }
@@ -304,6 +332,7 @@ export async function sendTestEmail(params: {
   name?: string;
 }): Promise<EmailResult> {
   const { to, name = 'there' } = params;
+  const safeName = escapeHtml(name);
 
   const html = `
     <!DOCTYPE html>
@@ -317,7 +346,7 @@ export async function sendTestEmail(params: {
 
       <h2 style="color: ${BRAND_NAVY}; text-align: center;">Email Branding Test</h2>
 
-      <p>Hi ${name},</p>
+      <p>Hi ${safeName},</p>
 
       <p>This is a test email to verify that the WisdomBI email branding is working correctly.</p>
 

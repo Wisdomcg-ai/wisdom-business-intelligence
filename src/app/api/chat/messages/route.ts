@@ -7,7 +7,8 @@ export async function GET(request: Request) {
   const supabase = await createRouteHandlerClient()
   const { searchParams } = new URL(request.url)
   const businessId = searchParams.get('business_id')
-  const limit = parseInt(searchParams.get('limit') || '50')
+  const requestedLimit = parseInt(searchParams.get('limit') || '50')
+  const limit = Math.min(Math.max(1, requestedLimit), 200) // Cap between 1-200
 
   try {
     const { data: { user }, error: userError } = await supabase.auth.getUser()

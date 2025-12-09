@@ -1,17 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic'
 
-const supabase = createClient(
+const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
 );
 
+// Verify user has access to the business
+async function verifyUserAccess(userId: string, businessId: string): Promise<boolean> {
+  // Check if user is the owner
+  const { data: business } = await supabaseAdmin
+    .from('businesses')
+    .select('owner_id, assigned_coach_id')
+    .eq('id', businessId)
+    .single();
+
+  if (business?.owner_id === userId || business?.assigned_coach_id === userId) {
+    return true;
+  }
+
+  // Check if user is a business member
+  const { data: membership } = await supabaseAdmin
+    .from('business_users')
+    .select('id')
+    .eq('business_id', businessId)
+    .eq('user_id', userId)
+    .single();
+
+  if (membership) {
+    return true;
+  }
+
+  // Check if user is super_admin
+  const { data: role } = await supabaseAdmin
+    .from('system_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .single();
+
+  return role?.role === 'super_admin';
+}
+
 async function syncXeroData(business_id: string) {
   try {
     // Get the Xero connection
-    const { data: connection, error: connError } = await supabase
+    const { data: connection, error: connError } = await supabaseAdmin
       .from('xero_connections')
       .select('*')
       .eq('business_id', business_id)
@@ -52,7 +88,7 @@ async function syncXeroData(business_id: string) {
       const newExpiry = new Date();
       newExpiry.setSeconds(newExpiry.getSeconds() + tokens.expires_in);
       
-      await supabase
+      await supabaseAdmin
         .from('xero_connections')
         .update({
           access_token: tokens.access_token,
@@ -137,7 +173,7 @@ async function syncXeroData(business_id: string) {
     monthlyMetrics.net_profit_month = monthlyMetrics.revenue_month - monthlyMetrics.cogs_month - monthlyMetrics.expenses_month;
 
     // Save to financial_metrics table
-    const { error: metricsError } = await supabase
+    const { error: metricsError } = await supabaseAdmin
       .from('financial_metrics')
       .upsert({
         business_id: business_id,
@@ -157,7 +193,7 @@ async function syncXeroData(business_id: string) {
       });
 
     // Update last sync time
-    await supabase
+    await supabaseAdmin
       .from('xero_connections')
       .update({ last_sync_at: new Date().toISOString() })
       .eq('id', connection.id);
@@ -177,6 +213,14 @@ async function syncXeroData(business_id: string) {
 }
 
 export async function GET(request: NextRequest) {
+  const supabase = await createRouteHandlerClient();
+
+  // Verify user is authenticated
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const searchParams = request.nextUrl.searchParams;
   const business_id = searchParams.get('business_id');
 
@@ -184,15 +228,35 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
   }
 
+  // Verify user has access to this business
+  const hasAccess = await verifyUserAccess(user.id, business_id);
+  if (!hasAccess) {
+    return NextResponse.json({ error: 'Access denied to this business' }, { status: 403 });
+  }
+
   return syncXeroData(business_id);
 }
 
 export async function POST(request: NextRequest) {
+  const supabase = await createRouteHandlerClient();
+
+  // Verify user is authenticated
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { business_id } = await request.json();
 
     if (!business_id) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
+    }
+
+    // Verify user has access to this business
+    const hasAccess = await verifyUserAccess(user.id, business_id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Access denied to this business' }, { status: 403 });
     }
 
     return syncXeroData(business_id);
