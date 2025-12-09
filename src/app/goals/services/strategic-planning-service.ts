@@ -58,7 +58,6 @@ export class StrategicPlanningService {
         const existingInitiatives: any[] = []
 
         initiatives.forEach((init, index) => {
-          const initWithTasks = init as any
           const baseData = {
             business_id: businessId,
             user_id: userId,
@@ -75,7 +74,6 @@ export class StrategicPlanningService {
             order_index: init.order !== undefined ? init.order : index,
             linked_kpis: init.linkedKPIs ? JSON.stringify(init.linkedKPIs) : null,
             assigned_to: init.assignedTo || null,
-            tasks: initWithTasks.tasks || [],
             updated_at: new Date().toISOString()
           }
 
@@ -88,18 +86,22 @@ export class StrategicPlanningService {
 
         // Insert new initiatives (without id - let DB generate it)
         if (newInitiatives.length > 0) {
+          console.log('[Strategic Planning] 📝 Inserting', newInitiatives.length, 'new initiatives')
           const { error: insertError } = await this.supabase
             .from('strategic_initiatives')
             .insert(newInitiatives)
 
           if (insertError) {
             console.error('[Strategic Planning] ❌ Error inserting new initiatives:', insertError)
+            console.error('[Strategic Planning] ❌ Insert error details:', JSON.stringify(insertError, null, 2))
+            console.error('[Strategic Planning] ❌ First initiative data:', JSON.stringify(newInitiatives[0], null, 2))
             return { success: false, error: insertError.message }
           }
         }
 
         // Update existing initiatives
         if (existingInitiatives.length > 0) {
+          console.log('[Strategic Planning] 🔄 Upserting', existingInitiatives.length, 'existing initiatives')
           const { error: upsertError } = await this.supabase
             .from('strategic_initiatives')
             .upsert(existingInitiatives, {
@@ -109,6 +111,8 @@ export class StrategicPlanningService {
 
           if (upsertError) {
             console.error('[Strategic Planning] ❌ Error upserting initiatives:', upsertError)
+            console.error('[Strategic Planning] ❌ Upsert error details:', JSON.stringify(upsertError, null, 2))
+            console.error('[Strategic Planning] ❌ First initiative data:', JSON.stringify(existingInitiatives[0], null, 2))
             return { success: false, error: upsertError.message }
           }
         }
@@ -187,9 +191,7 @@ export class StrategicPlanningService {
         selected: row.selected || false,
         order: row.order_index !== undefined ? row.order_index : 0,
         linkedKPIs: row.linked_kpis ? JSON.parse(row.linked_kpis) : undefined,
-        assignedTo: row.assigned_to || undefined,
-        // V3: Task breakdown (JSONB column - already parsed by Supabase)
-        tasks: row.tasks || []
+        assignedTo: row.assigned_to || undefined
       }))
 
       console.log(`[Strategic Planning] 📥 Loaded ${initiatives.length} initiatives for ${stepType}`)
