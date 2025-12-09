@@ -54,6 +54,25 @@ export async function GET(request: Request) {
   }
 }
 
+// Allowed file types for upload
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+  'text/csv'
+]
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+
 export async function POST(request: Request) {
   const supabase = await createRouteHandlerClient()
 
@@ -72,6 +91,30 @@ export async function POST(request: Request) {
     if (!file || !businessId) {
       return NextResponse.json(
         { error: 'file and business_id are required' },
+        { status: 400 }
+      )
+    }
+
+    // Validate file type
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+      return NextResponse.json(
+        { error: `File type not allowed. Allowed types: PDF, images, Office documents, text, CSV` },
+        { status: 400 }
+      )
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `File too large. Maximum size is 10MB` },
+        { status: 400 }
+      )
+    }
+
+    // Validate file name (no path traversal)
+    if (file.name.includes('..') || file.name.includes('/') || file.name.includes('\\')) {
+      return NextResponse.json(
+        { error: 'Invalid file name' },
         { status: 400 }
       )
     }

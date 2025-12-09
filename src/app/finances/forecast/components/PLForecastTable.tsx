@@ -218,9 +218,65 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
     const expr = formula.trim().startsWith('=') ? formula.trim().substring(1) : formula.trim()
 
     try {
-      // Evaluate the mathematical expression
-      // eslint-disable-next-line no-new-func
-      const result = new Function('return ' + expr)()
+      // Safe math expression evaluator - only allows numbers, operators, parentheses, and decimals
+      // This prevents code injection attacks
+      const safePattern = /^[\d\s\+\-\*\/\(\)\.]+$/
+
+      if (!safePattern.test(expr)) {
+        console.warn('Invalid formula pattern - only numbers and math operators allowed:', expr)
+        return 0
+      }
+
+      // Tokenize and evaluate safely using a simple recursive descent parser
+      const tokens = expr.match(/(\d+\.?\d*|[\+\-\*\/\(\)])/g) || []
+      let pos = 0
+
+      const parseNumber = (): number => {
+        const token = tokens[pos]
+        if (token && /^\d+\.?\d*$/.test(token)) {
+          pos++
+          return parseFloat(token)
+        }
+        return 0
+      }
+
+      const parseFactor = (): number => {
+        if (tokens[pos] === '(') {
+          pos++ // skip '('
+          const result = parseExpression()
+          pos++ // skip ')'
+          return result
+        }
+        if (tokens[pos] === '-') {
+          pos++
+          return -parseFactor()
+        }
+        return parseNumber()
+      }
+
+      const parseTerm = (): number => {
+        let result = parseFactor()
+        while (tokens[pos] === '*' || tokens[pos] === '/') {
+          const op = tokens[pos]
+          pos++
+          const right = parseFactor()
+          result = op === '*' ? result * right : (right !== 0 ? result / right : 0)
+        }
+        return result
+      }
+
+      const parseExpression = (): number => {
+        let result = parseTerm()
+        while (tokens[pos] === '+' || tokens[pos] === '-') {
+          const op = tokens[pos]
+          pos++
+          const right = parseTerm()
+          result = op === '+' ? result + right : result - right
+        }
+        return result
+      }
+
+      const result = parseExpression()
 
       if (isNaN(result) || !isFinite(result)) {
         return 0
@@ -228,6 +284,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
 
       return result
     } catch (e) {
+      console.error('Formula evaluation error:', e)
       return 0
     }
   }

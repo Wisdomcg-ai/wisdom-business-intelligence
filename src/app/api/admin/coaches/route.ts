@@ -36,10 +36,10 @@ export async function GET() {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
     }
 
-    // Get all coaches
+    // Get all coaches - explicitly select only needed fields (no passwords)
     const { data: coaches, error } = await supabase
       .from('users')
-      .select('*')
+      .select('id, email, first_name, last_name, phone, system_role, created_at, updated_at')
       .eq('system_role', 'coach')
       .order('first_name')
 
@@ -48,7 +48,19 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ coaches: coaches || [] })
+    // Sanitize response - ensure no sensitive fields leak
+    const sanitizedCoaches = (coaches || []).map(coach => ({
+      id: coach.id,
+      email: coach.email,
+      first_name: coach.first_name,
+      last_name: coach.last_name,
+      phone: coach.phone,
+      system_role: coach.system_role,
+      created_at: coach.created_at,
+      updated_at: coach.updated_at
+    }))
+
+    return NextResponse.json({ coaches: sanitizedCoaches })
   } catch (error) {
     console.error('Error in GET /api/admin/coaches:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

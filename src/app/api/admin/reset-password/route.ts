@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { sendPasswordReset } from '@/lib/email/resend'
 import crypto from 'crypto'
+import { checkRateLimit, getClientIP, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 
 // Use service role for admin operations
 const supabaseAdmin = createClient(

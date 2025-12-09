@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendPasswordReset } from '@/lib/email/resend'
 import crypto from 'crypto'
+import { checkRateLimit, getClientIP, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 
 // Use service role for admin operations
 const supabase = createClient(
@@ -12,6 +13,24 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting - 3 password reset requests per hour per IP
+    const clientIP = getClientIP(request)
+    const rateLimitKey = createRateLimitKey('password-reset', clientIP)
+    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.passwordReset)
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many password reset requests. Please try again later.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil(rateLimit.resetIn / 1000)),
+            'X-RateLimit-Remaining': '0'
+          }
+        }
+      )
+    }
+
     const { email } = await request.json()
 
     if (!email) {
