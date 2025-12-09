@@ -506,7 +506,141 @@ export class QuarterlyReviewService {
       throw error;
     }
 
+    // Create quarterly snapshot on completion
+    if (data) {
+      await this.createQuarterlySnapshot(data);
+      await this.saveKpiActuals(data);
+    }
+
     return data;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // KPI Actuals & Quarterly Snapshots
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Save KPI actuals to kpi_actuals table for historical tracking
+   */
+  async saveKpiActuals(review: QuarterlyReview): Promise<void> {
+    const snapshot = review.dashboard_snapshot;
+    if (!snapshot?.kpis || snapshot.kpis.length === 0) return;
+
+    const quarterKey = `Q${review.quarter}`;
+    const supabase = this.getSupabase();
+
+    // Prepare KPI actuals for batch upsert
+    // Using column names from existing migration schema
+    const kpiActuals = snapshot.kpis
+      .filter(kpi => kpi.actual > 0)
+      .map(kpi => ({
+        business_id: review.business_id,
+        user_id: review.user_id,
+        kpi_id: kpi.id,
+        period_year: review.year,
+        period_quarter: quarterKey,
+        period_type: 'quarterly',
+        actual_value: kpi.actual,
+        target_value: kpi.target || null,
+        notes: `Recorded during Q${review.quarter} ${review.year} Quarterly Review`
+      }));
+
+    if (kpiActuals.length === 0) return;
+
+    // Upsert to kpi_actuals table
+    const { error } = await supabase
+      .from('kpi_actuals')
+      .upsert(kpiActuals, {
+        onConflict: 'business_id,kpi_id,period_year,period_quarter,period_month,period_type'
+      });
+
+    if (error) {
+      console.error('Error saving KPI actuals:', error);
+      // Don't throw - this is supplementary, shouldn't block completion
+    }
+  }
+
+  /**
+   * Create a quarterly snapshot capturing the state at end of quarter
+   */
+  async createQuarterlySnapshot(review: QuarterlyReview): Promise<void> {
+    const supabase = this.getSupabase();
+
+    // Build financial snapshot
+    const financialSnapshot = {
+      revenue: {
+        target: review.dashboard_snapshot?.revenue?.target || 0,
+        actual: review.dashboard_snapshot?.revenue?.actual || 0,
+        variance: review.dashboard_snapshot?.revenue?.variance || 0
+      },
+      grossProfit: {
+        target: review.dashboard_snapshot?.grossProfit?.target || 0,
+        actual: review.dashboard_snapshot?.grossProfit?.actual || 0,
+        variance: review.dashboard_snapshot?.grossProfit?.variance || 0
+      },
+      netProfit: {
+        target: review.dashboard_snapshot?.netProfit?.target || 0,
+        actual: review.dashboard_snapshot?.netProfit?.actual || 0,
+        variance: review.dashboard_snapshot?.netProfit?.variance || 0
+      },
+      coreMetrics: review.dashboard_snapshot?.coreMetrics || {}
+    };
+
+    // Build KPIs snapshot
+    const kpisSnapshot = review.dashboard_snapshot?.kpis || [];
+
+    // Build initiatives snapshot from rocks
+    const initiativesSnapshot = review.quarterly_rocks?.map(r => ({
+      id: r.id,
+      title: r.title,
+      owner: r.owner,
+      status: r.status,
+      progressPercentage: r.progressPercentage || 0,
+      successCriteria: r.successCriteria
+    })) || [];
+
+    // Calculate completion stats
+    const completedCount = review.quarterly_rocks?.filter(r => r.status === 'completed').length || 0;
+    const totalCount = review.quarterly_rocks?.length || 0;
+    const completionRate = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+
+    // Build snapshot data matching existing schema
+    const snapshotData = {
+      business_id: review.business_id,
+      user_id: review.user_id,
+      snapshot_year: review.year,
+      snapshot_quarter: `Q${review.quarter}`,
+
+      // Initiative stats
+      total_initiatives: totalCount,
+      completed_initiatives: completedCount,
+      in_progress_initiatives: review.quarterly_rocks?.filter(r => r.status === 'on_track' || r.status === 'at_risk').length || 0,
+      cancelled_initiatives: 0,
+      completion_rate: completionRate,
+
+      // Snapshots as JSONB
+      initiatives_snapshot: initiativesSnapshot,
+      kpis_snapshot: kpisSnapshot,
+      financial_snapshot: financialSnapshot,
+
+      // Qualitative reflections from action replay
+      wins: review.action_replay?.worked?.join('\n') || null,
+      challenges: review.action_replay?.didntWork?.join('\n') || null,
+      learnings: review.action_replay?.keyInsight || null,
+      overall_reflection: review.confidence_notes || null
+    };
+
+    // Upsert to quarterly_snapshots table
+    const { error } = await supabase
+      .from('quarterly_snapshots')
+      .upsert(snapshotData, {
+        onConflict: 'business_id,snapshot_year,snapshot_quarter'
+      });
+
+    if (error) {
+      console.error('Error creating quarterly snapshot:', error);
+      // Don't throw - this is supplementary, shouldn't block completion
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════

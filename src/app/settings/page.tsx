@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import {
   Settings,
@@ -334,10 +335,13 @@ function SettingsContent() {
                       <Users className="w-5 h-5 text-brand-orange" />
                       <h2 className="text-base sm:text-lg font-semibold text-gray-900">Team Members</h2>
                     </div>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg shadow-sm transition-colors text-sm font-medium">
+                    <Link
+                      href="/settings/team"
+                      className="flex items-center gap-2 px-4 py-2 bg-brand-orange text-white hover:bg-brand-orange-600 rounded-lg shadow-sm transition-colors text-sm font-medium"
+                    >
                       <UserPlus className="w-4 h-4" />
-                      Invite Member
-                    </button>
+                      Manage Team
+                    </Link>
                   </div>
 
                   <div className="border border-gray-200 rounded-xl overflow-hidden">
@@ -364,11 +368,23 @@ function SettingsContent() {
                     </div>
                   </div>
 
-                  <div className="mt-4 sm:mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
-                    <p className="text-sm text-gray-600">
-                      <strong>Coming Soon:</strong> Invite team members to collaborate on your business planning.
-                      Team members will be able to view and contribute to your business goals and planning.
-                    </p>
+                  <div className="mt-4 sm:mt-6 p-4 bg-brand-orange-50 rounded-xl border border-brand-orange-100">
+                    <div className="flex items-start gap-3">
+                      <UserPlus className="w-5 h-5 text-brand-orange flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 mb-1">Invite team members</p>
+                        <p className="text-sm text-gray-600">
+                          Add team members to collaborate on your business planning. Control which sections they can access.
+                        </p>
+                        <Link
+                          href="/settings/team"
+                          className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-brand-orange hover:text-brand-orange-700"
+                        >
+                          Go to Team Management
+                          <ChevronRight className="w-4 h-4" />
+                        </Link>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

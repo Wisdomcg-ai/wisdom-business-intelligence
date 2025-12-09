@@ -13,9 +13,12 @@ interface SprintRocksStepProps {
 const EMPTY_ROCK: Omit<Rock, 'id'> = {
   title: '',
   owner: '',
-  doneDefinition: '',
+  successCriteria: '',  // Was doneDefinition
   priority: 0,
-  status: 'not_started'
+  status: 'not_started',
+  progressPercentage: 0,
+  linkedInitiatives: [],
+  linkedKPIs: []
 };
 
 export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
@@ -79,7 +82,7 @@ export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
   return (
     <div>
       <StepHeader
-        step="4.3"
+        step="4.2"  // Now merged into 4.2 (90-Day Sprint Planning)
         subtitle={`Define your 3-5 Rocks for Q${nextQ.quarter} ${nextQ.year} - your 90-day sprint priorities`}
         estimatedTime={20}
         tip="Less is more - focus on what matters most"
@@ -165,15 +168,15 @@ export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg font-medium focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                   />
 
-                  {/* Done Definition */}
+                  {/* Success Criteria (was Done Definition) */}
                   <div>
                     <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
                       <Target className="w-3.5 h-3.5" />
-                      What does "done" look like?
+                      Success Criteria
                     </label>
                     <textarea
-                      value={rock.doneDefinition}
-                      onChange={(e) => updateRock(rock.id, 'doneDefinition', e.target.value)}
+                      value={rock.successCriteria || rock.doneDefinition || ''}
+                      onChange={(e) => updateRock(rock.id, 'successCriteria', e.target.value)}
                       placeholder="Describe the specific, measurable outcome..."
                       rows={2}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
@@ -198,13 +201,16 @@ export function SprintRocksStep({ review, onUpdate }: SprintRocksStepProps) {
                     <div className="flex-1">
                       <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
                         <Link2 className="w-3.5 h-3.5" />
-                        Linked Initiative (optional)
+                        Linked Initiatives (optional)
                       </label>
                       <input
                         type="text"
-                        value={rock.linkedInitiativeId || ''}
-                        onChange={(e) => updateRock(rock.id, 'linkedInitiativeId', e.target.value)}
-                        placeholder="Which initiative does this support?"
+                        value={(rock.linkedInitiatives || [rock.linkedInitiativeId]).filter(Boolean).join(', ')}
+                        onChange={(e) => {
+                          const initiatives = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                          updateRock(rock.id, 'linkedInitiatives', initiatives);
+                        }}
+                        placeholder="Initiative IDs (comma-separated)"
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                       />
                     </div>

@@ -59,7 +59,7 @@ export function PersonalCommitmentsStep({ review, onUpdate }: PersonalCommitment
   return (
     <div>
       <StepHeader
-        step="4.4"
+        step="4.1"  // Now merged into 4.1 (Quarterly Targets & Execution)
         subtitle="Set your personal work/life commitments for the quarter"
         estimatedTime={10}
         tip="Your business serves you - not the other way around"

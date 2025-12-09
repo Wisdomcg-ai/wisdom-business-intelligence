@@ -509,6 +509,23 @@ function ClientsContent() {
               </SlideOverSection>
             )}
 
+            {/* Team Management */}
+            <SlideOverSection title="Team Management" className="bg-slate-50 border-y border-slate-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-brand-navy">Manage Team Members</p>
+                  <p className="text-sm text-gray-500">Add owners, partners, and team members</p>
+                </div>
+                <Link
+                  href={`/coach/clients/${selectedClient.id}?tab=team`}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white font-medium rounded-lg hover:bg-brand-orange-600 shadow-sm transition-colors text-sm"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Manage Team
+                </Link>
+              </div>
+            </SlideOverSection>
+
             {/* Coach Assignment */}
             <SlideOverSection title="Assigned Coach">
               <div className="relative">

@@ -22,7 +22,17 @@ import {
   Briefcase,
   Clock,
   Send,
-  CalendarCheck
+  CalendarCheck,
+  ToggleLeft,
+  ToggleRight,
+  Building2,
+  Target,
+  TrendingUp,
+  Calendar,
+  ListChecks,
+  FileText,
+  MessageSquare,
+  LucideIcon
 } from 'lucide-react'
 
 interface TeamMember {
@@ -39,6 +49,107 @@ interface TeamMember {
   } | null
 }
 
+// SIMPLIFIED Section permission keys - matching architecture doc
+export type SectionPermission =
+  // All-or-nothing groups
+  | 'business_plan'      // Roadmap, VMV, SWOT, Goals, One-Page Plan
+  | 'finances'           // Forecast, Budget, Cashflow
+  | 'business_engines'   // Marketing, Team, Systems (all sub-items)
+  // Individual toggles - Execute section
+  | 'execute_kpi'
+  | 'execute_weekly_review'
+  | 'execute_issues'
+  | 'execute_ideas'
+  | 'execute_productivity'
+  // Individual toggles - Other
+  | 'review_quarterly'
+  | 'coaching_messages'
+  | 'coaching_sessions'
+
+export interface SectionPermissions {
+  // All-or-nothing groups
+  business_plan: boolean
+  finances: boolean
+  business_engines: boolean
+  // Execute - individual toggles
+  execute_kpi: boolean
+  execute_weekly_review: boolean
+  execute_issues: boolean
+  execute_ideas: boolean
+  execute_productivity: boolean
+  // Other - individual toggles
+  review_quarterly: boolean
+  coaching_messages: boolean
+  coaching_sessions: boolean
+}
+
+// SIMPLIFIED Permission structure - All-or-nothing groups + Individual toggles
+interface PermissionItem {
+  id: SectionPermission
+  label: string
+  description: string
+  icon: LucideIcon
+  isGroup?: boolean // True for all-or-nothing sections
+}
+
+// All-or-nothing groups (single toggle for entire section)
+const ALL_OR_NOTHING_GROUPS: PermissionItem[] = [
+  {
+    id: 'business_plan',
+    label: 'Business Plan',
+    description: 'Roadmap, Vision & Mission, SWOT, Goals & Targets, One-Page Plan',
+    icon: Building2,
+    isGroup: true,
+  },
+  {
+    id: 'finances',
+    label: 'Finances',
+    description: 'Financial Forecast, Budget vs Actual, 13-Week Cashflow',
+    icon: TrendingUp,
+    isGroup: true,
+  },
+  {
+    id: 'business_engines',
+    label: 'Business Engines',
+    description: 'Marketing, Team (Hiring Roadmap, Accountability), Systems',
+    icon: Building2,
+    isGroup: true,
+  },
+]
+
+// Execute section - individual toggles
+const EXECUTE_ITEMS: PermissionItem[] = [
+  { id: 'execute_kpi', label: 'KPI Dashboard', description: 'View and track KPI metrics', icon: Target },
+  { id: 'execute_weekly_review', label: 'Weekly Review', description: 'Weekly review & planning', icon: Calendar },
+  { id: 'execute_issues', label: 'Issues List', description: 'Track and manage issues', icon: AlertCircle },
+  { id: 'execute_ideas', label: 'Ideas Journal', description: 'Capture and evaluate ideas', icon: FileText },
+  { id: 'execute_productivity', label: 'Productivity', description: 'Open Loops, To-Do, Stop Doing', icon: ListChecks },
+]
+
+// Other individual toggles
+const OTHER_ITEMS: PermissionItem[] = [
+  { id: 'review_quarterly', label: 'Quarterly Review', description: 'Quarterly planning & review', icon: Calendar },
+  { id: 'coaching_messages', label: 'Messages', description: 'Team messaging & communication', icon: MessageSquare },
+  { id: 'coaching_sessions', label: 'Coaching Sessions', description: 'Session notes & history', icon: FileText },
+]
+
+const DEFAULT_PERMISSIONS: SectionPermissions = {
+  // All-or-nothing groups
+  business_plan: true,
+  finances: false,  // Financial data is sensitive - disabled by default
+  business_engines: true,
+  // Execute - individual toggles (all enabled by default)
+  execute_kpi: true,
+  execute_weekly_review: true,
+  execute_issues: true,
+  execute_ideas: true,
+  execute_productivity: true,
+  // Other - individual toggles
+  review_quarterly: true,
+  coaching_messages: true,
+  coaching_sessions: true,
+}
+
 interface InviteForm {
   firstName: string
   lastName: string
@@ -46,6 +157,7 @@ interface InviteForm {
   phone: string
   position: string
   role: 'admin' | 'member' | 'viewer'
+  sectionPermissions: SectionPermissions
 }
 
 interface PendingInvite {
@@ -106,7 +218,8 @@ export default function TeamMembersPage() {
     email: '',
     phone: '',
     position: '',
-    role: 'member'
+    role: 'member',
+    sectionPermissions: { ...DEFAULT_PERMISSIONS }
   })
   const [inviting, setInviting] = useState(false)
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([])
@@ -262,7 +375,8 @@ export default function TeamMembersPage() {
             role: inviteForm.role,
             status: 'active',
             invited_by: currentUser?.id,
-            invited_at: new Date().toISOString()
+            invited_at: new Date().toISOString(),
+            section_permissions: inviteForm.sectionPermissions
           })
 
         if (insertError) throw insertError
@@ -284,7 +398,8 @@ export default function TeamMembersPage() {
             position: inviteForm.position || null,
             role: inviteForm.role,
             invited_by: currentUser?.id,
-            status: 'pending'
+            status: 'pending',
+            section_permissions: inviteForm.sectionPermissions
           })
 
         if (inviteError) {
@@ -318,7 +433,18 @@ export default function TeamMembersPage() {
       email: '',
       phone: '',
       position: '',
-      role: 'member'
+      role: 'member',
+      sectionPermissions: { ...DEFAULT_PERMISSIONS }
+    })
+  }
+
+  function toggleSectionPermission(section: SectionPermission) {
+    setInviteForm({
+      ...inviteForm,
+      sectionPermissions: {
+        ...inviteForm.sectionPermissions,
+        [section]: !inviteForm.sectionPermissions[section]
+      }
     })
   }
 
@@ -809,6 +935,165 @@ export default function TeamMembersPage() {
                     {inviteForm.role === 'admin' && 'Admins can add/remove team members and access all features'}
                     {inviteForm.role === 'member' && 'Members can view and edit business data but cannot manage the team'}
                     {inviteForm.role === 'viewer' && 'Viewers have read-only access to view reports and dashboards'}
+                  </p>
+                </div>
+
+                {/* SIMPLIFIED Section Access Toggles */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Sidebar Section Access
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setInviteForm({
+                          ...inviteForm,
+                          sectionPermissions: {
+                            business_plan: true, finances: true, business_engines: true,
+                            execute_kpi: true, execute_weekly_review: true, execute_issues: true, execute_ideas: true, execute_productivity: true,
+                            review_quarterly: true, coaching_messages: true, coaching_sessions: true
+                          }
+                        })}
+                        className="text-xs text-brand-orange hover:text-brand-orange-700 font-medium"
+                      >
+                        Enable All
+                      </button>
+                      <span className="text-gray-300">|</span>
+                      <button
+                        type="button"
+                        onClick={() => setInviteForm({
+                          ...inviteForm,
+                          sectionPermissions: {
+                            business_plan: false, finances: false, business_engines: false,
+                            execute_kpi: false, execute_weekly_review: false, execute_issues: false, execute_ideas: false, execute_productivity: false,
+                            review_quarterly: false, coaching_messages: false, coaching_sessions: false
+                          }
+                        })}
+                        className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+                      >
+                        Disable All
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Choose which sections this team member can see in their sidebar
+                  </p>
+                  <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
+                    {/* ALL-OR-NOTHING GROUPS */}
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Full Sections (All or Nothing)</p>
+                      <div className="space-y-2">
+                        {ALL_OR_NOTHING_GROUPS.map((item) => {
+                          const Icon = item.icon
+                          const isEnabled = inviteForm.sectionPermissions[item.id]
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => toggleSectionPermission(item.id)}
+                              className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${
+                                isEnabled
+                                  ? 'border-brand-orange bg-brand-orange-50'
+                                  : 'border-gray-200 bg-gray-50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                  isEnabled ? 'bg-brand-orange-100' : 'bg-gray-200'
+                                }`}>
+                                  <Icon className={`w-4 h-4 ${isEnabled ? 'text-brand-orange' : 'text-gray-400'}`} />
+                                </div>
+                                <div className="text-left min-w-0">
+                                  <span className={`block text-sm font-semibold ${isEnabled ? 'text-brand-orange-700' : 'text-gray-500'}`}>
+                                    {item.label}
+                                  </span>
+                                  <span className="block text-xs text-gray-400 truncate">{item.description}</span>
+                                </div>
+                              </div>
+                              {isEnabled ? (
+                                <ToggleRight className="w-6 h-6 text-brand-orange flex-shrink-0" />
+                              ) : (
+                                <ToggleLeft className="w-6 h-6 text-gray-400 flex-shrink-0" />
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* EXECUTE SECTION - INDIVIDUAL TOGGLES */}
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Execute (Individual Access)</p>
+                      <div className="space-y-2">
+                        {EXECUTE_ITEMS.map((item) => {
+                          const Icon = item.icon
+                          const isEnabled = inviteForm.sectionPermissions[item.id]
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => toggleSectionPermission(item.id)}
+                              className={`w-full flex items-center justify-between p-2.5 rounded-lg border transition-all ${
+                                isEnabled
+                                  ? 'border-brand-orange-200 bg-brand-orange-50/50'
+                                  : 'border-gray-200 bg-gray-50/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <Icon className={`w-4 h-4 ${isEnabled ? 'text-brand-orange' : 'text-gray-400'}`} />
+                                <span className={`text-sm ${isEnabled ? 'text-gray-900' : 'text-gray-500'}`}>
+                                  {item.label}
+                                </span>
+                              </div>
+                              {isEnabled ? (
+                                <ToggleRight className="w-5 h-5 text-brand-orange" />
+                              ) : (
+                                <ToggleLeft className="w-5 h-5 text-gray-300" />
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* OTHER - INDIVIDUAL TOGGLES */}
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Other (Individual Access)</p>
+                      <div className="space-y-2">
+                        {OTHER_ITEMS.map((item) => {
+                          const Icon = item.icon
+                          const isEnabled = inviteForm.sectionPermissions[item.id]
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => toggleSectionPermission(item.id)}
+                              className={`w-full flex items-center justify-between p-2.5 rounded-lg border transition-all ${
+                                isEnabled
+                                  ? 'border-brand-orange-200 bg-brand-orange-50/50'
+                                  : 'border-gray-200 bg-gray-50/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <Icon className={`w-4 h-4 ${isEnabled ? 'text-brand-orange' : 'text-gray-400'}`} />
+                                <span className={`text-sm ${isEnabled ? 'text-gray-900' : 'text-gray-500'}`}>
+                                  {item.label}
+                                </span>
+                              </div>
+                              {isEnabled ? (
+                                <ToggleRight className="w-5 h-5 text-brand-orange" />
+                              ) : (
+                                <ToggleLeft className="w-5 h-5 text-gray-300" />
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
+                    Note: Dashboard and Settings are always accessible to all team members
                   </p>
                 </div>
 

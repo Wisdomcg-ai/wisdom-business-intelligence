@@ -4,7 +4,16 @@ import { Resend } from 'resend';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Default from address - update this to your verified domain
-const DEFAULT_FROM = 'Wisdom BI <noreply@mail.wisdombi.ai>';
+const DEFAULT_FROM = 'WisdomBI <noreply@mail.wisdombi.ai>';
+
+// Brand colors
+const BRAND_ORANGE = '#F5821F';
+const BRAND_NAVY = '#172238';
+const BRAND_ORANGE_LIGHT = '#fff8f1';
+const BRAND_NAVY_LIGHT = '#f4f6f9';
+
+// Logo URL - uses production domain for email compatibility
+const LOGO_URL = 'https://wisdombi.ai/images/logo-main.png';
 
 export interface SendEmailOptions {
   to: string | string[];
@@ -19,6 +28,37 @@ export interface EmailResult {
   id?: string;
   error?: string;
 }
+
+/**
+ * Common email header with WisdomBI branding
+ */
+const getEmailHeader = () => `
+  <div style="text-align: center; margin-bottom: 30px;">
+    <img src="${LOGO_URL}" alt="WisdomBI" style="max-width: 180px; height: auto;" />
+  </div>
+`;
+
+/**
+ * Common email footer with WisdomBI branding
+ */
+const getEmailFooter = (to?: string) => `
+  <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+  <p style="color: #9ca3af; font-size: 12px; text-align: center;">
+    WisdomBI - Business Intelligence Platform<br>
+    ${to ? `This email was sent to ${to}` : ''}
+  </p>
+`;
+
+/**
+ * Primary CTA button style
+ */
+const getPrimaryButton = (url: string, text: string) => `
+  <div style="text-align: center; margin: 30px 0;">
+    <a href="${url}" style="display: inline-block; background: ${BRAND_ORANGE}; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+      ${text}
+    </a>
+  </div>
+`;
 
 /**
  * Send an email using Resend
@@ -70,20 +110,15 @@ export async function sendClientInvitation(params: {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; margin-bottom: 30px;">
-        <div style="display: inline-block; width: 50px; height: 50px; background: linear-gradient(135deg, #14b8a6, #0d9488); border-radius: 12px; line-height: 50px;">
-          <span style="color: white; font-size: 24px; font-weight: bold;">W</span>
-        </div>
-        <h1 style="color: #0d9488; margin: 10px 0 0 0;">Wisdom BI</h1>
-      </div>
+      ${getEmailHeader()}
 
-      <h2 style="color: #1f2937;">Welcome to Your Business Intelligence Platform</h2>
+      <h2 style="color: ${BRAND_NAVY};">Welcome to Your Business Intelligence Platform</h2>
 
       <p>Hi ${clientName},</p>
 
-      <p><strong>${coachName}</strong> has invited you to join <strong>${businessName}</strong> on Wisdom BI - your dedicated platform for tracking business goals, metrics, and growth.</p>
+      <p><strong>${coachName}</strong> has invited you to join <strong>${businessName}</strong> on WisdomBI - your dedicated platform for tracking business goals, metrics, and growth.</p>
 
-      <div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 20px; margin: 20px 0;">
+      <div style="background: ${BRAND_ORANGE_LIGHT}; border: 1px solid #fcd5b8; border-radius: 8px; padding: 20px; margin: 20px 0;">
         <p style="margin: 0 0 10px 0;"><strong>What you can do:</strong></p>
         <ul style="margin: 0; padding-left: 20px;">
           <li>Track your annual and quarterly goals</li>
@@ -102,29 +137,20 @@ export async function sendClientInvitation(params: {
       </div>
       ` : ''}
 
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${loginUrl}" style="display: inline-block; background: #0d9488; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-          Get Started
-        </a>
-      </div>
+      ${getPrimaryButton(loginUrl, 'Get Started')}
 
       <p style="color: #6b7280; font-size: 14px;">
         If you have any questions, simply reply to this email or reach out to your coach directly through the platform.
       </p>
 
-      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
-
-      <p style="color: #9ca3af; font-size: 12px; text-align: center;">
-        Wisdom Business Intelligence<br>
-        This email was sent to ${to}
-      </p>
+      ${getEmailFooter(to)}
     </body>
     </html>
   `;
 
   return sendEmail({
     to,
-    subject: `${coachName} invited you to ${businessName} on Wisdom BI`,
+    subject: `${coachName} invited you to ${businessName} on WisdomBI`,
     html,
     replyTo: undefined, // Could add coach's email here
   });
@@ -148,40 +174,28 @@ export async function sendPasswordReset(params: {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; margin-bottom: 30px;">
-        <div style="display: inline-block; width: 50px; height: 50px; background: linear-gradient(135deg, #14b8a6, #0d9488); border-radius: 12px; line-height: 50px;">
-          <span style="color: white; font-size: 24px; font-weight: bold;">W</span>
-        </div>
-      </div>
+      ${getEmailHeader()}
 
-      <h2 style="color: #1f2937; text-align: center;">Reset Your Password</h2>
+      <h2 style="color: ${BRAND_NAVY}; text-align: center;">Reset Your Password</h2>
 
       <p>Hi ${name},</p>
 
       <p>We received a request to reset your password. Click the button below to create a new password:</p>
 
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${resetUrl}" style="display: inline-block; background: #0d9488; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-          Reset Password
-        </a>
-      </div>
+      ${getPrimaryButton(resetUrl, 'Reset Password')}
 
       <p style="color: #6b7280; font-size: 14px;">
         This link will expire in 1 hour. If you didn't request this, you can safely ignore this email.
       </p>
 
-      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
-
-      <p style="color: #9ca3af; font-size: 12px; text-align: center;">
-        Wisdom Business Intelligence
-      </p>
+      ${getEmailFooter()}
     </body>
     </html>
   `;
 
   return sendEmail({
     to,
-    subject: 'Reset your Wisdom BI password',
+    subject: 'Reset your WisdomBI password',
     html,
   });
 }
@@ -207,40 +221,26 @@ export async function sendSessionReminder(params: {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; margin-bottom: 30px;">
-        <div style="display: inline-block; width: 50px; height: 50px; background: linear-gradient(135deg, #14b8a6, #0d9488); border-radius: 12px; line-height: 50px;">
-          <span style="color: white; font-size: 24px; font-weight: bold;">W</span>
-        </div>
-      </div>
+      ${getEmailHeader()}
 
-      <h2 style="color: #1f2937; text-align: center;">Session Reminder</h2>
+      <h2 style="color: ${BRAND_NAVY}; text-align: center;">Session Reminder</h2>
 
       <p>Hi ${clientName},</p>
 
       <p>This is a reminder about your upcoming coaching session with <strong>${coachName}</strong>.</p>
 
-      <div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center;">
-        <p style="margin: 0; font-size: 18px; font-weight: 600; color: #0d9488;">${sessionDate}</p>
-        <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold; color: #1f2937;">${sessionTime}</p>
+      <div style="background: ${BRAND_ORANGE_LIGHT}; border: 1px solid #fcd5b8; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center;">
+        <p style="margin: 0; font-size: 18px; font-weight: 600; color: ${BRAND_ORANGE};">${sessionDate}</p>
+        <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold; color: ${BRAND_NAVY};">${sessionTime}</p>
       </div>
 
-      ${meetingLink ? `
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${meetingLink}" style="display: inline-block; background: #0d9488; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-          Join Meeting
-        </a>
-      </div>
-      ` : ''}
+      ${meetingLink ? getPrimaryButton(meetingLink, 'Join Meeting') : ''}
 
       <p style="color: #6b7280; font-size: 14px;">
         Before your session, consider reviewing your weekly progress and any action items from your last meeting.
       </p>
 
-      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
-
-      <p style="color: #9ca3af; font-size: 12px; text-align: center;">
-        Wisdom Business Intelligence
-      </p>
+      ${getEmailFooter()}
     </body>
     </html>
   `;
@@ -272,31 +272,19 @@ export async function sendMessageNotification(params: {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; margin-bottom: 30px;">
-        <div style="display: inline-block; width: 50px; height: 50px; background: linear-gradient(135deg, #14b8a6, #0d9488); border-radius: 12px; line-height: 50px;">
-          <span style="color: white; font-size: 24px; font-weight: bold;">W</span>
-        </div>
-      </div>
+      ${getEmailHeader()}
 
       <p>Hi ${recipientName},</p>
 
       <p>You have a new message from <strong>${senderName}</strong>:</p>
 
-      <div style="background: #f3f4f6; border-left: 4px solid #0d9488; padding: 15px 20px; margin: 20px 0; border-radius: 0 8px 8px 0;">
+      <div style="background: #f3f4f6; border-left: 4px solid ${BRAND_ORANGE}; padding: 15px 20px; margin: 20px 0; border-radius: 0 8px 8px 0;">
         <p style="margin: 0; color: #4b5563; font-style: italic;">"${messagePreview}"</p>
       </div>
 
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${dashboardUrl}" style="display: inline-block; background: #0d9488; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-          View Message
-        </a>
-      </div>
+      ${getPrimaryButton(dashboardUrl, 'View Message')}
 
-      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
-
-      <p style="color: #9ca3af; font-size: 12px; text-align: center;">
-        Wisdom Business Intelligence
-      </p>
+      ${getEmailFooter()}
     </body>
     </html>
   `;
@@ -304,6 +292,64 @@ export async function sendMessageNotification(params: {
   return sendEmail({
     to,
     subject: `New message from ${senderName}`,
+    html,
+  });
+}
+
+/**
+ * Send a test email to verify branding
+ */
+export async function sendTestEmail(params: {
+  to: string;
+  name?: string;
+}): Promise<EmailResult> {
+  const { to, name = 'there' } = params;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+      ${getEmailHeader()}
+
+      <h2 style="color: ${BRAND_NAVY}; text-align: center;">Email Branding Test</h2>
+
+      <p>Hi ${name},</p>
+
+      <p>This is a test email to verify that the WisdomBI email branding is working correctly.</p>
+
+      <div style="background: ${BRAND_ORANGE_LIGHT}; border: 1px solid #fcd5b8; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <p style="margin: 0 0 10px 0;"><strong>Brand Colors:</strong></p>
+        <ul style="margin: 0; padding-left: 20px;">
+          <li>Brand Orange: <span style="color: ${BRAND_ORANGE}; font-weight: bold;">${BRAND_ORANGE}</span></li>
+          <li>Brand Navy: <span style="color: ${BRAND_NAVY}; font-weight: bold;">${BRAND_NAVY}</span></li>
+        </ul>
+      </div>
+
+      <div style="background: ${BRAND_NAVY_LIGHT}; border: 1px solid #cdd7e5; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <p style="margin: 0; color: ${BRAND_NAVY};">
+          <strong>This is a secondary info box</strong><br>
+          Using the navy color scheme for variety.
+        </p>
+      </div>
+
+      ${getPrimaryButton('#', 'Primary Button Example')}
+
+      <p style="color: #6b7280; font-size: 14px;">
+        If this email looks good, the branding update was successful!
+      </p>
+
+      ${getEmailFooter(to)}
+    </body>
+    </html>
+  `;
+
+  return sendEmail({
+    to,
+    subject: 'WisdomBI - Email Branding Test',
     html,
   });
 }

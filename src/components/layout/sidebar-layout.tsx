@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
+import { SectionPermissions } from '@/app/settings/team/page'
+import { hasPermission, FULL_PERMISSIONS } from '@/lib/permissions'
 import {
   LayoutDashboard,
   ClipboardCheck,
@@ -65,6 +67,11 @@ interface BusinessData {
   stage: string
   revenueTarget: number
   profitTarget: number
+}
+
+interface UserPermissionData {
+  role: string
+  permissions: SectionPermissions | null
 }
 
 const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
@@ -213,6 +220,48 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [userName, setUserName] = useState<string>('User Account')
   const [userEmail, setUserEmail] = useState<string>('user@example.com')
+  const [userPermissions, setUserPermissions] = useState<UserPermissionData>({
+    role: 'owner',
+    permissions: FULL_PERMISSIONS,
+  })
+
+  // Filter navigation based on user permissions
+  const filteredNavigation = useMemo(() => {
+    return navigation
+      .map((section) => {
+        // Check if the section title requires permission
+        if (!hasPermission(section.title, userPermissions.permissions, userPermissions.role)) {
+          return null
+        }
+
+        // Filter items within the section
+        const filteredItems = section.items
+          .filter((item) => hasPermission(item.label, userPermissions.permissions, userPermissions.role))
+          .map((item) => {
+            // Filter children if they exist
+            if (item.children) {
+              const filteredChildren = item.children.filter((child) =>
+                hasPermission(child.label, userPermissions.permissions, userPermissions.role)
+              )
+              // Only include item if it has visible children
+              if (filteredChildren.length === 0) {
+                return null
+              }
+              return { ...item, children: filteredChildren }
+            }
+            return item
+          })
+          .filter((item): item is NavItem => item !== null)
+
+        // Don't show section if no items are visible
+        if (filteredItems.length === 0) {
+          return null
+        }
+
+        return { ...section, items: filteredItems }
+      })
+      .filter((section): section is NavSection => section !== null)
+  }, [navigation, userPermissions])
 
   // Don't render client sidebar for coach routes, auth routes, marketing pages, or legal pages
   const isCoachRoute = pathname?.startsWith('/coach')
@@ -234,6 +283,51 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
             : user.email?.split('@')[0] || 'User Account'
           setUserName(name)
           setUserEmail(user.email || 'user@example.com')
+
+          // Load user's business membership and permissions
+          // Wrapped in try-catch to handle cases where section_permissions column doesn't exist yet
+          const storedBusinessId = localStorage.getItem('businessId')
+          if (storedBusinessId) {
+            try {
+              const { data: businessUser, error: businessUserError } = await supabase
+                .from('business_users')
+                .select('role, section_permissions')
+                .eq('business_id', storedBusinessId)
+                .eq('user_id', user.id)
+                .single()
+
+              if (businessUserError) {
+                // If section_permissions column doesn't exist, try fetching just the role
+                console.warn('[Sidebar] Error fetching permissions, trying fallback:', businessUserError.message)
+                const { data: roleOnly } = await supabase
+                  .from('business_users')
+                  .select('role')
+                  .eq('business_id', storedBusinessId)
+                  .eq('user_id', user.id)
+                  .single()
+
+                if (roleOnly) {
+                  // Default to full permissions if column doesn't exist
+                  setUserPermissions({
+                    role: roleOnly.role || 'owner',
+                    permissions: FULL_PERMISSIONS,
+                  })
+                }
+              } else if (businessUser) {
+                setUserPermissions({
+                  role: businessUser.role || 'member',
+                  permissions: businessUser.section_permissions as SectionPermissions | null,
+                })
+              }
+            } catch (permError) {
+              console.error('[Sidebar] Failed to load permissions:', permError)
+              // Default to full permissions on error
+              setUserPermissions({
+                role: 'owner',
+                permissions: FULL_PERMISSIONS,
+              })
+            }
+          }
         }
 
         // Load business data from localStorage
@@ -374,7 +468,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
         </button>
 
         <nav className="flex-1 overflow-y-auto">
-          {navigation.map((section) => (
+          {filteredNavigation.map((section) => (
             <div key={section.title} className="border-b border-brand-navy-700">
               {sidebarOpen ? (
                 <>

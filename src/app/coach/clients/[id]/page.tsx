@@ -180,18 +180,122 @@ export default function ClientFilePage() {
       setBusiness(businessData as BusinessData)
 
       // Load business profile data (for additional details)
-      const { data: profileData } = await supabase
-        .from('business_profiles')
-        .select('*')
-        .eq('business_id', clientId)
-        .single()
+      // Try both user_id (owner) AND business_id linkages
+      const ownerId = businessData.owner_id
+      let profileData = null
+
+      // First try by user_id (owner)
+      if (ownerId) {
+        const { data: fetchedProfile } = await supabase
+          .from('business_profiles')
+          .select('*')
+          .eq('user_id', ownerId)
+          .maybeSingle()
+
+        profileData = fetchedProfile
+      }
+
+      // Fallback: try by business_id if no profile found by user_id
+      if (!profileData) {
+        const { data: fetchedByBusinessId } = await supabase
+          .from('business_profiles')
+          .select('*')
+          .eq('business_id', clientId)
+          .maybeSingle()
+
+        if (fetchedByBusinessId) {
+          profileData = fetchedByBusinessId
+          console.log('[ClientPage] Found profile by business_id instead of user_id')
+        }
+      }
 
       if (profileData) {
         setBusinessProfile(profileData as BusinessProfileData)
       }
 
+      console.log('[ClientPage] Profile lookup - ownerId:', ownerId, 'found profileData:', !!profileData, 'profileId:', profileData?.id)
+
       // Load stats from database - wrap each query in try/catch for resilience
-      const ownerId = businessData.owner_id
+      // Collect ALL possible user IDs from all sources - the assessment might be under any of them
+      const possibleUserIds: string[] = []
+
+      // Source 1: owner_id from business
+      if (ownerId) {
+        possibleUserIds.push(ownerId)
+      }
+
+      // Source 2: user_id from business_profiles (found by business_id)
+      if ((profileData as any)?.user_id) {
+        const profileUserId = (profileData as any).user_id
+        if (!possibleUserIds.includes(profileUserId)) {
+          possibleUserIds.push(profileUserId)
+        }
+      }
+
+      // Source 3: ALL users from business_users table
+      try {
+        const { data: businessUsers } = await supabase
+          .from('business_users')
+          .select('user_id')
+          .eq('business_id', clientId)
+
+        if (businessUsers && businessUsers.length > 0) {
+          businessUsers.forEach((bu: any) => {
+            if (bu.user_id && !possibleUserIds.includes(bu.user_id)) {
+              possibleUserIds.push(bu.user_id)
+            }
+          })
+          console.log('[ClientPage] Found users via business_users table:', businessUsers.map((bu: any) => bu.user_id))
+        }
+      } catch (e) {
+        console.log('[ClientPage] Could not query business_users:', e)
+      }
+
+      // Source 4: Look up user by owner_email from the users table
+      if (businessData.owner_email) {
+        try {
+          const { data: userByEmail } = await supabase
+            .from('users')
+            .select('id')
+            .eq('email', businessData.owner_email)
+            .maybeSingle()
+
+          if (userByEmail?.id && !possibleUserIds.includes(userByEmail.id)) {
+            possibleUserIds.push(userByEmail.id)
+            console.log('[ClientPage] Found user by owner_email:', businessData.owner_email, '-> user_id:', userByEmail.id)
+          }
+        } catch (e) {
+          console.log('[ClientPage] Could not query users by email:', e)
+        }
+      }
+
+      // Source 5: Look up user by business_name match in business_profiles
+      // This catches cases where the client created a profile with the same business name
+      if (businessData.name) {
+        try {
+          const { data: profilesByName } = await supabase
+            .from('business_profiles')
+            .select('user_id')
+            .ilike('business_name', businessData.name)
+
+          if (profilesByName && profilesByName.length > 0) {
+            profilesByName.forEach((p: any) => {
+              if (p.user_id && !possibleUserIds.includes(p.user_id)) {
+                possibleUserIds.push(p.user_id)
+                console.log('[ClientPage] Found user by business_name match:', businessData.name, '-> user_id:', p.user_id)
+              }
+            })
+          }
+        } catch (e) {
+          console.log('[ClientPage] Could not query business_profiles by name:', e)
+        }
+      }
+
+      console.log('[ClientPage] All possible user IDs for business:', clientId, ':', possibleUserIds)
+
+      // Use first user ID as the "effective" one for other queries
+      const effectiveUserId = possibleUserIds[0] || null
+
       let activeGoals = 0
       let completedGoals = 0
       let pendingActions = 0
@@ -199,7 +303,7 @@ export default function ClientFilePage() {
       let unreadMessages = 0
       let healthScore: number | null = null
 
-      console.log('[ClientPage] Loading stats - business:', clientId, 'owner:', ownerId)
+      console.log('[ClientPage] Loading stats - business:', clientId, 'possibleUserIds:', possibleUserIds, 'effectiveUserId:', effectiveUserId)
 
       // Store businessProfileId at higher scope for activity queries
       let businessProfileId: string | null = null
@@ -207,19 +311,20 @@ export default function ClientFilePage() {
       // Ideas stats holder
       let ideasStats: { total: number; captured: number; underReview: number; approved: number } | null = null
 
-      // Only query user-specific data if we have an owner_id
-      if (ownerId) {
+      // Only query user-specific data if we have users to query for
+      if (possibleUserIds.length > 0) {
         // Get latest assessment score for health (use same columns as dashboard)
+        // Query for ANY of the possible user IDs linked to this business
         try {
           const { data: assessmentData, error: assessmentError } = await supabase
             .from('assessments')
-            .select('percentage, total_score, total_max')
-            .eq('user_id', ownerId)
+            .select('percentage, total_score, total_max, user_id')
+            .in('user_id', possibleUserIds)
             .eq('status', 'completed')
             .order('created_at', { ascending: false })
             .limit(1)
 
-          console.log('[ClientPage] Assessment:', { data: assessmentData, error: assessmentError?.message })
+          console.log('[ClientPage] Assessment query for users:', possibleUserIds, '- result:', { data: assessmentData, error: assessmentError?.message })
           if (!assessmentError && assessmentData?.[0]) {
             // Use percentage if available, otherwise calculate from total_score/total_max
             healthScore = assessmentData[0].percentage ??
@@ -229,19 +334,13 @@ export default function ClientFilePage() {
           console.log('Could not load assessment data:', e)
         }
 
-        // Get business_profiles.id for goals queries
-        try {
-          const { data: bpData, error: bpError } = await supabase
-            .from('business_profiles')
-            .select('id')
-            .eq('user_id', ownerId)
-            .limit(1)
+        // Use the business_profiles.id from our earlier query for goals/initiatives
+        // profileData was already fetched above using user_id = ownerId
+        if (profileData?.id) {
+          businessProfileId = profileData.id
+          console.log('[ClientPage] Using business profile from earlier query:', businessProfileId)
 
-          console.log('[ClientPage] Business profile:', { data: bpData, error: bpError?.message })
-
-          if (!bpError && bpData?.[0]?.id) {
-            businessProfileId = bpData[0].id
-
+          try {
             // Count strategic initiatives as goals
             const { data: initiatives, error: initError } = await supabase
               .from('strategic_initiatives')
@@ -256,15 +355,15 @@ export default function ClientFilePage() {
               completedGoals = initiatives.filter((i: any) => i.status === 'completed').length
               activeGoals = initiatives.filter((i: any) => i.status !== 'completed').length
             }
+          } catch (e) {
+            console.log('Could not load goals data:', e)
           }
-        } catch (e) {
-          console.log('Could not load goals data:', e)
         }
       } else {
-        console.log('[ClientPage] No owner_id, skipping user queries')
+        console.log('[ClientPage] No effectiveUserId, skipping user queries')
       }
 
-      // Get pending/overdue actions (uses clientId, not ownerId)
+      // Get pending/overdue actions (uses clientId, not effectiveUserId)
       // Note: action_items table may not exist yet
       try {
         const { data: actionsData, error: actionsError } = await supabase
@@ -303,7 +402,7 @@ export default function ClientFilePage() {
       // Fetch recent activity for this client - comprehensive tracking
       const activities: Array<{ id: string; type: 'session' | 'action' | 'message' | 'goal'; title: string; timestamp: string }> = []
 
-      if (ownerId) {
+      if (effectiveUserId) {
         // Get recent weekly reviews
         try {
           const { data: reviews } = await supabase
@@ -331,7 +430,7 @@ export default function ClientFilePage() {
           const { data: assessments } = await supabase
             .from('assessments')
             .select('id, created_at, percentage')
-            .eq('user_id', ownerId)
+            .eq('user_id', effectiveUserId)
             .eq('status', 'completed')
             .order('created_at', { ascending: false })
             .limit(3)
@@ -351,7 +450,7 @@ export default function ClientFilePage() {
           const { data: loops } = await supabase
             .from('open_loops')
             .select('id, title, created_at, updated_at, archived')
-            .eq('user_id', ownerId)
+            .eq('user_id', effectiveUserId)
             .order('updated_at', { ascending: false })
             .limit(5)
 
@@ -370,7 +469,7 @@ export default function ClientFilePage() {
           const { data: issues } = await supabase
             .from('issues_list')
             .select('id, title, created_at, updated_at, status')
-            .eq('user_id', ownerId)
+            .eq('user_id', effectiveUserId)
             .order('updated_at', { ascending: false })
             .limit(5)
 
@@ -414,7 +513,7 @@ export default function ClientFilePage() {
         //   const { data: stopItems } = await supabase
         //     .from('stop_doing_list')
         //     .select('id, item, created_at')
-        //     .eq('user_id', ownerId)
+        //     .eq('user_id', effectiveUserId)
         //     .order('created_at', { ascending: false })
         //     .limit(3)
         //   stopItems?.forEach(s => {
@@ -458,7 +557,7 @@ export default function ClientFilePage() {
           const { data: swot } = await supabase
             .from('swot_analyses')
             .select('id, updated_at, created_at')
-            .eq('business_id', ownerId)
+            .eq('business_id', effectiveUserId)
             .order('updated_at', { ascending: false })
             .limit(1)
 
@@ -477,7 +576,7 @@ export default function ClientFilePage() {
           const { data: ideas } = await supabase
             .from('ideas')
             .select('id, title, status, created_at, updated_at')
-            .eq('user_id', ownerId)
+            .eq('user_id', effectiveUserId)
             .eq('archived', false)
 
           if (ideas && ideas.length > 0) {
@@ -506,7 +605,7 @@ export default function ClientFilePage() {
           const { data: vision } = await supabase
             .from('vision_targets')
             .select('id, updated_at, created_at')
-            .eq('user_id', ownerId)
+            .eq('user_id', effectiveUserId)
             .order('updated_at', { ascending: false })
             .limit(1)
 

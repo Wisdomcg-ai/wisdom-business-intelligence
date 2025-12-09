@@ -42,7 +42,7 @@ interface InviteForm {
   email: string
   phone: string
   position: string
-  role: 'admin' | 'member' | 'viewer'
+  role: 'owner' | 'admin' | 'member' | 'viewer'
 }
 
 interface PendingInvite {
@@ -64,7 +64,7 @@ interface TeamTabProps {
 
 const ROLE_INFO = {
   owner: {
-    label: 'Owner',
+    label: 'Owner/Partner',
     description: 'Full access, can manage team and billing',
     icon: Crown,
     color: 'text-amber-600',
@@ -423,8 +423,8 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                         value={member.role}
                         onChange={(e) => updateMemberRole(member.id, e.target.value)}
                         className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
-                        disabled={member.role === 'owner'}
                       >
+                        <option value="owner">Owner/Partner</option>
                         <option value="admin">Admin</option>
                         <option value="member">Member</option>
                         <option value="viewer">Viewer</option>
@@ -445,14 +445,13 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                     </div>
                   )}
 
-                  {member.role !== 'owner' && (
-                    <div className="relative">
-                      <button
-                        onClick={() => setMenuOpen(menuOpen === member.id ? null : member.id)}
-                        className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
-                      >
-                        <MoreVertical className="w-4 h-4" />
-                      </button>
+                  <div className="relative">
+                    <button
+                      onClick={() => setMenuOpen(menuOpen === member.id ? null : member.id)}
+                      className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
 
                       {menuOpen === member.id && (
                         <>
@@ -482,7 +481,6 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                         </>
                       )}
                     </div>
-                  )}
                 </div>
               </div>
             )
@@ -707,11 +705,13 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                     onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value as any })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
                   >
+                    <option value="owner">Owner/Partner - Full access, can manage billing</option>
                     <option value="admin">Admin - Full access, can manage team</option>
                     <option value="member">Member - Can view and edit data</option>
                     <option value="viewer">Viewer - Read-only access</option>
                   </select>
                   <p className="mt-1 text-xs text-gray-500">
+                    {inviteForm.role === 'owner' && 'Owners/Partners have full access to all features including billing and team management'}
                     {inviteForm.role === 'admin' && 'Admins can add/remove team members and access all features'}
                     {inviteForm.role === 'member' && 'Members can view and edit business data but cannot manage the team'}
                     {inviteForm.role === 'viewer' && 'Viewers have read-only access to view reports and dashboards'}

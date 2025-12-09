@@ -136,6 +136,7 @@ function ReviewContent() {
           />
         );
       case '1.2':
+        // 1.2 includes both Dashboard Review and Action Replay (merged from 1.3)
         return (
           <DashboardReviewStep
             review={review}
@@ -143,7 +144,6 @@ function ReviewContent() {
             onUpdateActionReplay={updateActionReplay}
           />
         );
-      // Step 1.3 is now merged into 1.2
       case '2.1':
         return (
           <FeedbackLoopStep

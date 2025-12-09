@@ -103,7 +103,7 @@ export function ActionReplayStep({ review, onUpdate }: ActionReplayStepProps) {
   return (
     <div>
       <StepHeader
-        step="1.3"
+        step="1.2"  // Now merged into 1.2 (Dashboard Review with Action Replay)
         subtitle="Reflect on your actions from last quarter using the 4-column framework"
         estimatedTime={20}
         tip="Be honest - this is for learning, not judgment"

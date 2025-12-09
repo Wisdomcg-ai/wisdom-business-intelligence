@@ -7,36 +7,33 @@ export type ReviewType = 'quarterly' | 'annual' | 'mid-year';
 
 export type WorkshopStep =
   | 'prework'
-  | '1.1' | '1.2' | '1.3'
+  | '1.1' | '1.2'  // 1.3 (Action Replay) merged into 1.2 (Dashboard Review)
   | '2.1' | '2.2' | '2.3'
   | '3.1' | '3.2' | '3.3'
-  | '4.1' | '4.2' | '4.3' | '4.4'
+  | '4.1' | '4.2'  // 4.3/4.4 merged into 4.1/4.2
   | 'complete';
 
 export const WORKSHOP_STEPS: WorkshopStep[] = [
   'prework',
-  '1.1', '1.2', '1.3',  // 1.3 is Action Replay
+  '1.1', '1.2',  // 1.3 (Action Replay) merged into 1.2 (Dashboard Review)
   '2.1', '2.2', '2.3',
   '3.1', '3.2', '3.3',
-  '4.1', '4.2', '4.3', '4.4',
+  '4.1', '4.2',  // 4.3/4.4 merged into 4.1/4.2
   'complete'
 ];
 
 export const STEP_LABELS: Record<WorkshopStep, string> = {
   'prework': 'Pre-Work Questionnaire',
   '1.1': 'Pre-Work Review',
-  '1.2': 'Quarter Performance',
-  '1.3': 'Action Replay',
+  '1.2': 'Quarter Performance & Action Replay',  // Merged from 1.2 + 1.3
   '2.1': 'Feedback Loop Framework',
   '2.2': 'Open Loops Audit',
   '2.3': 'Issues List (IDS)',
   '3.1': 'Assessment & Roadmap',
   '3.2': 'SWOT Update',
   '3.3': 'Annual Target Confidence',
-  '4.1': 'Quarterly Targets & Execution',
-  '4.2': '90-Day Sprint',
-  '4.3': 'Sprint Rocks',
-  '4.4': 'Personal Commitments',
+  '4.1': 'Quarterly Targets & Execution',  // Includes rocks and commitments
+  '4.2': '90-Day Sprint Planning',  // Final planning step
   'complete': 'Review Complete'
 };
 
@@ -282,14 +279,27 @@ export interface InitiativesChanges {
   added: Array<{ title: string; category: string; description?: string }>;
 }
 
+// Rock type aligned with Goals Wizard QuarterlyRock
+export type RockStatus = 'not_started' | 'on_track' | 'at_risk' | 'completed' | 'missed';
+
 export interface Rock {
   id: string;
   title: string;
+  description?: string;
   owner: string;
-  doneDefinition: string;
-  linkedInitiativeId?: string;
-  priority: number;
-  status?: 'not_started' | 'in_progress' | 'completed';
+  status: RockStatus;
+  progressPercentage: number;
+  linkedInitiatives?: string[];  // IDs of strategic initiatives
+  linkedKPIs?: string[];         // IDs of KPIs this rock will impact
+  successCriteria: string;       // Was doneDefinition
+  startDate?: string;
+  targetDate?: string;
+  completionDate?: string;
+  notes?: string;
+  priority?: number;             // Optional priority for ordering
+  // Backward compatibility
+  doneDefinition?: string;       // @deprecated Use successCriteria
+  linkedInitiativeId?: string;   // @deprecated Use linkedInitiatives[]
 }
 
 export interface PersonalCommitments {
@@ -347,34 +357,75 @@ export const getDefaultPersonalCommitments = (): PersonalCommitments => ({
   personalGoal: ''
 });
 
+// Year type (aligned with Goals Wizard)
+export type YearType = 'FY' | 'CY';
+
 // Quarter utilities
 export const getQuarterLabel = (quarter: QuarterNumber, year: number): string => {
   return `Q${quarter} ${year}`;
 };
 
-export const getCurrentQuarter = (): { quarter: QuarterNumber; year: number } => {
+/**
+ * Get current quarter based on year type
+ * - CY (Calendar Year): Q1=Jan-Mar, Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec
+ * - FY (Fiscal Year - Australian): Q1=Jul-Sep, Q2=Oct-Dec, Q3=Jan-Mar, Q4=Apr-Jun
+ */
+export const getCurrentQuarter = (yearType: YearType = 'CY'): { quarter: QuarterNumber; year: number } => {
   const now = new Date();
-  const month = now.getMonth();
-  const year = now.getFullYear();
+  const month = now.getMonth(); // 0-11
+  const calendarYear = now.getFullYear();
 
-  if (month < 3) return { quarter: 1, year };
-  if (month < 6) return { quarter: 2, year };
-  if (month < 9) return { quarter: 3, year };
-  return { quarter: 4, year };
+  if (yearType === 'FY') {
+    // Australian Financial Year: Jul 1 - Jun 30
+    // Q1: Jul-Sep (months 6-8), Q2: Oct-Dec (months 9-11), Q3: Jan-Mar (months 0-2), Q4: Apr-Jun (months 3-5)
+    if (month >= 6 && month <= 8) return { quarter: 1, year: calendarYear + 1 }; // FY starts in July
+    if (month >= 9 && month <= 11) return { quarter: 2, year: calendarYear + 1 };
+    if (month >= 0 && month <= 2) return { quarter: 3, year: calendarYear };
+    return { quarter: 4, year: calendarYear };
+  }
+
+  // Calendar Year: Standard Q1=Jan-Mar, etc.
+  if (month < 3) return { quarter: 1, year: calendarYear };
+  if (month < 6) return { quarter: 2, year: calendarYear };
+  if (month < 9) return { quarter: 3, year: calendarYear };
+  return { quarter: 4, year: calendarYear };
 };
 
-export const getNextQuarter = (): { quarter: QuarterNumber; year: number } => {
-  const current = getCurrentQuarter();
+export const getNextQuarter = (yearType: YearType = 'CY'): { quarter: QuarterNumber; year: number } => {
+  const current = getCurrentQuarter(yearType);
   if (current.quarter === 4) {
     return { quarter: 1, year: current.year + 1 };
   }
   return { quarter: (current.quarter + 1) as QuarterNumber, year: current.year };
 };
 
-export const getPreviousQuarter = (): { quarter: QuarterNumber; year: number } => {
-  const current = getCurrentQuarter();
+export const getPreviousQuarter = (yearType: YearType = 'CY'): { quarter: QuarterNumber; year: number } => {
+  const current = getCurrentQuarter(yearType);
   if (current.quarter === 1) {
     return { quarter: 4, year: current.year - 1 };
   }
   return { quarter: (current.quarter - 1) as QuarterNumber, year: current.year };
 };
+
+// Helper to get default Rock (aligned with Goals Wizard QuarterlyRock)
+export const getDefaultRock = (): Rock => ({
+  id: `rock-${Date.now()}`,
+  title: '',
+  owner: '',
+  status: 'not_started',
+  progressPercentage: 0,
+  successCriteria: '',
+  linkedInitiatives: [],
+  linkedKPIs: []
+});
+
+// Strategic Initiative type for integration with Goals Wizard
+export interface StrategicInitiativeRef {
+  id: string;
+  title: string;
+  description?: string;
+  category?: string;
+  status?: 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold';
+  progressPercentage?: number;
+  quarterAssigned?: string;
+}
