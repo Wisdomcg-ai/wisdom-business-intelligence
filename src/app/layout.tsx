@@ -26,6 +26,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
+        {/* Skip link for keyboard navigation accessibility */}
+        <a href="#main-content" className="skip-link">
+          Skip to main content
+        </a>
         {/* Business Context Provider - manages active business for coach/client views */}
         <BusinessContextProvider>
           {/* Global toast notifications */}
