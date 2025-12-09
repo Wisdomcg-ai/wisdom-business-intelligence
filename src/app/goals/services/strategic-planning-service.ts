@@ -48,12 +48,18 @@ export class StrategicPlanningService {
         .eq('business_id', businessId)
         .eq('step_type', stepType)
 
-      const existingIds = new Set((existingData || []).map(item => item.id))
-      const newIds = new Set(initiatives.filter(init => init.id).map(init => init.id))
+      // Helper to validate UUID format
+      const isValidUUID = (id: string): boolean => {
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        return uuidRegex.test(id)
+      }
 
-      // Prepare initiatives for upsert
+      const existingIds = new Set((existingData || []).map(item => item.id))
+      // Only include valid UUIDs in newIds set (client-generated IDs are not in DB)
+      const newIds = new Set(initiatives.filter(init => init.id && isValidUUID(init.id)).map(init => init.id))
+
       if (initiatives.length > 0) {
-        // Separate new initiatives (no id) from existing ones (have id)
+        // Separate new initiatives (no id or invalid id) from existing ones (valid UUID)
         const newInitiatives: any[] = []
         const existingInitiatives: any[] = []
 
@@ -77,7 +83,9 @@ export class StrategicPlanningService {
             updated_at: new Date().toISOString()
           }
 
-          if (init.id) {
+          // Only treat as existing if it has a valid UUID (from database)
+          // Client-generated IDs like "idea-123-0.456" should be treated as new
+          if (init.id && isValidUUID(init.id)) {
             existingInitiatives.push({ id: init.id, ...baseData })
           } else {
             newInitiatives.push(baseData)
