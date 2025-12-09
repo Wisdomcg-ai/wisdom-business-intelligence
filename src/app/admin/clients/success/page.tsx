@@ -3,52 +3,55 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { CheckCircle, Copy, Check, ArrowLeft, Mail, AlertTriangle } from 'lucide-react'
+import { CheckCircle, ArrowLeft, Mail, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react'
 
 function ClientCreatedSuccessContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const [copied, setCopied] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [resendSuccess, setResendSuccess] = useState(false)
+  const [resendError, setResendError] = useState('')
 
   const email = searchParams?.get('email') || ''
-  const password = searchParams?.get('password') || ''
   const name = searchParams?.get('name') || ''
   const business = searchParams?.get('business') || ''
   const emailSent = searchParams?.get('emailSent') === 'true'
   const invitationDeferred = searchParams?.get('invitationDeferred') === 'true'
 
   useEffect(() => {
-    // Redirect if no credentials
-    if (!email || !password) {
+    // Redirect if no email (required param)
+    if (!email) {
       router.push('/admin')
     }
-  }, [email, password, router])
+  }, [email, router])
 
-  const copyToClipboard = async () => {
-    const credentials = `
-Welcome to Wisdom BI!
-
-Your account has been created successfully.
-
-Login Details:
-Email: ${email}
-Temporary Password: ${password}
-
-Please log in at: ${window.location.origin}/client/login
-
-For security, please change your password after your first login.
-    `.trim()
+  const handleResendInvitation = async () => {
+    setResending(true)
+    setResendError('')
+    setResendSuccess(false)
 
     try {
-      await navigator.clipboard.writeText(credentials)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      const response = await fetch('/api/admin/clients/resend-invitation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to resend invitation')
+      }
+
+      setResendSuccess(true)
     } catch (err) {
-      console.error('Failed to copy:', err)
+      setResendError(err instanceof Error ? err.message : 'Failed to resend')
+    } finally {
+      setResending(false)
     }
   }
 
-  if (!email || !password) {
+  if (!email) {
     return null
   }
 
@@ -66,7 +69,7 @@ For security, please change your password after your first login.
             </Link>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Client Created Successfully</h1>
-              <p className="text-sm text-gray-600">Account details and login credentials</p>
+              <p className="text-sm text-gray-600">Account has been set up</p>
             </div>
           </div>
         </div>
@@ -80,7 +83,7 @@ For security, please change your password after your first login.
             <div>
               <h2 className="text-lg font-semibold text-green-900">Account Created!</h2>
               <p className="text-sm text-green-700">
-                {name} from {business} can now log in to Wisdom BI
+                {name} from {business} has been added to the platform
               </p>
             </div>
           </div>
@@ -91,31 +94,74 @@ For security, please change your password after your first login.
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h4 className="text-sm font-semibold text-amber-900">Invitation Not Sent</h4>
+              <div className="flex-1">
+                <h4 className="text-sm font-semibold text-amber-900">Invitation Not Sent Yet</h4>
                 <p className="text-sm text-amber-800 mt-1">
-                  No email was sent to the client. You must share the credentials below manually or send the invitation later from the client list.
+                  The account was created but no invitation email was sent. Click below to send the invitation with login credentials.
                 </p>
+                <button
+                  onClick={handleResendInvitation}
+                  disabled={resending || resendSuccess}
+                  className="mt-3 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
+                >
+                  {resending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : resendSuccess ? (
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      Invitation Sent!
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="w-4 h-4" />
+                      Send Invitation Email
+                    </>
+                  )}
+                </button>
+                {resendError && (
+                  <p className="text-sm text-red-600 mt-2">{resendError}</p>
+                )}
               </div>
             </div>
           </div>
-        ) : emailSent ? (
+        ) : emailSent || resendSuccess ? (
           <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-4 mb-6">
             <div className="flex items-start gap-3">
               <Mail className="w-5 h-5 text-brand-orange flex-shrink-0 mt-0.5" />
-              <div>
+              <div className="flex-1">
                 <h4 className="text-sm font-semibold text-brand-navy">Invitation Email Sent</h4>
                 <p className="text-sm text-brand-navy mt-1">
-                  An email with login credentials has been sent to {email}. The credentials below are also available if you need to share them another way.
+                  An email with login credentials has been sent to <strong>{email}</strong>.
+                  The client can now log in using the temporary password in the email.
                 </p>
+                <button
+                  onClick={handleResendInvitation}
+                  disabled={resending}
+                  className="mt-3 text-sm text-brand-orange hover:text-brand-orange-600 flex items-center gap-1"
+                >
+                  {resending ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Resending...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-3 h-3" />
+                      Resend invitation
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
         ) : null}
 
-        {/* Login Credentials */}
+        {/* Account Details */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Login Credentials</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Account Details</h3>
 
           <div className="space-y-4">
             <div>
@@ -129,10 +175,19 @@ For security, please change your password after your first login.
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Temporary Password
+                Client Name
               </label>
-              <div className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg font-mono text-sm break-all">
-                {password}
+              <div className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm">
+                {name}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Business
+              </label>
+              <div className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm">
+                {business}
               </div>
             </div>
 
@@ -141,37 +196,20 @@ For security, please change your password after your first login.
                 Login URL
               </label>
               <div className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg font-mono text-sm">
-                {typeof window !== 'undefined' ? `${window.location.origin}/client/login` : '/client/login'}
+                {typeof window !== 'undefined' ? `${window.location.origin}/login` : '/login'}
               </div>
             </div>
           </div>
-
-          <button
-            onClick={copyToClipboard}
-            className="mt-6 w-full px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 shadow-sm transition-colors flex items-center justify-center gap-2"
-          >
-            {copied ? (
-              <>
-                <Check className="w-5 h-5" />
-                Copied to Clipboard!
-              </>
-            ) : (
-              <>
-                <Copy className="w-5 h-5" />
-                Copy All Credentials
-              </>
-            )}
-          </button>
         </div>
 
-        {/* Important Notice */}
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-          <h4 className="text-sm font-semibold text-yellow-900 mb-2">Important</h4>
-          <ul className="text-sm text-yellow-800 space-y-1">
-            <li>• Share these credentials securely with your client</li>
-            <li>• This password will not be shown again</li>
-            <li>• Client should change their password after first login</li>
-            <li>• Save this information before leaving this page</li>
+        {/* Info Notice */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <h4 className="text-sm font-semibold text-blue-900 mb-2">How it works</h4>
+          <ul className="text-sm text-blue-800 space-y-1">
+            <li>• The client receives an email with a temporary password</li>
+            <li>• They can log in immediately using that password</li>
+            <li>• They will be prompted to change their password on first login</li>
+            <li>• You can resend the invitation anytime from the client list</li>
           </ul>
         </div>
 

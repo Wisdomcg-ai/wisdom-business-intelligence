@@ -67,10 +67,9 @@ export default function NewClientPage() {
         throw new Error(data.error || 'Failed to create client')
       }
 
-      // Success! Redirect to success page with credentials
+      // Success! Redirect to success page
       const params = new URLSearchParams({
         email: data.user.email,
-        password: data.user.temporaryPassword,
         name: `${formData.firstName} ${formData.lastName}`,
         business: formData.businessName,
         emailSent: data.emailSent ? 'true' : 'false',

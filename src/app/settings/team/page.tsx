@@ -343,81 +343,35 @@ export default function TeamMembersPage() {
     setError(null)
 
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      // Use the team invite API which handles user creation and emails
+      const response = await fetch('/api/team/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessId,
+          firstName: inviteForm.firstName,
+          lastName: inviteForm.lastName,
+          email: inviteForm.email,
+          phone: inviteForm.phone,
+          position: inviteForm.position,
+          role: inviteForm.role,
+          sectionPermissions: inviteForm.sectionPermissions,
+          createAccount: true // Create auth account and send credentials
+        })
+      })
 
-      // Check if user already exists in the system
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', inviteForm.email.toLowerCase())
-        .maybeSingle()
+      const data = await response.json()
 
-      if (existingUser) {
-        // User exists - check if already a team member
-        const { data: existingMember } = await supabase
-          .from('business_users')
-          .select('id')
-          .eq('business_id', businessId)
-          .eq('user_id', existingUser.id)
-          .maybeSingle()
-
-        if (existingMember) {
-          setError('This user is already a team member')
-          return
-        }
-
-        // Add them directly as an active member
-        const { error: insertError } = await supabase
-          .from('business_users')
-          .insert({
-            business_id: businessId,
-            user_id: existingUser.id,
-            role: inviteForm.role,
-            status: 'active',
-            invited_by: currentUser?.id,
-            invited_at: new Date().toISOString(),
-            section_permissions: inviteForm.sectionPermissions
-          })
-
-        if (insertError) throw insertError
-
-        setSuccess(`${inviteForm.firstName} ${inviteForm.lastName} has been added to your team`)
-        setShowInviteModal(false)
-        resetInviteForm()
-        loadTeamData()
-      } else {
-        // User doesn't exist - create a pending invite
-        const { error: inviteError } = await supabase
-          .from('team_invites')
-          .insert({
-            business_id: businessId,
-            email: inviteForm.email.toLowerCase(),
-            first_name: inviteForm.firstName,
-            last_name: inviteForm.lastName || null,
-            phone: inviteForm.phone || null,
-            position: inviteForm.position || null,
-            role: inviteForm.role,
-            invited_by: currentUser?.id,
-            status: 'pending',
-            section_permissions: inviteForm.sectionPermissions
-          })
-
-        if (inviteError) {
-          if (inviteError.code === '23505') {
-            setError('An invite has already been sent to this email')
-          } else {
-            throw inviteError
-          }
-        } else {
-          setSuccess(`Invite sent to ${inviteForm.firstName} ${inviteForm.lastName}. They will receive an email to join your team.`)
-          setShowInviteModal(false)
-          resetInviteForm()
-          loadTeamData()
-
-          // TODO: Send actual email invite via API
-          // For now, the invite is stored and can be accepted when they sign up
-        }
+      if (!response.ok) {
+        setError(data.error || 'Failed to invite team member')
+        return
       }
+
+      setSuccess(data.message || `${inviteForm.firstName} has been invited to your team`)
+      setShowInviteModal(false)
+      resetInviteForm()
+      loadTeamData()
+
     } catch (error: any) {
       console.error('Error inviting team member:', error)
       setError(error.message || 'Failed to invite team member')
