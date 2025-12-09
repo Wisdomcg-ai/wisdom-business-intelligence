@@ -55,17 +55,31 @@ export default function VisionMissionPage() {
     formDataRef.current = formData;
   }, [formData]);
 
+  // Helper to update both state and ref atomically
+  const updateFormData = (updater: (prev: VisionMissionData) => VisionMissionData) => {
+    setFormData(prev => {
+      const newData = updater(prev);
+      formDataRef.current = newData; // Sync ref immediately
+      return newData;
+    });
+  };
+
   const toggleHelp = (section: string) => {
     setShowHelp(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
   const addValueFromLibrary = (valueName: string, weStatement?: string) => {
-    const emptyIndex = formData.core_values.findIndex(v => v.trim() === '');
+    // Use ref for finding empty index to get latest state
+    const currentValues = formDataRef.current?.core_values || formData.core_values;
+    const emptyIndex = currentValues.findIndex(v => v.trim() === '');
     if (emptyIndex !== -1) {
-      const newValues = [...formData.core_values];
       // Format as "Value Name - We statement"
-      newValues[emptyIndex] = weStatement ? `${valueName} - ${weStatement}` : valueName;
-      setFormData(prev => ({ ...prev, core_values: newValues }));
+      const newValue = weStatement ? `${valueName} - ${weStatement}` : valueName;
+      updateFormData(prev => {
+        const newValues = [...prev.core_values];
+        newValues[emptyIndex] = newValue;
+        return { ...prev, core_values: newValues };
+      });
       handleFieldChange();
       toast.success('Value added successfully');
     } else {
@@ -86,9 +100,11 @@ export default function VisionMissionPage() {
   };
 
   const clearValue = (index: number) => {
-    const newValues = [...formData.core_values];
-    newValues[index] = '';
-    setFormData(prev => ({ ...prev, core_values: newValues }));
+    updateFormData(prev => {
+      const newValues = [...prev.core_values];
+      newValues[index] = '';
+      return { ...prev, core_values: newValues };
+    });
     handleFieldChange();
   };
 
@@ -230,9 +246,11 @@ export default function VisionMissionPage() {
   };
 
   const handleCoreValueChange = (index: number, value: string) => {
-    const newValues = [...formData.core_values];
-    newValues[index] = value;
-    setFormData(prev => ({ ...prev, core_values: newValues }));
+    updateFormData(prev => {
+      const newValues = [...prev.core_values];
+      newValues[index] = value;
+      return { ...prev, core_values: newValues };
+    });
     handleFieldChange();
   };
 
