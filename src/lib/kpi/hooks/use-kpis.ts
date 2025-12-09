@@ -1,3 +1,5 @@
+'use client'
+
 // src/lib/kpi/hooks/use-kpis.ts
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'

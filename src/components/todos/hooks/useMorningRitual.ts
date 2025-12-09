@@ -1,3 +1,5 @@
+'use client'
+
 // /src/components/todos/hooks/useMorningRitual.ts
 // Hook for managing morning ritual state and tracking
 

@@ -1,3 +1,5 @@
+'use client'
+
 // useTodos.ts - Main hook for todo data management
 // Location: /src/components/todos/hooks/useTodos.ts
 
