@@ -3,5 +3,35 @@
   "rules": {
     "react/no-unescaped-entities": "off",
     "@next/next/no-assign-module-variable": "off"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/middleware.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "crypto",
+                "message": "Node.js 'crypto' module is not available in Edge runtime. Use Web Crypto API (crypto.getRandomValues) instead."
+              },
+              {
+                "name": "fs",
+                "message": "Node.js 'fs' module is not available in Edge runtime."
+              },
+              {
+                "name": "path",
+                "message": "Node.js 'path' module is not available in Edge runtime."
+              },
+              {
+                "name": "child_process",
+                "message": "Node.js 'child_process' module is not available in Edge runtime."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }
