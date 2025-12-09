@@ -254,24 +254,19 @@ export class ForecastService {
         const linesToUpsert = lines.map((line, index) => ({
           id: line.id || undefined,
           forecast_id: forecastId,
-          category: line.category,
-          name: line.name,
           account_code: line.account_code,
-          line_type: line.line_type,
+          account_name: line.account_name,
+          account_type: line.account_type,
+          account_class: line.account_class,
+          category: line.category,
+          subcategory: line.subcategory,
           sort_order: line.sort_order ?? index,
-          jan: line.jan,
-          feb: line.feb,
-          mar: line.mar,
-          apr: line.apr,
-          may: line.may,
-          jun: line.jun,
-          jul: line.jul,
-          aug: line.aug,
-          sep: line.sep,
-          oct: line.oct,
-          nov: line.nov,
-          dec: line.dec,
-          total: line.total
+          actual_months: line.actual_months || {},
+          forecast_months: line.forecast_months || {},
+          is_from_xero: line.is_from_xero,
+          is_from_payroll: line.is_from_payroll,
+          is_manual: line.is_manual,
+          notes: line.notes
         }))
 
         const { error: upsertError } = await this.supabase
@@ -367,16 +362,17 @@ export class ForecastService {
         const employeesToUpsert = employees.map((emp, index) => ({
           id: emp.id || undefined,
           forecast_id: forecastId,
-          name: emp.name,
-          role: emp.role,
-          employment_type: emp.employment_type,
-          salary: emp.salary,
-          super_rate: emp.super_rate,
-          sort_order: emp.sort_order ?? index,
+          employee_name: emp.employee_name,
+          position: emp.position,
+          category: emp.category || (emp.classification === 'cogs' ? 'Wages COGS' : 'Wages Admin'),
           start_date: emp.start_date ? `${emp.start_date}-01` : null,
           end_date: emp.end_date ? `${emp.end_date}-01` : null,
-          classification: emp.classification,
-          category: emp.classification === 'cogs' ? 'Wages COGS' : 'Wages Admin'
+          hours: emp.hours,
+          rate: emp.rate,
+          weekly_budget: emp.weekly_budget,
+          annual_salary: emp.annual_salary,
+          weekly_payg: emp.weekly_payg,
+          sort_order: index
         }))
 
         const { error: upsertError } = await this.supabase

@@ -24,6 +24,16 @@ interface StepProps {
   errors: Record<string, string>
 }
 
+// Team member to be added during onboarding
+export interface TeamMemberInput {
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+  position: string
+  role: 'owner' | 'admin' | 'member' | 'viewer'
+}
+
 export interface WizardData {
   // Step 1: Basic Information
   businessName: string
@@ -78,6 +88,9 @@ export interface WizardData {
     chat: boolean
     documents: boolean
   }
+
+  // Step 4: Additional Team Members (optional)
+  teamMembers: TeamMemberInput[]
 }
 
 const defaultData: WizardData = {
@@ -129,12 +142,15 @@ const defaultData: WizardData = {
     chat: true,
     documents: true,
   },
+  // Step 4: Team members (empty by default)
+  teamMembers: [],
 }
 
 const steps = [
   { id: 1, title: 'Basic Information', icon: Building2 },
   { id: 2, title: 'Program Setup', icon: Briefcase },
   { id: 3, title: 'Modules', icon: LayoutGrid },
+  { id: 4, title: 'Team Members', icon: User },
 ]
 
 const industries = [
@@ -700,6 +716,270 @@ function Step3Modules({ data, updateData }: StepProps) {
   )
 }
 
+// Step 4: Team Members (Optional)
+function Step4TeamMembers({ data, updateData }: StepProps) {
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newMember, setNewMember] = useState<TeamMemberInput>({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    position: '',
+    role: 'member'
+  })
+  const [formError, setFormError] = useState('')
+
+  const addTeamMember = () => {
+    // Validate
+    if (!newMember.firstName.trim()) {
+      setFormError('First name is required')
+      return
+    }
+    if (!newMember.email.trim()) {
+      setFormError('Email is required')
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newMember.email)) {
+      setFormError('Invalid email format')
+      return
+    }
+    // Check if email already exists
+    if (data.teamMembers.some(m => m.email.toLowerCase() === newMember.email.toLowerCase())) {
+      setFormError('This email is already added')
+      return
+    }
+    if (newMember.email.toLowerCase() === data.ownerEmail.toLowerCase()) {
+      setFormError('This is the owner\'s email')
+      return
+    }
+
+    updateData({
+      teamMembers: [...data.teamMembers, { ...newMember }]
+    })
+    setNewMember({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      position: '',
+      role: 'member'
+    })
+    setFormError('')
+    setShowAddForm(false)
+  }
+
+  const removeTeamMember = (index: number) => {
+    updateData({
+      teamMembers: data.teamMembers.filter((_, i) => i !== index)
+    })
+  }
+
+  const ROLE_OPTIONS = [
+    { value: 'owner', label: 'Owner/Partner', description: 'Full access, can manage billing' },
+    { value: 'admin', label: 'Admin', description: 'Full access, can manage team' },
+    { value: 'member', label: 'Member', description: 'Can view and edit data' },
+    { value: 'viewer', label: 'Viewer', description: 'Read-only access' },
+  ]
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-1">Team Members</h2>
+        <p className="text-gray-500">
+          Add business partners, managers, or other team members who should have access.
+          <span className="block text-sm mt-1 text-gray-400">
+            This step is optional - you can add team members later.
+          </span>
+        </p>
+      </div>
+
+      {/* Owner Card */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+            <span className="text-sm font-bold text-amber-700">
+              {data.ownerFirstName?.[0]?.toUpperCase() || 'O'}
+            </span>
+          </div>
+          <div className="flex-1">
+            <p className="font-medium text-gray-900">
+              {data.ownerFirstName} {data.ownerLastName}
+            </p>
+            <p className="text-sm text-gray-500">{data.ownerEmail}</p>
+          </div>
+          <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">
+            Owner
+          </span>
+        </div>
+      </div>
+
+      {/* Team Members List */}
+      {data.teamMembers.length > 0 && (
+        <div className="space-y-3">
+          {data.teamMembers.map((member, index) => (
+            <div key={index} className="bg-white border border-gray-200 rounded-xl p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                  <span className="text-sm font-medium text-gray-600">
+                    {member.firstName?.[0]?.toUpperCase() || '?'}
+                  </span>
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900">
+                    {member.firstName} {member.lastName}
+                  </p>
+                  <p className="text-sm text-gray-500">{member.email}</p>
+                  {member.position && (
+                    <p className="text-xs text-gray-400">{member.position}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium capitalize">
+                  {member.role === 'owner' ? 'Owner/Partner' : member.role}
+                </span>
+                <button
+                  onClick={() => removeTeamMember(index)}
+                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add Team Member Form */}
+      {showAddForm ? (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 space-y-4">
+          <h3 className="font-semibold text-gray-900">Add Team Member</h3>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                First Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={newMember.firstName}
+                onChange={(e) => setNewMember({ ...newMember, firstName: e.target.value })}
+                placeholder="John"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+              <input
+                type="text"
+                value={newMember.lastName}
+                onChange={(e) => setNewMember({ ...newMember, lastName: e.target.value })}
+                placeholder="Smith"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Email <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="email"
+              value={newMember.email}
+              onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
+              placeholder="john@company.com"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+              <input
+                type="tel"
+                value={newMember.phone}
+                onChange={(e) => setNewMember({ ...newMember, phone: e.target.value })}
+                placeholder="0400 000 000"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
+              <input
+                type="text"
+                value={newMember.position}
+                onChange={(e) => setNewMember({ ...newMember, position: e.target.value })}
+                placeholder="Operations Manager"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Access Level <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={newMember.role}
+              onChange={(e) => setNewMember({ ...newMember, role: e.target.value as any })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+            >
+              {ROLE_OPTIONS.map(role => (
+                <option key={role.value} value={role.value}>
+                  {role.label} - {role.description}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {formError && (
+            <p className="text-sm text-red-600">{formError}</p>
+          )}
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={() => {
+                setShowAddForm(false)
+                setFormError('')
+              }}
+              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={addTeamMember}
+              className="px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
+            >
+              Add Member
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowAddForm(true)}
+          className="w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 hover:border-brand-orange hover:text-brand-orange transition-colors flex items-center justify-center gap-2"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Team Member
+        </button>
+      )}
+
+      {/* Info Box */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <p className="text-sm text-blue-800">
+          <strong>Note:</strong> Each team member will receive an email invitation with their login credentials.
+          They can log in immediately to access the platform based on their assigned role.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // Main Wizard Component
 interface OnboardingWizardProps {
   onComplete: (data: WizardData) => Promise<void>
@@ -795,7 +1075,7 @@ export function OnboardingWizard({ onComplete, onCancel }: OnboardingWizardProps
 
   const handleNext = () => {
     if (validateStep(currentStep)) {
-      setCurrentStep(prev => Math.min(prev + 1, 3))
+      setCurrentStep(prev => Math.min(prev + 1, 4))
     }
   }
 
@@ -838,6 +1118,7 @@ export function OnboardingWizard({ onComplete, onCancel }: OnboardingWizardProps
       case 1: return <Step1BasicInfo {...stepProps} />
       case 2: return <Step2ProgramSetup {...stepProps} />
       case 3: return <Step3Modules {...stepProps} />
+      case 4: return <Step4TeamMembers {...stepProps} />
       default: return null
     }
   }
@@ -952,7 +1233,7 @@ export function OnboardingWizard({ onComplete, onCancel }: OnboardingWizardProps
             Back
           </button>
 
-          {currentStep < 3 ? (
+          {currentStep < 4 ? (
             <button
               onClick={handleNext}
               className="flex items-center gap-2 px-6 py-3 bg-brand-orange text-white rounded-lg font-medium hover:bg-brand-orange-600 transition-colors"

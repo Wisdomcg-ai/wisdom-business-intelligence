@@ -52,7 +52,8 @@ export async function POST(request: Request) {
       customFrequency,
       engagementStartDate,
       enabledModules,
-      sendInvitation = true
+      sendInvitation = true,
+      teamMembers = [] // Array of team members to invite
     } = body
 
     // Validate required fields
@@ -239,11 +240,141 @@ export async function POST(request: Request) {
       }
     }
 
+    // STEP 9: Process team members (if any)
+    const teamMemberResults: Array<{ email: string; success: boolean; error?: string }> = []
+
+    if (teamMembers && teamMembers.length > 0) {
+      const coachName = user.user_metadata?.first_name && user.user_metadata?.last_name
+        ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
+        : user.email?.split('@')[0] || 'Your Coach'
+      const loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+
+      for (const member of teamMembers) {
+        try {
+          // Generate password for team member
+          const memberPassword = generateSecurePassword()
+
+          // Create auth user for team member
+          const memberAuthResponse = await fetch(
+            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+                'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+              },
+              body: JSON.stringify({
+                email: member.email.toLowerCase(),
+                password: memberPassword,
+                email_confirm: true,
+                user_metadata: {
+                  first_name: member.firstName,
+                  last_name: member.lastName || ''
+                }
+              })
+            }
+          )
+
+          const memberAuthData = await memberAuthResponse.json()
+
+          if (!memberAuthResponse.ok || memberAuthData.error) {
+            console.error('[Coach Client Create] Team member auth error:', memberAuthData)
+            teamMemberResults.push({
+              email: member.email,
+              success: false,
+              error: memberAuthData.msg || memberAuthData.error?.message || 'Failed to create user'
+            })
+            continue
+          }
+
+          const memberId = memberAuthData.id
+
+          // Set system role as client
+          await supabase
+            .from('system_roles')
+            .insert({
+              user_id: memberId,
+              role: 'client',
+              created_by: user.id
+            })
+
+          // Add to business_users
+          await supabase
+            .from('business_users')
+            .insert({
+              business_id: business.id,
+              user_id: memberId,
+              role: member.role || 'member',
+              status: 'active',
+              invited_by: user.id,
+              invited_at: new Date().toISOString()
+            })
+
+          // Add to business_contacts if position provided
+          if (member.position) {
+            await supabase
+              .from('business_contacts')
+              .insert({
+                business_id: business.id,
+                first_name: member.firstName,
+                last_name: member.lastName || '',
+                email: member.email,
+                phone: member.phone || null,
+                is_primary: false,
+                role: member.position
+              })
+          }
+
+          // Send invitation email to team member
+          const memberEmailResult = await sendClientInvitation({
+            to: member.email,
+            clientName: member.firstName,
+            coachName,
+            businessName,
+            loginUrl: `${loginUrl}/login`,
+            tempPassword: memberPassword
+          })
+
+          teamMemberResults.push({
+            email: member.email,
+            success: memberEmailResult.success,
+            error: memberEmailResult.error
+          })
+
+        } catch (memberError) {
+          console.error('[Coach Client Create] Team member error:', memberError)
+          teamMemberResults.push({
+            email: member.email,
+            success: false,
+            error: 'Unexpected error creating team member'
+          })
+        }
+      }
+    }
+
     console.log('[Coach Client Create] Success:', {
       businessId: business.id,
       userId: newUserId,
-      emailSent
+      emailSent,
+      teamMembersProcessed: teamMemberResults.length
     })
+
+    // Build response message
+    let message = emailSent
+      ? 'Client created and invitation sent via email'
+      : 'Client created. Use "Resend Invitation" to send login credentials.'
+
+    if (teamMemberResults.length > 0) {
+      const successCount = teamMemberResults.filter(r => r.success).length
+      const failCount = teamMemberResults.length - successCount
+      if (successCount > 0) {
+        message += ` ${successCount} team member${successCount > 1 ? 's' : ''} invited.`
+      }
+      if (failCount > 0) {
+        message += ` ${failCount} team member invitation${failCount > 1 ? 's' : ''} failed.`
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -257,9 +388,8 @@ export async function POST(request: Request) {
       emailSent,
       invitationDeferred: !sendInvitation,
       emailError,
-      message: emailSent
-        ? 'Client created and invitation sent via email'
-        : 'Client created. Use "Resend Invitation" to send login credentials.'
+      teamMemberResults: teamMemberResults.length > 0 ? teamMemberResults : undefined,
+      message
     })
 
   } catch (error) {

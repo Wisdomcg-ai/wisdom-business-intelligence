@@ -25,7 +25,8 @@ export default function NewClientPage() {
         customFrequency: data.programType === 'Coaching + CFO Services' ? data.customFrequency : null,
         engagementStartDate: data.engagementStartDate,
         enabledModules: data.enabledModules,
-        sendInvitation: true // Always send invitation email
+        sendInvitation: true, // Always send invitation email
+        teamMembers: data.teamMembers || [] // Include team members from Step 4
       })
     })
 
