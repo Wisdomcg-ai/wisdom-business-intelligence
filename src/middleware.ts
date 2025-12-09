@@ -2,9 +2,15 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import crypto from 'crypto'
 
 const CSRF_TOKEN_NAME = 'csrf_token'
+
+// Generate CSRF token using Web Crypto API (Edge runtime compatible)
+function generateCsrfToken(): string {
+  const array = new Uint8Array(32)
+  crypto.getRandomValues(array)
+  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
+}
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
@@ -15,7 +21,7 @@ export async function middleware(request: NextRequest) {
 
   // Set CSRF token if not present
   if (!request.cookies.get(CSRF_TOKEN_NAME)) {
-    const csrfToken = crypto.randomBytes(32).toString('hex')
+    const csrfToken = generateCsrfToken()
     response.cookies.set(CSRF_TOKEN_NAME, csrfToken, {
       httpOnly: false, // Must be readable by JavaScript
       secure: process.env.NODE_ENV === 'production',

@@ -34,7 +34,8 @@ import {
   Phone,
   MapPin,
   ChevronRight,
-  X
+  X,
+  Sparkles
 } from 'lucide-react'
 
 interface Client {
@@ -75,6 +76,7 @@ function ClientsContent() {
   const [sendingInvitation, setSendingInvitation] = useState<string | null>(null)
   const [deletingClient, setDeletingClient] = useState<string | null>(null)
   const [assigningCoach, setAssigningCoach] = useState<string | null>(null)
+  const [creatingDemo, setCreatingDemo] = useState(false)
 
   // Read filter from URL
   useEffect(() => {
@@ -177,6 +179,28 @@ function ClientsContent() {
     }
   }
 
+  async function createDemoClient() {
+    setCreatingDemo(true)
+    try {
+      const response = await fetch('/api/admin/demo-client', { method: 'POST' })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create demo client')
+      }
+
+      toast.success(
+        'Demo Client Created!',
+        `Smith's Plumbing is ready. Login: ${data.credentials.email} / ${data.credentials.password}`
+      )
+      await loadData()
+    } catch (error) {
+      toast.error('Failed to create demo client', error instanceof Error ? error.message : 'Please try again')
+    } finally {
+      setCreatingDemo(false)
+    }
+  }
+
   // Filter clients
   const filteredClients = clients.filter(client => {
     // Search filter
@@ -258,13 +282,27 @@ function ClientsContent() {
         subtitle={`${clients.length} total clients`}
         icon={Building2}
         actions={
-          <Link
-            href="/admin/clients/new"
-            className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-brand-orange text-white font-medium text-sm sm:text-base rounded-lg hover:bg-brand-orange-600 shadow-sm transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add New Client
-          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={createDemoClient}
+              disabled={creatingDemo}
+              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-purple-600 text-white font-medium text-sm sm:text-base rounded-lg hover:bg-purple-700 shadow-sm transition-colors disabled:opacity-50"
+            >
+              {creatingDemo ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
+              )}
+              Create Demo Client
+            </button>
+            <Link
+              href="/admin/clients/new"
+              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-brand-orange text-white font-medium text-sm sm:text-base rounded-lg hover:bg-brand-orange-600 shadow-sm transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add New Client
+            </Link>
+          </div>
         }
       />
 
