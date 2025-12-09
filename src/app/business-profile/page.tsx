@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { BusinessProfileService } from './services/business-profile-service'
@@ -137,6 +137,15 @@ export default function EnhancedBusinessProfile() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [saveTimer, setSaveTimer] = useState<NodeJS.Timeout | null>(null)
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
+
+  // Ref to track latest business data to avoid stale closures in auto-save
+  const businessRef = useRef<Partial<BusinessProfile>>(business)
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    businessRef.current = business
+  }, [business])
 
   // Load business data on mount or when active business changes
   useEffect(() => {
@@ -285,15 +294,18 @@ export default function EnhancedBusinessProfile() {
     }
   }
 
-  // Auto-save function
-  const autoSave = useCallback(async () => {
+  // Auto-save function - reads from ref to avoid stale closures
+  const autoSave = async () => {
     if (!businessId || !profileId) return
+
+    // Read latest data from ref
+    const currentBusiness = businessRef.current
 
     setSaveStatus('saving')
 
     try {
       const profileData = {
-        ...business,
+        ...currentBusiness,
         profile_completed: calculateCompletion() === 100
       }
 
@@ -319,21 +331,23 @@ export default function EnhancedBusinessProfile() {
       setSaveStatus('error')
       setTimeout(() => setSaveStatus('idle'), 3000)
     }
-  }, [business, businessId, profileId])
+  }
 
   // Handle field changes with debounced auto-save
   const handleFieldChange = (field: string, value: any) => {
-    setBusiness((prev: any) => ({ ...prev, [field]: value }))
-    
-    // Clear existing timer
-    if (saveTimer) clearTimeout(saveTimer)
-    
+    setBusiness((prev: any) => {
+      const newBusiness = { ...prev, [field]: value }
+      businessRef.current = newBusiness // Sync ref immediately
+      return newBusiness
+    })
+
+    // Clear existing timer using ref
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+
     // Set new timer for auto-save (2 seconds after user stops typing)
-    const newTimer = setTimeout(() => {
+    saveTimerRef.current = setTimeout(() => {
       autoSave()
     }, 2000)
-    
-    setSaveTimer(newTimer)
   }
 
   // Handle array field changes

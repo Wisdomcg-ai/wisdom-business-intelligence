@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles, Target, TrendingUp, Users, Save } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -55,6 +55,14 @@ export default function ValuePropositionPage() {
     usp_list: ''
   });
 
+  // Ref to track latest form data to avoid stale closures in auto-save
+  const formDataRef = useRef<ValuePropData>(formData);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+
   // Auto-save on changes
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -92,7 +100,9 @@ export default function ValuePropositionPage() {
         .single();
 
       if (existingData?.value_proposition) {
-        setFormData(existingData.value_proposition as ValuePropData);
+        const loadedData = existingData.value_proposition as ValuePropData;
+        setFormData(loadedData);
+        formDataRef.current = loadedData; // Sync ref
       }
 
       setLoading(false);
@@ -114,12 +124,15 @@ export default function ValuePropositionPage() {
       // This ensures data saves to the correct user (client, not coach)
       const targetUserId = activeBusiness?.ownerId || user.id;
 
+      // Read from ref to avoid stale closure issue
+      const dataToSave = formDataRef.current;
+
       // Upsert to marketing_data table
       const { error } = await supabase
         .from('marketing_data')
         .upsert({
           user_id: targetUserId,
-          value_proposition: formData,
+          value_proposition: dataToSave,
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'user_id'

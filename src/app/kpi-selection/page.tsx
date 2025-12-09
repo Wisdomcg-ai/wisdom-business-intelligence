@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import EnhancedKPIModal from '@/components/EnhancedKPIModal'
 import PageHeader from '@/components/ui/PageHeader'
 import { Target, TrendingUp, DollarSign, Users, Package, Heart, Settings, Check, AlertCircle, ChevronRight, Edit, Trash2, Plus, BarChart2 } from 'lucide-react'
@@ -9,6 +10,7 @@ import { Target, TrendingUp, DollarSign, Users, Package, Heart, Settings, Check,
 // This is your complete KPI Selection page
 export default function KPISelectionPage() {
   const router = useRouter()
+  const supabase = createClient()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedKPIs, setSelectedKPIs] = useState<any[]>([])
   const [businessProfile, setBusinessProfile] = useState({
@@ -20,17 +22,49 @@ export default function KPISelectionPage() {
   })
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
+  const [userId, setUserId] = useState<string | null>(null)
 
-  // Load business profile on component mount
+  // Load business profile and KPIs on component mount
   useEffect(() => {
-    loadBusinessProfile()
-    loadExistingKPIs()
+    const initializeData = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        setUserId(user.id)
+        loadBusinessProfile(user.id)
+        loadExistingKPIs(user.id)
+      } else {
+        // Fallback to localStorage for non-authenticated users
+        loadBusinessProfile()
+        loadExistingKPIs()
+      }
+    }
+    initializeData()
   }, [])
 
-  // Function to load business profile from localStorage or database
-  const loadBusinessProfile = async () => {
+  // Function to load business profile from database or localStorage
+  const loadBusinessProfile = async (authenticatedUserId?: string) => {
     try {
-      // First, try to get from localStorage (if you stored it there)
+      // Try to load from database if user is authenticated
+      if (authenticatedUserId) {
+        const { data, error } = await supabase
+          .from('business_profiles')
+          .select('*')
+          .eq('user_id', authenticatedUserId)
+          .single()
+
+        if (data && !error) {
+          setBusinessProfile({
+            id: data.id,
+            business_name: data.business_name || 'Your Business',
+            industry: data.industry || 'building_construction',
+            revenueStage: getRevenueStage(data.annual_revenue),
+            currentRevenue: data.annual_revenue || 500000
+          })
+          return
+        }
+      }
+
+      // Fallback to localStorage
       const storedProfile = localStorage.getItem('businessProfile')
       if (storedProfile) {
         const profile = JSON.parse(storedProfile)
@@ -42,43 +76,46 @@ export default function KPISelectionPage() {
           currentRevenue: profile.annual_revenue || 500000
         })
       }
-
-      // If you have a database connection, uncomment this:
-      /*
-      const response = await fetch('/api/business-profile')
-      if (response.ok) {
-        const data = await response.json()
-        setBusinessProfile({
-          id: data.id,
-          business_name: data.business_name,
-          industry: data.industry,
-          revenueStage: getRevenueStage(data.annual_revenue),
-          currentRevenue: data.annual_revenue
-        })
-      }
-      */
     } catch (error) {
       console.error('Error loading business profile:', error)
     }
   }
 
-  // Function to load existing KPIs from localStorage or database
-  const loadExistingKPIs = async () => {
+  // Function to load existing KPIs from database or localStorage
+  const loadExistingKPIs = async (authenticatedUserId?: string) => {
     try {
-      // Load from localStorage first
+      // Try to load from database if user is authenticated
+      if (authenticatedUserId) {
+        const { data, error } = await supabase
+          .from('user_kpis')
+          .select('*')
+          .eq('user_id', authenticatedUserId)
+
+        if (data && data.length > 0 && !error) {
+          // Transform database format to component format
+          const kpis = data.map(kpi => ({
+            id: kpi.kpi_id || kpi.id,
+            name: kpi.name,
+            friendlyName: kpi.friendly_name,
+            description: kpi.description,
+            category: kpi.category,
+            frequency: kpi.frequency,
+            unit: kpi.unit,
+            targetBenchmark: kpi.target_benchmark,
+            whyItMatters: kpi.why_it_matters,
+            whatToDo: kpi.what_to_do,
+            isUniversal: kpi.is_universal
+          }))
+          setSelectedKPIs(kpis)
+          return
+        }
+      }
+
+      // Fallback to localStorage
       const storedKPIs = localStorage.getItem('selectedKPIs')
       if (storedKPIs) {
         setSelectedKPIs(JSON.parse(storedKPIs))
       }
-
-      // If you have a database connection, uncomment this:
-      /*
-      const response = await fetch('/api/kpis')
-      if (response.ok) {
-        const data = await response.json()
-        setSelectedKPIs(data.kpis || [])
-      }
-      */
     } catch (error) {
       console.error('Error loading KPIs:', error)
     }
@@ -92,27 +129,33 @@ export default function KPISelectionPage() {
     return 'SCALE'
   }
 
-  // Handle saving KPIs - Complete implementation
+  // Handle saving KPIs - Complete implementation with database persistence
   const handleSaveKPIs = async (kpis: any[]) => {
     setIsSaving(true)
     setSaveMessage('')
 
     try {
-      // Save to localStorage immediately
+      // Always save to localStorage as backup
       localStorage.setItem('selectedKPIs', JSON.stringify(kpis))
       setSelectedKPIs(kpis)
-      
-      // Save to database if you have an API endpoint
-      // Uncomment this section when your API is ready:
-      /*
-      const response = await fetch('/api/kpis', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          businessId: businessProfile.id,
-          kpis: kpis.map(kpi => ({
+
+      // Save to database if user is authenticated
+      if (userId) {
+        // First, delete existing KPIs for this user
+        const { error: deleteError } = await supabase
+          .from('user_kpis')
+          .delete()
+          .eq('user_id', userId)
+
+        if (deleteError) {
+          console.error('Error deleting existing KPIs:', deleteError)
+          // Continue anyway - we'll try to insert
+        }
+
+        // Insert all new KPIs
+        if (kpis.length > 0) {
+          const kpiRecords = kpis.map(kpi => ({
+            user_id: userId,
             kpi_id: kpi.id,
             name: kpi.name,
             friendly_name: kpi.friendlyName,
@@ -125,15 +168,22 @@ export default function KPISelectionPage() {
             what_to_do: kpi.whatToDo,
             is_universal: kpi.isUniversal
           }))
-        })
-      })
 
-      if (!response.ok) {
-        throw new Error('Failed to save to database')
+          const { error: insertError } = await supabase
+            .from('user_kpis')
+            .insert(kpiRecords)
+
+          if (insertError) {
+            console.error('Error inserting KPIs:', insertError)
+            throw new Error('Failed to save to database')
+          }
+        }
+
+        setSaveMessage(`Successfully saved ${kpis.length} KPIs!`)
+      } else {
+        setSaveMessage(`Saved ${kpis.length} KPIs locally. Sign in to sync across devices.`)
       }
-      */
 
-      setSaveMessage(`Successfully saved ${kpis.length} KPIs!`)
       setTimeout(() => setSaveMessage(''), 3000)
     } catch (error) {
       console.error('Error saving KPIs:', error)

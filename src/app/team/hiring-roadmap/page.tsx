@@ -46,6 +46,18 @@ export default function HiringRoadmapPage() {
     compensation_strategy: ''
   });
 
+  // Ref to track latest form data to avoid stale closures in auto-save
+  const formDataRef = useRef<HiringRoadmapData>(formData);
+
+  // Helper to update both state and ref atomically
+  const updateFormData = (updater: (prev: HiringRoadmapData) => HiringRoadmapData) => {
+    setFormData(prev => {
+      const newData = updater(prev);
+      formDataRef.current = newData; // Sync ref immediately
+      return newData;
+    });
+  };
+
   useEffect(() => {
     if (!contextLoading) {
       loadData();
@@ -73,7 +85,9 @@ export default function HiringRoadmapPage() {
         .single();
 
       if (existingData?.hiring_roadmap) {
-        setFormData(existingData.hiring_roadmap as HiringRoadmapData);
+        const loadedData = existingData.hiring_roadmap as HiringRoadmapData;
+        setFormData(loadedData);
+        formDataRef.current = loadedData; // Sync ref
         lastSavedDataRef.current = JSON.stringify(existingData.hiring_roadmap);
       }
 
@@ -98,7 +112,9 @@ export default function HiringRoadmapPage() {
   };
 
   const saveData = async () => {
-    const currentDataString = JSON.stringify(formData);
+    // Read from ref to avoid stale closure issue
+    const dataToSave = formDataRef.current;
+    const currentDataString = JSON.stringify(dataToSave);
     if (currentDataString === lastSavedDataRef.current) {
       setHasUnsavedChanges(false);
       return;
@@ -118,7 +134,7 @@ export default function HiringRoadmapPage() {
         .from('team_data')
         .upsert({
           user_id: targetUserId,
-          hiring_roadmap: formData,
+          hiring_roadmap: dataToSave,
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'user_id'
@@ -138,15 +154,17 @@ export default function HiringRoadmapPage() {
   };
 
   const updateHiringPriority = (index: number, field: keyof HiringPriority, value: string) => {
-    const newPriorities = [...formData.hiring_priorities];
-    newPriorities[index] = { ...newPriorities[index], [field]: value };
-    setFormData(prev => ({ ...prev, hiring_priorities: newPriorities }));
+    updateFormData(prev => {
+      const newPriorities = [...prev.hiring_priorities];
+      newPriorities[index] = { ...newPriorities[index], [field]: value };
+      return { ...prev, hiring_priorities: newPriorities };
+    });
     handleFieldChange();
   };
 
   const addHiringPriority = () => {
     if (formData.hiring_priorities.length < 10) {
-      setFormData(prev => ({
+      updateFormData(prev => ({
         ...prev,
         hiring_priorities: [...prev.hiring_priorities, { role: '', salary: '', start_date: '', comments: '' }]
       }));
@@ -156,8 +174,10 @@ export default function HiringRoadmapPage() {
 
   const removeHiringPriority = (index: number) => {
     if (formData.hiring_priorities.length > 2) {
-      const newPriorities = formData.hiring_priorities.filter((_, i) => i !== index);
-      setFormData(prev => ({ ...prev, hiring_priorities: newPriorities }));
+      updateFormData(prev => ({
+        ...prev,
+        hiring_priorities: prev.hiring_priorities.filter((_, i) => i !== index)
+      }));
       handleFieldChange();
     }
   };
@@ -310,7 +330,7 @@ export default function HiringRoadmapPage() {
                 <textarea
                   value={formData.recognition_rewards}
                   onChange={(e) => {
-                    setFormData(prev => ({ ...prev, recognition_rewards: e.target.value }));
+                    updateFormData(prev => ({ ...prev, recognition_rewards: e.target.value }));
                     handleFieldChange();
                   }}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
@@ -326,7 +346,7 @@ export default function HiringRoadmapPage() {
                 <textarea
                   value={formData.growth_opportunities}
                   onChange={(e) => {
-                    setFormData(prev => ({ ...prev, growth_opportunities: e.target.value }));
+                    updateFormData(prev => ({ ...prev, growth_opportunities: e.target.value }));
                     handleFieldChange();
                   }}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
@@ -342,7 +362,7 @@ export default function HiringRoadmapPage() {
                 <textarea
                   value={formData.work_environment}
                   onChange={(e) => {
-                    setFormData(prev => ({ ...prev, work_environment: e.target.value }));
+                    updateFormData(prev => ({ ...prev, work_environment: e.target.value }));
                     handleFieldChange();
                   }}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
@@ -358,7 +378,7 @@ export default function HiringRoadmapPage() {
                 <textarea
                   value={formData.compensation_strategy}
                   onChange={(e) => {
-                    setFormData(prev => ({ ...prev, compensation_strategy: e.target.value }));
+                    updateFormData(prev => ({ ...prev, compensation_strategy: e.target.value }));
                     handleFieldChange();
                   }}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"

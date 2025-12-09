@@ -44,6 +44,18 @@ export default function AccountabilityChartPage() {
     culture_description: ''
   });
 
+  // Ref to track latest form data to avoid stale closures in auto-save
+  const formDataRef = useRef<AccountabilityData>(formData);
+
+  // Helper to update both state and ref atomically
+  const updateFormData = (updater: (prev: AccountabilityData) => AccountabilityData) => {
+    setFormData(prev => {
+      const newData = updater(prev);
+      formDataRef.current = newData; // Sync ref immediately
+      return newData;
+    });
+  };
+
   useEffect(() => {
     if (!contextLoading) {
       loadData();
@@ -71,7 +83,9 @@ export default function AccountabilityChartPage() {
         .single();
 
       if (existingData?.accountability_chart) {
-        setFormData(existingData.accountability_chart as AccountabilityData);
+        const loadedData = existingData.accountability_chart as AccountabilityData;
+        setFormData(loadedData);
+        formDataRef.current = loadedData; // Sync ref
         lastSavedDataRef.current = JSON.stringify(existingData.accountability_chart);
       }
 
@@ -96,7 +110,9 @@ export default function AccountabilityChartPage() {
   };
 
   const saveData = async () => {
-    const currentDataString = JSON.stringify(formData);
+    // Read from ref to avoid stale closure issue
+    const dataToSave = formDataRef.current;
+    const currentDataString = JSON.stringify(dataToSave);
     if (currentDataString === lastSavedDataRef.current) {
       setHasUnsavedChanges(false);
       return;
@@ -116,7 +132,7 @@ export default function AccountabilityChartPage() {
         .from('team_data')
         .upsert({
           user_id: targetUserId,
-          accountability_chart: formData,
+          accountability_chart: dataToSave,
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'user_id'
@@ -136,9 +152,11 @@ export default function AccountabilityChartPage() {
   };
 
   const updateRole = (index: number, field: keyof Role, value: string) => {
-    const newRoles = [...formData.roles];
-    newRoles[index] = { ...newRoles[index], [field]: value };
-    setFormData(prev => ({ ...prev, roles: newRoles }));
+    updateFormData(prev => {
+      const newRoles = [...prev.roles];
+      newRoles[index] = { ...newRoles[index], [field]: value };
+      return { ...prev, roles: newRoles };
+    });
     handleFieldChange();
   };
 
@@ -252,7 +270,7 @@ export default function AccountabilityChartPage() {
             <textarea
               value={formData.culture_description}
               onChange={(e) => {
-                setFormData(prev => ({ ...prev, culture_description: e.target.value }));
+                updateFormData(prev => ({ ...prev, culture_description: e.target.value }));
                 handleFieldChange();
               }}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
