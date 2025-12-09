@@ -53,10 +53,13 @@ export class StrategicPlanningService {
 
       // Prepare initiatives for upsert
       if (initiatives.length > 0) {
-        const initiativesToUpsert = initiatives.map((init, index) => {
+        // Separate new initiatives (no id) from existing ones (have id)
+        const newInitiatives: any[] = []
+        const existingInitiatives: any[] = []
+
+        initiatives.forEach((init, index) => {
           const initWithTasks = init as any
-          return {
-            id: init.id || undefined, // Use existing ID if present
+          const baseData = {
             business_id: businessId,
             user_id: userId,
             title: init.title || 'Untitled',
@@ -75,18 +78,39 @@ export class StrategicPlanningService {
             tasks: initWithTasks.tasks || [],
             updated_at: new Date().toISOString()
           }
+
+          if (init.id) {
+            existingInitiatives.push({ id: init.id, ...baseData })
+          } else {
+            newInitiatives.push(baseData)
+          }
         })
 
-        const { error: upsertError } = await this.supabase
-          .from('strategic_initiatives')
-          .upsert(initiativesToUpsert, {
-            onConflict: 'id',
-            ignoreDuplicates: false
-          })
+        // Insert new initiatives (without id - let DB generate it)
+        if (newInitiatives.length > 0) {
+          const { error: insertError } = await this.supabase
+            .from('strategic_initiatives')
+            .insert(newInitiatives)
 
-        if (upsertError) {
-          console.error('[Strategic Planning] ❌ Error upserting initiatives:', upsertError)
-          return { success: false, error: upsertError.message }
+          if (insertError) {
+            console.error('[Strategic Planning] ❌ Error inserting new initiatives:', insertError)
+            return { success: false, error: insertError.message }
+          }
+        }
+
+        // Update existing initiatives
+        if (existingInitiatives.length > 0) {
+          const { error: upsertError } = await this.supabase
+            .from('strategic_initiatives')
+            .upsert(existingInitiatives, {
+              onConflict: 'id',
+              ignoreDuplicates: false
+            })
+
+          if (upsertError) {
+            console.error('[Strategic Planning] ❌ Error upserting initiatives:', upsertError)
+            return { success: false, error: upsertError.message }
+          }
         }
       }
 
