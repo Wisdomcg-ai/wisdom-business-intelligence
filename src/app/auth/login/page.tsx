@@ -68,16 +68,21 @@ export default function LoginPage() {
         // Check user's role and redirect appropriately
         const role = await getUserSystemRole()
 
-        if (role === 'super_admin') {
-          // Admins should use admin portal
-          router.push('/admin')
-        } else if (role === 'coach') {
-          // Coaches should use coach portal
-          router.push('/coach/dashboard')
-        } else {
-          // Clients go to client dashboard
-          router.push('/dashboard')
+        // Security: Verify this is a client login page - reject non-client roles
+        // Admins and coaches should use their dedicated login portals
+        if (role === 'super_admin' || role === 'coach') {
+          // Sign them out and redirect to appropriate portal
+          await supabase.auth.signOut()
+          if (role === 'super_admin') {
+            setError('Please use the admin login portal at /admin/login')
+          } else {
+            setError('Please use the coach login portal at /coach/login')
+          }
+          return
         }
+
+        // Clients go to client dashboard
+        router.push('/dashboard')
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred. Please try again.')

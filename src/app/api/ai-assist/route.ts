@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
 
 // Initialize OpenAI
 const openai = new OpenAI({
@@ -8,6 +9,14 @@ const openai = new OpenAI({
 
 export async function POST(request: Request) {
   try {
+    // Authentication check - only authenticated users can use AI
+    const supabase = await createRouteHandlerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { fieldType, currentValue, businessContext } = await request.json();
 
     // Create context-aware prompts based on field type

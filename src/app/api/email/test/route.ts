@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
 import {
   sendTestEmail,
   sendClientInvitation,
@@ -9,6 +10,25 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
+    // Authentication check - require super_admin role
+    const supabase = await createRouteHandlerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check if user is super_admin
+    const { data: roleData } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!roleData || roleData.role !== 'super_admin') {
+      return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
+    }
+
     const body = await request.json();
     const { to, name, type = 'test', all = false } = body;
 

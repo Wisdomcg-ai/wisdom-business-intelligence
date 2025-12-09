@@ -26,6 +26,7 @@ export class StrategicPlanningService {
 
   /**
    * Save strategic initiatives (all steps except sprint actions)
+   * Uses upsert pattern to ensure atomicity - no data loss if operation fails
    */
   static async saveInitiatives(
     businessId: string,
@@ -40,23 +41,22 @@ export class StrategicPlanningService {
 
       console.log(`[Strategic Planning] 💾 Saving ${initiatives.length} initiatives for step: ${stepType}`)
 
-      // Delete existing initiatives for this step
-      const { error: deleteError } = await this.supabase
+      // Get existing initiative IDs for this step
+      const { data: existingData } = await this.supabase
         .from('strategic_initiatives')
-        .delete()
+        .select('id')
         .eq('business_id', businessId)
         .eq('step_type', stepType)
 
-      if (deleteError) {
-        console.warn('[Strategic Planning] ⚠️ Error deleting existing initiatives:', deleteError)
-      }
+      const existingIds = new Set((existingData || []).map(item => item.id))
+      const newIds = new Set(initiatives.filter(init => init.id).map(init => init.id))
 
-      // Insert new initiatives
+      // Prepare initiatives for upsert
       if (initiatives.length > 0) {
-        const initiativesToInsert = initiatives.map((init, index) => {
-          // Type assertion to access extended fields
+        const initiativesToUpsert = initiatives.map((init, index) => {
           const initWithTasks = init as any
           return {
+            id: init.id || undefined, // Use existing ID if present
             business_id: businessId,
             user_id: userId,
             title: init.title || 'Untitled',
@@ -72,20 +72,47 @@ export class StrategicPlanningService {
             order_index: init.order !== undefined ? init.order : index,
             linked_kpis: init.linkedKPIs ? JSON.stringify(init.linkedKPIs) : null,
             assigned_to: init.assignedTo || null,
-            // V3: Task breakdown and project plan fields
             tasks: initWithTasks.tasks || [],
-            created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           }
         })
 
-        const { error: insertError } = await this.supabase
+        const { error: upsertError } = await this.supabase
           .from('strategic_initiatives')
-          .insert(initiativesToInsert)
+          .upsert(initiativesToUpsert, {
+            onConflict: 'id',
+            ignoreDuplicates: false
+          })
 
-        if (insertError) {
-          console.error('[Strategic Planning] ❌ Error inserting initiatives:', insertError)
-          return { success: false, error: insertError.message }
+        if (upsertError) {
+          console.error('[Strategic Planning] ❌ Error upserting initiatives:', upsertError)
+          return { success: false, error: upsertError.message }
+        }
+      }
+
+      // Only delete initiatives that were removed (not in the new set)
+      const idsToDelete = [...existingIds].filter(id => !newIds.has(id))
+      if (idsToDelete.length > 0) {
+        const { error: deleteError } = await this.supabase
+          .from('strategic_initiatives')
+          .delete()
+          .in('id', idsToDelete)
+
+        if (deleteError) {
+          console.warn('[Strategic Planning] ⚠️ Error cleaning up removed initiatives:', deleteError)
+        }
+      }
+
+      // Handle case where all initiatives are removed
+      if (initiatives.length === 0 && existingIds.size > 0) {
+        const { error: deleteError } = await this.supabase
+          .from('strategic_initiatives')
+          .delete()
+          .eq('business_id', businessId)
+          .eq('step_type', stepType)
+
+        if (deleteError) {
+          console.warn('[Strategic Planning] ⚠️ Error clearing initiatives:', deleteError)
         }
       }
 
@@ -149,6 +176,7 @@ export class StrategicPlanningService {
 
   /**
    * Save sprint key actions
+   * Uses upsert pattern to ensure atomicity - no data loss if operation fails
    */
   static async saveSprintActions(
     businessId: string,
@@ -162,36 +190,63 @@ export class StrategicPlanningService {
 
       console.log(`[Strategic Planning] 💾 Saving ${actions.length} sprint actions`)
 
-      // Delete existing actions
-      const { error: deleteError } = await this.supabase
+      // Get existing action IDs
+      const { data: existingData } = await this.supabase
         .from('sprint_key_actions')
-        .delete()
+        .select('id')
         .eq('business_id', businessId)
 
-      if (deleteError) {
-        console.warn('[Strategic Planning] ⚠️ Error deleting existing actions:', deleteError)
-      }
+      const existingIds = new Set((existingData || []).map(item => item.id))
+      const newIds = new Set(actions.filter(action => action.id).map(action => action.id))
 
-      // Insert new actions
+      // Upsert actions
       if (actions.length > 0) {
-        const actionsToInsert = actions.map(action => ({
+        const actionsToUpsert = actions.map(action => ({
+          id: action.id || undefined,
           business_id: businessId,
           user_id: userId,
           action: action.action,
           owner: action.owner || null,
           due_date: action.dueDate || null,
           status: 'pending',
-          created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }))
 
-        const { error: insertError } = await this.supabase
+        const { error: upsertError } = await this.supabase
           .from('sprint_key_actions')
-          .insert(actionsToInsert)
+          .upsert(actionsToUpsert, {
+            onConflict: 'id',
+            ignoreDuplicates: false
+          })
 
-        if (insertError) {
-          console.error('[Strategic Planning] ❌ Error inserting actions:', insertError)
-          return { success: false, error: insertError.message }
+        if (upsertError) {
+          console.error('[Strategic Planning] ❌ Error upserting actions:', upsertError)
+          return { success: false, error: upsertError.message }
+        }
+      }
+
+      // Delete removed actions
+      const idsToDelete = [...existingIds].filter(id => !newIds.has(id))
+      if (idsToDelete.length > 0) {
+        const { error: deleteError } = await this.supabase
+          .from('sprint_key_actions')
+          .delete()
+          .in('id', idsToDelete)
+
+        if (deleteError) {
+          console.warn('[Strategic Planning] ⚠️ Error cleaning up removed actions:', deleteError)
+        }
+      }
+
+      // Handle case where all actions are removed
+      if (actions.length === 0 && existingIds.size > 0) {
+        const { error: deleteError } = await this.supabase
+          .from('sprint_key_actions')
+          .delete()
+          .eq('business_id', businessId)
+
+        if (deleteError) {
+          console.warn('[Strategic Planning] ⚠️ Error clearing actions:', deleteError)
         }
       }
 

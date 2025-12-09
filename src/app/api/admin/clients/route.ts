@@ -155,12 +155,15 @@ export async function POST(request: Request) {
       )
     }
 
-    // STEP 2: Create business record
+    // STEP 2: Create business record (with owner_id linked to the new user)
     const { data: business, error: businessError } = await supabase
       .from('businesses')
       .insert({
         name: businessName,
         business_name: businessName,
+        owner_id: newUserId, // Link to the new user for data queries
+        owner_name: `${firstName} ${lastName}`,
+        owner_email: email,
         assigned_coach_id: user.id, // Assign to current admin (who is also the coach)
         enabled_modules: permissions,
         status: 'active',
@@ -179,6 +182,22 @@ export async function POST(request: Request) {
       )
     }
 
+    // STEP 2b: Create business_profile record (required for coach dashboard to show data)
+    const { error: profileError } = await supabase
+      .from('business_profiles')
+      .insert({
+        business_id: business.id,
+        user_id: newUserId,
+        business_name: businessName,
+        company_name: businessName,
+        profile_completed: false
+      })
+
+    if (profileError) {
+      console.error('Business profile creation error:', profileError)
+      // Don't fail - this is non-critical but log it
+    }
+
     // STEP 3: Assign user role (owner)
     const { error: userRoleError } = await supabase
       .from('user_roles')
@@ -192,6 +211,15 @@ export async function POST(request: Request) {
     if (userRoleError) {
       console.error('Role assignment error:', userRoleError)
     }
+
+    // STEP 3b: Create business_users association
+    await supabase
+      .from('business_users')
+      .insert({
+        business_id: business.id,
+        user_id: newUserId,
+        role: 'owner'
+      })
 
     // STEP 4: Set system role as client
     const { error: clientRoleError } = await supabase
@@ -282,7 +310,8 @@ export async function POST(request: Request) {
       console.log('[Admin Client Create] Invitation deferred - credentials stored for later')
     }
 
-    // Return success with password (only for admin to see)
+    // Return success - DO NOT include password in response for security
+    // Password is either sent via email or stored in temp_password field for later retrieval
     return NextResponse.json({
       success: true,
       business: {
@@ -290,12 +319,15 @@ export async function POST(request: Request) {
         name: businessName
       },
       user: {
-        email,
-        temporaryPassword: generatedPassword // Return this so admin can manually send if needed
+        email
+        // Note: Password not returned for security - check email or resend invitation
       },
       emailSent,
       invitationDeferred: !sendInvitation,
-      emailError
+      emailError,
+      message: emailSent
+        ? 'Client created and invitation sent via email'
+        : 'Client created. Use "Resend Invitation" to send login credentials.'
     })
 
   } catch (error) {

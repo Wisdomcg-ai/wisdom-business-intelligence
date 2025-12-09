@@ -1,9 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { createRouteHandlerClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
-const supabase = createClient(
+const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
@@ -18,11 +19,34 @@ const supabase = createClient(
  */
 export async function GET(request: NextRequest) {
   try {
+    // Authentication check
+    const supabase = await createRouteHandlerClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('user_id')
 
     if (!userId) {
       return NextResponse.json({ error: 'user_id is required' }, { status: 400 })
+    }
+
+    // Verify user can only access their own data (or is coach/admin)
+    if (userId !== user.id) {
+      // Check if user is coach or admin
+      const { data: roleData } = await supabase
+        .from('system_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .single()
+
+      const isCoachOrAdmin = roleData?.role === 'coach' || roleData?.role === 'super_admin'
+      if (!isCoachOrAdmin) {
+        return NextResponse.json({ error: 'Forbidden - Cannot access other user data' }, { status: 403 })
+      }
     }
 
     // 1. Get business profile to find business_id

@@ -1,18 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createRouteHandlerClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
-// Initialize Supabase client
-// Make sure your environment variables are set in .env.local
+// Initialize Supabase client with service role for admin operations
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+// Helper to verify user has access to business
+async function verifyBusinessAccess(userId: string, businessId: string): Promise<boolean> {
+  // Check if user owns the business
+  const { data: business } = await supabaseAdmin
+    .from('businesses')
+    .select('id')
+    .eq('id', businessId)
+    .or(`owner_id.eq.${userId},assigned_coach_id.eq.${userId}`)
+    .single()
+
+  if (business) return true
+
+  // Check if user has a business_profile for this business
+  const { data: profile } = await supabaseAdmin
+    .from('business_profiles')
+    .select('id')
+    .eq('id', businessId)
+    .eq('user_id', userId)
+    .single()
+
+  return !!profile
+}
 
 // GET endpoint - Fetch existing KPIs for a business
 export async function GET(request: NextRequest) {
   try {
+    // Authentication check
+    const supabase = await createRouteHandlerClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     // Get businessId from query params
     const { searchParams } = new URL(request.url)
     const businessId = searchParams.get('businessId')
@@ -24,8 +54,14 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Verify user has access to this business
+    const hasAccess = await verifyBusinessAccess(user.id, businessId)
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Forbidden - No access to this business' }, { status: 403 })
+    }
+
     // Fetch KPIs from database
-    const { data: kpis, error } = await supabase
+    const { data: kpis, error } = await supabaseAdmin
       .from('business_kpis')
       .select('*')
       .eq('business_id', businessId)
@@ -57,6 +93,14 @@ export async function GET(request: NextRequest) {
 // POST endpoint - Save or update KPIs for a business
 export async function POST(request: NextRequest) {
   try {
+    // Authentication check
+    const supabase = await createRouteHandlerClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     // Parse request body
     const body = await request.json()
     const { businessId, kpis } = body
@@ -69,6 +113,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Verify user has access to this business
+    const hasAccess = await verifyBusinessAccess(user.id, businessId)
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Forbidden - No access to this business' }, { status: 403 })
+    }
+
     if (!kpis || !Array.isArray(kpis)) {
       return NextResponse.json(
         { error: 'KPIs array is required' },
@@ -77,7 +127,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get current KPI IDs for this business
-    const { data: existingKpis } = await supabase
+    const { data: existingKpis } = await supabaseAdmin
       .from('business_kpis')
       .select('kpi_id')
       .eq('business_id', businessId)
@@ -104,7 +154,7 @@ export async function POST(request: NextRequest) {
     }))
 
     // Upsert KPIs (insert new ones, update existing ones)
-    const { data: upsertedKpis, error: upsertError } = await supabase
+    const { data: upsertedKpis, error: upsertError } = await supabaseAdmin
       .from('business_kpis')
       .upsert(kpisToUpsert, {
         onConflict: 'business_id,kpi_id',
@@ -123,7 +173,7 @@ export async function POST(request: NextRequest) {
     // Only delete KPIs that were removed (not in new selection)
     const kpisToRemove = [...existingKpiIds].filter(id => !newKpiIds.has(id))
     if (kpisToRemove.length > 0) {
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await supabaseAdmin
         .from('business_kpis')
         .delete()
         .eq('business_id', businessId)
@@ -138,7 +188,7 @@ export async function POST(request: NextRequest) {
     const insertedKpis = upsertedKpis
 
     // Log the save action (optional - for tracking)
-    await supabase
+    await supabaseAdmin
       .from('activity_log')
       .insert({
         business_id: businessId,
@@ -166,6 +216,14 @@ export async function POST(request: NextRequest) {
 // DELETE endpoint - Remove a specific KPI
 export async function DELETE(request: NextRequest) {
   try {
+    // Authentication check
+    const supabase = await createRouteHandlerClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     // Get KPI ID from query params
     const { searchParams } = new URL(request.url)
     const kpiId = searchParams.get('kpiId')
@@ -178,8 +236,14 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
+    // Verify user has access to this business
+    const hasAccess = await verifyBusinessAccess(user.id, businessId)
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Forbidden - No access to this business' }, { status: 403 })
+    }
+
     // Delete the KPI
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('business_kpis')
       .delete()
       .eq('kpi_id', kpiId)
@@ -210,6 +274,14 @@ export async function DELETE(request: NextRequest) {
 // PATCH endpoint - Update KPI values (for tracking actual performance)
 export async function PATCH(request: NextRequest) {
   try {
+    // Authentication check
+    const supabase = await createRouteHandlerClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await request.json()
     const { businessId, kpiId, currentValue, notes } = body
 
@@ -220,8 +292,14 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
+    // Verify user has access to this business
+    const hasAccess = await verifyBusinessAccess(user.id, businessId)
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Forbidden - No access to this business' }, { status: 403 })
+    }
+
     // Update the KPI's current value
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('business_kpis')
       .update({
         current_value: currentValue,
@@ -242,7 +320,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Also save to KPI history for tracking trends
-    await supabase
+    await supabaseAdmin
       .from('kpi_history')
       .insert({
         business_id: businessId,

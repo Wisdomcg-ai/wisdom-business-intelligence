@@ -21,6 +21,7 @@ export class OperationalActivitiesService {
 
   /**
    * Save operational activities
+   * Uses upsert pattern to ensure atomicity - no data loss if operation fails
    */
   static async saveActivities(
     businessId: string,
@@ -34,36 +35,63 @@ export class OperationalActivitiesService {
 
       console.log(`[Operational Activities] 💾 Saving ${activities.length} activities`)
 
-      // Delete existing activities
-      const { error: deleteError } = await this.supabase
+      // Get existing activity IDs
+      const { data: existingData } = await this.supabase
         .from('operational_activities')
-        .delete()
+        .select('id')
         .eq('business_id', businessId)
 
-      if (deleteError) {
-        console.warn('[Operational Activities] ⚠️ Error deleting existing activities:', deleteError)
-      }
+      const existingIds = new Set((existingData || []).map(item => item.id))
+      const newIds = new Set(activities.filter(a => a.id).map(a => a.id))
 
-      // Insert new activities
+      // Upsert activities
       if (activities.length > 0) {
-        const activitiesToInsert = activities.map((activity, index) => ({
+        const activitiesToUpsert = activities.map((activity, index) => ({
+          id: activity.id || undefined,
           business_id: businessId,
           user_id: userId,
           function_id: activity.function,
           description: activity.description || '',
           assigned_to: activity.assignedTo || null,
           order_index: activity.orderIndex !== undefined ? activity.orderIndex : index,
-          created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }))
 
-        const { error: insertError } = await this.supabase
+        const { error: upsertError } = await this.supabase
           .from('operational_activities')
-          .insert(activitiesToInsert)
+          .upsert(activitiesToUpsert, {
+            onConflict: 'id',
+            ignoreDuplicates: false
+          })
 
-        if (insertError) {
-          console.error('[Operational Activities] ❌ Error inserting activities:', insertError)
-          return { success: false, error: insertError.message }
+        if (upsertError) {
+          console.error('[Operational Activities] ❌ Error upserting activities:', upsertError)
+          return { success: false, error: upsertError.message }
+        }
+      }
+
+      // Delete removed activities
+      const idsToDelete = [...existingIds].filter(id => !newIds.has(id))
+      if (idsToDelete.length > 0) {
+        const { error: deleteError } = await this.supabase
+          .from('operational_activities')
+          .delete()
+          .in('id', idsToDelete)
+
+        if (deleteError) {
+          console.warn('[Operational Activities] ⚠️ Error cleaning up removed activities:', deleteError)
+        }
+      }
+
+      // Handle case where all activities are removed
+      if (activities.length === 0 && existingIds.size > 0) {
+        const { error: deleteError } = await this.supabase
+          .from('operational_activities')
+          .delete()
+          .eq('business_id', businessId)
+
+        if (deleteError) {
+          console.warn('[Operational Activities] ⚠️ Error clearing activities:', deleteError)
         }
       }
 

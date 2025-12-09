@@ -233,35 +233,75 @@ export class ForecastService {
 
   /**
    * Save or update P&L lines
+   * Uses upsert pattern to ensure atomicity - no data loss if operation fails
    */
   static async savePLLines(
     forecastId: string,
     lines: PLLine[]
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Delete existing lines for this forecast
-      await this.supabase
+      // Get existing line IDs
+      const { data: existingData } = await this.supabase
         .from('forecast_pl_lines')
-        .delete()
+        .select('id')
         .eq('forecast_id', forecastId)
 
-      // Insert new lines (remove id field to let database generate new ones)
-      const linesToInsert = lines.map((line, index) => {
-        const { id, ...lineWithoutId } = line
-        return {
-          ...lineWithoutId,
+      const existingIds = new Set((existingData || []).map(item => item.id))
+      const newIds = new Set(lines.filter(line => line.id).map(line => line.id))
+
+      // Upsert lines
+      if (lines.length > 0) {
+        const linesToUpsert = lines.map((line, index) => ({
+          id: line.id || undefined,
           forecast_id: forecastId,
-          sort_order: line.sort_order ?? index
+          category: line.category,
+          name: line.name,
+          account_code: line.account_code,
+          line_type: line.line_type,
+          sort_order: line.sort_order ?? index,
+          jan: line.jan,
+          feb: line.feb,
+          mar: line.mar,
+          apr: line.apr,
+          may: line.may,
+          jun: line.jun,
+          jul: line.jul,
+          aug: line.aug,
+          sep: line.sep,
+          oct: line.oct,
+          nov: line.nov,
+          dec: line.dec,
+          total: line.total
+        }))
+
+        const { error: upsertError } = await this.supabase
+          .from('forecast_pl_lines')
+          .upsert(linesToUpsert, {
+            onConflict: 'id',
+            ignoreDuplicates: false
+          })
+
+        if (upsertError) {
+          console.error('[Forecast] Error upserting P&L lines:', upsertError)
+          return { success: false, error: upsertError.message }
         }
-      })
+      }
 
-      const { error } = await this.supabase
-        .from('forecast_pl_lines')
-        .insert(linesToInsert)
+      // Delete removed lines
+      const idsToDelete = [...existingIds].filter(id => !newIds.has(id))
+      if (idsToDelete.length > 0) {
+        await this.supabase
+          .from('forecast_pl_lines')
+          .delete()
+          .in('id', idsToDelete)
+      }
 
-      if (error) {
-        console.error('[Forecast] Error saving P&L lines:', error)
-        return { success: false, error: error.message }
+      // Handle case where all lines are removed
+      if (lines.length === 0 && existingIds.size > 0) {
+        await this.supabase
+          .from('forecast_pl_lines')
+          .delete()
+          .eq('forecast_id', forecastId)
       }
 
       console.log('[Forecast] Saved P&L lines:', lines.length)
@@ -306,40 +346,67 @@ export class ForecastService {
 
   /**
    * Save or update employees
+   * Uses upsert pattern to ensure atomicity - no data loss if operation fails
    */
   static async saveEmployees(
     forecastId: string,
     employees: ForecastEmployee[]
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Delete existing employees for this forecast
-      await this.supabase
+      // Get existing employee IDs
+      const { data: existingData } = await this.supabase
         .from('forecast_employees')
-        .delete()
+        .select('id')
         .eq('forecast_id', forecastId)
 
-      // Insert new employees (remove id field to let database generate new ones)
-      const employeesToInsert = employees.map((emp, index) => {
-        const { id, ...empWithoutId } = emp
-        return {
-          ...empWithoutId,
+      const existingIds = new Set((existingData || []).map(item => item.id))
+      const newIds = new Set(employees.filter(emp => emp.id).map(emp => emp.id))
+
+      // Upsert employees
+      if (employees.length > 0) {
+        const employeesToUpsert = employees.map((emp, index) => ({
+          id: emp.id || undefined,
           forecast_id: forecastId,
+          name: emp.name,
+          role: emp.role,
+          employment_type: emp.employment_type,
+          salary: emp.salary,
+          super_rate: emp.super_rate,
           sort_order: emp.sort_order ?? index,
-          // Convert YYYY-MM to YYYY-MM-DD format for date fields
           start_date: emp.start_date ? `${emp.start_date}-01` : null,
           end_date: emp.end_date ? `${emp.end_date}-01` : null,
-          // Map new classification field to old category field for backwards compatibility
+          classification: emp.classification,
           category: emp.classification === 'cogs' ? 'Wages COGS' : 'Wages Admin'
+        }))
+
+        const { error: upsertError } = await this.supabase
+          .from('forecast_employees')
+          .upsert(employeesToUpsert, {
+            onConflict: 'id',
+            ignoreDuplicates: false
+          })
+
+        if (upsertError) {
+          console.error('[Forecast] Error upserting employees:', upsertError)
+          return { success: false, error: upsertError.message }
         }
-      })
+      }
 
-      const { error } = await this.supabase
-        .from('forecast_employees')
-        .insert(employeesToInsert)
+      // Delete removed employees
+      const idsToDelete = [...existingIds].filter(id => !newIds.has(id))
+      if (idsToDelete.length > 0) {
+        await this.supabase
+          .from('forecast_employees')
+          .delete()
+          .in('id', idsToDelete)
+      }
 
-      if (error) {
-        console.error('[Forecast] Error saving employees:', error)
-        return { success: false, error: error.message }
+      // Handle case where all employees are removed
+      if (employees.length === 0 && existingIds.size > 0) {
+        await this.supabase
+          .from('forecast_employees')
+          .delete()
+          .eq('forecast_id', forecastId)
       }
 
       console.log('[Forecast] Saved employees:', employees.length)
