@@ -175,7 +175,22 @@ export async function POST(request: Request) {
 
     if (businessError) {
       console.error('Business creation error:', businessError)
-      // TODO: Rollback auth user creation
+      // Rollback: Delete the auth user we just created
+      try {
+        await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${newUserId}`,
+          {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+              'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+            }
+          }
+        )
+        console.log('[Admin Clients] Rolled back auth user creation due to business creation failure')
+      } catch (rollbackError) {
+        console.error('[Admin Clients] Failed to rollback auth user:', rollbackError)
+      }
       return NextResponse.json(
         { error: `Failed to create business: ${businessError.message}` },
         { status: 500 }

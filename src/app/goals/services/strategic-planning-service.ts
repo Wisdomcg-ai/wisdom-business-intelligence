@@ -99,7 +99,8 @@ export class StrategicPlanningService {
           .in('id', idsToDelete)
 
         if (deleteError) {
-          console.warn('[Strategic Planning] ⚠️ Error cleaning up removed initiatives:', deleteError)
+          console.error('[Strategic Planning] ❌ Error cleaning up removed initiatives:', deleteError)
+          return { success: false, error: `Failed to remove initiatives: ${deleteError.message}` }
         }
       }
 
@@ -112,7 +113,8 @@ export class StrategicPlanningService {
           .eq('step_type', stepType)
 
         if (deleteError) {
-          console.warn('[Strategic Planning] ⚠️ Error clearing initiatives:', deleteError)
+          console.error('[Strategic Planning] ❌ Error clearing initiatives:', deleteError)
+          return { success: false, error: `Failed to clear initiatives: ${deleteError.message}` }
         }
       }
 
@@ -234,7 +236,8 @@ export class StrategicPlanningService {
           .in('id', idsToDelete)
 
         if (deleteError) {
-          console.warn('[Strategic Planning] ⚠️ Error cleaning up removed actions:', deleteError)
+          console.error('[Strategic Planning] ❌ Error cleaning up removed actions:', deleteError)
+          return { success: false, error: `Failed to remove actions: ${deleteError.message}` }
         }
       }
 
@@ -246,7 +249,8 @@ export class StrategicPlanningService {
           .eq('business_id', businessId)
 
         if (deleteError) {
-          console.warn('[Strategic Planning] ⚠️ Error clearing actions:', deleteError)
+          console.error('[Strategic Planning] ❌ Error clearing actions:', deleteError)
+          return { success: false, error: `Failed to clear actions: ${deleteError.message}` }
         }
       }
 
