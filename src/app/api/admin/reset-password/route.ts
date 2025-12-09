@@ -25,6 +25,24 @@ function generatePassword(length = 12): string {
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting - 5 admin password reset requests per 15 minutes per IP
+    const clientIP = getClientIP(request)
+    const rateLimitKey = createRateLimitKey('admin-password-reset', clientIP)
+    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.auth)
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil(rateLimit.resetIn / 1000)),
+            'X-RateLimit-Remaining': '0'
+          }
+        }
+      )
+    }
+
     // Verify admin is authenticated
     const supabase = await createRouteHandlerClient()
     const { data: { user } } = await supabase.auth.getUser()

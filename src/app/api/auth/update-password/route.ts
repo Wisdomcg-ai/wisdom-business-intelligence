@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { checkRateLimit, getClientIP, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 
 // Use service role for admin operations
 const supabase = createClient(
@@ -11,6 +12,18 @@ const supabase = createClient(
 // Verify token is valid
 export async function GET(request: NextRequest) {
   try {
+    // Rate limiting - 10 token verification requests per 15 minutes per IP
+    const clientIP = getClientIP(request)
+    const rateLimitKey = createRateLimitKey('update-password-verify', clientIP)
+    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.auth)
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { valid: false, error: 'Too many requests. Please try again later.' },
+        { status: 429 }
+      )
+    }
+
     const token = request.nextUrl.searchParams.get('token')
 
     if (!token) {
@@ -49,6 +62,23 @@ export async function GET(request: NextRequest) {
 // Update password with valid token
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting - 5 password update attempts per 15 minutes per IP
+    const clientIP = getClientIP(request)
+    const rateLimitKey = createRateLimitKey('update-password', clientIP)
+    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.auth)
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil(rateLimit.resetIn / 1000))
+          }
+        }
+      )
+    }
+
     const { token, password } = await request.json()
 
     if (!token || !password) {
