@@ -4,6 +4,7 @@ import './globals.css'
 import SidebarLayout from '@/components/layout/sidebar-layout'
 import { Toaster } from 'sonner'
 import { BusinessContextProvider } from '@/contexts/BusinessContext'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -36,10 +37,12 @@ export default function RootLayout({
               duration: 4000,
             }}
           />
-          {/* Wrap all page content with SidebarLayout */}
-          <SidebarLayout>
-            {children}
-          </SidebarLayout>
+          {/* Wrap all page content with ErrorBoundary and SidebarLayout */}
+          <ErrorBoundary>
+            <SidebarLayout>
+              {children}
+            </SidebarLayout>
+          </ErrorBoundary>
         </BusinessContextProvider>
       </body>
     </html>
