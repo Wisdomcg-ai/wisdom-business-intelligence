@@ -56,6 +56,7 @@ const getPageComponent = (path: string[]) => {
     'open-loops': () => import('@/app/open-loops/page'),
     'stop-doing': () => import('@/app/stop-doing/page'),
     'todo': () => import('@/app/todo/page'),
+    'ideas': () => import('@/app/ideas/page'),
 
     // Integrations
     'integrations': () => import('@/app/integrations/page'),
