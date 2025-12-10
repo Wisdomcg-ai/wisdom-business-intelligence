@@ -78,14 +78,28 @@ function ClientsListContent() {
 
       setUserId(user.id)
 
-      // Load businesses assigned to this coach
-      const { data: businesses, error } = await supabase
+      // Check if user is super_admin
+      const { data: roleData } = await supabase
+        .from('system_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      const isSuperAdmin = roleData?.role === 'super_admin'
+
+      // Load businesses - super_admins see all, coaches see only assigned
+      let businessQuery = supabase
         .from('businesses')
         .select('*')
-        .eq('assigned_coach_id', user.id)
         .order('business_name')
 
-      console.log('[ClientsPage] Businesses result:', { count: businesses?.length, error: error?.message })
+      if (!isSuperAdmin) {
+        businessQuery = businessQuery.eq('assigned_coach_id', user.id)
+      }
+
+      const { data: businesses, error } = await businessQuery
+
+      console.log('[ClientsPage] Businesses result:', { count: businesses?.length, error: error?.message, isSuperAdmin })
 
       // Process clients
       const processedClients: ClientCardData[] = (businesses || []).map(b => ({
@@ -110,14 +124,19 @@ function ClientsListContent() {
 
       setUnassignedClients(unassigned || [])
 
-      // Load clients with pending invitations (assigned to this coach)
-      const { data: pendingInvites } = await supabase
+      // Load clients with pending invitations (super_admins see all, coaches see only assigned)
+      let pendingQuery = supabase
         .from('businesses')
         .select('id, business_name, invitation_sent, created_at')
-        .eq('assigned_coach_id', user.id)
         .eq('invitation_sent', false)
         .not('temp_password', 'is', null)
         .order('created_at', { ascending: false })
+
+      if (!isSuperAdmin) {
+        pendingQuery = pendingQuery.eq('assigned_coach_id', user.id)
+      }
+
+      const { data: pendingInvites } = await pendingQuery
 
       setPendingInvitations(pendingInvites || [])
     } catch (error) {

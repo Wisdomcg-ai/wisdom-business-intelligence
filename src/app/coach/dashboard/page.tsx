@@ -53,12 +53,26 @@ export default function CoachDashboardPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Load businesses assigned to this coach
-      const { data: businesses, error: bizError } = await supabase
+      // Check if user is super_admin
+      const { data: roleData } = await supabase
+        .from('system_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      const isSuperAdmin = roleData?.role === 'super_admin'
+
+      // Load businesses - super_admins see all, coaches see only assigned
+      let businessQuery = supabase
         .from('businesses')
         .select('*')
-        .eq('assigned_coach_id', user.id)
         .order('business_name')
+
+      if (!isSuperAdmin) {
+        businessQuery = businessQuery.eq('assigned_coach_id', user.id)
+      }
+
+      const { data: businesses, error: bizError } = await businessQuery
 
       if (bizError) {
         console.error('[Dashboard] Error loading businesses:', bizError)
