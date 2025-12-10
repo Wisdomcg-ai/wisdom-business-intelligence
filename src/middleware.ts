@@ -137,34 +137,37 @@ export async function middleware(request: NextRequest) {
           return response
         }
 
-        // STEP 1: Check if business profile is completed (clients only)
-        const { data: businessProfile, error: profileError } = await supabase
-          .from('business_profiles')
-          .select('profile_completed')
-          .eq('user_id', user.id)
-          .maybeSingle()  // Use maybeSingle to avoid errors if no row exists
+        // TEMPORARILY DISABLED: Onboarding checks removed to allow business plan access
+        // TODO: Re-enable once business plan development is complete
 
-        // If profile doesn't exist or is not completed, redirect to business profile
-        if (profileError || !businessProfile || !businessProfile.profile_completed) {
-          return NextResponse.redirect(new URL('/business-profile', request.url))
-        }
+        // // STEP 1: Check if business profile is completed (clients only)
+        // const { data: businessProfile, error: profileError } = await supabase
+        //   .from('business_profiles')
+        //   .select('profile_completed')
+        //   .eq('user_id', user.id)
+        //   .maybeSingle()  // Use maybeSingle to avoid errors if no row exists
 
-        // STEP 2: Check if assessment is completed
-        const { data: completedAssessment, error: assessmentError } = await supabase
-          .from('assessments')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('status', 'completed')
-          .order('completed_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
+        // // If profile doesn't exist or is not completed, redirect to business profile
+        // if (profileError || !businessProfile || !businessProfile.profile_completed) {
+        //   return NextResponse.redirect(new URL('/business-profile', request.url))
+        // }
 
-        // If no completed assessment (and no error), redirect to assessment page
-        if (!assessmentError && !completedAssessment) {
-          return NextResponse.redirect(new URL('/assessment', request.url))
-        }
+        // // STEP 2: Check if assessment is completed
+        // const { data: completedAssessment, error: assessmentError } = await supabase
+        //   .from('assessments')
+        //   .select('id')
+        //   .eq('user_id', user.id)
+        //   .eq('status', 'completed')
+        //   .order('completed_at', { ascending: false })
+        //   .limit(1)
+        //   .maybeSingle()
 
-        // Both profile and assessment complete - allow access to everything
+        // // If no completed assessment (and no error), redirect to assessment page
+        // if (!assessmentError && !completedAssessment) {
+        //   return NextResponse.redirect(new URL('/assessment', request.url))
+        // }
+
+        // Allow access to all routes - onboarding checks disabled
       } catch (error) {
         // If there's an unexpected error, log it but allow the request through
         // This prevents redirect loops when DB is having issues
