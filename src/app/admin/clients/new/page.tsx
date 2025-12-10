@@ -3,7 +3,15 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, UserPlus, Loader2, Mail, MailX } from 'lucide-react'
+import { ArrowLeft, UserPlus, Loader2, Mail, MailX, Users, Plus, X, ChevronDown, ChevronUp } from 'lucide-react'
+
+interface TeamMember {
+  firstName: string
+  lastName: string
+  email: string
+  position: string
+  role: 'owner' | 'admin' | 'member' | 'viewer'
+}
 
 interface ClientFormData {
   businessName: string
@@ -13,6 +21,7 @@ interface ClientFormData {
   position: string
   accessLevel: 'full' | 'view_only' | 'limited'
   sendInvitation: boolean
+  teamMembers: TeamMember[]
 }
 
 export default function NewClientPage() {
@@ -28,11 +37,43 @@ export default function NewClientPage() {
     email: '',
     position: 'Owner',
     accessLevel: 'full',
-    sendInvitation: true
+    sendInvitation: true,
+    teamMembers: []
   })
+  const [showTeamSection, setShowTeamSection] = useState(false)
 
   const updateField = (field: keyof ClientFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  const addTeamMember = () => {
+    setFormData(prev => ({
+      ...prev,
+      teamMembers: [...prev.teamMembers, {
+        firstName: '',
+        lastName: '',
+        email: '',
+        position: '',
+        role: 'member'
+      }]
+    }))
+    setShowTeamSection(true)
+  }
+
+  const updateTeamMember = (index: number, field: keyof TeamMember, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      teamMembers: prev.teamMembers.map((m, i) =>
+        i === index ? { ...m, [field]: value } : m
+      )
+    }))
+  }
+
+  const removeTeamMember = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      teamMembers: prev.teamMembers.filter((_, i) => i !== index)
+    }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -249,6 +290,109 @@ export default function NewClientPage() {
               </div>
             </div>
 
+            {/* Team Members Section */}
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowTeamSection(!showTeamSection)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-gray-600" />
+                  <span className="font-medium text-gray-900">
+                    Add Business Partners / Team Members
+                  </span>
+                  {formData.teamMembers.length > 0 && (
+                    <span className="px-2 py-0.5 bg-brand-orange text-white text-xs rounded-full">
+                      {formData.teamMembers.length}
+                    </span>
+                  )}
+                </div>
+                {showTeamSection ? (
+                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                )}
+              </button>
+
+              {showTeamSection && (
+                <div className="p-4 space-y-4 border-t border-gray-200">
+                  <p className="text-sm text-gray-600">
+                    Add additional team members who will have access to this business. They will receive login credentials via email.
+                  </p>
+
+                  {formData.teamMembers.map((member, index) => (
+                    <div key={index} className="p-4 bg-gray-50 rounded-lg space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">Team Member {index + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeTeamMember(index)}
+                          className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          value={member.firstName}
+                          onChange={(e) => updateTeamMember(index, 'firstName', e.target.value)}
+                          placeholder="First Name *"
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+                        />
+                        <input
+                          type="text"
+                          value={member.lastName}
+                          onChange={(e) => updateTeamMember(index, 'lastName', e.target.value)}
+                          placeholder="Last Name"
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+                        />
+                      </div>
+
+                      <input
+                        type="email"
+                        value={member.email}
+                        onChange={(e) => updateTeamMember(index, 'email', e.target.value)}
+                        placeholder="Email Address *"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+                      />
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          value={member.position}
+                          onChange={(e) => updateTeamMember(index, 'position', e.target.value)}
+                          placeholder="Position (e.g., Partner, Manager)"
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+                        />
+                        <select
+                          value={member.role}
+                          onChange={(e) => updateTeamMember(index, 'role', e.target.value)}
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+                        >
+                          <option value="owner">Owner/Partner - Full access</option>
+                          <option value="admin">Admin - Can manage team</option>
+                          <option value="member">Member - View & edit</option>
+                          <option value="viewer">Viewer - Read only</option>
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={addTeamMember}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-brand-orange hover:text-brand-orange transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Team Member
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Info Box */}
             <div className={`rounded-lg p-4 ${formData.sendInvitation ? 'bg-brand-orange-50 border border-brand-orange-200' : 'bg-amber-50 border border-amber-200'}`}>
               <p className={`text-sm font-medium mb-2 ${formData.sendInvitation ? 'text-brand-navy' : 'text-amber-900'}`}>What happens next:</p>
@@ -262,6 +406,9 @@ export default function NewClientPage() {
                     <li>✓ Password will be shown after creation (copy it!)</li>
                     <li>⚠ No email sent - you'll need to share credentials manually or send invitation later</li>
                   </>
+                )}
+                {formData.teamMembers.length > 0 && (
+                  <li>✓ {formData.teamMembers.length} team member{formData.teamMembers.length > 1 ? 's' : ''} will be invited</li>
                 )}
               </ul>
             </div>

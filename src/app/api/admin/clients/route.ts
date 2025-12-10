@@ -64,7 +64,8 @@ export async function POST(request: Request) {
       email,
       position,
       accessLevel,
-      sendInvitation = true // New: default to true for backwards compatibility
+      sendInvitation = true, // New: default to true for backwards compatibility
+      teamMembers = [] // Array of additional team members to invite
     } = body
 
     // Validate required fields
@@ -283,6 +284,55 @@ export async function POST(request: Request) {
       console.error('Onboarding tracking error:', onboardingError)
     }
 
+    // STEP 6b: Create additional team members if provided
+    const teamMemberResults: Array<{ email: string; success: boolean; error?: string }> = []
+
+    if (teamMembers && teamMembers.length > 0) {
+      for (const member of teamMembers) {
+        if (!member.firstName || !member.email) {
+          teamMemberResults.push({ email: member.email || 'unknown', success: false, error: 'Missing required fields' })
+          continue
+        }
+
+        try {
+          // Use the team invite API to create the team member
+          const inviteResponse = await fetch(
+            `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/team/invite`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Cookie': request.headers.get('cookie') || '' // Forward auth cookies
+              },
+              body: JSON.stringify({
+                businessId: business.id,
+                firstName: member.firstName,
+                lastName: member.lastName || '',
+                email: member.email,
+                phone: '',
+                position: member.position || '',
+                role: member.role || 'member',
+                createAccount: true
+              })
+            }
+          )
+
+          const inviteResult = await inviteResponse.json()
+
+          if (inviteResponse.ok) {
+            teamMemberResults.push({ email: member.email, success: true })
+            console.log(`[Admin Client Create] Team member invited: ${member.email}`)
+          } else {
+            teamMemberResults.push({ email: member.email, success: false, error: inviteResult.error })
+            console.error(`[Admin Client Create] Failed to invite team member ${member.email}:`, inviteResult.error)
+          }
+        } catch (err) {
+          console.error(`[Admin Client Create] Error inviting team member ${member.email}:`, err)
+          teamMemberResults.push({ email: member.email, success: false, error: 'Failed to process invitation' })
+        }
+      }
+    }
+
     // STEP 7: Send invitation email to client (if requested)
     let emailSent = false
     let emailError: string | undefined
@@ -327,6 +377,9 @@ export async function POST(request: Request) {
 
     // Return success - DO NOT include password in response for security
     // Password is either sent via email or stored in temp_password field for later retrieval
+    const successfulTeamInvites = teamMemberResults.filter(r => r.success).length
+    const failedTeamInvites = teamMemberResults.filter(r => !r.success).length
+
     return NextResponse.json({
       success: true,
       business: {
@@ -340,9 +393,15 @@ export async function POST(request: Request) {
       emailSent,
       invitationDeferred: !sendInvitation,
       emailError,
+      teamMembers: {
+        total: teamMembers.length,
+        successful: successfulTeamInvites,
+        failed: failedTeamInvites,
+        results: teamMemberResults
+      },
       message: emailSent
-        ? 'Client created and invitation sent via email'
-        : 'Client created. Use "Resend Invitation" to send login credentials.'
+        ? `Client created and invitation sent via email${successfulTeamInvites > 0 ? `. ${successfulTeamInvites} team member(s) also invited.` : ''}`
+        : `Client created. Use "Resend Invitation" to send login credentials.${successfulTeamInvites > 0 ? ` ${successfulTeamInvites} team member(s) also invited.` : ''}`
     })
 
   } catch (error) {
