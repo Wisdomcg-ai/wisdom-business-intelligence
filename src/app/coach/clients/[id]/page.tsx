@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -18,7 +18,8 @@ import {
   AlertTriangle,
   Edit,
   Archive,
-  Trash2
+  Trash2,
+  RefreshCw
 } from 'lucide-react'
 
 interface BusinessData {
@@ -115,7 +116,10 @@ export default function ClientFilePage() {
     (searchParams?.get('tab') as TabId) || 'overview'
   )
   const [showMenu, setShowMenu] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const supabase = createClient()
 
@@ -131,14 +135,20 @@ export default function ClientFilePage() {
   }, [])
 
   useEffect(() => {
-    loadClientData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientId])
-
-  useEffect(() => {
     const tab = searchParams?.get('tab') as TabId
     if (tab) setActiveTab(tab)
   }, [searchParams])
+
+  // Store loadClientData in a ref so subscriptions can call it
+  const loadDataRef = useRef<() => Promise<void>>()
+
+  // Manual refresh handler
+  const handleManualRefresh = useCallback(async () => {
+    setIsRefreshing(true)
+    if (loadDataRef.current) await loadDataRef.current()
+    setLastUpdated(new Date())
+    setIsRefreshing(false)
+  }, [])
 
   async function loadClientData() {
     try {
@@ -695,6 +705,146 @@ export default function ClientFilePage() {
     }
   }
 
+  // Store loadClientData in ref for subscriptions
+  loadDataRef.current = loadClientData
+
+  // Initial data load
+  useEffect(() => {
+    loadClientData()
+    setLastUpdated(new Date())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId])
+
+  // Real-time subscriptions for live updates
+  useEffect(() => {
+    if (!clientId) return
+
+    console.log('[CoachPortal] Setting up real-time subscriptions for client:', clientId)
+
+    // Function to refresh data silently
+    const refreshData = async () => {
+      if (loadDataRef.current) {
+        await loadDataRef.current()
+        setLastUpdated(new Date())
+      }
+    }
+
+    // Subscribe to changes on key tables
+    const channel = supabase
+      .channel(`coach-client-${clientId}`)
+      // Business profile changes
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'business_profiles',
+          filter: `business_id=eq.${clientId}`
+        },
+        (payload) => {
+          console.log('[CoachPortal] Business profile change detected:', payload.eventType)
+          refreshData()
+        }
+      )
+      // Strategic initiatives changes
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'strategic_initiatives'
+        },
+        (payload) => {
+          console.log('[CoachPortal] Initiative change detected:', payload.eventType)
+          refreshData()
+        }
+      )
+      // Weekly reviews changes
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'weekly_reviews',
+          filter: `business_id=eq.${clientId}`
+        },
+        (payload) => {
+          console.log('[CoachPortal] Weekly review change detected:', payload.eventType)
+          refreshData()
+        }
+      )
+      // Audit log changes (for activity feed)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'audit_log',
+          filter: `business_id=eq.${clientId}`
+        },
+        (payload) => {
+          console.log('[CoachPortal] Audit log entry detected:', payload.eventType)
+          refreshData()
+        }
+      )
+      // Core values changes
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'core_values'
+        },
+        (payload) => {
+          console.log('[CoachPortal] Core values change detected:', payload.eventType)
+          refreshData()
+        }
+      )
+      // SWOT analysis changes
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'swot_analyses'
+        },
+        (payload) => {
+          console.log('[CoachPortal] SWOT change detected:', payload.eventType)
+          refreshData()
+        }
+      )
+      // Vision targets changes
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'vision_targets'
+        },
+        (payload) => {
+          console.log('[CoachPortal] Vision targets change detected:', payload.eventType)
+          refreshData()
+        }
+      )
+      .subscribe((status) => {
+        console.log('[CoachPortal] Subscription status:', status)
+      })
+
+    // Auto-refresh every 30 seconds as fallback (in case subscriptions miss something)
+    refreshIntervalRef.current = setInterval(() => {
+      console.log('[CoachPortal] Auto-refresh triggered')
+      refreshData()
+    }, 30000)
+
+    return () => {
+      console.log('[CoachPortal] Cleaning up subscriptions')
+      supabase.removeChannel(channel)
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current)
+      }
+    }
+  }, [clientId, supabase])
+
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab)
     router.push(`/coach/clients/${clientId}?tab=${tab}`, { scroll: false })
@@ -873,6 +1023,25 @@ export default function ClientFilePage() {
           backLink={{ href: '/coach/clients', label: 'Back to Clients' }}
           actions={
             <div className="flex items-center gap-2 sm:gap-3">
+              {/* Live update indicator */}
+              <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                <span>Live</span>
+                {lastUpdated && (
+                  <span className="text-gray-400">
+                    Updated {lastUpdated.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
+              {/* Manual refresh button */}
+              <button
+                onClick={handleManualRefresh}
+                disabled={isRefreshing}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                title="Refresh data"
+              >
+                <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </button>
               {statusBadge}
               {actionsMenu}
             </div>

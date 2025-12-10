@@ -20,7 +20,8 @@ import {
   Building2,
   Shield,
   HelpCircle,
-  ExternalLink
+  ExternalLink,
+  Activity
 } from 'lucide-react'
 
 // Context for admin data sharing
@@ -48,6 +49,12 @@ const navigation = [
     href: '/admin/clients',
     icon: Building2,
     description: 'Manage client businesses'
+  },
+  {
+    name: 'Activity Monitor',
+    href: '/admin/activity',
+    icon: Activity,
+    description: 'Track client activity'
   },
   {
     name: 'Coaches',
