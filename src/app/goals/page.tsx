@@ -1048,13 +1048,35 @@ function StrategicPlanningContent() {
               <div className="p-4 sm:p-6 bg-green-50 border-2 border-green-200 rounded-xl">
                 <div className="flex items-start gap-3">
                   <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
-                  <div>
+                  <div className="flex-1">
                     <h3 className="text-lg font-semibold text-green-900 mb-2">
                       Your Strategic Plan is Complete!
                     </h3>
-                    <p className="text-base text-green-800">
+                    <p className="text-base text-green-800 mb-4">
                       You've completed all 5 steps and have a clear roadmap for the next 90 days and beyond. Time to execute!
                     </p>
+                    <div className="flex flex-wrap gap-3">
+                      <Link
+                        href="/dashboard"
+                        className="inline-flex items-center px-4 py-2 bg-brand-navy hover:bg-brand-navy-700 text-white rounded-lg text-sm font-medium transition-colors"
+                      >
+                        Go to Dashboard
+                        <ChevronRight className="w-4 h-4 ml-1" />
+                      </Link>
+                      <Link
+                        href="/todo"
+                        className="inline-flex items-center px-4 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg text-sm font-medium transition-colors"
+                      >
+                        View To-Do List
+                        <ChevronRight className="w-4 h-4 ml-1" />
+                      </Link>
+                      <Link
+                        href="/quarterly-review"
+                        className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        Start Quarterly Review
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </div>
