@@ -292,14 +292,14 @@ export async function POST(request: Request) {
         ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
         : user.email?.split('@')[0] || 'Your Coach'
 
-      const loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
 
       const emailResult = await sendClientInvitation({
         to: email,
         clientName: firstName,
         coachName,
         businessName,
-        loginUrl: `${loginUrl}/login`,
+        loginUrl: `${baseUrl}/auth/login`,
         tempPassword: generatedPassword
       })
 

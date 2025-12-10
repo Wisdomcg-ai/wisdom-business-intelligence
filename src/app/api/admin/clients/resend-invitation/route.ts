@@ -86,14 +86,14 @@ export async function POST(request: Request) {
     const clientName = business.owner_name?.split(' ')[0] || 'there'
 
     // Send invitation email
-    const loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
 
     const emailResult = await sendClientInvitation({
       to: email,
       clientName,
       coachName,
       businessName: business.business_name || business.name,
-      loginUrl: `${loginUrl}/login`,
+      loginUrl: `${baseUrl}/auth/login`,
       tempPassword: newPassword
     })
 

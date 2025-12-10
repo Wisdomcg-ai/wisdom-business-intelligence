@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
         clientName: name || 'Test User',
         coachName: 'Sarah Coach',
         businessName: 'Acme Corp',
-        loginUrl: 'https://wisdombi.ai/login',
+        loginUrl: 'https://wisdombi.ai/auth/login',
         tempPassword: 'TempPass123!'
       });
       results.push({ type: 'client-invitation', ...inviteResult });
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
           clientName: name || 'Test User',
           coachName: 'Sarah Coach',
           businessName: 'Acme Corp',
-          loginUrl: 'https://wisdombi.ai/login',
+          loginUrl: 'https://wisdombi.ai/auth/login',
           tempPassword: 'TempPass123!'
         });
         break;

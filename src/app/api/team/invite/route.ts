@@ -239,7 +239,7 @@ export async function POST(request: Request) {
             </div>
 
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${loginUrl}/login" style="display: inline-block; background: #F5821F; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+              <a href="${loginUrl}/auth/login" style="display: inline-block; background: #F5821F; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 16px;">
                 Log In Now
               </a>
             </div>

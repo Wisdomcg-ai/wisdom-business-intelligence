@@ -213,14 +213,14 @@ export async function POST(request: Request) {
         ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
         : user.email?.split('@')[0] || 'Your Coach'
 
-      const loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
 
       const emailResult = await sendClientInvitation({
         to: ownerEmail,
         clientName: ownerFirstName,
         coachName,
         businessName,
-        loginUrl: `${loginUrl}/login`,
+        loginUrl: `${baseUrl}/auth/login`,
         tempPassword: generatedPassword
       })
 
@@ -247,7 +247,7 @@ export async function POST(request: Request) {
       const coachName = user.user_metadata?.first_name && user.user_metadata?.last_name
         ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
         : user.email?.split('@')[0] || 'Your Coach'
-      const loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+      const teamBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
 
       for (const member of teamMembers) {
         try {
@@ -332,7 +332,7 @@ export async function POST(request: Request) {
             clientName: member.firstName,
             coachName,
             businessName,
-            loginUrl: `${loginUrl}/login`,
+            loginUrl: `${teamBaseUrl}/auth/login`,
             tempPassword: memberPassword
           })
 
