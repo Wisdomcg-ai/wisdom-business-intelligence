@@ -2,22 +2,108 @@
 -- ACTIVITY LOGGING ENHANCEMENTS
 -- =====================================================
 -- Adds:
--- 1. page_path column to audit_log for tracking where changes occur
+-- 1. audit_log table (if not exists) with page_path column
 -- 2. user_logins table for tracking last login timestamps
 -- 3. 60-day auto-cleanup function for audit_log
 -- 4. Super admin and coach RLS policies
 
 -- =====================================================
--- 1. ADD PAGE_PATH TO AUDIT_LOG
+-- 1. CREATE AUDIT_LOG TABLE (if not exists)
 -- =====================================================
 
+CREATE TABLE IF NOT EXISTS public.audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES public.businesses(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  user_name VARCHAR(255),
+  user_email VARCHAR(255),
+
+  -- What changed
+  table_name VARCHAR(100) NOT NULL,
+  record_id TEXT NOT NULL,
+  action VARCHAR(20) NOT NULL CHECK (action IN ('create', 'update', 'delete')),
+
+  -- Change details
+  field_name VARCHAR(100),
+  old_value JSONB,
+  new_value JSONB,
+  changes JSONB,
+
+  -- Context
+  description TEXT,
+  page_path VARCHAR(255),
+  ip_address INET,
+  user_agent TEXT,
+
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Add page_path column if table already exists without it
 ALTER TABLE public.audit_log
 ADD COLUMN IF NOT EXISTS page_path VARCHAR(255);
 
 COMMENT ON COLUMN public.audit_log.page_path IS 'The page/route where the change was made';
 
--- Index for page-based queries
+-- Indexes for audit_log
+CREATE INDEX IF NOT EXISTS idx_audit_log_business ON public.audit_log(business_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_user ON public.audit_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_table_record ON public.audit_log(table_name, record_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created ON public.audit_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_business_created ON public.audit_log(business_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_log_page ON public.audit_log(page_path);
+
+-- Enable RLS on audit_log
+ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
+
+-- RLS policies for audit_log (drop if exists first to avoid conflicts)
+DROP POLICY IF EXISTS "Authorized users can view audit log" ON public.audit_log;
+CREATE POLICY "Authorized users can view audit log"
+  ON public.audit_log FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.business_users bu
+      WHERE bu.business_id = audit_log.business_id
+      AND bu.user_id = auth.uid()
+      AND bu.role IN ('owner', 'admin')
+    )
+    OR
+    EXISTS (
+      SELECT 1 FROM public.businesses b
+      WHERE b.id = audit_log.business_id
+      AND b.assigned_coach_id = auth.uid()
+    )
+    OR
+    EXISTS (
+      SELECT 1 FROM public.businesses b
+      WHERE b.id = audit_log.business_id
+      AND b.owner_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "Users can create audit entries for their business" ON public.audit_log;
+CREATE POLICY "Users can create audit entries for their business"
+  ON public.audit_log FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.business_users bu
+      WHERE bu.business_id = audit_log.business_id
+      AND bu.user_id = auth.uid()
+    )
+    OR
+    EXISTS (
+      SELECT 1 FROM public.businesses b
+      WHERE b.id = audit_log.business_id
+      AND b.assigned_coach_id = auth.uid()
+    )
+    OR
+    EXISTS (
+      SELECT 1 FROM public.businesses b
+      WHERE b.id = audit_log.business_id
+      AND b.owner_id = auth.uid()
+    )
+  );
+
+COMMENT ON TABLE public.audit_log IS 'Immutable audit trail of all data changes. Retained for 60 days.';
 
 -- =====================================================
 -- 2. USER LOGINS TABLE
