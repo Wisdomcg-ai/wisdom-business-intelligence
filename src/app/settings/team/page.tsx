@@ -449,21 +449,37 @@ export default function TeamMembersPage() {
     }
   }
 
-  async function removeMember(memberId: string) {
-    if (!confirm('Are you sure you want to remove this team member?')) return
+  async function removeMember(memberId: string, deleteCompletely: boolean = false) {
+    const confirmMsg = deleteCompletely
+      ? 'Are you sure you want to PERMANENTLY DELETE this user from the system? This cannot be undone.'
+      : 'Are you sure you want to remove this team member from your team?'
+
+    if (!confirm(confirmMsg)) return
 
     try {
-      const { error } = await supabase
-        .from('business_users')
-        .delete()
-        .eq('id', memberId)
+      const response = await fetch('/api/team/remove-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          memberId,
+          businessId,
+          deleteCompletely
+        })
+      })
 
-      if (error) throw error
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error || 'Failed to remove team member')
+        return
+      }
 
       setTeamMembers(prev => prev.filter(m => m.id !== memberId))
       setMenuOpen(null)
+      setSuccess(data.message || 'Team member removed')
     } catch (error) {
       console.error('Error removing member:', error)
+      setError('Failed to remove team member')
     }
   }
 
@@ -652,11 +668,18 @@ export default function TeamMembersPage() {
                               {member.weekly_review_enabled ? 'Disable Weekly Review' : 'Enable Weekly Review'}
                             </button>
                             <button
-                              onClick={() => removeMember(member.id)}
+                              onClick={() => removeMember(member.id, false)}
                               className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
                             >
                               <Trash2 className="w-4 h-4" />
-                              Remove
+                              Remove from Team
+                            </button>
+                            <button
+                              onClick={() => removeMember(member.id, true)}
+                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-700 hover:bg-red-100 border-t border-gray-100"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Delete User Completely
                             </button>
                           </div>
                         </>
