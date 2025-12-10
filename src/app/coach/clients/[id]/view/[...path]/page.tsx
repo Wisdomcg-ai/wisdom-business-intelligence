@@ -51,6 +51,7 @@ const getPageComponent = (path: string[]) => {
   const componentMap: Record<string, () => Promise<any>> = {
     // HOME
     'dashboard': () => import('@/app/dashboard/page'),
+    'dashboard/assessment-results': () => import('@/app/dashboard/assessment-results/page'),
 
     // SETUP
     'business-profile': () => import('@/app/business-profile/page'),

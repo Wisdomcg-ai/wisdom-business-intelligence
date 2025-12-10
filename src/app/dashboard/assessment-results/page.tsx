@@ -24,6 +24,7 @@ import autoTable from 'jspdf-autotable';
 import { BUSINESS_ENGINES, TOTAL_MAX_SCORE } from '@/lib/assessment/constants';
 import PageHeader from '@/components/ui/PageHeader';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import { useCoachView } from '@/hooks/useCoachView';
 
 interface Assessment {
   id: string;
@@ -278,6 +279,7 @@ function AssessmentResultsContent() {
   const searchParams = useSearchParams();
   const assessmentId = searchParams?.get('id');
   const { activeBusiness } = useBusinessContext();
+  const { getPath } = useCoachView();
 
   useEffect(() => {
     if (assessmentId) {
@@ -300,7 +302,7 @@ function AssessmentResultsContent() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
-        router.push('/auth/login');
+        router.push(getPath('/auth/login'));
         return;
       }
 
@@ -316,14 +318,14 @@ function AssessmentResultsContent() {
         .limit(1);
 
       if (dbError || !assessments || assessments.length === 0) {
-        router.push('/assessment');
+        router.push(getPath('/assessment'));
         return;
       }
 
-      router.replace(`/dashboard/assessment-results?id=${assessments[0].id}`);
+      router.replace(getPath(`/dashboard/assessment-results?id=${assessments[0].id}`));
     } catch (error) {
       console.error('Error loading latest assessment:', error);
-      router.push('/dashboard');
+      router.push(getPath('/dashboard'));
     }
   }
 
@@ -660,7 +662,7 @@ function AssessmentResultsContent() {
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Unable to Load Results</h2>
           <p className="text-gray-600 mb-6">{error || 'Assessment not found'}</p>
           <button
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push(getPath('/dashboard'))}
             className="px-6 py-3 bg-brand-orange text-white rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
           >
             Return to Dashboard
@@ -731,20 +733,20 @@ function AssessmentResultsContent() {
           year: 'numeric'
         })}`}
         icon={BarChart3}
-        backLink={{ href: '/dashboard', label: 'Back to Dashboard' }}
+        backLink={{ href: getPath('/dashboard'), label: 'Back to Dashboard' }}
         badge={previousAssessment ? 'vs. Previous' : undefined}
         badgeColor="navy"
         actions={
           <div className="flex items-center gap-3">
             <button
-              onClick={() => router.push('/assessment/history')}
+              onClick={() => router.push(getPath('/assessment/history'))}
               className="flex items-center gap-2 px-4 py-2 text-white/80 hover:text-white transition-colors"
             >
               <Clock className="w-4 h-4" />
               History
             </button>
             <button
-              onClick={() => router.push('/assessment?new=true')}
+              onClick={() => router.push(getPath('/assessment?new=true'))}
               className="flex items-center gap-2 px-4 py-2.5 bg-white/10 text-white rounded-xl hover:bg-white/20 transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
@@ -1066,7 +1068,7 @@ function AssessmentResultsContent() {
         {/* Return to Dashboard */}
         <div className={`flex justify-center ${showContent ? 'animate-slide-up delay-500' : 'opacity-0'}`}>
           <button
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push(getPath('/dashboard'))}
             className="flex items-center gap-2 px-8 py-4 bg-brand-navy text-white rounded-xl font-semibold hover:bg-brand-navy-800 transition-colors shadow-lg"
           >
             Return to Dashboard

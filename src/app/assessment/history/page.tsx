@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { FileText, Calendar, CheckCircle, ClipboardList } from 'lucide-react'
 import { BUSINESS_ENGINES, getScoreBgColorClass } from '@/lib/assessment/constants'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
+import { useCoachView } from '@/hooks/useCoachView'
 import PageHeader from '@/components/ui/PageHeader'
 
 interface Assessment {
@@ -31,6 +32,7 @@ export default function AssessmentHistory() {
   const [selectedAssessment, setSelectedAssessment] = useState<Assessment | null>(null)
   const router = useRouter()
   const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
+  const { getPath } = useCoachView()
 
   useEffect(() => {
     if (!contextLoading) {
@@ -43,7 +45,7 @@ export default function AssessmentHistory() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        router.push('/auth/login')
+        router.push(getPath('/auth/login'))
         return
       }
 
@@ -113,10 +115,10 @@ export default function AssessmentHistory() {
         title="Assessment History"
         subtitle="View and compare your previous business health assessments"
         icon={ClipboardList}
-        backLink={{ href: "/dashboard", label: "Back to Dashboard" }}
+        backLink={{ href: getPath("/dashboard"), label: "Back to Dashboard" }}
         actions={
           <button
-            onClick={() => router.push('/assessment')}
+            onClick={() => router.push(getPath('/assessment'))}
             className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors text-sm font-medium"
           >
             New Assessment
@@ -131,7 +133,7 @@ export default function AssessmentHistory() {
             <h2 className="text-2xl font-semibold text-gray-900 mb-2">No Assessments Found</h2>
             <p className="text-gray-600 mb-6">You haven&apos;t completed any assessments yet.</p>
             <button
-              onClick={() => router.push('/assessment')}
+              onClick={() => router.push(getPath('/assessment'))}
               className="px-6 py-3 bg-gradient-to-r from-brand-orange to-brand-orange-700 text-white rounded-lg hover:from-brand-orange-700 hover:to-brand-orange-800 transition-all duration-200 shadow-lg"
             >
               Start Your First Assessment
@@ -260,13 +262,13 @@ export default function AssessmentHistory() {
                   {/* Action Buttons */}
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                     <button
-                      onClick={() => router.push(`/dashboard/assessment-results?id=${selectedAssessment.id}`)}
+                      onClick={() => router.push(getPath(`/dashboard/assessment-results?id=${selectedAssessment.id}`))}
                       className="flex-1 px-4 sm:px-6 py-3 bg-gradient-to-r from-brand-orange to-brand-orange-700 text-white rounded-lg hover:from-brand-orange-700 hover:to-brand-orange-800 transition-all duration-200 shadow-lg text-sm sm:text-base"
                     >
                       View Full Report
                     </button>
                     <button
-                      onClick={() => router.push('/assessment')}
+                      onClick={() => router.push(getPath('/assessment'))}
                       className="flex-1 px-4 sm:px-6 py-3 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"
                     >
                       Take New Assessment

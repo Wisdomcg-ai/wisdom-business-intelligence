@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { BUSINESS_ENGINES, TOTAL_MAX_SCORE, getHealthStatus, mapSectionToEngineId } from '@/lib/assessment/constants';
 import PageHeader from '@/components/ui/PageHeader';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import { useCoachView } from '@/hooks/useCoachView';
 
 interface Question {
   id: string;
@@ -479,6 +480,7 @@ function AssessmentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { activeBusiness } = useBusinessContext();
+  const { getPath } = useCoachView();
 
   const isNewAssessment = searchParams?.get('new') === 'true';
 
@@ -524,7 +526,7 @@ function AssessmentContent() {
 
           if (assessments && assessments.length > 0) {
             // User has a completed assessment - redirect to results
-            router.push(`/dashboard/assessment-results?id=${assessments[0].id}`);
+            router.push(getPath(`/dashboard/assessment-results?id=${assessments[0].id}`));
             return;
           }
         }
@@ -640,13 +642,13 @@ function AssessmentContent() {
 
   function confirmExit() {
     // Keep draft in localStorage for resume later
-    router.push('/business-profile');
+    router.push(getPath('/business-profile'));
   }
 
   function clearDraftAndExit() {
     localStorage.removeItem('assessment_draft');
     localStorage.removeItem('assessment_question_index');
-    router.push('/business-profile');
+    router.push(getPath('/business-profile'));
   }
 
   function calculateSectionScores() {
@@ -745,7 +747,7 @@ function AssessmentContent() {
       localStorage.removeItem('assessment_question_index');
 
       // Redirect to assessment results page
-      router.push(`/dashboard/assessment-results?id=${assessment.id}`);
+      router.push(getPath(`/dashboard/assessment-results?id=${assessment.id}`));
 
     } catch (error) {
       console.error('Error submitting assessment:', error);
@@ -784,7 +786,7 @@ function AssessmentContent() {
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
-                onClick={() => router.push('/assessment/history')}
+                onClick={() => router.push(getPath('/assessment/history'))}
                 className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
               >
                 View History
