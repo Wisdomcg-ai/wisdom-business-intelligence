@@ -195,79 +195,103 @@ export async function POST(request: Request) {
 
         // Check if error is "user already exists"
         if (errorMsg.toLowerCase().includes('already') || errorMsg.toLowerCase().includes('registered')) {
-          console.log('[Team Invite] User already exists, finding and adding to team')
+          console.log('[Team Invite] User already exists, finding and adding to team:', email)
 
-          // Find the existing user by listing all users and matching email
-          const findUserResponse = await fetch(
-            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users`,
-            {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-                'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+          // Find the existing user - paginate through all users
+          let foundUser = null
+          let page = 1
+          const perPage = 100
+
+          while (!foundUser) {
+            const findUserResponse = await fetch(
+              `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=${perPage}`,
+              {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+                  'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+                }
               }
-            }
-          )
+            )
 
-          if (findUserResponse.ok) {
+            if (!findUserResponse.ok) {
+              console.error('[Team Invite] Failed to fetch users page', page)
+              break
+            }
+
             const findData = await findUserResponse.json()
-            const foundUser = findData.users?.find(
+            console.log('[Team Invite] Searching page', page, 'found', findData.users?.length || 0, 'users')
+
+            foundUser = findData.users?.find(
               (u: { email?: string }) => u.email?.toLowerCase() === email.toLowerCase()
             )
 
-            if (foundUser) {
-              // Check if already a team member
-              const { data: existingMember } = await supabase
-                .from('business_users')
-                .select('id')
-                .eq('business_id', businessId)
-                .eq('user_id', foundUser.id)
-                .maybeSingle()
-
-              if (existingMember) {
-                return NextResponse.json({ error: 'This user is already a team member' }, { status: 400 })
-              }
-
-              // Add existing user to team
-              const { error: insertError } = await supabase
-                .from('business_users')
-                .insert({
-                  business_id: businessId,
-                  user_id: foundUser.id,
-                  role: role,
-                  status: 'active',
-                  invited_by: user.id,
-                  invited_at: new Date().toISOString(),
-                  section_permissions: sectionPermissions || {}
-                })
-
-              if (insertError) {
-                console.error('[Team Invite] Insert error:', insertError)
-                return NextResponse.json({ error: 'Failed to add team member' }, { status: 500 })
-              }
-
-              // Send notification email
-              const inviterName = user.user_metadata?.first_name
-                ? `${user.user_metadata.first_name} ${user.user_metadata.last_name || ''}`
-                : user.email?.split('@')[0] || 'Someone'
-
-              await sendEmail({
-                to: email,
-                subject: `You've been added to ${businessName} on WisdomBI`,
-                html: `
-                  <p>Hi ${firstName},</p>
-                  <p><strong>${inviterName}</strong> has added you to <strong>${businessName}</strong> on WisdomBI.</p>
-                  <p>You can now access the team's business data by logging in with your existing account.</p>
-                  <p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'}/auth/login" style="display: inline-block; background: #F5821F; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
-                `
-              })
-
-              return NextResponse.json({
-                success: true,
-                message: `${firstName} has been added to your team`,
-                userExists: true
-              })
+            // If we found the user or there are no more users to fetch, stop
+            if (foundUser || !findData.users || findData.users.length < perPage) {
+              break
             }
+
+            page++
+            // Safety limit
+            if (page > 100) break
+          }
+
+          if (foundUser) {
+            console.log('[Team Invite] Found existing user:', foundUser.id)
+
+            // Check if already a team member
+            const { data: existingMember } = await supabase
+              .from('business_users')
+              .select('id')
+              .eq('business_id', businessId)
+              .eq('user_id', foundUser.id)
+              .maybeSingle()
+
+            if (existingMember) {
+              return NextResponse.json({ error: 'This user is already a team member' }, { status: 400 })
+            }
+
+            // Add existing user to team
+            const { error: insertError } = await supabase
+              .from('business_users')
+              .insert({
+                business_id: businessId,
+                user_id: foundUser.id,
+                role: role,
+                status: 'active',
+                invited_by: user.id,
+                invited_at: new Date().toISOString(),
+                section_permissions: sectionPermissions || {}
+              })
+
+            if (insertError) {
+              console.error('[Team Invite] Insert error:', insertError)
+              return NextResponse.json({ error: 'Failed to add team member' }, { status: 500 })
+            }
+
+            // Send notification email
+            const inviterName = user.user_metadata?.first_name
+              ? `${user.user_metadata.first_name} ${user.user_metadata.last_name || ''}`
+              : user.email?.split('@')[0] || 'Someone'
+
+            await sendEmail({
+              to: email,
+              subject: `You've been added to ${businessName} on WisdomBI`,
+              html: `
+                <p>Hi ${firstName},</p>
+                <p><strong>${inviterName}</strong> has added you to <strong>${businessName}</strong> on WisdomBI.</p>
+                <p>You can now access the team's business data by logging in with your existing account.</p>
+                <p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'}/auth/login" style="display: inline-block; background: #F5821F; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
+              `
+            })
+
+            return NextResponse.json({
+              success: true,
+              message: `${firstName} has been added to your team`,
+              userExists: true
+            })
+          } else {
+            console.error('[Team Invite] Could not find existing user by email:', email)
           }
         }
 
