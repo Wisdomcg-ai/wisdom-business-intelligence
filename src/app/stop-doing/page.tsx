@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Clock, DollarSign, ListChecks, Target,
-  ChevronRight, ChevronLeft, Check, Loader2, Ban
+  ChevronRight, ChevronLeft, Check, Loader2, Ban, CheckCircle
 } from 'lucide-react'
 import { JargonTooltip } from '@/components/ui/Tooltip'
 import PageHeader from '@/components/ui/PageHeader'
@@ -50,6 +51,7 @@ const STEPS = [
 ]
 
 export default function StopDoingPage() {
+  const router = useRouter()
   const [currentStep, setCurrentStep] = useState(1)
 
   const {
@@ -313,14 +315,24 @@ export default function StopDoingPage() {
             Step {currentStep} of {STEPS.length}
           </div>
 
-          <button
-            onClick={goToNextStep}
-            disabled={currentStep === 4 || !canProceed()}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <span className="text-sm sm:text-base">{currentStep === 4 ? 'Complete' : 'Next'}</span>
-            {currentStep < 4 && <ChevronRight className="w-4 h-4" />}
-          </button>
+          {currentStep === 4 ? (
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <CheckCircle className="w-4 h-4" />
+              <span className="text-sm sm:text-base">Complete</span>
+            </button>
+          ) : (
+            <button
+              onClick={goToNextStep}
+              disabled={!canProceed()}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <span className="text-sm sm:text-base">Next</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Progress Summary (always visible at bottom) */}
