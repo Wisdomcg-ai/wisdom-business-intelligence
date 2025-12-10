@@ -75,20 +75,37 @@ export async function POST(request: Request) {
 
     const businessName = ownedBusiness?.business_name || 'the team'
 
-    // Check if user already exists in auth.users via Admin API
-    const authCheckResponse = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users?filter=email.eq.${encodeURIComponent(email.toLowerCase())}`,
-      {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-          'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-        }
-      }
-    )
+    // Check if user already exists - first try public users table, then auth
+    const { data: existingPublicUser } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('email', email.toLowerCase())
+      .maybeSingle()
 
-    const authCheckData = await authCheckResponse.json()
-    const existingAuthUser = authCheckData.users?.[0] || null
+    // If found in public table, use that
+    let existingAuthUser = existingPublicUser
+
+    // If not found in public table, check auth.users via Admin API
+    if (!existingAuthUser) {
+      const authCheckResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+            'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+          }
+        }
+      )
+
+      if (authCheckResponse.ok) {
+        const authCheckData = await authCheckResponse.json()
+        // Find user by email in the list
+        existingAuthUser = authCheckData.users?.find(
+          (u: { email?: string }) => u.email?.toLowerCase() === email.toLowerCase()
+        ) || null
+      }
+    }
 
     if (existingAuthUser) {
       // Check if already a team member
