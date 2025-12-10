@@ -1,4 +1,5 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
 /**
@@ -6,6 +7,12 @@ import { NextResponse } from 'next/server'
  * Creates "Smith's Plumbing" - a comprehensive demo client with full data
  * for demonstration purposes
  */
+
+// Service role client to bypass RLS for demo data creation
+const getServiceClient = () => createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 // Demo client configuration
 const DEMO_CLIENT = {
@@ -28,11 +35,12 @@ const DEMO_CLIENT = {
 }
 
 export async function POST(request: Request) {
-  const supabase = await createRouteHandlerClient()
+  const authClient = await createRouteHandlerClient()
+  const supabase = getServiceClient() // Use service role for all inserts
 
   try {
-    // Check if user is authenticated and is super admin
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    // Check if user is authenticated and is super admin (use authClient for auth check)
+    const { data: { user }, error: userError } = await authClient.auth.getUser()
 
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -78,7 +86,19 @@ export async function POST(request: Request) {
     if (!authResponse.ok) {
       // Check if user already exists
       if (authData.msg?.includes('already been registered') || authData.message?.includes('already been registered')) {
-        // Find existing user
+        // Find existing user by email - look up in auth system
+        const listResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users?filter=email.eq.${encodeURIComponent(DEMO_CLIENT.email)}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+              'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+            }
+          }
+        )
+        const listData = await listResponse.json()
+
+        // If user exists in auth but no business, delete the orphaned auth user and retry
         const { data: existingBusiness } = await supabase
           .from('businesses')
           .select('id, owner_id')
@@ -96,6 +116,23 @@ export async function POST(request: Request) {
               password: DEMO_CLIENT.password
             }
           })
+        }
+
+        // Orphaned auth user - delete it and return error to retry
+        if (listData.users && listData.users.length > 0) {
+          const orphanedUserId = listData.users[0].id
+          console.log('[Demo Client] Deleting orphaned auth user:', orphanedUserId)
+          await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${orphanedUserId}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+              'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+            }
+          })
+          return NextResponse.json({
+            error: 'Cleaned up orphaned user. Please try again.',
+            retry: true
+          }, { status: 409 })
         }
       }
       console.error('[Demo Client] Auth error:', authData)
@@ -124,7 +161,10 @@ export async function POST(request: Request) {
         },
         status: 'active',
         invitation_sent: true,
-        invitation_sent_at: new Date().toISOString()
+        invitation_sent_at: new Date().toISOString(),
+        industry: DEMO_CLIENT.industry,
+        website: DEMO_CLIENT.website,
+        address: `${DEMO_CLIENT.address}, ${DEMO_CLIENT.city} ${DEMO_CLIENT.state} ${DEMO_CLIENT.postalCode}`
       })
       .select()
       .single()
@@ -145,7 +185,7 @@ export async function POST(request: Request) {
     const businessId = business.id
     console.log('[Demo Client] Created business:', businessId)
 
-    // STEP 3: Create business profile
+    // STEP 3: Create business profile (minimal columns - schema varies)
     const { data: profile, error: profileError } = await supabase
       .from('business_profiles')
       .insert({
@@ -155,31 +195,7 @@ export async function POST(request: Request) {
         company_name: DEMO_CLIENT.businessName,
         industry: DEMO_CLIENT.industry,
         annual_revenue: DEMO_CLIENT.annualRevenue,
-        employee_count: DEMO_CLIENT.employeeCount,
-        years_in_business: DEMO_CLIENT.yearsInBusiness,
-        phone: DEMO_CLIENT.phone,
-        website: DEMO_CLIENT.website,
-        address: DEMO_CLIENT.address,
-        city: DEMO_CLIENT.city,
-        state: DEMO_CLIENT.state,
-        postal_code: DEMO_CLIENT.postalCode,
-        country: DEMO_CLIENT.country,
-        business_type: 'Trade Services',
-        target_market: 'Residential and commercial property owners in Melbourne metropolitan area',
-        main_products_services: 'Emergency plumbing repairs, hot water systems, bathroom renovations, commercial plumbing maintenance',
-        profile_completed: true,
-        onboarding_completed: true,
-        onboarding_step: 5,
-        eight_engine_scores: {
-          marketing: 72,
-          sales: 68,
-          operations: 75,
-          finance: 65,
-          leadership: 70,
-          team: 62,
-          systems: 58,
-          strategy: 74
-        }
+        employee_count: DEMO_CLIENT.employeeCount
       })
       .select()
       .single()
@@ -246,23 +262,21 @@ export async function POST(request: Request) {
 
     console.log('[Demo Client] Created strategy data')
 
-    // STEP 6: Create completed assessment
+    // STEP 6: Create completed assessment (using actual schema columns)
     await supabase.from('assessments').insert({
       user_id: demoUserId,
-      business_id: businessId,
       status: 'completed',
-      completed_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days ago
-      scores: {
-        marketing: 72,
-        sales: 68,
-        operations: 75,
-        finance: 65,
-        leadership: 70,
-        team: 62,
-        systems: 58,
-        strategy: 74,
-        overall: 68
-      }
+      percentage: 68,
+      total_score: 204,
+      health_status: 'STABLE',
+      attract_score: 27,  // out of 40
+      convert_score: 24,  // out of 40
+      deliver_score: 30,  // out of 40
+      people_score: 25,   // out of 40
+      systems_score: 23,  // out of 40
+      finance_score: 26,  // out of 40
+      leadership_score: 28, // out of 40
+      time_score: 21      // out of 40
     })
 
     console.log('[Demo Client] Created assessment')
@@ -403,7 +417,7 @@ export async function POST(request: Request) {
 
     for (const init of initiatives) {
       await supabase.from('strategic_initiatives').insert({
-        business_id: businessId,
+        business_id: profileId,  // Use profile ID - this is what coach view queries
         user_id: demoUserId,
         ...init,
         source: init.step_type
@@ -754,10 +768,11 @@ export async function GET(request: Request) {
 
 // DELETE - Remove demo client
 export async function DELETE(request: Request) {
-  const supabase = await createRouteHandlerClient()
+  const authClient = await createRouteHandlerClient()
+  const supabase = getServiceClient() // Use service role for deletions
 
   try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    const { data: { user }, error: userError } = await authClient.auth.getUser()
 
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -805,7 +820,8 @@ export async function DELETE(request: Request) {
     }
     await supabase.from('financial_forecasts').delete().eq('business_id', businessId)
 
-    await supabase.from('strategic_initiatives').delete().eq('business_id', businessId)
+    // Delete initiatives by user_id since they were created with profile ID as business_id
+    await supabase.from('strategic_initiatives').delete().eq('user_id', ownerId)
     await supabase.from('business_kpis').delete().eq('business_id', businessId)
     await supabase.from('annual_targets').delete().eq('business_id', businessId)
     await supabase.from('vision_targets').delete().eq('user_id', ownerId)

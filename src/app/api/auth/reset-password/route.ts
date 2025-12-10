@@ -47,10 +47,13 @@ export async function POST(request: NextRequest) {
 
     const user = users.find(u => u.email?.toLowerCase() === email.toLowerCase())
 
-    // Always return success to prevent email enumeration
+    // Reject if email not found - don't process further
     if (!user) {
       console.log('[ResetPassword] User not found:', email)
-      return NextResponse.json({ success: true })
+      return NextResponse.json(
+        { error: 'No account found with this email address. Please check your email or sign up.' },
+        { status: 404 }
+      )
     }
 
     // Generate secure token
