@@ -50,6 +50,7 @@ interface Client {
   website: string | null
   address: string | null
   owner_id: string | null
+  owner_email: string | null
 }
 
 interface Coach {
@@ -126,6 +127,29 @@ function ClientsContent() {
       await loadData()
     } catch (error) {
       toast.error('Failed to send invitation', error instanceof Error ? error.message : 'Please try again')
+    } finally {
+      setSendingInvitation(null)
+    }
+  }
+
+  async function resendInvitation(email: string, businessName: string) {
+    setSendingInvitation(email)
+    try {
+      const response = await fetch('/api/admin/clients/resend-invitation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to resend invitation')
+      }
+
+      toast.success('Invitation resent!', `${businessName} will receive new login details.`)
+      await loadData()
+    } catch (error) {
+      toast.error('Failed to resend invitation', error instanceof Error ? error.message : 'Please try again')
     } finally {
       setSendingInvitation(null)
     }
@@ -542,6 +566,30 @@ function ClientsContent() {
                       <Send className="w-4 h-4" />
                     )}
                     Send Invitation
+                  </button>
+                </div>
+              </SlideOverSection>
+            )}
+
+            {/* Resend Invitation - for clients who already received an invite */}
+            {selectedClient.invitation_sent && selectedClient.owner_email && (
+              <SlideOverSection className="bg-blue-50 border-y border-blue-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-blue-900">Resend Login Credentials</p>
+                    <p className="text-sm text-blue-700">Send new password to {selectedClient.owner_email}</p>
+                  </div>
+                  <button
+                    onClick={() => resendInvitation(selectedClient.owner_email!, selectedClient.business_name)}
+                    disabled={sendingInvitation === selectedClient.owner_email}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-sm transition-colors disabled:opacity-50"
+                  >
+                    {sendingInvitation === selectedClient.owner_email ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Mail className="w-4 h-4" />
+                    )}
+                    Resend Invitation
                   </button>
                 </div>
               </SlideOverSection>
