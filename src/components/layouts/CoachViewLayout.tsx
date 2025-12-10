@@ -19,8 +19,6 @@ import {
   CheckSquare,
   XCircle,
   Calendar,
-  CalendarDays,
-  CalendarCheck,
   LineChart,
   Users,
   Compass,
@@ -44,34 +42,28 @@ interface NavSection {
   defaultOpen?: boolean
 }
 
-// Same navigation as client sidebar
+// Same navigation as client sidebar - must match sidebar-layout.tsx exactly
 const getClientNavigation = (clientId: string): NavSection[] => [
   {
-    title: 'DASHBOARD',
+    title: 'HOME',
     defaultOpen: true,
     items: [
-      { label: 'Home', href: `/coach/clients/${clientId}/view/dashboard`, icon: LayoutDashboard },
+      { label: 'Command Centre', href: `/coach/clients/${clientId}/view/dashboard`, icon: LayoutDashboard },
     ],
   },
   {
-    title: 'START HERE',
+    title: 'SETUP',
     defaultOpen: true,
     items: [
       { label: 'Business Profile', href: `/coach/clients/${clientId}/view/business-profile`, icon: Building2 },
-      { label: 'Business Assessment', href: `/coach/clients/${clientId}/view/assessment`, icon: ClipboardCheck },
-    ],
-  },
-  {
-    title: 'ROADMAP',
-    defaultOpen: true,
-    items: [
-      { label: 'Business Roadmap', href: `/coach/clients/${clientId}/view/business-roadmap`, icon: Compass },
+      { label: 'Assessment', href: `/coach/clients/${clientId}/view/assessment`, icon: ClipboardCheck },
     ],
   },
   {
     title: 'BUSINESS PLAN',
     defaultOpen: true,
     items: [
+      { label: 'Roadmap', href: `/coach/clients/${clientId}/view/business-roadmap`, icon: Compass },
       { label: 'Vision, Mission & Values', href: `/coach/clients/${clientId}/view/vision-mission`, icon: Target },
       { label: 'SWOT Analysis', href: `/coach/clients/${clientId}/view/swot`, icon: FileText },
       { label: 'Goals & Targets', href: `/coach/clients/${clientId}/view/goals`, icon: Award },
@@ -83,15 +75,16 @@ const getClientNavigation = (clientId: string): NavSection[] => [
     defaultOpen: true,
     items: [
       { label: 'Financial Forecast', href: `/coach/clients/${clientId}/view/finances/forecast`, icon: TrendingUp },
-      { label: 'Budget vs Actual', href: `/coach/clients/${clientId}/view/finances/budget`, icon: FileText },
     ],
   },
   {
     title: 'EXECUTE',
     defaultOpen: true,
     items: [
-      { label: 'Business Dashboard', href: `/coach/clients/${clientId}/view/business-dashboard`, icon: BarChart3 },
+      { label: 'KPI Dashboard', href: `/coach/clients/${clientId}/view/business-dashboard`, icon: BarChart3 },
+      { label: 'Weekly Review', href: `/coach/clients/${clientId}/view/reviews/weekly`, icon: Calendar },
       { label: 'Issues List', href: `/coach/clients/${clientId}/view/issues-list`, icon: AlertCircle },
+      { label: 'Ideas Journal', href: `/coach/clients/${clientId}/view/ideas`, icon: Layers },
     ],
   },
   {
@@ -101,15 +94,6 @@ const getClientNavigation = (clientId: string): NavSection[] => [
       { label: 'Open Loops', href: `/coach/clients/${clientId}/view/open-loops`, icon: Layers },
       { label: 'To-Do', href: `/coach/clients/${clientId}/view/todo`, icon: CheckSquare },
       { label: 'Stop Doing', href: `/coach/clients/${clientId}/view/stop-doing`, icon: XCircle },
-    ],
-  },
-  {
-    title: 'REVIEWS',
-    defaultOpen: false,
-    items: [
-      { label: 'Weekly Review', href: `/coach/clients/${clientId}/view/reviews/weekly`, icon: Calendar },
-      { label: 'Monthly Review', href: `/coach/clients/${clientId}/view/reviews/monthly`, icon: CalendarDays },
-      { label: 'Quarterly Review', href: `/coach/clients/${clientId}/view/quarterly-review`, icon: CalendarCheck },
     ],
   },
   {
