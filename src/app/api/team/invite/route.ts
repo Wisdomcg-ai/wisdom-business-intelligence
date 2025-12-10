@@ -161,11 +161,11 @@ export async function POST(request: Request) {
       })
     }
 
-    // User doesn't exist - create auth account and invite
+    // User doesn't exist in our check - try to create auth account
     if (createAccount) {
       const generatedPassword = generateSecurePassword()
 
-      // Create auth user
+      // Try to create auth user
       const authResponse = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users`,
         {
@@ -189,10 +189,91 @@ export async function POST(request: Request) {
 
       const authData = await authResponse.json()
 
+      // If user already exists, find them and add to team instead
       if (!authResponse.ok || authData.error) {
+        const errorMsg = authData.msg || authData.error?.message || ''
+
+        // Check if error is "user already exists"
+        if (errorMsg.toLowerCase().includes('already') || errorMsg.toLowerCase().includes('registered')) {
+          console.log('[Team Invite] User already exists, finding and adding to team')
+
+          // Find the existing user by listing all users and matching email
+          const findUserResponse = await fetch(
+            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users`,
+            {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+                'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+              }
+            }
+          )
+
+          if (findUserResponse.ok) {
+            const findData = await findUserResponse.json()
+            const foundUser = findData.users?.find(
+              (u: { email?: string }) => u.email?.toLowerCase() === email.toLowerCase()
+            )
+
+            if (foundUser) {
+              // Check if already a team member
+              const { data: existingMember } = await supabase
+                .from('business_users')
+                .select('id')
+                .eq('business_id', businessId)
+                .eq('user_id', foundUser.id)
+                .maybeSingle()
+
+              if (existingMember) {
+                return NextResponse.json({ error: 'This user is already a team member' }, { status: 400 })
+              }
+
+              // Add existing user to team
+              const { error: insertError } = await supabase
+                .from('business_users')
+                .insert({
+                  business_id: businessId,
+                  user_id: foundUser.id,
+                  role: role,
+                  status: 'active',
+                  invited_by: user.id,
+                  invited_at: new Date().toISOString(),
+                  section_permissions: sectionPermissions || {}
+                })
+
+              if (insertError) {
+                console.error('[Team Invite] Insert error:', insertError)
+                return NextResponse.json({ error: 'Failed to add team member' }, { status: 500 })
+              }
+
+              // Send notification email
+              const inviterName = user.user_metadata?.first_name
+                ? `${user.user_metadata.first_name} ${user.user_metadata.last_name || ''}`
+                : user.email?.split('@')[0] || 'Someone'
+
+              await sendEmail({
+                to: email,
+                subject: `You've been added to ${businessName} on WisdomBI`,
+                html: `
+                  <p>Hi ${firstName},</p>
+                  <p><strong>${inviterName}</strong> has added you to <strong>${businessName}</strong> on WisdomBI.</p>
+                  <p>You can now access the team's business data by logging in with your existing account.</p>
+                  <p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'}/auth/login" style="display: inline-block; background: #F5821F; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
+                `
+              })
+
+              return NextResponse.json({
+                success: true,
+                message: `${firstName} has been added to your team`,
+                userExists: true
+              })
+            }
+          }
+        }
+
         console.error('[Team Invite] Auth error:', authData)
         return NextResponse.json(
-          { error: `Failed to create user: ${authData.msg || authData.error?.message || 'Unknown error'}` },
+          { error: `Failed to create user: ${errorMsg || 'Unknown error'}` },
           { status: 400 }
         )
       }
