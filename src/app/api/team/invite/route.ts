@@ -75,12 +75,20 @@ export async function POST(request: Request) {
 
     const businessName = ownedBusiness?.business_name || 'the team'
 
-    // Check if user already exists
-    const { data: existingAuthUser } = await supabase
-      .from('users')
-      .select('id, email')
-      .eq('email', email.toLowerCase())
-      .maybeSingle()
+    // Check if user already exists in auth.users via Admin API
+    const authCheckResponse = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users?filter=email.eq.${encodeURIComponent(email.toLowerCase())}`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+          'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+        }
+      }
+    )
+
+    const authCheckData = await authCheckResponse.json()
+    const existingAuthUser = authCheckData.users?.[0] || null
 
     if (existingAuthUser) {
       // Check if already a team member
@@ -125,7 +133,7 @@ export async function POST(request: Request) {
           <p>Hi ${firstName},</p>
           <p><strong>${inviterName}</strong> has added you to <strong>${businessName}</strong> on WisdomBI.</p>
           <p>You can now access the team's business data by logging in with your existing account.</p>
-          <p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'}/login" style="display: inline-block; background: #F5821F; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
+          <p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'}/auth/login" style="display: inline-block; background: #F5821F; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
         `
       })
 
