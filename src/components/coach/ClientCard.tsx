@@ -9,7 +9,9 @@ import {
   Clock,
   AlertTriangle,
   Eye,
-  Briefcase
+  Briefcase,
+  LogIn,
+  FileEdit
 } from 'lucide-react'
 
 export interface ClientCardData {
@@ -22,6 +24,9 @@ export interface ClientCardData {
   programType?: string
   unreadMessages?: number
   pendingActions?: number
+  lastLogin?: string
+  lastChange?: string
+  lastChangePage?: string
 }
 
 interface ClientCardProps {
@@ -93,16 +98,30 @@ export function ClientCard({ client, onMessage, onSchedule }: ClientCardProps) {
           </div>
         )}
 
-        {/* Session Info */}
-        <div className="flex items-center justify-between text-sm mb-4">
-          <div className="flex items-center gap-1.5 text-gray-500">
-            <Clock className="w-4 h-4" />
-            <span>Last: {formatDate(client.lastSessionDate) || 'Never'}</span>
+        {/* Activity Info */}
+        <div className="space-y-1.5 text-sm mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-gray-500">
+              <LogIn className="w-4 h-4" />
+              <span>Last login: {formatDate(client.lastLogin) || 'Never'}</span>
+            </div>
+            {client.nextSessionDate && (
+              <div className="flex items-center gap-1.5 text-brand-orange">
+                <Calendar className="w-4 h-4" />
+                <span>Next: {formatDate(client.nextSessionDate)}</span>
+              </div>
+            )}
           </div>
-          {client.nextSessionDate && (
-            <div className="flex items-center gap-1.5 text-brand-orange">
-              <Calendar className="w-4 h-4" />
-              <span>Next: {formatDate(client.nextSessionDate)}</span>
+          {client.lastChange && (
+            <div className="flex items-center gap-1.5 text-gray-500">
+              <FileEdit className="w-4 h-4" />
+              <span>Last change: {formatDate(client.lastChange)}{client.lastChangePage ? ` (${client.lastChangePage})` : ''}</span>
+            </div>
+          )}
+          {client.lastSessionDate && (
+            <div className="flex items-center gap-1.5 text-gray-500">
+              <Clock className="w-4 h-4" />
+              <span>Last session: {formatDate(client.lastSessionDate)}</span>
             </div>
           )}
         </div>

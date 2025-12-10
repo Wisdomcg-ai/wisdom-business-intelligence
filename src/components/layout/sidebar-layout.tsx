@@ -7,6 +7,7 @@ import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { SectionPermissions } from '@/app/settings/team/page'
 import { hasPermission, FULL_PERMISSIONS } from '@/lib/permissions'
+import { useLoginTracker } from '@/hooks/useLoginTracker'
 import {
   LayoutDashboard,
   ClipboardCheck,
@@ -202,6 +203,9 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
+
+  // Track user login for activity monitoring
+  useLoginTracker()
 
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)

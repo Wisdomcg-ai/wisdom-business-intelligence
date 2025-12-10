@@ -10,10 +10,11 @@ import {
   MessageSquare,
   StickyNote,
   Users,
-  CalendarCheck
+  CalendarCheck,
+  History
 } from 'lucide-react'
 
-export type TabId = 'overview' | 'profile' | 'goals' | 'financials' | 'actions' | 'documents' | 'messages' | 'notes' | 'team' | 'weekly-reviews'
+export type TabId = 'overview' | 'profile' | 'goals' | 'financials' | 'actions' | 'documents' | 'messages' | 'notes' | 'team' | 'weekly-reviews' | 'activity-log'
 
 interface Tab {
   id: TabId
@@ -54,6 +55,7 @@ export function ClientFileTabs({
     { id: 'documents', label: 'Documents', icon: FileText },
     { id: 'messages', label: 'Messages', icon: MessageSquare, badge: badges.messages },
     { id: 'notes', label: 'Notes', icon: StickyNote },
+    { id: 'activity-log', label: 'Activity Log', icon: History },
   ]
 
   // Filter tabs based on enabled modules

@@ -74,6 +74,7 @@ export interface AuditLogEntry {
   new_value?: unknown
   changes?: Record<string, { old: unknown; new: unknown }>
   description?: string
+  page_path?: string
   created_at?: Date | string
 }
 
@@ -174,6 +175,7 @@ export async function logChange(entry: AuditLogEntry): Promise<{ success: boolea
       new_value: entry.new_value ? JSON.stringify(entry.new_value) : null,
       changes: entry.changes ? JSON.stringify(entry.changes) : null,
       description,
+      page_path: entry.page_path || (typeof window !== 'undefined' ? window.location.pathname : null),
       user_agent: typeof window !== 'undefined' ? window.navigator.userAgent : null,
     })
 

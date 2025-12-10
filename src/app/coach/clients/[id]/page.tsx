@@ -9,6 +9,7 @@ import { OverviewTab } from '@/components/coach/tabs/OverviewTab'
 import { ProfileTab } from '@/components/coach/tabs/ProfileTab'
 import { TeamTab } from '@/components/coach/tabs/TeamTab'
 import { WeeklyReviewsTab } from '@/components/coach/tabs/WeeklyReviewsTab'
+import { ClientActivityLog } from '@/components/coach/ClientActivityLog'
 import PageHeader from '@/components/ui/PageHeader'
 import {
   Building2,
@@ -1109,6 +1110,10 @@ export default function ClientFilePage() {
           <div className="bg-white rounded-xl border border-gray-200 p-6 sm:p-8 text-center">
             <p className="text-sm sm:text-base text-gray-500">Private notes tab coming soon</p>
           </div>
+        )}
+
+        {activeTab === 'activity-log' && (
+          <ClientActivityLog businessId={clientId} showFilters={true} limit={50} />
         )}
       </div>
     </div>
