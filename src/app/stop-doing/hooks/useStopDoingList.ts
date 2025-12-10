@@ -53,6 +53,8 @@ export function useStopDoingList(overrideBusinessId?: string) {
   // Auto-save refs
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isSavingRef = useRef(false)
+  const stopDoingUpdateTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({})
+  const pendingStopDoingUpdatesRef = useRef<Record<string, Partial<StopDoingItem>>>({})
 
   // Step 1: Time Logs
   const [timeLogs, setTimeLogs] = useState<TimeLog[]>([])
@@ -475,14 +477,37 @@ export function useStopDoingList(overrideBusinessId?: string) {
   }, [businessId, userId, calculatedHourlyRate, selectActivityForStopDoing, markDirty])
 
   const updateStopDoingItem = useCallback(async (id: string, updates: Partial<StopDoingItem>) => {
-    const result = await StopDoingItemService.updateStopDoingItem(id, updates)
+    // Optimistically update local state immediately to prevent text disappearing
+    setStopDoingItems(prev =>
+      prev.map(item => item.id === id ? { ...item, ...updates } : item)
+    )
+    markDirty()
 
-    if (result.success && result.data) {
-      setStopDoingItems(prev =>
-        prev.map(item => item.id === id ? result.data! : item)
-      )
-      markDirty()
+    // Merge with any pending updates for this item
+    pendingStopDoingUpdatesRef.current[id] = {
+      ...pendingStopDoingUpdatesRef.current[id],
+      ...updates
     }
+
+    // Clear any existing timeout for this item
+    if (stopDoingUpdateTimeoutRef.current[id]) {
+      clearTimeout(stopDoingUpdateTimeoutRef.current[id])
+    }
+
+    // Debounce the database update (500ms)
+    stopDoingUpdateTimeoutRef.current[id] = setTimeout(async () => {
+      const pendingUpdates = pendingStopDoingUpdatesRef.current[id]
+      delete pendingStopDoingUpdatesRef.current[id]
+      delete stopDoingUpdateTimeoutRef.current[id]
+
+      if (pendingUpdates) {
+        const result = await StopDoingItemService.updateStopDoingItem(id, pendingUpdates)
+
+        if (!result.success) {
+          console.error('[useStopDoingList] Error updating stop doing item:', result.error)
+        }
+      }
+    }, 500)
   }, [markDirty])
 
   const deleteStopDoingItem = useCallback(async (id: string) => {
