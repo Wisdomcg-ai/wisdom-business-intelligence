@@ -1,4 +1,5 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email/resend'
 import crypto from 'crypto'
@@ -22,6 +23,7 @@ function generateInviteToken(): string {
 
 export async function POST(request: Request) {
   const supabase = await createRouteHandlerClient()
+  const adminSupabase = createServiceRoleClient() // For bypassing RLS on admin operations
 
   try {
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -108,8 +110,8 @@ export async function POST(request: Request) {
     }
 
     if (existingAuthUser) {
-      // Ensure user exists in public users table with their info
-      await supabase
+      // Ensure user exists in public users table with their info (use admin client to bypass RLS)
+      await adminSupabase
         .from('users')
         .upsert({
           id: existingAuthUser.id,
@@ -120,8 +122,8 @@ export async function POST(request: Request) {
           updated_at: new Date().toISOString()
         }, { onConflict: 'id' })
 
-      // Check if already a team member
-      const { data: existingMember } = await supabase
+      // Check if already a team member (use admin to bypass RLS)
+      const { data: existingMember } = await adminSupabase
         .from('business_users')
         .select('id')
         .eq('business_id', businessId)
@@ -132,8 +134,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'This user is already a team member' }, { status: 400 })
       }
 
-      // Add existing user directly to team
-      const { error: insertError } = await supabase
+      // Add existing user directly to team (use admin to bypass RLS)
+      const { error: insertError } = await adminSupabase
         .from('business_users')
         .insert({
           business_id: businessId,
@@ -251,8 +253,8 @@ export async function POST(request: Request) {
           if (foundUser) {
             console.log('[Team Invite] Found existing user:', foundUser.id)
 
-            // Ensure user exists in public users table
-            await supabase
+            // Ensure user exists in public users table (use admin to bypass RLS)
+            await adminSupabase
               .from('users')
               .upsert({
                 id: foundUser.id,
@@ -263,8 +265,8 @@ export async function POST(request: Request) {
                 updated_at: new Date().toISOString()
               }, { onConflict: 'id' })
 
-            // Check if already a team member
-            const { data: existingMember } = await supabase
+            // Check if already a team member (use admin to bypass RLS)
+            const { data: existingMember } = await adminSupabase
               .from('business_users')
               .select('id')
               .eq('business_id', businessId)
@@ -275,8 +277,8 @@ export async function POST(request: Request) {
               return NextResponse.json({ error: 'This user is already a team member' }, { status: 400 })
             }
 
-            // Add existing user to team
-            const { error: insertError } = await supabase
+            // Add existing user to team (use admin to bypass RLS)
+            const { error: insertError } = await adminSupabase
               .from('business_users')
               .insert({
                 business_id: businessId,
@@ -328,8 +330,8 @@ export async function POST(request: Request) {
 
       const newUserId = authData.id
 
-      // IMPORTANT: Create entry in public users table so team list can display their info
-      const { error: userInsertError } = await supabase
+      // IMPORTANT: Create entry in public users table so team list can display their info (use admin to bypass RLS)
+      const { error: userInsertError } = await adminSupabase
         .from('users')
         .upsert({
           id: newUserId,
@@ -344,8 +346,8 @@ export async function POST(request: Request) {
         console.error('[Team Invite] Users table insert error:', userInsertError)
       }
 
-      // Set system role as client
-      await supabase
+      // Set system role as client (use admin to bypass RLS)
+      const { error: roleError } = await adminSupabase
         .from('system_roles')
         .upsert({
           user_id: newUserId,
@@ -353,8 +355,12 @@ export async function POST(request: Request) {
           created_by: user.id
         }, { onConflict: 'user_id' })
 
-      // Add to business_users
-      const { error: memberError } = await supabase
+      if (roleError) {
+        console.error('[Team Invite] System roles insert error:', roleError)
+      }
+
+      // Add to business_users (use admin to bypass RLS)
+      const { error: memberError } = await adminSupabase
         .from('business_users')
         .insert({
           business_id: businessId,
@@ -428,8 +434,8 @@ export async function POST(request: Request) {
         `
       })
 
-      // Also store in team_invites for tracking
-      await supabase
+      // Also store in team_invites for tracking (use admin to bypass RLS)
+      await adminSupabase
         .from('team_invites')
         .upsert({
           business_id: businessId,
@@ -455,7 +461,7 @@ export async function POST(request: Request) {
       // Just create pending invite without account (legacy flow)
       const inviteToken = generateInviteToken()
 
-      const { error: inviteError } = await supabase
+      const { error: inviteError } = await adminSupabase
         .from('team_invites')
         .insert({
           business_id: businessId,
