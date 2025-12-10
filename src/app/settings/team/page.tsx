@@ -245,6 +245,9 @@ export default function TeamMembersPage() {
         .eq('user_id', user.id)
         .maybeSingle()
 
+      // Track the actual business ID in a local variable to avoid stale state issues
+      let actualBusinessId: string | null = null
+
       if (!businessUser) {
         // Try via owner_id
         const { data: ownedBusiness } = await supabase
@@ -254,6 +257,7 @@ export default function TeamMembersPage() {
           .maybeSingle()
 
         if (ownedBusiness) {
+          actualBusinessId = ownedBusiness.id
           setBusinessId(ownedBusiness.id)
           setBusinessName(ownedBusiness.business_name || 'My Business')
           setCurrentUserRole('owner')
@@ -269,6 +273,7 @@ export default function TeamMembersPage() {
             }, { onConflict: 'business_id,user_id' })
         }
       } else {
+        actualBusinessId = businessUser.business_id
         setBusinessId(businessUser.business_id)
         setCurrentUserRole(businessUser.role)
 
@@ -281,9 +286,9 @@ export default function TeamMembersPage() {
         setBusinessName(business?.business_name || 'My Business')
       }
 
-      // Load team members
-      if (businessUser?.business_id || businessId) {
-        const bizId = businessUser?.business_id || businessId
+      // Load team members using local variable to avoid stale state
+      if (actualBusinessId) {
+        const bizId = actualBusinessId
         const { data: members, error: membersError } = await supabase
           .from('business_users')
           .select(`
