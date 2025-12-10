@@ -305,10 +305,11 @@ export default function WeeklyReviewPage() {
           bizId = activeBusiness.id
         }
       } else {
+        const targetUserId = activeBusiness?.ownerId || user.id
         const { data: profile } = await supabase
           .from('business_profiles')
           .select('id')
-          .eq('user_id', user.id)
+          .eq('user_id', targetUserId)
           .single()
         bizId = profile?.id || user.id
       }
@@ -356,11 +357,12 @@ export default function WeeklyReviewPage() {
       await loadStrategicData(bizId)
 
       // Check if user is owner/admin and load team data
+      const targetUserId = activeBusiness?.ownerId || user.id
       const { data: userRole } = await supabase
         .from('business_users')
         .select('role')
         .eq('business_id', bizId)
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .single()
 
       const isOwnerAdmin = userRole?.role === 'owner' || userRole?.role === 'admin'

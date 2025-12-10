@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, IssueResolution } from '../../types';
 import { Plus, X, AlertTriangle, CheckCircle2, MessageSquare, User, Calendar, Loader2, Lightbulb } from 'lucide-react';
@@ -26,6 +27,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
   const [newIssue, setNewIssue] = useState('');
   const [activeIssueId, setActiveIssueId] = useState<string | null>(null);
   const supabase = createClient();
+  const { activeBusiness } = useBusinessContext();
 
   const resolutions = review.issues_resolved || [];
 
@@ -42,11 +44,14 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
         return;
       }
 
+      // Use activeBusiness owner ID if coach is viewing, otherwise use current user ID
+      const targetUserId = activeBusiness?.ownerId || user.id;
+
       // Fetch issues - uses user_id not business_id
       const { data, error } = await supabase
         .from('issues_list')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .eq('archived', false)
         .order('created_at', { ascending: false });
 

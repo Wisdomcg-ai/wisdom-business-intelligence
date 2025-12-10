@@ -6,6 +6,7 @@ import { ChevronRight, ChevronLeft, Check, AlertCircle, ClipboardList } from 'lu
 import { createClient } from '@/lib/supabase/client';
 import { BUSINESS_ENGINES, TOTAL_MAX_SCORE, getHealthStatus, mapSectionToEngineId } from '@/lib/assessment/constants';
 import PageHeader from '@/components/ui/PageHeader';
+import { useBusinessContext } from '@/hooks/useBusinessContext';
 
 interface Question {
   id: string;
@@ -477,6 +478,7 @@ function AssessmentContent() {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { activeBusiness } = useBusinessContext();
 
   const isNewAssessment = searchParams?.get('new') === 'true';
 
@@ -509,10 +511,13 @@ function AssessmentContent() {
         const { data: { user } } = await supabase.auth.getUser();
 
         if (user) {
+          // Use activeBusiness ownerId if viewing as coach, otherwise current user
+          const targetUserId = activeBusiness?.ownerId || user.id;
+
           const { data: assessments } = await supabase
             .from('assessments')
             .select('id')
-            .eq('user_id', user.id)
+            .eq('user_id', targetUserId)
             .eq('status', 'completed')
             .order('created_at', { ascending: false })
             .limit(1);
@@ -547,7 +552,7 @@ function AssessmentContent() {
     }
 
     initialize();
-  }, [isNewAssessment, router]);
+  }, [isNewAssessment, router, activeBusiness?.ownerId]);
 
   // Save draft to localStorage whenever answers change
   useEffect(() => {

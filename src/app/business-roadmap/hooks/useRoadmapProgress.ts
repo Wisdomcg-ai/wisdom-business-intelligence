@@ -105,10 +105,11 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
         }
       } else {
         // Get user's own business profile
+        const targetUserId = activeBusiness?.ownerId || user.id
         const { data: profiles } = await supabase
           .from('business_profiles')
           .select('id, annual_revenue')
-          .eq('user_id', user.id)
+          .eq('user_id', targetUserId)
           .order('created_at', { ascending: true })
           .limit(1)
         const profile = profiles?.[0] || null
@@ -132,10 +133,11 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
       }
 
       // Load roadmap progress
+      const targetUserId = activeBusiness?.ownerId || user.id
       const { data, error } = await supabase
         .from('roadmap_progress')
         .select('completed_builds, completion_checks, view_mode, has_seen_intro')
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .maybeSingle()
 
       if (error) {

@@ -170,10 +170,11 @@ export default function FinancialForecastPage() {
         bizId = activeBusiness.id
       } else {
         // Get business using owner_id (to match xero_connections table)
+        const targetOwnerId = activeBusiness?.ownerId || user.id
         const { data: business } = await supabase
           .from('businesses')
           .select('id')
-          .eq('owner_id', user.id)
+          .eq('owner_id', targetOwnerId)
           .maybeSingle()
         bizId = business?.id || user.id
       }

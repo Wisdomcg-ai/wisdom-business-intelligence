@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview } from '../../types';
 import { Target, DollarSign, AlertTriangle, Loader2 } from 'lucide-react';
@@ -84,6 +85,7 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
   const [isLoading, setIsLoading] = useState(true);
   const [goals, setGoals] = useState<FinancialGoals | null>(null);
   const supabase = createClient();
+  const { activeBusiness } = useBusinessContext();
 
   const confidence = review.annual_target_confidence || 5;
   const notes = review.confidence_notes || '';
@@ -106,10 +108,13 @@ export function ConfidenceCheckStep({ review, onUpdate }: ConfidenceCheckStepPro
         return;
       }
 
+      // Use activeBusiness owner ID if coach is viewing, otherwise use current user ID
+      const targetUserId = activeBusiness?.ownerId || user.id;
+
       const { data: profile } = await supabase
         .from('business_profiles')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .single();
 
       const businessId = profile?.id || user.id;

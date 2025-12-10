@@ -23,6 +23,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { BUSINESS_ENGINES, TOTAL_MAX_SCORE } from '@/lib/assessment/constants';
 import PageHeader from '@/components/ui/PageHeader';
+import { useBusinessContext } from '@/hooks/useBusinessContext';
 
 interface Assessment {
   id: string;
@@ -276,6 +277,7 @@ function AssessmentResultsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const assessmentId = searchParams?.get('id');
+  const { activeBusiness } = useBusinessContext();
 
   useEffect(() => {
     if (assessmentId) {
@@ -302,10 +304,13 @@ function AssessmentResultsContent() {
         return;
       }
 
+      // Use activeBusiness ownerId if viewing as coach, otherwise current user
+      const targetUserId = activeBusiness?.ownerId || user.id;
+
       const { data: assessments, error: dbError } = await supabase
         .from('assessments')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .eq('status', 'completed')
         .order('created_at', { ascending: false })
         .limit(1);
@@ -346,11 +351,14 @@ function AssessmentResultsContent() {
       if (data) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
+          // Use activeBusiness ownerId if viewing as coach, otherwise current user
+          const targetUserId = activeBusiness?.ownerId || user.id;
+
           // Load previous assessment
           const { data: prevAssessments } = await supabase
             .from('assessments')
             .select('*')
-            .eq('user_id', user.id)
+            .eq('user_id', targetUserId)
             .eq('status', 'completed')
             .lt('created_at', data.created_at)
             .order('created_at', { ascending: false })
@@ -364,7 +372,7 @@ function AssessmentResultsContent() {
           const { data: profile } = await supabase
             .from('business_profiles')
             .select('annual_revenue')
-            .eq('user_id', user.id)
+            .eq('user_id', targetUserId)
             .single();
 
           if (profile) {

@@ -228,10 +228,12 @@ export default function OnePagePlan() {
         devLog('[One Page Plan] 🏢 Using businessId for data queries:', businessId)
       } else {
         // Normal user view - get their business profile
+        // Use activeBusiness.ownerId if available (coach viewing client)
+        const targetUserId = activeBusiness?.ownerId || user.id
         const { data: profileData, error: profileError } = await supabase
           .from('business_profiles')
           .select('id, industry, owner_info, key_roles')
-          .eq('user_id', user.id)
+          .eq('user_id', targetUserId)
           .single()
 
         profile = profileData
@@ -369,6 +371,7 @@ export default function OnePagePlan() {
 
       // Get company name from businesses table
       // Use business ID when viewing as coach, otherwise use owner_id
+      const targetOwnerId = activeBusiness?.ownerId || user.id
       const { data: businessData } = activeBusiness?.id
         ? await supabase
             .from('businesses')
@@ -378,7 +381,7 @@ export default function OnePagePlan() {
         : await supabase
             .from('businesses')
             .select('name')
-            .eq('owner_id', user.id)
+            .eq('owner_id', targetOwnerId)
             .limit(1)
             .single()
 

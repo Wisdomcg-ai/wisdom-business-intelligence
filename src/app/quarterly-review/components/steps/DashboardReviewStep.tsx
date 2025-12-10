@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, DashboardSnapshot, CoreMetricsSnapshot, ActionReplay } from '../../types';
 import { getDefaultActionReplay } from '../../types';
@@ -94,6 +95,7 @@ interface CoreMetric {
 
 export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: DashboardReviewStepProps) {
   const supabase = createClient();
+  const { activeBusiness } = useBusinessContext();
   const [isLoading, setIsLoading] = useState(true);
 
   // Action Replay state
@@ -204,11 +206,14 @@ export function DashboardReviewStep({ review, onUpdate, onUpdateActionReplay }: 
         return;
       }
 
+      // Use activeBusiness owner ID if coach is viewing, otherwise use current user ID
+      const targetUserId = activeBusiness?.ownerId || user.id;
+
       // Get the user's actual business profile (like Goals wizard does)
       const { data: profile } = await supabase
         .from('business_profiles')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .single();
 
       // Use the profile's business_id if available, otherwise fall back to review.business_id

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, InitiativesChanges } from '../../types';
 import { getDefaultInitiativesChanges } from '../../types';
@@ -27,6 +28,7 @@ export function InitiativesReviewStep({ review, onUpdate }: InitiativesReviewSte
   const [newInitiative, setNewInitiative] = useState({ title: '', category: 'growth', description: '' });
   const [showAddForm, setShowAddForm] = useState(false);
   const supabase = createClient();
+  const { activeBusiness } = useBusinessContext();
 
   const changes = review.initiatives_changes || getDefaultInitiativesChanges();
 
@@ -43,11 +45,14 @@ export function InitiativesReviewStep({ review, onUpdate }: InitiativesReviewSte
         return;
       }
 
+      // Use activeBusiness owner ID if coach is viewing, otherwise use current user ID
+      const targetUserId = activeBusiness?.ownerId || user.id;
+
       // Fetch strategic initiatives - uses user_id
       const { data, error } = await supabase
         .from('strategic_initiatives')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .order('created_at', { ascending: false });
 
       // Handle errors gracefully

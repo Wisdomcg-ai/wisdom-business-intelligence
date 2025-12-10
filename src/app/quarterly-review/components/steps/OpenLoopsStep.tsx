@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, OpenLoopDecisionRecord, OpenLoopDecision } from '../../types';
 import { OPEN_LOOP_DECISION_LABELS } from '../../types';
@@ -24,6 +25,7 @@ export function OpenLoopsStep({ review, onUpdate }: OpenLoopsStepProps) {
   const [openLoops, setOpenLoops] = useState<OpenLoop[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
+  const { activeBusiness } = useBusinessContext();
 
   const decisions = review.open_loops_decisions || [];
 
@@ -40,11 +42,14 @@ export function OpenLoopsStep({ review, onUpdate }: OpenLoopsStepProps) {
         return;
       }
 
+      // Use activeBusiness owner ID if coach is viewing, otherwise use current user ID
+      const targetUserId = activeBusiness?.ownerId || user.id;
+
       // Fetch open loops - uses user_id not business_id
       const { data, error } = await supabase
         .from('open_loops')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .eq('archived', false)
         .order('created_at', { ascending: false });
 

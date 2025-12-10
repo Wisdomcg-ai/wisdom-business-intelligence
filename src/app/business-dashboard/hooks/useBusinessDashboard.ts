@@ -140,10 +140,11 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
           bizId = activeBusiness.id // Fallback
         }
       } else {
+        const targetUserId = activeBusiness?.ownerId || user.id
         const { data: profile } = await supabase
           .from('business_profiles')
           .select('id, industry')
-          .eq('user_id', user.id)
+          .eq('user_id', targetUserId)
           .single()
         bizId = profile?.id || user.id
       }

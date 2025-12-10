@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, AssessmentSnapshot, RoadmapSnapshot } from '../../types';
 import { BarChart3, Map, CheckCircle2, AlertCircle, TrendingUp, Loader2, ExternalLink, Clock, AlertTriangle, Target, ChevronRight } from 'lucide-react';
@@ -72,6 +73,7 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
   } | null>(null);
   const [staleAcknowledged, setStaleAcknowledged] = useState(false);
   const supabase = createClient();
+  const { activeBusiness } = useBusinessContext();
 
   // Check if assessment is stale
   const assessmentIsStale = assessmentData ? isAssessmentStale(assessmentData.created_at) : true;
@@ -86,14 +88,17 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
       // Get current user for assessment query (assessments use user_id, not business_id)
       const { data: { user } } = await supabase.auth.getUser();
 
+      // Use activeBusiness owner ID if coach is viewing, otherwise use current user ID
+      const targetUserId = activeBusiness?.ownerId || user?.id;
+
       // Fetch latest assessment from 'assessments' table using user_id
       let assessment = null;
-      if (user) {
+      if (targetUserId) {
         try {
           const { data, error } = await supabase
             .from('assessments')
             .select('*')
-            .eq('user_id', user.id)
+            .eq('user_id', targetUserId)
             .eq('status', 'completed')
             .order('created_at', { ascending: false })
             .limit(1)
@@ -106,12 +111,12 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
 
       // Fetch business profile for revenue (to determine stage)
       let businessProfile = null;
-      if (user) {
+      if (targetUserId) {
         try {
           const { data, error } = await supabase
             .from('business_profiles')
             .select('id, annual_revenue')
-            .eq('user_id', user.id)
+            .eq('user_id', targetUserId)
             .maybeSingle();
           if (!error) businessProfile = data;
         } catch (e) {
@@ -121,12 +126,12 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
 
       // Fetch roadmap progress (completed builds)
       let completedBuilds: string[] = [];
-      if (user) {
+      if (targetUserId) {
         try {
           const { data, error } = await supabase
             .from('roadmap_progress')
             .select('completed_builds')
-            .eq('user_id', user.id)
+            .eq('user_id', targetUserId)
             .maybeSingle();
           if (!error && data) {
             completedBuilds = (data.completed_builds as string[]) || [];

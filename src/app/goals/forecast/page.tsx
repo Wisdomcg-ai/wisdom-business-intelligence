@@ -84,10 +84,11 @@ export default function QuarterlyForecastPage() {
         bizId = profile?.id || null;
       } else {
         // Get user's own business profile
+        const targetUserId = activeBusiness?.ownerId || user.id;
         const { data: profile } = await supabase
           .from('business_profiles')
           .select('id')
-          .eq('user_id', user.id)
+          .eq('user_id', targetUserId)
           .single();
 
         bizId = profile?.id || null;

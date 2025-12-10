@@ -419,12 +419,15 @@ export function useDashboardData(): UseDashboardDataReturn {
 
       const teamMap = await buildTeamMembersMap(bId)
 
+      // Use activeBusiness ownerId if viewing as coach, otherwise current user
+      const targetUserId = activeBusiness?.ownerId || user.id
+
       // First try to load current quarter data
       const [annualGoals, currentQuarterGoals, currentQuarterRocks, weeklyGoals] = await Promise.all([
         loadAnnualGoals(bId),
         loadQuarterlyGoals(bId, currentQuarter),
         loadRocks(bId, currentQuarter, teamMap),
-        loadWeeklyGoals(bId, user.id)
+        loadWeeklyGoals(bId, targetUserId)
       ])
 
       // If current quarter has no rocks, check the planning quarter (next quarter)
