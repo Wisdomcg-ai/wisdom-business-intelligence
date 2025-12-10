@@ -20,10 +20,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
+    // Check user's system role (super_admin, coach, client)
+    const { data: systemRole } = await adminSupabase
+      .from('system_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .single()
+
+    const isSuperAdmin = systemRole?.role === 'super_admin'
+
     // Verify user has permission to remove from this business
     const { data: ownedBusiness } = await adminSupabase
       .from('businesses')
-      .select('id, owner_id')
+      .select('id, owner_id, assigned_coach_id')
       .eq('id', businessId)
       .single()
 
@@ -35,7 +44,13 @@ export async function POST(request: Request) {
       .single()
 
     const isOwner = ownedBusiness?.owner_id === user.id
-    const canRemove = isOwner || userBusiness?.role === 'owner' || userBusiness?.role === 'admin'
+    const isAssignedCoach = ownedBusiness?.assigned_coach_id === user.id
+    const isBusinessAdmin = userBusiness?.role === 'owner' || userBusiness?.role === 'admin'
+
+    // Super admins can remove from any business
+    // Coaches can remove from businesses they're assigned to
+    // Business owners/admins can remove from their own business
+    const canRemove = isSuperAdmin || isAssignedCoach || isOwner || isBusinessAdmin
 
     if (!canRemove) {
       return NextResponse.json({ error: 'Permission denied' }, { status: 403 })

@@ -53,6 +53,15 @@ export async function POST(request: Request) {
       )
     }
 
+    // Check user's system role (super_admin, coach, client)
+    const { data: systemRole } = await adminSupabase
+      .from('system_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .single()
+
+    const isSuperAdmin = systemRole?.role === 'super_admin'
+
     // Verify user has permission to invite to this business
     const { data: userBusiness } = await supabase
       .from('business_users')
@@ -61,15 +70,21 @@ export async function POST(request: Request) {
       .eq('user_id', user.id)
       .single()
 
-    // Also check if they're the owner
-    const { data: ownedBusiness } = await supabase
+    // Also check if they're the owner or assigned coach
+    const { data: ownedBusiness } = await adminSupabase
       .from('businesses')
-      .select('id, business_name, owner_id')
+      .select('id, business_name, owner_id, assigned_coach_id')
       .eq('id', businessId)
       .single()
 
     const isOwner = ownedBusiness?.owner_id === user.id
-    const canInvite = isOwner || userBusiness?.role === 'owner' || userBusiness?.role === 'admin'
+    const isAssignedCoach = ownedBusiness?.assigned_coach_id === user.id
+    const isBusinessAdmin = userBusiness?.role === 'owner' || userBusiness?.role === 'admin'
+
+    // Super admins can invite to any business
+    // Coaches can invite to businesses they're assigned to
+    // Business owners/admins can invite to their own business
+    const canInvite = isSuperAdmin || isAssignedCoach || isOwner || isBusinessAdmin
 
     if (!canInvite) {
       return NextResponse.json({ error: 'Permission denied' }, { status: 403 })
