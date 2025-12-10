@@ -108,6 +108,18 @@ export async function POST(request: Request) {
     }
 
     if (existingAuthUser) {
+      // Ensure user exists in public users table with their info
+      await supabase
+        .from('users')
+        .upsert({
+          id: existingAuthUser.id,
+          email: email.toLowerCase(),
+          first_name: firstName,
+          last_name: lastName || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' })
+
       // Check if already a team member
       const { data: existingMember } = await supabase
         .from('business_users')
@@ -239,6 +251,18 @@ export async function POST(request: Request) {
           if (foundUser) {
             console.log('[Team Invite] Found existing user:', foundUser.id)
 
+            // Ensure user exists in public users table
+            await supabase
+              .from('users')
+              .upsert({
+                id: foundUser.id,
+                email: email.toLowerCase(),
+                first_name: firstName,
+                last_name: lastName || null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'id' })
+
             // Check if already a team member
             const { data: existingMember } = await supabase
               .from('business_users')
@@ -304,14 +328,30 @@ export async function POST(request: Request) {
 
       const newUserId = authData.id
 
+      // IMPORTANT: Create entry in public users table so team list can display their info
+      const { error: userInsertError } = await supabase
+        .from('users')
+        .upsert({
+          id: newUserId,
+          email: email.toLowerCase(),
+          first_name: firstName,
+          last_name: lastName || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' })
+
+      if (userInsertError) {
+        console.error('[Team Invite] Users table insert error:', userInsertError)
+      }
+
       // Set system role as client
       await supabase
         .from('system_roles')
-        .insert({
+        .upsert({
           user_id: newUserId,
           role: 'client',
           created_by: user.id
-        })
+        }, { onConflict: 'user_id' })
 
       // Add to business_users
       const { error: memberError } = await supabase

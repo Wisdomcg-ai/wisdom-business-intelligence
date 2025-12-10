@@ -322,15 +322,18 @@ export default function TeamMembersPage() {
           setTeamMembers(membersWithUsers as TeamMember[])
         }
 
-        // Load pending invites
-        const { data: invites } = await supabase
+        // Load pending invites (gracefully handle RLS errors)
+        const { data: invites, error: invitesError } = await supabase
           .from('team_invites')
           .select('*')
           .eq('business_id', bizId)
           .eq('status', 'pending')
           .order('invited_at', { ascending: false })
 
-        if (invites) {
+        if (invitesError) {
+          // RLS policy may block access - this is non-critical, just skip pending invites display
+          console.log('Could not load pending invites (may be RLS policy):', invitesError.code)
+        } else if (invites) {
           setPendingInvites(invites as PendingInvite[])
         }
       }
