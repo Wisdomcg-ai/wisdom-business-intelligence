@@ -106,6 +106,8 @@ export default function VisionMissionPage() {
       ...prev,
       core_values: [...prev.core_values, '']
     }));
+    // Note: Don't call handleFieldChange here - empty slots don't need to trigger save
+    // Save will be triggered when user fills in the value
   };
 
   const removeValueSlot = (index: number) => {
@@ -365,7 +367,7 @@ export default function VisionMissionPage() {
               value={formData.vision_statement}
               onChange={(e) => {
                 if (e.target.value.length <= VALIDATION.VISION_MAX_CHARS) {
-                  setFormData(prev => ({ ...prev, vision_statement: e.target.value }));
+                  updateFormData(prev => ({ ...prev, vision_statement: e.target.value }));
                   handleFieldChange();
                 }
               }}
@@ -433,7 +435,7 @@ export default function VisionMissionPage() {
               value={formData.mission_statement}
               onChange={(e) => {
                 if (e.target.value.length <= VALIDATION.MISSION_MAX_CHARS) {
-                  setFormData(prev => ({ ...prev, mission_statement: e.target.value }));
+                  updateFormData(prev => ({ ...prev, mission_statement: e.target.value }));
                   handleFieldChange();
                 }
               }}
