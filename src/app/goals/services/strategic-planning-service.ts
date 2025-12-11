@@ -21,6 +21,20 @@ interface KeyAction {
  * - Quarterly Plans (step_type: 'q1', 'q2', 'q3', 'q4')
  * - 90-Day Sprint (step_type: 'sprint')
  */
+
+/**
+ * Safe JSON parse helper - returns default value if parsing fails
+ */
+function safeJsonParse<T>(jsonString: string | null | undefined, defaultValue: T): T {
+  if (!jsonString) return defaultValue
+  try {
+    return JSON.parse(jsonString)
+  } catch (e) {
+    console.warn('[Strategic Planning] ⚠️ Failed to parse JSON, using default:', e)
+    return defaultValue
+  }
+}
+
 export class StrategicPlanningService {
   private static supabase = createClient()
 
@@ -209,11 +223,11 @@ export class StrategicPlanningService {
         timeline: row.timeline || undefined,
         selected: row.selected || false,
         order: row.order_index !== undefined ? row.order_index : 0,
-        linkedKPIs: row.linked_kpis ? JSON.parse(row.linked_kpis) : undefined,
+        linkedKPIs: safeJsonParse(row.linked_kpis, undefined),
         assignedTo: row.assigned_to || undefined,
         // Extended initiative fields for sprint planning
-        milestones: row.milestones ? JSON.parse(row.milestones) : [],
-        tasks: row.tasks ? JSON.parse(row.tasks) : [],
+        milestones: safeJsonParse(row.milestones, []),
+        tasks: safeJsonParse(row.tasks, []),
         why: row.why || '',
         outcome: row.outcome || '',
         startDate: row.start_date || '',
