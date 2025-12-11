@@ -47,7 +47,10 @@ export class StrategicPlanningService {
     userId: string,
     initiatives: StrategicInitiative[],
     stepType: 'strategic_ideas' | 'roadmap' | 'twelve_month' | 'q1' | 'q2' | 'q3' | 'q4' | 'sprint'
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; insertedIds?: string[] }> {
+    // Track inserted IDs to return to caller for state update
+    let insertedIds: string[] = []
+
     try {
       if (!businessId || !userId) {
         return { success: false, error: 'Business ID and User ID required' }
@@ -120,15 +123,22 @@ export class StrategicPlanningService {
         // Insert new initiatives (without id - let DB generate it)
         if (newInitiatives.length > 0) {
           console.log('[Strategic Planning] 📝 Inserting', newInitiatives.length, 'new initiatives')
-          const { error: insertError } = await this.supabase
+          const { data: insertedData, error: insertError } = await this.supabase
             .from('strategic_initiatives')
             .insert(newInitiatives)
+            .select('id')
 
           if (insertError) {
             console.error('[Strategic Planning] ❌ Error inserting new initiatives:', insertError)
             console.error('[Strategic Planning] ❌ Insert error details:', JSON.stringify(insertError, null, 2))
             console.error('[Strategic Planning] ❌ First initiative data:', JSON.stringify(newInitiatives[0], null, 2))
             return { success: false, error: insertError.message }
+          }
+
+          // Collect the newly generated UUIDs
+          if (insertedData) {
+            insertedIds = insertedData.map(item => item.id)
+            console.log('[Strategic Planning] ✅ Got inserted IDs:', insertedIds)
           }
         }
 
@@ -180,7 +190,7 @@ export class StrategicPlanningService {
       }
 
       console.log(`[Strategic Planning] ✅ Successfully saved initiatives for ${stepType}`)
-      return { success: true }
+      return { success: true, insertedIds: insertedIds.length > 0 ? insertedIds : undefined }
     } catch (err) {
       console.error('[Strategic Planning] ❌ Error saving initiatives:', err)
       return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }

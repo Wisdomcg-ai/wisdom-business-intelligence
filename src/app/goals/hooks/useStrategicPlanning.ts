@@ -474,6 +474,52 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       }
 
       console.log('[Strategic Planning] ✅ Successfully saved all data')
+
+      // CRITICAL: Reload initiatives from DB to sync UUIDs
+      // This ensures local state has the database-generated UUIDs
+      // Without this, the next save would treat items as new (duplicate inserts)
+      const [
+        freshStrategicIdeas,
+        freshRoadmap,
+        freshTwelveMonth,
+        freshQ1,
+        freshQ2,
+        freshQ3,
+        freshQ4,
+        freshSprint
+      ] = await Promise.all([
+        StrategicPlanningService.loadInitiatives(businessId, 'strategic_ideas'),
+        StrategicPlanningService.loadInitiatives(businessId, 'roadmap'),
+        StrategicPlanningService.loadInitiatives(businessId, 'twelve_month'),
+        StrategicPlanningService.loadInitiatives(businessId, 'q1'),
+        StrategicPlanningService.loadInitiatives(businessId, 'q2'),
+        StrategicPlanningService.loadInitiatives(businessId, 'q3'),
+        StrategicPlanningService.loadInitiatives(businessId, 'q4'),
+        StrategicPlanningService.loadInitiatives(businessId, 'sprint')
+      ])
+
+      // Update state with fresh data (proper UUIDs)
+      if (freshStrategicIdeas.length > 0 || strategicIdeas.length > 0) {
+        setStrategicIdeas(freshStrategicIdeas)
+      }
+      if (freshRoadmap.length > 0 || roadmapSuggestions.length > 0) {
+        setRoadmapSuggestions(freshRoadmap)
+      }
+      if (freshTwelveMonth.length > 0 || twelveMonthInitiatives.length > 0) {
+        setTwelveMonthInitiatives(freshTwelveMonth)
+      }
+      setAnnualPlanByQuarter({
+        q1: freshQ1,
+        q2: freshQ2,
+        q3: freshQ3,
+        q4: freshQ4
+      })
+      if (freshSprint.length > 0 || sprintFocus.length > 0) {
+        setSprintFocus(freshSprint)
+      }
+
+      console.log('[Strategic Planning] 🔄 Synced local state with database UUIDs')
+
       isSavingRef.current = false
       setSaveStatus('saved')
       setLastSaved(new Date())
