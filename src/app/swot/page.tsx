@@ -15,7 +15,7 @@ import {
 import { SwotGrid } from '@/components/swot/SwotGrid';
 import { QuarterSelector } from '@/components/swot/QuarterSelector';
 import { createBrowserClient } from '@supabase/ssr';
-import { CheckCircle, AlertCircle, Download, History, TrendingUp, Target, HelpCircle, ChevronRight, ChevronLeft } from 'lucide-react';
+import { CheckCircle, AlertCircle, Download, History, TrendingUp, Target, HelpCircle, ChevronRight, ChevronLeft, ChevronDown } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import PageHeader from '@/components/ui/PageHeader';
 import type { SaveStatus } from '@/hooks/useAutoSave';
@@ -54,6 +54,14 @@ export default function SwotPage() {
       return saved === null ? true : saved === 'true';
     }
     return true;
+  });
+  const [showStrategyFormation, setShowStrategyFormation] = useState(() => {
+    // Default to collapsed, remember preference
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('swot-strategy-formation-visible');
+      return saved === 'true';
+    }
+    return false;
   });
 
   // Get or create SWOT analysis for the selected quarter
@@ -549,6 +557,15 @@ export default function SwotPage() {
     }
   };
 
+  // Toggle strategy formation section
+  const toggleStrategyFormation = () => {
+    const newValue = !showStrategyFormation;
+    setShowStrategyFormation(newValue);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('swot-strategy-formation-visible', String(newValue));
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -688,21 +705,34 @@ export default function SwotPage() {
           recurringItems={recurringItems}
         />
 
-        {/* Strategy Formation Section */}
+        {/* Strategy Formation Section - Collapsible */}
         {(swotItems.strengths.length > 0 || swotItems.weaknesses.length > 0 ||
           swotItems.opportunities.length > 0 || swotItems.threats.length > 0) && (
           <div className="mt-8">
-            <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4 sm:mb-6">
-                <div>
+            <div className="rounded-xl shadow-sm border border-gray-200 bg-white overflow-hidden">
+              {/* Collapsible Header */}
+              <button
+                onClick={toggleStrategyFormation}
+                className="w-full p-4 sm:p-6 flex items-center justify-between hover:bg-gray-50 transition-colors"
+              >
+                <div className="text-left">
                   <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Strategy Formation</h2>
                   <p className="text-sm sm:text-base text-gray-600 mt-1">
                     Turn your SWOT analysis into actionable strategies
                   </p>
                 </div>
-              </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500 hidden sm:inline">
+                    {showStrategyFormation ? 'Click to collapse' : 'Click to expand'}
+                  </span>
+                  <ChevronDown className={`h-6 w-6 text-gray-400 transition-transform duration-200 ${showStrategyFormation ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
 
-              <div className="mb-6 p-4 bg-brand-orange-50 rounded-xl border border-brand-orange-200">
+              {/* Collapsible Content */}
+              {showStrategyFormation && (
+                <div className="px-4 sm:px-6 pb-4 sm:pb-6 border-t border-gray-100">
+              <div className="mt-6 mb-6 p-4 bg-brand-orange-50 rounded-xl border border-brand-orange-200">
                 <p className="text-sm sm:text-base font-medium text-gray-800 mb-2">How to Form Strategies:</p>
                 <p className="text-sm sm:text-base text-gray-700 mb-3">
                   The power of SWOT comes from combining insights across quadrants. Use these frameworks to create strategies:
@@ -788,6 +818,8 @@ export default function SwotPage() {
                   <li>Review quarterly and update as your situation changes</li>
                 </ol>
               </div>
+                </div>
+              )}
             </div>
           </div>
         )}
