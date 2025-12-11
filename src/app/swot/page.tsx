@@ -78,10 +78,50 @@ export default function SwotPage() {
       }
 
       // Use active business from context when viewing as coach
-      // Otherwise use user.id (SWOT stores with user.id as business_id)
-      const businessId = viewerContext.isViewingAsCoach && activeBusiness?.ownerId
-        ? activeBusiness.ownerId
-        : user.id;
+      // Try multiple IDs to find the SWOT data:
+      // 1. activeBusiness.ownerId (client's user ID)
+      // 2. activeBusiness.id (business ID)
+      // 3. user.id (current user's ID - fallback for direct access)
+      let businessId = user.id;
+      if (viewerContext.isViewingAsCoach && activeBusiness) {
+        businessId = activeBusiness.ownerId || activeBusiness.id;
+      }
+
+      console.log('[SWOT] Loading analysis with:', {
+        businessId,
+        quarter: currentQuarter.quarter,
+        year: currentQuarter.year,
+        userId: user.id,
+        isViewingAsCoach: viewerContext.isViewingAsCoach,
+        activeBusinessId: activeBusiness?.id,
+        activeBusinessOwnerId: activeBusiness?.ownerId
+      });
+
+      // First, let's check ALL SWOT analyses for this business to debug
+      // Try both businessId and activeBusiness.id in case data was stored differently
+      const { data: allSwots, error: debugError } = await supabase
+        .from('swot_analyses')
+        .select('id, business_id, quarter, year, type, created_at')
+        .eq('business_id', businessId);
+
+      console.log('[SWOT] All SWOT analyses for businessId:', businessId, 'Result:', allSwots, 'Error:', debugError);
+
+      // If no results found and we have a different business ID, try that too
+      let alternateSwots = null;
+      if ((!allSwots || allSwots.length === 0) && activeBusiness?.id && activeBusiness.id !== businessId) {
+        const { data: altData } = await supabase
+          .from('swot_analyses')
+          .select('id, business_id, quarter, year, type, created_at')
+          .eq('business_id', activeBusiness.id);
+        alternateSwots = altData;
+        console.log('[SWOT] Trying alternate businessId:', activeBusiness.id, 'Result:', alternateSwots);
+
+        // If we found data with the alternate ID, use that instead
+        if (alternateSwots && alternateSwots.length > 0) {
+          businessId = activeBusiness.id;
+          console.log('[SWOT] Switching to alternate businessId:', businessId);
+        }
+      }
 
       // Check if SWOT exists for this quarter
       const { data: existingSwot, error: fetchError } = await supabase
@@ -108,6 +148,11 @@ export default function SwotPage() {
         .eq('type', 'quarterly')
         .single();
 
+      console.log('[SWOT] Query result for current quarter:', {
+        existingSwot: existingSwot ? { id: existingSwot.id, itemCount: existingSwot.swot_items?.length } : null,
+        fetchError
+      });
+
       if (fetchError && fetchError.code !== 'PGRST116') {
         // PGRST116 means no rows returned, which is fine
         throw fetchError;
@@ -116,8 +161,73 @@ export default function SwotPage() {
       if (existingSwot) {
         setSwotAnalysis(existingSwot);
         organizeSwotItems(existingSwot.swot_items || []);
+
+        // If current quarter has no items but other quarters do, show a helpful message
+        if ((!existingSwot.swot_items || existingSwot.swot_items.length === 0) && allSwots && allSwots.length > 1) {
+          const quartersWithData = allSwots
+            .filter((s: any) => s.id !== existingSwot.id)
+            .map((s: any) => `Q${s.quarter} ${s.year}`);
+          if (quartersWithData.length > 0) {
+            console.log('[SWOT] Note: Current quarter is empty, but data exists in:', quartersWithData);
+          }
+        }
       } else {
-        // Create new SWOT analysis
+        // No SWOT for current quarter - check if there's a recent one with data we should show instead
+        if (allSwots && allSwots.length > 0) {
+          // Try to find a SWOT analysis with items - get the most recent one
+          const { data: recentSwotWithItems, error: recentError } = await supabase
+            .from('swot_analyses')
+            .select(`
+              *,
+              swot_items (
+                id,
+                category,
+                title,
+                description,
+                impact_level,
+                likelihood,
+                priority_order,
+                status,
+                tags,
+                created_at,
+                updated_at
+              )
+            `)
+            .eq('business_id', businessId)
+            .eq('type', 'quarterly')
+            .order('year', { ascending: false })
+            .order('quarter', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (!recentError && recentSwotWithItems && recentSwotWithItems.swot_items?.length > 0) {
+            console.log('[SWOT] Found recent SWOT with items from Q' + recentSwotWithItems.quarter + ' ' + recentSwotWithItems.year);
+            // Update the quarter selector to show this quarter
+            const boundaries = recentSwotWithItems.quarter === 1 ? { months: yearType === 'FY' ? 'Jul-Sep' : 'Jan-Mar' } :
+                              recentSwotWithItems.quarter === 2 ? { months: yearType === 'FY' ? 'Oct-Dec' : 'Apr-Jun' } :
+                              recentSwotWithItems.quarter === 3 ? { months: yearType === 'FY' ? 'Jan-Mar' : 'Jul-Sep' } :
+                              { months: yearType === 'FY' ? 'Apr-Jun' : 'Oct-Dec' };
+
+            setCurrentQuarter({
+              quarter: recentSwotWithItems.quarter,
+              year: recentSwotWithItems.year,
+              label: `${yearType === 'FY' ? 'FY' : ''}Q${recentSwotWithItems.quarter} ${recentSwotWithItems.year}`,
+              months: boundaries.months,
+              startDate: new Date(),
+              endDate: new Date(),
+              isCurrent: false,
+              isPast: true,
+              isFuture: false,
+              yearType
+            });
+            setSwotAnalysis(recentSwotWithItems);
+            organizeSwotItems(recentSwotWithItems.swot_items || []);
+            return;
+          }
+        }
+
+        // Create new SWOT analysis since no existing data found
+        console.log('[SWOT] No existing SWOT found, creating new one');
         const { data: newSwot, error: createError } = await supabase
           .rpc('create_quarterly_swot', {
             p_business_id: businessId,
@@ -165,6 +275,9 @@ export default function SwotPage() {
 
   // Organize items into grid categories
   const organizeSwotItems = (items: SwotItem[]) => {
+    console.log('[SWOT] organizeSwotItems called with', items?.length || 0, 'items');
+    console.log('[SWOT] Raw items:', items?.map(i => ({ id: i.id, title: i.title, status: i.status, category: i.category })));
+
     const organized: SwotGridData = {
       strengths: [],
       weaknesses: [],
@@ -175,7 +288,10 @@ export default function SwotPage() {
     items.forEach(item => {
       // Include items with null/undefined status (backward compatibility), 'active', or 'carried-forward'
       // Only exclude explicitly 'archived' items
-      if (!item.status || item.status === 'active' || item.status === 'carried-forward') {
+      const shouldInclude = !item.status || item.status === 'active' || item.status === 'carried-forward';
+      console.log('[SWOT] Item:', item.title, 'status:', item.status, 'include:', shouldInclude);
+
+      if (shouldInclude) {
         switch (item.category) {
           case 'strength':
             organized.strengths.push(item);
@@ -193,6 +309,13 @@ export default function SwotPage() {
       }
     });
 
+    console.log('[SWOT] Organized items:', {
+      strengths: organized.strengths.length,
+      weaknesses: organized.weaknesses.length,
+      opportunities: organized.opportunities.length,
+      threats: organized.threats.length
+    });
+
     // Sort by priority order
     Object.keys(organized).forEach(key => {
       organized[key as keyof SwotGridData].sort((a, b) => a.priority_order - b.priority_order);
@@ -208,9 +331,11 @@ export default function SwotPage() {
       if (!user) return;
 
       // Use active business from context when viewing as coach
-      const businessId = viewerContext.isViewingAsCoach && activeBusiness?.ownerId
-        ? activeBusiness.ownerId
-        : user.id;
+      // Try ownerId first, fallback to business id
+      let businessId = user.id;
+      if (viewerContext.isViewingAsCoach && activeBusiness) {
+        businessId = activeBusiness.ownerId || activeBusiness.id;
+      }
 
       // Get previous 4 quarters' SWOT analyses
       const { data: historicalAnalyses, error } = await supabase
@@ -305,13 +430,22 @@ export default function SwotPage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
+        // Use the correct businessId - same logic as loadSwotAnalysis
+        const businessId = viewerContext.isViewingAsCoach && activeBusiness?.ownerId
+          ? activeBusiness.ownerId
+          : user.id;
+
+        console.log('[SWOT] Loading year type for businessId:', businessId);
+
         const { data: goals } = await supabase
           .from('business_financial_goals')
           .select('year_type')
-          .eq('business_id', user.id)
+          .eq('business_id', businessId)
           .order('created_at', { ascending: false })
           .limit(1)
           .single();
+
+        console.log('[SWOT] Year type result:', goals?.year_type || 'none (defaulting to FY)');
 
         if (goals?.year_type) {
           const loadedYearType = goals.year_type as YearType;
@@ -320,14 +454,14 @@ export default function SwotPage() {
         }
       } catch (err) {
         // No goals found or error - default to FY
-        console.log('Using default FY year type');
+        console.log('[SWOT] Using default FY year type');
       } finally {
         setYearTypeLoaded(true);
       }
     };
 
     loadYearType();
-  }, [supabase]);
+  }, [supabase, viewerContext.isViewingAsCoach, activeBusiness?.ownerId]);
 
   // Load data on component mount and quarter change (after yearType is loaded)
   useEffect(() => {
