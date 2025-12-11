@@ -64,6 +64,65 @@ export default function SwotPage() {
     return false;
   });
 
+  // Helper function to find the effective user ID for SWOT data
+  // SWOT data is stored with user_id as business_id, not the businesses table ID
+  const findEffectiveUserId = async (businessIdFromContext: string): Promise<string | null> => {
+    console.log('[SWOT] Finding effective user ID for business:', businessIdFromContext);
+
+    // Method 1: Check if owner_id is set on the business
+    const { data: businessData } = await supabase
+      .from('businesses')
+      .select('owner_id, name')
+      .eq('id', businessIdFromContext)
+      .single();
+
+    if (businessData?.owner_id) {
+      console.log('[SWOT] Found owner_id from businesses table:', businessData.owner_id);
+      return businessData.owner_id;
+    }
+
+    // Method 2: Check business_profiles table
+    const { data: profileData } = await supabase
+      .from('business_profiles')
+      .select('user_id')
+      .eq('id', businessIdFromContext)
+      .single();
+
+    if (profileData?.user_id) {
+      console.log('[SWOT] Found user_id from business_profiles:', profileData.user_id);
+      return profileData.user_id;
+    }
+
+    // Method 3: Check business_users table for linked users
+    const { data: businessUsers } = await supabase
+      .from('business_users')
+      .select('user_id, role')
+      .eq('business_id', businessIdFromContext)
+      .order('created_at', { ascending: true })
+      .limit(1);
+
+    if (businessUsers && businessUsers.length > 0) {
+      console.log('[SWOT] Found user_id from business_users:', businessUsers[0].user_id);
+      return businessUsers[0].user_id;
+    }
+
+    // Method 4: Check if there's SWOT data directly with the business ID
+    // (in case the data was stored with business ID instead of user ID)
+    const { data: directSwotData } = await supabase
+      .from('swot_analyses')
+      .select('id, business_id')
+      .eq('business_id', businessIdFromContext)
+      .limit(1);
+
+    if (directSwotData && directSwotData.length > 0) {
+      console.log('[SWOT] Found SWOT data directly with business ID:', businessIdFromContext);
+      return businessIdFromContext;
+    }
+
+    console.log('[SWOT] Could not find effective user ID, returning null');
+    return null;
+  };
+
   // Get or create SWOT analysis for the selected quarter
   const loadSwotAnalysis = useCallback(async () => {
     try {
@@ -77,20 +136,33 @@ export default function SwotPage() {
         return;
       }
 
-      // Use active business from context when viewing as coach or admin
-      // Try multiple IDs to find the SWOT data:
-      // 1. activeBusiness.ownerId (client's user ID)
-      // 2. activeBusiness.id (business ID)
-      // 3. user.id (current user's ID - fallback for direct access)
+      // Determine the correct businessId for SWOT queries
+      // SWOT data is stored with user_id as business_id, so we need to find the right user ID
       let businessId = user.id;
 
       // Check if we're viewing someone else's business (coach, admin, or any viewer)
-      // Use activeBusiness if it exists and belongs to someone else
-      if (activeBusiness && activeBusiness.ownerId && activeBusiness.ownerId !== user.id) {
-        businessId = activeBusiness.ownerId;
-      } else if (viewerContext.isViewingAsCoach && activeBusiness) {
-        // Fallback for coach view without ownerId
-        businessId = activeBusiness.ownerId || activeBusiness.id;
+      const isViewingOtherBusiness = activeBusiness && activeBusiness.id &&
+        (viewerContext.isViewingAsCoach || viewerContext.role === 'admin' || activeBusiness.ownerId !== user.id);
+
+      if (isViewingOtherBusiness) {
+        console.log('[SWOT] Viewing other business, attempting to find effective user ID...');
+
+        // First try the ownerId if available
+        if (activeBusiness.ownerId && activeBusiness.ownerId !== user.id) {
+          businessId = activeBusiness.ownerId;
+          console.log('[SWOT] Using activeBusiness.ownerId:', businessId);
+        } else {
+          // Need to look up the effective user ID from the business
+          const effectiveUserId = await findEffectiveUserId(activeBusiness.id);
+          if (effectiveUserId) {
+            businessId = effectiveUserId;
+            console.log('[SWOT] Using looked up effective user ID:', businessId);
+          } else {
+            // Final fallback: try the business ID directly
+            businessId = activeBusiness.id;
+            console.log('[SWOT] Fallback to activeBusiness.id:', businessId);
+          }
+        }
       }
 
       console.log('[SWOT] Loading analysis with:', {
@@ -101,7 +173,8 @@ export default function SwotPage() {
         isViewingAsCoach: viewerContext.isViewingAsCoach,
         viewerRole: viewerContext.role,
         activeBusinessId: activeBusiness?.id,
-        activeBusinessOwnerId: activeBusiness?.ownerId
+        activeBusinessOwnerId: activeBusiness?.ownerId,
+        isViewingOtherBusiness
       });
 
       // First, let's check ALL SWOT analyses for this business to debug
@@ -278,7 +351,7 @@ export default function SwotPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentQuarter, supabase, activeBusiness?.ownerId, viewerContext.isViewingAsCoach]);
+  }, [currentQuarter, supabase, activeBusiness?.ownerId, activeBusiness?.id, viewerContext.isViewingAsCoach, viewerContext.role]);
 
   // Organize items into grid categories
   const organizeSwotItems = (items: SwotItem[]) => {
@@ -337,12 +410,22 @@ export default function SwotPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Use active business from context when viewing as coach or admin
+      // Use the same robust business ID lookup logic as loadSwotAnalysis
       let businessId = user.id;
-      if (activeBusiness && activeBusiness.ownerId && activeBusiness.ownerId !== user.id) {
-        businessId = activeBusiness.ownerId;
-      } else if (viewerContext.isViewingAsCoach && activeBusiness) {
-        businessId = activeBusiness.ownerId || activeBusiness.id;
+      const isViewingOtherBusiness = activeBusiness && activeBusiness.id &&
+        (viewerContext.isViewingAsCoach || viewerContext.role === 'admin' || activeBusiness.ownerId !== user.id);
+
+      if (isViewingOtherBusiness) {
+        if (activeBusiness.ownerId && activeBusiness.ownerId !== user.id) {
+          businessId = activeBusiness.ownerId;
+        } else {
+          const effectiveUserId = await findEffectiveUserId(activeBusiness.id);
+          if (effectiveUserId) {
+            businessId = effectiveUserId;
+          } else {
+            businessId = activeBusiness.id;
+          }
+        }
       }
 
       // Get previous 4 quarters' SWOT analyses
@@ -388,7 +471,7 @@ export default function SwotPage() {
     } catch (err) {
       console.error('Error loading historical data:', err);
     }
-  }, [currentQuarter, supabase, swotItems, activeBusiness?.ownerId, viewerContext.isViewingAsCoach]);
+  }, [currentQuarter, supabase, swotItems, activeBusiness?.ownerId, activeBusiness?.id, viewerContext.isViewingAsCoach, viewerContext.role]);
 
   // Detect recurring items by comparing titles (simple string matching for MVP)
   const detectRecurringItems = (currentItems: SwotGridData, historicalItems: SwotItem[]) => {
@@ -438,10 +521,24 @@ export default function SwotPage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        // Use the correct businessId - same logic as loadSwotAnalysis
-        const businessId = viewerContext.isViewingAsCoach && activeBusiness?.ownerId
-          ? activeBusiness.ownerId
-          : user.id;
+        // Use the same robust business ID lookup logic
+        let businessId = user.id;
+        const isViewingOtherBusiness = activeBusiness && activeBusiness.id &&
+          (viewerContext.isViewingAsCoach || viewerContext.role === 'admin' || activeBusiness.ownerId !== user.id);
+
+        if (isViewingOtherBusiness) {
+          if (activeBusiness.ownerId && activeBusiness.ownerId !== user.id) {
+            businessId = activeBusiness.ownerId;
+          } else {
+            // Look up effective user ID
+            const effectiveUserId = await findEffectiveUserId(activeBusiness.id);
+            if (effectiveUserId) {
+              businessId = effectiveUserId;
+            } else {
+              businessId = activeBusiness.id;
+            }
+          }
+        }
 
         console.log('[SWOT] Loading year type for businessId:', businessId);
 
@@ -469,7 +566,7 @@ export default function SwotPage() {
     };
 
     loadYearType();
-  }, [supabase, viewerContext.isViewingAsCoach, activeBusiness?.ownerId]);
+  }, [supabase, viewerContext.isViewingAsCoach, viewerContext.role, activeBusiness?.ownerId, activeBusiness?.id]);
 
   // Load data on component mount and quarter change (after yearType is loaded)
   useEffect(() => {
