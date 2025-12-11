@@ -66,57 +66,119 @@ export default function SwotPage() {
 
   // Helper function to find the effective user ID for SWOT data
   // SWOT data is stored with user_id as business_id, not the businesses table ID
+  // Uses multiple sources to find the correct user ID (same approach as coach client page)
   const findEffectiveUserId = async (businessIdFromContext: string): Promise<string | null> => {
     console.log('[SWOT] Finding effective user ID for business:', businessIdFromContext);
+    const possibleUserIds: string[] = [];
 
-    // Method 1: Check if owner_id is set on the business
+    // Source 1: Check if owner_id is set on the business
     const { data: businessData } = await supabase
       .from('businesses')
-      .select('owner_id, name')
+      .select('owner_id, name, owner_email')
       .eq('id', businessIdFromContext)
       .single();
 
     if (businessData?.owner_id) {
-      console.log('[SWOT] Found owner_id from businesses table:', businessData.owner_id);
-      return businessData.owner_id;
+      possibleUserIds.push(businessData.owner_id);
+      console.log('[SWOT] Source 1 - Found owner_id from businesses table:', businessData.owner_id);
     }
 
-    // Method 2: Check business_profiles table
-    const { data: profileData } = await supabase
-      .from('business_profiles')
-      .select('user_id')
-      .eq('id', businessIdFromContext)
-      .single();
+    // Source 2: Check business_profiles table by business_id
+    try {
+      const { data: profileByBusinessId } = await supabase
+        .from('business_profiles')
+        .select('user_id')
+        .eq('business_id', businessIdFromContext)
+        .maybeSingle();
 
-    if (profileData?.user_id) {
-      console.log('[SWOT] Found user_id from business_profiles:', profileData.user_id);
-      return profileData.user_id;
+      if (profileByBusinessId?.user_id && !possibleUserIds.includes(profileByBusinessId.user_id)) {
+        possibleUserIds.push(profileByBusinessId.user_id);
+        console.log('[SWOT] Source 2 - Found user_id from business_profiles by business_id:', profileByBusinessId.user_id);
+      }
+    } catch (e) {
+      console.log('[SWOT] Could not query business_profiles by business_id');
     }
 
-    // Method 3: Check business_users table for linked users
-    const { data: businessUsers } = await supabase
-      .from('business_users')
-      .select('user_id, role')
-      .eq('business_id', businessIdFromContext)
-      .order('created_at', { ascending: true })
-      .limit(1);
+    // Source 3: Check business_users table for linked users
+    try {
+      const { data: businessUsers } = await supabase
+        .from('business_users')
+        .select('user_id')
+        .eq('business_id', businessIdFromContext);
 
-    if (businessUsers && businessUsers.length > 0) {
-      console.log('[SWOT] Found user_id from business_users:', businessUsers[0].user_id);
-      return businessUsers[0].user_id;
+      if (businessUsers && businessUsers.length > 0) {
+        businessUsers.forEach((bu: any) => {
+          if (bu.user_id && !possibleUserIds.includes(bu.user_id)) {
+            possibleUserIds.push(bu.user_id);
+            console.log('[SWOT] Source 3 - Found user_id from business_users:', bu.user_id);
+          }
+        });
+      }
+    } catch (e) {
+      console.log('[SWOT] Could not query business_users');
     }
 
-    // Method 4: Check if there's SWOT data directly with the business ID
+    // Source 4: Look up user by owner_email from the users table
+    if (businessData?.owner_email) {
+      try {
+        const { data: userByEmail } = await supabase
+          .from('users')
+          .select('id')
+          .eq('email', businessData.owner_email)
+          .maybeSingle();
+
+        if (userByEmail?.id && !possibleUserIds.includes(userByEmail.id)) {
+          possibleUserIds.push(userByEmail.id);
+          console.log('[SWOT] Source 4 - Found user_id by owner_email:', businessData.owner_email, '->', userByEmail.id);
+        }
+      } catch (e) {
+        console.log('[SWOT] Could not query users by email');
+      }
+    }
+
+    // Source 5: Look up user by business_name match in business_profiles
+    if (businessData?.name) {
+      try {
+        const { data: profilesByName } = await supabase
+          .from('business_profiles')
+          .select('user_id')
+          .ilike('business_name', businessData.name);
+
+        if (profilesByName && profilesByName.length > 0) {
+          profilesByName.forEach((p: any) => {
+            if (p.user_id && !possibleUserIds.includes(p.user_id)) {
+              possibleUserIds.push(p.user_id);
+              console.log('[SWOT] Source 5 - Found user_id by business_name match:', businessData.name, '->', p.user_id);
+            }
+          });
+        }
+      } catch (e) {
+        console.log('[SWOT] Could not query business_profiles by name');
+      }
+    }
+
+    console.log('[SWOT] All possible user IDs found:', possibleUserIds);
+
+    // Return the first user ID found, or check if SWOT data exists with business ID directly
+    if (possibleUserIds.length > 0) {
+      return possibleUserIds[0];
+    }
+
+    // Final fallback: Check if there's SWOT data directly with the business ID
     // (in case the data was stored with business ID instead of user ID)
-    const { data: directSwotData } = await supabase
-      .from('swot_analyses')
-      .select('id, business_id')
-      .eq('business_id', businessIdFromContext)
-      .limit(1);
+    try {
+      const { data: directSwotData } = await supabase
+        .from('swot_analyses')
+        .select('id, business_id')
+        .eq('business_id', businessIdFromContext)
+        .limit(1);
 
-    if (directSwotData && directSwotData.length > 0) {
-      console.log('[SWOT] Found SWOT data directly with business ID:', businessIdFromContext);
-      return businessIdFromContext;
+      if (directSwotData && directSwotData.length > 0) {
+        console.log('[SWOT] Fallback - Found SWOT data directly with business ID:', businessIdFromContext);
+        return businessIdFromContext;
+      }
+    } catch (e) {
+      console.log('[SWOT] Could not query swot_analyses directly');
     }
 
     console.log('[SWOT] Could not find effective user ID, returning null');
