@@ -2725,7 +2725,7 @@ function OperationalPlanTab({
 
   const addActivity = (functionId: string) => {
     const newActivity: OperationalActivity = {
-      id: `activity-${Date.now()}`,
+      id: crypto.randomUUID(),
       function: functionId,
       description: '',
       assignedTo: undefined

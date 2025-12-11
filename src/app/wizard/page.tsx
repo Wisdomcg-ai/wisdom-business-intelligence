@@ -82,7 +82,7 @@ export default function WizardPage() {
 
     // Create new activity
     const newActivity: WizardActivity = {
-      id: `activity-${Date.now()}`,
+      id: crypto.randomUUID(),
       name: formInput.activityName,
       swimlane: formInput.swimlane,
       type: formInput.activityType,
@@ -94,7 +94,7 @@ export default function WizardPage() {
     if (wizard.activities.length > 0) {
       const lastActivity = wizard.activities[wizard.activities.length - 1];
       const newFlow: WizardFlow = {
-        id: `flow-${Date.now()}`,
+        id: crypto.randomUUID(),
         fromId: lastActivity.id,
         toId: newActivity.id,
       };
