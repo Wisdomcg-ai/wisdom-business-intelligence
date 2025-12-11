@@ -65,6 +65,19 @@ export class StrategicPlanningService {
         .eq('business_id', businessId)
         .eq('step_type', stepType)
 
+      // CRITICAL SAFEGUARD: Prevent accidental mass deletion
+      // If there's existing data and we're about to delete everything, abort
+      const existingCount = (existingData || []).length
+      if (existingCount > 0 && initiatives.length === 0) {
+        console.warn(`[Strategic Planning] ⚠️ BLOCKED: Attempted to delete all ${existingCount} ${stepType} initiatives. Use explicit delete if intended.`)
+        return { success: true, error: undefined } // Return success but don't delete - silent protection
+      }
+
+      // SAFEGUARD: Warn if deleting most items (more than 50% reduction)
+      if (existingCount > 2 && initiatives.length < existingCount / 2) {
+        console.warn(`[Strategic Planning] ⚠️ WARNING: Significant reduction in ${stepType}: ${existingCount} → ${initiatives.length} items`)
+      }
+
       // Helper to validate UUID format
       const isValidUUID = (id: string): boolean => {
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -175,19 +188,8 @@ export class StrategicPlanningService {
         }
       }
 
-      // Handle case where all initiatives are removed
-      if (initiatives.length === 0 && existingIds.size > 0) {
-        const { error: deleteError } = await this.supabase
-          .from('strategic_initiatives')
-          .delete()
-          .eq('business_id', businessId)
-          .eq('step_type', stepType)
-
-        if (deleteError) {
-          console.error('[Strategic Planning] ❌ Error clearing initiatives:', deleteError)
-          return { success: false, error: `Failed to clear initiatives: ${deleteError.message}` }
-        }
-      }
+      // NOTE: "Delete all" case is now protected by safeguard at start of function
+      // If user truly wants to delete all items, they should delete them individually
 
       console.log(`[Strategic Planning] ✅ Successfully saved initiatives for ${stepType}`)
       return { success: true, insertedIds: insertedIds.length > 0 ? insertedIds : undefined }
@@ -275,6 +277,13 @@ export class StrategicPlanningService {
         .select('id')
         .eq('business_id', businessId)
 
+      // CRITICAL SAFEGUARD: Prevent accidental mass deletion
+      const existingCount = (existingData || []).length
+      if (existingCount > 0 && actions.length === 0) {
+        console.warn(`[Strategic Planning] ⚠️ BLOCKED: Attempted to delete all ${existingCount} sprint actions. Use explicit delete if intended.`)
+        return { success: true } // Return success but don't delete - silent protection
+      }
+
       const existingIds = new Set((existingData || []).map(item => item.id))
       const newIds = new Set(actions.filter(action => action.id).map(action => action.id))
 
@@ -318,18 +327,7 @@ export class StrategicPlanningService {
         }
       }
 
-      // Handle case where all actions are removed
-      if (actions.length === 0 && existingIds.size > 0) {
-        const { error: deleteError } = await this.supabase
-          .from('sprint_key_actions')
-          .delete()
-          .eq('business_id', businessId)
-
-        if (deleteError) {
-          console.error('[Strategic Planning] ❌ Error clearing actions:', deleteError)
-          return { success: false, error: `Failed to clear actions: ${deleteError.message}` }
-        }
-      }
+      // NOTE: "Delete all" case is now protected by safeguard at start of function
 
       console.log('[Strategic Planning] ✅ Successfully saved sprint actions')
       return { success: true }
