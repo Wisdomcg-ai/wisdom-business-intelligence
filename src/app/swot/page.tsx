@@ -382,7 +382,7 @@ export default function SwotPage() {
           title,
           description,
           impact_level: 3,
-          likelihood: category === 'opportunity' || category === 'threat' ? 3 : null,
+          likelihood: 3, // Now applies to ALL quadrants as "Actionability"
           priority_order: swotItems[categoryKey].length,
           status: 'active',
           created_by: user.id

@@ -57,14 +57,10 @@ export function SwotItem({
         title: editTitle.trim(),
         description: editDescription.trim() || undefined,
         impact_level: editImpact as 1 | 2 | 3 | 4 | 5,
+        likelihood: editLikelihood as 1 | 2 | 3 | 4 | 5, // Now applies to ALL quadrants (actionability)
         tags: editTags ? editTags.split(',').map(tag => tag.trim()).filter(Boolean) : []
       };
-      
-      // Include likelihood for opportunities and threats
-      if (item.category === 'opportunity' || item.category === 'threat') {
-        updates.likelihood = editLikelihood as 1 | 2 | 3 | 4 | 5;
-      }
-      
+
       onUpdate(updates);
       setIsEditing(false);
     }
@@ -87,49 +83,62 @@ export function SwotItem({
     }
   };
   
-  // Get impact/likelihood label
+  // Get impact label - plain English for SME owners
   const getImpactLabel = (level: number): string => {
-    const labels = ['Very Low', 'Low', 'Medium', 'High', 'Very High'];
+    const labels = ['Tiny', 'Small', 'Medium', 'Large', 'Huge'];
     return labels[level - 1] || 'Medium';
   };
-  
-  // Get impact/likelihood color
-  const getImpactColor = (level: number): string => {
-    if (level <= 2) return 'text-green-600 bg-green-100';
-    if (level === 3) return 'text-yellow-600 bg-yellow-100';
-    return 'text-red-600 bg-red-100';
+
+  // Get actionability label - plain English for SME owners
+  const getActionabilityLabel = (level: number): string => {
+    const labels = ['Very Hard', 'Hard', 'Moderate', 'Easy', 'Very Easy'];
+    return labels[level - 1] || 'Moderate';
   };
 
-  // Get border color based on priority
-  const getPriorityBorderColor = (): string => {
-    const priorityScore = getPriorityScore();
-    if (priorityScore) {
-      // For opportunities and threats with priority score
-      if (priorityScore >= 16) return 'border-l-4 border-l-red-500'; // Critical
-      if (priorityScore >= 9) return 'border-l-4 border-l-brand-orange'; // High
-      if (priorityScore >= 6) return 'border-l-4 border-l-yellow-500'; // Medium
-      return 'border-l-4 border-l-green-500'; // Low
+  // Get sentiment-based color for impact/actionability badges
+  // For Strengths/Opportunities: high = green (good!)
+  // For Weaknesses/Threats: high = red (bad!)
+  const getSentimentColor = (level: number, isPositiveQuadrant: boolean): string => {
+    if (isPositiveQuadrant) {
+      // Strengths & Opportunities: high is good
+      if (level >= 4) return 'text-green-700 bg-green-100';
+      if (level === 3) return 'text-yellow-700 bg-yellow-100';
+      return 'text-gray-600 bg-gray-100';
     } else {
-      // For strengths and weaknesses (just impact)
-      if (item.impact_level >= 4) return 'border-l-4 border-l-red-500'; // High impact
-      if (item.impact_level === 3) return 'border-l-4 border-l-yellow-500'; // Medium impact
-      return 'border-l-4 border-l-green-500'; // Low impact
+      // Weaknesses & Threats: high is bad
+      if (level >= 4) return 'text-red-700 bg-red-100';
+      if (level === 3) return 'text-yellow-700 bg-yellow-100';
+      return 'text-gray-600 bg-gray-100';
     }
   };
 
-  // Get context-appropriate label for likelihood
-  const getLikelihoodLabel = (): string => {
-    if (item.category === 'threat') return 'Urgency';
-    if (item.category === 'opportunity') return 'Probability';
-    return 'Likelihood';
-  };
-  
-  // Calculate priority score (for opportunities and threats)
-  const getPriorityScore = (): number | null => {
-    if (item.category === 'opportunity' || item.category === 'threat') {
-      return item.impact_level * (item.likelihood || 3);
+  // Check if this is a positive quadrant (strength/opportunity)
+  const isPositiveQuadrant = item.category === 'strength' || item.category === 'opportunity';
+
+  // Get border color based on sentiment (category) and score intensity
+  const getSentimentBorderColor = (): string => {
+    const focusScore = getFocusScore();
+    const intensity = focusScore >= 16 ? '500' : focusScore >= 9 ? '400' : focusScore >= 6 ? '300' : '200';
+
+    if (isPositiveQuadrant) {
+      return `border-l-4 border-l-green-${intensity}`;
+    } else {
+      return `border-l-4 border-l-red-${intensity}`;
     }
-    return null;
+  };
+
+  // Calculate Focus Score (Impact × Actionability) - applies to ALL quadrants now
+  const getFocusScore = (): number => {
+    return item.impact_level * (item.likelihood || 3);
+  };
+
+  // Get Focus Score badge style based on urgency
+  const getFocusBadgeStyle = (): { className: string; icon: string } => {
+    const score = getFocusScore();
+    if (score >= 16) return { className: 'bg-brand-orange-100 text-brand-orange-800 border border-brand-orange-300', icon: '🔥' };
+    if (score >= 9) return { className: 'bg-amber-100 text-amber-800 border border-amber-300', icon: '⚡' };
+    if (score >= 6) return { className: 'bg-blue-100 text-blue-800 border border-blue-300', icon: '📌' };
+    return { className: 'bg-gray-100 text-gray-600 border border-gray-300', icon: '📋' };
   };
   
   // Render edit mode
@@ -156,9 +165,9 @@ export function SwotItem({
           rows={2}
         />
         
-        {/* Impact Level */}
+        {/* Impact Level - "How Big?" */}
         <div className="mb-2">
-          <label className="text-xs text-gray-600 font-medium">Impact Level</label>
+          <label className="text-xs text-gray-600 font-medium">How Big? (Impact)</label>
           <div className="flex space-x-1 mt-1">
             {[1, 2, 3, 4, 5].map(level => (
               <button
@@ -166,41 +175,43 @@ export function SwotItem({
                 onClick={() => setEditImpact(level as 1 | 2 | 3 | 4 | 5)}
                 className={`
                   flex-1 py-1 text-xs rounded transition-colors
-                  ${editImpact === level 
-                    ? 'bg-brand-orange text-white' 
+                  ${editImpact === level
+                    ? 'bg-brand-orange text-white'
                     : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                   }
                 `}
+                title={getImpactLabel(level)}
               >
                 {level}
               </button>
             ))}
           </div>
+          <p className="text-[10px] text-gray-500 mt-0.5">1 = Tiny, 5 = Huge</p>
         </div>
-        
-        {/* Likelihood (for opportunities and threats) */}
-        {(item.category === 'opportunity' || item.category === 'threat') && (
-          <div className="mb-2">
-            <label className="text-xs text-gray-600 font-medium">{getLikelihoodLabel()}</label>
-            <div className="flex space-x-1 mt-1">
-              {[1, 2, 3, 4, 5].map(level => (
-                <button
-                  key={level}
-                  onClick={() => setEditLikelihood(level as 1 | 2 | 3 | 4 | 5)}
-                  className={`
-                    flex-1 py-1 text-xs rounded transition-colors
-                    ${editLikelihood === level
-                      ? 'bg-brand-orange text-white'
-                      : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                    }
-                  `}
-                >
-                  {level}
-                </button>
-              ))}
-            </div>
+
+        {/* Actionability - "Can We Act?" - Now applies to ALL quadrants */}
+        <div className="mb-2">
+          <label className="text-xs text-gray-600 font-medium">Can We Act? (Actionability)</label>
+          <div className="flex space-x-1 mt-1">
+            {[1, 2, 3, 4, 5].map(level => (
+              <button
+                key={level}
+                onClick={() => setEditLikelihood(level as 1 | 2 | 3 | 4 | 5)}
+                className={`
+                  flex-1 py-1 text-xs rounded transition-colors
+                  ${editLikelihood === level
+                    ? 'bg-brand-orange text-white'
+                    : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                  }
+                `}
+                title={getActionabilityLabel(level)}
+              >
+                {level}
+              </button>
+            ))}
           </div>
-        )}
+          <p className="text-[10px] text-gray-500 mt-0.5">1 = Out of our control, 5 = Easy to act on</p>
+        </div>
         
         {/* Tags */}
         <input
@@ -231,6 +242,8 @@ export function SwotItem({
   }
   
   // Render view mode
+  const focusBadge = getFocusBadgeStyle();
+
   return (
     <div
       className={`
@@ -238,7 +251,7 @@ export function SwotItem({
         ${bgColor} ${color}
         ${!isReadOnly ? 'hover:shadow-sm cursor-pointer' : ''}
         ${item.status === 'carried-forward' ? 'border-dashed' : 'border-solid'}
-        ${getPriorityBorderColor()}
+        ${getSentimentBorderColor()}
       `}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
@@ -268,7 +281,7 @@ export function SwotItem({
               )}
             </div>
           </div>
-          
+
           {/* Expanded content */}
           {isExpanded && (
             <div className="mt-2 ml-4 space-y-2">
@@ -276,28 +289,24 @@ export function SwotItem({
               {item.description && (
                 <p className="text-xs text-gray-600">{item.description}</p>
               )}
-              
+
               {/* Metadata */}
               <div className="flex flex-wrap gap-2">
-                {/* Impact */}
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getImpactColor(item.impact_level)}`}>
-                  Impact: {getImpactLabel(item.impact_level)}
+                {/* Impact - sentiment-aware colors */}
+                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getSentimentColor(item.impact_level, isPositiveQuadrant)}`}>
+                  How Big: {getImpactLabel(item.impact_level)}
                 </span>
-                
-                {/* Likelihood */}
-                {item.likelihood && (
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getImpactColor(item.likelihood)}`}>
-                    {getLikelihoodLabel()}: {getImpactLabel(item.likelihood)}
-                  </span>
-                )}
-                
-                {/* Priority Score */}
-                {getPriorityScore() && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-brand-navy-100 text-brand-navy-700">
-                    Score: {getPriorityScore()}
-                  </span>
-                )}
-                
+
+                {/* Actionability - neutral colors (always shows now) */}
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                  Can Act: {getActionabilityLabel(item.likelihood || 3)}
+                </span>
+
+                {/* Focus Score with icon */}
+                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${focusBadge.className}`}>
+                  {focusBadge.icon} Focus: {getFocusScore()}
+                </span>
+
                 {/* Status */}
                 {item.status === 'carried-forward' && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-brand-orange-100 text-brand-orange-700">
@@ -305,7 +314,7 @@ export function SwotItem({
                   </span>
                 )}
               </div>
-              
+
               {/* Tags */}
               {item.tags && item.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
@@ -323,7 +332,7 @@ export function SwotItem({
             </div>
           )}
         </div>
-        
+
         {/* Actions */}
         {!isReadOnly && showActions && (
           <div className="flex items-center space-x-1 ml-2">
@@ -350,28 +359,24 @@ export function SwotItem({
           </div>
         )}
       </div>
-      
+
       {/* Quick stats (always visible) */}
       {!isExpanded && (
-        <div className="flex items-center mt-2 ml-4 space-x-2 flex-wrap">
-          {/* Impact Badge */}
-          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getImpactColor(item.impact_level)}`}>
-            Impact: {getImpactLabel(item.impact_level)}
+        <div className="flex items-center mt-2 ml-4 space-x-2 flex-wrap gap-y-1">
+          {/* Impact Badge - sentiment-aware */}
+          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getSentimentColor(item.impact_level, isPositiveQuadrant)}`}>
+            {getImpactLabel(item.impact_level)}
           </span>
 
-          {/* Likelihood/Urgency Badge for Opportunities and Threats */}
-          {item.likelihood && (item.category === 'opportunity' || item.category === 'threat') && (
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getImpactColor(item.likelihood)}`}>
-              {getLikelihoodLabel()}: {getImpactLabel(item.likelihood)}
-            </span>
-          )}
+          {/* Actionability Badge - now shows for all quadrants */}
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+            {getActionabilityLabel(item.likelihood || 3)}
+          </span>
 
-          {/* Priority Score */}
-          {getPriorityScore() && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-brand-navy-100 text-brand-navy-700">
-              Priority: {getPriorityScore()}
-            </span>
-          )}
+          {/* Focus Score with icon */}
+          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${focusBadge.className}`}>
+            {focusBadge.icon} {getFocusScore()}
+          </span>
 
           {/* Tags indicator */}
           {item.tags && item.tags.length > 0 && (
