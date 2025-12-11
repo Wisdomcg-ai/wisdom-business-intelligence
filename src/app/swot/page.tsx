@@ -15,7 +15,7 @@ import {
 import { SwotGrid } from '@/components/swot/SwotGrid';
 import { QuarterSelector } from '@/components/swot/QuarterSelector';
 import { createBrowserClient } from '@supabase/ssr';
-import { CheckCircle, AlertCircle, Download, History, TrendingUp, Target } from 'lucide-react';
+import { CheckCircle, AlertCircle, Download, History, TrendingUp, Target, HelpCircle, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import PageHeader from '@/components/ui/PageHeader';
 import type { SaveStatus } from '@/hooks/useAutoSave';
@@ -47,6 +47,14 @@ export default function SwotPage() {
   const [autoSaveEnabled] = useState(true);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [showTrends, setShowTrends] = useState(false);
+  const [showScoringKey, setShowScoringKey] = useState(() => {
+    // Default to showing on first visit, remember preference
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('swot-scoring-key-visible');
+      return saved === null ? true : saved === 'true';
+    }
+    return true;
+  });
 
   // Get or create SWOT analysis for the selected quarter
   const loadSwotAnalysis = useCallback(async () => {
@@ -532,6 +540,15 @@ export default function SwotPage() {
     // Implementation would use the SwotExport component
   };
 
+  // Toggle scoring key sidebar
+  const toggleScoringKey = () => {
+    const newValue = !showScoringKey;
+    setShowScoringKey(newValue);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('swot-scoring-key-visible', String(newValue));
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -591,19 +608,22 @@ export default function SwotPage() {
           }
         />
 
-      {/* Page Container */}
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Error Alert */}
-        {error && (
-          <div className="rounded-xl shadow-sm border border-red-200 bg-red-50 p-4 sm:p-5 mb-6">
-            <div className="flex">
-              <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
-              <div className="ml-3">
-                <p className="text-sm text-red-800">{error}</p>
+      {/* Page Container - Wider layout with optional sidebar */}
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <div className="flex gap-6">
+          {/* Main Content Area */}
+          <div className="flex-1 min-w-0">
+            {/* Error Alert */}
+            {error && (
+              <div className="rounded-xl shadow-sm border border-red-200 bg-red-50 p-4 sm:p-5 mb-6">
+                <div className="flex">
+                  <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+                  <div className="ml-3">
+                    <p className="text-sm text-red-800">{error}</p>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
         {/* Trends Section */}
         {recurringItems.size > 0 && (
@@ -771,6 +791,107 @@ export default function SwotPage() {
             </div>
           </div>
         )}
+          </div>
+
+          {/* Scoring Key Sidebar */}
+          <div className={`hidden lg:block transition-all duration-300 ${showScoringKey ? 'w-72' : 'w-10'}`}>
+            <div className="sticky top-24">
+              {/* Toggle Button */}
+              <button
+                onClick={toggleScoringKey}
+                className="absolute -left-3 top-4 z-10 bg-white border border-gray-200 rounded-full p-1.5 shadow-sm hover:bg-gray-50 transition-colors"
+                title={showScoringKey ? 'Hide scoring key' : 'Show scoring key'}
+              >
+                {showScoringKey ? (
+                  <ChevronRight className="h-4 w-4 text-gray-500" />
+                ) : (
+                  <ChevronLeft className="h-4 w-4 text-gray-500" />
+                )}
+              </button>
+
+              {/* Sidebar Content */}
+              {showScoringKey && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-4">
+                  <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
+                    <HelpCircle className="h-5 w-5 text-brand-orange" />
+                    <h3 className="font-semibold text-gray-900">Scoring Key</h3>
+                  </div>
+
+                  {/* Impact Scale */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">How Big? (Impact)</h4>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between"><span className="text-gray-600">1</span><span>Tiny</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">2</span><span>Small</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">3</span><span>Medium</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">4</span><span>Large</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">5</span><span>Huge</span></div>
+                    </div>
+                  </div>
+
+                  {/* Actionability Scale */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Can We Act? (Actionability)</h4>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between"><span className="text-gray-600">1</span><span>Very Hard</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">2</span><span>Hard</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">3</span><span>Moderate</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">4</span><span>Easy</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">5</span><span>Very Easy</span></div>
+                    </div>
+                  </div>
+
+                  {/* Focus Score */}
+                  <div className="pt-2 border-t border-gray-100">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Focus Score</h4>
+                    <p className="text-xs text-gray-600 mb-2">Impact × Actionability</p>
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-brand-orange-100 text-brand-orange-800 border border-brand-orange-300">🔥 16+</span>
+                        <span className="text-gray-600">Top Priority</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">⚡ 9-15</span>
+                        <span className="text-gray-600">High Priority</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">📌 6-8</span>
+                        <span className="text-gray-600">Medium</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-300">📋 1-5</span>
+                        <span className="text-gray-600">Low Priority</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Color Meaning */}
+                  <div className="pt-2 border-t border-gray-100">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Border Colors</h4>
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-l-4 border-l-green-500 bg-gray-50 rounded-sm"></div>
+                        <span className="text-gray-600">Strength/Opportunity</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-l-4 border-l-red-500 bg-gray-50 rounded-sm"></div>
+                        <span className="text-gray-600">Weakness/Threat</span>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-gray-500 mt-2">Darker border = higher Focus Score</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Collapsed state indicator */}
+              {!showScoringKey && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2 ml-2">
+                  <HelpCircle className="h-5 w-5 text-brand-orange mx-auto" />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
