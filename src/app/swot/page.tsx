@@ -173,7 +173,9 @@ export default function SwotPage() {
     };
 
     items.forEach(item => {
-      if (item.status === 'active' || item.status === 'carried-forward') {
+      // Include items with null/undefined status (backward compatibility), 'active', or 'carried-forward'
+      // Only exclude explicitly 'archived' items
+      if (!item.status || item.status === 'active' || item.status === 'carried-forward') {
         switch (item.category) {
           case 'strength':
             organized.strengths.push(item);
