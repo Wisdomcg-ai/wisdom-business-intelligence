@@ -13,9 +13,10 @@ export interface CoreValue {
 export const VALIDATION = {
   VISION_MAX_CHARS: 500,
   MISSION_MAX_CHARS: 500,
-  VALUE_MAX_CHARS: 50,
+  VALUE_MAX_CHARS: 200, // Increased to allow "Value - We statement" format
   MIN_VALUES: 3,
-  MAX_VALUES: 8,
+  MAX_VALUES: 20, // Increased from 8 to allow more values
+  DEFAULT_VALUES: 8, // Default number of value slots to show
   VISION_MIN_WORDS: 20,
   VISION_TARGET_WORDS: { min: 30, max: 50 },
   MISSION_MIN_WORDS: 15,

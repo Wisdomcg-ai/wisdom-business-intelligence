@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Save, Lightbulb, Compass, TrendingUp, Star, CheckCircle, AlertCircle, Info, Sparkles, X, Plus } from 'lucide-react';
+import { ArrowLeft, Save, Lightbulb, Compass, TrendingUp, Star, CheckCircle, AlertCircle, Info, Sparkles, X, Plus, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast, { Toaster } from 'react-hot-toast';
 import {
@@ -82,9 +82,42 @@ export default function VisionMissionPage() {
       });
       handleFieldChange();
       toast.success('Value added successfully');
+    } else if (currentValues.length < VALIDATION.MAX_VALUES) {
+      // No empty slot, but we can add more - add a new slot with the value
+      const newValue = weStatement ? `${valueName} - ${weStatement}` : valueName;
+      updateFormData(prev => ({
+        ...prev,
+        core_values: [...prev.core_values, newValue]
+      }));
+      handleFieldChange();
+      toast.success('Value added successfully');
     } else {
-      toast.error('All value slots are filled. Remove a value first.');
+      toast.error(`Maximum ${VALIDATION.MAX_VALUES} values allowed. Remove a value first.`);
     }
+  };
+
+  const addEmptyValueSlot = () => {
+    const currentValues = formDataRef.current?.core_values || formData.core_values;
+    if (currentValues.length >= VALIDATION.MAX_VALUES) {
+      toast.error(`Maximum ${VALIDATION.MAX_VALUES} values allowed`);
+      return;
+    }
+    updateFormData(prev => ({
+      ...prev,
+      core_values: [...prev.core_values, '']
+    }));
+  };
+
+  const removeValueSlot = (index: number) => {
+    updateFormData(prev => {
+      const newValues = prev.core_values.filter((_, i) => i !== index);
+      // Ensure we always have at least DEFAULT_VALUES slots
+      while (newValues.length < VALIDATION.DEFAULT_VALUES) {
+        newValues.push('');
+      }
+      return { ...prev, core_values: newValues };
+    });
+    handleFieldChange();
   };
 
   const addCustomValue = () => {
@@ -163,11 +196,12 @@ export default function VisionMissionPage() {
       if (existingData?.vision_mission) {
         const vmData = existingData.vision_mission as VisionMissionData;
         const values = [...(vmData.core_values || [])];
-        while (values.length < VALIDATION.MAX_VALUES) values.push('');
+        // Ensure at least DEFAULT_VALUES slots, but preserve any additional values
+        while (values.length < VALIDATION.DEFAULT_VALUES) values.push('');
 
         setFormData({
           ...vmData,
-          core_values: values.slice(0, VALIDATION.MAX_VALUES)
+          core_values: values
         });
         lastSavedDataRef.current = JSON.stringify(vmData);
       }
@@ -486,23 +520,47 @@ export default function VisionMissionPage() {
                       value={value}
                       onChange={(e) => handleCoreValueChange(index, e.target.value)}
                       placeholder={index < VALIDATION.MIN_VALUES ? 'Required' : 'Optional'}
-                      className={`w-full px-3 py-2 pr-8 border rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent ${
+                      className={`w-full px-3 py-2 pr-16 border rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent ${
                         index < VALIDATION.MIN_VALUES ? 'border-brand-orange-300 bg-brand-orange-50' : 'border-gray-300'
                       }`}
                     />
-                    {value.trim().length > 0 && (
-                      <button
-                        onClick={() => clearValue(index)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                        aria-label="Clear value"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      {value.trim().length > 0 && (
+                        <button
+                          onClick={() => clearValue(index)}
+                          className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                          aria-label="Clear value"
+                          title="Clear value"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                      {index >= VALIDATION.DEFAULT_VALUES && (
+                        <button
+                          onClick={() => removeValueSlot(index)}
+                          className="p-1 text-red-400 hover:text-red-600 transition-colors"
+                          aria-label="Remove value slot"
+                          title="Remove this slot"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
+
+            {/* Add More Values Button */}
+            {formData.core_values.length < VALIDATION.MAX_VALUES && (
+              <button
+                onClick={addEmptyValueSlot}
+                className="mt-4 w-full sm:w-auto px-4 py-2 border-2 border-dashed border-gray-300 hover:border-brand-orange text-gray-600 hover:text-brand-orange rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add More Values ({formData.core_values.length}/{VALIDATION.MAX_VALUES})
+              </button>
+            )}
 
             <div className="mt-4">
               {filledValuesCount >= VALIDATION.MIN_VALUES && (
