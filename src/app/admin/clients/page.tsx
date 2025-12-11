@@ -35,7 +35,13 @@ import {
   MapPin,
   ChevronRight,
   X,
-  Sparkles
+  Sparkles,
+  Crown,
+  Shield,
+  ShieldCheck,
+  Users,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 
 interface Client {
@@ -61,6 +67,59 @@ interface Coach {
   system_role: string | null
 }
 
+interface TeamMember {
+  id: string
+  user_id: string
+  role: 'owner' | 'admin' | 'member' | 'viewer'
+  status: 'pending' | 'active' | 'inactive'
+  invited_at: string
+  user: {
+    email: string
+    first_name?: string
+    last_name?: string
+  } | null
+}
+
+interface InviteForm {
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+  position: string
+  role: 'owner' | 'admin' | 'member' | 'viewer'
+}
+
+const ROLE_INFO = {
+  owner: {
+    label: 'Owner/Partner',
+    description: 'Full access, can manage team and billing',
+    icon: Crown,
+    color: 'text-amber-600',
+    bgColor: 'bg-amber-50'
+  },
+  admin: {
+    label: 'Admin',
+    description: 'Full access, can manage team members',
+    icon: ShieldCheck,
+    color: 'text-brand-orange',
+    bgColor: 'bg-brand-orange-50'
+  },
+  member: {
+    label: 'Member',
+    description: 'Can view and edit business data',
+    icon: Shield,
+    color: 'text-brand-orange',
+    bgColor: 'bg-brand-orange-50'
+  },
+  viewer: {
+    label: 'Viewer',
+    description: 'Read-only access to business data',
+    icon: Eye,
+    color: 'text-gray-600',
+    bgColor: 'bg-gray-50'
+  }
+}
+
 type FilterType = 'all' | 'active' | 'pending' | 'inactive' | 'unassigned' | 'pending-invite'
 
 function ClientsContent() {
@@ -78,6 +137,21 @@ function ClientsContent() {
   const [deletingClient, setDeletingClient] = useState<string | null>(null)
   const [assigningCoach, setAssigningCoach] = useState<string | null>(null)
   const [creatingDemo, setCreatingDemo] = useState(false)
+
+  // Team management state
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [loadingTeam, setLoadingTeam] = useState(false)
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteForm, setInviteForm] = useState<InviteForm>({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    position: '',
+    role: 'member'
+  })
+  const [inviting, setInviting] = useState(false)
+  const [teamSectionExpanded, setTeamSectionExpanded] = useState(true)
 
   // Read filter from URL
   useEffect(() => {
@@ -224,6 +298,130 @@ function ClientsContent() {
       setCreatingDemo(false)
     }
   }
+
+  // Team management functions
+  async function loadTeamMembers(businessId: string) {
+    setLoadingTeam(true)
+    try {
+      const { data: members, error: membersError } = await supabase
+        .from('business_users')
+        .select('id, user_id, role, status, invited_at')
+        .eq('business_id', businessId)
+        .order('role', { ascending: true })
+        .order('invited_at', { ascending: true })
+
+      if (membersError) {
+        console.error('Error loading team members:', membersError)
+        return
+      }
+
+      if (members && members.length > 0) {
+        const userIds = members.map(m => m.user_id)
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, email, first_name, last_name')
+          .in('id', userIds)
+
+        const membersWithUsers = members.map(m => ({
+          ...m,
+          user: users?.find(u => u.id === m.user_id) || null
+        }))
+
+        setTeamMembers(membersWithUsers as TeamMember[])
+      } else {
+        setTeamMembers([])
+      }
+    } catch (error) {
+      console.error('Error loading team:', error)
+    } finally {
+      setLoadingTeam(false)
+    }
+  }
+
+  async function inviteTeamMember() {
+    if (!inviteForm.email || !inviteForm.firstName || !selectedClient) return
+
+    setInviting(true)
+    try {
+      const response = await fetch('/api/team/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessId: selectedClient.id,
+          firstName: inviteForm.firstName,
+          lastName: inviteForm.lastName,
+          email: inviteForm.email,
+          phone: inviteForm.phone,
+          position: inviteForm.position,
+          role: inviteForm.role,
+          createAccount: true
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to invite team member')
+      }
+
+      toast.success('Team member added!', `${inviteForm.firstName} has been invited to ${selectedClient.business_name}`)
+      setShowInviteModal(false)
+      resetInviteForm()
+      loadTeamMembers(selectedClient.id)
+
+    } catch (error: unknown) {
+      toast.error('Failed to add team member', error instanceof Error ? error.message : 'Please try again')
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  function resetInviteForm() {
+    setInviteForm({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      position: '',
+      role: 'member'
+    })
+  }
+
+  async function removeTeamMember(memberId: string, memberName: string) {
+    if (!confirm(`Are you sure you want to remove ${memberName} from this team?`)) return
+
+    try {
+      const response = await fetch('/api/team/remove-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          memberId,
+          businessId: selectedClient?.id,
+          deleteCompletely: false
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to remove team member')
+      }
+
+      toast.success('Team member removed')
+      setTeamMembers(prev => prev.filter(m => m.id !== memberId))
+    } catch (error) {
+      toast.error('Failed to remove team member', error instanceof Error ? error.message : 'Please try again')
+    }
+  }
+
+  // Load team when client is selected
+  useEffect(() => {
+    if (selectedClient) {
+      loadTeamMembers(selectedClient.id)
+    } else {
+      setTeamMembers([])
+    }
+  }, [selectedClient?.id])
 
   // Filter clients
   const filteredClients = clients.filter(client => {
@@ -595,20 +793,107 @@ function ClientsContent() {
               </SlideOverSection>
             )}
 
-            {/* Team Management */}
-            <SlideOverSection title="Team Management" className="bg-slate-50 border-y border-slate-100">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-brand-navy">Manage Team Members</p>
-                  <p className="text-sm text-gray-500">Add owners, partners, and team members</p>
-                </div>
-                <Link
-                  href={`/coach/clients/${selectedClient.id}?tab=team`}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white font-medium rounded-lg hover:bg-brand-orange-600 shadow-sm transition-colors text-sm"
+            {/* Team Management - Inline */}
+            <SlideOverSection title="">
+              <div className="space-y-4">
+                {/* Header with collapse toggle */}
+                <button
+                  onClick={() => setTeamSectionExpanded(!teamSectionExpanded)}
+                  className="w-full flex items-center justify-between py-2"
                 >
-                  <UserPlus className="w-4 h-4" />
-                  Manage Team
-                </Link>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-brand-orange-100 rounded-lg flex items-center justify-center">
+                      <Users className="w-5 h-5 text-brand-orange" />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-brand-navy">Team Members</p>
+                      <p className="text-sm text-gray-500">
+                        {loadingTeam ? 'Loading...' : `${teamMembers.length} member${teamMembers.length !== 1 ? 's' : ''}`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setShowInviteModal(true)
+                      }}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-orange text-white text-sm font-medium rounded-lg hover:bg-brand-orange-600 transition-colors"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      Add
+                    </button>
+                    {teamSectionExpanded ? (
+                      <ChevronUp className="w-5 h-5 text-gray-400" />
+                    ) : (
+                      <ChevronDown className="w-5 h-5 text-gray-400" />
+                    )}
+                  </div>
+                </button>
+
+                {/* Team Members List */}
+                {teamSectionExpanded && (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    {loadingTeam ? (
+                      <div className="p-6 text-center">
+                        <Loader2 className="w-6 h-6 animate-spin text-brand-orange mx-auto" />
+                      </div>
+                    ) : teamMembers.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <Users className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                        <p className="text-sm text-gray-500">No team members yet</p>
+                        <button
+                          onClick={() => setShowInviteModal(true)}
+                          className="mt-2 text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
+                        >
+                          Add the first team member
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-gray-100">
+                        {teamMembers.map((member) => {
+                          const roleInfo = ROLE_INFO[member.role]
+                          const RoleIcon = roleInfo.icon
+                          const memberName = member.user?.first_name
+                            ? `${member.user.first_name} ${member.user.last_name || ''}`
+                            : member.user?.email?.split('@')[0] || 'Unknown'
+
+                          return (
+                            <div
+                              key={member.id}
+                              className="px-4 py-3 flex items-center justify-between hover:bg-gray-50"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <span className="text-xs font-medium text-gray-600">
+                                    {member.user?.first_name?.[0] || member.user?.email?.[0]?.toUpperCase() || '?'}
+                                  </span>
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 truncate">{memberName}</p>
+                                  <p className="text-xs text-gray-500 truncate">{member.user?.email || 'No email'}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${roleInfo.bgColor}`}>
+                                  <RoleIcon className={`w-3 h-3 ${roleInfo.color}`} />
+                                  <span className={`font-medium ${roleInfo.color}`}>{roleInfo.label}</span>
+                                </div>
+                                <button
+                                  onClick={() => removeTeamMember(member.id, memberName)}
+                                  className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors"
+                                  title="Remove"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </SlideOverSection>
 
@@ -687,6 +972,177 @@ function ClientsContent() {
           </>
         )}
       </SlideOver>
+
+      {/* Add Team Member Modal */}
+      {showInviteModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-50"
+            onClick={() => {
+              setShowInviteModal(false)
+              resetInviteForm()
+            }}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 my-8">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-brand-orange" />
+                  Add Team Member
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowInviteModal(false)
+                    resetInviteForm()
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {selectedClient && (
+                <p className="text-sm text-gray-500 mb-4 -mt-4">
+                  Adding member to <strong>{selectedClient.business_name}</strong>
+                </p>
+              )}
+
+              <div className="space-y-4">
+                {/* Name Row */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      First Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={inviteForm.firstName}
+                      onChange={(e) => setInviteForm({ ...inviteForm, firstName: e.target.value })}
+                      placeholder="John"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Last Name
+                    </label>
+                    <input
+                      type="text"
+                      value={inviteForm.lastName}
+                      onChange={(e) => setInviteForm({ ...inviteForm, lastName: e.target.value })}
+                      placeholder="Smith"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+                    />
+                  </div>
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email Address <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="email"
+                      value={inviteForm.email}
+                      onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                      placeholder="john@company.com"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+                    />
+                  </div>
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="tel"
+                      value={inviteForm.phone}
+                      onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
+                      placeholder="0400 000 000"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+                    />
+                  </div>
+                </div>
+
+                {/* Position */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Position in Company
+                  </label>
+                  <div className="relative">
+                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={inviteForm.position}
+                      onChange={(e) => setInviteForm({ ...inviteForm, position: e.target.value })}
+                      placeholder="Operations Manager"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+                    />
+                  </div>
+                </div>
+
+                {/* Access Level */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Access Level <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={inviteForm.role}
+                    onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value as InviteForm['role'] })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+                  >
+                    <option value="owner">Owner/Partner - Full access, can manage billing</option>
+                    <option value="admin">Admin - Full access, can manage team</option>
+                    <option value="member">Member - Can view and edit data</option>
+                    <option value="viewer">Viewer - Read-only access</option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {inviteForm.role === 'owner' && 'Owners/Partners have full access to all features including billing and team management'}
+                    {inviteForm.role === 'admin' && 'Admins can add/remove team members and access all features'}
+                    {inviteForm.role === 'member' && 'Members can view and edit business data but cannot manage the team'}
+                    {inviteForm.role === 'viewer' && 'Viewers have read-only access to view reports and dashboards'}
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={() => {
+                      setShowInviteModal(false)
+                      resetInviteForm()
+                    }}
+                    className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={inviteTeamMember}
+                    disabled={inviting || !inviteForm.email || !inviteForm.firstName}
+                    className="px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {inviting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-4 h-4" />
+                        Add Member
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
