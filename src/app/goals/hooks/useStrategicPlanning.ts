@@ -530,62 +530,149 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           // But Goals data is stored with business_profiles.id - we need to look it up!
           console.log(`[Strategic Planning] 🔍 Coach view - overrideBusinessId: ${overrideBusinessId}`)
 
-          // Get the owner_id from the businesses table for SWOT queries
+          // COMPREHENSIVE LOOKUP: Try multiple sources to find the correct IDs
+          // This mirrors the approach used in the coach client page and SWOT page
+          const possibleUserIds: string[] = []
+          let foundProfileId: string | null = null
+          let foundIndustry: string | null = null
+
+          // Source 1: Get owner_id and owner_email from the businesses table
           const { data: business, error: businessError } = await supabase
             .from('businesses')
-            .select('owner_id')
+            .select('owner_id, owner_email, name')
             .eq('id', overrideBusinessId)
             .single()
 
-          console.log(`[Strategic Planning] 🔍 Business lookup:`, { owner_id: business?.owner_id, error: businessError?.message })
+          console.log(`[Strategic Planning] 🔍 Source 1 - Business lookup:`, { owner_id: business?.owner_id, owner_email: business?.owner_email, name: business?.name, error: businessError?.message })
 
           if (business?.owner_id) {
+            possibleUserIds.push(business.owner_id)
             ownerUser = business.owner_id
           }
 
-          // CRITICAL: Get business_profiles.id - this is what Goals data uses!
-          // Try lookup by business_id first (preferred)
-          const { data: profile, error: profileError } = await supabase
-            .from('business_profiles')
-            .select('id, industry')
-            .eq('business_id', overrideBusinessId)
-            .single()
-
-          console.log(`[Strategic Planning] 🔍 Profile lookup by business_id:`, { profile_id: profile?.id, industry: profile?.industry, error: profileError?.message })
-
-          if (profile?.id) {
-            bizId = profile.id
-            if (profile.industry) {
-              setIndustry(profile.industry)
-            }
-          } else if (business?.owner_id) {
-            // FALLBACK: Try lookup by user_id (owner_id) if business_id lookup failed
-            // This handles cases where business_profiles.business_id is not set
-            console.log(`[Strategic Planning] 🔄 Trying fallback lookup by user_id: ${business.owner_id}`)
-
-            const { data: profileByUser, error: profileByUserError } = await supabase
+          // Source 2: Check business_profiles by business_id
+          try {
+            const { data: profileByBizId } = await supabase
               .from('business_profiles')
-              .select('id, industry')
-              .eq('user_id', business.owner_id)
-              .single()
+              .select('id, user_id, industry')
+              .eq('business_id', overrideBusinessId)
+              .maybeSingle()
 
-            console.log(`[Strategic Planning] 🔍 Profile lookup by user_id:`, { profile_id: profileByUser?.id, industry: profileByUser?.industry, error: profileByUserError?.message })
-
-            if (profileByUser?.id) {
-              bizId = profileByUser.id
-              if (profileByUser.industry) {
-                setIndustry(profileByUser.industry)
+            if (profileByBizId?.id) {
+              foundProfileId = profileByBizId.id
+              foundIndustry = profileByBizId.industry
+              if (profileByBizId.user_id && !possibleUserIds.includes(profileByBizId.user_id)) {
+                possibleUserIds.push(profileByBizId.user_id)
               }
-              console.log(`[Strategic Planning] ✅ Found profile via user_id fallback: ${bizId}`)
-            } else {
-              // Last resort fallback - this likely means no profile exists at all
-              console.warn(`[Strategic Planning] ⚠️ No business_profiles found by business_id or user_id, using businesses.id as fallback`)
-              bizId = overrideBusinessId
+              console.log(`[Strategic Planning] 🔍 Source 2 - Found profile by business_id:`, { profile_id: profileByBizId.id, user_id: profileByBizId.user_id })
+            }
+          } catch (e) {
+            console.log(`[Strategic Planning] Source 2 lookup failed`)
+          }
+
+          // Source 3: Check business_users table
+          if (!foundProfileId) {
+            try {
+              const { data: businessUsers } = await supabase
+                .from('business_users')
+                .select('user_id')
+                .eq('business_id', overrideBusinessId)
+
+              if (businessUsers && businessUsers.length > 0) {
+                businessUsers.forEach((bu: any) => {
+                  if (bu.user_id && !possibleUserIds.includes(bu.user_id)) {
+                    possibleUserIds.push(bu.user_id)
+                    console.log(`[Strategic Planning] 🔍 Source 3 - Found user from business_users:`, bu.user_id)
+                  }
+                })
+              }
+            } catch (e) {
+              console.log(`[Strategic Planning] Source 3 lookup failed`)
+            }
+          }
+
+          // Source 4: Look up user by owner_email
+          if (!foundProfileId && business?.owner_email) {
+            try {
+              const { data: userByEmail } = await supabase
+                .from('users')
+                .select('id')
+                .eq('email', business.owner_email)
+                .maybeSingle()
+
+              if (userByEmail?.id && !possibleUserIds.includes(userByEmail.id)) {
+                possibleUserIds.push(userByEmail.id)
+                console.log(`[Strategic Planning] 🔍 Source 4 - Found user by email:`, business.owner_email, '->', userByEmail.id)
+              }
+            } catch (e) {
+              console.log(`[Strategic Planning] Source 4 lookup failed`)
+            }
+          }
+
+          // Source 5: Look up by business_name match
+          if (!foundProfileId && business?.name) {
+            try {
+              const { data: profilesByName } = await supabase
+                .from('business_profiles')
+                .select('id, user_id, industry')
+                .ilike('business_name', business.name)
+
+              if (profilesByName && profilesByName.length > 0) {
+                profilesByName.forEach((p: any) => {
+                  if (!foundProfileId && p.id) {
+                    foundProfileId = p.id
+                    foundIndustry = p.industry
+                  }
+                  if (p.user_id && !possibleUserIds.includes(p.user_id)) {
+                    possibleUserIds.push(p.user_id)
+                    console.log(`[Strategic Planning] 🔍 Source 5 - Found user by business_name match:`, business.name, '->', p.user_id)
+                  }
+                })
+              }
+            } catch (e) {
+              console.log(`[Strategic Planning] Source 5 lookup failed`)
+            }
+          }
+
+          // Now try to find business_profile using all possible user IDs
+          if (!foundProfileId && possibleUserIds.length > 0) {
+            for (const userId of possibleUserIds) {
+              try {
+                const { data: profileByUser } = await supabase
+                  .from('business_profiles')
+                  .select('id, industry')
+                  .eq('user_id', userId)
+                  .maybeSingle()
+
+                if (profileByUser?.id) {
+                  foundProfileId = profileByUser.id
+                  foundIndustry = profileByUser.industry
+                  console.log(`[Strategic Planning] ✅ Found profile via user_id lookup:`, userId, '->', profileByUser.id)
+                  break
+                }
+              } catch (e) {
+                // Continue to next user ID
+              }
+            }
+          }
+
+          console.log(`[Strategic Planning] 📊 All possible user IDs:`, possibleUserIds)
+
+          // Set the business ID and owner
+          if (foundProfileId) {
+            bizId = foundProfileId
+            if (foundIndustry) {
+              setIndustry(foundIndustry)
             }
           } else {
-            // No owner_id available, use businesses.id as fallback
-            console.warn(`[Strategic Planning] ⚠️ No business_profiles found and no owner_id available, using fallback`)
+            // Last resort fallback - use overrideBusinessId directly
+            console.warn(`[Strategic Planning] ⚠️ No business_profiles found, using businesses.id as fallback`)
             bizId = overrideBusinessId
+          }
+
+          // Update ownerUser if we found better user IDs
+          if (possibleUserIds.length > 0 && !ownerUser) {
+            ownerUser = possibleUserIds[0]
           }
 
           console.log(`[Strategic Planning] 📥 Coach view - loading client business: ${bizId}, owner: ${ownerUser}`)
