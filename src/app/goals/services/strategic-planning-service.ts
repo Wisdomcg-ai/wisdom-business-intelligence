@@ -64,6 +64,9 @@ export class StrategicPlanningService {
         const existingInitiatives: any[] = []
 
         initiatives.forEach((init, index) => {
+          // Handle extended initiative data (milestones, tasks, etc.)
+          const extendedInit = init as any // TypeScript workaround for extended fields
+
           const baseData = {
             business_id: businessId,
             user_id: userId,
@@ -80,6 +83,14 @@ export class StrategicPlanningService {
             order_index: init.order !== undefined ? init.order : index,
             linked_kpis: init.linkedKPIs ? JSON.stringify(init.linkedKPIs) : null,
             assigned_to: init.assignedTo || null,
+            // Extended initiative fields for sprint planning
+            milestones: extendedInit.milestones ? JSON.stringify(extendedInit.milestones) : null,
+            tasks: extendedInit.tasks ? JSON.stringify(extendedInit.tasks) : null,
+            why: extendedInit.why || null,
+            outcome: extendedInit.outcome || null,
+            start_date: extendedInit.startDate || null,
+            end_date: extendedInit.endDate || null,
+            total_hours: extendedInit.totalHours || null,
             updated_at: new Date().toISOString()
           }
 
@@ -199,7 +210,15 @@ export class StrategicPlanningService {
         selected: row.selected || false,
         order: row.order_index !== undefined ? row.order_index : 0,
         linkedKPIs: row.linked_kpis ? JSON.parse(row.linked_kpis) : undefined,
-        assignedTo: row.assigned_to || undefined
+        assignedTo: row.assigned_to || undefined,
+        // Extended initiative fields for sprint planning
+        milestones: row.milestones ? JSON.parse(row.milestones) : [],
+        tasks: row.tasks ? JSON.parse(row.tasks) : [],
+        why: row.why || '',
+        outcome: row.outcome || '',
+        startDate: row.start_date || '',
+        endDate: row.end_date || '',
+        totalHours: row.total_hours || 0
       }))
 
       console.log(`[Strategic Planning] 📥 Loaded ${initiatives.length} initiatives for ${stepType}`)

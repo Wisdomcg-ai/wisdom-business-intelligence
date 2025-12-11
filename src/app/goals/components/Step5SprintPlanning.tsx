@@ -163,18 +163,23 @@ export default function Step5SprintPlanning({
   }, [currentQuarterKey, quarterlyTargets])
 
   // Initiatives State (from current quarter + enhancements)
+  // Preserve any extended data (milestones, tasks, etc.) that was loaded from database
   const [initiatives, setInitiatives] = useState<InitiativeWithTasks[]>(() => {
     const currentQuarterInitiatives = annualPlanByQuarter[currentQuarterKey] || []
-    return currentQuarterInitiatives.map(init => ({
-      ...init,
-      why: '',
-      outcome: '',
-      startDate: '',
-      endDate: '',
-      milestones: [],
-      tasks: [],
-      totalHours: 0
-    }))
+    return currentQuarterInitiatives.map(init => {
+      const extendedInit = init as any // TypeScript workaround
+      return {
+        ...init,
+        // Preserve data from database, only default to empty if not present
+        why: extendedInit.why || '',
+        outcome: extendedInit.outcome || '',
+        startDate: extendedInit.startDate || '',
+        endDate: extendedInit.endDate || '',
+        milestones: extendedInit.milestones || [],
+        tasks: extendedInit.tasks || [],
+        totalHours: extendedInit.totalHours || 0
+      }
+    })
   })
 
   // Team Members State
@@ -243,16 +248,17 @@ export default function Step5SprintPlanning({
               assignedTo: annualInit.assignedTo || existingInit.assignedTo
             }
           } else {
-            // New initiative from Annual Plan
+            // New initiative from Annual Plan - preserve any extended data from database
+            const extendedInit = annualInit as any
             return {
               ...annualInit,
-              why: '',
-              outcome: '',
-              startDate: '',
-              endDate: '',
-              milestones: [],
-              tasks: [],
-              totalHours: 0
+              why: extendedInit.why || '',
+              outcome: extendedInit.outcome || '',
+              startDate: extendedInit.startDate || '',
+              endDate: extendedInit.endDate || '',
+              milestones: extendedInit.milestones || [],
+              tasks: extendedInit.tasks || [],
+              totalHours: extendedInit.totalHours || 0
             }
           }
         })
@@ -263,22 +269,88 @@ export default function Step5SprintPlanning({
       const localIds = prevInitiatives.map(i => i.id).sort().join(',')
 
       if (annualIds !== localIds) {
-        return currentQuarterInitiatives.map(annualInit => ({
-          ...annualInit,
-          why: '',
-          outcome: '',
-          startDate: '',
-          endDate: '',
-          milestones: [],
-          tasks: [],
-          totalHours: 0
-        }))
+        return currentQuarterInitiatives.map(annualInit => {
+          const extendedInit = annualInit as any
+          return {
+            ...annualInit,
+            why: extendedInit.why || '',
+            outcome: extendedInit.outcome || '',
+            startDate: extendedInit.startDate || '',
+            endDate: extendedInit.endDate || '',
+            milestones: extendedInit.milestones || [],
+            tasks: extendedInit.tasks || [],
+            totalHours: extendedInit.totalHours || 0
+          }
+        })
       }
 
       // No changes, return previous state
       return prevInitiatives
     })
   }, [annualPlanByQuarter, currentQuarterKey])
+
+  // Sync TO Annual Plan: Update parent state when local initiatives change
+  // This ensures milestones, tasks, dates, why, outcome are persisted to database
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const lastSyncedRef = useRef<string>('')
+
+  useEffect(() => {
+    // Create a fingerprint of the current initiatives state
+    const currentFingerprint = JSON.stringify(initiatives.map(init => ({
+      id: init.id,
+      milestones: init.milestones,
+      tasks: init.tasks,
+      why: init.why,
+      outcome: init.outcome,
+      startDate: init.startDate,
+      endDate: init.endDate,
+      totalHours: init.totalHours,
+      assignedTo: init.assignedTo
+    })))
+
+    // Skip if nothing changed (prevents infinite loop)
+    if (currentFingerprint === lastSyncedRef.current) {
+      return
+    }
+
+    // Skip if no initiatives
+    if (initiatives.length === 0) {
+      return
+    }
+
+    // Debounce the sync to avoid excessive updates
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current)
+    }
+
+    syncTimeoutRef.current = setTimeout(() => {
+      console.log('[90-Day Sprint] 🔄 Syncing initiatives back to parent for persistence')
+      lastSyncedRef.current = currentFingerprint
+
+      // Build updated plan object (prop expects direct value, not callback)
+      const updatedPlan = {
+        ...annualPlanByQuarter,
+        [currentQuarterKey]: initiatives.map(init => ({
+          ...init,
+          // Ensure all enhanced data is included
+          milestones: init.milestones || [],
+          tasks: init.tasks || [],
+          why: init.why || '',
+          outcome: init.outcome || '',
+          startDate: init.startDate || '',
+          endDate: init.endDate || '',
+          totalHours: init.totalHours || 0
+        }))
+      }
+      setAnnualPlanByQuarter(updatedPlan)
+    }, 500) // 500ms debounce
+
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current)
+      }
+    }
+  }, [initiatives, currentQuarterKey, setAnnualPlanByQuarter, annualPlanByQuarter])
 
   // Load team members on mount
   useEffect(() => {
