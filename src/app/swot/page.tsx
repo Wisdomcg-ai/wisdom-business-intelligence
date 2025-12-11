@@ -609,7 +609,7 @@ export default function SwotPage() {
         />
 
       {/* Page Container - Wider layout with optional sidebar */}
-      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className="max-w-[2200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="flex gap-6">
           {/* Main Content Area */}
           <div className="flex-1 min-w-0">
@@ -865,20 +865,27 @@ export default function SwotPage() {
                     </div>
                   </div>
 
-                  {/* Color Meaning */}
+                  {/* Quadrant Colors */}
                   <div className="pt-2 border-t border-gray-100">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Border Colors</h4>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Quadrant Colors</h4>
                     <div className="space-y-1.5 text-xs">
                       <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 border-l-4 border-l-green-500 bg-gray-50 rounded-sm"></div>
-                        <span className="text-gray-600">Strength/Opportunity</span>
+                        <div className="w-4 h-4 bg-green-100 border border-green-300 rounded-sm"></div>
+                        <span className="text-gray-600">Strengths</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 border-l-4 border-l-red-500 bg-gray-50 rounded-sm"></div>
-                        <span className="text-gray-600">Weakness/Threat</span>
+                        <div className="w-4 h-4 bg-red-100 border border-red-300 rounded-sm"></div>
+                        <span className="text-gray-600">Weaknesses</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-blue-100 border border-blue-300 rounded-sm"></div>
+                        <span className="text-gray-600">Opportunities</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-amber-100 border border-amber-300 rounded-sm"></div>
+                        <span className="text-gray-600">Threats</span>
                       </div>
                     </div>
-                    <p className="text-[10px] text-gray-500 mt-2">Darker border = higher Focus Score</p>
                   </div>
                 </div>
               )}

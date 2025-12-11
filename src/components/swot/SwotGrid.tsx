@@ -64,42 +64,43 @@ export function SwotGrid({
   };
 
   // Define category sections with their properties
+  // Colors: Green (Strengths), Red (Weaknesses), Blue (Opportunities), Amber (Threats)
   const categorySections: CategorySection[] = [
     {
       category: 'strength',
       title: 'Strengths',
       description: 'Internal positive factors that give you an advantage',
       icon: <Shield className="h-5 w-5" />,
-      color: 'text-green-700',
-      bgColor: 'bg-green-50',
-      borderColor: 'border-green-200'
+      color: 'text-green-800',
+      bgColor: 'bg-green-100',
+      borderColor: 'border-green-300'
     },
     {
       category: 'weakness',
       title: 'Weaknesses',
       description: 'Internal negative factors that need improvement',
       icon: <AlertTriangle className="h-5 w-5" />,
-      color: 'text-red-700',
-      bgColor: 'bg-red-50',
-      borderColor: 'border-red-200'
+      color: 'text-red-800',
+      bgColor: 'bg-red-100',
+      borderColor: 'border-red-300'
     },
     {
       category: 'opportunity',
       title: 'Opportunities',
       description: 'External positive factors you can capitalize on',
       icon: <Target className="h-5 w-5" />,
-      color: 'text-brand-orange-700',
-      bgColor: 'bg-brand-orange-50',
-      borderColor: 'border-brand-orange-200'
+      color: 'text-blue-800',
+      bgColor: 'bg-blue-100',
+      borderColor: 'border-blue-300'
     },
     {
       category: 'threat',
       title: 'Threats',
       description: 'External negative factors that could cause problems',
       icon: <Lightbulb className="h-5 w-5" />,
-      color: 'text-brand-orange-700',
-      bgColor: 'bg-brand-orange-50',
-      borderColor: 'border-brand-orange-200'
+      color: 'text-amber-800',
+      bgColor: 'bg-amber-100',
+      borderColor: 'border-amber-300'
     }
   ];
 
