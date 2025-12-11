@@ -746,33 +746,57 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         }
 
         // Load strategic planning data from Supabase (Steps 2-6)
+        // IMPORTANT: Try multiple possible business IDs if the primary one returns empty
+        // This handles legacy data that may have been saved under user.id instead of profile.id
+        const fallbackIds = [bizId]
+        if (user.id !== bizId) fallbackIds.push(user.id)
 
-        // Step 2: Strategic Ideas
-        const loadedStrategicIdeas = await StrategicPlanningService.loadInitiatives(bizId, 'strategic_ideas')
+        console.log(`[Strategic Planning] 🔍 Will try loading from IDs:`, fallbackIds)
+
+        // Step 2: Strategic Ideas - try primary ID, fallback to user.id if empty
+        let loadedStrategicIdeas = await StrategicPlanningService.loadInitiatives(bizId, 'strategic_ideas')
+        if (loadedStrategicIdeas.length === 0 && user.id !== bizId) {
+          console.log(`[Strategic Planning] 🔄 No strategic ideas found with bizId, trying user.id: ${user.id}`)
+          loadedStrategicIdeas = await StrategicPlanningService.loadInitiatives(user.id, 'strategic_ideas')
+        }
         if (loadedStrategicIdeas && loadedStrategicIdeas.length > 0) {
           setStrategicIdeas(loadedStrategicIdeas)
           console.log(`[Strategic Planning] ✅ Loaded ${loadedStrategicIdeas.length} strategic ideas from Supabase`)
         }
 
-        // Step 3: Roadmap Suggestions
-        const loadedRoadmap = await StrategicPlanningService.loadInitiatives(bizId, 'roadmap')
+        // Step 3: Roadmap Suggestions - with fallback
+        let loadedRoadmap = await StrategicPlanningService.loadInitiatives(bizId, 'roadmap')
+        if (loadedRoadmap.length === 0 && user.id !== bizId) {
+          loadedRoadmap = await StrategicPlanningService.loadInitiatives(user.id, 'roadmap')
+        }
         if (loadedRoadmap && loadedRoadmap.length > 0) {
           setRoadmapSuggestions(loadedRoadmap)
           console.log(`[Strategic Planning] ✅ Loaded ${loadedRoadmap.length} roadmap suggestions from Supabase`)
         }
 
-        // Step 4: 12-Month Initiatives
-        const loadedTwelveMonth = await StrategicPlanningService.loadInitiatives(bizId, 'twelve_month')
+        // Step 4: 12-Month Initiatives - with fallback
+        let loadedTwelveMonth = await StrategicPlanningService.loadInitiatives(bizId, 'twelve_month')
+        if (loadedTwelveMonth.length === 0 && user.id !== bizId) {
+          loadedTwelveMonth = await StrategicPlanningService.loadInitiatives(user.id, 'twelve_month')
+        }
         if (loadedTwelveMonth && loadedTwelveMonth.length > 0) {
           setTwelveMonthInitiatives(loadedTwelveMonth)
           console.log(`[Strategic Planning] ✅ Loaded ${loadedTwelveMonth.length} twelve-month initiatives from Supabase`)
         }
 
-        // Step 5: Annual Plan by Quarter
-        const loadedQ1 = await StrategicPlanningService.loadInitiatives(bizId, 'q1')
-        const loadedQ2 = await StrategicPlanningService.loadInitiatives(bizId, 'q2')
-        const loadedQ3 = await StrategicPlanningService.loadInitiatives(bizId, 'q3')
-        const loadedQ4 = await StrategicPlanningService.loadInitiatives(bizId, 'q4')
+        // Step 5: Annual Plan by Quarter - with fallback for each
+        let loadedQ1 = await StrategicPlanningService.loadInitiatives(bizId, 'q1')
+        let loadedQ2 = await StrategicPlanningService.loadInitiatives(bizId, 'q2')
+        let loadedQ3 = await StrategicPlanningService.loadInitiatives(bizId, 'q3')
+        let loadedQ4 = await StrategicPlanningService.loadInitiatives(bizId, 'q4')
+
+        // Fallback to user.id for quarterly data if primary returns empty
+        if (user.id !== bizId) {
+          if (loadedQ1.length === 0) loadedQ1 = await StrategicPlanningService.loadInitiatives(user.id, 'q1')
+          if (loadedQ2.length === 0) loadedQ2 = await StrategicPlanningService.loadInitiatives(user.id, 'q2')
+          if (loadedQ3.length === 0) loadedQ3 = await StrategicPlanningService.loadInitiatives(user.id, 'q3')
+          if (loadedQ4.length === 0) loadedQ4 = await StrategicPlanningService.loadInitiatives(user.id, 'q4')
+        }
 
         console.log('[Strategic Planning] 🔍 Q2 loaded from database:', loadedQ2.map(i => ({ id: i.id, title: i.title, assignedTo: i.assignedTo })))
 
@@ -784,21 +808,30 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         })
         console.log(`[Strategic Planning] ✅ Loaded quarterly plans from Supabase (Q1: ${loadedQ1.length}, Q2: ${loadedQ2.length}, Q3: ${loadedQ3.length}, Q4: ${loadedQ4.length})`)
 
-        // Step 6: 90-Day Sprint
-        const loadedSprintFocus = await StrategicPlanningService.loadInitiatives(bizId, 'sprint')
+        // Step 6: 90-Day Sprint - with fallback
+        let loadedSprintFocus = await StrategicPlanningService.loadInitiatives(bizId, 'sprint')
+        if (loadedSprintFocus.length === 0 && user.id !== bizId) {
+          loadedSprintFocus = await StrategicPlanningService.loadInitiatives(user.id, 'sprint')
+        }
         if (loadedSprintFocus && loadedSprintFocus.length > 0) {
           setSprintFocus(loadedSprintFocus)
           console.log(`[Strategic Planning] ✅ Loaded ${loadedSprintFocus.length} sprint focus items from Supabase`)
         }
 
-        const loadedSprintActions = await StrategicPlanningService.loadSprintActions(bizId)
+        let loadedSprintActions = await StrategicPlanningService.loadSprintActions(bizId)
+        if (loadedSprintActions.length === 0 && user.id !== bizId) {
+          loadedSprintActions = await StrategicPlanningService.loadSprintActions(user.id)
+        }
         if (loadedSprintActions && loadedSprintActions.length > 0) {
           setSprintKeyActions(loadedSprintActions)
           console.log(`[Strategic Planning] ✅ Loaded ${loadedSprintActions.length} sprint key actions from Supabase`)
         }
 
-        // Load operational activities
-        const loadedOperationalActivities = await OperationalActivitiesService.loadActivities(bizId)
+        // Load operational activities - with fallback
+        let loadedOperationalActivities = await OperationalActivitiesService.loadActivities(bizId)
+        if (loadedOperationalActivities.length === 0 && user.id !== bizId) {
+          loadedOperationalActivities = await OperationalActivitiesService.loadActivities(user.id)
+        }
         if (loadedOperationalActivities && loadedOperationalActivities.length > 0) {
           setOperationalActivities(loadedOperationalActivities)
           console.log(`[Strategic Planning] ✅ Loaded ${loadedOperationalActivities.length} operational activities from Supabase`)
