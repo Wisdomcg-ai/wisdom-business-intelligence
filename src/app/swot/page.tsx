@@ -77,13 +77,19 @@ export default function SwotPage() {
         return;
       }
 
-      // Use active business from context when viewing as coach
+      // Use active business from context when viewing as coach or admin
       // Try multiple IDs to find the SWOT data:
       // 1. activeBusiness.ownerId (client's user ID)
       // 2. activeBusiness.id (business ID)
       // 3. user.id (current user's ID - fallback for direct access)
       let businessId = user.id;
-      if (viewerContext.isViewingAsCoach && activeBusiness) {
+
+      // Check if we're viewing someone else's business (coach, admin, or any viewer)
+      // Use activeBusiness if it exists and belongs to someone else
+      if (activeBusiness && activeBusiness.ownerId && activeBusiness.ownerId !== user.id) {
+        businessId = activeBusiness.ownerId;
+      } else if (viewerContext.isViewingAsCoach && activeBusiness) {
+        // Fallback for coach view without ownerId
         businessId = activeBusiness.ownerId || activeBusiness.id;
       }
 
@@ -93,6 +99,7 @@ export default function SwotPage() {
         year: currentQuarter.year,
         userId: user.id,
         isViewingAsCoach: viewerContext.isViewingAsCoach,
+        viewerRole: viewerContext.role,
         activeBusinessId: activeBusiness?.id,
         activeBusinessOwnerId: activeBusiness?.ownerId
       });
@@ -330,10 +337,11 @@ export default function SwotPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Use active business from context when viewing as coach
-      // Try ownerId first, fallback to business id
+      // Use active business from context when viewing as coach or admin
       let businessId = user.id;
-      if (viewerContext.isViewingAsCoach && activeBusiness) {
+      if (activeBusiness && activeBusiness.ownerId && activeBusiness.ownerId !== user.id) {
+        businessId = activeBusiness.ownerId;
+      } else if (viewerContext.isViewingAsCoach && activeBusiness) {
         businessId = activeBusiness.ownerId || activeBusiness.id;
       }
 
