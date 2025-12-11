@@ -33,8 +33,10 @@ export interface SendEmailOptions {
   to: string | string[];
   subject: string;
   html: string;
+  text?: string;
   from?: string;
   replyTo?: string;
+  headers?: Record<string, string>;
 }
 
 export interface EmailResult {
@@ -84,7 +86,9 @@ export async function sendEmail(options: SendEmailOptions): Promise<EmailResult>
       to: options.to,
       subject: options.subject,
       html: options.html,
+      text: options.text,
       replyTo: options.replyTo,
+      headers: options.headers,
     });
 
     if (error) {
