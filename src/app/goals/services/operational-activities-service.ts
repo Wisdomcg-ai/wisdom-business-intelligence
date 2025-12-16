@@ -3,10 +3,22 @@
 
 import { createClient } from '@/lib/supabase/client'
 
+export type FrequencyOption =
+  | 'daily'
+  | '3x_week'
+  | 'weekly'
+  | 'fortnightly'
+  | 'monthly'
+  | 'quarterly'
+
 export interface OperationalActivity {
   id: string
-  function: string
+  function: string // engine ID (e.g., 'attract', 'convert', etc.)
+  name: string // habit name
   description: string
+  frequency?: FrequencyOption // selected frequency
+  recommendedFrequency?: FrequencyOption // from suggested habits
+  source?: 'suggested' | 'custom' | 'step2' // where the habit came from
   assignedTo?: string
   orderIndex?: number
 }
@@ -51,7 +63,11 @@ export class OperationalActivitiesService {
           business_id: businessId,
           user_id: userId,
           function_id: activity.function,
+          name: activity.name || '',
           description: activity.description || '',
+          frequency: activity.frequency || null,
+          recommended_frequency: activity.recommendedFrequency || null,
+          source: activity.source || 'custom',
           assigned_to: activity.assignedTo || null,
           order_index: activity.orderIndex !== undefined ? activity.orderIndex : index,
           updated_at: new Date().toISOString()
@@ -126,7 +142,11 @@ export class OperationalActivitiesService {
       const activities: OperationalActivity[] = (data || []).map(row => ({
         id: row.id,
         function: row.function_id,
-        description: row.description,
+        name: row.name || '',
+        description: row.description || '',
+        frequency: row.frequency || undefined,
+        recommendedFrequency: row.recommended_frequency || undefined,
+        source: row.source || 'custom',
         assignedTo: row.assigned_to || undefined,
         orderIndex: row.order_index
       }))

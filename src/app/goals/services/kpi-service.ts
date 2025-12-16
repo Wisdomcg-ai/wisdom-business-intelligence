@@ -237,6 +237,15 @@ export class KPIService {
 
       console.log(`[KPI Service] 💾 Saving ${kpis.length} KPIs to Supabase for business ${businessId}`)
 
+      // DEBUG: Log actual KPI values being saved
+      kpis.forEach((kpi, idx) => {
+        console.log(`[KPI Service] 📊 KPI ${idx + 1}: "${kpi.name}" (id: ${kpi.id})`)
+        console.log(`  - currentValue: ${kpi.currentValue} (type: ${typeof kpi.currentValue})`)
+        console.log(`  - year1Target: ${kpi.year1Target} (type: ${typeof kpi.year1Target})`)
+        console.log(`  - year2Target: ${kpi.year2Target}`)
+        console.log(`  - year3Target: ${kpi.year3Target}`)
+      })
+
       // First, get existing KPI IDs for this business
       const { data: existingKPIs } = await supabase
         .from('business_kpis')

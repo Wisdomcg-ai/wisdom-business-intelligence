@@ -61,6 +61,9 @@ export type InitiativeEffort = 'small' | 'medium' | 'large'
 
 export type InitiativeStatus = 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold'
 
+// Type of idea: strategic (one-off projects) or operational (recurring activities)
+export type IdeaType = 'strategic' | 'operational'
+
 export interface StrategicInitiative {
   id: string
   title: string
@@ -75,6 +78,10 @@ export interface StrategicInitiative {
   linkedKPIs?: string[]
   order?: number
   assignedTo?: string
+  // Strategic vs Operational classification
+  // - strategic: One-off projects (e.g., "Launch marketing campaign")
+  // - operational: Recurring activities (e.g., "Weekly team meeting")
+  ideaType?: IdeaType
   // Lifecycle tracking
   status?: InitiativeStatus
   progressPercentage?: number

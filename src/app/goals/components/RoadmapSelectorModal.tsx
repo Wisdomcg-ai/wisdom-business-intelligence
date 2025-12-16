@@ -408,7 +408,7 @@ export default function RoadmapSelectorModal({
                   }`}
                 >
                   <Plus className="w-4 h-4" />
-                  Add {selectedItems.size > 0 ? selectedItems.size : ''} to Strategic Ideas
+                  Add {selectedItems.size > 0 ? selectedItems.size : ''} to Ideas
                 </button>
               </div>
             </div>

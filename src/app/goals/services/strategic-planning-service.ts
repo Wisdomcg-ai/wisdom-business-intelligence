@@ -113,6 +113,8 @@ export class StrategicPlanningService {
             order_index: init.order !== undefined ? init.order : index,
             linked_kpis: init.linkedKPIs ? JSON.stringify(init.linkedKPIs) : null,
             assigned_to: init.assignedTo || null,
+            // Strategic vs Operational classification (defaults to 'strategic' for backwards compatibility)
+            idea_type: init.ideaType || 'strategic',
             // Extended initiative fields for sprint planning
             milestones: extendedInit.milestones ? JSON.stringify(extendedInit.milestones) : null,
             tasks: extendedInit.tasks ? JSON.stringify(extendedInit.tasks) : null,
@@ -237,6 +239,8 @@ export class StrategicPlanningService {
         order: row.order_index !== undefined ? row.order_index : 0,
         linkedKPIs: safeJsonParse(row.linked_kpis, undefined),
         assignedTo: row.assigned_to || undefined,
+        // Strategic vs Operational classification (default to 'strategic' for backwards compatibility)
+        ideaType: (row.idea_type || 'strategic') as 'strategic' | 'operational',
         // Extended initiative fields for sprint planning
         milestones: safeJsonParse(row.milestones, []),
         tasks: safeJsonParse(row.tasks, []),

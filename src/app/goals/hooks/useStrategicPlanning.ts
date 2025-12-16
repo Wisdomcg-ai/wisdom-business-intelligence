@@ -232,13 +232,24 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
   // Update KPI value
   const updateKPIValue = useCallback(
     (kpiId: string, field: 'currentValue' | 'year1Target' | 'year2Target' | 'year3Target', value: number) => {
-      setKpis(prev =>
-        prev.map(kpi =>
+      console.log(`[Strategic Planning] 📝 updateKPIValue called: kpiId=${kpiId}, field=${field}, value=${value}`)
+      setKpis(prev => {
+        const updated = prev.map(kpi =>
           kpi.id === kpiId
             ? { ...kpi, [field]: value }
             : kpi
         )
-      )
+        // Log the updated KPI
+        const kpi = updated.find(k => k.id === kpiId)
+        console.log(`[Strategic Planning] 📊 KPI after update:`, kpi ? {
+          name: kpi.name,
+          currentValue: kpi.currentValue,
+          year1Target: kpi.year1Target,
+          year2Target: kpi.year2Target,
+          year3Target: kpi.year3Target
+        } : 'NOT FOUND')
+        return updated
+      })
       markDirty()
     },
     [markDirty]
@@ -297,6 +308,10 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       isSavingRef.current = true
       setSaveStatus('saving')
       console.log('[Strategic Planning] 💾 Saving to Supabase...')
+      console.log('[Strategic Planning] 📊 KPIs to save:', kpis.length, 'items')
+      kpis.forEach((kpi, idx) => {
+        console.log(`[Strategic Planning] KPI ${idx + 1}: "${kpi.name}" - current=${kpi.currentValue}, y1=${kpi.year1Target}, y2=${kpi.year2Target}, y3=${kpi.year3Target}`)
+      })
       console.log('[Strategic Planning] 📊 Annual Plan by Quarter:', {
         q1: annualPlanByQuarter.q1?.map(i => ({ id: i.id, title: i.title, assignedTo: i.assignedTo })),
         q2: annualPlanByQuarter.q2?.map(i => ({ id: i.id, title: i.title, assignedTo: i.assignedTo })),

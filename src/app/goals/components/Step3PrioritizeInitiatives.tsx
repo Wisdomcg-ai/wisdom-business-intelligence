@@ -23,14 +23,21 @@ export default function Step3PrioritizeInitiatives({
 
   const selectedCount = twelveMonthInitiatives.length
   const isOverLimit = selectedCount > 20
-  const isInRange = selectedCount >= 8 && selectedCount <= 20
+  const isInRange = selectedCount >= 5 && selectedCount <= 20
 
-  // Available initiatives (exclude already selected) - now just uses strategicIdeas directly
-  // No more auto-merging of roadmap suggestions
+  // Available initiatives (exclude already selected AND exclude operational ideas)
+  // Only STRATEGIC ideas should appear in Step 3 (operational ideas go to Step 5 operational plan)
+  // FIX: Compare by title instead of ID to prevent duplicates after save/reload
+  // (IDs can differ because initiatives get new UUIDs when copied to twelve_month step_type)
   const availableInitiatives = useMemo(() => {
-    return strategicIdeas.filter(
-      init => !twelveMonthInitiatives.some(selected => selected.id === init.id)
-    )
+    const selectedTitles = new Set(twelveMonthInitiatives.map(init => init.title.toLowerCase().trim()))
+    return strategicIdeas.filter(init => {
+      // Exclude operational ideas - they go to Step 5 operational plan
+      if (init.ideaType === 'operational') return false
+      // Exclude already selected
+      if (selectedTitles.has(init.title.toLowerCase().trim())) return false
+      return true
+    })
   }, [strategicIdeas, twelveMonthInitiatives])
 
   // Group available initiatives by category
@@ -94,12 +101,18 @@ export default function Step3PrioritizeInitiatives({
   }
 
   // Drop on priority list to add
+  // FIX: Check by title instead of ID to prevent duplicates
   const handleDropOnPriority = () => {
-    if (draggedInitiative && !twelveMonthInitiatives.some(i => i.id === draggedInitiative.id)) {
-      setTwelveMonthInitiatives([
-        ...twelveMonthInitiatives,
-        { ...draggedInitiative, selected: true, order: twelveMonthInitiatives.length }
-      ])
+    if (draggedInitiative) {
+      const alreadySelected = twelveMonthInitiatives.some(
+        i => i.title.toLowerCase().trim() === draggedInitiative.title.toLowerCase().trim()
+      )
+      if (!alreadySelected) {
+        setTwelveMonthInitiatives([
+          ...twelveMonthInitiatives,
+          { ...draggedInitiative, selected: true, order: twelveMonthInitiatives.length }
+        ])
+      }
     }
     setDraggedInitiative(null)
   }
@@ -142,7 +155,7 @@ export default function Step3PrioritizeInitiatives({
       {/* Task Banner */}
       <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-4 text-white">
         <p className="text-base font-medium">
-          📋 <strong>YOUR TASK:</strong> Drag 8-20 initiatives from left → right to select your Year 1 priorities
+          📋 <strong>YOUR TASK:</strong> Drag 5-20 initiatives from left → right to select your Year 1 priorities
         </p>
         <p className="text-sm text-brand-orange-100 mt-1">
           Choose initiatives that will have the biggest impact on your 3-year goals. You can reorder by dragging within the priority list.
@@ -155,10 +168,10 @@ export default function Step3PrioritizeInitiatives({
           <div className="flex items-center gap-4">
             <div>
               <p className="text-sm font-semibold text-gray-900">
-                Selected: <span className={`text-lg ${selectedCount === 0 ? 'text-gray-500' : isInRange ? 'text-green-600' : isOverLimit ? 'text-red-600' : 'text-amber-600'}`}>{selectedCount}</span> <span className="text-gray-600">of 8-20 initiatives</span>
+                Selected: <span className={`text-lg ${selectedCount === 0 ? 'text-gray-500' : isInRange ? 'text-green-600' : isOverLimit ? 'text-red-600' : 'text-amber-600'}`}>{selectedCount}</span> <span className="text-gray-600">of 5-20 initiatives</span>
               </p>
               <p className="text-xs text-gray-600 mt-1">
-                8-20 initiatives keeps you focused without spreading too thin
+                5-20 initiatives keeps you focused without spreading too thin
               </p>
             </div>
             {isInRange && (
@@ -173,10 +186,10 @@ export default function Step3PrioritizeInitiatives({
                 <span className="text-sm font-medium text-red-700">Remove {selectedCount - 20}</span>
               </div>
             )}
-            {selectedCount > 0 && selectedCount < 8 && (
+            {selectedCount > 0 && selectedCount < 5 && (
               <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-100 border border-amber-300 rounded-full">
                 <AlertCircle className="w-4 h-4 text-amber-700" />
-                <span className="text-sm font-medium text-amber-700">Add {8 - selectedCount} more</span>
+                <span className="text-sm font-medium text-amber-700">Add {5 - selectedCount} more</span>
               </div>
             )}
           </div>
@@ -246,10 +259,23 @@ export default function Step3PrioritizeInitiatives({
                       ) : (
                         <div className="space-y-2">
                           {initiatives.map(initiative => {
-                            const isUserIdea = initiative.source === 'strategic_ideas'
+                            const isRoadmap = initiative.source === 'roadmap'
+                            const isOperational = initiative.ideaType === 'operational'
                             const isDragging = draggedInitiative?.id === initiative.id
-                            const cardStyles = getCardClasses(initiative.source, isDragging)
-                            const sourceStyle = isUserIdea ? SOURCE_STYLES.user : SOURCE_STYLES.roadmap
+                            const cardStyles = getCardClasses(initiative.source, isDragging, initiative.ideaType)
+
+                            // Badge styles matching Step 2
+                            const getBadgeStyle = () => {
+                              if (isRoadmap) return { bg: 'bg-white/20', text: 'text-white', label: 'ROADMAP' }
+                              if (isOperational) return { bg: 'bg-gray-200', text: 'text-gray-700', label: 'OPERATIONAL' }
+                              return { bg: 'bg-white/20', text: 'text-white', label: 'STRATEGIC' }
+                            }
+                            const badgeStyle = getBadgeStyle()
+
+                            // Grip icon color based on card background
+                            const gripColor = isOperational
+                              ? 'text-gray-400 group-hover:text-gray-600'
+                              : 'text-white/60 group-hover:text-white'
 
                             return (
                               <div
@@ -259,9 +285,7 @@ export default function Step3PrioritizeInitiatives({
                                 onDragEnd={handleDragEnd}
                                 className={`group flex items-start gap-2 p-3 ${cardStyles.container}`}
                               >
-                                <GripVertical className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
-                                  isUserIdea ? 'text-slate-400 group-hover:text-gray-600' : 'text-brand-orange-200 group-hover:text-white'
-                                }`} />
+                                <GripVertical className={`w-4 h-4 flex-shrink-0 mt-0.5 ${gripColor}`} />
 
                                 <div className="flex-1 min-w-0">
                                   <p className={`text-sm font-bold leading-tight ${cardStyles.text}`}>
@@ -272,8 +296,8 @@ export default function Step3PrioritizeInitiatives({
                                       {initiative.description}
                                     </p>
                                   )}
-                                  <span className={`inline-block mt-2 px-2 py-0.5 text-[10px] rounded font-semibold ${sourceStyle.bg} ${sourceStyle.text}`}>
-                                    {sourceStyle.label}
+                                  <span className={`inline-block mt-2 px-2 py-0.5 text-[10px] rounded font-semibold ${badgeStyle.bg} ${badgeStyle.text}`}>
+                                    {badgeStyle.label}
                                   </span>
                                 </div>
                               </div>
@@ -328,7 +352,7 @@ export default function Step3PrioritizeInitiatives({
                       {draggedInitiative ? 'Drop here to add!' : 'Drag initiatives here'}
                     </p>
                     <p className={`text-sm mt-1 ${draggedInitiative ? 'text-brand-orange' : 'text-gray-400'}`}>
-                      {draggedInitiative ? 'Release to add to your Year 1 priorities' : 'Select 8-20 initiatives from the left'}
+                      {draggedInitiative ? 'Release to add to your Year 1 priorities' : 'Select 5-20 initiatives from the left'}
                     </p>
                     <div className="mt-4 flex items-center justify-center gap-2 text-xs text-gray-400">
                       <span className="w-2 h-2 rounded-full bg-brand-orange animate-ping"></span>
@@ -342,7 +366,16 @@ export default function Step3PrioritizeInitiatives({
                     .sort((a, b) => (a.order || 0) - (b.order || 0))
                     .map((initiative, index) => {
                       const categoryInfo = getCategoryStyle(initiative.category)
-                      const isUserIdea = initiative.source === 'strategic_ideas'
+                      const isRoadmap = initiative.source === 'roadmap'
+                      const isOperational = initiative.ideaType === 'operational'
+
+                      // Badge styles matching Step 2
+                      const getPriorityBadgeStyle = () => {
+                        if (isRoadmap) return { bg: 'bg-brand-navy', text: 'text-white', label: 'ROADMAP' }
+                        if (isOperational) return { bg: 'bg-gray-200', text: 'text-gray-700', label: 'OPERATIONAL' }
+                        return { bg: 'bg-brand-orange', text: 'text-white', label: 'STRATEGIC' }
+                      }
+                      const priorityBadgeStyle = getPriorityBadgeStyle()
 
                       return (
                         <div
@@ -372,12 +405,8 @@ export default function Step3PrioritizeInitiatives({
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-gray-900 leading-tight">{initiative.title}</p>
                             <div className="flex items-center gap-2 mt-1.5">
-                              <span className={`inline-block px-2 py-0.5 text-[10px] rounded font-semibold ${
-                                isUserIdea
-                                  ? `${SOURCE_STYLES.user.bg} ${SOURCE_STYLES.user.text}`
-                                  : `${SOURCE_STYLES.roadmap.bg} ${SOURCE_STYLES.roadmap.text}`
-                              }`}>
-                                {isUserIdea ? SOURCE_STYLES.user.label : SOURCE_STYLES.roadmap.label}
+                              <span className={`inline-block px-2 py-0.5 text-[10px] rounded font-semibold ${priorityBadgeStyle.bg} ${priorityBadgeStyle.text}`}>
+                                {priorityBadgeStyle.label}
                               </span>
                               <span className={`text-xs ${categoryInfo.textColor} font-medium`}>
                                 {categoryInfo.shortLabel}

@@ -76,10 +76,10 @@ const getSteps = (yearType: 'CY' | 'FY' = 'CY'): StepInfo[] => {
     },
     {
       num: 2,
-      label: 'Strategic Ideas',
-      title: 'Capture Strategic Ideas',
+      label: 'Ideas',
+      title: 'Capture Your Ideas',
       icon: Brain,
-      description: 'Capture ideas and review roadmap suggestions by business engine'
+      description: 'Capture strategic and operational ideas by business engine'
     },
     {
       num: 3,
@@ -972,6 +972,8 @@ function StrategicPlanningContent() {
                 businessId={businessId}
                 operationalActivities={operationalActivities}
                 setOperationalActivities={setOperationalActivities}
+                strategicIdeas={strategicIdeas}
+                setStrategicIdeas={setStrategicIdeas}
                 planningQuarterLabel={planningQuarter?.label || 'Q3'}
                 planningQuarterInitiatives={planningQuarterInitiatives}
                 hasOperationalActivities={hasOperationalActivities}
@@ -1096,12 +1098,12 @@ function StrategicPlanningContent() {
                   )}
                   <div className="flex-1">
                     <p className={`text-sm font-semibold ${step2Complete ? 'text-green-900' : 'text-amber-900'}`}>
-                      Step 2: Strategic Ideas
+                      Step 2: Ideas
                     </p>
                     <p className={`text-xs mt-0.5 ${step2Complete ? 'text-green-700' : 'text-amber-700'}`}>
                       {step2Complete
-                        ? `${strategicIdeas?.length || 0} strategic ideas captured`
-                        : 'Add at least 1 strategic idea'
+                        ? `${strategicIdeas?.length || 0} ideas captured`
+                        : 'Add at least 1 idea'
                       }
                     </p>
                   </div>

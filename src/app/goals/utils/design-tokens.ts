@@ -163,19 +163,26 @@ export const SOURCE_STYLES = {
   }
 }
 
-// Initiative Card Styles - Using brand-based design system
+// Initiative Card Styles - Consistent with Step 2 color scheme
+// Roadmap = Navy, Strategic (user) = Orange, Operational = White
 export const CARD_STYLES = {
   userIdea: {
-    // Light card with subtle border - for user's own ideas
-    base: 'bg-white border-2 border-slate-200 hover:border-brand-orange-300 hover:shadow-md',
-    text: 'text-slate-900',
-    subtext: 'text-slate-600'
-  },
-  roadmapSuggestion: {
-    // Brand-tinted card - for roadmap suggestions
+    // Orange card for user's strategic ideas (matching Step 2)
     base: 'bg-brand-orange border-2 border-brand-orange shadow-md hover:bg-brand-orange-600 hover:shadow-lg',
     text: 'text-white',
-    subtext: 'text-brand-orange-100'
+    subtext: 'text-white/80'
+  },
+  roadmapSuggestion: {
+    // Navy card for roadmap suggestions (matching Step 2)
+    base: 'bg-brand-navy border-2 border-brand-navy shadow-md hover:bg-brand-navy-700 hover:shadow-lg',
+    text: 'text-white',
+    subtext: 'text-white/80'
+  },
+  operationalIdea: {
+    // White card for operational ideas (matching Step 2)
+    base: 'bg-white border-2 border-gray-300 hover:border-gray-400 hover:shadow-md',
+    text: 'text-gray-800',
+    subtext: 'text-gray-600'
   },
   selected: {
     // Highlighted when selected/in priority list
@@ -189,9 +196,23 @@ export const CARD_STYLES = {
 }
 
 // Combined card class helper
-export function getCardClasses(source: 'strategic_ideas' | 'roadmap' | 'user' | string | undefined, isDragging?: boolean) {
-  const isUserIdea = source === 'strategic_ideas' || source === 'user'
-  const style = isUserIdea ? CARD_STYLES.userIdea : CARD_STYLES.roadmapSuggestion
+// Now supports ideaType to distinguish strategic vs operational user ideas
+export function getCardClasses(
+  source: 'strategic_ideas' | 'roadmap' | 'user' | string | undefined,
+  isDragging?: boolean,
+  ideaType?: 'strategic' | 'operational'
+) {
+  let style = CARD_STYLES.userIdea // Default to orange (strategic user idea)
+
+  if (source === 'roadmap') {
+    // Roadmap suggestions = Navy
+    style = CARD_STYLES.roadmapSuggestion
+  } else if (ideaType === 'operational') {
+    // Operational ideas = White
+    style = CARD_STYLES.operationalIdea
+  }
+  // else: strategic user ideas = Orange (default)
+
   return {
     container: `${style.base} ${isDragging ? CARD_STYLES.dragging.modifier : ''} rounded-lg transition-all cursor-move`,
     text: style.text,
