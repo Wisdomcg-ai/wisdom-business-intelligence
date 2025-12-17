@@ -220,9 +220,10 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   // Progress calculations
   const progressPercentage = useMemo(() => {
     if (!review) return 0;
-    const completed = review.steps_completed?.length || 0;
+    // Exclude 'complete' from both counts to avoid >100%
+    const completed = (review.steps_completed || []).filter(s => s !== 'complete').length;
     const total = WORKSHOP_STEPS.length - 1; // Exclude 'complete'
-    return Math.round((completed / total) * 100);
+    return Math.min(100, Math.round((completed / total) * 100));
   }, [review]);
 
   const canNavigateToStep = useCallback((step: WorkshopStep): boolean => {
