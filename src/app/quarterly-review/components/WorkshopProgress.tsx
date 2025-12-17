@@ -41,7 +41,7 @@ export function WorkshopProgress({
   // Calculate overall progress
   const totalSteps = WORKSHOP_STEPS.length - 2; // Exclude prework and complete
   const completedCount = stepsCompleted.filter(s => s !== 'prework' && s !== 'complete').length;
-  const progressPercentage = Math.round((completedCount / totalSteps) * 100);
+  const progressPercentage = Math.min(100, Math.round((completedCount / totalSteps) * 100));
 
   if (compact) {
     return (

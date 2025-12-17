@@ -124,7 +124,7 @@ export default function QuarterlyReviewPage() {
             </h2>
             <p className="text-sm sm:text-base text-gray-600 mb-6 max-w-lg">
               {currentQuarterReview
-                ? `You're ${Math.round((currentQuarterReview.steps_completed?.length || 0) / 14 * 100)}% complete. Pick up where you left off.`
+                ? `You're ${Math.min(100, Math.round(((currentQuarterReview.steps_completed || []).filter(s => s !== 'complete').length) / 11 * 100))}% complete. Pick up where you left off.`
                 : 'Reflect on last quarter, analyze what worked, and set clear targets for the next 90 days.'
               }
             </p>
@@ -256,7 +256,7 @@ export default function QuarterlyReviewPage() {
                     <p className="text-sm text-gray-500">
                       {review.status === 'completed'
                         ? `Completed ${new Date(review.completed_at).toLocaleDateString()}`
-                        : `${Math.round((review.steps_completed?.length || 0) / 14 * 100)}% complete`
+                        : `${Math.min(100, Math.round(((review.steps_completed || []).filter(s => s !== 'complete').length) / 11 * 100))}% complete`
                       }
                     </p>
                   </div>
