@@ -178,13 +178,38 @@ export async function middleware(request: NextRequest) {
   }
 
   // Add security headers
-  const securityHeaders = {
+  const securityHeaders: Record<string, string> = {
     'X-Frame-Options': 'DENY',
     'X-Content-Type-Options': 'nosniff',
     'X-XSS-Protection': '1; mode=block',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   }
+
+  // Add HSTS header in production
+  if (process.env.NODE_ENV === 'production') {
+    // Strict-Transport-Security: max-age=1 year, include subdomains, allow preload
+    securityHeaders['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
+  }
+
+  // Content Security Policy
+  // This is a relatively permissive policy that works with most Next.js apps
+  // Adjust as needed for your specific requirements
+  const cspDirectives = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://vercel.live",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: blob: https: http:",
+    "font-src 'self' https://fonts.gstatic.com",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.xero.com https://identity.xero.com https://api.openai.com https://vercel.live wss://ws-us3.pusher.com",
+    "frame-src 'self' https://js.stripe.com https://login.xero.com",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "upgrade-insecure-requests"
+  ]
+  securityHeaders['Content-Security-Policy'] = cspDirectives.join('; ')
 
   Object.entries(securityHeaders).forEach(([key, value]) => {
     response.headers.set(key, value)

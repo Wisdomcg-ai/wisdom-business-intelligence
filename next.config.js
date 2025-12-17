@@ -27,9 +27,47 @@ const nextConfig = {
     optimizePackageImports: ['lucide-react', '@supabase/supabase-js'],
   },
 
-  // Headers for caching static assets
+  // Security and caching headers
   async headers() {
+    // Security headers that apply to all routes
+    const securityHeaders = [
+      {
+        key: 'X-Frame-Options',
+        value: 'DENY',
+      },
+      {
+        key: 'X-Content-Type-Options',
+        value: 'nosniff',
+      },
+      {
+        key: 'X-XSS-Protection',
+        value: '1; mode=block',
+      },
+      {
+        key: 'Referrer-Policy',
+        value: 'strict-origin-when-cross-origin',
+      },
+      {
+        key: 'Permissions-Policy',
+        value: 'camera=(), microphone=(), geolocation=()',
+      },
+    ]
+
+    // Add HSTS in production
+    if (process.env.NODE_ENV === 'production') {
+      securityHeaders.push({
+        key: 'Strict-Transport-Security',
+        value: 'max-age=31536000; includeSubDomains; preload',
+      })
+    }
+
     return [
+      // Security headers for API routes
+      {
+        source: '/api/:path*',
+        headers: securityHeaders,
+      },
+      // Caching headers for images
       {
         source: '/:all*(svg|jpg|jpeg|png|gif|ico|webp|avif)',
         headers: [
@@ -37,8 +75,10 @@ const nextConfig = {
             key: 'Cache-Control',
             value: 'public, max-age=31536000, immutable',
           },
+          ...securityHeaders,
         ],
       },
+      // Caching headers for static assets
       {
         source: '/_next/static/:path*',
         headers: [

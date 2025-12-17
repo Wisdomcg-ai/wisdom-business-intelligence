@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { encrypt, decrypt } from '@/lib/utils/encryption';
 
 export const dynamic = 'force-dynamic'
 
@@ -62,10 +63,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Decrypt tokens from database
+    const decryptedAccessToken = decrypt(connection.access_token);
+    const decryptedRefreshToken = decrypt(connection.refresh_token);
+
     // Check if token needs refresh
     const now = new Date();
     const expiry = new Date(connection.expires_at);
-    let accessToken = connection.access_token;
+    let accessToken = decryptedAccessToken;
 
     if (expiry <= now) {
       // Refresh the token
@@ -79,7 +84,7 @@ export async function POST(request: NextRequest) {
         },
         body: new URLSearchParams({
           grant_type: 'refresh_token',
-          refresh_token: connection.refresh_token
+          refresh_token: decryptedRefreshToken
         })
       });
 
@@ -93,15 +98,15 @@ export async function POST(request: NextRequest) {
       const tokens = await refreshResponse.json();
       accessToken = tokens.access_token;
 
-      // Update tokens in database
+      // Update tokens in database (encrypted)
       const newExpiry = new Date();
       newExpiry.setSeconds(newExpiry.getSeconds() + tokens.expires_in);
 
       await supabase
         .from('xero_connections')
         .update({
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
+          access_token: encrypt(tokens.access_token),
+          refresh_token: encrypt(tokens.refresh_token),
           expires_at: newExpiry.toISOString()
         })
         .eq('id', connection.id);

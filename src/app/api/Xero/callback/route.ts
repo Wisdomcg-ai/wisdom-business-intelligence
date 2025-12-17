@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { encrypt, verifySignedOAuthState } from '@/lib/utils/encryption';
 
 export const dynamic = 'force-dynamic'
 
@@ -46,18 +47,37 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Decode the state to get business_id and return_to
+    // Verify and decode the signed state to get business_id and return_to
     let businessId: string;
     let returnTo: string = '/integrations';
-    try {
-      const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
-      businessId = stateData.business_id;
-      returnTo = stateData.return_to || '/integrations';
-    } catch (e) {
-      console.error('Invalid state:', e);
-      return NextResponse.redirect(
-        new URL('/integrations?error=invalid_state', request.url)
-      );
+
+    // Try to verify as signed state first (new format)
+    const signedStateData = verifySignedOAuthState<{ business_id: string; return_to?: string; timestamp: number }>(state);
+
+    if (signedStateData) {
+      // Check state is not too old (max 10 minutes)
+      const stateAge = Date.now() - signedStateData.timestamp;
+      if (stateAge > 10 * 60 * 1000) {
+        console.error('OAuth state expired');
+        return NextResponse.redirect(
+          new URL('/integrations?error=state_expired', request.url)
+        );
+      }
+      businessId = signedStateData.business_id;
+      returnTo = signedStateData.return_to || '/integrations';
+    } else {
+      // Fallback: try legacy base64 format (for backwards compatibility during migration)
+      try {
+        const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
+        businessId = stateData.business_id;
+        returnTo = stateData.return_to || '/integrations';
+        console.warn('Using legacy OAuth state format - please update auth route');
+      } catch (e) {
+        console.error('Invalid state:', e);
+        return NextResponse.redirect(
+          new URL('/integrations?error=invalid_state', request.url)
+        );
+      }
     }
 
     // Step 1: Exchange code for tokens
@@ -153,7 +173,7 @@ export async function GET(request: NextRequest) {
       .update({ is_active: false })
       .eq('business_id', businessId);
 
-    // Insert the new connection
+    // Insert the new connection with encrypted tokens
     const { data, error: dbError } = await supabase
       .from('xero_connections')
       .insert({
@@ -161,8 +181,8 @@ export async function GET(request: NextRequest) {
         user_id: userId,
         tenant_id: tenant.tenantId,
         tenant_name: tenant.tenantName,
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
+        access_token: encrypt(tokens.access_token),
+        refresh_token: encrypt(tokens.refresh_token),
         expires_at: expiresAt.toISOString(),
         is_active: true
       });

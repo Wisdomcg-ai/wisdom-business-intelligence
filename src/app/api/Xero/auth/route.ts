@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { createSignedOAuthState } from '@/lib/utils/encryption';
 
 export const dynamic = 'force-dynamic'
 
@@ -79,13 +80,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Create state parameter with business_id and optional return_to
-    const state = Buffer.from(
-      JSON.stringify({
-        business_id: businessId,
-        return_to: returnTo || '/integrations'
-      })
-    ).toString('base64');
+    // Create signed state parameter with business_id, return_to, and timestamp
+    // This prevents CSRF attacks by ensuring state can only be created by our server
+    const state = createSignedOAuthState({
+      business_id: businessId,
+      return_to: returnTo || '/integrations',
+      timestamp: Date.now()
+    });
 
     // Build Xero authorization URL
     const authUrl = new URL(XERO_AUTH_URL);
