@@ -295,6 +295,13 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         return false
       }
 
+      // CRITICAL: When coach is viewing a client, use the client's owner ID for saves
+      // The ownerUserId contains the actual business owner's ID, not the coach's ID
+      // This ensures data is saved under the correct owner and can be loaded by both
+      // the owner and the coach
+      const saveUserId = ownerUserId || userId
+      console.log(`[Strategic Planning] 💾 Using saveUserId: ${saveUserId} (ownerUserId: ${ownerUserId}, userId: ${userId})`)
+
       // Guard: Don't save empty financial data (prevents data loss)
       if (financialData.revenue.current === 0 &&
           financialData.revenue.year1 === 0 &&
@@ -322,7 +329,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       // Save financial data, core metrics, and quarterly targets
       const financialResult = await FinancialService.saveFinancialGoals(
         businessId,
-        userId,
+        saveUserId,
         financialData,
         yearType,
         coreMetrics,
@@ -335,7 +342,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       }
 
       // Save KPIs
-      const kpiResult = await KPIService.saveUserKPIs(businessId, userId, kpis)
+      const kpiResult = await KPIService.saveUserKPIs(businessId, saveUserId, kpis)
 
       if (!kpiResult.success) {
         setError(`Failed to save KPIs: ${kpiResult.error}`)
@@ -345,7 +352,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       // Save strategic ideas (Step 2)
       const strategicIdeasResult = await StrategicPlanningService.saveInitiatives(
         businessId,
-        userId,
+        saveUserId,
         strategicIdeas,
         'strategic_ideas'
       )
@@ -358,7 +365,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       // Save roadmap suggestions (Step 3)
       const roadmapResult = await StrategicPlanningService.saveInitiatives(
         businessId,
-        userId,
+        saveUserId,
         roadmapSuggestions,
         'roadmap'
       )
@@ -371,7 +378,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       // Save 12-month initiatives (Step 4)
       const twelveMonthResult = await StrategicPlanningService.saveInitiatives(
         businessId,
-        userId,
+        saveUserId,
         twelveMonthInitiatives,
         'twelve_month'
       )
@@ -384,7 +391,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       // Save quarterly plans (Step 5)
       const q1Result = await StrategicPlanningService.saveInitiatives(
         businessId,
-        userId,
+        saveUserId,
         annualPlanByQuarter.q1,
         'q1'
       )
@@ -396,7 +403,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
 
       const q2Result = await StrategicPlanningService.saveInitiatives(
         businessId,
-        userId,
+        saveUserId,
         annualPlanByQuarter.q2,
         'q2'
       )
@@ -408,7 +415,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
 
       const q3Result = await StrategicPlanningService.saveInitiatives(
         businessId,
-        userId,
+        saveUserId,
         annualPlanByQuarter.q3,
         'q3'
       )
@@ -420,7 +427,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
 
       const q4Result = await StrategicPlanningService.saveInitiatives(
         businessId,
-        userId,
+        saveUserId,
         annualPlanByQuarter.q4,
         'q4'
       )
@@ -433,7 +440,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       // Save sprint focus (Step 6)
       const sprintResult = await StrategicPlanningService.saveInitiatives(
         businessId,
-        userId,
+        saveUserId,
         sprintFocus,
         'sprint'
       )
@@ -446,7 +453,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       // Save sprint key actions (Step 6)
       const sprintActionsResult = await StrategicPlanningService.saveSprintActions(
         businessId,
-        userId,
+        saveUserId,
         sprintKeyActions
       )
 
@@ -458,7 +465,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       // Save operational activities
       const operationalActivitiesResult = await OperationalActivitiesService.saveActivities(
         businessId,
-        userId,
+        saveUserId,
         operationalActivities
       )
 
@@ -510,6 +517,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
   }, [
     businessId,
     userId,
+    ownerUserId,
     financialData,
     coreMetrics,
     kpis,

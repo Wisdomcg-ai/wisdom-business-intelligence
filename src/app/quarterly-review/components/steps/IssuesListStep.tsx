@@ -239,7 +239,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
                           <p className="text-sm text-gray-600 mt-1">{issue.description}</p>
                         )}
                         <div className="flex items-center gap-2 mt-2">
-                          {issue.priority && (
+                          {issue.priority && typeof issue.priority === 'string' && (
                           <span className={`text-xs px-2 py-0.5 rounded border ${getPriorityColor(issue.priority)}`}>
                             {issue.priority.charAt(0).toUpperCase() + issue.priority.slice(1)} Priority
                           </span>

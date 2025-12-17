@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Step 4 - Annual Plan with Actuals (Mockup)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'brand-orange': {
+              DEFAULT: '#F97316',
+              50: '#FFF7ED',
+              100: '#FFEDD5',
+              200: '#FED7AA',
+              300: '#FDBA74',
+              400: '#FB923C',
+              500: '#F97316',
+              600: '#EA580C',
+              700: '#C2410C',
+            },
+            'brand-navy': {
+              DEFAULT: '#3E3F57',
+              600: '#2D2E42',
+              700: '#1E1F2E',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .quarter-card { transition: all 0.2s ease; }
+    .status-pill { font-size: 10px; letter-spacing: 0.5px; }
+  </style>
+</head>
+<body class="bg-gray-100 p-8">
+
+  <!-- Header Context Bar -->
+  <div class="max-w-7xl mx-auto mb-6">
+    <div class="bg-gradient-to-r from-brand-navy to-brand-navy-600 rounded-xl p-6 text-white">
+      <div class="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 class="text-2xl font-bold mb-1">Annual Plan - FY26</h1>
+          <p class="text-white/70 text-sm">July 2025 - June 2026 | Planning started December 2025</p>
+        </div>
+
+        <!-- YTD Summary -->
+        <div class="flex items-center gap-6">
+          <div class="text-center px-4 py-2 bg-white/10 rounded-lg">
+            <p class="text-white/60 text-xs uppercase tracking-wide">Annual Target</p>
+            <p class="text-2xl font-bold">$1.5M</p>
+          </div>
+          <div class="text-center px-4 py-2 bg-white/10 rounded-lg">
+            <p class="text-white/60 text-xs uppercase tracking-wide">YTD Actual</p>
+            <p class="text-2xl font-bold text-green-400">$580K</p>
+          </div>
+          <div class="text-center px-4 py-2 bg-white/10 rounded-lg">
+            <p class="text-white/60 text-xs uppercase tracking-wide">Remaining</p>
+            <p class="text-2xl font-bold text-brand-orange-300">$920K</p>
+          </div>
+          <div class="text-center px-4 py-2 bg-green-500/20 rounded-lg border border-green-500/30">
+            <p class="text-green-300 text-xs uppercase tracking-wide">Status</p>
+            <p class="text-lg font-bold text-green-400">On Track</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress Bar -->
+      <div class="mt-4">
+        <div class="flex items-center justify-between text-xs text-white/60 mb-1">
+          <span>Progress to Annual Goal</span>
+          <span>38.7% complete ($580K / $1.5M)</span>
+        </div>
+        <div class="h-3 bg-white/20 rounded-full overflow-hidden">
+          <div class="h-full bg-gradient-to-r from-green-400 to-green-500 rounded-full" style="width: 38.7%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quarter Cards -->
+  <div class="max-w-7xl mx-auto">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+      <!-- Q1 - COMPLETED -->
+      <div class="quarter-card bg-white rounded-xl border-2 border-green-300 overflow-hidden shadow-sm">
+        <div class="bg-green-50 px-4 py-3 border-b border-green-200">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold text-gray-900">Q1</h3>
+                <span class="status-pill px-2 py-0.5 bg-green-500 text-white rounded-full font-semibold uppercase">Completed</span>
+              </div>
+              <p class="text-xs text-gray-500 mt-0.5">Jul - Sep 2025</p>
+            </div>
+            <div class="text-right">
+              <div class="flex items-center gap-1">
+                <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span class="text-xs text-green-600 font-medium">Locked</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-4">
+          <!-- Actuals Entry -->
+          <div class="mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
+            <p class="text-xs font-semibold text-green-800 uppercase tracking-wide mb-2">Actual Results</p>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-gray-500">Revenue</label>
+                <p class="text-lg font-bold text-gray-900">$320K</p>
+              </div>
+              <div>
+                <label class="text-xs text-gray-500">Profit</label>
+                <p class="text-lg font-bold text-gray-900">$64K</p>
+              </div>
+            </div>
+            <div class="mt-2 pt-2 border-t border-green-200">
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-gray-500">vs Target ($375K)</span>
+                <span class="text-xs font-semibold text-amber-600">-$55K (85%)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Initiatives (Read-only for completed) -->
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Completed Initiatives</p>
+          <div class="space-y-2">
+            <div class="p-2 bg-brand-orange rounded-lg">
+              <p class="text-xs font-medium text-white">Launch email nurture sequence</p>
+            </div>
+            <div class="p-2 bg-brand-navy rounded-lg">
+              <p class="text-xs font-medium text-white">Implement CRM system</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Q2 - IN PROGRESS -->
+      <div class="quarter-card bg-white rounded-xl border-2 border-brand-orange-300 overflow-hidden shadow-sm ring-2 ring-brand-orange-200">
+        <div class="bg-brand-orange-50 px-4 py-3 border-b border-brand-orange-200">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold text-gray-900">Q2</h3>
+                <span class="status-pill px-2 py-0.5 bg-brand-orange text-white rounded-full font-semibold uppercase">Current</span>
+              </div>
+              <p class="text-xs text-gray-500 mt-0.5">Oct - Dec 2025</p>
+            </div>
+            <div class="text-right">
+              <p class="text-xs text-brand-orange-600 font-medium">2 months complete</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-4">
+          <!-- Actuals Entry - Editable -->
+          <div class="mb-4 p-3 bg-brand-orange-50 rounded-lg border border-brand-orange-200">
+            <div class="flex items-center justify-between mb-2">
+              <p class="text-xs font-semibold text-brand-orange-800 uppercase tracking-wide">Actuals to Date</p>
+              <button class="text-xs text-brand-orange-600 hover:text-brand-orange-700 font-medium">Edit</button>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-gray-500">Revenue</label>
+                <input type="text" value="$260K" class="w-full text-lg font-bold text-gray-900 bg-white border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-brand-orange focus:border-transparent">
+              </div>
+              <div>
+                <label class="text-xs text-gray-500">Profit</label>
+                <input type="text" value="$52K" class="w-full text-lg font-bold text-gray-900 bg-white border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-brand-orange focus:border-transparent">
+              </div>
+            </div>
+            <div class="mt-2 pt-2 border-t border-brand-orange-200">
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-gray-500">Target: $375K</span>
+                <span class="text-xs font-semibold text-green-600">Pacing: $390K (+4%)</span>
+              </div>
+              <div class="mt-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div class="h-full bg-brand-orange rounded-full" style="width: 69%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Active Initiatives -->
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Active Initiatives (3)</p>
+          <div class="space-y-2">
+            <div class="p-2 bg-brand-orange rounded-lg flex items-center justify-between">
+              <p class="text-xs font-medium text-white">Hire sales manager</p>
+              <span class="text-[10px] bg-white/20 text-white px-1.5 py-0.5 rounded">60%</span>
+            </div>
+            <div class="p-2 bg-brand-navy rounded-lg flex items-center justify-between">
+              <p class="text-xs font-medium text-white">Launch referral program</p>
+              <span class="text-[10px] bg-white/20 text-white px-1.5 py-0.5 rounded">40%</span>
+            </div>
+            <div class="p-2 bg-white border-2 border-gray-300 rounded-lg flex items-center justify-between">
+              <p class="text-xs font-medium text-gray-800">Weekly team meetings</p>
+              <span class="text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded">Ongoing</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Q3 - PLANNING -->
+      <div class="quarter-card bg-white rounded-xl border-2 border-gray-200 overflow-hidden shadow-sm">
+        <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold text-gray-900">Q3</h3>
+                <span class="status-pill px-2 py-0.5 bg-blue-500 text-white rounded-full font-semibold uppercase">Planning</span>
+              </div>
+              <p class="text-xs text-gray-500 mt-0.5">Jan - Mar 2026</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-4">
+          <!-- Target (calculated from remaining) -->
+          <div class="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <p class="text-xs font-semibold text-blue-800 uppercase tracking-wide mb-2">Quarterly Target</p>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-gray-500">Revenue</label>
+                <p class="text-lg font-bold text-gray-900">$460K</p>
+              </div>
+              <div>
+                <label class="text-xs text-gray-500">Profit</label>
+                <p class="text-lg font-bold text-gray-900">$92K</p>
+              </div>
+            </div>
+            <p class="text-xs text-blue-600 mt-2">Based on remaining annual target</p>
+          </div>
+
+          <!-- Planned Initiatives -->
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Planned Initiatives (2)</p>
+          <div class="space-y-2">
+            <div class="p-2 bg-brand-orange rounded-lg">
+              <p class="text-xs font-medium text-white">Launch group coaching program</p>
+            </div>
+            <div class="p-2 bg-brand-navy rounded-lg">
+              <p class="text-xs font-medium text-white">Automate onboarding process</p>
+            </div>
+          </div>
+
+          <!-- Drop zone hint -->
+          <div class="mt-3 p-3 border-2 border-dashed border-gray-300 rounded-lg text-center">
+            <p class="text-xs text-gray-400">Drag initiatives here</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Q4 - PLANNING -->
+      <div class="quarter-card bg-white rounded-xl border-2 border-gray-200 overflow-hidden shadow-sm">
+        <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold text-gray-900">Q4</h3>
+                <span class="status-pill px-2 py-0.5 bg-blue-500 text-white rounded-full font-semibold uppercase">Planning</span>
+              </div>
+              <p class="text-xs text-gray-500 mt-0.5">Apr - Jun 2026</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-4">
+          <!-- Target (calculated from remaining) -->
+          <div class="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <p class="text-xs font-semibold text-blue-800 uppercase tracking-wide mb-2">Quarterly Target</p>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-gray-500">Revenue</label>
+                <p class="text-lg font-bold text-gray-900">$460K</p>
+              </div>
+              <div>
+                <label class="text-xs text-gray-500">Profit</label>
+                <p class="text-lg font-bold text-gray-900">$92K</p>
+              </div>
+            </div>
+            <p class="text-xs text-blue-600 mt-2">Based on remaining annual target</p>
+          </div>
+
+          <!-- Planned Initiatives -->
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Planned Initiatives (1)</p>
+          <div class="space-y-2">
+            <div class="p-2 bg-brand-orange rounded-lg">
+              <p class="text-xs font-medium text-white">Scale to second location</p>
+            </div>
+          </div>
+
+          <!-- Drop zone hint -->
+          <div class="mt-3 p-3 border-2 border-dashed border-gray-300 rounded-lg text-center">
+            <p class="text-xs text-gray-400">Drag initiatives here</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Legend / Help -->
+  <div class="max-w-7xl mx-auto mt-6">
+    <div class="bg-white rounded-xl p-4 border border-gray-200">
+      <h3 class="font-semibold text-gray-700 mb-3">How it works</h3>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+        <div class="flex items-start gap-2">
+          <span class="status-pill px-2 py-0.5 bg-green-500 text-white rounded-full font-semibold uppercase">Completed</span>
+          <p class="text-gray-600">Quarter is finished. Enter your actual results to track against target.</p>
+        </div>
+        <div class="flex items-start gap-2">
+          <span class="status-pill px-2 py-0.5 bg-brand-orange text-white rounded-full font-semibold uppercase">Current</span>
+          <p class="text-gray-600">Quarter in progress. Update actuals as you go to track pacing.</p>
+        </div>
+        <div class="flex items-start gap-2">
+          <span class="status-pill px-2 py-0.5 bg-blue-500 text-white rounded-full font-semibold uppercase">Planning</span>
+          <p class="text-gray-600">Future quarter. Targets auto-calculated from remaining annual goal.</p>
+        </div>
+        <div class="flex items-start gap-2">
+          <div class="flex gap-1">
+            <span class="w-4 h-4 bg-brand-orange rounded"></span>
+            <span class="w-4 h-4 bg-brand-navy rounded"></span>
+            <span class="w-4 h-4 bg-white border-2 border-gray-300 rounded"></span>
+          </div>
+          <p class="text-gray-600">Initiative colors: Strategic (orange), Roadmap (navy), Operational (white)</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
