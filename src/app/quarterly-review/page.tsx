@@ -13,10 +13,12 @@ import {
   ChevronRight,
   FileText,
   BarChart3,
-  Target
+  Target,
+  History
 } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import PageHeader from '@/components/ui/PageHeader';
+import Link from 'next/link';
 
 export default function QuarterlyReviewPage() {
   const router = useRouter();
@@ -108,6 +110,17 @@ export default function QuarterlyReviewPage() {
         title="Quarterly Review"
         subtitle="A guided 4-hour process to reflect, analyze, and plan for the next quarter"
         icon={Calendar}
+        actions={
+          pastReviews.length > 0 && (
+            <Link
+              href="/quarterly-review/history"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+            >
+              <History className="w-4 h-4" />
+              View Timeline
+            </Link>
+          )
+        }
       />
 
       <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
