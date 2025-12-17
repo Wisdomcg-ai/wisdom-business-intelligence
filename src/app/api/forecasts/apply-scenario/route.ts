@@ -13,6 +13,23 @@ export async function POST(request: Request) {
 
     const { forecastId, parameters }: { forecastId: string; parameters: WhatIfParameters } = await request.json()
 
+    // First verify user has access to this forecast via business ownership
+    const { data: forecast, error: forecastError } = await supabase
+      .from('financial_forecasts')
+      .select('id, business_id, businesses!inner(owner_id, assigned_coach_id)')
+      .eq('id', forecastId)
+      .single()
+
+    if (forecastError || !forecast) {
+      return NextResponse.json({ error: 'Forecast not found' }, { status: 404 })
+    }
+
+    // Type-safe access to the joined business data
+    const business = forecast.businesses as unknown as { owner_id: string; assigned_coach_id: string | null }
+    if (business.owner_id !== user.id && business.assigned_coach_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
     // Get current P&L lines
     const { data: plLines, error: plError } = await supabase
       .from('forecast_pl_lines')

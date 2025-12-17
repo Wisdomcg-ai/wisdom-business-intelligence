@@ -15,9 +15,10 @@ const getServiceClient = () => createClient(
 )
 
 // Demo client configuration
+// Credentials can be overridden via environment variables for security
 const DEMO_CLIENT = {
-  email: 'demo@smithsplumbing.com.au',
-  password: 'DemoPassword123!',
+  email: process.env.DEMO_CLIENT_EMAIL || 'demo@smithsplumbing.com.au',
+  password: process.env.DEMO_CLIENT_PASSWORD || 'DemoPassword123!',
   firstName: 'John',
   lastName: 'Smith',
   businessName: "Smith's Plumbing Services",
@@ -730,8 +731,9 @@ export async function POST(request: Request) {
 
   } catch (error) {
     console.error('[Demo Client] Error:', error)
+    // Return generic error message to avoid exposing internal details
     return NextResponse.json(
-      { error: 'An unexpected error occurred', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to create demo client. Please try again.' },
       { status: 500 }
     )
   }

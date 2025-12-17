@@ -2,6 +2,7 @@
 // This initiates the Xero OAuth flow
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic'
 
@@ -25,11 +26,21 @@ const SCOPES = [
 
 export async function GET(request: NextRequest) {
   try {
+    // Verify user is authenticated before initiating OAuth
+    const supabase = await createRouteHandlerClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.redirect(
+        new URL('/auth/login?error=unauthorized&redirect=/integrations', request.url)
+      );
+    }
+
     // Check if Xero credentials are configured
     if (!XERO_CLIENT_ID) {
       console.error('XERO_CLIENT_ID is not configured');
       return NextResponse.json(
-        { error: 'Xero integration is not configured. Please check environment variables.' },
+        { error: 'Xero integration is not configured.' },
         { status: 500 }
       );
     }
@@ -43,6 +54,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { error: 'business_id is required' },
         { status: 400 }
+      );
+    }
+
+    // Verify the user has access to this business (owner or assigned coach)
+    const { data: business, error: bizError } = await supabase
+      .from('businesses')
+      .select('id, owner_id, assigned_coach_id')
+      .eq('id', businessId)
+      .single();
+
+    if (bizError || !business) {
+      return NextResponse.json(
+        { error: 'Business not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check if user is owner or assigned coach
+    if (business.owner_id !== user.id && business.assigned_coach_id !== user.id) {
+      return NextResponse.json(
+        { error: 'Access denied. You do not have permission to connect integrations for this business.' },
+        { status: 403 }
       );
     }
 
@@ -74,9 +107,10 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Auth error:', error);
+    console.error('[Xero Auth] Error:', error);
+    // Return generic error message to avoid exposing internal details
     return NextResponse.json(
-      { error: 'Failed to initiate OAuth', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to connect to Xero. Please try again.' },
       { status: 500 }
     );
   }

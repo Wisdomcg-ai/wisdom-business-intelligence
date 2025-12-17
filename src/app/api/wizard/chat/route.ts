@@ -1,8 +1,47 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter';
+import {
+  sanitizeAIInput,
+  sanitizeConversationHistory,
+  detectPromptInjection,
+  logSuspiciousInput,
+  AI_INPUT_LIMITS
+} from '@/lib/utils/ai-sanitizer';
 
 export async function POST(request: Request) {
   try {
+    // Verify user is authenticated before processing AI request
+    const supabase = await createRouteHandlerClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    // Rate limiting - prevent AI cost abuse (30 requests per hour per user)
+    const rateLimitKey = createRateLimitKey('/api/wizard/chat', user.id);
+    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.ai);
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded. Please wait before making more AI requests.',
+          retryAfter: Math.ceil(rateLimit.resetIn / 1000)
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil(rateLimit.resetIn / 1000))
+          }
+        }
+      );
+    }
+
     // Initialize OpenAI inside the handler (lazy load)
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
@@ -17,8 +56,20 @@ export async function POST(request: Request) {
       );
     }
 
+    // Sanitize user input to prevent prompt injection
+    const sanitizedMessage = sanitizeAIInput(userMessage, AI_INPUT_LIMITS.userMessage);
+
+    // Check for suspicious patterns (log but don't block - could be false positive)
+    const injectionCheck = detectPromptInjection(userMessage);
+    if (injectionCheck.isSuspicious) {
+      logSuspiciousInput('/api/wizard/chat', user.id, userMessage, injectionCheck.pattern || 'unknown');
+    }
+
+    // Sanitize conversation history
+    const sanitizedHistory = sanitizeConversationHistory(conversationHistory || []);
+
     // Build conversation history for context
-    const messages = conversationHistory.map((msg: any) => ({
+    const messages = sanitizedHistory.map((msg) => ({
       role: msg.role as 'user' | 'assistant',
       content: msg.content,
     }));
@@ -26,7 +77,7 @@ export async function POST(request: Request) {
     // Add the new user message
     messages.push({
       role: 'user',
-      content: userMessage,
+      content: sanitizedMessage,
     });
 
     // Create system prompt based on current stage
@@ -56,17 +107,17 @@ export async function POST(request: Request) {
     let updatedProcessData = processData;
 
     if (stage === 'welcome' && processData.name === '') {
-      // Extract process name
+      // Extract process name (use sanitized message)
       updatedProcessData = {
         ...processData,
-        name: extractProcessName(userMessage),
+        name: extractProcessName(sanitizedMessage),
         stage: 'overview',
       };
     } else if (stage === 'overview') {
-      // Extract trigger and outcome
+      // Extract trigger and outcome (use sanitized message)
       updatedProcessData = {
         ...processData,
-        trigger: userMessage.slice(0, 100),
+        trigger: sanitizedMessage.slice(0, 100),
         stage: 'swimlanes',
       };
     }
@@ -76,10 +127,10 @@ export async function POST(request: Request) {
       updatedProcessData,
     });
   } catch (error) {
-    console.error('Chat API error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to process your message';
+    console.error('[Wizard Chat API] Error:', error);
+    // Return generic error message to avoid exposing internal details
     return NextResponse.json(
-      { error: errorMessage },
+      { error: 'Failed to process your message. Please try again.' },
       { status: 500 }
     );
   }

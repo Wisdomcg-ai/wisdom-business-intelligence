@@ -43,6 +43,11 @@ export const RATE_LIMIT_CONFIGS = {
   upload: {
     windowMs: 60 * 60 * 1000,
     maxRequests: 20
+  },
+  // AI routes (30 requests per hour per user - protects against cost abuse)
+  ai: {
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 30
   }
 } as const
 

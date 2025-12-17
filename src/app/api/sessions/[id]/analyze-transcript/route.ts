@@ -1,6 +1,13 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
+import {
+  sanitizeAIInput,
+  detectPromptInjection,
+  logSuspiciousInput,
+  AI_INPUT_LIMITS
+} from '@/lib/utils/ai-sanitizer'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -17,6 +24,25 @@ export async function POST(
 
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Rate limiting - prevent AI cost abuse (30 requests per hour per user)
+    const rateLimitKey = createRateLimitKey('/api/sessions/analyze-transcript', user.id)
+    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.ai)
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded. Please wait before making more AI requests.',
+          retryAfter: Math.ceil(rateLimit.resetIn / 1000)
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil(rateLimit.resetIn / 1000))
+          }
+        }
+      )
     }
 
     const sessionId = params.id
@@ -55,6 +81,15 @@ export async function POST(
       )
     }
 
+    // Sanitize transcript text to prevent prompt injection
+    const sanitizedTranscript = sanitizeAIInput(transcript_text, AI_INPUT_LIMITS.transcript)
+
+    // Check for suspicious patterns in the transcript
+    const injectionCheck = detectPromptInjection(transcript_text)
+    if (injectionCheck.isSuspicious) {
+      logSuspiciousInput('/api/sessions/analyze-transcript', user.id, transcript_text.slice(0, 500), injectionCheck.pattern || 'unknown')
+    }
+
     // Use OpenAI to analyze the transcript
     const prompt = `You are an expert business coach assistant. Analyze this coaching session transcript and extract the following information in JSON format:
 
@@ -65,7 +100,7 @@ export async function POST(
 5. Any goals or metrics mentioned
 
 Transcript:
-${transcript_text}
+${sanitizedTranscript}
 
 Return ONLY valid JSON in this exact format:
 {
