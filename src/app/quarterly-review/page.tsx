@@ -177,31 +177,41 @@ export default function QuarterlyReviewPage() {
           {currentQuarterReview && currentQuarterReview.status !== 'completed' && (
             <div className="flex justify-center lg:block">
               <div className="relative w-32 h-32">
-                <svg className="w-full h-full transform -rotate-90">
-                  <circle
-                    cx="64"
-                    cy="64"
-                    r="56"
-                    stroke="#e5e7eb"
-                    strokeWidth="8"
-                    fill="none"
-                  />
-                  <circle
-                    cx="64"
-                    cy="64"
-                    r="56"
-                    stroke="#0d9488"
-                    strokeWidth="8"
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeDasharray={`${((currentQuarterReview.steps_completed?.length || 0) / 14) * 352} 352`}
-                  />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-2xl font-bold text-gray-900">
-                    {Math.round((currentQuarterReview.steps_completed?.length || 0) / 14 * 100)}%
-                  </span>
-                </div>
+                {/* 11 actual steps (excludes 'complete' which is the final state) */}
+                {(() => {
+                  const stepsCompleted = (currentQuarterReview.steps_completed || []).filter((s: string) => s !== 'complete').length;
+                  const totalSteps = 11;
+                  const progressPercent = Math.min(100, Math.round((stepsCompleted / totalSteps) * 100));
+                  return (
+                    <>
+                      <svg className="w-full h-full transform -rotate-90">
+                        <circle
+                          cx="64"
+                          cy="64"
+                          r="56"
+                          stroke="#e5e7eb"
+                          strokeWidth="8"
+                          fill="none"
+                        />
+                        <circle
+                          cx="64"
+                          cy="64"
+                          r="56"
+                          stroke="#0d9488"
+                          strokeWidth="8"
+                          fill="none"
+                          strokeLinecap="round"
+                          strokeDasharray={`${(stepsCompleted / totalSteps) * 352} 352`}
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-2xl font-bold text-gray-900">
+                          {progressPercent}%
+                        </span>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           )}
