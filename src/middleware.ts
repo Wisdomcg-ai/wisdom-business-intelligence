@@ -207,7 +207,8 @@ export async function middleware(request: NextRequest) {
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    "upgrade-insecure-requests"
+    // Only upgrade to HTTPS in production
+    ...(process.env.NODE_ENV === 'production' ? ["upgrade-insecure-requests"] : [])
   ]
   securityHeaders['Content-Security-Policy'] = cspDirectives.join('; ')
 

@@ -202,7 +202,7 @@ export default function ChatPage() {
 
   return (
     <ClientLayout>
-      <div className="flex flex-col h-[calc(100svh-12rem)] sm:h-[calc(100vh-12rem)]">
+      <div className="flex flex-col h-[calc(100svh-16rem)] sm:h-[calc(100vh-16rem)]">
         {/* Header */}
         <div className="bg-white rounded-t-lg border border-gray-200 border-b-0 p-4">
           <div className="flex items-center gap-3">

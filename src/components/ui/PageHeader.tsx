@@ -244,7 +244,7 @@ export default function PageHeader({
   // Banner variant - full-width edge-to-edge navy header with orange border
   if (variant === 'banner') {
     return (
-      <div className={`bg-brand-navy border-b-4 border-brand-orange ${className}`}>
+      <div className={`bg-brand-navy border-b-4 border-brand-orange sticky top-0 z-10 ${className}`}>
         <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-4 min-w-0">

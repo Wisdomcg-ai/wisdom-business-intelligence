@@ -111,7 +111,7 @@ export default function QuarterlyReviewPage() {
         subtitle="A guided 4-hour process to reflect, analyze, and plan for the next quarter"
         icon={Calendar}
         actions={
-          pastReviews.length > 0 && (
+          (pastReviews.length > 0 || currentQuarterReview?.status === 'completed') && (
             <Link
               href="/quarterly-review/history"
               className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
@@ -133,11 +133,17 @@ export default function QuarterlyReviewPage() {
               <span className="font-semibold">{getQuarterLabel(quarter, year)}</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
-              {currentQuarterReview ? 'Continue Your Review' : 'Start Your Quarterly Review'}
+              {currentQuarterReview
+                ? (currentQuarterReview.status === 'completed'
+                    ? 'Review Complete'
+                    : 'Continue Your Review')
+                : 'Start Your Quarterly Review'}
             </h2>
             <p className="text-sm sm:text-base text-gray-600 mb-6 max-w-lg">
               {currentQuarterReview
-                ? `You're ${Math.min(100, Math.round(((currentQuarterReview.steps_completed || []).filter((s: string) => s !== 'complete').length) / 11 * 100))}% complete. Pick up where you left off.`
+                ? (currentQuarterReview.status === 'completed'
+                    ? `Completed on ${new Date(currentQuarterReview.completed_at).toLocaleDateString()}. View your summary or start planning for next quarter.`
+                    : `You're ${Math.min(100, Math.round(((currentQuarterReview.steps_completed || []).filter((s: string) => s !== 'complete').length) / 11 * 100))}% complete. Pick up where you left off.`)
                 : 'Reflect on last quarter, analyze what worked, and set clear targets for the next 90 days.'
               }
             </p>
@@ -166,14 +172,25 @@ export default function QuarterlyReviewPage() {
 
             {/* CTA Button */}
             {currentQuarterReview ? (
-              <button
-                onClick={() => continueReview(currentQuarterReview.id)}
-                className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
-              >
-                <PlayCircle className="w-5 h-5" />
-                Continue Review
-                <ChevronRight className="w-4 h-4" />
-              </button>
+              currentQuarterReview.status === 'completed' ? (
+                <button
+                  onClick={() => viewReview(currentQuarterReview.id)}
+                  className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
+                >
+                  <CheckCircle2 className="w-5 h-5" />
+                  View Summary
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => continueReview(currentQuarterReview.id)}
+                  className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
+                >
+                  <PlayCircle className="w-5 h-5" />
+                  Continue Review
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              )
             ) : (
               <button
                 onClick={startNewReview}
