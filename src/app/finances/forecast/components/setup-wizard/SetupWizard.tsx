@@ -22,7 +22,7 @@ import Step1ReviewGoals from './steps/Step1ReviewGoals'
 import Step2PriorYearAnalysis from './steps/Step2PriorYearAnalysis'
 import Step3TeamPlanning from './steps/Step3TeamPlanning'
 import Step4OperatingCosts from './steps/Step4OperatingCosts'
-import Step5RevenueDrivers from './steps/Step5RevenueDrivers'
+import Step5StrategicInvestments from './steps/Step5StrategicInvestments'
 import Step6ReviewGenerate from './steps/Step6ReviewGenerate'
 
 interface SetupWizardProps {
@@ -32,6 +32,7 @@ interface SetupWizardProps {
   plLines: PLLine[]
   xeroConnection: XeroConnection | null
   businessIndustry?: string
+  businessId?: string
   onImportFromAnnualPlan: () => Promise<void>
   onOpenCSVImport: () => void
   onConnectXero: () => void
@@ -57,12 +58,12 @@ interface SetupWizardProps {
 }
 
 const STEPS: { id: WizardStep; title: string; subtitle: string; icon: React.ElementType }[] = [
-  { id: 'goals', title: 'Review Goals', subtitle: 'Confirm your targets', icon: Target },
-  { id: 'prior-year', title: 'Analyse Prior Year', subtitle: 'Understand patterns', icon: BarChart3 },
-  { id: 'team', title: 'Plan Team', subtitle: 'Map your people', icon: Users },
-  { id: 'opex', title: 'Operating Costs', subtitle: 'Budget expenses', icon: Wallet },
-  { id: 'revenue-drivers', title: 'Revenue Drivers', subtitle: '5 Ways to profit', icon: TrendingUp },
-  { id: 'review', title: 'Review & Generate', subtitle: 'Build forecast', icon: Sparkles }
+  { id: 'goals', title: 'Your Plan', subtitle: 'Confirm targets', icon: Target },
+  { id: 'prior-year', title: 'History', subtitle: 'Analyse patterns', icon: BarChart3 },
+  { id: 'team', title: 'Team', subtitle: 'People costs', icon: Users },
+  { id: 'opex', title: 'Running Costs', subtitle: 'Daily expenses', icon: Wallet },
+  { id: 'investments', title: 'Big Projects', subtitle: 'One-off spend', icon: TrendingUp },
+  { id: 'review', title: 'Reality Check', subtitle: 'Generate forecast', icon: Sparkles }
 ]
 
 export default function SetupWizard({
@@ -72,6 +73,7 @@ export default function SetupWizard({
   plLines,
   xeroConnection,
   businessIndustry,
+  businessId,
   onImportFromAnnualPlan,
   onOpenCSVImport,
   onConnectXero,
@@ -130,6 +132,9 @@ export default function SetupWizard({
 
     opexCategories: [],
     totalOpExForecast: 0,
+
+    strategicInvestments: [],
+    totalInvestmentCost: 0,
 
     fiveWaysData: undefined,
     industryId: businessIndustry || 'other',
@@ -258,6 +263,7 @@ export default function SetupWizard({
             data={wizardData}
             onUpdate={handleUpdate}
             fiscalYear={forecast.fiscal_year}
+            businessId={businessId}
           />
         )
       case 'opex':
@@ -268,13 +274,13 @@ export default function SetupWizard({
             fiscalYear={forecast.fiscal_year}
           />
         )
-      case 'revenue-drivers':
+      case 'investments':
         return (
-          <Step5RevenueDrivers
+          <Step5StrategicInvestments
             data={wizardData}
             onUpdate={handleUpdate}
             fiscalYear={forecast.fiscal_year}
-            businessIndustry={businessIndustry}
+            businessId={businessId}
           />
         )
       case 'review':

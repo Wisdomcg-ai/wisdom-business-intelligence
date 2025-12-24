@@ -108,6 +108,18 @@ export interface OpExCategory {
   notes?: string
 }
 
+export interface StrategicInvestment {
+  id: string
+  title: string
+  quarters: string[] // ['Q1', 'Q3'] etc - from One Page Plan
+  cost: number
+  costType: 'one-off' | 'ongoing'
+  category: 'marketing' | 'technology' | 'training' | 'equipment' | 'consulting' | 'other'
+  primaryQuarter: string // Which quarter the main cost hits
+  notes?: string
+  fromPlan: boolean // Whether this came from One Page Plan
+}
+
 export interface SetupWizardData {
   // Step 1: Goals (imported from Goals Wizard)
   revenueGoal: number
@@ -130,9 +142,13 @@ export interface SetupWizardData {
   opexCategories: OpExCategory[]
   totalOpExForecast: number
 
-  // Step 5: Revenue Drivers (5 Ways)
-  fiveWaysData?: FiveWaysData
+  // Step 5: Strategic Investments (from One Page Plan)
+  strategicInvestments: StrategicInvestment[]
+  totalInvestmentCost: number
   industryId: string
+
+  // Legacy 5 Ways data (kept for backward compatibility)
+  fiveWaysData?: FiveWaysData
 
   // Step 6: Distribution & Generate
   distributionMethod: DistributionMethod
@@ -144,7 +160,7 @@ export type WizardStep =
   | 'prior-year'
   | 'team'
   | 'opex'
-  | 'revenue-drivers'
+  | 'investments'
   | 'review'
 
 export interface WizardStepConfig {

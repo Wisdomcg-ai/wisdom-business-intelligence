@@ -73,6 +73,9 @@ export async function POST(request: NextRequest) {
     let accessToken = decryptedAccessToken;
 
     if (expiry <= now) {
+      console.log('[Xero Sync] Token expired, attempting refresh...');
+      console.log('[Xero Sync] Token expiry was:', expiry.toISOString());
+
       // Refresh the token
       const refreshResponse = await fetch('https://identity.xero.com/connect/token', {
         method: 'POST',
@@ -89,8 +92,14 @@ export async function POST(request: NextRequest) {
       });
 
       if (!refreshResponse.ok) {
+        const errorText = await refreshResponse.text();
+        console.error('[Xero Sync] Token refresh failed:', refreshResponse.status, errorText);
+        console.error('[Xero Sync] This usually means the refresh token has expired (60 days). User needs to reconnect Xero.');
         return NextResponse.json(
-          { error: 'Failed to refresh Xero token' },
+          {
+            error: 'Xero connection expired. Please reconnect Xero from the Integrations page.',
+            details: 'Refresh token has expired. Xero tokens are valid for 60 days.'
+          },
           { status: 401 }
         );
       }

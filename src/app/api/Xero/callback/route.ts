@@ -18,7 +18,7 @@ const XERO_CLIENT_ID = process.env.XERO_CLIENT_ID!;
 const XERO_CLIENT_SECRET = process.env.XERO_CLIENT_SECRET!;
 const REDIRECT_URI = process.env.NODE_ENV === 'production'
   ? 'https://your-domain.com/api/Xero/callback'  // Update this with your real domain
-  : 'http://localhost:3001/api/Xero/callback';
+  : 'http://localhost:3000/api/Xero/callback';
 
 // Xero token URL
 const XERO_TOKEN_URL = 'https://identity.xero.com/connect/token';
@@ -164,17 +164,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Step 5: Save to database
-    console.log('Saving connection to database...');
+    // Step 5: Save to database using atomic delete + insert
+    console.log('[Xero Callback] Saving connection for business:', businessId, 'tenant:', tenant.tenantId);
 
-    // First, deactivate any existing connection for this business
-    await supabase
+    // Delete ALL existing connections for this business (clean slate)
+    const { error: deleteError } = await supabase
       .from('xero_connections')
-      .update({ is_active: false })
+      .delete()
       .eq('business_id', businessId);
 
-    // Insert the new connection with encrypted tokens
-    const { data, error: dbError } = await supabase
+    if (deleteError) {
+      console.error('[Xero Callback] Delete failed:', deleteError);
+      return NextResponse.redirect(
+        new URL('/integrations?error=database_error', request.url)
+      );
+    }
+
+    // Insert fresh connection
+    const { data: insertedData, error: insertError } = await supabase
       .from('xero_connections')
       .insert({
         business_id: businessId,
@@ -185,16 +192,34 @@ export async function GET(request: NextRequest) {
         refresh_token: encrypt(tokens.refresh_token),
         expires_at: expiresAt.toISOString(),
         is_active: true
-      });
+      })
+      .select();
 
-    if (dbError) {
-      console.error('Database error:', dbError);
+    console.log('[Xero Callback] Insert result:', { data: insertedData, error: insertError });
+
+    if (insertError || !insertedData || insertedData.length === 0) {
+      console.error('[Xero Callback] Insert failed:', insertError);
       return NextResponse.redirect(
         new URL('/integrations?error=database_error', request.url)
       );
     }
 
-    console.log('Connection saved successfully');
+    // Verify by reading back
+    const { data: verifyData } = await supabase
+      .from('xero_connections')
+      .select('id, business_id, is_active')
+      .eq('business_id', businessId);
+
+    console.log('[Xero Callback] Verification:', verifyData);
+
+    if (!verifyData || verifyData.length === 0) {
+      console.error('[Xero Callback] CRITICAL: Connection not found after insert!');
+      return NextResponse.redirect(
+        new URL('/integrations?error=verification_failed', request.url)
+      );
+    }
+
+    console.log('[Xero Callback] Success! Connection ID:', insertedData[0].id);
 
     // Redirect back to the page that initiated the connection
     return NextResponse.redirect(

@@ -11,6 +11,7 @@
     "verify": "npm run build && npm run lint && npm run smoke-test"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "@hello-pangea/dnd": "^18.0.1",
     "@heroicons/react": "^2.2.0",
     "@hookform/resolvers": "^5.2.1",

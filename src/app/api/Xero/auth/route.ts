@@ -11,18 +11,22 @@ export const dynamic = 'force-dynamic'
 const XERO_CLIENT_ID = process.env.XERO_CLIENT_ID!;
 const REDIRECT_URI = process.env.NODE_ENV === 'production'
   ? 'https://your-domain.com/api/Xero/callback'  // Update this with your real domain
-  : 'http://localhost:3001/api/Xero/callback';
+  : 'http://localhost:3000/api/Xero/callback';
 
 // Xero OAuth URL
 const XERO_AUTH_URL = 'https://login.xero.com/identity/connect/authorize';
 
-// Scopes we need for P&L and financial data
+// Scopes we need for P&L, financial data, and payroll
 const SCOPES = [
   'offline_access',           // Required for refresh tokens
   'accounting.transactions.read',
   'accounting.reports.read',
   'accounting.settings.read',
-  'accounting.contacts.read'
+  'accounting.contacts.read',
+  'payroll.employees',        // Payroll employee access (AU)
+  'payroll.employees.read',   // Read payroll employees
+  'payroll.settings',         // Payroll settings access
+  'payroll.settings.read'     // Read payroll settings
 ].join(' ');
 
 export async function GET(request: NextRequest) {
@@ -99,13 +103,11 @@ export async function GET(request: NextRequest) {
     const xeroAuthUrl = authUrl.toString();
     console.log('Redirecting to Xero auth:', xeroAuthUrl);
 
-    // Redirect to Xero using a 307 redirect
-    return new NextResponse(null, {
-      status: 307,
-      headers: {
-        'Location': xeroAuthUrl
-      }
-    });
+    // Redirect to Xero with cache-busting headers
+    const response = NextResponse.redirect(xeroAuthUrl);
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    return response;
 
   } catch (error) {
     console.error('[Xero Auth] Error:', error);

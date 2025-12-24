@@ -1,21 +1,21 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import {
   Wallet,
   TrendingUp,
   TrendingDown,
   Minus,
-  Sparkles,
   ArrowRight,
   AlertTriangle,
-  Calculator,
-  Percent,
   DollarSign,
-  ChevronDown,
-  ChevronRight
+  MessageSquare,
+  CheckCircle,
+  Info,
+  Edit3,
+  RotateCcw
 } from 'lucide-react'
-import type { SetupWizardData, OpExCategory, PriorYearAnalysis } from '../types'
+import type { SetupWizardData, OpExCategory } from '../types'
 
 interface Step4Props {
   data: SetupWizardData
@@ -23,21 +23,15 @@ interface Step4Props {
   fiscalYear: number
 }
 
-type OpExMethod = 'match_prior' | 'percentage_increase' | 'fixed' | 'percentage_of_revenue'
-
-const METHOD_LABELS: Record<OpExMethod, string> = {
-  match_prior: 'Match Prior Year',
-  percentage_increase: '% Increase',
-  fixed: 'Fixed Amount',
-  percentage_of_revenue: '% of Revenue'
-}
+const DEFAULT_INFLATION = 5 // 5% default increase
 
 export default function Step4OperatingCosts({
   data,
   onUpdate,
   fiscalYear
 }: Step4Props) {
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState<number>(0)
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-AU', {
@@ -48,21 +42,20 @@ export default function Step4OperatingCosts({
     }).format(value)
   }
 
-  // Initialize categories from prior year if available
+  // Initialize categories from prior year with +5% inflation
   const categories = useMemo(() => {
     if (data.opexCategories.length > 0) {
       return data.opexCategories
     }
 
-    // Initialize from prior year analysis
     if (data.priorYearAnalysis?.opexByCategory) {
       return data.priorYearAnalysis.opexByCategory.map(cat => ({
         id: `opex-${cat.name.toLowerCase().replace(/\s+/g, '-')}`,
         name: cat.name,
         priorYearAmount: cat.amount,
-        forecastAmount: cat.amount, // Default to match prior year
-        method: 'match_prior' as OpExMethod,
-        methodValue: 0,
+        forecastAmount: Math.round(cat.amount * (1 + DEFAULT_INFLATION / 100)),
+        method: 'percentage_increase' as const,
+        methodValue: DEFAULT_INFLATION,
         notes: ''
       }))
     }
@@ -70,10 +63,13 @@ export default function Step4OperatingCosts({
     return []
   }, [data.opexCategories, data.priorYearAnalysis])
 
-  // Update parent when categories change
-  React.useEffect(() => {
+  // Initialize on first render
+  useEffect(() => {
     if (categories.length > 0 && data.opexCategories.length === 0) {
-      onUpdate({ opexCategories: categories })
+      onUpdate({
+        opexCategories: categories,
+        totalOpExForecast: categories.reduce((sum, cat) => sum + cat.forecastAmount, 0)
+      })
     }
   }, [categories, data.opexCategories.length, onUpdate])
 
@@ -87,36 +83,24 @@ export default function Step4OperatingCosts({
     return { priorYear, forecast, difference, changePercent }
   }, [categories])
 
-  // Budget check
+  // Budget calculations
   const availableOpExBudget = data.grossProfitGoal - data.netProfitGoal
-  const remainingBudget = availableOpExBudget - totals.forecast - data.totalWagesOpEx
+  const totalOpEx = totals.forecast + data.totalWagesOpEx
+  const remainingBudget = availableOpExBudget - totalOpEx
   const isOverBudget = remainingBudget < 0
 
-  const handleUpdateCategory = (id: string, updates: Partial<OpExCategory>) => {
+  const handleUpdateAmount = (id: string, newAmount: number) => {
     const updatedCategories = categories.map(cat => {
       if (cat.id !== id) return cat
-
-      const updated = { ...cat, ...updates }
-
-      // Recalculate forecast amount based on method
-      if (updates.method !== undefined || updates.methodValue !== undefined) {
-        switch (updated.method) {
-          case 'match_prior':
-            updated.forecastAmount = updated.priorYearAmount
-            break
-          case 'percentage_increase':
-            updated.forecastAmount = updated.priorYearAmount * (1 + (updated.methodValue || 0) / 100)
-            break
-          case 'fixed':
-            updated.forecastAmount = updated.methodValue || 0
-            break
-          case 'percentage_of_revenue':
-            updated.forecastAmount = data.revenueGoal * ((updated.methodValue || 0) / 100)
-            break
-        }
+      const changePercent = cat.priorYearAmount > 0
+        ? ((newAmount - cat.priorYearAmount) / cat.priorYearAmount) * 100
+        : 0
+      return {
+        ...cat,
+        forecastAmount: newAmount,
+        method: 'fixed' as const,
+        methodValue: changePercent
       }
-
-      return updated
     })
 
     onUpdate({
@@ -125,288 +109,244 @@ export default function Step4OperatingCosts({
     })
   }
 
-  const toggleCategory = (id: string) => {
-    const newExpanded = new Set(expandedCategories)
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id)
-    } else {
-      newExpanded.add(id)
+  const handleResetCategory = (id: string) => {
+    const updatedCategories = categories.map(cat => {
+      if (cat.id !== id) return cat
+      return {
+        ...cat,
+        forecastAmount: Math.round(cat.priorYearAmount * (1 + DEFAULT_INFLATION / 100)),
+        method: 'percentage_increase' as const,
+        methodValue: DEFAULT_INFLATION
+      }
+    })
+
+    onUpdate({
+      opexCategories: updatedCategories,
+      totalOpExForecast: updatedCategories.reduce((sum, cat) => sum + cat.forecastAmount, 0)
+    })
+  }
+
+  const startEditing = (cat: OpExCategory) => {
+    setEditingId(cat.id)
+    setEditValue(cat.forecastAmount)
+  }
+
+  const saveEdit = () => {
+    if (editingId) {
+      handleUpdateAmount(editingId, editValue)
+      setEditingId(null)
     }
-    setExpandedCategories(newExpanded)
   }
 
   const TrendIcon = ({ amount }: { amount: number }) => {
-    if (amount > 0) return <TrendingUp className="w-4 h-4 text-red-500" />
-    if (amount < 0) return <TrendingDown className="w-4 h-4 text-green-500" />
-    return <Minus className="w-4 h-4 text-gray-400" />
+    if (amount > 0) return <TrendingUp className="w-3 h-3 text-red-500" />
+    if (amount < 0) return <TrendingDown className="w-3 h-3 text-green-500" />
+    return <Minus className="w-3 h-3 text-gray-400" />
   }
+
+  // CFO Insight
+  const getCFOInsight = () => {
+    if (categories.length === 0) {
+      return {
+        type: 'info' as const,
+        message: "Connect your prior year data in the previous step so I can pre-fill your expense categories with smart defaults."
+      }
+    }
+
+    if (isOverBudget) {
+      return {
+        type: 'warning' as const,
+        message: `Your running costs are ${formatCurrency(Math.abs(remainingBudget))} over budget. You'll need to either cut costs or increase revenue to hit your profit goal.`
+      }
+    }
+
+    const opexAsPercentOfGP = totals.forecast > 0 && data.grossProfitGoal > 0
+      ? (totalOpEx / data.grossProfitGoal) * 100
+      : 0
+
+    if (opexAsPercentOfGP > 85) {
+      return {
+        type: 'warning' as const,
+        message: `Running costs are ${opexAsPercentOfGP.toFixed(0)}% of what you make, leaving only ${formatCurrency(remainingBudget)} to keep. That's a tight margin.`
+      }
+    }
+
+    return {
+      type: 'success' as const,
+      message: `Your running costs total ${formatCurrency(totalOpEx)} (${opexAsPercentOfGP.toFixed(0)}% of what you make), leaving ${formatCurrency(remainingBudget)} for you to keep. That looks sustainable.`
+    }
+  }
+
+  const cfoInsight = getCFOInsight()
 
   return (
     <div className="space-y-6">
-      {/* Teaching Banner */}
-      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-5 text-white">
+      {/* CFO Header */}
+      <div className="bg-gradient-to-r from-brand-navy to-brand-navy-800 rounded-xl p-6 text-white">
         <div className="flex items-start gap-4">
-          <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Wallet className="w-5 h-5 text-white" />
+          <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center flex-shrink-0">
+            <MessageSquare className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h3 className="font-bold text-lg mb-1">Step 4: Plan Your Operating Costs</h3>
-            <p className="text-brand-orange-100 text-sm">
-              Operating expenses eat into your gross profit. Let's be intentional about
-              each cost category and ensure you have budget for what matters.
+            <h3 className="font-bold text-xl mb-2">Your Running Costs</h3>
+            <p className="text-white/80">
+              I've pre-filled your expenses from last year with a {DEFAULT_INFLATION}% inflation adjustment.
+              Review each category and adjust where you expect changes.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Why This Matters */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <Sparkles className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
-          <div>
-            <h4 className="font-semibold text-amber-900 mb-1">Why This Matters</h4>
-            <p className="text-sm text-amber-800">
-              Most business owners underestimate their operating costs, then wonder why profit
-              never materialises. By budgeting each category against last year, you can
-              <strong> spot cost creep before it kills your margins</strong>.
-            </p>
-          </div>
+      {/* CFO Insight */}
+      <div className={`rounded-xl p-5 flex items-start gap-4 ${
+        cfoInsight.type === 'success' ? 'bg-green-50 border border-green-200' :
+        cfoInsight.type === 'warning' ? 'bg-amber-50 border border-amber-200' :
+        'bg-blue-50 border border-blue-200'
+      }`}>
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+          cfoInsight.type === 'success' ? 'bg-green-100' :
+          cfoInsight.type === 'warning' ? 'bg-amber-100' :
+          'bg-blue-100'
+        }`}>
+          {cfoInsight.type === 'success' ? (
+            <CheckCircle className="w-5 h-5 text-green-600" />
+          ) : cfoInsight.type === 'warning' ? (
+            <AlertTriangle className="w-5 h-5 text-amber-600" />
+          ) : (
+            <Info className="w-5 h-5 text-blue-600" />
+          )}
+        </div>
+        <div>
+          <h4 className={`font-semibold mb-1 ${
+            cfoInsight.type === 'success' ? 'text-green-900' :
+            cfoInsight.type === 'warning' ? 'text-amber-900' :
+            'text-blue-900'
+          }`}>
+            CFO Insight
+          </h4>
+          <p className={`text-sm ${
+            cfoInsight.type === 'success' ? 'text-green-800' :
+            cfoInsight.type === 'warning' ? 'text-amber-800' :
+            'text-blue-800'
+          }`}>
+            {cfoInsight.message}
+          </p>
         </div>
       </div>
 
       {/* Budget Summary */}
-      <div className="grid grid-cols-4 gap-4">
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Calculator className="w-4 h-4 text-brand-orange" />
-            <span className="text-xs font-medium text-gray-500 uppercase">OpEx Budget</span>
-          </div>
-          <div className="text-xl font-bold text-gray-900">
-            {formatCurrency(availableOpExBudget)}
-          </div>
-          <div className="text-xs text-gray-500">
-            GP - Net Profit Goal
-          </div>
+      <div className="grid grid-cols-4 gap-3">
+        <div className="bg-white border border-gray-200 rounded-lg p-3 text-center">
+          <div className="text-xs text-gray-500 uppercase mb-1">Budget</div>
+          <div className="text-lg font-bold text-gray-900">{formatCurrency(availableOpExBudget)}</div>
         </div>
-
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="w-4 h-4 text-brand-orange" />
-            <span className="text-xs font-medium text-gray-500 uppercase">Wages (OpEx)</span>
-          </div>
-          <div className="text-xl font-bold text-gray-900">
-            {formatCurrency(data.totalWagesOpEx)}
-          </div>
-          <div className="text-xs text-gray-500">
-            From Step 3
-          </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-3 text-center">
+          <div className="text-xs text-gray-500 uppercase mb-1">Team Wages</div>
+          <div className="text-lg font-bold text-gray-900">{formatCurrency(data.totalWagesOpEx)}</div>
         </div>
-
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Wallet className="w-4 h-4 text-brand-orange-600" />
-            <span className="text-xs font-medium text-gray-500 uppercase">Other OpEx</span>
-          </div>
-          <div className="text-xl font-bold text-gray-900">
-            {formatCurrency(totals.forecast)}
-          </div>
-          <div className="text-xs text-gray-500 flex items-center gap-1">
-            <TrendIcon amount={totals.difference} />
-            {totals.changePercent >= 0 ? '+' : ''}{totals.changePercent.toFixed(1)}% vs FY{fiscalYear - 1}
-          </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-3 text-center">
+          <div className="text-xs text-gray-500 uppercase mb-1">Other Costs</div>
+          <div className="text-lg font-bold text-gray-900">{formatCurrency(totals.forecast)}</div>
         </div>
-
-        <div className={`border rounded-xl p-4 ${isOverBudget
-            ? 'bg-red-50 border-red-200'
-            : 'bg-green-50 border-green-200'
-          }`}>
-          <div className="flex items-center gap-2 mb-2">
-            <Percent className="w-4 h-4 text-gray-600" />
-            <span className="text-xs font-medium text-gray-500 uppercase">Remaining</span>
-          </div>
-          <div className={`text-xl font-bold ${isOverBudget ? 'text-red-700' : 'text-green-700'}`}>
+        <div className={`rounded-lg p-3 text-center ${
+          isOverBudget ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'
+        }`}>
+          <div className="text-xs text-gray-500 uppercase mb-1">Remaining</div>
+          <div className={`text-lg font-bold ${isOverBudget ? 'text-red-700' : 'text-green-700'}`}>
             {formatCurrency(remainingBudget)}
-          </div>
-          <div className="text-xs text-gray-500">
-            {isOverBudget ? 'Over budget!' : 'Available buffer'}
           </div>
         </div>
       </div>
 
-      {/* Warning if over budget */}
-      {isOverBudget && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-            <div>
-              <h4 className="font-semibold text-red-900 mb-1">Over Budget Warning</h4>
-              <p className="text-sm text-red-800">
-                Your planned operating costs exceed your budget by {formatCurrency(Math.abs(remainingBudget))}.
-                Either reduce costs below or increase your revenue/gross profit goals.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Cost Categories */}
+      {/* Expense Categories - Simplified Table */}
       {categories.length > 0 ? (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 grid grid-cols-12 gap-4 text-xs font-medium text-gray-500 uppercase">
-            <div className="col-span-4">Category</div>
+          <div className="px-4 py-3 border-b border-gray-100 grid grid-cols-12 gap-3 text-xs font-medium text-gray-500 uppercase">
+            <div className="col-span-5">Category</div>
             <div className="col-span-2 text-right">FY{fiscalYear - 1}</div>
-            <div className="col-span-3">Forecast Method</div>
-            <div className="col-span-2 text-right">FY{fiscalYear}</div>
-            <div className="col-span-1 text-right">Change</div>
+            <div className="col-span-3 text-right">FY{fiscalYear}</div>
+            <div className="col-span-2 text-right">Change</div>
           </div>
 
           <div className="divide-y divide-gray-100">
-            {categories.map((category) => {
-              const isExpanded = expandedCategories.has(category.id)
-              const difference = category.forecastAmount - category.priorYearAmount
-              const changePercent = category.priorYearAmount > 0
-                ? (difference / category.priorYearAmount) * 100
+            {categories.map((cat) => {
+              const difference = cat.forecastAmount - cat.priorYearAmount
+              const changePercent = cat.priorYearAmount > 0
+                ? (difference / cat.priorYearAmount) * 100
                 : 0
+              const isEditing = editingId === cat.id
 
               return (
-                <div key={category.id}>
-                  {/* Main Row */}
-                  <div
-                    className="px-5 py-4 grid grid-cols-12 gap-4 items-center hover:bg-gray-50 cursor-pointer"
-                    onClick={() => toggleCategory(category.id)}
-                  >
-                    <div className="col-span-4 flex items-center gap-2">
-                      {isExpanded ? (
-                        <ChevronDown className="w-4 h-4 text-gray-400" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4 text-gray-400" />
-                      )}
-                      <span className="font-medium text-gray-900">{category.name}</span>
-                    </div>
-                    <div className="col-span-2 text-right text-gray-600">
-                      {formatCurrency(category.priorYearAmount)}
-                    </div>
-                    <div className="col-span-3">
-                      <select
-                        value={category.method}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => handleUpdateCategory(category.id, {
-                          method: e.target.value as OpExMethod
-                        })}
-                        className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500"
-                      >
-                        {Object.entries(METHOD_LABELS).map(([value, label]) => (
-                          <option key={value} value={value}>{label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-span-2 text-right font-semibold text-gray-900">
-                      {formatCurrency(category.forecastAmount)}
-                    </div>
-                    <div className="col-span-1 text-right flex items-center justify-end gap-1">
-                      <TrendIcon amount={difference} />
-                      <span className={`text-sm ${difference > 0 ? 'text-red-600' : difference < 0 ? 'text-green-600' : 'text-gray-400'
-                        }`}>
-                        {changePercent >= 0 ? '+' : ''}{changePercent.toFixed(0)}%
-                      </span>
-                    </div>
+                <div
+                  key={cat.id}
+                  className="px-4 py-3 grid grid-cols-12 gap-3 items-center hover:bg-gray-50"
+                >
+                  <div className="col-span-5 font-medium text-gray-900 truncate">
+                    {cat.name}
                   </div>
-
-                  {/* Expanded Details */}
-                  {isExpanded && (
-                    <div className="px-5 py-4 bg-gray-50 border-t border-gray-100">
-                      <div className="grid grid-cols-2 gap-4 max-w-md">
-                        {category.method === 'percentage_increase' && (
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Percentage Increase
-                            </label>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                value={category.methodValue || 0}
-                                onChange={(e) => handleUpdateCategory(category.id, {
-                                  methodValue: parseFloat(e.target.value) || 0
-                                })}
-                                className="w-24 px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-orange"
-                              />
-                              <span className="text-sm text-gray-500">%</span>
-                            </div>
-                          </div>
-                        )}
-
-                        {category.method === 'fixed' && (
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Fixed Annual Amount
-                            </label>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-gray-500">$</span>
-                              <input
-                                type="number"
-                                value={category.methodValue || 0}
-                                onChange={(e) => handleUpdateCategory(category.id, {
-                                  methodValue: parseFloat(e.target.value) || 0
-                                })}
-                                className="w-32 px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-orange"
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {category.method === 'percentage_of_revenue' && (
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Percentage of Revenue
-                            </label>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                step="0.1"
-                                value={category.methodValue || 0}
-                                onChange={(e) => handleUpdateCategory(category.id, {
-                                  methodValue: parseFloat(e.target.value) || 0
-                                })}
-                                className="w-24 px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-orange"
-                              />
-                              <span className="text-sm text-gray-500">% of {formatCurrency(data.revenueGoal)}</span>
-                            </div>
-                          </div>
-                        )}
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Notes
-                          </label>
-                          <input
-                            type="text"
-                            value={category.notes || ''}
-                            onChange={(e) => handleUpdateCategory(category.id, {
-                              notes: e.target.value
-                            })}
-                            placeholder="e.g., New office lease"
-                            className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-brand-orange"
-                          />
-                        </div>
+                  <div className="col-span-2 text-right text-gray-500 text-sm">
+                    {formatCurrency(cat.priorYearAmount)}
+                  </div>
+                  <div className="col-span-3 text-right">
+                    {isEditing ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <span className="text-gray-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          value={editValue}
+                          onChange={(e) => setEditValue(Number(e.target.value))}
+                          onBlur={saveEdit}
+                          onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
+                          autoFocus
+                          className="w-24 px-2 py-1 text-sm text-right border border-brand-orange rounded focus:outline-none focus:ring-1 focus:ring-brand-orange"
+                        />
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="font-semibold text-gray-900">
+                          {formatCurrency(cat.forecastAmount)}
+                        </span>
+                        <button
+                          onClick={() => startEditing(cat)}
+                          className="p-1 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded transition-colors"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                        </button>
+                        {cat.method === 'fixed' && (
+                          <button
+                            onClick={() => handleResetCategory(cat.id)}
+                            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                            title="Reset to +5%"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="col-span-2 text-right flex items-center justify-end gap-1">
+                    <TrendIcon amount={difference} />
+                    <span className={`text-sm ${
+                      difference > 0 ? 'text-red-600' : difference < 0 ? 'text-green-600' : 'text-gray-400'
+                    }`}>
+                      {changePercent >= 0 ? '+' : ''}{changePercent.toFixed(0)}%
+                    </span>
+                  </div>
                 </div>
               )
             })}
           </div>
 
-          {/* Totals Row */}
-          <div className="px-5 py-4 bg-gray-100 border-t border-gray-200 grid grid-cols-12 gap-4 items-center font-semibold">
-            <div className="col-span-4 text-gray-900">Total Operating Expenses</div>
-            <div className="col-span-2 text-right text-gray-700">
+          {/* Totals */}
+          <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 grid grid-cols-12 gap-3 items-center font-semibold">
+            <div className="col-span-5 text-gray-900">Total (excl. team wages)</div>
+            <div className="col-span-2 text-right text-gray-600">
               {formatCurrency(totals.priorYear)}
             </div>
-            <div className="col-span-3"></div>
-            <div className="col-span-2 text-right text-gray-900">
+            <div className="col-span-3 text-right text-gray-900">
               {formatCurrency(totals.forecast)}
             </div>
-            <div className="col-span-1 text-right flex items-center justify-end gap-1">
+            <div className="col-span-2 text-right flex items-center justify-end gap-1">
               <TrendIcon amount={totals.difference} />
               <span className={totals.difference > 0 ? 'text-red-600' : totals.difference < 0 ? 'text-green-600' : 'text-gray-400'}>
                 {totals.changePercent >= 0 ? '+' : ''}{totals.changePercent.toFixed(0)}%
@@ -415,44 +355,40 @@ export default function Step4OperatingCosts({
           </div>
         </div>
       ) : (
-        <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
-          <Wallet className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+        <div className="text-center py-12 bg-white rounded-xl border-2 border-dashed border-gray-300">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Wallet className="w-8 h-8 text-gray-400" />
+          </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">
             No Prior Year Data
           </h3>
           <p className="text-sm text-gray-600 max-w-md mx-auto">
-            Import your prior year P&L data in Step 2 to automatically populate your
-            expense categories. Or you can manually add categories here.
+            Go back to the History step and connect your accounting data.
+            I'll use your FY{fiscalYear - 1} expenses as a starting point.
           </p>
         </div>
       )}
 
-      {/* How We'll Use This */}
-      <div className="bg-gray-50 rounded-lg p-4">
-        <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+      {/* How Costs Flow */}
+      <div className="bg-gray-50 rounded-xl p-5">
+        <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
           <ArrowRight className="w-4 h-4 text-brand-orange" />
-          How We'll Use This Data
+          Quick Tips
         </h4>
-        <ul className="space-y-2 text-sm text-gray-700">
-          <li className="flex items-start gap-2">
-            <span className="text-brand-orange font-bold">•</span>
-            <span>
-              Each category will become a line in your P&L forecast
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="flex items-start gap-2">
+            <DollarSign className="w-4 h-4 text-brand-orange mt-0.5 flex-shrink-0" />
+            <span className="text-gray-700">
+              <strong>Click the pencil</strong> to edit any amount directly
             </span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-brand-orange font-bold">•</span>
-            <span>
-              <strong>"Match Prior Year"</strong> uses seasonal patterns from FY{fiscalYear - 1}
+          </div>
+          <div className="flex items-start gap-2">
+            <RotateCcw className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+            <span className="text-gray-700">
+              <strong>Reset icon</strong> returns to +5% default
             </span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-brand-orange font-bold">•</span>
-            <span>
-              <strong>"% of Revenue"</strong> is great for variable costs that scale with sales
-            </span>
-          </li>
-        </ul>
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/Xero/refresh-tokens",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/Xero/sync-all",
+      "schedule": "0 16 * * *"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Link2, CheckCircle, XCircle, RefreshCw, Trash2, ExternalLink, Plus, Settings } from 'lucide-react'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
@@ -18,6 +19,7 @@ interface Integration {
 
 export default function IntegrationsPage() {
   const supabase = createClient()
+  const searchParams = useSearchParams()
   const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
   const [loading, setLoading] = useState(true)
   const [xeroConnected, setXeroConnected] = useState(false)
@@ -25,11 +27,15 @@ export default function IntegrationsPage() {
   const [syncing, setSyncing] = useState(false)
   const [businessId, setBusinessId] = useState<string | null>(null)
 
+  // Check for success/error query params from OAuth callback
+  const successParam = searchParams.get('success')
+  const errorParam = searchParams.get('error')
+
   useEffect(() => {
     if (!contextLoading) {
       loadIntegrations()
     }
-  }, [contextLoading, activeBusiness?.id])
+  }, [contextLoading, activeBusiness?.id, successParam])
 
   async function loadIntegrations() {
     setLoading(true)
@@ -59,19 +65,24 @@ export default function IntegrationsPage() {
     if (bizId) {
       setBusinessId(bizId)
 
-      // Check Xero connection
-      const { data: xeroIntegration, error: xeroError } = await supabase
-        .from('xero_connections')
-        .select('*')
-        .eq('business_id', bizId)
-        .maybeSingle()
+      // Check Xero connection via API (bypasses RLS)
+      try {
+        const response = await fetch(`/api/Xero/status?business_id=${bizId}`)
+        const data = await response.json()
 
-      console.log('[Integrations] Xero data:', xeroIntegration)
-      console.log('[Integrations] Xero error:', xeroError)
+        console.log('[Integrations] Xero status:', data)
 
-      if (xeroIntegration) {
-        setXeroConnected(true)
-        setXeroData(xeroIntegration)
+        if (data.connected && data.connection) {
+          setXeroConnected(true)
+          setXeroData(data.connection)
+        } else {
+          setXeroConnected(false)
+          setXeroData(null)
+        }
+      } catch (err) {
+        console.error('[Integrations] Error checking Xero status:', err)
+        setXeroConnected(false)
+        setXeroData(null)
       }
     }
 
