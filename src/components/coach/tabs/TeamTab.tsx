@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   Users,
@@ -9,7 +9,6 @@ import {
   Shield,
   ShieldCheck,
   Eye,
-  MoreVertical,
   Trash2,
   Edit,
   Check,
@@ -22,6 +21,7 @@ import {
   Clock,
   Send
 } from 'lucide-react'
+import { DropdownMenu, DropdownTrigger, DropdownContent, DropdownItem, DropdownSeparator } from '@/components/ui/DropdownMenu'
 
 interface TeamMember {
   id: string
@@ -112,9 +112,6 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [editingMember, setEditingMember] = useState<string | null>(null)
-  const [menuOpen, setMenuOpen] = useState<string | null>(null)
-  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null)
-  const menuButtonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({})
 
   useEffect(() => {
     loadTeamData()
@@ -293,7 +290,6 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
       }
 
       setTeamMembers(prev => prev.filter(m => m.id !== memberId))
-      setMenuOpen(null)
       setSuccess(data.message || 'Team member removed')
     } catch (error) {
       console.error('Error removing member:', error)
@@ -421,69 +417,32 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                     </div>
                   )}
 
-                  <div className="relative">
-                    <button
-                      ref={(el) => { menuButtonRefs.current[member.id] = el }}
-                      onClick={() => {
-                        if (menuOpen === member.id) {
-                          setMenuOpen(null)
-                          setMenuPosition(null)
-                        } else {
-                          const button = menuButtonRefs.current[member.id]
-                          if (button) {
-                            const rect = button.getBoundingClientRect()
-                            setMenuPosition({
-                              top: rect.bottom + 4,
-                              right: window.innerWidth - rect.right
-                            })
-                          }
-                          setMenuOpen(member.id)
-                        }
-                      }}
-                      className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
-                    >
-                      <MoreVertical className="w-4 h-4" />
-                    </button>
-
-                      {menuOpen === member.id && menuPosition && (
-                        <>
-                          <div
-                            className="fixed inset-0 z-10"
-                            onClick={() => { setMenuOpen(null); setMenuPosition(null) }}
-                          />
-                          <div
-                            className="fixed w-52 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20"
-                            style={{ top: menuPosition.top, right: menuPosition.right }}
-                          >
-                            <button
-                              onClick={() => {
-                                setEditingMember(member.id)
-                                setMenuOpen(null)
-                                setMenuPosition(null)
-                              }}
-                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                            >
-                              <Edit className="w-4 h-4" />
-                              Change Role
-                            </button>
-                            <button
-                              onClick={() => removeMember(member.id, false)}
-                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              Remove from Team
-                            </button>
-                            <button
-                              onClick={() => removeMember(member.id, true)}
-                              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-700 hover:bg-red-100 border-t border-gray-100"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              Delete User Completely
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
+                  <DropdownMenu align="right">
+                    <DropdownTrigger aria-label={`Actions for ${member.user?.first_name || 'team member'}`} />
+                    <DropdownContent>
+                      <DropdownItem
+                        icon={Edit}
+                        onClick={() => setEditingMember(member.id)}
+                      >
+                        Change Role
+                      </DropdownItem>
+                      <DropdownSeparator />
+                      <DropdownItem
+                        icon={Trash2}
+                        variant="danger"
+                        onClick={() => removeMember(member.id, false)}
+                      >
+                        Remove from Team
+                      </DropdownItem>
+                      <DropdownItem
+                        icon={Trash2}
+                        variant="danger"
+                        onClick={() => removeMember(member.id, true)}
+                      >
+                        Delete User Completely
+                      </DropdownItem>
+                    </DropdownContent>
+                  </DropdownMenu>
                 </div>
               </div>
             )

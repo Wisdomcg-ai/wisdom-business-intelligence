@@ -72,9 +72,19 @@ module.exports = {
           '0%': { opacity: '0', transform: 'translateY(10px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        dropdownEnter: {
+          '0%': { opacity: '0', transform: 'scale(0.95)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        dropdownExit: {
+          '0%': { opacity: '1', transform: 'scale(1)' },
+          '100%': { opacity: '0', transform: 'scale(0.95)' },
+        },
       },
       animation: {
         fadeIn: 'fadeIn 0.3s ease-out forwards',
+        'dropdown-enter': 'dropdownEnter 0.15s ease-out',
+        'dropdown-exit': 'dropdownExit 0.1s ease-in',
       },
     },
   },
