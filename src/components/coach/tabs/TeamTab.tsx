@@ -355,7 +355,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
       )}
 
       {/* Team Members List */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-visible">
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
           <h3 className="font-semibold text-gray-900">
             {teamMembers.length} Team Member{teamMembers.length !== 1 ? 's' : ''}
