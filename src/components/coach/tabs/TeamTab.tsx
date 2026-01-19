@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { createPortal } from 'react-dom'
 import {
   Users,
   UserPlus,
@@ -9,6 +10,7 @@ import {
   Shield,
   ShieldCheck,
   Eye,
+  MoreVertical,
   Trash2,
   Edit,
   Check,
@@ -21,7 +23,6 @@ import {
   Clock,
   Send
 } from 'lucide-react'
-import { DropdownMenu, DropdownTrigger, DropdownContent, DropdownItem, DropdownSeparator } from '@/components/ui/DropdownMenu'
 
 interface TeamMember {
   id: string
@@ -112,10 +113,48 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [editingMember, setEditingMember] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState<string | null>(null)
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     loadTeamData()
   }, [clientId])
+
+  // Close menu on click outside
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleClick = (e: MouseEvent) => {
+      if (menuButtonRef.current && !menuButtonRef.current.contains(e.target as Node)) {
+        setMenuOpen(null)
+        setMenuPosition(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [menuOpen])
+
+  // Close menu on escape
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMenuOpen(null)
+        setMenuPosition(null)
+      }
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [menuOpen])
+
+  const openMenu = (memberId: string, buttonElement: HTMLButtonElement) => {
+    const rect = buttonElement.getBoundingClientRect()
+    setMenuPosition({
+      top: rect.bottom + 4,
+      left: rect.right - 208, // 208px = w-52 menu width
+    })
+    setMenuOpen(memberId)
+  }
 
   async function loadTeamData() {
     try {
@@ -417,32 +456,20 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
                     </div>
                   )}
 
-                  <DropdownMenu align="right">
-                    <DropdownTrigger aria-label={`Actions for ${member.user?.first_name || 'team member'}`} />
-                    <DropdownContent>
-                      <DropdownItem
-                        icon={Edit}
-                        onClick={() => setEditingMember(member.id)}
-                      >
-                        Change Role
-                      </DropdownItem>
-                      <DropdownSeparator />
-                      <DropdownItem
-                        icon={Trash2}
-                        variant="danger"
-                        onClick={() => removeMember(member.id, false)}
-                      >
-                        Remove from Team
-                      </DropdownItem>
-                      <DropdownItem
-                        icon={Trash2}
-                        variant="danger"
-                        onClick={() => removeMember(member.id, true)}
-                      >
-                        Delete User Completely
-                      </DropdownItem>
-                    </DropdownContent>
-                  </DropdownMenu>
+                  <button
+                    ref={menuOpen === member.id ? menuButtonRef : undefined}
+                    onClick={(e) => {
+                      if (menuOpen === member.id) {
+                        setMenuOpen(null)
+                        setMenuPosition(null)
+                      } else {
+                        openMenu(member.id, e.currentTarget)
+                      }
+                    }}
+                    className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             )
@@ -719,6 +746,57 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
             </div>
           </div>
         </>
+      )}
+
+      {/* Portal-rendered dropdown menu */}
+      {menuOpen && menuPosition && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-50"
+          onClick={() => { setMenuOpen(null); setMenuPosition(null) }}
+        >
+          <div
+            className="absolute bg-white rounded-lg shadow-lg border border-gray-200 py-1 w-52"
+            style={{ top: menuPosition.top, left: menuPosition.left }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => {
+                const member = teamMembers.find(m => m.id === menuOpen)
+                if (member) setEditingMember(member.id)
+                setMenuOpen(null)
+                setMenuPosition(null)
+              }}
+              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <Edit className="w-4 h-4" />
+              Change Role
+            </button>
+            <button
+              onClick={() => {
+                if (menuOpen) removeMember(menuOpen, false)
+                setMenuOpen(null)
+                setMenuPosition(null)
+              }}
+              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+            >
+              <Trash2 className="w-4 h-4" />
+              Remove from Team
+            </button>
+            <div className="border-t border-gray-100 my-1" />
+            <button
+              onClick={() => {
+                if (menuOpen) removeMember(menuOpen, true)
+                setMenuOpen(null)
+                setMenuPosition(null)
+              }}
+              className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-700 hover:bg-red-100"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete User Completely
+            </button>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )
