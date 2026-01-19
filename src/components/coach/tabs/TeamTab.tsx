@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   Users,
@@ -113,6 +113,8 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
   const [success, setSuccess] = useState<string | null>(null)
   const [editingMember, setEditingMember] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
+  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null)
+  const menuButtonRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({})
 
   useEffect(() => {
     loadTeamData()
@@ -421,23 +423,43 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
 
                   <div className="relative">
                     <button
-                      onClick={() => setMenuOpen(menuOpen === member.id ? null : member.id)}
+                      ref={(el) => { menuButtonRefs.current[member.id] = el }}
+                      onClick={() => {
+                        if (menuOpen === member.id) {
+                          setMenuOpen(null)
+                          setMenuPosition(null)
+                        } else {
+                          const button = menuButtonRefs.current[member.id]
+                          if (button) {
+                            const rect = button.getBoundingClientRect()
+                            setMenuPosition({
+                              top: rect.bottom + 4,
+                              right: window.innerWidth - rect.right
+                            })
+                          }
+                          setMenuOpen(member.id)
+                        }
+                      }}
                       className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
                     >
                       <MoreVertical className="w-4 h-4" />
                     </button>
 
-                      {menuOpen === member.id && (
+                      {menuOpen === member.id && menuPosition && (
                         <>
                           <div
                             className="fixed inset-0 z-10"
-                            onClick={() => setMenuOpen(null)}
+                            onClick={() => { setMenuOpen(null); setMenuPosition(null) }}
                           />
-                          <div className="absolute right-0 mt-1 w-52 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                          <div
+                            className="fixed w-52 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20"
+                            style={{ top: menuPosition.top, right: menuPosition.right }}
+                          >
                             <button
                               onClick={() => {
                                 setEditingMember(member.id)
                                 setMenuOpen(null)
+                                setMenuPosition(null)
                               }}
                               className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                             >
