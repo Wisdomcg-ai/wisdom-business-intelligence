@@ -497,6 +497,15 @@ export interface OpExCategory {
   monthly_average: number
 }
 
+// Revenue/COGS line item from Xero
+export interface PLLineItem {
+  account_name: string
+  category: string
+  total: number
+  by_month: Record<string, number>
+  percent_of_revenue?: number
+}
+
 // Period financial summary
 export interface PeriodSummary {
   period_label: string
@@ -511,6 +520,12 @@ export interface PeriodSummary {
   operating_expenses_by_category: OpExCategory[]
   net_profit: number
   net_margin_percent: number
+  // Monthly breakdown for seasonality
+  revenue_by_month?: Record<string, number>
+  seasonality_pattern?: number[] // 12 percentages for FY months (Jul-Jun)
+  // Individual line items
+  revenue_lines?: PLLineItem[]
+  cogs_lines?: PLLineItem[]
 }
 
 // Historical P&L summary for AI context

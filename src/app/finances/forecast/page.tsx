@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { Loader2, Save, Sparkles, TrendingUp } from 'lucide-react'
@@ -14,6 +15,10 @@ import PLForecastTable from './components/PLForecastTable'
 import PayrollTable from './components/PayrollTable'
 import ForecastWizardV2 from './components/ForecastWizardV2'
 import { ForecastWizardV3 } from './components/wizard-v3'
+import { ForecastBuilder } from './components/forecast-builder'
+import { ForecastCFO } from './components/forecast-cfo'
+import { ForecastWizardV4 } from './components/wizard-v4'
+import { ForecastSelector } from './components/ForecastSelector'
 import CompletenessChecker from './components/CompletenessChecker'
 import ExportControls from './components/ExportControls'
 import { LoadingState } from './components/LoadingState'
@@ -27,14 +32,17 @@ import ForecastTabs, { type ForecastTab } from './components/ForecastTabs'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useXeroSync } from './hooks/useXeroSync'
 import { useVersionManager } from './hooks/useVersionManager'
+import { useXeroKeepalive } from '@/hooks/useXeroKeepalive'
 import { getForecastFiscalYear } from './utils/fiscal-year'
 // Note: Coach view is at /coach/clients/[id]/forecast
 
 export default function FinancialForecastPage() {
   const supabase = createClient()
+  const searchParams = useSearchParams()
   const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const hasAutoSyncedRef = useRef(false)
 
   const [businessId, setBusinessId] = useState('')
   const [userId, setUserId] = useState('')
@@ -60,6 +68,12 @@ export default function FinancialForecastPage() {
   const [showCSVImport, setShowCSVImport] = useState(false)
   const [showWizardV2, setShowWizardV2] = useState(false)
   const [showWizardV3, setShowWizardV3] = useState(false)
+  const [showForecastBuilder, setShowForecastBuilder] = useState(false)
+  const [showForecastCFO, setShowForecastCFO] = useState(false)
+  const [showWizardV4, setShowWizardV4] = useState(false)
+  const [showForecastSelector, setShowForecastSelector] = useState(false)
+  const [selectedForecastId, setSelectedForecastId] = useState<string | null>(null)
+  const [selectedForecastName, setSelectedForecastName] = useState<string | null>(null)
   const [skipWelcome, setSkipWelcome] = useState(false)
 
   // Xero sync hook
@@ -98,6 +112,9 @@ export default function FinancialForecastPage() {
     businessId
   })
 
+  // Keep Xero tokens fresh while user is on this page
+  useXeroKeepalive(businessId || null, !!xeroConnection)
+
   // Save active tab to localStorage whenever it changes
   useEffect(() => {
     if (mounted) {
@@ -124,6 +141,28 @@ export default function FinancialForecastPage() {
       loadInitialData()
     }
   }, [contextLoading, activeBusiness?.id])
+
+  // Auto-sync from Xero when returning from OAuth with syncing=true
+  useEffect(() => {
+    const shouldSync = searchParams.get('syncing') === 'true'
+    const justConnected = searchParams.get('success') === 'connected'
+
+    // Only auto-sync once per page load, when we have a forecast and connection
+    if (shouldSync && justConnected && forecast?.id && xeroConnection && !hasAutoSyncedRef.current && !isSyncing) {
+      hasAutoSyncedRef.current = true
+      console.log('[Forecast] Auto-syncing after Xero connection...')
+      toast.info('Syncing your Xero data...')
+
+      // Trigger the full P&L sync
+      handleSyncFromXero().then(() => {
+        // Clean up URL params after sync
+        const url = new URL(window.location.href)
+        url.searchParams.delete('syncing')
+        url.searchParams.delete('success')
+        window.history.replaceState({}, '', url.toString())
+      })
+    }
+  }, [searchParams, forecast?.id, xeroConnection, isSyncing, handleSyncFromXero])
 
   // Keyboard shortcuts
   useKeyboardShortcuts([
@@ -221,9 +260,21 @@ export default function FinancialForecastPage() {
       const emps = await ForecastService.loadEmployees(loadedForecast.id!)
       setEmployees(emps)
 
-      // Load Xero connection
-      const xeroConn = await ForecastService.getXeroConnection(bizId)
-      setXeroConnection(xeroConn)
+      // Load Xero connection via API (bypasses RLS timing issues)
+      try {
+        const statusRes = await fetch(`/api/Xero/status?business_id=${bizId}`)
+        const statusData = await statusRes.json()
+        if (statusData.connected && statusData.connection) {
+          setXeroConnection(statusData.connection)
+        } else {
+          setXeroConnection(null)
+        }
+      } catch (err) {
+        console.error('[Forecast] Error loading Xero connection:', err)
+        // Fall back to direct query if API fails
+        const xeroConn = await ForecastService.getXeroConnection(bizId)
+        setXeroConnection(xeroConn)
+      }
 
       setIsLoading(false)
 
@@ -386,7 +437,7 @@ export default function FinancialForecastPage() {
   })
 
   // Show welcome screen for new forecasts
-  if (isNewForecast && !showWizardV2 && !skipWelcome) {
+  if (isNewForecast && !showWizardV2 && !showForecastCFO && !showWizardV4 && !skipWelcome) {
     return (
       <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
         <div className="max-w-2xl mx-auto pt-8 sm:pt-12">
@@ -403,18 +454,18 @@ export default function FinancialForecastPage() {
 
             <div className="space-y-3 sm:space-y-4">
               <button
-                onClick={() => setShowWizardV3(true)}
+                onClick={() => setShowForecastSelector(true)}
                 className="w-full flex items-center justify-center gap-2 sm:gap-3 px-4 sm:px-6 py-3 sm:py-4 bg-brand-navy text-white rounded-xl hover:bg-brand-navy-800 transition-colors font-semibold text-base sm:text-lg"
               >
                 <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
-                Start AI CFO Wizard
+                Start Forecast Builder
               </button>
 
               <button
-                onClick={() => setShowWizardV2(true)}
+                onClick={() => setShowForecastCFO(true)}
                 className="w-full px-4 sm:px-6 py-2.5 sm:py-3 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors font-medium text-sm sm:text-base border border-gray-200"
               >
-                Use Classic Wizard
+                Use AI Conversation Mode
               </button>
 
               <button
@@ -465,6 +516,81 @@ export default function FinancialForecastPage() {
             onClose={() => setShowWizardV3(false)}
           />
         )}
+
+        {/* New Forecast Builder (CFO Methodology) */}
+        {showForecastBuilder && (
+          <ForecastBuilder
+            businessId={businessId}
+            businessName={activeBusiness?.name}
+            fiscalYear={forecast.fiscal_year}
+            onComplete={(forecastId) => {
+              setShowForecastBuilder(false)
+              loadInitialData()
+              toast.success('Forecast saved successfully!')
+            }}
+            onClose={() => setShowForecastBuilder(false)}
+          />
+        )}
+
+        {/* New AI CFO Wizard (Conversational) */}
+        {showForecastCFO && (
+          <ForecastCFO
+            businessId={businessId}
+            businessName={activeBusiness?.name}
+            fiscalYear={forecast.fiscal_year}
+            onComplete={(forecastId) => {
+              setShowForecastCFO(false)
+              loadInitialData()
+              toast.success('Forecast saved successfully!')
+            }}
+            onClose={() => setShowForecastCFO(false)}
+          />
+        )}
+
+        {/* Forecast Wizard V4 (Full 7-Step Methodology) */}
+        {showWizardV4 && (
+          <ForecastWizardV4
+            businessId={businessId}
+            businessName={activeBusiness?.name}
+            fiscalYear={forecast.fiscal_year}
+            existingForecastId={selectedForecastId}
+            existingForecastName={selectedForecastName}
+            onComplete={(forecastId) => {
+              setShowWizardV4(false)
+              setSelectedForecastId(null)
+              setSelectedForecastName(null)
+              loadInitialData()
+              toast.success('Forecast generated successfully!')
+            }}
+            onClose={() => {
+              setShowWizardV4(false)
+              setSelectedForecastId(null)
+              setSelectedForecastName(null)
+            }}
+          />
+        )}
+
+        {/* Forecast Selector Modal */}
+        {showForecastSelector && (
+          <ForecastSelector
+            businessId={businessId}
+            businessName={activeBusiness?.name}
+            fiscalYear={forecast.fiscal_year}
+            onSelectForecast={(id, name) => {
+              setSelectedForecastId(id)
+              setSelectedForecastName(name)
+              setShowForecastSelector(false)
+              setShowWizardV4(true)
+            }}
+            onCreateNew={() => {
+              setSelectedForecastId(null)
+              setSelectedForecastName(null)
+              setShowForecastSelector(false)
+              setShowWizardV4(true)
+            }}
+            onClose={() => setShowForecastSelector(false)}
+          />
+        )}
       </div>
     )
   }
@@ -480,14 +606,14 @@ export default function FinancialForecastPage() {
           icon={TrendingUp}
           actions={
             <>
-              {/* AI CFO Wizard Button */}
+              {/* Build Forecast Button */}
               <button
-                onClick={() => setShowWizardV3(true)}
+                onClick={() => setShowForecastSelector(true)}
                 className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm font-medium text-white bg-brand-navy hover:bg-brand-navy-800 rounded-lg transition-all shadow-sm"
               >
                 <Sparkles className="w-4 h-4" />
-                <span className="hidden sm:inline">AI CFO Wizard</span>
-                <span className="sm:hidden">AI CFO</span>
+                <span className="hidden sm:inline">Build Forecast</span>
+                <span className="sm:hidden">Build</span>
               </button>
 
               {/* Save Button */}
@@ -679,6 +805,81 @@ export default function FinancialForecastPage() {
             toast.success('Forecast completed! Your coach has been notified.')
           }}
           onClose={() => setShowWizardV3(false)}
+        />
+      )}
+
+      {/* New Forecast Builder (CFO Methodology) */}
+      {showForecastBuilder && forecast && (
+        <ForecastBuilder
+          businessId={businessId}
+          businessName={activeBusiness?.name}
+          fiscalYear={forecast.fiscal_year}
+          onComplete={(forecastId) => {
+            setShowForecastBuilder(false)
+            loadInitialData()
+            toast.success('Forecast saved successfully!')
+          }}
+          onClose={() => setShowForecastBuilder(false)}
+        />
+      )}
+
+      {/* New AI CFO Wizard (Conversational) */}
+      {showForecastCFO && forecast && (
+        <ForecastCFO
+          businessId={businessId}
+          businessName={activeBusiness?.name}
+          fiscalYear={forecast.fiscal_year}
+          onComplete={(forecastId) => {
+            setShowForecastCFO(false)
+            loadInitialData()
+            toast.success('Forecast saved successfully!')
+          }}
+          onClose={() => setShowForecastCFO(false)}
+        />
+      )}
+
+      {/* Forecast Wizard V4 (Full 7-Step Methodology) */}
+      {showWizardV4 && forecast && (
+        <ForecastWizardV4
+          businessId={businessId}
+          businessName={activeBusiness?.name}
+          fiscalYear={forecast.fiscal_year}
+          existingForecastId={selectedForecastId}
+          existingForecastName={selectedForecastName}
+          onComplete={(forecastId) => {
+            setShowWizardV4(false)
+            setSelectedForecastId(null)
+            setSelectedForecastName(null)
+            loadInitialData()
+            toast.success('Forecast generated successfully!')
+          }}
+          onClose={() => {
+            setShowWizardV4(false)
+            setSelectedForecastId(null)
+            setSelectedForecastName(null)
+          }}
+        />
+      )}
+
+      {/* Forecast Selector Modal */}
+      {showForecastSelector && forecast && (
+        <ForecastSelector
+          businessId={businessId}
+          businessName={activeBusiness?.name}
+          fiscalYear={forecast.fiscal_year}
+          onSelectForecast={(id, name) => {
+            setSelectedForecastId(id)
+            setSelectedForecastName(name)
+            setShowForecastSelector(false)
+            setShowWizardV4(true)
+          }}
+          onCreateNew={() => {
+            setSelectedForecastId(null)
+            setSelectedForecastName(null)
+            setShowForecastSelector(false)
+            setShowWizardV4(true)
+          }}
+          onClose={() => setShowForecastSelector(false)}
         />
       )}
 

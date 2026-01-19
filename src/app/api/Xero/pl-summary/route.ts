@@ -26,23 +26,63 @@ function getPriorFiscalYear(fiscalYear: number) {
 
 // Helper to get current YTD boundaries
 function getCurrentYTDBoundaries(fiscalYear: number) {
-  const now = new Date();
-  const currentMonth = now.getMonth(); // 0-11
-  const currentYear = now.getFullYear();
+  // Use Australian Eastern Time for date calculations
+  // This ensures we correctly identify completed months in AU context
+  const nowUTC = new Date();
+
+  // Convert to Australian Eastern Time (AEDT = UTC+11, AEST = UTC+10)
+  // Use UTC+11 (AEDT) during daylight saving (Oct-Apr), UTC+10 (AEST) otherwise
+  const utcMonth = nowUTC.getUTCMonth();
+  const isDaylightSaving = utcMonth >= 9 || utcMonth <= 3; // Oct-Apr
+  const australiaOffsetHours = isDaylightSaving ? 11 : 10;
+
+  const australiaTime = new Date(nowUTC.getTime() + australiaOffsetHours * 60 * 60 * 1000);
+  const currentMonth = australiaTime.getUTCMonth(); // 0-11
+  const currentYear = australiaTime.getUTCFullYear();
+  const currentDay = australiaTime.getUTCDate();
+
+  console.log('[Xero P&L Summary] Date calculation:', {
+    serverUTC: nowUTC.toISOString(),
+    australiaTime: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`,
+    currentMonth: currentMonth + 1,
+    currentYear,
+    isDaylightSaving,
+  });
 
   // Determine if we're in the fiscal year
   const fyStart = getFiscalYearBoundaries(fiscalYear);
   const fyStartDate = new Date(fyStart.start);
 
   // If before FY start, no YTD data
-  if (now < fyStartDate) {
+  if (australiaTime < fyStartDate) {
+    console.log('[Xero P&L Summary] Before FY start, no YTD data');
     return null;
   }
 
-  // Calculate months in YTD
-  const lastCompleteMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-  const lastCompleteYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+  // Calculate last complete month
+  // If we're on or after the 1st of a month, the previous month is complete
+  // This means if today is Jan 1, December is the last complete month
+  let lastCompleteMonth: number;
+  let lastCompleteYear: number;
+
+  if (currentMonth === 0) {
+    // January -> December of previous year
+    lastCompleteMonth = 11; // December (0-indexed)
+    lastCompleteYear = currentYear - 1;
+  } else {
+    // Any other month -> previous month of same year
+    lastCompleteMonth = currentMonth - 1;
+    lastCompleteYear = currentYear;
+  }
+
   const lastCompleteMonthStr = `${lastCompleteYear}-${String(lastCompleteMonth + 1).padStart(2, '0')}`;
+
+  console.log('[Xero P&L Summary] YTD boundaries:', {
+    startMonth: fyStart.startMonth,
+    endMonth: lastCompleteMonthStr,
+    lastCompleteMonth: lastCompleteMonth + 1,
+    lastCompleteYear,
+  });
 
   return {
     startMonth: fyStart.startMonth,
@@ -91,29 +131,26 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get forecast for this business/fiscal year to find P&L lines
-    // First try active, then any forecast
+    // Get ALL forecasts for this business/fiscal year to find P&L lines
+    // This allows new forecasts to access Xero data synced to other forecasts
     let { data: forecasts, error: forecastError } = await supabase
       .from('financial_forecasts')
       .select('id, is_active')
       .eq('business_id', businessId)
       .eq('fiscal_year', fiscalYear)
       .order('is_active', { ascending: false }) // Active first
-      .order('updated_at', { ascending: false })
-      .limit(1);
+      .order('updated_at', { ascending: false });
 
-    let forecast = forecasts?.[0] || null;
-    console.log('[Xero P&L Summary] Forecast query result:', {
+    console.log('[Xero P&L Summary] Forecasts for business/FY:', {
       businessId,
       fiscalYear,
-      found: !!forecast,
-      forecastId: forecast?.id,
-      isActive: forecast?.is_active,
+      count: forecasts?.length || 0,
+      forecastIds: forecasts?.map(f => f.id),
       error: forecastError?.message
     });
 
-    // If no forecast found, try without fiscal_year filter (might be stored differently)
-    if (!forecast) {
+    // If no forecasts found, try without fiscal_year filter
+    if (!forecasts || forecasts.length === 0) {
       const { data: anyForecasts } = await supabase
         .from('financial_forecasts')
         .select('id, fiscal_year, is_active')
@@ -123,8 +160,8 @@ export async function GET(request: NextRequest) {
       console.log('[Xero P&L Summary] All forecasts for business:', anyForecasts);
     }
 
-    if (!forecast) {
-      console.log('[Xero P&L Summary] No active forecast for fiscal year', fiscalYear);
+    if (!forecasts || forecasts.length === 0) {
+      console.log('[Xero P&L Summary] No forecasts for fiscal year', fiscalYear);
       return NextResponse.json({
         summary: {
           has_xero_data: false,
@@ -132,14 +169,16 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Fetch P&L lines
+    // Fetch P&L lines from ALL forecasts for this business/fiscal year
+    // This ensures we find Xero data even if it was synced to a different forecast
+    const forecastIds = forecasts.map(f => f.id);
     const { data: plLines, error: plError } = await supabase
       .from('forecast_pl_lines')
       .select('*')
-      .eq('forecast_id', forecast.id)
+      .in('forecast_id', forecastIds)
       .eq('is_from_xero', true);
 
-    console.log('[Xero P&L Summary] P&L lines from Xero:', plLines?.length || 0, plError?.message || '');
+    console.log('[Xero P&L Summary] P&L lines from Xero (across all forecasts):', plLines?.length || 0, plError?.message || '');
 
     if (plError || !plLines || plLines.length === 0) {
       console.log('[Xero P&L Summary] No P&L lines found from Xero');
@@ -150,16 +189,67 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Deduplicate P&L lines - if same account exists in multiple forecasts,
+    // prefer the one from the most recent/active forecast (first in forecastIds array)
+    const seenAccounts = new Set<string>();
+    const forecastPriority = new Map(forecastIds.map((id, idx) => [id, idx]));
+
+    // Sort by forecast priority (lower index = higher priority)
+    const sortedLines = [...plLines].sort((a, b) => {
+      const priorityA = forecastPriority.get(a.forecast_id) ?? 999;
+      const priorityB = forecastPriority.get(b.forecast_id) ?? 999;
+      return priorityA - priorityB;
+    });
+
+    // Keep only the first occurrence of each account
+    const dedupedLines = sortedLines.filter(line => {
+      const key = `${line.account_name}|${line.category}`;
+      if (seenAccounts.has(key)) return false;
+      seenAccounts.add(key);
+      return true;
+    });
+
+    console.log('[Xero P&L Summary] After deduplication:', dedupedLines.length, 'lines (was', plLines.length, ')');
+
     // Calculate prior FY summary
     const priorFY = getPriorFiscalYear(fiscalYear);
-    const priorFYSummary = calculatePeriodSummary(plLines, priorFY.startMonth, priorFY.endMonth, `FY${fiscalYear - 1}`);
+    console.log('[Xero P&L Summary] Prior FY boundaries:', priorFY);
+
+    // Log sample of P&L lines to debug
+    if (dedupedLines.length > 0) {
+      const sampleLine = dedupedLines[0];
+      console.log('[Xero P&L Summary] Sample P&L line:', {
+        category: sampleLine.category,
+        account_name: sampleLine.account_name,
+        has_actual_months: !!sampleLine.actual_months,
+        actual_months_keys: sampleLine.actual_months ? Object.keys(sampleLine.actual_months).slice(0, 5) : [],
+      });
+    }
+
+    const priorFYSummary = calculatePeriodSummary(dedupedLines, priorFY.startMonth, priorFY.endMonth, `FY${fiscalYear - 1}`);
+    console.log('[Xero P&L Summary] Prior FY summary:', priorFYSummary ? {
+      revenue: priorFYSummary.total_revenue,
+      cogs: priorFYSummary.total_cogs,
+      opex: priorFYSummary.operating_expenses,
+      seasonality: priorFYSummary.seasonality_pattern?.slice(0, 3),
+    } : 'null');
 
     // Calculate current YTD summary
     const ytdBoundaries = getCurrentYTDBoundaries(fiscalYear);
     let currentYTD = null;
 
+    console.log('[Xero P&L Summary] YTD boundaries result:', ytdBoundaries);
+
     if (ytdBoundaries) {
-      const ytdSummary = calculatePeriodSummary(plLines, ytdBoundaries.startMonth, ytdBoundaries.endMonth, `FY${fiscalYear} YTD`);
+      const ytdSummary = calculatePeriodSummary(dedupedLines, ytdBoundaries.startMonth, ytdBoundaries.endMonth, `FY${fiscalYear} YTD`);
+
+      console.log('[Xero P&L Summary] YTD summary result:', ytdSummary ? {
+        months_count: ytdSummary.months_count,
+        total_revenue: ytdSummary.total_revenue,
+        revenue_months: Object.entries(ytdSummary.revenue_by_month || {})
+          .filter(([_, v]) => v > 0)
+          .map(([k, v]) => `${k}: ${v}`),
+      } : 'null');
 
       if (ytdSummary && ytdSummary.months_count > 0) {
         // Calculate run rates
@@ -227,21 +317,74 @@ function calculatePeriodSummary(
   let totalOpex = 0;
   const opexByCategory: Record<string, { total: number; account_name: string }> = {};
 
+  // Track revenue by month for seasonality calculation
+  const revenueByMonth: Record<string, number> = {};
+  for (const monthKey of monthKeys) {
+    revenueByMonth[monthKey] = 0;
+  }
+
+  // Log unique categories for debugging
+  const uniqueCategories = [...new Set(plLines.map(l => l.category || 'null'))];
+  console.log('[Xero P&L Summary] Unique categories in P&L lines:', uniqueCategories);
+
+  // Log a few lines to debug actual_months structure
+  if (plLines.length > 0) {
+    console.log(`[Xero P&L Summary] ${periodLabel} - Checking actual_months structure for first 2 lines:`);
+    plLines.slice(0, 2).forEach((l, i) => {
+      console.log(`  Line ${i}: "${l.account_name}" (${l.category})`, {
+        actual_months_keys: Object.keys(l.actual_months || {}),
+        monthKeys_expected: monthKeys.slice(0, 3),
+        sample_values: Object.entries(l.actual_months || {}).slice(0, 3),
+      });
+    });
+  }
+
   for (const line of plLines) {
     const actuals = line.actual_months || {};
     let lineTotal = 0;
-
-    for (const monthKey of monthKeys) {
-      lineTotal += actuals[monthKey] || 0;
-    }
-
     const category = (line.category || '').toLowerCase();
 
-    if (category === 'revenue' || category === 'income') {
+    // Determine if this is "Other Income" (NOT counted as main revenue)
+    const isOtherIncome = category.includes('other income');
+
+    // Determine if this is a revenue line (match various Xero category names)
+    // IMPORTANT: Exclude "other income" from revenue calculation
+    const isRevenue = !isOtherIncome && (
+                      category.includes('revenue') ||
+                      category.includes('income') ||
+                      category.includes('sales') ||
+                      category.includes('trading income'));
+
+    // Determine if this is COGS
+    const isCogs = category.includes('cost of sales') ||
+                   category.includes('cogs') ||
+                   category.includes('direct cost') ||
+                   category.includes('cost of goods');
+
+    // Determine if this is OpEx (also exclude "other expense")
+    const isOtherExpense = category.includes('other expense');
+    const isOpex = !isOtherExpense && (
+                   category.includes('operating') ||
+                   category.includes('expense') ||
+                   category.includes('overhead') ||
+                   category.includes('administrative') ||
+                   category.includes('admin'));
+
+    for (const monthKey of monthKeys) {
+      const monthValue = actuals[monthKey] || 0;
+      lineTotal += monthValue;
+
+      // Track revenue by month
+      if (isRevenue) {
+        revenueByMonth[monthKey] = (revenueByMonth[monthKey] || 0) + monthValue;
+      }
+    }
+
+    if (isRevenue) {
       totalRevenue += lineTotal;
-    } else if (category === 'cost of sales' || category === 'cogs' || category === 'direct costs') {
+    } else if (isCogs) {
       totalCogs += lineTotal;
-    } else if (category === 'operating expenses' || category === 'expense' || category === 'overhead') {
+    } else if (isOpex) {
       totalOpex += lineTotal;
 
       // Track by account for top categories
@@ -268,6 +411,109 @@ function calculatePeriodSummary(
   const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
   const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
+  // Log category detection results - detailed breakdown for debugging
+  console.log('[Xero P&L Summary] Category totals:', {
+    totalRevenue,
+    totalCogs,
+    totalOpex,
+    revenueByMonth: Object.entries(revenueByMonth).filter(([_, v]) => v > 0).length + ' months with data',
+  });
+
+  // Build detailed revenue and COGS lines for Step 3
+  const revenueLines = plLines.filter(l => {
+    const cat = (l.category || '').toLowerCase();
+    const isOtherIncome = cat.includes('other income');
+    return !isOtherIncome && (cat.includes('revenue') || cat.includes('income') || cat.includes('sales') || cat.includes('trading income'));
+  });
+  const cogsLines = plLines.filter(l => {
+    const cat = (l.category || '').toLowerCase();
+    return cat.includes('cost of sales') || cat.includes('cogs') || cat.includes('direct cost') || cat.includes('cost of goods');
+  });
+  const otherIncomeLines = plLines.filter(l => (l.category || '').toLowerCase().includes('other income'));
+
+  console.log('[Xero P&L Summary] Revenue lines:', revenueLines.map(l => ({
+    name: l.account_name,
+    category: l.category,
+  })));
+  console.log('[Xero P&L Summary] COGS lines:', cogsLines.map(l => ({
+    name: l.account_name,
+    category: l.category,
+  })));
+  console.log('[Xero P&L Summary] Other Income lines (excluded from revenue):', otherIncomeLines.map(l => ({
+    name: l.account_name,
+    category: l.category,
+  })));
+
+  // Build revenue lines with totals
+  const revenueLineItems = revenueLines.map(l => {
+    let lineTotal = 0;
+    const monthlyValues: Record<string, number> = {};
+    for (const monthKey of monthKeys) {
+      const value = (l.actual_months || {})[monthKey] || 0;
+      lineTotal += value;
+      monthlyValues[monthKey] = value;
+    }
+    return {
+      account_name: l.account_name,
+      category: l.category,
+      total: lineTotal,
+      by_month: monthlyValues,
+    };
+  }).filter(l => l.total > 0);
+
+  // Build COGS lines with totals
+  const cogsLineItems = cogsLines.map(l => {
+    let lineTotal = 0;
+    const monthlyValues: Record<string, number> = {};
+    for (const monthKey of monthKeys) {
+      const value = (l.actual_months || {})[monthKey] || 0;
+      lineTotal += value;
+      monthlyValues[monthKey] = value;
+    }
+    return {
+      account_name: l.account_name,
+      category: l.category,
+      total: lineTotal,
+      by_month: monthlyValues,
+      percent_of_revenue: totalRevenue > 0 ? (lineTotal / totalRevenue) * 100 : 0,
+    };
+  }).filter(l => l.total > 0);
+
+  // Calculate seasonality pattern (percentage of annual revenue per month)
+  // Order months in FY order: Jul, Aug, Sep, Oct, Nov, Dec, Jan, Feb, Mar, Apr, May, Jun
+  // Use slice() to avoid mutating the original monthKeys array
+  const fyMonthOrder = [...monthKeys].sort((a, b) => {
+    const [yearA, monthA] = a.split('-').map(Number);
+    const [yearB, monthB] = b.split('-').map(Number);
+    // Convert to FY index (Jul=0, Aug=1, ..., Jun=11)
+    const fyIndexA = monthA >= 7 ? monthA - 7 : monthA + 5;
+    const fyIndexB = monthB >= 7 ? monthB - 7 : monthB + 5;
+    // Also consider year for multi-year spans
+    const sortKeyA = yearA * 12 + fyIndexA;
+    const sortKeyB = yearB * 12 + fyIndexB;
+    return sortKeyA - sortKeyB;
+  });
+
+  const seasonalityPattern: number[] = fyMonthOrder.map(monthKey => {
+    if (totalRevenue <= 0) return 8.33; // Default even distribution
+    return ((revenueByMonth[monthKey] || 0) / totalRevenue) * 100;
+  });
+
+  console.log('[Xero P&L Summary] Seasonality:', {
+    fyMonthOrder: fyMonthOrder.slice(0, 3),
+    pattern: seasonalityPattern.slice(0, 3),
+    totalPatternSum: seasonalityPattern.reduce((a, b) => a + b, 0).toFixed(1),
+  });
+
+  // Ensure we have exactly 12 months
+  while (seasonalityPattern.length < 12) {
+    seasonalityPattern.push(8.33);
+  }
+
+  // Log opex categories for debugging
+  console.log(`[Xero P&L Summary] ${periodLabel} OpEx categories:`, opexCategories.length, 'categories, top 5:',
+    opexCategories.slice(0, 5).map(c => ({ name: c.account_name, total: c.total })));
+
   return {
     period_label: periodLabel,
     start_month: startMonth,
@@ -281,5 +527,9 @@ function calculatePeriodSummary(
     operating_expenses_by_category: opexCategories,
     net_profit: netProfit,
     net_margin_percent: netMargin,
+    revenue_by_month: revenueByMonth,
+    seasonality_pattern: seasonalityPattern.slice(0, 12),
+    revenue_lines: revenueLineItems,
+    cogs_lines: cogsLineItems,
   };
 }

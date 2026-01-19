@@ -1,23 +1,25 @@
 /**
- * ForecastWizardV3 - Complete 3-panel AI-powered forecast wizard
+ * ForecastWizardV3 - AI-powered forecast wizard with live P&L builder
  *
- * Layout: Data Panel (left) | Chat Panel (center) | Forecast Summary (right)
+ * Layout: Chat Panel (35%) | Live Forecast Panel (65%)
  *
  * Features:
  * - Powered by Claude AI (Sonnet for speed, Opus for review)
  * - Continuous chat that never clears between steps
  * - AI proposes, user approves pattern
- * - Live updating forecast as decisions are made
- * - Responsive design for tablet/mobile
+ * - LIVE updating forecast as decisions are made
+ * - Visual P&L that builds in real-time
+ * - Inline editing of numbers
  */
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { X, Menu, ChevronLeft, ChevronRight, Check, Loader2, ArrowRight, SkipForward } from 'lucide-react';
-import { DataPanel } from './DataPanel';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { X, Check, Loader2, ArrowRight, Menu, PanelLeft, PanelRight } from 'lucide-react';
 import { ChatPanel } from './ChatPanel';
-import { ForecastSummary } from './ForecastSummary';
+import { LiveForecastPanel } from './LiveForecastPanel';
+import { useLiveForecast } from '../../hooks/useLiveForecast';
+import type { UseLiveForecastReturn } from '../../hooks/useLiveForecast';
 import {
   WizardStep,
   WizardContext,
@@ -182,24 +184,24 @@ function parseDecisions(userMessage: string, aiResponse: string, step: WizardSte
   return newDecisions;
 }
 
-// Initial suggestions shown when entering a step
+// Initial suggestions shown when entering a step (always include help option)
 const INITIAL_SUGGESTIONS: Record<WizardStep, string[]> = {
-  setup: ['Yes, 1 year is good', 'Include Year 2-3 as well', 'Just Year 1 for now'],
-  team: ['Yes, I have planned hires', 'No new hires planned', 'Let me think about it'],
-  costs: ['Yes, use prior year', 'Add 5% for inflation', 'I want to adjust some categories'],
-  investments: ['Yes, let me specify investments', 'No major investments this year'],
-  projections: ['Yes, use my existing goals', 'I want to set different targets'],
-  review: ['Looks good, finalize it', 'I need to make some changes'],
+  setup: ['Yes, 1 year is good', 'Include Year 2-3 as well', 'What should I consider here?'],
+  team: ['Yes, I have planned hires', 'No new hires planned', 'Help me think through this'],
+  costs: ['Yes, use prior year', 'Add 5% for inflation', 'What should I consider?'],
+  investments: ['Yes, let me specify investments', 'No major investments this year', 'What investments should I consider?'],
+  projections: ['Yes, use my existing goals', 'I want to set different targets', 'Help me understand this'],
+  review: ['Looks good, finalize it', 'I need to make some changes', 'Explain something to me'],
 };
 
 // Follow-up suggestions after user has responded (iterative flow)
 const FOLLOWUP_SUGGESTIONS: Record<WizardStep, string[]> = {
-  setup: ["That's all correct", 'I want to change something'],
-  team: ['Add another hire', "That's all the hires", 'Actually, one more'],
-  costs: ['Make another adjustment', "That's all, looks good"],
-  investments: ['Add another investment', "That's everything"],
-  projections: ['Yes, confirmed', 'I want to adjust'],
-  review: ['Finalize and save', 'Go back and adjust something'],
+  setup: ["That's all correct", 'I want to change something', 'I have a question'],
+  team: ['Add another hire', "That's all the hires", 'Help me think about this'],
+  costs: ['Make another adjustment', "That's all, looks good", 'I have a question'],
+  investments: ['Add another investment', "That's everything", 'What else should I consider?'],
+  projections: ['Yes, confirmed', 'I want to adjust', 'Help me understand'],
+  review: ['Finalize and save', 'Go back and adjust something', 'Explain something'],
 };
 
 export function ForecastWizardV3({
@@ -227,10 +229,20 @@ export function ForecastWizardV3({
   const [context, setContext] = useState<WizardContext | null>(null);
   const [isLoadingContext, setIsLoadingContext] = useState(true);
 
-  // Mobile/tablet responsive state
-  const [showLeftPanel, setShowLeftPanel] = useState(false);
-  const [showRightPanel, setShowRightPanel] = useState(false);
+  // Live forecast state (for visual P&L builder)
+  const liveForecast = useLiveForecast({ fiscalYear });
+
+  // Mobile responsive state
   const [isMobile, setIsMobile] = useState(false);
+  const [showChat, setShowChat] = useState(true);
+  const [showForecast, setShowForecast] = useState(true);
+
+  // Track which decisions have been processed to avoid duplicates
+  const processedDecisionIds = useRef<Set<string>>(new Set());
+  // Track if live forecast has been initialized
+  const forecastInitialized = useRef(false);
+  // Track if context has been loaded (prevent duplicate loads)
+  const contextLoaded = useRef(false);
 
   // Check for mobile/tablet
   useEffect(() => {
@@ -242,9 +254,16 @@ export function ForecastWizardV3({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Load initial context
+  // Load initial context (only once)
   useEffect(() => {
     async function loadContext() {
+      // Guard: only load context once
+      if (contextLoaded.current) {
+        console.log('[Wizard] Context already loaded, skipping');
+        return;
+      }
+      contextLoaded.current = true;
+
       setIsLoadingContext(true);
       try {
         // Fetch goals
@@ -329,6 +348,105 @@ export function ForecastWizardV3({
 
     loadContext();
   }, [businessId, businessName, fiscalYear]);
+
+  // Initialize live forecast state from context when loaded (only once)
+  useEffect(() => {
+    console.log('[Wizard] Init effect - context:', !!context, 'isLoadingContext:', isLoadingContext, 'initialized:', forecastInitialized.current);
+    if (context && !isLoadingContext && !forecastInitialized.current) {
+      console.log('[Wizard] Initializing live forecast from context:', {
+        goals: context.goals,
+        teamCount: context.current_team?.length,
+        hasHistoricalPL: !!context.historical_pl,
+        fiscalYear: context.fiscal_year,
+      });
+      forecastInitialized.current = true;
+      liveForecast.actions.initializeFromContext({
+        goals: context.goals,
+        current_team: context.current_team,
+        historical_pl: context.historical_pl,
+        fiscal_year: context.fiscal_year,
+      });
+    }
+  }, [context, isLoadingContext, liveForecast.actions]);
+
+  // Update live forecast current step when wizard step changes
+  useEffect(() => {
+    liveForecast.actions.setCurrentStep(currentStep);
+  }, [currentStep, liveForecast.actions]);
+
+  // Update live forecast years when selection changes
+  useEffect(() => {
+    liveForecast.actions.setYearsSelected(yearsSelected);
+  }, [yearsSelected, liveForecast.actions]);
+
+  // Sync decisions to live forecast state (only process new decisions)
+  useEffect(() => {
+    if (decisions.length === 0) return;
+
+    decisions.forEach(decision => {
+      // Skip already processed decisions
+      if (processedDecisionIds.current.has(decision.id)) return;
+      processedDecisionIds.current.add(decision.id);
+
+      switch (decision.decision_type) {
+        case 'new_hire':
+          // Add planned hire to live forecast
+          if (decision.decision_data) {
+            const hireData = decision.decision_data as {
+              role?: string;
+              annual_salary?: number;
+              start_month?: string;
+              classification?: 'cogs' | 'opex';
+            };
+            liveForecast.actions.addPlannedHire({
+              name: hireData.role || 'New Hire',
+              role: hireData.role || 'New Hire',
+              annualSalary: hireData.annual_salary || 80000,
+              classification: hireData.classification || 'opex',
+              startMonth: hireData.start_month,
+            });
+          }
+          break;
+
+        case 'investment':
+          // Add investment to live forecast
+          if (decision.decision_data) {
+            const invData = decision.decision_data as {
+              amount?: number;
+              description?: string;
+              type?: 'capex' | 'opex';
+            };
+            liveForecast.actions.addInvestment({
+              name: invData.description || 'New Investment',
+              amount: invData.amount || 0,
+              type: invData.type || 'opex',
+            });
+          }
+          break;
+
+        case 'cost_changed':
+          // Update OpEx growth rate
+          if (decision.decision_data) {
+            const costData = decision.decision_data as { adjustment_percent?: number };
+            if (costData.adjustment_percent !== undefined) {
+              liveForecast.actions.setOpExGrowthRate(costData.adjustment_percent / 100);
+            }
+          }
+          break;
+      }
+    });
+  }, [decisions, liveForecast.actions]);
+
+  // Mark wizard steps as completed in live forecast
+  useEffect(() => {
+    stepsCompleted.forEach(step => {
+      if (step === 'setup') liveForecast.actions.completeStep('setup');
+      if (step === 'team') liveForecast.actions.completeStep('team');
+      if (step === 'costs') liveForecast.actions.completeStep('costs');
+      if (step === 'investments') liveForecast.actions.completeStep('investments');
+      if (step === 'review') liveForecast.actions.completeStep('review');
+    });
+  }, [stepsCompleted, liveForecast.actions]);
 
   // Handle sending a message
   const handleSendMessage = useCallback(
@@ -427,7 +545,9 @@ export function ForecastWizardV3({
         }
 
         // Handle step completion
+        console.log('[Wizard] API response:', { stepComplete: data.stepComplete, currentStep, suggestions: data.suggestions?.length });
         if (data.stepComplete) {
+          console.log('[Wizard] Step complete! Moving from', currentStep, 'to next step');
           // Mark current step as completed
           setStepsCompleted(prev => [...prev, currentStep]);
 
@@ -624,10 +744,11 @@ export function ForecastWizardV3({
         <div className="flex items-center gap-4">
           {isMobile && (
             <button
-              onClick={() => setShowLeftPanel(!showLeftPanel)}
+              onClick={() => setShowChat(!showChat)}
               className="p-2 text-gray-500 hover:text-gray-700"
+              title="Toggle chat panel"
             >
-              <Menu className="w-5 h-5" />
+              <PanelLeft className="w-5 h-5" />
             </button>
           )}
           <div>
@@ -675,14 +796,11 @@ export function ForecastWizardV3({
 
           {isMobile && (
             <button
-              onClick={() => setShowRightPanel(!showRightPanel)}
+              onClick={() => setShowForecast(!showForecast)}
               className="p-2 text-gray-500 hover:text-gray-700"
+              title="Toggle forecast panel"
             >
-              {showRightPanel ? (
-                <ChevronRight className="w-5 h-5" />
-              ) : (
-                <ChevronLeft className="w-5 h-5" />
-              )}
+              <PanelRight className="w-5 h-5" />
             </button>
           )}
           {onClose && (
@@ -696,29 +814,17 @@ export function ForecastWizardV3({
         </div>
       </div>
 
-      {/* Main content - 3 panel layout */}
+      {/* Main content - 2 panel layout (35% chat, 65% forecast) */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Data */}
+        {/* Left Panel - Chat (35%) */}
         <div
           className={`
-            ${isMobile ? 'absolute inset-y-14 left-0 z-40 w-80 shadow-lg' : 'w-80 border-r border-gray-200'}
-            ${isMobile && !showLeftPanel ? '-translate-x-full' : 'translate-x-0'}
-            transition-transform duration-300 bg-white flex-shrink-0
+            ${isMobile
+              ? `absolute inset-y-14 left-0 z-40 w-80 shadow-lg ${!showChat ? '-translate-x-full' : 'translate-x-0'}`
+              : 'w-[35%] min-w-[320px] max-w-[450px]'}
+            transition-transform duration-300 bg-white flex-shrink-0 border-r border-gray-200
           `}
         >
-          <DataPanel context={context} isLoading={isLoadingContext} />
-        </div>
-
-        {/* Mobile overlay */}
-        {isMobile && showLeftPanel && (
-          <div
-            className="absolute inset-0 bg-black/20 z-30"
-            onClick={() => setShowLeftPanel(false)}
-          />
-        )}
-
-        {/* Center Panel - Chat */}
-        <div className="flex-1 min-w-0">
           <ChatPanel
             messages={messages}
             currentStep={currentStep}
@@ -728,27 +834,36 @@ export function ForecastWizardV3({
           />
         </div>
 
-        {/* Right Panel - Forecast Summary */}
+        {/* Mobile overlay for chat */}
+        {isMobile && showChat && (
+          <div
+            className="absolute inset-0 bg-black/20 z-30"
+            onClick={() => setShowChat(false)}
+          />
+        )}
+
+        {/* Right Panel - Live Forecast (65%) */}
         <div
           className={`
-            ${isMobile ? 'absolute inset-y-14 right-0 z-40 w-80 shadow-lg' : 'w-80 border-l border-gray-200'}
-            ${isMobile && !showRightPanel ? 'translate-x-full' : 'translate-x-0'}
-            transition-transform duration-300 bg-white flex-shrink-0
+            ${isMobile
+              ? `absolute inset-y-14 right-0 z-40 w-full shadow-lg ${!showForecast ? 'translate-x-full' : 'translate-x-0'}`
+              : 'flex-1 min-w-0'}
+            transition-transform duration-300 bg-gray-50 overflow-hidden
           `}
         >
-          <ForecastSummary
-            context={context}
+          <LiveForecastPanel
+            forecast={liveForecast}
             currentStep={currentStep}
-            decisions={decisions}
+            context={context}
             stepsCompleted={stepsCompleted}
           />
         </div>
 
-        {/* Mobile overlay for right panel */}
-        {isMobile && showRightPanel && (
+        {/* Mobile overlay for forecast panel */}
+        {isMobile && showForecast && (
           <div
-            className="absolute inset-0 bg-black/20 z-30"
-            onClick={() => setShowRightPanel(false)}
+            className="absolute inset-0 bg-black/20 z-30 lg:hidden"
+            onClick={() => setShowForecast(false)}
           />
         )}
       </div>

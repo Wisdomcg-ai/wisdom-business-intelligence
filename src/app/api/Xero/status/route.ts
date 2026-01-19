@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
-import { encrypt, decrypt } from '@/lib/utils/encryption';
+import { getValidAccessToken, checkConnectionHealth } from '@/lib/xero/token-manager';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,70 +10,6 @@ const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
 );
-
-// Proactively refresh token if expiring within 10 minutes
-async function refreshTokenIfNeeded(connection: any): Promise<boolean> {
-  const now = new Date();
-  const expiry = new Date(connection.expires_at);
-  const refreshThreshold = new Date(now.getTime() + 10 * 60 * 1000); // 10 min buffer
-
-  if (expiry > refreshThreshold) {
-    return true; // Token still valid
-  }
-
-  console.log('[Xero Status] Token expiring soon, refreshing...');
-
-  try {
-    const decryptedRefreshToken = decrypt(connection.refresh_token);
-
-    const refreshResponse = await fetch('https://identity.xero.com/connect/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${Buffer.from(
-          `${process.env.XERO_CLIENT_ID}:${process.env.XERO_CLIENT_SECRET}`
-        ).toString('base64')}`
-      },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: decryptedRefreshToken
-      })
-    });
-
-    if (!refreshResponse.ok) {
-      console.error('[Xero Status] Token refresh failed:', refreshResponse.status);
-
-      // Mark as inactive if refresh token is invalid
-      if (refreshResponse.status === 400) {
-        await supabaseAdmin
-          .from('xero_connections')
-          .update({ is_active: false })
-          .eq('id', connection.id);
-      }
-      return false;
-    }
-
-    const tokens = await refreshResponse.json();
-    const newExpiry = new Date();
-    newExpiry.setSeconds(newExpiry.getSeconds() + tokens.expires_in);
-
-    await supabaseAdmin
-      .from('xero_connections')
-      .update({
-        access_token: encrypt(tokens.access_token),
-        refresh_token: encrypt(tokens.refresh_token),
-        expires_at: newExpiry.toISOString()
-      })
-      .eq('id', connection.id);
-
-    console.log('[Xero Status] Token refreshed, new expiry:', newExpiry.toISOString());
-    return true;
-
-  } catch (error) {
-    console.error('[Xero Status] Token refresh error:', error);
-    return false;
-  }
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -119,7 +55,7 @@ export async function GET(request: NextRequest) {
 
     const { data: connection, error: connError } = await supabaseAdmin
       .from('xero_connections')
-      .select('id, tenant_name, is_active, last_synced_at, expires_at, created_at, access_token, refresh_token')
+      .select('id, business_id, tenant_id, tenant_name, is_active, last_synced_at, expires_at, created_at, access_token, refresh_token')
       .eq('business_id', businessId)
       .eq('is_active', true)
       .maybeSingle();
@@ -138,27 +74,45 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Proactively refresh token if expiring soon
-    const tokenValid = await refreshTokenIfNeeded(connection);
+    // Check connection health and refresh token if needed
+    const healthCheck = await checkConnectionHealth(connection);
 
-    if (!tokenValid) {
+    // Proactively refresh token using the robust token manager
+    const tokenResult = await getValidAccessToken(connection, supabaseAdmin);
+
+    if (!tokenResult.success) {
+      console.log('[Xero Status] Token refresh failed:', tokenResult.error, tokenResult.message);
       return NextResponse.json({
         connected: false,
         expired: true,
-        message: 'Token expired and could not be refreshed. Please reconnect Xero.',
+        error: tokenResult.error,
+        message: tokenResult.message || 'Token expired and could not be refreshed. Please reconnect Xero.',
+        needsReconnect: tokenResult.shouldDeactivate,
         connection: null
       });
     }
 
+    // Re-fetch connection to get updated expiry time
+    const { data: updatedConnection } = await supabaseAdmin
+      .from('xero_connections')
+      .select('id, tenant_name, is_active, last_synced_at, expires_at')
+      .eq('id', connection.id)
+      .single();
+
     return NextResponse.json({
       connected: true,
       expired: false,
+      health: {
+        isHealthy: healthCheck.isHealthy,
+        expiresInMinutes: healthCheck.expiresIn,
+        warnings: healthCheck.warnings
+      },
       connection: {
-        id: connection.id,
-        tenant_name: connection.tenant_name,
-        is_active: connection.is_active,
-        last_synced_at: connection.last_synced_at,
-        expires_at: connection.expires_at
+        id: updatedConnection?.id || connection.id,
+        tenant_name: updatedConnection?.tenant_name || connection.tenant_name,
+        is_active: updatedConnection?.is_active ?? connection.is_active,
+        last_synced_at: updatedConnection?.last_synced_at || connection.last_synced_at,
+        expires_at: updatedConnection?.expires_at || connection.expires_at
       }
     });
 

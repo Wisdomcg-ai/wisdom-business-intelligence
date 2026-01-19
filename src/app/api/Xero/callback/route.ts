@@ -24,6 +24,124 @@ const REDIRECT_URI = process.env.NODE_ENV === 'production'
 const XERO_TOKEN_URL = 'https://identity.xero.com/connect/token';
 const XERO_CONNECTIONS_URL = 'https://api.xero.com/connections';
 
+/**
+ * Trigger an initial sync after successful OAuth connection.
+ * Syncs bank summary and current month P&L to financial_metrics.
+ */
+async function triggerInitialSync(businessId: string, accessToken: string, tenantId: string) {
+  console.log('[Xero Callback] Starting initial sync for business:', businessId);
+
+  try {
+    // Get bank accounts
+    const bankResponse = await fetch('https://api.xero.com/api.xro/2.0/BankSummary', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'xero-tenant-id': tenantId,
+        'Accept': 'application/json'
+      }
+    });
+
+    const bankData = bankResponse.ok ? await bankResponse.json() : null;
+
+    // Calculate total cash
+    let totalCash = 0;
+    if (bankData?.BankSummary) {
+      bankData.BankSummary.forEach((account: { ClosingBalance?: number }) => {
+        totalCash += account.ClosingBalance || 0;
+      });
+    }
+
+    // Get P&L for current month
+    const currentDate = new Date();
+    const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+    const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+
+    const plResponse = await fetch(
+      `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${startOfMonth.toISOString().split('T')[0]}&toDate=${endOfMonth.toISOString().split('T')[0]}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'xero-tenant-id': tenantId,
+          'Accept': 'application/json'
+        }
+      }
+    );
+
+    let monthlyMetrics = {
+      revenue_month: 0,
+      cogs_month: 0,
+      expenses_month: 0,
+      net_profit_month: 0
+    };
+
+    if (plResponse.ok) {
+      const plData = await plResponse.json();
+      if (plData?.Reports?.[0]?.Rows) {
+        plData.Reports[0].Rows.forEach((row: { RowType?: string; Title?: string; Rows?: { Cells?: { Value?: string }[] }[] }) => {
+          if (row.RowType === 'Section') {
+            if (row.Title === 'Income' || row.Title === 'Revenue') {
+              row.Rows?.forEach((subRow) => {
+                if (subRow.Cells?.[1]?.Value) {
+                  monthlyMetrics.revenue_month += parseFloat(subRow.Cells[1].Value) || 0;
+                }
+              });
+            } else if (row.Title === 'Cost of Sales') {
+              row.Rows?.forEach((subRow) => {
+                if (subRow.Cells?.[1]?.Value) {
+                  monthlyMetrics.cogs_month += parseFloat(subRow.Cells[1].Value) || 0;
+                }
+              });
+            } else if (row.Title === 'Operating Expenses' || row.Title === 'Expenses') {
+              row.Rows?.forEach((subRow) => {
+                if (subRow.Cells?.[1]?.Value) {
+                  monthlyMetrics.expenses_month += parseFloat(subRow.Cells[1].Value) || 0;
+                }
+              });
+            }
+          }
+        });
+      }
+    }
+
+    monthlyMetrics.net_profit_month = monthlyMetrics.revenue_month - monthlyMetrics.cogs_month - monthlyMetrics.expenses_month;
+
+    // Save to financial_metrics table
+    await supabase
+      .from('financial_metrics')
+      .upsert({
+        business_id: businessId,
+        metric_date: new Date().toISOString().split('T')[0],
+        total_cash: totalCash,
+        revenue_month: monthlyMetrics.revenue_month,
+        cogs_month: monthlyMetrics.cogs_month,
+        expenses_month: monthlyMetrics.expenses_month,
+        net_profit_month: monthlyMetrics.net_profit_month,
+        gross_profit_month: monthlyMetrics.revenue_month - monthlyMetrics.cogs_month,
+        gross_margin_percent: monthlyMetrics.revenue_month > 0
+          ? ((monthlyMetrics.revenue_month - monthlyMetrics.cogs_month) / monthlyMetrics.revenue_month) * 100
+          : 0,
+        net_margin_percent: monthlyMetrics.revenue_month > 0
+          ? (monthlyMetrics.net_profit_month / monthlyMetrics.revenue_month) * 100
+          : 0
+      });
+
+    // Update last sync time
+    await supabase
+      .from('xero_connections')
+      .update({ last_synced_at: new Date().toISOString() })
+      .eq('business_id', businessId);
+
+    console.log('[Xero Callback] Initial sync completed successfully:', {
+      totalCash,
+      ...monthlyMetrics
+    });
+
+  } catch (error) {
+    console.error('[Xero Callback] Initial sync error:', error);
+    throw error;
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     // Get code and state from query params
@@ -221,9 +339,15 @@ export async function GET(request: NextRequest) {
 
     console.log('[Xero Callback] Success! Connection ID:', insertedData[0].id);
 
-    // Redirect back to the page that initiated the connection
+    // Trigger an initial sync in the background
+    // Don't await - let it run async so user isn't blocked
+    triggerInitialSync(businessId, tokens.access_token, tenant.tenantId).catch(err => {
+      console.error('[Xero Callback] Initial sync failed:', err);
+    });
+
+    // Redirect back to the page that initiated the connection with sync flag
     return NextResponse.redirect(
-      new URL(`${returnTo}?success=connected`, request.url)
+      new URL(`${returnTo}?success=connected&syncing=true`, request.url)
     );
 
   } catch (error) {

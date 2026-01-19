@@ -1,8 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { decrypt, encrypt } from '@/lib/utils/encryption';
+import { getValidAccessToken } from '@/lib/xero/token-manager';
 
 export const dynamic = 'force-dynamic';
+
+// Helper to parse Xero's date format: /Date(timestamp+0000)/ or /Date(timestamp)/
+function parseXeroDate(dateStr: string | undefined | null): string | undefined {
+  if (!dateStr) return undefined;
+  try {
+    // Match /Date(1234567890000+0000)/ or /Date(1234567890000)/
+    const match = dateStr.match(/\/Date\((\d+)([+-]\d+)?\)\//);
+    if (match) {
+      const timestamp = parseInt(match[1], 10);
+      const date = new Date(timestamp);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+    }
+    // Try direct parsing as fallback
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+  } catch {
+    // Ignore parsing errors
+  }
+  return undefined;
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,79 +49,6 @@ interface XeroEmployee {
   from_xero: boolean;
 }
 
-async function refreshTokenIfNeeded(connection: any): Promise<string | null> {
-  const now = new Date();
-  const expiry = new Date(connection.expires_at);
-
-  console.log('[Xero Employees] Token check - now:', now.toISOString(), 'expiry:', expiry.toISOString());
-
-  const decryptedAccessToken = decrypt(connection.access_token);
-  const decryptedRefreshToken = decrypt(connection.refresh_token);
-
-  // Add 1 minute buffer before expiry to avoid edge cases
-  const bufferTime = new Date(expiry.getTime() - 60000);
-
-  // If token hasn't expired (with buffer), return it
-  if (bufferTime > now) {
-    console.log('[Xero Employees] Using existing token (not expired)');
-    return decryptedAccessToken;
-  }
-
-  console.log('[Xero Employees] Token expired or expiring soon, refreshing...');
-
-  // Refresh the token
-  const refreshResponse = await fetch('https://identity.xero.com/connect/token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': `Basic ${Buffer.from(
-        `${process.env.XERO_CLIENT_ID}:${process.env.XERO_CLIENT_SECRET}`
-      ).toString('base64')}`
-    },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: decryptedRefreshToken
-    })
-  });
-
-  if (!refreshResponse.ok) {
-    const errorText = await refreshResponse.text();
-    console.error('[Xero Employees] Token refresh failed:', refreshResponse.status, errorText);
-
-    // Mark connection as inactive if refresh fails
-    await supabase
-      .from('xero_connections')
-      .update({ is_active: false })
-      .eq('id', connection.id);
-
-    console.error('[Xero Employees] Connection marked as inactive - user needs to reconnect');
-    return null;
-  }
-
-  const tokens = await refreshResponse.json();
-  console.log('[Xero Employees] Token refresh successful, new expiry in', tokens.expires_in, 'seconds');
-
-  // Update tokens in database
-  const newExpiry = new Date();
-  newExpiry.setSeconds(newExpiry.getSeconds() + tokens.expires_in);
-
-  const { error: updateError } = await supabase
-    .from('xero_connections')
-    .update({
-      access_token: encrypt(tokens.access_token),
-      refresh_token: encrypt(tokens.refresh_token),
-      expires_at: newExpiry.toISOString()
-    })
-    .eq('id', connection.id);
-
-  if (updateError) {
-    console.error('[Xero Employees] Failed to save refreshed tokens:', updateError);
-  } else {
-    console.log('[Xero Employees] Refreshed tokens saved, new expiry:', newExpiry.toISOString());
-  }
-
-  return tokens.access_token;
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -127,18 +78,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get a valid access token
-    const accessToken = await refreshTokenIfNeeded(connection);
+    // Get a valid access token using the robust token manager
+    const tokenResult = await getValidAccessToken(connection, supabase);
 
-    if (!accessToken) {
+    if (!tokenResult.success) {
+      console.error('[Xero Employees] Token refresh failed:', tokenResult.error, tokenResult.message);
       return NextResponse.json(
         {
-          error: 'Xero connection expired. Please reconnect Xero from the Integrations page.',
-          expired: true
+          error: tokenResult.message || 'Xero connection expired. Please reconnect Xero from the Integrations page.',
+          expired: true,
+          needsReconnect: tokenResult.shouldDeactivate
         },
         { status: 401 }
       );
     }
+
+    const accessToken = tokenResult.accessToken!;
 
     // Fetch employees from Xero Payroll API (AU)
     // Note: Xero has different payroll APIs for different regions
@@ -264,8 +219,8 @@ export async function GET(request: NextRequest) {
           last_name: emp.LastName || '',
           full_name: `${emp.FirstName || ''} ${emp.LastName || ''}`.trim(),
           job_title: emp.JobTitle || emp.Title || undefined,
-          start_date: emp.StartDate ? new Date(emp.StartDate).toISOString().split('T')[0] : undefined,
-          termination_date: emp.TerminationDate ? new Date(emp.TerminationDate).toISOString().split('T')[0] : undefined,
+          start_date: parseXeroDate(emp.StartDate),
+          termination_date: parseXeroDate(emp.TerminationDate),
           annual_salary: annualSalary,
           hourly_rate: hourlyRate,
           employment_type: employmentType,

@@ -202,9 +202,20 @@ export default function CoachForecastPage() {
       const emps = await ForecastService.loadEmployees(loadedForecast.id!)
       setEmployees(emps)
 
-      // Load Xero connection
-      const xeroConn = await ForecastService.getXeroConnection(clientId)
-      setXeroConnection(xeroConn)
+      // Load Xero connection via API (bypasses RLS timing issues)
+      try {
+        const statusRes = await fetch(`/api/Xero/status?business_id=${clientId}`)
+        const statusData = await statusRes.json()
+        if (statusData.connected && statusData.connection) {
+          setXeroConnection(statusData.connection)
+        } else {
+          setXeroConnection(null)
+        }
+      } catch (err) {
+        console.error('[Coach Forecast] Error loading Xero connection:', err)
+        const xeroConn = await ForecastService.getXeroConnection(clientId)
+        setXeroConnection(xeroConn)
+      }
 
       setIsLoading(false)
 

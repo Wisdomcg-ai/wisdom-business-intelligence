@@ -397,12 +397,12 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
 
   // Save P&L mapping to forecast and trigger sync
   const savePLMapping = () => {
-    // Convert empty strings to null for UUID fields (empty string is not a valid UUID)
+    // Convert empty strings to undefined for UUID fields (empty string is not a valid UUID)
     onUpdateForecast({
-      wages_opex_pl_line_id: wagesOpexLineId || null,
-      wages_cogs_pl_line_id: wagesCogsLineId || null,
-      super_opex_pl_line_id: superOpexLineId || null,
-      super_cogs_pl_line_id: superCogsLineId || null
+      wages_opex_pl_line_id: wagesOpexLineId || undefined,
+      wages_cogs_pl_line_id: wagesCogsLineId || undefined,
+      super_opex_pl_line_id: superOpexLineId || undefined,
+      super_cogs_pl_line_id: superCogsLineId || undefined
     })
   }
 
