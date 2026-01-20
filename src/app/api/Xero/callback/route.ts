@@ -16,9 +16,8 @@ const supabase = createClient(
 // Get environment variables
 const XERO_CLIENT_ID = process.env.XERO_CLIENT_ID!;
 const XERO_CLIENT_SECRET = process.env.XERO_CLIENT_SECRET!;
-const REDIRECT_URI = process.env.NODE_ENV === 'production'
-  ? 'https://your-domain.com/api/Xero/callback'  // Update this with your real domain
-  : 'http://localhost:3000/api/Xero/callback';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const REDIRECT_URI = `${APP_URL}/api/Xero/callback`;
 
 // Xero token URL
 const XERO_TOKEN_URL = 'https://identity.xero.com/connect/token';
