@@ -108,27 +108,19 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('[Xero Auth] Error:', error);
-    console.error('[Xero Auth] Error message:', error instanceof Error ? error.message : 'Unknown error');
 
-    // Detailed env var debugging
-    const encKeyValue = process.env.ENCRYPTION_KEY;
-    const oauthSecretValue = process.env.OAUTH_STATE_SECRET;
+    // Check all relevant env vars
+    const envStatus = [
+      ['ENC', !!process.env.ENCRYPTION_KEY],
+      ['OAS', !!process.env.OAUTH_STATE_SECRET],
+      ['SSK', !!process.env.SUPABASE_SERVICE_KEY],
+      ['XCI', !!process.env.XERO_CLIENT_ID],
+      ['XCS', !!process.env.XERO_CLIENT_SECRET],
+    ].map(([k,v]) => `${k}:${v?'Y':'N'}`).join(' ');
 
-    console.error('[Xero Auth] Environment check:', {
-      hasXeroClientId: !!process.env.XERO_CLIENT_ID,
-      hasEncryptionKey: !!encKeyValue,
-      encryptionKeyLength: encKeyValue?.length || 0,
-      encryptionKeyType: typeof encKeyValue,
-      hasOAuthStateSecret: !!oauthSecretValue,
-      hasAppUrl: !!process.env.NEXT_PUBLIC_APP_URL,
-      appUrl: process.env.NEXT_PUBLIC_APP_URL || 'not set'
-    });
-
-    // Return error message with debug info
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const debugInfo = `EK:${!!encKeyValue}/${encKeyValue?.length || 0}`;
     return NextResponse.json(
-      { error: `Failed to connect to Xero. Please try again. (${errorMessage}) [${debugInfo}]` },
+      { error: `Xero auth failed: ${errorMessage} [${envStatus}]` },
       { status: 500 }
     );
   }
