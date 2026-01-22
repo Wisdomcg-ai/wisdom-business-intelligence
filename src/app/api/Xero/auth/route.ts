@@ -109,17 +109,26 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[Xero Auth] Error:', error);
     console.error('[Xero Auth] Error message:', error instanceof Error ? error.message : 'Unknown error');
+
+    // Detailed env var debugging
+    const encKeyValue = process.env.ENCRYPTION_KEY;
+    const oauthSecretValue = process.env.OAUTH_STATE_SECRET;
+
     console.error('[Xero Auth] Environment check:', {
       hasXeroClientId: !!process.env.XERO_CLIENT_ID,
-      hasEncryptionKey: !!process.env.ENCRYPTION_KEY,
-      hasOAuthStateSecret: !!process.env.OAUTH_STATE_SECRET,
+      hasEncryptionKey: !!encKeyValue,
+      encryptionKeyLength: encKeyValue?.length || 0,
+      encryptionKeyType: typeof encKeyValue,
+      hasOAuthStateSecret: !!oauthSecretValue,
       hasAppUrl: !!process.env.NEXT_PUBLIC_APP_URL,
       appUrl: process.env.NEXT_PUBLIC_APP_URL || 'not set'
     });
-    // Return error message with hint for debugging
+
+    // Return error message with debug info
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const debugInfo = `EK:${!!encKeyValue}/${encKeyValue?.length || 0}`;
     return NextResponse.json(
-      { error: `Failed to connect to Xero. Please try again. (${errorMessage})` },
+      { error: `Failed to connect to Xero. Please try again. (${errorMessage}) [${debugInfo}]` },
       { status: 500 }
     );
   }
