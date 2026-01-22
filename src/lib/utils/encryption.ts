@@ -14,12 +14,15 @@ const SALT_LENGTH = 32
 /**
  * Get encryption key from environment variable
  * Key must be 32 bytes (256 bits) for AES-256
+ * Checks multiple env var names for flexibility across deployments
  */
 function getEncryptionKey(): Buffer {
-  const keyString = process.env.ENCRYPTION_KEY
+  const keyString = process.env.APP_SECRET_KEY
+    || process.env.ENCRYPTION_KEY
+    || process.env.SUPABASE_SERVICE_KEY // Fallback - will derive key via PBKDF2
 
   if (!keyString) {
-    throw new Error('ENCRYPTION_KEY environment variable is not set')
+    throw new Error('No encryption key available (APP_SECRET_KEY, ENCRYPTION_KEY, or SUPABASE_SERVICE_KEY)')
   }
 
   // If key is hex-encoded (64 chars = 32 bytes)
@@ -140,9 +143,14 @@ export function generateEncryptionKey(): string {
 
 /**
  * Create HMAC signature for OAuth state
+ * Checks multiple env var names for flexibility across deployments
  */
 export function createHmacSignature(data: string, secret?: string): string {
-  const key = secret || process.env.OAUTH_STATE_SECRET || process.env.ENCRYPTION_KEY
+  const key = secret
+    || process.env.APP_SECRET_KEY
+    || process.env.OAUTH_STATE_SECRET
+    || process.env.ENCRYPTION_KEY
+    || process.env.SUPABASE_SERVICE_KEY // Fallback to known working secret
   if (!key) {
     throw new Error('No secret available for HMAC signature')
   }

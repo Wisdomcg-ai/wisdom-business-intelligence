@@ -108,19 +108,8 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('[Xero Auth] Error:', error);
-
-    // Check all relevant env vars
-    const envStatus = [
-      ['ENC', !!process.env.ENCRYPTION_KEY],
-      ['OAS', !!process.env.OAUTH_STATE_SECRET],
-      ['SSK', !!process.env.SUPABASE_SERVICE_KEY],
-      ['XCI', !!process.env.XERO_CLIENT_ID],
-      ['XCS', !!process.env.XERO_CLIENT_SECRET],
-    ].map(([k,v]) => `${k}:${v?'Y':'N'}`).join(' ');
-
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: `Xero auth failed: ${errorMessage} [${envStatus}]` },
+      { error: 'Failed to initiate Xero connection. Please try again.' },
       { status: 500 }
     );
   }
