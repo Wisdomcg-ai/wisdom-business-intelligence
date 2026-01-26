@@ -117,11 +117,12 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
 
       // If user is a client, automatically load their business
       if (role === 'client' || role === null) {
-        // First try via business_users join table
+        // First try via business_users join table (for team members)
         const { data: businessUser } = await supabase
           .from('business_users')
           .select('business_id')
           .eq('user_id', user.id)
+          .eq('status', 'active')
           .maybeSingle()
 
         let business = null
@@ -227,13 +228,11 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
     await loadCurrentUser()
   }, [loadCurrentUser])
 
-  // Load user on mount - but don't block the app
+  // Load user on mount
   useEffect(() => {
-    // Skip initial load for now - let individual pages handle their own auth
-    // The context will be populated when setActiveBusiness is called
-    console.log('[BusinessContext] Mounted - skipping auto-load to prevent blocking')
-    // loadCurrentUser()
-  }, [])
+    console.log('[BusinessContext] Mounted - loading current user')
+    loadCurrentUser()
+  }, [loadCurrentUser])
 
   // Listen for auth state changes - disabled for now to prevent blocking
   // useEffect(() => {
