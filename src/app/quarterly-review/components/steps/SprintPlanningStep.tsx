@@ -9,6 +9,7 @@ import { Lightbulb, Calendar } from 'lucide-react';
 // Import from Goals Wizard
 import { useStrategicPlanning } from '@/app/goals/hooks/useStrategicPlanning';
 import { determinePlanYear } from '@/app/goals/utils/quarters';
+import { useBusinessContext } from '@/hooks/useBusinessContext';
 
 // Import the actual Step5 component from Goals Wizard
 import Step5SprintPlanning from '@/app/goals/components/Step5SprintPlanning';
@@ -24,6 +25,7 @@ export function SprintPlanningStep({
   onUpdateInitiatives,
   onUpdateRocks
 }: SprintPlanningStepProps) {
+  const { activeBusiness } = useBusinessContext();
   const {
     isLoading,
     financialData,
@@ -36,7 +38,7 @@ export function SprintPlanningStep({
     businessId,
     operationalActivities,
     setOperationalActivities
-  } = useStrategicPlanning();
+  } = useStrategicPlanning(activeBusiness?.id);
 
   const [localChanges] = useState<InitiativesChanges>(
     review.initiatives_changes || getDefaultInitiativesChanges()

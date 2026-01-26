@@ -259,15 +259,15 @@ function StrategicPlanningContent() {
     setOperationalActivities,
     // Save
     saveAllData
-  } = useStrategicPlanning(viewerContext.isViewingAsCoach ? activeBusiness?.id : undefined)
+  } = useStrategicPlanning(activeBusiness?.id)
 
-  // Debug logging for coach view
+  // Debug logging for business context
   useEffect(() => {
     console.log('[Goals Page] Context state:', {
       isViewingAsCoach: viewerContext.isViewingAsCoach,
       activeBusinessId: activeBusiness?.id,
       activeBusinessName: activeBusiness?.name,
-      passedToHook: viewerContext.isViewingAsCoach ? activeBusiness?.id : undefined
+      passedToHook: activeBusiness?.id
     })
   }, [viewerContext.isViewingAsCoach, activeBusiness?.id, activeBusiness?.name])
 

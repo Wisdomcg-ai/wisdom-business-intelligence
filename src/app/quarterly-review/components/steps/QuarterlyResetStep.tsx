@@ -9,6 +9,7 @@ import { Target, Lightbulb } from 'lucide-react';
 // Import from Goals Wizard
 import { useStrategicPlanning } from '@/app/goals/hooks/useStrategicPlanning';
 import { determinePlanYear } from '@/app/goals/utils/quarters';
+import { useBusinessContext } from '@/hooks/useBusinessContext';
 
 // Import the actual Step4 component from Goals Wizard
 import Step4AnnualPlan from '@/app/goals/components/Step4AnnualPlan';
@@ -25,6 +26,7 @@ export function QuarterlyResetStep({
   onUpdateInitiatives,
   onUpdateRocks
 }: QuarterlyResetStepProps) {
+  const { activeBusiness } = useBusinessContext();
   const {
     isLoading,
     financialData,
@@ -37,7 +39,7 @@ export function QuarterlyResetStep({
     annualPlanByQuarter,
     setAnnualPlanByQuarter,
     businessId
-  } = useStrategicPlanning();
+  } = useStrategicPlanning(activeBusiness?.id);
 
   const [localChanges] = useState<InitiativesChanges>(
     review.initiatives_changes || getDefaultInitiativesChanges()
