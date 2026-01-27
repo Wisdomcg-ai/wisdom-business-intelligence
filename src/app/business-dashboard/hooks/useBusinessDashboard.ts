@@ -35,7 +35,7 @@ export interface QuarterInfo {
 
 export function useBusinessDashboard(overrideBusinessId?: string) {
   const supabase = createClient()
-  const { activeBusiness } = useBusinessContext()
+  const { activeBusiness, isLoading: isContextLoading } = useBusinessContext()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -74,11 +74,15 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
   // Ref for current week column
   const currentWeekRef = useRef<HTMLTableCellElement>(null)
 
-  // Load data on mount
+  // Load data on mount - wait for BusinessContext to finish loading first
   useEffect(() => {
     setMounted(true)
+    if (isContextLoading) {
+      console.log('[BusinessDashboard] Waiting for BusinessContext to load...')
+      return
+    }
     loadData()
-  }, [])
+  }, [isContextLoading])
 
   // Auto-scroll to current week when data loads
   useEffect(() => {

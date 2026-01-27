@@ -36,7 +36,7 @@ export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 export function useStopDoingList(overrideBusinessId?: string) {
   const supabase = createClient()
-  const { activeBusiness } = useBusinessContext()
+  const { activeBusiness, isLoading: isContextLoading } = useBusinessContext()
 
   // Loading & Error States
   const [isLoading, setIsLoading] = useState(true)
@@ -107,6 +107,12 @@ export function useStopDoingList(overrideBusinessId?: string) {
   // Load Data
   // ============================================
   useEffect(() => {
+    // Wait for BusinessContext to finish loading before attempting to load data
+    if (isContextLoading) {
+      console.log('[useStopDoingList] Waiting for BusinessContext to load...')
+      return
+    }
+
     async function loadData() {
       try {
         setIsLoading(true)
@@ -198,7 +204,7 @@ export function useStopDoingList(overrideBusinessId?: string) {
     }
 
     loadData()
-  }, [supabase, getMondayOfWeek, overrideBusinessId, activeBusiness?.id])
+  }, [supabase, getMondayOfWeek, overrideBusinessId, activeBusiness?.id, isContextLoading])
 
   // ============================================
   // Hourly Rate Calculation

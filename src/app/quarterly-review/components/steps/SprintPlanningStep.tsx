@@ -25,7 +25,7 @@ export function SprintPlanningStep({
   onUpdateInitiatives,
   onUpdateRocks
 }: SprintPlanningStepProps) {
-  const { activeBusiness } = useBusinessContext();
+  const { activeBusiness, isLoading: isContextLoading } = useBusinessContext();
   const {
     isLoading,
     financialData,
@@ -54,6 +54,16 @@ export function SprintPlanningStep({
   useEffect(() => {
     onUpdateRocks(localRocks);
   }, [localRocks, onUpdateRocks]);
+
+  // Wait for BusinessContext to finish loading
+  if (isContextLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-orange"></div>
+        <span className="ml-3 text-gray-600">Loading business context...</span>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

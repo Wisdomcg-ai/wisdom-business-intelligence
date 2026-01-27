@@ -83,7 +83,9 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [activeBusiness, setActiveBusinessState] = useState<ActiveBusiness | null>(null)
   const [viewerContext, setViewerContext] = useState<ViewerContext>(defaultViewerContext)
-  const [isLoading, setIsLoading] = useState(false)
+  // IMPORTANT: Start with isLoading=true because we load user data on mount
+  // This prevents race conditions where components render before user/business data is ready
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   // Load current user on mount
@@ -117,33 +119,63 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
 
       // If user is a client, automatically load their business
       if (role === 'client' || role === null) {
+        console.log('[BusinessContext] 🔍 Looking up business for client user:', user.id)
+
         // First try via business_users join table (for team members)
-        const { data: businessUser } = await supabase
+        const { data: businessUser, error: businessUserError } = await supabase
           .from('business_users')
           .select('business_id')
           .eq('user_id', user.id)
           .eq('status', 'active')
           .maybeSingle()
 
+        console.log('[BusinessContext] 📋 business_users lookup result:', {
+          found: !!businessUser,
+          businessId: businessUser?.business_id,
+          error: businessUserError?.message
+        })
+
         let business = null
+        let loadedVia = ''
+
         if (businessUser) {
-          const { data } = await supabase
+          loadedVia = 'team_member (business_users table)'
+          const { data, error: bizError } = await supabase
             .from('businesses')
             .select('id, name, owner_id, industry, status')
             .eq('id', businessUser.business_id)
             .maybeSingle()
           business = data
+          console.log('[BusinessContext] 👥 Loaded business as TEAM MEMBER:', {
+            businessId: data?.id,
+            businessName: data?.name,
+            ownerId: data?.owner_id,
+            error: bizError?.message
+          })
         } else {
           // Fallback: try direct owner_id lookup
-          const { data } = await supabase
+          loadedVia = 'owner (businesses.owner_id)'
+          const { data, error: ownerError } = await supabase
             .from('businesses')
             .select('id, name, owner_id, industry, status')
             .eq('owner_id', user.id)
             .maybeSingle()
           business = data
+          console.log('[BusinessContext] 👤 Loaded business as OWNER:', {
+            businessId: data?.id,
+            businessName: data?.name,
+            error: ownerError?.message
+          })
         }
 
         if (business) {
+          console.log('[BusinessContext] ✅ Setting active business:', {
+            id: business.id,
+            name: business.name,
+            ownerId: business.owner_id,
+            loadedVia,
+            userIsOwner: business.owner_id === user.id
+          })
           setActiveBusinessState({
             id: business.id,
             name: business.name || 'Unnamed Business',
@@ -157,6 +189,8 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
             canEdit: true,
             canDelete: true,
           })
+        } else {
+          console.log('[BusinessContext] ⚠️ No business found for user:', user.id)
         }
       }
 

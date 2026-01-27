@@ -22,7 +22,7 @@ import type { SaveStatus } from '@/hooks/useAutoSave';
 
 export default function SwotPage() {
   const router = useRouter();
-  const { activeBusiness, viewerContext } = useBusinessContext();
+  const { activeBusiness, viewerContext, isLoading: isContextLoading } = useBusinessContext();
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -868,6 +868,18 @@ export default function SwotPage() {
       localStorage.setItem('swot-strategy-formation-visible', String(newValue));
     }
   };
+
+  // Wait for BusinessContext to finish loading first
+  if (isContextLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading business context...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

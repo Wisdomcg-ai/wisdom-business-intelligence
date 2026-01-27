@@ -550,7 +550,16 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
 
         setUserId(user.id)
 
-        // If overrideBusinessId is provided (coach viewing client), use it
+        // IMPORTANT: If overrideBusinessId is undefined, wait for BusinessContext to provide it
+        // This prevents team members from loading their own profile instead of the business they're accessing
+        // The component should pass activeBusiness.id once BusinessContext finishes loading
+        if (overrideBusinessId === undefined) {
+          console.log('[Strategic Planning] ⏳ Waiting for business ID from context...')
+          setIsLoading(false)
+          return
+        }
+
+        // If overrideBusinessId is provided (coach viewing client OR team member), use it
         let bizId: string
         let ownerUser: string = user.id
 

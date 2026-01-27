@@ -36,12 +36,17 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
   const [revenue, setRevenue] = useState<number | null>(null)
 
   const supabase = createClient()
-  const { activeBusiness } = useBusinessContext()
+  const { activeBusiness, isLoading: isContextLoading } = useBusinessContext()
 
   // Load completed builds and stage from database
+  // Wait for BusinessContext to finish loading before attempting to load data
   useEffect(() => {
+    if (isContextLoading) {
+      console.log('[RoadmapProgress] Waiting for BusinessContext to load...')
+      return
+    }
     loadProgress()
-  }, [overrideBusinessId, activeBusiness?.id])
+  }, [overrideBusinessId, activeBusiness?.id, isContextLoading])
 
   const loadProgress = async () => {
     try {

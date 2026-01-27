@@ -200,7 +200,7 @@ function getSaveStatusDisplay(status: SaveStatus, isDirty: boolean, lastSaved: D
 
 function StrategicPlanningContent() {
   const searchParams = useSearchParams()
-  const { activeBusiness, viewerContext } = useBusinessContext()
+  const { activeBusiness, viewerContext, isLoading: isContextLoading } = useBusinessContext()
 
   // Hydration fix: ensure state matches between server and client
   const [mounted, setMounted] = useState(false)
@@ -384,6 +384,19 @@ function StrategicPlanningContent() {
             <div className="h-4 bg-gray-200 rounded w-1/4 mb-6"></div>
             <div className="w-full h-2 bg-gray-200 rounded-full"></div>
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Wait for BusinessContext to finish loading before showing main content
+  // This prevents the useStrategicPlanning hook from loading with undefined business ID
+  if (isContextLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
+          <p className="text-gray-600">Loading your business...</p>
         </div>
       </div>
     )
