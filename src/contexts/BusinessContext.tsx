@@ -268,24 +268,25 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
     loadCurrentUser()
   }, [loadCurrentUser])
 
-  // Listen for auth state changes - disabled for now to prevent blocking
-  // useEffect(() => {
-  //   const { data: { subscription } } = supabase.auth.onAuthStateChange(
-  //     async (event, _session) => {
-  //       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-  //         await loadCurrentUser()
-  //       } else if (event === 'SIGNED_OUT') {
-  //         setCurrentUser(null)
-  //         setActiveBusinessState(null)
-  //         setViewerContext(defaultViewerContext)
-  //       }
-  //     }
-  //   )
-  //
-  //   return () => {
-  //     subscription.unsubscribe()
-  //   }
-  // }, [supabase, loadCurrentUser])
+  // Listen for auth state changes - reload user when session becomes available
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, _session) => {
+        if (event === 'SIGNED_IN' && !currentUser) {
+          console.log('[BusinessContext] Auth SIGNED_IN detected, reloading user...')
+          await loadCurrentUser()
+        } else if (event === 'SIGNED_OUT') {
+          setCurrentUser(null)
+          setActiveBusinessState(null)
+          setViewerContext(defaultViewerContext)
+        }
+      }
+    )
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [supabase, loadCurrentUser, currentUser])
 
   const value: BusinessContextType = {
     currentUser,
