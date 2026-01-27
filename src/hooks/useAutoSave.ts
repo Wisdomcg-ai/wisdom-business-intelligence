@@ -33,6 +33,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { logSaveError } from '@/lib/error-logger'
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -53,6 +54,10 @@ export interface UseAutoSaveOptions<T> {
   onSaveComplete?: (success: boolean, error?: string) => void
   /** Callback when data is recovered from localStorage */
   onDataRecovered?: (data: T) => void
+  /** Component name for error logging */
+  component?: string
+  /** Business ID for error logging context */
+  businessId?: string
 }
 
 export interface UseAutoSaveReturn<T> {
@@ -90,7 +95,9 @@ export function useAutoSave<T>({
   emptyStateGuard,
   storageKey,
   onSaveComplete,
-  onDataRecovered
+  onDataRecovered,
+  component = 'unknown',
+  businessId
 }: UseAutoSaveOptions<T>): UseAutoSaveReturn<T> {
   // State
   const [isDirty, setIsDirty] = useState(false)
@@ -212,6 +219,7 @@ export function useAutoSave<T>({
         setLastError(result.error || 'Save failed')
         setSaveStatus('error')
         console.error('[AutoSave] Save failed:', result.error)
+        logSaveError(component, result.error || 'Save failed', businessId)
       }
 
       onSaveComplete?.(result.success, result.error)
@@ -220,6 +228,7 @@ export function useAutoSave<T>({
       setLastError(errorMessage)
       setSaveStatus('error')
       console.error('[AutoSave] Save error:', error)
+      logSaveError(component, errorMessage, businessId)
       onSaveComplete?.(false, errorMessage)
     } finally {
       isSavingRef.current = false
