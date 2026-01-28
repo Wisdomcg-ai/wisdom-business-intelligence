@@ -152,15 +152,27 @@ DECLARE
         'strategic_initiatives'
     ];
     t TEXT;
+    col_type TEXT;
+    accessible_fn TEXT;
+    manage_cast TEXT;
 BEGIN
     FOREACH t IN ARRAY profile_tables LOOP
-        -- Only fix if table exists and has business_id column
-        IF EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'public'
-            AND table_name = t
-            AND column_name = 'business_id'
-        ) THEN
+        SELECT data_type INTO col_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name = t
+        AND column_name = 'business_id';
+
+        IF col_type IS NOT NULL THEN
+            -- Pick the right function/cast based on column type
+            IF col_type = 'uuid' THEN
+                accessible_fn := 'auth_get_accessible_business_ids()';
+                manage_cast := 'business_id';
+            ELSE
+                accessible_fn := 'auth_get_accessible_business_ids_text()';
+                manage_cast := 'business_id::uuid';
+            END IF;
+
             EXECUTE format('DROP POLICY IF EXISTS "rls_access" ON %I', t);
 
             EXECUTE format(
@@ -168,7 +180,7 @@ BEGIN
                 FOR ALL TO authenticated
                 USING (
                     auth_is_super_admin()
-                    OR business_id = ANY(auth_get_accessible_business_ids_text())
+                    OR business_id = ANY(%s)
                     OR EXISTS (
                         SELECT 1 FROM business_profiles bp
                         JOIN businesses b ON b.id = bp.business_id
@@ -187,7 +199,7 @@ BEGIN
                 )
                 WITH CHECK (
                     auth_is_super_admin()
-                    OR auth_can_manage_business(business_id::uuid)
+                    OR auth_can_manage_business(%s)
                     OR EXISTS (
                         SELECT 1 FROM business_profiles bp
                         JOIN businesses b ON b.id = bp.business_id
@@ -204,10 +216,10 @@ BEGIN
                         )
                     )
                 )',
-                t, t, t
+                t, accessible_fn, t, manage_cast, t
             );
 
-            RAISE NOTICE 'Fixed RLS for business_profiles-keyed table: %', t;
+            RAISE NOTICE 'Fixed RLS for business_profiles-keyed table: % (%)', t, col_type;
         END IF;
     END LOOP;
 END $$;
