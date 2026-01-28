@@ -242,10 +242,9 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
       // Create new SWOT analysis using RPC
       const { data: swotId, error: createError } = await supabase
         .rpc('create_quarterly_swot', {
-          p_business_id: user.id,
+          p_user_id: user.id,
           p_quarter: review.quarter,
           p_year: review.year,
-          p_created_by: user.id
         });
 
       if (createError) throw createError;

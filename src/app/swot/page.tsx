@@ -216,10 +216,9 @@ export default function SwotPage() {
         console.log('[SWOT] No existing SWOT found, creating new one');
         const { data: newSwot, error: createError } = await supabase
           .rpc('create_quarterly_swot', {
-            p_business_id: businessId,
+            p_user_id: businessId,
             p_quarter: currentQuarter.quarter,
             p_year: currentQuarter.year,
-            p_created_by: user.id
           });
 
         if (createError) throw createError;
