@@ -35,7 +35,7 @@ export interface QuarterInfo {
 
 export function useBusinessDashboard(overrideBusinessId?: string) {
   const supabase = createClient()
-  const { activeBusiness, isLoading: isContextLoading } = useBusinessContext()
+  const { activeBusiness, businessProfileId: cachedProfileId, isLoading: isContextLoading } = useBusinessContext()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -117,32 +117,20 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
       const uid = user.id
       setUserId(uid)
 
-      // Determine which business to load:
-      // 1. If overrideBusinessId is provided (explicit), use it (assumed to be business_profiles.id)
-      // 2. If activeBusiness is set (coach viewing client), look up business_profiles.id
-      // 3. Otherwise, load user's own business profile
-      //
-      // IMPORTANT: Dashboard data (financial goals, KPIs, snapshots) uses business_profiles.id
-      // But activeBusiness.id is businesses.id - we must look up the correct profile ID
+      // Use cached businessProfileId from context when available
       let bizId: string
 
       if (overrideBusinessId) {
         bizId = overrideBusinessId
+      } else if (cachedProfileId) {
+        bizId = cachedProfileId
       } else if (activeBusiness?.id) {
-        // Coach view: activeBusiness.id is businesses.id
-        // Need to get the corresponding business_profiles.id
         const { data: profile } = await supabase
           .from('business_profiles')
           .select('id')
           .eq('business_id', activeBusiness.id)
           .single()
-
-        if (profile?.id) {
-          bizId = profile.id
-        } else {
-          console.warn('[BusinessDashboard] No business_profiles found for businesses.id:', activeBusiness.id)
-          bizId = activeBusiness.id // Fallback
-        }
+        bizId = profile?.id || activeBusiness.id
       } else {
         const targetUserId = activeBusiness?.ownerId || user.id
         const { data: profile } = await supabase

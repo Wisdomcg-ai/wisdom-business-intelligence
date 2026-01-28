@@ -231,7 +231,7 @@ function generateSuggestedActions(
 
 export function useDashboardData(): UseDashboardDataReturn {
   const supabase = useMemo(() => createClient(), [])
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
+  const { activeBusiness, businessProfileId: cachedProfileId, isLoading: contextLoading } = useBusinessContext()
 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<DashboardError | null>(null)
@@ -373,29 +373,19 @@ export function useDashboardData(): UseDashboardDataReturn {
 
       setUserId(user.id)
 
-      // Use active business from context if available (supports coach view)
-      // Otherwise fall back to fetching user's own business
-      //
-      // IMPORTANT: Dashboard data (financial goals, initiatives) uses business_profiles.id
-      // But activeBusiness.id is businesses.id - we must look up the correct profile ID
+      // Use cached businessProfileId from context (resolved during init)
+      // Falls back to querying if not cached
       let bId: string
-      if (activeBusiness?.id) {
-        // Coach view: activeBusiness.id is businesses.id
-        // Need to get the corresponding business_profiles.id
+      if (cachedProfileId) {
+        bId = cachedProfileId
+      } else if (activeBusiness?.id) {
         const { data: profile } = await supabase
           .from('business_profiles')
           .select('id')
           .eq('business_id', activeBusiness.id)
           .maybeSingle()
-
-        if (profile?.id) {
-          bId = profile.id
-        } else {
-          console.warn('[DashboardData] No business_profiles found for businesses.id:', activeBusiness.id)
-          bId = activeBusiness.id // Fallback
-        }
+        bId = profile?.id || activeBusiness.id
       } else {
-        // Use maybeSingle() to avoid 406 errors for users without business profiles (e.g., coaches)
         const { data: profile } = await supabase
           .from('business_profiles')
           .select('id')
@@ -403,7 +393,6 @@ export function useDashboardData(): UseDashboardDataReturn {
           .maybeSingle()
 
         if (!profile?.id) {
-          // User has no business profile - likely a coach or admin viewing without context
           console.log('[Dashboard] No business found for user')
           setIsLoading(false)
           return
@@ -417,18 +406,18 @@ export function useDashboardData(): UseDashboardDataReturn {
       const quarterDaysRemaining = daysBetween(new Date(), getQuarterEndDate())
       const yearDaysRemaining = daysBetween(new Date(), getFYEndDate())
 
-      const teamMap = await buildTeamMembersMap(bId)
-
       // Use activeBusiness ownerId if viewing as coach, otherwise current user
       const targetUserId = activeBusiness?.ownerId || user.id
 
-      // First try to load current quarter data
-      const [annualGoals, currentQuarterGoals, currentQuarterRocks, weeklyGoals] = await Promise.all([
+      // Parallelize teamMap with goals/weekly — rocks will use teamMap after
+      const [teamMap, annualGoals, currentQuarterGoals, weeklyGoals] = await Promise.all([
+        buildTeamMembersMap(bId),
         loadAnnualGoals(bId),
         loadQuarterlyGoals(bId, currentQuarter),
-        loadRocks(bId, currentQuarter, teamMap),
         loadWeeklyGoals(bId, targetUserId)
       ])
+
+      const currentQuarterRocks = await loadRocks(bId, currentQuarter, teamMap)
 
       // If current quarter has no rocks, check the planning quarter (next quarter)
       // This handles the case where users plan ahead for the next quarter
@@ -497,7 +486,7 @@ export function useDashboardData(): UseDashboardDataReturn {
       })
       setIsLoading(false)
     }
-  }, [supabase, buildTeamMembersMap, loadAnnualGoals, loadQuarterlyGoals, loadRocks, loadWeeklyGoals, activeBusiness?.id, contextLoading])
+  }, [supabase, buildTeamMembersMap, loadAnnualGoals, loadQuarterlyGoals, loadRocks, loadWeeklyGoals, activeBusiness?.id, cachedProfileId, contextLoading])
 
   useEffect(() => {
     loadDashboardData()

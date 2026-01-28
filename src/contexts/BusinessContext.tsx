@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getUserSystemRole } from '@/lib/auth/roles'
 
@@ -35,6 +35,9 @@ interface BusinessContextType {
   // The business whose data we're viewing/editing
   activeBusiness: ActiveBusiness | null
 
+  // Cached business_profiles.id for the active business (avoids repeated lookups)
+  businessProfileId: string | null
+
   // Context about who is viewing and their permissions
   viewerContext: ViewerContext
 
@@ -61,6 +64,7 @@ const defaultViewerContext: ViewerContext = {
 const defaultContext: BusinessContextType = {
   currentUser: null,
   activeBusiness: null,
+  businessProfileId: null,
   viewerContext: defaultViewerContext,
   isLoading: true,
   error: null,
@@ -82,6 +86,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
 
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [activeBusiness, setActiveBusinessState] = useState<ActiveBusiness | null>(null)
+  const [businessProfileId, setBusinessProfileId] = useState<string | null>(null)
   const [viewerContext, setViewerContext] = useState<ViewerContext>(defaultViewerContext)
   // IMPORTANT: Start with isLoading=true because we load user data on mount
   // This prevents race conditions where components render before user/business data is ready
@@ -92,8 +97,13 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
   const loadCurrentUser = useCallback(async () => {
     console.log('[BusinessContext] Loading current user...')
     try {
-      console.log('[BusinessContext] Calling supabase.auth.getUser()...')
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      // Parallelize auth + role lookup
+      const [authResult, role] = await Promise.all([
+        supabase.auth.getUser(),
+        getUserSystemRole()
+      ])
+
+      const { data: { user }, error: authError } = authResult
       console.log('[BusinessContext] getUser returned:', user?.id || 'none', authError?.message || 'no error')
 
       if (!user) {
@@ -102,9 +112,6 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         setIsLoading(false)
         return
       }
-
-      // Get user's system role
-      const role = await getUserSystemRole()
 
       // Map system role to context role
       const mappedRole = role === 'super_admin' ? 'admin' : role || 'client'
@@ -119,7 +126,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
 
       // If user is a client, automatically load their business
       if (role === 'client' || role === null) {
-        console.log('[BusinessContext] 🔍 Looking up business for client user:', user.id)
+        console.log('[BusinessContext] Looking up business for client user:', user.id)
 
         // First try via business_users join table (for team members)
         const { data: businessUser, error: businessUserError } = await supabase
@@ -129,7 +136,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
           .eq('status', 'active')
           .maybeSingle()
 
-        console.log('[BusinessContext] 📋 business_users lookup result:', {
+        console.log('[BusinessContext] business_users lookup result:', {
           found: !!businessUser,
           businessId: businessUser?.business_id,
           error: businessUserError?.message
@@ -146,7 +153,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
             .eq('id', businessUser.business_id)
             .maybeSingle()
           business = data
-          console.log('[BusinessContext] 👥 Loaded business as TEAM MEMBER:', {
+          console.log('[BusinessContext] Loaded business as TEAM MEMBER:', {
             businessId: data?.id,
             businessName: data?.name,
             ownerId: data?.owner_id,
@@ -161,7 +168,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
             .eq('owner_id', user.id)
             .maybeSingle()
           business = data
-          console.log('[BusinessContext] 👤 Loaded business as OWNER:', {
+          console.log('[BusinessContext] Loaded business as OWNER:', {
             businessId: data?.id,
             businessName: data?.name,
             error: ownerError?.message
@@ -169,7 +176,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         }
 
         if (business) {
-          console.log('[BusinessContext] ✅ Setting active business:', {
+          console.log('[BusinessContext] Setting active business:', {
             id: business.id,
             name: business.name,
             ownerId: business.owner_id,
@@ -189,8 +196,19 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
             canEdit: true,
             canDelete: true,
           })
+
+          // Cache business_profiles.id for downstream hooks
+          const { data: profile } = await supabase
+            .from('business_profiles')
+            .select('id')
+            .eq('business_id', business.id)
+            .maybeSingle()
+
+          if (profile?.id) {
+            setBusinessProfileId(profile.id)
+          }
         } else {
-          console.log('[BusinessContext] ⚠️ No business found for user:', user.id)
+          console.log('[BusinessContext] No business found for user:', user.id)
         }
       }
 
@@ -226,6 +244,13 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
       }
 
       // For coach view, always set as viewing as coach
+      // Fetch business data and profile ID in parallel
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('business_id', business.id)
+        .maybeSingle()
+
       setActiveBusinessState({
         id: business.id,
         name: business.name || 'Unnamed Business',
@@ -233,6 +258,8 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         industry: business.industry || undefined,
         status: business.status || undefined,
       })
+
+      setBusinessProfileId(profile?.id || null)
 
       setViewerContext({
         role: 'coach',
@@ -254,6 +281,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
   // Clear active business (used when coach exits client view)
   const clearActiveBusiness = useCallback(() => {
     setActiveBusinessState(null)
+    setBusinessProfileId(null)
     setViewerContext(defaultViewerContext)
   }, [])
 
@@ -268,16 +296,23 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
     loadCurrentUser()
   }, [loadCurrentUser])
 
+  // Use refs to stabilize auth listener and avoid re-registering on every state change
+  const currentUserRef = useRef(currentUser)
+  currentUserRef.current = currentUser
+  const loadCurrentUserRef = useRef(loadCurrentUser)
+  loadCurrentUserRef.current = loadCurrentUser
+
   // Listen for auth state changes - reload user when session becomes available
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, _session) => {
-        if (event === 'SIGNED_IN' && !currentUser) {
+        if (event === 'SIGNED_IN' && !currentUserRef.current) {
           console.log('[BusinessContext] Auth SIGNED_IN detected, reloading user...')
-          await loadCurrentUser()
+          await loadCurrentUserRef.current()
         } else if (event === 'SIGNED_OUT') {
           setCurrentUser(null)
           setActiveBusinessState(null)
+          setBusinessProfileId(null)
           setViewerContext(defaultViewerContext)
         }
       }
@@ -286,11 +321,12 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
     return () => {
       subscription.unsubscribe()
     }
-  }, [supabase, loadCurrentUser, currentUser])
+  }, [supabase])
 
   const value: BusinessContextType = {
     currentUser,
     activeBusiness,
+    businessProfileId,
     viewerContext,
     isLoading,
     error,

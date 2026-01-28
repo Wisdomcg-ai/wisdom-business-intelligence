@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Target, TrendingUp, LayoutDashboard } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useBusinessContext } from '@/contexts/BusinessContext'
 import { useDashboardData } from './hooks/useDashboardData'
 import {
   InsightHeader,
@@ -22,6 +23,7 @@ import PageLayout, { PageGrid } from '@/components/ui/PageLayout'
 
 export default function DashboardPage() {
   const supabase = createClient()
+  const { activeBusiness } = useBusinessContext()
   const { data, isLoading, error, userId, refresh } = useDashboardData()
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [coachId, setCoachId] = useState<string | null>(null)
@@ -31,102 +33,37 @@ export default function DashboardPage() {
   const [showOnboarding, setShowOnboarding] = useState(true)
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null) // null = still checking
 
-  // Update last login timestamp when dashboard loads
-  useEffect(() => {
-    async function updateLastLogin() {
-      if (!userId) return
-
-      // Get user email for upsert
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      // Upsert to users table - creates row if doesn't exist, updates if it does
-      const { error } = await supabase
-        .from('users')
-        .upsert({
-          id: userId,
-          email: user.email || '',
-          last_login_at: new Date().toISOString()
-        }, {
-          onConflict: 'id'
-        })
-
-      if (error) {
-        console.log('[Dashboard] Could not update last_login_at:', error.message)
-      } else {
-        console.log('[Dashboard] Updated last_login_at for user:', userId)
-      }
-    }
-
-    updateLastLogin()
-  }, [userId, supabase])
-
-  // Load coach info and message data
+  // Load coach info and message data using activeBusiness from context
   const loadMessageData = useCallback(async () => {
-    if (!userId) return
+    if (!userId || !activeBusiness?.id) return
 
-    // Get the user's actual business (businesses table) to find coach assignment
-    // First try via business_users join table
-    const { data: businessUser } = await supabase
-      .from('business_users')
-      .select('business_id')
-      .eq('user_id', userId)
-      .maybeSingle()
-
-    let actualBusinessId: string | null = null
-
-    if (businessUser?.business_id) {
-      actualBusinessId = businessUser.business_id
-    } else {
-      // Fallback: try direct owner_id lookup on businesses table
-      const { data: ownedBusiness } = await supabase
-        .from('businesses')
-        .select('id')
-        .eq('owner_id', userId)
-        .maybeSingle()
-
-      if (ownedBusiness?.id) {
-        actualBusinessId = ownedBusiness.id
-      }
-    }
-
-    if (!actualBusinessId) {
-      console.log('[Dashboard] No business found for user')
-      return
-    }
-
-    // Store the actual business ID for messaging
+    const actualBusinessId = activeBusiness.id
     setMessagesBusinessId(actualBusinessId)
 
-    // Get coach ID from the actual business
-    const { data: business } = await supabase
-      .from('businesses')
-      .select('assigned_coach_id')
-      .eq('id', actualBusinessId)
-      .maybeSingle()
+    // Fetch coach assignment and messages in parallel
+    const [businessResult, messagesResult] = await Promise.all([
+      supabase
+        .from('businesses')
+        .select('assigned_coach_id')
+        .eq('id', actualBusinessId)
+        .maybeSingle(),
+      supabase
+        .from('messages')
+        .select('*')
+        .eq('business_id', actualBusinessId)
+        .order('created_at', { ascending: false })
+        .limit(10)
+    ])
 
-    console.log('[Dashboard] Business for coach lookup:', business)
-    if (business?.assigned_coach_id) {
-      console.log('[Dashboard] Setting coachId:', business.assigned_coach_id)
-      setCoachId(business.assigned_coach_id)
-    } else {
-      console.log('[Dashboard] No assigned_coach_id found')
+    if (businessResult.data?.assigned_coach_id) {
+      setCoachId(businessResult.data.assigned_coach_id)
     }
 
-    // Get unread count and last message
-    const { data: messages } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('business_id', actualBusinessId)
-      .order('created_at', { ascending: false })
-      .limit(10)
-
+    const messages = messagesResult.data
     if (messages && messages.length > 0) {
-      // Count unread from coach
       const unread = messages.filter(m => !m.read && m.sender_id !== userId).length
       setUnreadCount(unread)
 
-      // Get last message
       const last = messages[0]
       const time = new Date(last.created_at)
       const now = new Date()
@@ -140,11 +77,26 @@ export default function DashboardPage() {
         time: timeStr
       })
     }
-  }, [supabase, userId])
+  }, [supabase, userId, activeBusiness?.id])
 
+  // Run last login update and message data load in parallel
   useEffect(() => {
+    if (!userId) return
+
+    const updateLastLogin = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      await supabase.from('users').upsert({
+        id: userId,
+        email: user.email || '',
+        last_login_at: new Date().toISOString()
+      }, { onConflict: 'id' })
+    }
+
+    // Fire both in parallel — neither depends on the other
+    updateLastLogin()
     loadMessageData()
-  }, [loadMessageData])
+  }, [userId, supabase, loadMessageData])
 
   // Refresh message data when drawer closes
   const handleChatClose = () => {

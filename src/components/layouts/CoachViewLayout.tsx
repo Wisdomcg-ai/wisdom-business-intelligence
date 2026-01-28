@@ -113,7 +113,7 @@ interface CoachViewLayoutProps {
 
 export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
   const router = useRouter()
-  const { activeBusiness, setActiveBusiness, isLoading, error } = useBusinessContext()
+  const { activeBusiness, isLoading, error } = useBusinessContext()
   const [expandedSections, setExpandedSections] = useState<string[]>([
     'DASHBOARD',
     'START HERE',
@@ -124,12 +124,7 @@ export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
     'PRODUCTIVITY',
   ])
 
-  // Set active business when component mounts
-  useEffect(() => {
-    if (clientId && (!activeBusiness || activeBusiness.id !== clientId)) {
-      setActiveBusiness(clientId)
-    }
-  }, [clientId, activeBusiness, setActiveBusiness])
+  // Active business is set by CoachViewPage — no duplicate call here
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) =>
