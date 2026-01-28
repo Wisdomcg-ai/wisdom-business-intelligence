@@ -145,14 +145,7 @@ export default function CoachLayoutNew({ children }: CoachLayoutNewProps) {
         return
       }
 
-      const role = await getUserSystemRole()
-      if (role !== 'coach' && role !== 'super_admin') {
-        router.push('/login')
-        return
-      }
-
-      setIsSuperAdmin(role === 'super_admin')
-
+      // Set user info immediately so the UI can render while role + clients load
       const firstName = authUser.user_metadata?.first_name || ''
       const lastName = authUser.user_metadata?.last_name || ''
       const name = firstName ? `${firstName} ${lastName}`.trim() : authUser.email?.split('@')[0] || 'Coach'
@@ -166,9 +159,18 @@ export default function CoachLayoutNew({ children }: CoachLayoutNewProps) {
         initials
       })
 
-      // Load clients
-      await loadClients(authUser.id)
+      // Load role and clients in parallel (getUserSystemRole calls getUser internally but it's cached)
+      const [role] = await Promise.all([
+        getUserSystemRole(),
+        loadClients(authUser.id)
+      ])
 
+      if (role !== 'coach' && role !== 'super_admin') {
+        router.push('/login')
+        return
+      }
+
+      setIsSuperAdmin(role === 'super_admin')
       setLoading(false)
     } catch (error) {
       console.error('[CoachLayout] Auth error:', error)

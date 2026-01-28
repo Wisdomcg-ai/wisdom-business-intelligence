@@ -97,13 +97,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
   const loadCurrentUser = useCallback(async () => {
     console.log('[BusinessContext] Loading current user...')
     try {
-      // Parallelize auth + role lookup
-      const [authResult, role] = await Promise.all([
-        supabase.auth.getUser(),
-        getUserSystemRole()
-      ])
-
-      const { data: { user }, error: authError } = authResult
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
       console.log('[BusinessContext] getUser returned:', user?.id || 'none', authError?.message || 'no error')
 
       if (!user) {
@@ -113,7 +107,8 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         return
       }
 
-      // Map system role to context role
+      // Get role after confirming user exists (getUserSystemRole calls getUser internally)
+      const role = await getUserSystemRole()
       const mappedRole = role === 'super_admin' ? 'admin' : role || 'client'
 
       setCurrentUser({
