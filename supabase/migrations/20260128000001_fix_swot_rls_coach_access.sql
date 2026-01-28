@@ -168,14 +168,11 @@ BEGIN
                 FOR ALL TO authenticated
                 USING (
                     auth_is_super_admin()
-                    -- Direct match (owner accessing via business_profiles.id)
-                    OR business_id = ANY(auth_get_accessible_business_ids())
-                    -- Match via business_profiles: business_id here is business_profiles.id,
-                    -- resolve to businesses.id then check coach/owner/team access
+                    OR business_id = ANY(auth_get_accessible_business_ids_text())
                     OR EXISTS (
                         SELECT 1 FROM business_profiles bp
                         JOIN businesses b ON b.id = bp.business_id
-                        WHERE bp.id = %I.business_id
+                        WHERE bp.id::text = %I.business_id::text
                         AND (
                             b.owner_id = auth.uid()
                             OR b.assigned_coach_id = auth.uid()
@@ -190,11 +187,11 @@ BEGIN
                 )
                 WITH CHECK (
                     auth_is_super_admin()
-                    OR auth_can_manage_business(business_id)
+                    OR auth_can_manage_business(business_id::uuid)
                     OR EXISTS (
                         SELECT 1 FROM business_profiles bp
                         JOIN businesses b ON b.id = bp.business_id
-                        WHERE bp.id = %I.business_id
+                        WHERE bp.id::text = %I.business_id::text
                         AND (
                             b.owner_id = auth.uid()
                             OR b.assigned_coach_id = auth.uid()
