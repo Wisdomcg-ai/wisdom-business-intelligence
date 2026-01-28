@@ -285,25 +285,34 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
     await loadCurrentUser()
   }, [loadCurrentUser])
 
-  // Load user on mount
-  useEffect(() => {
-    console.log('[BusinessContext] Mounted - loading current user')
-    loadCurrentUser()
-  }, [loadCurrentUser])
-
-  // Use refs to stabilize auth listener and avoid re-registering on every state change
+  // Refs must be declared before effects that use them
   const currentUserRef = useRef(currentUser)
   currentUserRef.current = currentUser
   const loadCurrentUserRef = useRef(loadCurrentUser)
   loadCurrentUserRef.current = loadCurrentUser
+  const isLoadingUserRef = useRef(false)
+
+  // Load user on mount
+  useEffect(() => {
+    console.log('[BusinessContext] Mounted - loading current user')
+    isLoadingUserRef.current = true
+    loadCurrentUser().finally(() => {
+      isLoadingUserRef.current = false
+    })
+  }, [loadCurrentUser])
 
   // Listen for auth state changes - reload user when session becomes available
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, _session) => {
-        if (event === 'SIGNED_IN' && !currentUserRef.current) {
+        if (event === 'SIGNED_IN' && !currentUserRef.current && !isLoadingUserRef.current) {
           console.log('[BusinessContext] Auth SIGNED_IN detected, reloading user...')
-          await loadCurrentUserRef.current()
+          isLoadingUserRef.current = true
+          try {
+            await loadCurrentUserRef.current()
+          } finally {
+            isLoadingUserRef.current = false
+          }
         } else if (event === 'SIGNED_OUT') {
           setCurrentUser(null)
           setActiveBusinessState(null)
