@@ -217,7 +217,7 @@ export default function SwotPage() {
         const { data: newSwot, error: createError } = await supabase
           .rpc('create_quarterly_swot', {
             p_user_id: businessId,
-            p_quarter: currentQuarter.quarter,
+            p_quarter: String(currentQuarter.quarter),
             p_year: currentQuarter.year,
           });
 

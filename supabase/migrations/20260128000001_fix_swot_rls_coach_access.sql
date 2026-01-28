@@ -1,7 +1,30 @@
--- Fix SWOT RLS for coach access
--- Problem: swot_analyses.business_id stores user UUIDs (not businesses.id),
--- so the generic RLS policy from 20260127 fails for coaches.
--- swot_items write policy also doesn't allow coach writes.
+-- Fix SWOT RLS for coach access + fix create_quarterly_swot RPC type mismatch
+-- Problem 1: swot_analyses.business_id stores user UUIDs (not businesses.id),
+--   so the generic RLS policy from 20260127 fails for coaches.
+-- Problem 2: create_quarterly_swot takes p_quarter as TEXT but column is INTEGER.
+
+-- =====================================================
+-- 0. FIX create_quarterly_swot RPC (type mismatch)
+-- =====================================================
+CREATE OR REPLACE FUNCTION public.create_quarterly_swot(
+  p_user_id UUID,
+  p_quarter TEXT,
+  p_year INTEGER
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_swot_id UUID;
+BEGIN
+  INSERT INTO public.swot_analyses (user_id, business_id, quarter, year, type, status)
+  VALUES (p_user_id, p_user_id, p_quarter::INTEGER, p_year, 'quarterly', 'draft')
+  RETURNING id INTO v_swot_id;
+  RETURN v_swot_id;
+END;
+$$;
 
 -- =====================================================
 -- 1. FIX swot_analyses RLS
