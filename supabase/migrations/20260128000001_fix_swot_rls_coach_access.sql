@@ -19,8 +19,8 @@ AS $$
 DECLARE
   v_swot_id UUID;
 BEGIN
-  INSERT INTO public.swot_analyses (user_id, business_id, quarter, year, type, status)
-  VALUES (p_user_id, p_user_id, p_quarter::INTEGER, p_year, 'quarterly', 'draft')
+  INSERT INTO public.swot_analyses (user_id, business_id, quarter, year, type, status, created_by)
+  VALUES (p_user_id, p_user_id, p_quarter::INTEGER, p_year, 'quarterly', 'draft', auth.uid())
   RETURNING id INTO v_swot_id;
   RETURN v_swot_id;
 END;
