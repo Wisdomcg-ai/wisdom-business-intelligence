@@ -135,3 +135,82 @@ WITH CHECK (
         )
     )
 );
+
+-- =====================================================
+-- 3. FIX TABLES USING business_profiles.id AS business_id
+-- =====================================================
+-- These tables store business_profiles.id (not businesses.id) in their
+-- business_id column. The generic RLS checks against businesses.id,
+-- so coaches/team members get 406/403 errors.
+-- Fix: also match via business_profiles -> businesses -> coach/team lookup.
+
+DO $$
+DECLARE
+    profile_tables TEXT[] := ARRAY[
+        'business_financial_goals',
+        'business_kpis',
+        'strategic_initiatives'
+    ];
+    t TEXT;
+BEGIN
+    FOREACH t IN ARRAY profile_tables LOOP
+        -- Only fix if table exists and has business_id column
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+            AND table_name = t
+            AND column_name = 'business_id'
+        ) THEN
+            EXECUTE format('DROP POLICY IF EXISTS "rls_access" ON %I', t);
+
+            EXECUTE format(
+                'CREATE POLICY "rls_access" ON %I
+                FOR ALL TO authenticated
+                USING (
+                    auth_is_super_admin()
+                    -- Direct match (owner accessing via business_profiles.id)
+                    OR business_id = ANY(auth_get_accessible_business_ids())
+                    -- Match via business_profiles: business_id here is business_profiles.id,
+                    -- resolve to businesses.id then check coach/owner/team access
+                    OR EXISTS (
+                        SELECT 1 FROM business_profiles bp
+                        JOIN businesses b ON b.id = bp.business_id
+                        WHERE bp.id = %I.business_id
+                        AND (
+                            b.owner_id = auth.uid()
+                            OR b.assigned_coach_id = auth.uid()
+                            OR EXISTS (
+                                SELECT 1 FROM business_users bu
+                                WHERE bu.business_id = b.id
+                                AND bu.user_id = auth.uid()
+                                AND bu.status = ''active''
+                            )
+                        )
+                    )
+                )
+                WITH CHECK (
+                    auth_is_super_admin()
+                    OR auth_can_manage_business(business_id)
+                    OR EXISTS (
+                        SELECT 1 FROM business_profiles bp
+                        JOIN businesses b ON b.id = bp.business_id
+                        WHERE bp.id = %I.business_id
+                        AND (
+                            b.owner_id = auth.uid()
+                            OR b.assigned_coach_id = auth.uid()
+                            OR EXISTS (
+                                SELECT 1 FROM business_users bu
+                                WHERE bu.business_id = b.id
+                                AND bu.user_id = auth.uid()
+                                AND bu.status = ''active''
+                            )
+                        )
+                    )
+                )',
+                t, t, t
+            );
+
+            RAISE NOTICE 'Fixed RLS for business_profiles-keyed table: %', t;
+        END IF;
+    END LOOP;
+END $$;
