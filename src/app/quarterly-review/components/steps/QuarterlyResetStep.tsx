@@ -36,6 +36,7 @@ export function QuarterlyResetStep({
     quarterlyTargets,
     setQuarterlyTargets,
     twelveMonthInitiatives,
+    setTwelveMonthInitiatives,
     annualPlanByQuarter,
     setAnnualPlanByQuarter,
     businessId
@@ -117,6 +118,7 @@ export function QuarterlyResetStep({
       {/* Step4 Annual Plan - Quarterly Targets & Execution */}
       <Step4AnnualPlan
         twelveMonthInitiatives={twelveMonthInitiatives}
+        setTwelveMonthInitiatives={setTwelveMonthInitiatives}
         annualPlanByQuarter={annualPlanByQuarter}
         setAnnualPlanByQuarter={setAnnualPlanByQuarter}
         quarterlyTargets={quarterlyTargets}

@@ -10,6 +10,7 @@ import { TeamMember, getInitials, getColorForName } from '../utils/team'
 
 interface Step4Props {
   twelveMonthInitiatives: StrategicInitiative[]
+  setTwelveMonthInitiatives: (initiatives: StrategicInitiative[] | ((prev: StrategicInitiative[]) => StrategicInitiative[])) => void
   annualPlanByQuarter: Record<string, StrategicInitiative[]>
   setAnnualPlanByQuarter: (plan: Record<string, StrategicInitiative[]>) => void
   quarterlyTargets: Record<string, { q1: string; q2: string; q3: string; q4: string }>
@@ -26,6 +27,7 @@ const MAX_PER_PERSON = 3
 
 export default function Step4AnnualPlan({
   twelveMonthInitiatives,
+  setTwelveMonthInitiatives,
   annualPlanByQuarter,
   setAnnualPlanByQuarter,
   quarterlyTargets,
@@ -304,12 +306,23 @@ export default function Step4AnnualPlan({
     })
   }
 
-  // Remove initiative from quarter
+  // Remove initiative from quarter - ensures it goes back to the Available pool
   const handleRemoveFromQuarter = (initiativeId: string, quarterId: string) => {
+    // Find the initiative being removed
+    const initiative = (annualPlanByQuarter[quarterId] || []).find(i => i.id === initiativeId)
+
+    // Remove from the quarter
     setAnnualPlanByQuarter({
       ...annualPlanByQuarter,
       [quarterId]: (annualPlanByQuarter[quarterId] || []).filter(i => i.id !== initiativeId)
     })
+
+    // Ensure the initiative is in twelveMonthInitiatives so it appears in Available
+    // This handles cases where DB data got out of sync
+    if (initiative && !twelveMonthInitiatives.some(i => i.id === initiativeId)) {
+      console.log('[Step4] Adding removed initiative back to twelveMonthInitiatives:', initiative.title)
+      setTwelveMonthInitiatives(prev => [...prev, initiative])
+    }
   }
 
   // Assign person to initiative

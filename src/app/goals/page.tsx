@@ -959,6 +959,7 @@ function StrategicPlanningContent() {
             <div className="p-4 sm:p-6">
               <Step4AnnualPlan
                 twelveMonthInitiatives={twelveMonthInitiatives}
+                setTwelveMonthInitiatives={setTwelveMonthInitiatives}
                 annualPlanByQuarter={annualPlanByQuarter}
                 setAnnualPlanByQuarter={setAnnualPlanByQuarter}
                 quarterlyTargets={quarterlyTargets}

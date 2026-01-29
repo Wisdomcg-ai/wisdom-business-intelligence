@@ -177,11 +177,14 @@ export class StrategicPlanningService {
       }
 
       // Only delete initiatives that were removed (not in the new set)
+      // IMPORTANT: Must filter by step_type to avoid deleting the same initiative
+      // from other steps (e.g., removing from q1 shouldn't delete from twelve_month)
       const idsToDelete = [...existingIds].filter(id => !newIds.has(id))
       if (idsToDelete.length > 0) {
         const { error: deleteError } = await this.supabase
           .from('strategic_initiatives')
           .delete()
+          .eq('step_type', stepType)
           .in('id', idsToDelete)
 
         if (deleteError) {

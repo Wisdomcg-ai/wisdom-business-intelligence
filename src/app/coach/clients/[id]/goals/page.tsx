@@ -752,6 +752,7 @@ export default function CoachGoalsPage() {
               <div className="p-6">
                 <Step4AnnualPlan
                   twelveMonthInitiatives={twelveMonthInitiatives}
+                  setTwelveMonthInitiatives={setTwelveMonthInitiatives}
                   annualPlanByQuarter={annualPlanByQuarter}
                   setAnnualPlanByQuarter={setAnnualPlanByQuarter}
                   quarterlyTargets={quarterlyTargets}
