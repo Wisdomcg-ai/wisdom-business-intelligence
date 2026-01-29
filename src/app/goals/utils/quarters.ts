@@ -15,7 +15,7 @@ export interface QuarterInfo {
   isPast: boolean
   isCurrent: boolean
   isNextQuarter: boolean // The next quarter after current (planning target)
-  isLocked: boolean // Past OR current quarters are locked for planning
+  isLocked: boolean // Reserved for future use - currently always false to allow editing all quarters
 }
 
 /**
@@ -142,8 +142,8 @@ export function calculateQuarters(yearType: YearType, planYear: number): Quarter
   // Add isNextQuarter and isLocked properties
   return quarters.map((q, index) => ({
     ...q,
-    // isLocked: Past quarters AND current quarter are locked (already in execution)
-    isLocked: q.isPast || q.isCurrent,
+    // isLocked: Allow editing all quarters (past, current, and future)
+    isLocked: false,
     // isNextQuarter: The quarter immediately after current is the planning target
     isNextQuarter: currentQuarterIndex !== -1 && index === currentQuarterIndex + 1
   }))
