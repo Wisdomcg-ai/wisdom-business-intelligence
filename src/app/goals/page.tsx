@@ -410,8 +410,8 @@ function StrategicPlanningContent() {
                         (financialData?.revenue?.year1 || 0) > 0
   // Step 2: At least 1 strategic idea captured
   const step2Complete = (strategicIdeas?.length || 0) > 0
-  // Step 3: 8-20 prioritized initiatives selected
-  const step3Complete = (twelveMonthInitiatives?.length || 0) >= 8 && (twelveMonthInitiatives?.length || 0) <= 20
+  // Step 3: 5-20 prioritized initiatives selected
+  const step3Complete = (twelveMonthInitiatives?.length || 0) >= 5 && (twelveMonthInitiatives?.length || 0) <= 20
   // Step 4: Quarterly targets + initiatives for unlocked quarters
   // (Locked quarters = past + current, can't add initiatives to them mid-year)
   const planYear = determinePlanYear(yearType)
