@@ -74,9 +74,20 @@ export default function Step5SprintPlanning({
                    yearType === 'CY' && today.getMonth() >= 9 ? currentYear + 1 : currentYear
 
   const QUARTERS = calculateQuarters(yearType, planYear)
-  // For quarterly review: plan for NEXT quarter, not current (which is locked)
+  // Find current and next quarters for the selector
+  const actualCurrentQuarter = QUARTERS.find(q => q.isCurrent)
   const nextQuarter = QUARTERS.find(q => q.isNextQuarter)
-  const currentQuarter = nextQuarter || QUARTERS.find(q => q.isCurrent) || QUARTERS[0]
+
+  // Available quarters for selection: current + next (if they exist)
+  const selectableQuarters = QUARTERS.filter(q => q.isCurrent || q.isNextQuarter || !q.isPast)
+
+  // State for selected quarter - default to next quarter if available, otherwise current
+  const [selectedQuarterId, setSelectedQuarterId] = useState<string>(
+    nextQuarter?.id || actualCurrentQuarter?.id || QUARTERS[0]?.id || 'q1'
+  )
+
+  // Get the selected quarter object
+  const currentQuarter = QUARTERS.find(q => q.id === selectedQuarterId) || QUARTERS[0]
   const currentQuarterKey = currentQuarter.id // 'q1', 'q2', 'q3', or 'q4'
 
   // Monthly Targets State - Initialize from quarterly targets
@@ -110,7 +121,7 @@ export default function Step5SprintPlanning({
     }
   })
 
-  // Initialize monthly targets from quarterly targets on mount
+  // Initialize monthly targets from quarterly targets when quarter changes
   useEffect(() => {
     const qKey = currentQuarterKey as 'q1' | 'q2' | 'q3' | 'q4'
 
@@ -129,43 +140,41 @@ export default function Step5SprintPlanning({
       return [month1, month2, month3]
     }
 
-    // Only initialize if we have values and current state is all zeros
-    if (quarterRevenue > 0 && monthlyTargets.month1.revenue === 0) {
-      const [rev1, rev2, rev3] = distributeAcrossMonths(quarterRevenue)
-      const [gp1, gp2, gp3] = distributeAcrossMonths(quarterGrossProfit)
-      const [np1, np2, np3] = distributeAcrossMonths(quarterNetProfit)
-      const [cust1, cust2, cust3] = distributeAcrossMonths(quarterCustomers)
+    // Re-initialize when quarter changes
+    const [rev1, rev2, rev3] = distributeAcrossMonths(quarterRevenue)
+    const [gp1, gp2, gp3] = distributeAcrossMonths(quarterGrossProfit)
+    const [np1, np2, np3] = distributeAcrossMonths(quarterNetProfit)
+    const [cust1, cust2, cust3] = distributeAcrossMonths(quarterCustomers)
 
-      setMonthlyTargets({
-        month1: {
-          revenue: rev1,
-          grossProfit: gp1,
-          grossMargin: 0, // Will be auto-calculated
-          netProfit: np1,
-          netMargin: 0, // Will be auto-calculated
-          customers: cust1,
-          employees: Math.round(quarterEmployees)
-        },
-        month2: {
-          revenue: rev2,
-          grossProfit: gp2,
-          grossMargin: 0, // Will be auto-calculated
-          netProfit: np2,
-          netMargin: 0, // Will be auto-calculated
-          customers: cust2,
-          employees: Math.round(quarterEmployees)
-        },
-        month3: {
-          revenue: rev3,
-          grossProfit: gp3,
-          grossMargin: 0, // Will be auto-calculated
-          netProfit: np3,
-          netMargin: 0, // Will be auto-calculated
-          customers: cust3,
-          employees: Math.round(quarterEmployees)
-        }
-      })
-    }
+    setMonthlyTargets({
+      month1: {
+        revenue: rev1,
+        grossProfit: gp1,
+        grossMargin: 0, // Will be auto-calculated
+        netProfit: np1,
+        netMargin: 0, // Will be auto-calculated
+        customers: cust1,
+        employees: Math.round(quarterEmployees)
+      },
+      month2: {
+        revenue: rev2,
+        grossProfit: gp2,
+        grossMargin: 0, // Will be auto-calculated
+        netProfit: np2,
+        netMargin: 0, // Will be auto-calculated
+        customers: cust2,
+        employees: Math.round(quarterEmployees)
+      },
+      month3: {
+        revenue: rev3,
+        grossProfit: gp3,
+        grossMargin: 0, // Will be auto-calculated
+        netProfit: np3,
+        netMargin: 0, // Will be auto-calculated
+        customers: cust3,
+        employees: Math.round(quarterEmployees)
+      }
+    })
   }, [currentQuarterKey, quarterlyTargets])
 
   // Initiatives State (from current quarter + enhancements)
@@ -187,6 +196,24 @@ export default function Step5SprintPlanning({
       }
     })
   })
+
+  // Update initiatives when quarter changes
+  useEffect(() => {
+    const currentQuarterInitiatives = annualPlanByQuarter[currentQuarterKey] || []
+    setInitiatives(currentQuarterInitiatives.map(init => {
+      const extendedInit = init as any
+      return {
+        ...init,
+        why: extendedInit.why || '',
+        outcome: extendedInit.outcome || '',
+        startDate: extendedInit.startDate || '',
+        endDate: extendedInit.endDate || '',
+        milestones: extendedInit.milestones || [],
+        tasks: extendedInit.tasks || [],
+        totalHours: extendedInit.totalHours || 0
+      }
+    }))
+  }, [currentQuarterKey, annualPlanByQuarter])
 
   // Team Members State
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
@@ -500,6 +527,29 @@ export default function Step5SprintPlanning({
 
   return (
     <div className="space-y-6">
+      {/* Quarter Selector */}
+      <div className="flex items-center gap-3 mb-2">
+        <span className="text-sm font-medium text-gray-700">Planning for:</span>
+        <div className="flex gap-2">
+          {selectableQuarters.map((q) => (
+            <button
+              key={q.id}
+              onClick={() => setSelectedQuarterId(q.id)}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                selectedQuarterId === q.id
+                  ? 'bg-brand-orange text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {q.label}
+              <span className="ml-1.5 text-xs opacity-80">({q.months})</span>
+              {q.isCurrent && <span className="ml-1.5 text-[10px] bg-white/20 px-1.5 py-0.5 rounded">Current</span>}
+              {q.isNextQuarter && <span className="ml-1.5 text-[10px] bg-white/20 px-1.5 py-0.5 rounded">Next</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Task Banner */}
       <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-4 text-white">
         <p className="text-base font-medium">
@@ -959,16 +1009,6 @@ function MonthlyGoalsTab({
 
   return (
     <div className="space-y-6">
-      {/* Intro Text */}
-      <div className="bg-gradient-to-r from-brand-orange-50 to-slate-50 border border-brand-orange-200 rounded-lg p-5">
-        <p className="text-base text-gray-800 leading-relaxed">
-          <strong className="text-brand-orange-700">Your {currentQuarter.label} Sprint</strong> - This is where strategy meets execution. Break down your quarterly targets into monthly goals and define the specific actions that will drive results.
-        </p>
-        <p className="text-sm text-gray-600 mt-2">
-          The initiatives below were assigned to {currentQuarter.label} in your Annual Plan.
-        </p>
-      </div>
-
       <div>
         <h3 className="text-xl font-bold text-gray-900 mb-2">Monthly Targets - {currentQuarter.label}</h3>
         <p className="text-sm text-gray-600">
