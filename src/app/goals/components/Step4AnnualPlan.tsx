@@ -1618,10 +1618,15 @@ export default function Step4AnnualPlan({
                                         {index + 1}
                                       </span>
                                       <div className="flex-1">
-                                        <p className={`text-xs font-medium line-clamp-2 mb-1.5 ${getQuarterTextColor()}`}>
+                                        <p className={`text-sm font-semibold leading-tight ${getQuarterTextColor()}`}>
                                           {initiative.title}
                                         </p>
-                                        <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded font-semibold ${quarterBadgeStyle.bg} ${quarterBadgeStyle.text}`}>
+                                        {initiative.description && (
+                                          <p className={`text-xs mt-1.5 leading-relaxed ${getQuarterSubTextColor()}`}>
+                                            {initiative.description}
+                                          </p>
+                                        )}
+                                        <span className={`inline-block mt-2 text-[10px] px-1.5 py-0.5 rounded font-semibold ${quarterBadgeStyle.bg} ${quarterBadgeStyle.text}`}>
                                           {quarterBadgeStyle.label}
                                         </span>
                                       </div>
