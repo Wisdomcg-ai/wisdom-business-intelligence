@@ -132,7 +132,8 @@ function LoopCard({
   onEdit,
   onDelete,
   onStatusChange,
-  isUpdating
+  isUpdating,
+  canDelete
 }: {
   loop: OpenLoop;
   onComplete: () => void;
@@ -140,6 +141,7 @@ function LoopCard({
   onDelete: () => void;
   onStatusChange: (status: StatusType) => void;
   isUpdating: boolean;
+  canDelete: boolean;  // true if user can delete this specific loop
 }) {
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -271,13 +273,15 @@ function LoopCard({
               <Check className="w-5 h-5" />
             </button>
 
-            <button
-              onClick={onDelete}
-              className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              title="Delete"
-            >
-              <Trash2 className="w-5 h-5" />
-            </button>
+            {canDelete && (
+              <button
+                onClick={onDelete}
+                className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                title="Delete"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -353,7 +357,7 @@ function DeleteModal({
 }
 
 export default function OpenLoopsPage() {
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext();
+  const { activeBusiness, currentUser, viewerContext, isLoading: contextLoading } = useBusinessContext();
   const [loops, setLoops] = useState<OpenLoop[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -421,10 +425,11 @@ export default function OpenLoopsPage() {
   async function loadData() {
     try {
       setLoading(true);
-      const overrideUserId = activeBusiness?.ownerId;
+      // SHARED BOARD: Query by business_id to get all team loops
+      const businessId = activeBusiness?.id;
       const [activeLoops, statsData] = await Promise.all([
-        getOpenLoops(undefined, overrideUserId),
-        getOpenLoopsStats(overrideUserId)
+        getOpenLoops(undefined, undefined, businessId),
+        getOpenLoopsStats(undefined, businessId)
       ]);
 
       setLoops(activeLoops);
@@ -442,11 +447,12 @@ export default function OpenLoopsPage() {
     e.preventDefault();
 
     try {
-      const overrideUserId = activeBusiness?.ownerId;
+      // SHARED BOARD: Pass businessId for new loops
+      const businessId = activeBusiness?.id;
       if (editingId) {
         await updateOpenLoop(editingId, formData);
       } else {
-        await createOpenLoop(formData, overrideUserId);
+        await createOpenLoop(formData, undefined, businessId);
       }
 
       resetForm();
@@ -500,11 +506,13 @@ export default function OpenLoopsPage() {
     if (!deleteLoop) return;
 
     try {
-      await deleteOpenLoop(deleteLoop.id);
+      // PERMISSIONS: Pass canDeleteAll for owner/admin roles
+      const canDeleteAll = viewerContext.permissions?.canDeleteAllItems ?? false;
+      await deleteOpenLoop(deleteLoop.id, { canDeleteAll });
       setDeleteLoop(null);
       await loadData();
-    } catch (err) {
-      setError('Failed to delete loop');
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete loop');
       console.error(err);
     }
   }
@@ -686,17 +694,25 @@ export default function OpenLoopsPage() {
         ) : (
           /* Loop Cards */
           <div className="space-y-4">
-            {filteredLoops.map((loop) => (
-              <LoopCard
-                key={loop.id}
-                loop={loop}
-                onComplete={() => handleComplete(loop.id)}
-                onEdit={() => handleEdit(loop)}
-                onDelete={() => setDeleteLoop(loop)}
-                onStatusChange={(status) => handleStatusChange(loop.id, status)}
-                isUpdating={updatingId === loop.id}
-              />
-            ))}
+            {filteredLoops.map((loop) => {
+              // PERMISSIONS: User can delete if they own it OR have canDeleteAllItems permission
+              const canDeleteAll = viewerContext.permissions?.canDeleteAllItems ?? false;
+              const isOwnItem = loop.user_id === currentUser?.id;
+              const canDelete = canDeleteAll || isOwnItem;
+
+              return (
+                <LoopCard
+                  key={loop.id}
+                  loop={loop}
+                  onComplete={() => handleComplete(loop.id)}
+                  onEdit={() => handleEdit(loop)}
+                  onDelete={() => setDeleteLoop(loop)}
+                  onStatusChange={(status) => handleStatusChange(loop.id, status)}
+                  isUpdating={updatingId === loop.id}
+                  canDelete={canDelete}
+                />
+              );
+            })}
           </div>
         )}
       </div>

@@ -161,7 +161,8 @@ function IdeaCard({
   onEvaluate,
   onArchive,
   onDelete,
-  isUpdating
+  isUpdating,
+  canDelete
 }: {
   idea: Idea;
   onEdit: () => void;
@@ -169,6 +170,7 @@ function IdeaCard({
   onArchive: () => void;
   onDelete: () => void;
   isUpdating: boolean;
+  canDelete: boolean;  // true if user can delete this specific idea
 }) {
   const [expanded, setExpanded] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -287,17 +289,21 @@ function IdeaCard({
                       <Archive className="w-4 h-4" />
                       Archive
                     </button>
-                    <div className="border-t border-gray-100 my-1" />
-                    <button
-                      onClick={() => {
-                        onDelete();
-                        setShowMenu(false);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete
-                    </button>
+                    {canDelete && (
+                      <>
+                        <div className="border-t border-gray-100 my-1" />
+                        <button
+                          onClick={() => {
+                            onDelete();
+                            setShowMenu(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete
+                        </button>
+                      </>
+                    )}
                   </div>
                 </>
               )}
@@ -453,7 +459,7 @@ function IdeasInfoBox() {
 
 export default function IdeasJournalPage() {
   const router = useRouter();
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext();
+  const { activeBusiness, currentUser, viewerContext, isLoading: contextLoading } = useBusinessContext();
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -523,10 +529,11 @@ export default function IdeasJournalPage() {
   async function loadData() {
     try {
       setLoading(true);
-      const overrideUserId = activeBusiness?.ownerId;
+      // SHARED BOARD: Query by business_id to get all team ideas
+      const businessId = activeBusiness?.id;
       const [ideasData, statsData] = await Promise.all([
-        getActiveIdeas(overrideUserId),
-        getIdeasStats(overrideUserId)
+        getActiveIdeas(undefined, businessId),
+        getIdeasStats(undefined, businessId)
       ]);
 
       setIdeas(ideasData);
@@ -556,11 +563,12 @@ export default function IdeasJournalPage() {
     e.preventDefault();
 
     try {
-      const overrideUserId = activeBusiness?.ownerId;
+      // SHARED BOARD: Pass businessId for new ideas
+      const businessId = activeBusiness?.id;
       if (editingId) {
         await updateIdea(editingId, formData);
       } else {
-        await createIdea(formData, overrideUserId);
+        await createIdea(formData, undefined, businessId);
       }
 
       resetForm();
@@ -588,11 +596,13 @@ export default function IdeasJournalPage() {
     if (!deleteIdeaItem) return;
 
     try {
-      await deleteIdea(deleteIdeaItem.id);
+      // PERMISSIONS: Pass canDeleteAll for owner/admin roles
+      const canDeleteAll = viewerContext.permissions?.canDeleteAllItems ?? false;
+      await deleteIdea(deleteIdeaItem.id, { canDeleteAll });
       setDeleteIdeaItem(null);
       await loadData();
-    } catch (err) {
-      setError('Failed to delete idea');
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete idea');
       console.error(err);
     }
   }
@@ -817,17 +827,25 @@ export default function IdeasJournalPage() {
         ) : (
           /* Idea Cards */
           <div className="space-y-4">
-            {filteredIdeas.map((idea) => (
-              <IdeaCard
-                key={idea.id}
-                idea={idea}
-                onEdit={() => handleEdit(idea)}
-                onEvaluate={() => handleEvaluate(idea.id)}
-                onArchive={() => handleArchive(idea.id)}
-                onDelete={() => setDeleteIdeaItem(idea)}
-                isUpdating={updatingId === idea.id}
-              />
-            ))}
+            {filteredIdeas.map((idea) => {
+              // PERMISSIONS: User can delete if they own it OR have canDeleteAllItems permission
+              const canDeleteAll = viewerContext.permissions?.canDeleteAllItems ?? false;
+              const isOwnItem = idea.user_id === currentUser?.id;
+              const canDelete = canDeleteAll || isOwnItem;
+
+              return (
+                <IdeaCard
+                  key={idea.id}
+                  idea={idea}
+                  onEdit={() => handleEdit(idea)}
+                  onEvaluate={() => handleEvaluate(idea.id)}
+                  onArchive={() => handleArchive(idea.id)}
+                  onDelete={() => setDeleteIdeaItem(idea)}
+                  isUpdating={updatingId === idea.id}
+                  canDelete={canDelete}
+                />
+              );
+            })}
           </div>
         )}
       </div>

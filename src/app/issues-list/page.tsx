@@ -142,7 +142,9 @@ function IssueCard({
   onStatusChange,
   onPriorityChange,
   isUpdating,
-  isSolvedTab
+  isSolvedTab,
+  canDelete,
+  currentUserId
 }: {
   issue: Issue;
   onSolve: () => void;
@@ -152,6 +154,8 @@ function IssueCard({
   onPriorityChange: (priority: number | null) => void;
   isUpdating: boolean;
   isSolvedTab: boolean;
+  canDelete: boolean;  // true if user can delete this specific issue
+  currentUserId?: string;  // for showing "You" badge
 }) {
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [showPriorityMenu, setShowPriorityMenu] = useState(false);
@@ -351,13 +355,15 @@ function IssueCard({
               </button>
             )}
 
-            <button
-              onClick={onDelete}
-              className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              title="Delete"
-            >
-              <Trash2 className="w-5 h-5" />
-            </button>
+            {canDelete && (
+              <button
+                onClick={onDelete}
+                className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                title="Delete"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -523,7 +529,7 @@ function IDSInfoBox() {
 }
 
 export default function IssuesListPage() {
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext();
+  const { activeBusiness, currentUser, viewerContext, isLoading: contextLoading } = useBusinessContext();
   const [issues, setIssues] = useState<Issue[]>([]);
   const [solvedIssues, setSolvedIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -607,11 +613,12 @@ export default function IssuesListPage() {
   async function loadData() {
     try {
       setLoading(true);
-      const overrideUserId = activeBusiness?.ownerId;
+      // SHARED BOARD: Query by business_id to get all team issues
+      const businessId = activeBusiness?.id;
       const [activeData, solvedData, statsData] = await Promise.all([
-        getActiveIssues(overrideUserId),
-        getSolvedIssues(overrideUserId),
-        getIssuesStats(overrideUserId)
+        getActiveIssues(undefined, businessId),
+        getSolvedIssues(undefined, businessId),
+        getIssuesStats(undefined, businessId)
       ]);
 
       setIssues(activeData);
@@ -644,11 +651,12 @@ export default function IssuesListPage() {
     e.preventDefault();
 
     try {
-      const overrideUserId = activeBusiness?.ownerId;
+      // SHARED BOARD: Pass businessId for new issues
+      const businessId = activeBusiness?.id;
       if (editingId) {
         await updateIssue(editingId, formData);
       } else {
-        await createIssue(formData, overrideUserId);
+        await createIssue(formData, undefined, businessId);
       }
 
       resetForm();
@@ -676,11 +684,13 @@ export default function IssuesListPage() {
     if (!deleteIssueItem) return;
 
     try {
-      await deleteIssue(deleteIssueItem.id);
+      // PERMISSIONS: Pass canDeleteAll for owner/admin roles
+      const canDeleteAll = viewerContext.permissions?.canDeleteAllItems ?? false;
+      await deleteIssue(deleteIssueItem.id, { canDeleteAll });
       setDeleteIssueItem(null);
       await loadData();
-    } catch (err) {
-      setError('Failed to delete issue');
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete issue');
       console.error(err);
     }
   }
@@ -956,19 +966,28 @@ export default function IssuesListPage() {
         ) : (
           /* Issue Cards */
           <div className="space-y-4">
-            {filteredIssues.map((issue) => (
-              <IssueCard
-                key={issue.id}
-                issue={issue}
-                onSolve={() => handleSolve(issue.id)}
-                onEdit={() => handleEdit(issue)}
-                onDelete={() => setDeleteIssueItem(issue)}
-                onStatusChange={(status) => handleStatusChange(issue.id, status)}
-                onPriorityChange={(priority) => handlePriorityChange(issue.id, priority)}
-                isUpdating={updatingId === issue.id}
-                isSolvedTab={activeTab === 'solved'}
-              />
-            ))}
+            {filteredIssues.map((issue) => {
+              // PERMISSIONS: User can delete if they own it OR have canDeleteAllItems permission
+              const canDeleteAll = viewerContext.permissions?.canDeleteAllItems ?? false;
+              const isOwnItem = issue.user_id === currentUser?.id;
+              const canDelete = canDeleteAll || isOwnItem;
+
+              return (
+                <IssueCard
+                  key={issue.id}
+                  issue={issue}
+                  onSolve={() => handleSolve(issue.id)}
+                  onEdit={() => handleEdit(issue)}
+                  onDelete={() => setDeleteIssueItem(issue)}
+                  onStatusChange={(status) => handleStatusChange(issue.id, status)}
+                  onPriorityChange={(priority) => handlePriorityChange(issue.id, priority)}
+                  isUpdating={updatingId === issue.id}
+                  isSolvedTab={activeTab === 'solved'}
+                  canDelete={canDelete}
+                  currentUserId={currentUser?.id}
+                />
+              );
+            })}
           </div>
         )}
       </div>
