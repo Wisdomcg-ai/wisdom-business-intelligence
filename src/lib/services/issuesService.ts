@@ -63,6 +63,9 @@ export async function getActiveIssues(overrideUserId?: string, businessId?: stri
     // Shared board: query by business_id if provided
     if (businessId) {
       console.log('[IssuesService] getActiveIssues (SHARED BOARD) - businessId:', businessId);
+
+      // Query issues that belong to this business
+      // RLS will handle access control
       const { data, error } = await supabase
         .from('issues_list')
         .select('*')
@@ -79,7 +82,7 @@ export async function getActiveIssues(overrideUserId?: string, businessId?: stri
       return data as Issue[];
     }
 
-    // Legacy: query by user_id (backward compatibility)
+    // Legacy/fallback: query by user_id (for coach view or if no businessId)
     const userId = await getEffectiveUserId(overrideUserId);
     console.log('[IssuesService] getActiveIssues (legacy) - overrideUserId:', overrideUserId, 'effectiveUserId:', userId);
     if (!userId) return [];
