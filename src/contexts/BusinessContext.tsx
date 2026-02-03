@@ -21,11 +21,34 @@ interface ActiveBusiness {
   status?: string
 }
 
+// Granular permissions for the viewer
+interface ViewerPermissions {
+  // Shared boards (Issues, Loops, Ideas)
+  canViewSharedBoards: boolean
+  canAddToSharedBoards: boolean
+  canEditOwnItems: boolean
+  canEditAllItems: boolean
+  canDeleteOwnItems: boolean
+  canDeleteAllItems: boolean
+
+  // Weekly Reviews
+  canViewOwnReviews: boolean
+  canViewAllReviews: boolean
+
+  // Strategic items (Goals, KPIs, Forecasts)
+  canViewStrategicItems: boolean
+  canEditStrategicItems: boolean
+
+  // Team management
+  canManageTeam: boolean
+}
+
 interface ViewerContext {
-  role: 'owner' | 'coach' | 'admin'  // Role relative to the active business
+  role: 'owner' | 'admin' | 'member' | 'viewer' | 'coach'  // Role relative to the active business
   isViewingAsCoach: boolean          // True when a coach is viewing a client's data
-  canEdit: boolean                    // Permission to edit data
-  canDelete: boolean                  // Permission to delete data
+  canEdit: boolean                    // Permission to edit data (legacy, for backwards compatibility)
+  canDelete: boolean                  // Permission to delete data (legacy, for backwards compatibility)
+  permissions: ViewerPermissions      // Granular permissions
 }
 
 interface BusinessContextType {
@@ -53,12 +76,110 @@ interface BusinessContextType {
   refreshUser: () => Promise<void>
 }
 
+// Permission mapping by role
+function getPermissionsForRole(role: ViewerContext['role'], isOwner: boolean): ViewerPermissions {
+  if (isOwner || role === 'owner') {
+    return {
+      canViewSharedBoards: true,
+      canAddToSharedBoards: true,
+      canEditOwnItems: true,
+      canEditAllItems: true,
+      canDeleteOwnItems: true,
+      canDeleteAllItems: true,
+      canViewOwnReviews: true,
+      canViewAllReviews: true,
+      canViewStrategicItems: true,
+      canEditStrategicItems: true,
+      canManageTeam: true,
+    }
+  }
+
+  if (role === 'admin') {
+    return {
+      canViewSharedBoards: true,
+      canAddToSharedBoards: true,
+      canEditOwnItems: true,
+      canEditAllItems: true,
+      canDeleteOwnItems: true,
+      canDeleteAllItems: true,
+      canViewOwnReviews: true,
+      canViewAllReviews: true,
+      canViewStrategicItems: true,
+      canEditStrategicItems: true,
+      canManageTeam: true,
+    }
+  }
+
+  if (role === 'member') {
+    return {
+      canViewSharedBoards: true,
+      canAddToSharedBoards: true,
+      canEditOwnItems: true,
+      canEditAllItems: false,
+      canDeleteOwnItems: true,
+      canDeleteAllItems: false,
+      canViewOwnReviews: true,
+      canViewAllReviews: false,
+      canViewStrategicItems: true,
+      canEditStrategicItems: false,
+      canManageTeam: false,
+    }
+  }
+
+  if (role === 'coach') {
+    return {
+      canViewSharedBoards: true,
+      canAddToSharedBoards: false,
+      canEditOwnItems: false,
+      canEditAllItems: false,
+      canDeleteOwnItems: false,
+      canDeleteAllItems: false,
+      canViewOwnReviews: true,
+      canViewAllReviews: true,
+      canViewStrategicItems: true,
+      canEditStrategicItems: false,
+      canManageTeam: false,
+    }
+  }
+
+  // Viewer (read-only)
+  return {
+    canViewSharedBoards: true,
+    canAddToSharedBoards: false,
+    canEditOwnItems: false,
+    canEditAllItems: false,
+    canDeleteOwnItems: false,
+    canDeleteAllItems: false,
+    canViewOwnReviews: true,
+    canViewAllReviews: false,
+    canViewStrategicItems: true,
+    canEditStrategicItems: false,
+    canManageTeam: false,
+  }
+}
+
+// Default permissions for unauthenticated/loading state
+const defaultPermissions: ViewerPermissions = {
+  canViewSharedBoards: false,
+  canAddToSharedBoards: false,
+  canEditOwnItems: false,
+  canEditAllItems: false,
+  canDeleteOwnItems: false,
+  canDeleteAllItems: false,
+  canViewOwnReviews: false,
+  canViewAllReviews: false,
+  canViewStrategicItems: false,
+  canEditStrategicItems: false,
+  canManageTeam: false,
+}
+
 // Default context values
 const defaultViewerContext: ViewerContext = {
   role: 'owner',
   isViewingAsCoach: false,
   canEdit: true,
   canDelete: false,
+  permissions: defaultPermissions,
 }
 
 const defaultContext: BusinessContextType = {
@@ -124,9 +245,10 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         console.log('[BusinessContext] Looking up business for client user:', user.id)
 
         // First try via business_users join table (for team members)
+        // Now also fetch the role for proper permissions
         const { data: businessUser, error: businessUserError } = await supabase
           .from('business_users')
-          .select('business_id')
+          .select('business_id, role')
           .eq('user_id', user.id)
           .eq('status', 'active')
           .maybeSingle()
@@ -134,6 +256,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         console.log('[BusinessContext] business_users lookup result:', {
           found: !!businessUser,
           businessId: businessUser?.business_id,
+          role: businessUser?.role,
           error: businessUserError?.message
         })
 
@@ -171,12 +294,26 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         }
 
         if (business) {
+          const isOwner = business.owner_id === user.id
+          // Determine role: if owner, use 'owner'; otherwise use role from business_users
+          const businessRole: ViewerContext['role'] = isOwner
+            ? 'owner'
+            : (businessUser?.role as ViewerContext['role']) || 'member'
+
+          const permissions = getPermissionsForRole(businessRole, isOwner)
+
           console.log('[BusinessContext] Setting active business:', {
             id: business.id,
             name: business.name,
             ownerId: business.owner_id,
             loadedVia,
-            userIsOwner: business.owner_id === user.id
+            userIsOwner: isOwner,
+            businessRole,
+            permissions: {
+              canDeleteOwnItems: permissions.canDeleteOwnItems,
+              canDeleteAllItems: permissions.canDeleteAllItems,
+              canEditStrategicItems: permissions.canEditStrategicItems
+            }
           })
           setActiveBusinessState({
             id: business.id,
@@ -186,10 +323,11 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
             status: business.status || undefined,
           })
           setViewerContext({
-            role: 'owner',
+            role: businessRole,
             isViewingAsCoach: false,
-            canEdit: true,
-            canDelete: true,
+            canEdit: permissions.canEditOwnItems || permissions.canEditAllItems,
+            canDelete: permissions.canDeleteOwnItems || permissions.canDeleteAllItems,
+            permissions,
           })
 
           // Cache business_profiles.id for downstream hooks
@@ -223,7 +361,15 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
       setIsLoading(true)
       setError(null)
 
-      // Fetch the business directly - don't need user for this
+      // First verify we have a current user
+      if (!currentUser) {
+        console.error('[BusinessContext] No current user when trying to set active business')
+        setError('Not authenticated')
+        setIsLoading(false)
+        return
+      }
+
+      // Fetch the business directly
       const { data: business, error: fetchError } = await supabase
         .from('businesses')
         .select('id, name, owner_id, industry, status, assigned_coach_id')
@@ -238,8 +384,43 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         return
       }
 
-      // For coach view, always set as viewing as coach
-      // Fetch business data and profile ID in parallel
+      // SECURITY: Verify the user has access to this business
+      const isOwner = business.owner_id === currentUser.id
+      const isAssignedCoach = business.assigned_coach_id === currentUser.id
+      const isSuperAdmin = currentUser.role === 'admin'
+
+      // If not owner, assigned coach, or super admin, check team membership
+      let isTeamMember = false
+      let teamMemberRole: string | null = null
+      if (!isOwner && !isAssignedCoach && !isSuperAdmin) {
+        const { data: teamMember } = await supabase
+          .from('business_users')
+          .select('id, role')
+          .eq('business_id', businessId)
+          .eq('user_id', currentUser.id)
+          .eq('status', 'active')
+          .maybeSingle()
+
+        isTeamMember = !!teamMember
+        teamMemberRole = teamMember?.role || null
+      }
+
+      // Deny access if no valid relationship exists
+      if (!isOwner && !isAssignedCoach && !isSuperAdmin && !isTeamMember) {
+        console.error('[BusinessContext] Access denied - user not authorized for this business:', {
+          userId: currentUser.id,
+          businessId,
+          isOwner,
+          isAssignedCoach,
+          isSuperAdmin,
+          isTeamMember
+        })
+        setError('You do not have access to this business')
+        setIsLoading(false)
+        return
+      }
+
+      // Fetch business profile ID
       const { data: profile } = await supabase
         .from('business_profiles')
         .select('id')
@@ -256,14 +437,41 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
 
       setBusinessProfileId(profile?.id || null)
 
+      // Determine the viewer's role
+      let viewerRole: ViewerContext['role']
+      if (isOwner) {
+        viewerRole = 'owner'
+      } else if (isTeamMember && teamMemberRole) {
+        viewerRole = teamMemberRole as ViewerContext['role']
+      } else if (isAssignedCoach || isSuperAdmin) {
+        viewerRole = 'coach'
+      } else {
+        viewerRole = 'viewer'
+      }
+
+      const permissions = getPermissionsForRole(viewerRole, isOwner)
+      const isViewingAsCoach = isAssignedCoach || (isSuperAdmin && !isOwner && !isTeamMember)
+
       setViewerContext({
-        role: 'coach',
-        isViewingAsCoach: true,
-        canEdit: true,
-        canDelete: false,
+        role: viewerRole,
+        isViewingAsCoach,
+        canEdit: permissions.canEditOwnItems || permissions.canEditAllItems,
+        canDelete: permissions.canDeleteOwnItems || permissions.canDeleteAllItems,
+        permissions,
       })
 
-      console.log('[BusinessContext] Active business set:', business.name)
+      console.log('[BusinessContext] Active business set:', business.name, {
+        isOwner,
+        isAssignedCoach,
+        isSuperAdmin,
+        isTeamMember,
+        viewerRole,
+        teamMemberRole,
+        permissions: {
+          canDeleteOwnItems: permissions.canDeleteOwnItems,
+          canDeleteAllItems: permissions.canDeleteAllItems
+        }
+      })
 
     } catch (err) {
       console.error('[BusinessContext] Error setting active business:', err)
@@ -271,7 +479,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
     } finally {
       setIsLoading(false)
     }
-  }, [supabase])
+  }, [supabase, currentUser])
 
   // Clear active business (used when coach exits client view)
   const clearActiveBusiness = useCallback(() => {

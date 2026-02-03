@@ -9,6 +9,13 @@ const getEffectiveUserId = async (overrideUserId?: string): Promise<string | nul
   return user?.id || null;
 };
 
+// Get current authenticated user ID (for permission checks)
+const getCurrentUserId = async (): Promise<string | null> => {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id || null;
+};
+
 // ============================================================================
 // IDEAS (Ideas Journal)
 // ============================================================================
@@ -20,6 +27,7 @@ export type IdeaImpact = 'low' | 'medium' | 'high';
 export interface Idea {
   id: string;
   user_id: string;
+  business_id: string | null;  // Added for shared board
   title: string;
   description: string | null;
   source: string | null;
@@ -50,9 +58,29 @@ export interface UpdateIdeaInput {
 }
 
 // Get all active ideas (not archived)
-export async function getActiveIdeas(overrideUserId?: string) {
+// SHARED BOARD: Now supports querying by business_id
+export async function getActiveIdeas(overrideUserId?: string, businessId?: string) {
   try {
     const supabase = createClient();
+
+    // Shared board: query by business_id if provided
+    if (businessId) {
+      console.log('[IdeasService] getActiveIdeas (SHARED BOARD) - businessId:', businessId);
+      const { data, error } = await supabase
+        .from('ideas')
+        .select('*')
+        .eq('business_id', businessId)
+        .eq('archived', false)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching active ideas:', error);
+        return [];
+      }
+      return data as Idea[];
+    }
+
+    // Legacy: query by user_id
     const userId = await getEffectiveUserId(overrideUserId);
     if (!userId) return [];
 
@@ -122,9 +150,12 @@ export async function getIdeaById(id: string) {
 }
 
 // Create a new idea
-export async function createIdea(input: CreateIdeaInput, overrideUserId?: string) {
+// SHARED BOARD: Now requires businessId to associate with the business
+export async function createIdea(input: CreateIdeaInput, overrideUserId?: string, businessId?: string) {
   try {
     const supabase = createClient();
+    // Use current user as creator (not overrideUserId) so we track who actually created it
+    const creatorId = await getCurrentUserId();
     const userId = await getEffectiveUserId(overrideUserId);
     if (!userId) throw new Error('Not authenticated');
 
@@ -132,7 +163,8 @@ export async function createIdea(input: CreateIdeaInput, overrideUserId?: string
       .from('ideas')
       .insert([
         {
-          user_id: userId,
+          user_id: creatorId || userId,  // Track actual creator
+          business_id: businessId || null,  // Associate with business for shared board
           title: input.title,
           description: input.description || null,
           source: input.source || null,
@@ -198,15 +230,50 @@ export async function archiveIdea(id: string) {
 }
 
 // Delete an idea
-export async function deleteIdea(id: string) {
+// Permission-aware: owner/admin can delete any, members can only delete their own
+export async function deleteIdea(
+  id: string,
+  options?: {
+    canDeleteAll?: boolean;  // true for owner/admin roles
+  }
+) {
   try {
     const supabase = createClient();
-    const { error } = await supabase
+    const currentUserId = await getCurrentUserId();
+
+    if (!currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    // If user has canDeleteAll permission (owner/admin), delete without restriction
+    if (options?.canDeleteAll) {
+      const { error } = await supabase
+        .from('ideas')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      return { success: true };
+    }
+
+    // Otherwise, only allow deleting own items (member role)
+    const { data, error } = await supabase
       .from('ideas')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', currentUserId)  // Safety: only delete if user owns it
+      .select()
+      .single();
 
-    if (error) throw error;
+    if (error) {
+      // If no rows affected, user doesn't own this item
+      if (error.code === 'PGRST116') {
+        throw new Error('You can only delete ideas you created');
+      }
+      throw error;
+    }
+
+    return { success: true };
   } catch (error) {
     console.error('Error deleting idea:', error);
     throw error;
@@ -214,9 +281,10 @@ export async function deleteIdea(id: string) {
 }
 
 // Get ideas stats
-export async function getIdeasStats(overrideUserId?: string) {
+// SHARED BOARD: Now supports querying by business_id
+export async function getIdeasStats(overrideUserId?: string, businessId?: string) {
   try {
-    const ideas = await getActiveIdeas(overrideUserId);
+    const ideas = await getActiveIdeas(overrideUserId, businessId);
 
     return {
       total: ideas.length,

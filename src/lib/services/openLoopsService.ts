@@ -9,9 +9,17 @@ const getEffectiveUserId = async (overrideUserId?: string): Promise<string | nul
   return user?.id || null;
 };
 
+// Get current authenticated user ID (for permission checks)
+const getCurrentUserId = async (): Promise<string | null> => {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id || null;
+};
+
 export interface OpenLoop {
   id: string;
   user_id: string;
+  business_id: string | null;
   title: string;
   start_date: string;
   expected_completion_date: string | null;
@@ -34,9 +42,31 @@ export interface CreateOpenLoopInput {
 }
 
 // Get all open loops for current user (not archived)
-export async function getOpenLoops(status?: string, overrideUserId?: string) {
+// SHARED BOARD: Now supports querying by business_id
+export async function getOpenLoops(status?: string, overrideUserId?: string, businessId?: string) {
   try {
     const supabase = createClient();
+
+    // Shared board: query by business_id if provided
+    if (businessId) {
+      console.log('[OpenLoopsService] getOpenLoops (SHARED BOARD) - businessId:', businessId);
+      let query = supabase
+        .from('open_loops')
+        .select('*')
+        .eq('business_id', businessId)
+        .eq('archived', false)
+        .order('created_at', { ascending: false });
+
+      if (status) {
+        query = query.eq('status', status);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as OpenLoop[];
+    }
+
+    // Legacy: query by user_id
     const userId = await getEffectiveUserId(overrideUserId);
     if (!userId) throw new Error('Not authenticated');
 
@@ -105,9 +135,12 @@ export async function getAllLoops(overrideUserId?: string) {
 }
 
 // Create a new open loop
-export async function createOpenLoop(input: CreateOpenLoopInput, overrideUserId?: string) {
+// SHARED BOARD: Now requires businessId to associate with the business
+export async function createOpenLoop(input: CreateOpenLoopInput, overrideUserId?: string, businessId?: string) {
   try {
     const supabase = createClient();
+    // Use current user as creator (not overrideUserId) so we track who actually created it
+    const creatorId = await getCurrentUserId();
     const userId = await getEffectiveUserId(overrideUserId);
     if (!userId) throw new Error('Not authenticated');
 
@@ -115,7 +148,8 @@ export async function createOpenLoop(input: CreateOpenLoopInput, overrideUserId?
       .from('open_loops')
       .insert([
         {
-          user_id: userId,
+          user_id: creatorId || userId,  // Track actual creator
+          business_id: businessId || null,  // Associate with business for shared board
           ...input,
           archived: false
         }
@@ -177,15 +211,50 @@ export async function completeOpenLoop(id: string) {
 }
 
 // Delete an open loop
-export async function deleteOpenLoop(id: string) {
+// Permission-aware: owner/admin can delete any, members can only delete their own
+export async function deleteOpenLoop(
+  id: string,
+  options?: {
+    canDeleteAll?: boolean;  // true for owner/admin roles
+  }
+) {
   try {
     const supabase = createClient();
-    const { error } = await supabase
+    const currentUserId = await getCurrentUserId();
+
+    if (!currentUserId) {
+      throw new Error('Not authenticated');
+    }
+
+    // If user has canDeleteAll permission (owner/admin), delete without restriction
+    if (options?.canDeleteAll) {
+      const { error } = await supabase
+        .from('open_loops')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      return { success: true };
+    }
+
+    // Otherwise, only allow deleting own items (member role)
+    const { data, error } = await supabase
       .from('open_loops')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', currentUserId)  // Safety: only delete if user owns it
+      .select()
+      .single();
 
-    if (error) throw error;
+    if (error) {
+      // If no rows affected, user doesn't own this item
+      if (error.code === 'PGRST116') {
+        throw new Error('You can only delete loops you created');
+      }
+      throw error;
+    }
+
+    return { success: true };
   } catch (error) {
     console.error('Error deleting open loop:', error);
     throw error;
@@ -203,9 +272,10 @@ export async function updateOpenLoopStatus(id: string, status: 'in-progress' | '
 }
 
 // Get stats
-export async function getOpenLoopsStats(overrideUserId?: string) {
+// SHARED BOARD: Now supports querying by business_id
+export async function getOpenLoopsStats(overrideUserId?: string, businessId?: string) {
   try {
-    const loops = await getOpenLoops(undefined, overrideUserId);
+    const loops = await getOpenLoops(undefined, overrideUserId, businessId);
 
     return {
       total: loops.length,

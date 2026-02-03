@@ -200,7 +200,7 @@ async function syncXeroData(business_id: string) {
     // Update last sync time
     await supabaseAdmin
       .from('xero_connections')
-      .update({ last_sync_at: new Date().toISOString() })
+      .update({ last_synced_at: new Date().toISOString() })
       .eq('id', connection.id);
 
     return NextResponse.json({ 

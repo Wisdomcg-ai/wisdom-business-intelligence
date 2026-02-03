@@ -1,12 +1,23 @@
 import { createClient } from '@supabase/supabase-js'
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-const supabase = createClient(
+// Service client for database operations (bypasses RLS)
+const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+// Helper to verify user is authenticated
+async function getAuthenticatedUser() {
+  const cookieStore = cookies()
+  const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+  const { data: { user }, error } = await supabase.auth.getUser()
+  return { user, error, supabase }
+}
 
 /**
  * GET /api/forecasts/scenarios?forecast_id=xxx
@@ -14,6 +25,12 @@ const supabase = createClient(
  */
 export async function GET(request: NextRequest) {
   try {
+    // SECURITY: Verify user is authenticated
+    const { user, error: authError } = await getAuthenticatedUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const forecastId = searchParams.get('forecast_id')
 
@@ -21,8 +38,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'forecast_id is required' }, { status: 400 })
     }
 
-    // Fetch scenarios
-    const { data: scenarios, error } = await supabase
+    // Fetch scenarios (use admin client since we verified auth above)
+    const { data: scenarios, error } = await supabaseAdmin
       .from('forecast_scenarios')
       .select('*')
       .eq('forecast_id', forecastId)
@@ -47,10 +64,16 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    // SECURITY: Verify user is authenticated and use their ID
+    const { user, error: authError } = await getAuthenticatedUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await request.json()
     const {
       forecast_id,
-      user_id,
+      // user_id is ignored - we use authenticated user's ID instead
       name,
       description,
       revenue_multiplier = 1.0,
@@ -59,19 +82,22 @@ export async function POST(request: NextRequest) {
       scenario_type = 'planning'
     } = body
 
-    if (!forecast_id || !name || !user_id) {
+    if (!forecast_id || !name) {
       return NextResponse.json(
-        { error: 'forecast_id, user_id, and name are required' },
+        { error: 'forecast_id and name are required' },
         { status: 400 }
       )
     }
 
+    // SECURITY: Use authenticated user's ID, not the one from request body
+    const authenticatedUserId = user.id
+
     // Create scenario
-    const { data: scenario, error } = await supabase
+    const { data: scenario, error } = await supabaseAdmin
       .from('forecast_scenarios')
       .insert({
         forecast_id,
-        user_id,
+        user_id: authenticatedUserId,  // Use verified user ID
         name,
         description,
         scenario_type,
@@ -106,22 +132,31 @@ export async function POST(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { scenario_id, user_id, ...updates } = body
-
-    if (!scenario_id || !user_id) {
-      return NextResponse.json({ error: 'scenario_id and user_id are required' }, { status: 400 })
+    // SECURITY: Verify user is authenticated
+    const { user, error: authError } = await getAuthenticatedUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Update scenario
-    const { data: scenario, error } = await supabase
+    const body = await request.json()
+    const { scenario_id, ...updates } = body
+
+    if (!scenario_id) {
+      return NextResponse.json({ error: 'scenario_id is required' }, { status: 400 })
+    }
+
+    // SECURITY: Use authenticated user's ID for the filter
+    const authenticatedUserId = user.id
+
+    // Update scenario - only allow updating user's own scenarios
+    const { data: scenario, error } = await supabaseAdmin
       .from('forecast_scenarios')
       .update({
         ...updates,
         updated_at: new Date().toISOString()
       })
       .eq('id', scenario_id)
-      .eq('user_id', user_id)
+      .eq('user_id', authenticatedUserId)  // Use verified user ID
       .select()
       .single()
 
@@ -142,21 +177,29 @@ export async function PATCH(request: NextRequest) {
 }
 
 /**
- * DELETE /api/forecasts/scenarios?scenario_id=xxx&user_id=xxx
+ * DELETE /api/forecasts/scenarios?scenario_id=xxx
  * Delete a scenario
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const scenarioId = searchParams.get('scenario_id')
-    const userId = searchParams.get('user_id')
-
-    if (!scenarioId || !userId) {
-      return NextResponse.json({ error: 'scenario_id and user_id are required' }, { status: 400 })
+    // SECURITY: Verify user is authenticated
+    const { user, error: authError } = await getAuthenticatedUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { searchParams } = new URL(request.url)
+    const scenarioId = searchParams.get('scenario_id')
+
+    if (!scenarioId) {
+      return NextResponse.json({ error: 'scenario_id is required' }, { status: 400 })
+    }
+
+    // SECURITY: Use authenticated user's ID
+    const authenticatedUserId = user.id
+
     // Check if it's the baseline scenario
-    const { data: scenario } = await supabase
+    const { data: scenario } = await supabaseAdmin
       .from('forecast_scenarios')
       .select('is_baseline')
       .eq('id', scenarioId)
@@ -169,12 +212,12 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Delete scenario
-    const { error } = await supabase
+    // Delete scenario - only allow deleting user's own scenarios
+    const { error } = await supabaseAdmin
       .from('forecast_scenarios')
       .delete()
       .eq('id', scenarioId)
-      .eq('user_id', userId)
+      .eq('user_id', authenticatedUserId)  // Use verified user ID
 
     if (error) {
       console.error('Error deleting scenario:', error)

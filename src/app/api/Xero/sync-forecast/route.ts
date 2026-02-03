@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 import { encrypt, decrypt } from '@/lib/utils/encryption';
 
 export const dynamic = 'force-dynamic'
 
-const supabase = createClient(
+// Service client for database operations (bypasses RLS)
+const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
 );
@@ -25,6 +28,18 @@ const ACCOUNT_TYPE_MAPPING: { [key: string]: string } = {
 
 export async function POST(request: NextRequest) {
   try {
+    // SECURITY: Verify user is authenticated
+    const cookieStore = cookies();
+    const supabaseAuth = createRouteHandlerClient({ cookies: () => cookieStore });
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     const { business_id, forecast_id } = await request.json();
 
     if (!business_id || !forecast_id) {
@@ -34,8 +49,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the Xero connection
-    const { data: connection, error: connError } = await supabase
+    // SECURITY: Verify user has access to this business
+    const { data: businessAccess } = await supabaseAuth
+      .from('businesses')
+      .select('id, owner_id, assigned_coach_id')
+      .eq('id', business_id)
+      .single();
+
+    if (!businessAccess) {
+      return NextResponse.json(
+        { error: 'Business not found or access denied' },
+        { status: 403 }
+      );
+    }
+
+    // Check if user is owner, assigned coach, or team member
+    const isOwner = businessAccess.owner_id === user.id;
+    const isCoach = businessAccess.assigned_coach_id === user.id;
+
+    if (!isOwner && !isCoach) {
+      // Check if user is a team member
+      const { data: teamMember } = await supabaseAuth
+        .from('business_users')
+        .select('id')
+        .eq('business_id', business_id)
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (!teamMember) {
+        return NextResponse.json(
+          { error: 'Access denied' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Get the Xero connection (use admin client to bypass RLS for Xero data)
+    const { data: connection, error: connError } = await supabaseAdmin
       .from('xero_connections')
       .select('*')
       .eq('business_id', business_id)
@@ -50,7 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the forecast details to determine date range
-    const { data: forecast, error: forecastError } = await supabase
+    const { data: forecast, error: forecastError } = await supabaseAdmin
       .from('financial_forecasts')
       .select('*')
       .eq('id', forecast_id)
@@ -102,7 +153,7 @@ export async function POST(request: NextRequest) {
       const newExpiry = new Date();
       newExpiry.setSeconds(newExpiry.getSeconds() + tokens.expires_in);
 
-      await supabase
+      await supabaseAdmin
         .from('xero_connections')
         .update({
           access_token: encrypt(tokens.access_token),
@@ -283,7 +334,7 @@ export async function POST(request: NextRequest) {
 
     // Delete existing Xero-synced lines for this forecast
     console.log('[Sync] Deleting existing Xero lines...');
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await supabaseAdmin
       .from('forecast_pl_lines')
       .delete()
       .eq('forecast_id', forecast_id)
@@ -303,7 +354,7 @@ export async function POST(request: NextRequest) {
       }));
 
       console.log(`[Sync] Inserting ${linesToInsert.length} lines...`);
-      const { data: insertedData, error: insertError } = await supabase
+      const { data: insertedData, error: insertError } = await supabaseAdmin
         .from('forecast_pl_lines')
         .insert(linesToInsert)
         .select();
@@ -322,13 +373,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Update last sync time
-    await supabase
+    await supabaseAdmin
       .from('xero_connections')
       .update({ last_synced_at: new Date().toISOString() })
       .eq('id', connection.id);
 
     // Update the forecast's last sync timestamp
-    await supabase
+    await supabaseAdmin
       .from('financial_forecasts')
       .update({
         last_xero_sync_at: new Date().toISOString()

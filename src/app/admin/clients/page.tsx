@@ -169,7 +169,13 @@ function ClientsContent() {
     setLoading(true)
     try {
       const [clientsResult, coachesResult] = await Promise.all([
-        supabase.from('businesses').select('*').order('created_at', { ascending: false }),
+        // Only load actual client businesses (those with an owner), not team member entries
+        supabase
+          .from('businesses')
+          .select('*')
+          .not('owner_id', 'is', null)      // Must have an owner
+          .not('owner_email', 'is', null)   // Must have owner email
+          .order('created_at', { ascending: false }),
         supabase.from('users').select('id, email, first_name, last_name, system_role').in('system_role', ['coach', 'super_admin'])
       ])
 
