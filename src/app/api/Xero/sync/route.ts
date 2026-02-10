@@ -52,7 +52,7 @@ async function syncXeroData(business_id: string) {
       .from('xero_connections')
       .select('*')
       .eq('business_id', business_id)
-      .single();
+      .maybeSingle();
 
     if (connError || !connection) {
       return NextResponse.json({ error: 'No Xero connection found' }, { status: 404 });

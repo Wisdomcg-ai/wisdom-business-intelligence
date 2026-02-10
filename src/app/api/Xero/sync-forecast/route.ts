@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       .select('*')
       .eq('business_id', business_id)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
 
     if (connError || !connection) {
       return NextResponse.json(

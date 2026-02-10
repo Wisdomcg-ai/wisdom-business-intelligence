@@ -474,9 +474,9 @@ export class ForecastService {
         .select('*')
         .eq('business_id', businessId)
         .eq('is_active', true)
-        .single()
+        .maybeSingle()
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error('[Forecast] Error loading Xero connection:', error)
         return null
       }
