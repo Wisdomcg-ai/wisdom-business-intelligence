@@ -1,7 +1,9 @@
+// Sentry is dynamically imported to avoid webpack patching issues in development
+import type { SeverityLevel } from '@sentry/nextjs'
+
 /**
  * Error tracking utility
- * Provides consistent error handling and reporting across the application
- * Can be extended to integrate with Sentry or other error tracking services
+ * Provides consistent error handling and reporting via Sentry
  */
 
 interface ErrorContext {
@@ -67,8 +69,32 @@ class ErrorTracker {
       this.errorQueue = this.errorQueue.slice(-this.maxQueueSize)
     }
 
-    // In production, you would send to error tracking service here
-    // Example: Sentry.captureException(error, { extra: context })
+    // Send to Sentry in production
+    if (process.env.NODE_ENV === 'production') {
+      import('@sentry/nextjs').then((Sentry) => {
+        const severityMap: Record<string, string> = {
+          critical: 'fatal',
+          high: 'error',
+          medium: 'warning',
+          low: 'info',
+        }
+        const sentryLevel = severityMap[severity] || 'error'
+
+        if (error instanceof Error) {
+          Sentry.captureException(error, {
+            level: sentryLevel as SeverityLevel,
+            tags: { action: context.action },
+            extra: { ...context.metadata, userId: context.userId, route: context.route },
+          })
+        } else {
+          Sentry.captureMessage(String(error), {
+            level: sentryLevel as SeverityLevel,
+            tags: { action: context.action },
+            extra: { ...context.metadata, userId: context.userId, route: context.route },
+          })
+        }
+      }).catch(() => {})
+    }
   }
 
   /**
