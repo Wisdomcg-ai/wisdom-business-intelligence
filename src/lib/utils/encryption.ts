@@ -184,7 +184,9 @@ export function verifyHmacSignature(data: string, signature: string, secret?: st
  */
 export function createSignedOAuthState(payload: object): string {
   const payloadString = JSON.stringify(payload)
-  const encoded = Buffer.from(payloadString).toString('base64')
+  // Use base64url encoding to avoid URL-unsafe characters (+, /, =)
+  // that can get corrupted through OAuth redirect chains
+  const encoded = Buffer.from(payloadString).toString('base64url')
   const signature = createHmacSignature(encoded)
 
   return `${encoded}.${signature}`
@@ -210,7 +212,14 @@ export function verifySignedOAuthState<T = object>(state: string): T | null {
   }
 
   try {
-    const payloadString = Buffer.from(encoded, 'base64').toString('utf8')
+    // Try base64url first (current format), then standard base64 (legacy)
+    let payloadString: string
+    try {
+      payloadString = Buffer.from(encoded, 'base64url').toString('utf8')
+      JSON.parse(payloadString) // validate it parses
+    } catch {
+      payloadString = Buffer.from(encoded, 'base64').toString('utf8')
+    }
     return JSON.parse(payloadString) as T
   } catch {
     return null

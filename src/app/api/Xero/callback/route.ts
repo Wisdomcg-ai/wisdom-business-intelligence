@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
       const errorText = await tokenResponse.text();
       console.error('Token exchange failed:', errorText);
       return NextResponse.redirect(
-        new URL('/integrations?error=token_exchange_failed', request.url)
+        new URL(`${returnTo}?error=token_exchange_failed`, request.url)
       );
     }
 
@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
     if (!connectionsResponse.ok) {
       console.error('Failed to get connections');
       return NextResponse.redirect(
-        new URL('/integrations?error=connections_failed', request.url)
+        new URL(`${returnTo}?error=connections_failed`, request.url)
       );
     }
 
@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
     if (!connections || connections.length === 0) {
       console.error('No Xero organizations found');
       return NextResponse.redirect(
-        new URL('/integrations?error=no_organizations', request.url)
+        new URL(`${returnTo}?error=no_organizations`, request.url)
       );
     }
 
@@ -159,7 +159,7 @@ export async function GET(request: NextRequest) {
     if (!userId) {
       console.error('Could not find owner_id for business');
       return NextResponse.redirect(
-        new URL('/integrations?error=user_not_found', request.url)
+        new URL(`${returnTo}?error=user_not_found`, request.url)
       );
     }
 
@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
     if (dbError) {
       console.error('Database error:', dbError);
       return NextResponse.redirect(
-        new URL('/integrations?error=database_error', request.url)
+        new URL(`${returnTo}?error=database_error`, request.url)
       );
     }
 
