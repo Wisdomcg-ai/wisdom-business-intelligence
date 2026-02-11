@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { encrypt, decrypt } from '@/lib/utils/encryption';
 
 export const dynamic = 'force-dynamic'
@@ -29,8 +28,7 @@ const ACCOUNT_TYPE_MAPPING: { [key: string]: string } = {
 export async function POST(request: NextRequest) {
   try {
     // SECURITY: Verify user is authenticated
-    const cookieStore = cookies();
-    const supabaseAuth = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabaseAuth = await createRouteHandlerClient();
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
 
     if (authError || !user) {
