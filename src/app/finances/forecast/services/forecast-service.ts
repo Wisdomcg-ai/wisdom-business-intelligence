@@ -483,7 +483,7 @@ export class ForecastService {
       }
 
       // Check is_active in JS to avoid potential boolean filter issues at DB level
-      if (!data || data.is_active === false) {
+      if (!data || !data.is_active) {
         return null
       }
 

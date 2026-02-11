@@ -166,10 +166,11 @@ export async function GET(request: NextRequest) {
     // Step 5: Save to database
     console.log('Saving connection to database...');
 
-    // First, deactivate any existing connection for this business
+    // Delete any existing connections for this business to avoid
+    // unique constraint violation on (business_id, tenant_id)
     await supabase
       .from('xero_connections')
-      .update({ is_active: false })
+      .delete()
       .eq('business_id', businessId);
 
     // Insert the new connection with encrypted tokens

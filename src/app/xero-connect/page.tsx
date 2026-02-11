@@ -87,12 +87,13 @@ export default function XeroConnectPage() {
       .from('xero_connections')
       .select('*')
       .eq('business_id', bizId)
-      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (error) {
       console.error('Error loading connection:', error);
-    } else if (data) {
+    } else if (data && data.is_active) {
       setConnection(data);
     }
   }

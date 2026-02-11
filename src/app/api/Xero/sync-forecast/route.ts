@@ -90,10 +90,11 @@ export async function POST(request: NextRequest) {
       .from('xero_connections')
       .select('*')
       .eq('business_id', business_id)
-      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
-    if (connError || !connection) {
+    if (connError || !connection || !connection.is_active) {
       return NextResponse.json(
         { error: 'No active Xero connection found' },
         { status: 404 }
