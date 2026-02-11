@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { Loader2, Save, Sparkles, TrendingUp } from 'lucide-react'
@@ -35,6 +35,7 @@ export default function FinancialForecastPage() {
   const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const autoSyncTriggered = useRef(false)
 
   const [businessId, setBusinessId] = useState('')
   const [userId, setUserId] = useState('')
@@ -123,6 +124,18 @@ export default function FinancialForecastPage() {
       loadInitialData()
     }
   }, [contextLoading, activeBusiness?.id])
+
+  // Auto-sync after Xero connection
+  useEffect(() => {
+    if (autoSyncTriggered.current) return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('success') === 'connected' && xeroConnection && forecast?.id) {
+      autoSyncTriggered.current = true
+      window.history.replaceState({}, '', window.location.pathname)
+      toast.success('Xero connected! Syncing your financial data...')
+      handleSyncFromXero()
+    }
+  }, [xeroConnection, forecast?.id, handleSyncFromXero])
 
   // Keyboard shortcuts
   useKeyboardShortcuts([
