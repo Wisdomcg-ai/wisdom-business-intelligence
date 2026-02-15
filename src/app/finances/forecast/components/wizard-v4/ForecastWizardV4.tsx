@@ -14,6 +14,7 @@ import { Step4Team } from './steps/Step4Team';
 import { Step5OpEx } from './steps/Step5OpEx';
 import { Step6Subscriptions } from './steps/Step6Subscriptions';
 import { Step6CapEx } from './steps/Step6CapEx'; // Now Step 7
+import { Step8GrowthPlan } from './steps/Step8GrowthPlan';
 import { Step8Review } from './steps/Step8Review';
 import { WIZARD_STEPS, PriorYearData, TeamMember, Goals } from './types';
 
@@ -45,6 +46,8 @@ interface ForecastWizardV4Props {
   fiscalYear: number;
   existingForecastId?: string | null;
   existingForecastName?: string | null;
+  initialStep?: number;
+  startFresh?: boolean;
   onComplete: (forecastId: string) => void;
   onClose: () => void;
 }
@@ -55,6 +58,8 @@ export function ForecastWizardV4({
   fiscalYear,
   existingForecastId,
   existingForecastName,
+  initialStep,
+  startFresh,
   onComplete,
   onClose,
 }: ForecastWizardV4Props) {
@@ -87,10 +92,15 @@ export function ForecastWizardV4({
     if (hasLoadedRef.current) return;
     hasLoadedRef.current = true;
 
+    // If starting fresh, clear any saved wizard state first
+    if (startFresh) {
+      clearLocalStorage();
+    }
+
     const loadData = async () => {
       // Check if state was restored from localStorage with meaningful data
-      // If so, skip API fetching and initialization
-      const hasRestoredData = (
+      // If so, skip API fetching and initialization (but not if starting fresh)
+      const hasRestoredData = !startFresh && (
         state.opexLines?.length > 0 ||
         state.revenueLines?.length > 0 ||
         state.teamMembers?.length > 0 ||
@@ -770,6 +780,23 @@ export function ForecastWizardV4({
     loadData();
   }, [businessId]);
 
+  // Navigate to initialStep after loading completes
+  const hasAppliedInitialStep = useRef(false);
+  useEffect(() => {
+    if (!isLoading && initialStep && !hasAppliedInitialStep.current) {
+      hasAppliedInitialStep.current = true;
+      // Small delay to ensure state initialization has settled
+      setTimeout(() => {
+        // Skip Growth Plan step for single-year forecasts
+        if (initialStep === 8 && state.forecastDuration === 1) {
+          actions.goToStep(7);
+        } else {
+          actions.goToStep(initialStep as any);
+        }
+      }, 100);
+    }
+  }, [isLoading, initialStep, actions, state.forecastDuration]);
+
   // Autosave functionality - save draft after 3 seconds of no changes
   const performAutoSave = useCallback(async () => {
     if (isLoading || isSaving || isAutoSaving) return;
@@ -1124,7 +1151,9 @@ export function ForecastWizardV4({
       case 7:
         return <Step6CapEx state={state} actions={actions} fiscalYear={fiscalYear} businessId={businessId} />;
       case 8:
-        return <Step8Review state={state} actions={actions} summary={summary} fiscalYear={fiscalYear} />;
+        return <Step8GrowthPlan state={state} actions={actions} summary={summary} fiscalYear={fiscalYear} />;
+      case 9:
+        return <Step8Review state={state} actions={actions} summary={summary} fiscalYear={fiscalYear} onGenerate={handleComplete} isSaving={isSaving} />;
       default:
         return null;
     }
@@ -1145,7 +1174,7 @@ export function ForecastWizardV4({
 
   const currentStepInfo = WIZARD_STEPS.find((s) => s.step === state.currentStep);
   const isFirstStep = state.currentStep === 1;
-  const isLastStep = state.currentStep === 8;
+  const isLastStep = state.currentStep === 9;
 
   return (
     <div className="fixed inset-0 bg-gray-50 z-50 flex flex-col">
@@ -1332,6 +1361,7 @@ export function ForecastWizardV4({
       {/* Step Bar */}
       <div className="flex-shrink-0 bg-white border-b border-gray-200">
         <StepBar
+          steps={state.forecastDuration === 1 ? WIZARD_STEPS.filter(s => s.step !== 8) : WIZARD_STEPS}
           currentStep={state.currentStep}
           onStepClick={actions.goToStep}
         />
@@ -1371,7 +1401,8 @@ export function ForecastWizardV4({
             {state.currentStep === 5 && "Classify operating expenses as Fixed, Variable, or Ad-hoc"}
             {state.currentStep === 6 && "Audit your subscriptions and identify potential savings"}
             {state.currentStep === 7 && "Plan any capital expenditures and strategic investments"}
-            {state.currentStep === 8 && "Review your complete forecast before generating"}
+            {state.currentStep === 8 && "Review and adjust your multi-year growth assumptions"}
+            {state.currentStep === 9 && "Review your complete forecast before generating"}
           </p>
         </div>
 

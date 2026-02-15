@@ -162,19 +162,27 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
   }, []);
 
   const nextStep = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      currentStep: Math.min(prev.currentStep + 1, 8) as WizardStep,
-      // Lock duration when leaving Step 1
-      durationLocked: prev.currentStep === 1 ? true : prev.durationLocked,
-    }));
+    setState((prev) => {
+      let next = prev.currentStep + 1;
+      // Skip Growth Plan step for single-year forecasts
+      if (next === 8 && prev.forecastDuration === 1) next = 9;
+      if (next > 9) return prev;
+      return {
+        ...prev,
+        currentStep: next as WizardStep,
+        durationLocked: prev.currentStep === 1 ? true : prev.durationLocked,
+      };
+    });
   }, []);
 
   const prevStep = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      currentStep: Math.max(prev.currentStep - 1, 1) as WizardStep,
-    }));
+    setState((prev) => {
+      let next = prev.currentStep - 1;
+      // Skip Growth Plan step for single-year forecasts
+      if (next === 8 && prev.forecastDuration === 1) next = 7;
+      if (next < 1) return prev;
+      return { ...prev, currentStep: next as WizardStep };
+    });
   }, []);
 
   const setActiveYear = useCallback((year: 1 | 2 | 3) => {
@@ -799,24 +807,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         }, 0);
       }
 
-      // If no revenue lines set, use goals
-      if (revenue === 0) {
-        const yearKey = `year${yearNum}` as 'year1' | 'year2' | 'year3';
-        const yearGoals = state.goals[yearKey];
-        revenue = yearGoals?.revenue || 0;
-      }
+      // Revenue comes from detailed Step 3 data only - no goals fallback.
+      // If user hasn't filled in revenue lines yet, show $0 so they know to go back.
 
-      // COGS - handle both variable and fixed cost behaviors
-      const cogsTotal = state.cogsLines.reduce((sum, line) => {
+      // COGS - from detailed Step 3 data only, no goals fallback
+      const cogs = state.cogsLines.reduce((sum, line) => {
         if (line.costBehavior === 'fixed') {
           return sum + (line.monthlyAmount || 0) * 12;
         }
         return sum + (revenue * (line.percentOfRevenue || 0)) / 100;
       }, 0);
-      const yearKey = `year${yearNum}` as 'year1' | 'year2' | 'year3';
-      const yearGoalsForCogs = state.goals[yearKey];
-      const targetGrossMargin = yearGoalsForCogs?.grossProfitPct || 50;
-      const cogs = cogsTotal || revenue * ((100 - targetGrossMargin) / 100);
 
       // Gross Profit
       const grossProfit = revenue - cogs;
@@ -892,8 +892,8 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
 
         // Calculate salary with increases for subsequent years
         const yearsAfterStart = targetFY - hireFY;
-        // Assume 3% annual increase for new hires after their first year
-        const salary = hire.salary * Math.pow(1.03, yearsAfterStart);
+        const hireIncreasePct = (state.defaultOpExIncreasePct || 3) / 100;
+        const salary = hire.salary * Math.pow(1 + hireIncreasePct, yearsAfterStart);
         const superAmount = hire.type !== 'contractor' ? salary * SUPER_RATE : 0;
 
         const monthsWorked = getMonthsInFY(hire.startMonth, targetFY);
@@ -906,17 +906,23 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       const bonusTotal = state.bonuses.reduce((sum, b) => sum + b.amount, 0);
       teamCosts += bonusTotal;
 
-      // OpEx - handle Fixed/Variable/Ad-hoc cost behaviors
-      const yearMultiplierOpex = yearNum === 1 ? 1 : yearNum === 2 ? 1.03 : 1.06;
+      // OpEx - handle all cost behaviors including seasonal
+      const defaultIncrease = state.defaultOpExIncreasePct || 3;
       const opex = state.opexLines.reduce((sum, line) => {
+        // Skip one-time expenses that don't belong to this year
+        if (line.isOneTime && line.oneTimeYear && line.oneTimeYear !== yearNum) return sum;
+        // Skip expenses that haven't started yet
+        if (line.startYear && line.startYear > yearNum) return sum;
+
         let lineAmount = 0;
         switch (line.costBehavior) {
-          case 'fixed':
+          case 'fixed': {
             // Monthly amount × 12, with annual increase applied
             const baseAmount = (line.monthlyAmount || 0) * 12;
-            const increaseFactor = 1 + (line.annualIncreasePct || 0) / 100;
+            const increaseFactor = 1 + (line.annualIncreasePct || defaultIncrease) / 100;
             lineAmount = baseAmount * Math.pow(increaseFactor, yearNum - 1);
             break;
+          }
           case 'variable':
             // Percentage of revenue
             lineAmount = revenue * ((line.percentOfRevenue || 0) / 100);
@@ -925,9 +931,20 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
             // Expected annual amount (same each year)
             lineAmount = line.expectedAnnualAmount || 0;
             break;
+          case 'seasonal': {
+            // Use prior year pattern with growth applied
+            const priorTotal = line.priorYearAnnual || 0;
+            if (line.seasonalTargetAmount && yearNum === 1) {
+              lineAmount = line.seasonalTargetAmount;
+            } else {
+              const growthPct = line.seasonalGrowthPct ?? defaultIncrease;
+              lineAmount = priorTotal * Math.pow(1 + growthPct / 100, yearNum);
+            }
+            break;
+          }
           default:
-            // Fallback to prior year with default increase
-            lineAmount = line.priorYearAnnual * yearMultiplierOpex;
+            // Unclassified - use prior year with default increase
+            lineAmount = (line.priorYearAnnual || 0) * Math.pow(1 + defaultIncrease / 100, yearNum - 1);
         }
         return sum + lineAmount;
       }, 0);
@@ -935,11 +952,12 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       // Depreciation
       const depreciation = state.capexItems.reduce((sum, item) => sum + item.annualDepreciation, 0);
 
-      // Other Expenses
+      // Other Expenses - one-off expenses only count in Y1
       const otherExpenses = state.otherExpenses.reduce((sum, exp) => {
-        if (exp.frequency === 'once') return sum + exp.amount;
+        if (exp.frequency === 'once') return yearNum === 1 ? sum + exp.amount : sum;
         if (exp.frequency === 'monthly') return sum + exp.amount * 12;
         if (exp.frequency === 'quarterly') return sum + exp.amount * 4;
+        if (exp.frequency === 'annual') return sum + exp.amount;
         return sum + exp.amount;
       }, 0);
 

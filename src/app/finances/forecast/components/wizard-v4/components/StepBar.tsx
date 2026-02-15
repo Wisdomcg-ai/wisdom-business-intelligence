@@ -6,14 +6,16 @@ import { WIZARD_STEPS, WizardStep } from '../types';
 interface StepBarProps {
   currentStep: WizardStep;
   onStepClick: (step: WizardStep) => void;
+  steps?: typeof WIZARD_STEPS;
 }
 
-export function StepBar({ currentStep, onStepClick }: StepBarProps) {
+export function StepBar({ currentStep, onStepClick, steps }: StepBarProps) {
+  const displaySteps = steps || WIZARD_STEPS;
   return (
     <div className="px-6 py-3">
       <nav className="flex items-center justify-between" aria-label="Progress">
         <ol className="flex items-center w-full">
-          {WIZARD_STEPS.map((step, index) => {
+          {displaySteps.map((step, index) => {
             const isActive = step.step === currentStep;
             const isCompleted = step.step < currentStep;
             const isClickable = step.step <= currentStep;
@@ -21,7 +23,7 @@ export function StepBar({ currentStep, onStepClick }: StepBarProps) {
             return (
               <li
                 key={step.step}
-                className={`relative flex-1 ${index !== WIZARD_STEPS.length - 1 ? '' : ''}`}
+                className={`relative flex-1 ${index !== displaySteps.length - 1 ? '' : ''}`}
               >
                 <div className="flex items-center">
                   {/* Step circle/indicator */}
@@ -56,7 +58,7 @@ export function StepBar({ currentStep, onStepClick }: StepBarProps) {
                   </span>
 
                   {/* Connector line */}
-                  {index !== WIZARD_STEPS.length - 1 && (
+                  {index !== displaySteps.length - 1 && (
                     <div className="flex-1 mx-4">
                       <div
                         className={`h-0.5 ${

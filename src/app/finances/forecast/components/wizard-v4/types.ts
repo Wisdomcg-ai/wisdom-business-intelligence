@@ -1,7 +1,7 @@
 // Forecast Wizard V4 Types
 // Based on the 8-step CFO methodology with scenario planning support
 
-export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; // 8 = Final Review
+export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9; // 8 = Growth Plan, 9 = Final Review
 export type ForecastDuration = 1 | 2 | 3; // 1yr, 2yr, or 3yr forecast
 
 export type EmploymentType = 'full-time' | 'part-time' | 'casual' | 'contractor';
@@ -371,7 +371,8 @@ export const WIZARD_STEPS = [
   { step: 5, label: 'OpEx', shortLabel: '5' },
   { step: 6, label: 'Subscriptions', shortLabel: '6' },
   { step: 7, label: 'CapEx', shortLabel: '7' },
-  { step: 8, label: 'Review', shortLabel: '8' },
+  { step: 8, label: 'Growth Plan', shortLabel: '8' },
+  { step: 9, label: 'Review', shortLabel: '9' },
 ] as const;
 
 // Superannuation rate (12% as of 1 July 2025)
