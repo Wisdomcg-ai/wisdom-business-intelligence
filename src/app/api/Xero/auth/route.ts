@@ -24,6 +24,7 @@ const SCOPES = [
   'accounting.contacts.read',
   'payroll.employees',        // Payroll employee access (AU)
   'payroll.employees.read',   // Read payroll employees
+  'payroll.payruns.read',     // Read pay runs and payslips
   'payroll.settings',         // Payroll settings access
   'payroll.settings.read'     // Read payroll settings
 ].join(' ');

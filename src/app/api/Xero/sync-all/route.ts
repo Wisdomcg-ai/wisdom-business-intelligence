@@ -93,20 +93,93 @@ async function syncConnection(connection: any): Promise<SyncResult> {
       };
     }
 
-    // Calculate date range: last 24 months for comprehensive historical data
-    const toDate = new Date();
-    const fromDate = new Date();
-    fromDate.setMonth(fromDate.getMonth() - 24);
+    // Fetch Chart of Accounts to get account codes (P&L reports don't include them)
+    const accountCodeLookup = new Map<string, string>();
+    try {
+      const coaResp = await fetch(
+        `https://api.xero.com/api.xro/2.0/Accounts?where=${encodeURIComponent('Type=="REVENUE"||Type=="OTHERINCOME"||Type=="DIRECTCOSTS"||Type=="EXPENSE"||Type=="OVERHEADS"')}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'xero-tenant-id': connection.tenant_id,
+            'Accept': 'application/json',
+          },
+        }
+      );
+      if (coaResp.ok) {
+        const coaData = await coaResp.json();
+        for (const acc of coaData.Accounts || []) {
+          if (acc.Name && acc.Code) accountCodeLookup.set(acc.Name, acc.Code);
+        }
+      }
+    } catch {
+      // Non-fatal — codes won't be set
+    }
 
-    const fromDateStr = fromDate.toISOString().split('T')[0];
-    const toDateStr = toDate.toISOString().split('T')[0];
+    // Calculate date range: last 24 months in two batches
+    // Xero Reports API allows max 11 periods per request for MONTH timeframe
+    const now = new Date();
+    const plLines: any[] = [];
+    const allAccounts = new Map<string, any>();
+    let monthColumns: string[] = [];
 
-    console.log(`[Xero Sync] Syncing ${tenantName}: ${fromDateStr} to ${toDateStr}`);
+    // Helper to parse a single P&L report response
+    const parsePLResponse = (report: any) => {
+      const rows = report.Rows || [];
+      const headerRow = rows.find((r: any) => r.RowType === 'Header');
+      const cols = headerRow?.Cells?.slice(1)?.map((c: any) => c.Value) || [];
 
-    // Fetch P&L report from Xero
-    const reportUrl = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${fromDateStr}&toDate=${toDateStr}&periods=24&timeframe=MONTH`;
+      for (const section of rows) {
+        if (section.RowType !== 'Section' || !section.Rows) continue;
+        const sectionTitle = section.Title || 'Other';
 
-    const reportResponse = await fetch(reportUrl, {
+        for (const row of section.Rows) {
+          if (row.RowType !== 'Row' || !row.Cells) continue;
+          const accountName = row.Cells[0]?.Value;
+          if (!accountName) continue;
+
+          // Skip Xero summary/calculated rows (Gross Profit, Net Profit, etc.)
+          if (SUMMARY_ROW_NAMES.has(accountName.toLowerCase())) continue;
+
+          const existing = allAccounts.get(accountName) || {
+            business_id: businessId,
+            account_name: accountName,
+            account_code: accountCodeLookup.get(accountName) || null,
+            account_type: mapSectionToType(sectionTitle),
+            section: sectionTitle,
+            monthly_values: {} as Record<string, number>,
+            updated_at: new Date().toISOString()
+          };
+
+          for (let i = 1; i < row.Cells.length && i <= cols.length; i++) {
+            const monthKey = cols[i - 1];
+            const value = parseFloat(row.Cells[i]?.Value || '0');
+            if (monthKey && !isNaN(value)) {
+              const monthDate = parseMonthString(monthKey);
+              if (monthDate) {
+                existing.monthly_values[monthDate] = value;
+              }
+            }
+          }
+
+          allAccounts.set(accountName, existing);
+        }
+      }
+
+      return cols.length;
+    };
+
+    // Request 1: Recent 12 months (periods=11)
+    // Use single-month base period (current month) so each column is one month
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // 1-based
+    const recentFrom = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+    const recentTo = new Date(currentYear, currentMonth, 0).toISOString().split('T')[0]; // last day of current month
+
+    console.log(`[Xero Sync] Syncing ${tenantName}: base month ${recentFrom}`);
+
+    const reportUrl1 = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${recentFrom}&toDate=${recentTo}&periods=11&timeframe=MONTH`;
+    const reportResponse1 = await fetch(reportUrl1, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'xero-tenant-id': connection.tenant_id,
@@ -114,21 +187,21 @@ async function syncConnection(connection: any): Promise<SyncResult> {
       }
     });
 
-    if (!reportResponse.ok) {
-      const errorText = await reportResponse.text();
+    if (!reportResponse1.ok) {
+      const errorText = await reportResponse1.text();
       console.error(`[Xero Sync] P&L fetch failed for ${tenantName}:`, errorText);
       return {
         business_id: businessId,
         tenant_name: tenantName,
         status: 'failed',
-        message: `API error: ${reportResponse.status}`
+        message: `API error: ${reportResponse1.status}`
       };
     }
 
-    const reportData = await reportResponse.json();
-    const report = reportData?.Reports?.[0];
+    const reportData1 = await reportResponse1.json();
+    const report1 = reportData1?.Reports?.[0];
 
-    if (!report) {
+    if (!report1) {
       return {
         business_id: businessId,
         tenant_name: tenantName,
@@ -137,55 +210,49 @@ async function syncConnection(connection: any): Promise<SyncResult> {
       };
     }
 
-    // Parse and store P&L lines
-    const plLines: any[] = [];
-    const rows = report.Rows || [];
+    let totalMonthCols = parsePLResponse(report1);
 
-    // Get column headers (months)
-    let monthColumns: string[] = [];
-    const headerRow = rows.find((r: any) => r.RowType === 'Header');
-    if (headerRow?.Cells) {
-      monthColumns = headerRow.Cells.slice(1).map((cell: any) => cell.Value);
-    }
+    // Request 2: Older 12 months (non-fatal if it fails)
+    await new Promise(resolve => setTimeout(resolve, 300));
 
-    // Process each section
-    for (const section of rows) {
-      if (section.RowType !== 'Section' || !section.Rows) continue;
+    // Base period = the month that is 12 months before current month (single month)
+    const olderDate = new Date(currentYear, currentMonth - 13, 1);
+    const olderYear = olderDate.getFullYear();
+    const olderMonthNum = olderDate.getMonth() + 1;
+    const olderFrom = `${olderYear}-${String(olderMonthNum).padStart(2, '0')}-01`;
+    const olderTo = new Date(olderYear, olderMonthNum, 0).toISOString().split('T')[0]; // last day of that month
 
-      const sectionTitle = section.Title || 'Other';
-
-      for (const row of section.Rows) {
-        if (row.RowType !== 'Row' || !row.Cells) continue;
-
-        const accountName = row.Cells[0]?.Value;
-        if (!accountName) continue;
-
-        // Get values for each month
-        const monthlyValues: Record<string, number> = {};
-        for (let i = 1; i < row.Cells.length && i <= monthColumns.length; i++) {
-          const monthKey = monthColumns[i - 1];
-          const value = parseFloat(row.Cells[i]?.Value || '0');
-          if (monthKey && !isNaN(value)) {
-            // Convert month name to YYYY-MM format
-            const monthDate = parseMonthString(monthKey);
-            if (monthDate) {
-              monthlyValues[monthDate] = value;
-            }
-          }
+    const reportUrl2 = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${olderFrom}&toDate=${olderTo}&periods=11&timeframe=MONTH`;
+    try {
+      const reportResponse2 = await fetch(reportUrl2, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'xero-tenant-id': connection.tenant_id,
+          'Accept': 'application/json'
         }
+      });
 
-        if (Object.keys(monthlyValues).length > 0) {
-          plLines.push({
-            business_id: businessId,
-            account_name: accountName,
-            account_type: mapSectionToType(sectionTitle),
-            section: sectionTitle,
-            monthly_values: monthlyValues,
-            updated_at: new Date().toISOString()
-          });
+      if (reportResponse2.ok) {
+        const reportData2 = await reportResponse2.json();
+        const report2 = reportData2?.Reports?.[0];
+        if (report2) {
+          totalMonthCols += parsePLResponse(report2);
         }
       }
+    } catch (err) {
+      console.warn(`[Xero Sync] Older period fetch failed for ${tenantName}, continuing with recent data`);
     }
+
+    // Convert map to array for insert
+    for (const entry of allAccounts.values()) {
+      if (Object.keys(entry.monthly_values).length > 0) {
+        plLines.push(entry);
+      }
+    }
+
+    monthColumns = Array.from(new Set(
+      plLines.flatMap(l => Object.keys(l.monthly_values))
+    ));
 
     // Upsert P&L lines to database
     if (plLines.length > 0) {
@@ -195,13 +262,27 @@ async function syncConnection(connection: any): Promise<SyncResult> {
         .delete()
         .eq('business_id', businessId);
 
-      // Insert new lines
-      const { error: insertError } = await supabase
+      // Insert new lines (fallback without account_code if column not yet added)
+      const { error: firstError } = await supabase
         .from('xero_pl_lines')
         .insert(plLines);
 
-      if (insertError) {
-        console.error(`[Xero Sync] Insert failed for ${tenantName}:`, insertError);
+      if (firstError?.message?.includes('account_code')) {
+        const linesWithoutCode = plLines.map(({ account_code, ...rest }: any) => rest);
+        const { error: retryError } = await supabase
+          .from('xero_pl_lines')
+          .insert(linesWithoutCode);
+        if (retryError) {
+          console.error(`[Xero Sync] Insert failed for ${tenantName}:`, retryError);
+          return {
+            business_id: businessId,
+            tenant_name: tenantName,
+            status: 'failed',
+            message: 'Database insert failed'
+          };
+        }
+      } else if (firstError) {
+        console.error(`[Xero Sync] Insert failed for ${tenantName}:`, firstError);
         return {
           business_id: businessId,
           tenant_name: tenantName,
@@ -255,13 +336,30 @@ function parseMonthString(monthStr: string): string | null {
 // Map Xero section titles to account types
 function mapSectionToType(section: string): string {
   const lower = section.toLowerCase();
+  // Check 'other income/expense' BEFORE generic 'income/expense' to avoid false matches
+  if (lower.includes('other income')) return 'other_income';
+  if (lower.includes('other expense')) return 'other_expense';
   if (lower.includes('income') || lower.includes('revenue')) return 'revenue';
   if (lower.includes('cost of') || lower.includes('cogs') || lower.includes('direct')) return 'cogs';
   if (lower.includes('expense') || lower.includes('operating')) return 'opex';
-  if (lower.includes('other income')) return 'other_income';
-  if (lower.includes('other expense')) return 'other_expense';
-  return 'other';
+  // Custom Xero sections (Think Bigger, VCFO, etc.) are typically expense categories
+  return 'opex';
 }
+
+// Xero summary/calculated rows that should NOT be stored as account lines
+const SUMMARY_ROW_NAMES = new Set([
+  'gross profit',
+  'net profit',
+  'total income',
+  'total revenue',
+  'total cost of sales',
+  'total direct costs',
+  'total operating expenses',
+  'total expenses',
+  'total other income',
+  'total other expenses',
+  'operating profit',
+]);
 
 export async function GET(request: NextRequest) {
   try {

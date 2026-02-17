@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { normalizeNameSorted } from '@/lib/utils/account-matching';
 import type {
   WizardContext,
   ForecastDecision,
@@ -82,7 +83,8 @@ function distributeAnnualAmount(
 function generatePLLines(
   context: WizardContext,
   decisions: ForecastDecision[],
-  months: string[]
+  months: string[],
+  xeroWagesAccountNames?: { cogs?: string; opex?: string }
 ): PLLine[] {
   const lines: PLLine[] = [];
   const yearType = context.goals?.year_type || 'FY';
@@ -140,7 +142,7 @@ function generatePLLines(
   const cogsWagesTotal = cogsTeam.reduce((sum, e) => sum + ((e.annual_salary || 0) * 1.12), 0);
   if (cogsWagesTotal > 0) {
     lines.push({
-      account_name: 'Wages - Direct',
+      account_name: xeroWagesAccountNames?.cogs || 'Wages - Direct',
       account_code: '5100',
       category: 'Cost of Sales',
       account_type: 'COGS',
@@ -159,7 +161,7 @@ function generatePLLines(
   const opexWagesTotal = opexTeam.reduce((sum, e) => sum + ((e.annual_salary || 0) * 1.12), 0);
   if (opexWagesTotal > 0) {
     lines.push({
-      account_name: 'Wages - Admin',
+      account_name: xeroWagesAccountNames?.opex || 'Wages - Admin',
       account_code: '6100',
       category: 'Operating Expenses',
       account_type: 'EXPENSE',
@@ -295,10 +297,12 @@ function generateEmployees(
 
   // Add existing team
   (context.current_team || []).forEach(emp => {
+    const cls = emp.classification || 'opex';
     employees.push({
       employee_name: emp.full_name,
       position: emp.job_title,
-      classification: emp.classification || 'opex',
+      classification: cls,
+      category: cls === 'cogs' ? 'Wages COGS' : 'Wages Admin',
       annual_salary: emp.annual_salary,
       start_date: emp.start_date,
       is_active: emp.is_active
@@ -313,12 +317,17 @@ function generateEmployees(
     const classification = (hire.decision_data?.classification as 'opex' | 'cogs') || 'opex';
     const startMonth = (hire.decision_data?.start_month as string) || '';
 
+    // start_date column is date type — append -01 if only YYYY-MM
+    const startDate = startMonth
+      ? (startMonth.length === 7 ? `${startMonth}-01` : startMonth)
+      : null;
     employees.push({
       employee_name: role,
       position: role,
       classification,
+      category: classification === 'cogs' ? 'Wages COGS' : 'Wages Admin',
       annual_salary: salary,
-      start_date: startMonth,
+      start_date: startDate ?? undefined,
       is_active: true
     });
   });
@@ -411,9 +420,35 @@ export async function POST(request: NextRequest) {
       forecastId = created.id;
     }
 
+    // Look up actual Xero wages account names so forecast lines match
+    let xeroWagesAccountNames: { cogs?: string; opex?: string } | undefined
+    const { data: xeroPlLines } = await supabase
+      .from('xero_pl_lines')
+      .select('account_name, account_code')
+      .eq('business_id', businessId)
+    if (xeroPlLines) {
+      // Match by normalized name (word-order independent)
+      const wagesKeys = ['wages', 'salaries'].sort().join(' ')
+      for (const line of xeroPlLines) {
+        const sorted = normalizeNameSorted(line.account_name)
+        if (sorted.includes(wagesKeys) || sorted.includes('and salaries wages')) {
+          // Use account_code to distinguish COGS vs OpEx
+          const code = line.account_code || ''
+          if (code.startsWith('5')) {
+            xeroWagesAccountNames = { ...xeroWagesAccountNames, cogs: line.account_name }
+          } else {
+            xeroWagesAccountNames = { ...xeroWagesAccountNames, opex: line.account_name }
+          }
+        }
+      }
+      if (xeroWagesAccountNames) {
+        console.log(`[Generate] Using Xero wages account names:`, xeroWagesAccountNames)
+      }
+    }
+
     // Generate P&L lines
     const months = generateMonthKeys(fiscalYear, yearType);
-    const plLines = generatePLLines(context, decisions, months);
+    const plLines = generatePLLines(context, decisions, months, xeroWagesAccountNames);
 
     // Delete existing P&L lines and insert new ones
     await supabase
