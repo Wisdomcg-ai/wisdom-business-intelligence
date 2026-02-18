@@ -27,7 +27,6 @@ export interface ReportSections {
   revenue_detail: boolean
   cogs_detail: boolean
   opex_detail: boolean
-  contractor_summary: boolean
   payroll_detail: boolean
   subscription_detail: boolean
   balance_sheet: boolean
@@ -55,7 +54,6 @@ export const DEFAULT_SECTIONS: ReportSections = {
   revenue_detail: true,
   cogs_detail: true,
   opex_detail: true,
-  contractor_summary: false,
   payroll_detail: false,
   subscription_detail: false,
   balance_sheet: false,
@@ -276,6 +274,7 @@ export interface VarianceCommentary {
 export interface SubscriptionVendorLine {
   vendor_name: string
   vendor_key: string
+  prior_month_actual: number
   actual: number
   budget: number
   variance: number
@@ -285,6 +284,7 @@ export interface SubscriptionAccountGroup {
   account_code: string
   account_name: string
   vendors: SubscriptionVendorLine[]
+  total_prior_month: number
   total_actual: number
   total_budget: number
   total_variance: number
@@ -292,7 +292,8 @@ export interface SubscriptionAccountGroup {
 
 export interface SubscriptionDetailData {
   accounts: SubscriptionAccountGroup[]
-  grand_total: { actual: number; budget: number; variance: number }
+  grand_total: { prior_month: number; actual: number; budget: number; variance: number }
+  report_month: string
 }
 
 // ============================================

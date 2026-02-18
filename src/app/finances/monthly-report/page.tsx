@@ -1,0 +1,671 @@
+'use client'
+
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useBusinessContext } from '@/hooks/useBusinessContext'
+import { createClient } from '@/lib/supabase/client'
+import { Loader2, BarChart3, Settings, Download, Save } from 'lucide-react'
+import { toast } from 'sonner'
+import PageHeader from '@/components/ui/PageHeader'
+import MonthlyReportTabs from './components/MonthlyReportTabs'
+import MonthSelector from './components/MonthSelector'
+import ReconciliationGate from './components/ReconciliationGate'
+import DraftWatermark from './components/DraftWatermark'
+import BudgetVsActualDashboard from './components/BudgetVsActualDashboard'
+import AccountMappingEditor from './components/AccountMappingEditor'
+import ReportHistory from './components/ReportHistory'
+import ReportSettingsPanel from './components/ReportSettingsPanel'
+import FullYearProjectionTable from './components/FullYearProjectionTable'
+import TrendCharts from './components/TrendCharts'
+import XeroConnectionBanner from './components/XeroConnectionBanner'
+import SubscriptionAnalysisTab from './components/SubscriptionAnalysisTab'
+import WagesAnalysisTab from './components/WagesAnalysisTab'
+import { useMonthlyReport } from './hooks/useMonthlyReport'
+import { useFullYearReport } from './hooks/useFullYearReport'
+import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
+import { useWagesDetail } from './hooks/useWagesDetail'
+import { useXeroConnection } from './hooks/useXeroConnection'
+import { useAccountMappings } from './hooks/useAccountMappings'
+import { useReconciliation } from './hooks/useReconciliation'
+import { loadSettings, getCurrentFiscalYear, getDefaultReportMonth } from './services/monthly-report-service'
+import { MonthlyReportPDFService } from './services/monthly-report-pdf-service'
+import type { ReportTab, MonthlyReportSettings, VarianceCommentary, GeneratedReport } from './types'
+
+export default function MonthlyReportPage() {
+  const supabase = createClient()
+  const searchParams = useSearchParams()
+  const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
+  const [mounted, setMounted] = useState(false)
+  const [isInitializing, setIsInitializing] = useState(true)
+  const hasTriggeredOAuthSync = useRef(false)
+
+  const [businessId, setBusinessId] = useState('')
+  const [userId, setUserId] = useState('')
+  const [fiscalYear, setFiscalYear] = useState(getCurrentFiscalYear())
+  const [selectedMonth, setSelectedMonth] = useState(getDefaultReportMonth())
+  const [settings, setSettings] = useState<MonthlyReportSettings | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
+
+  // Commentary state
+  const [commentary, setCommentary] = useState<VarianceCommentary | undefined>(undefined)
+  const [commentaryLoading, setCommentaryLoading] = useState(false)
+
+  const [activeTab, setActiveTab] = useState<ReportTab>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('monthly-report-active-tab')
+      if (saved && ['report', 'full-year', 'trends', 'subscriptions', 'wages', 'mapping', 'history'].includes(saved)) {
+        return saved as ReportTab
+      }
+    }
+    return 'report'
+  })
+
+  // Hooks
+  const {
+    report,
+    isLoading: reportLoading,
+    error: reportError,
+    generateReport,
+    saveSnapshot,
+    loadSnapshot,
+  } = useMonthlyReport(businessId)
+
+  const {
+    fullYearReport,
+    isLoading: fullYearLoading,
+    error: fullYearError,
+    loadFullYear,
+  } = useFullYearReport(businessId)
+
+  const {
+    subscriptionDetail,
+    isLoading: subscriptionLoading,
+    error: subscriptionError,
+    loadSubscriptionDetail,
+    clear: clearSubscription,
+  } = useSubscriptionDetail(businessId)
+
+  const {
+    wagesDetail,
+    isLoading: wagesLoading,
+    error: wagesError,
+    loadWagesDetail,
+    clear: clearWages,
+  } = useWagesDetail(businessId)
+
+  const {
+    mappings,
+    unmapped,
+    isLoading: mappingsLoading,
+    loadMappings,
+    saveMapping,
+    confirmAll,
+    autoMap,
+  } = useAccountMappings(businessId)
+
+  const {
+    reconciliation,
+    isLoading: reconLoading,
+    checkReconciliation,
+  } = useReconciliation(businessId)
+
+  const {
+    xeroConnection,
+    isExpired: xeroExpired,
+    isLoading: xeroLoading,
+    isSyncing: xeroSyncing,
+    handleConnect: xeroConnect,
+    handleSync: xeroSync,
+    handleManage: xeroManage,
+  } = useXeroConnection(businessId)
+
+  // Save active tab
+  useEffect(() => {
+    if (mounted) {
+      localStorage.setItem('monthly-report-active-tab', activeTab)
+    }
+  }, [activeTab, mounted])
+
+  // Initialize
+  useEffect(() => {
+    setMounted(true)
+    if (!contextLoading) {
+      initializePage()
+    }
+  }, [contextLoading, activeBusiness?.id])
+
+  const initializePage = async () => {
+    try {
+      setIsInitializing(true)
+
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setIsInitializing(false)
+        return
+      }
+      setUserId(user.id)
+
+      let bizId: string
+      if (activeBusiness?.id) {
+        bizId = activeBusiness.id
+      } else {
+        const { data: business } = await supabase
+          .from('businesses')
+          .select('id')
+          .eq('owner_id', user.id)
+          .maybeSingle()
+        bizId = business?.id || user.id
+      }
+      setBusinessId(bizId)
+
+      // Load settings
+      const s = await loadSettings(bizId)
+      setSettings(s)
+
+      setIsInitializing(false)
+    } catch (err) {
+      console.error('[MonthlyReport] Init error:', err)
+      setIsInitializing(false)
+    }
+  }
+
+  // Load mappings when businessId is set
+  useEffect(() => {
+    if (businessId) {
+      loadMappings()
+    }
+  }, [businessId, loadMappings])
+
+  // Check reconciliation when month changes
+  useEffect(() => {
+    if (businessId && selectedMonth) {
+      checkReconciliation(selectedMonth)
+    }
+  }, [businessId, selectedMonth, checkReconciliation])
+
+  // Auto-redirect to mapping tab if no mappings
+  useEffect(() => {
+    if (!mappingsLoading && businessId && mappings.length === 0 && unmapped.length > 0) {
+      setActiveTab('mapping')
+    }
+  }, [mappingsLoading, mappings.length, unmapped.length, businessId])
+
+  // Auto-sync P&L data after returning from Xero OAuth
+  useEffect(() => {
+    if (
+      !hasTriggeredOAuthSync.current &&
+      searchParams.get('success') === 'connected' &&
+      businessId &&
+      xeroConnection &&
+      !xeroSyncing
+    ) {
+      hasTriggeredOAuthSync.current = true
+      toast.info('Syncing P&L data from Xero...')
+
+      const runSync = async () => {
+        const success = await xeroSync()
+        if (success) {
+          await loadMappings()
+          // Auto-map if no mappings exist yet
+          if (mappings.length === 0) {
+            try {
+              await autoMap()
+              toast.success('Accounts auto-mapped from Xero data')
+            } catch {
+              // Auto-map failure is non-critical
+            }
+          }
+        }
+      }
+      runSync()
+
+      // Clean up URL params
+      window.history.replaceState({}, '', '/finances/monthly-report')
+    }
+  }, [searchParams, businessId, xeroConnection, xeroSyncing, xeroSync, loadMappings, mappings.length, autoMap])
+
+  // Lazy load full year data when tab is active
+  useEffect(() => {
+    if ((activeTab === 'full-year' || activeTab === 'trends') && !fullYearReport && !fullYearLoading && !fullYearError && businessId) {
+      loadFullYear(fiscalYear)
+    }
+  }, [activeTab, fullYearReport, fullYearLoading, fullYearError, businessId, fiscalYear, loadFullYear])
+
+  // Lazy load subscription detail when tab is active
+  useEffect(() => {
+    if (activeTab === 'subscriptions' && !subscriptionDetail && !subscriptionLoading && !subscriptionError && businessId && settings) {
+      const codes = settings.subscription_account_codes || []
+      if (codes.length > 0) {
+        loadSubscriptionDetail(selectedMonth, codes)
+      }
+    }
+  }, [activeTab, subscriptionDetail, subscriptionLoading, subscriptionError, businessId, selectedMonth, settings, loadSubscriptionDetail])
+
+  // Lazy load wages detail when tab is active
+  useEffect(() => {
+    if (activeTab === 'wages' && !wagesDetail && !wagesLoading && !wagesError && businessId && settings) {
+      const names = settings.wages_account_names || []
+      if (names.length > 0) {
+        loadWagesDetail(selectedMonth, fiscalYear, names, settings.budget_forecast_id)
+      }
+    }
+  }, [activeTab, wagesDetail, wagesLoading, wagesError, businessId, selectedMonth, fiscalYear, settings, loadWagesDetail])
+
+  // Fetch commentary after report generation — expenses over budget only
+  const fetchCommentary = useCallback(async (reportData: GeneratedReport) => {
+    if (!businessId) return
+    setCommentaryLoading(true)
+
+    try {
+      // Only expense sections (COGS, OpEx, Other Expenses) where actual > budget (variance_amount < 0)
+      const expenseSections = ['Cost of Sales', 'Operating Expenses', 'Other Expenses']
+      const expenseLines: { account_name: string; xero_account_name: string }[] = []
+
+      for (const section of reportData.sections) {
+        if (!expenseSections.includes(section.category)) continue
+        for (const line of section.lines) {
+          // variance_amount < 0 means actual > budget for expenses (budget - actual convention)
+          if (line.variance_amount < 0 && !line.is_budget_only) {
+            expenseLines.push({
+              account_name: line.account_name,
+              xero_account_name: line.xero_account_name || line.account_name,
+            })
+          }
+        }
+      }
+
+      if (expenseLines.length === 0) {
+        setCommentary(undefined)
+        setCommentaryLoading(false)
+        return
+      }
+
+      const res = await fetch('/api/monthly-report/commentary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          business_id: businessId,
+          report_month: reportData.report_month,
+          expense_lines: expenseLines,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success && data.commentary && Object.keys(data.commentary).length > 0) {
+        setCommentary(data.commentary)
+      }
+    } catch (err) {
+      console.error('[MonthlyReport] Commentary fetch error:', err)
+    } finally {
+      setCommentaryLoading(false)
+    }
+  }, [businessId])
+
+  const handleGenerateReport = useCallback(async (forceDraft?: boolean) => {
+    const isDraft = forceDraft || (reconciliation ? !reconciliation.is_clean : false)
+    const result = await generateReport(selectedMonth, fiscalYear, isDraft)
+
+    if (result && 'needsMappings' in result && result.needsMappings) {
+      setActiveTab('mapping')
+      toast.info('Please set up account mappings first')
+      return
+    }
+
+    if (result) {
+      toast.success('Report generated')
+      // Fetch commentary asynchronously (non-blocking)
+      fetchCommentary(result)
+    }
+  }, [selectedMonth, fiscalYear, reconciliation, generateReport, fetchCommentary])
+
+  const handleMonthChange = (month: string) => {
+    setSelectedMonth(month)
+    // Clear data when month changes
+    setCommentary(undefined)
+    clearSubscription()
+    clearWages()
+  }
+
+  const handleCommentaryChange = (accountName: string, note: string) => {
+    setCommentary(prev => {
+      const existing = prev?.[accountName]
+      return {
+        ...(prev || {}),
+        [accountName]: {
+          vendor_summary: existing?.vendor_summary || [],
+          coach_note: note,
+          is_edited: true,
+        },
+      }
+    })
+  }
+
+  const handleSaveSnapshot = async (status: 'draft' | 'final' = 'draft') => {
+    if (!report) return
+    try {
+      await saveSnapshot(report, { status, generatedBy: userId, commentary })
+      toast.success(status === 'final' ? 'Report finalised' : 'Draft saved')
+    } catch (err) {
+      toast.error('Failed to save report')
+    }
+  }
+
+  const [isExporting, setIsExporting] = useState(false)
+
+  const handleExportPDF = async () => {
+    if (!report) return
+    setIsExporting(true)
+    toast.info('Preparing PDF...')
+
+    try {
+      // Eagerly load full year data if not yet loaded
+      let fyReport = fullYearReport
+      if (!fyReport && businessId) {
+        fyReport = await loadFullYear(fiscalYear)
+      }
+
+      // Eagerly load subscription detail if configured but not yet loaded
+      let subDetail = subscriptionDetail
+      if (!subDetail && settings?.sections.subscription_detail && businessId) {
+        const codes = settings.subscription_account_codes || []
+        if (codes.length > 0) {
+          subDetail = await loadSubscriptionDetail(selectedMonth, codes)
+        }
+      }
+
+      // Eagerly load wages detail if configured but not yet loaded
+      let wDetail = wagesDetail
+      if (!wDetail && settings?.sections.payroll_detail && businessId) {
+        const names = settings.wages_account_names || []
+        if (names.length > 0) {
+          wDetail = await loadWagesDetail(selectedMonth, fiscalYear, names, settings.budget_forecast_id)
+        }
+      }
+
+      const pdf = new MonthlyReportPDFService(report, {
+        commentary,
+        fullYearReport: fyReport || undefined,
+        subscriptionDetail: subDetail || undefined,
+        wagesDetail: wDetail || undefined,
+      })
+      const doc = pdf.generate()
+      const monthLabel = new Date(report.report_month + '-01')
+        .toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })
+        .replace(' ', '-')
+      doc.save(`Monthly-Report-${monthLabel}.pdf`)
+      toast.success('PDF exported')
+    } catch (err) {
+      console.error('[MonthlyReport] PDF export error:', err)
+      toast.error('Failed to export PDF')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleLoadHistorySnapshot = async (reportMonth: string) => {
+    setSelectedMonth(reportMonth)
+    const snapshot = await loadSnapshot(reportMonth)
+    if (snapshot) {
+      // Restore commentary from snapshot if available
+      if (snapshot.commentary) {
+        setCommentary(snapshot.commentary)
+      } else {
+        setCommentary(undefined)
+      }
+      setActiveTab('report')
+      toast.success(`Loaded ${reportMonth} report`)
+    } else {
+      // No snapshot, generate fresh
+      setCommentary(undefined)
+      setActiveTab('report')
+      handleGenerateReport()
+    }
+  }
+
+  // Loading state
+  if (!mounted || isInitializing) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
+          <p className="text-gray-600">Loading monthly report...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Draft watermark */}
+      {report?.is_draft && <DraftWatermark />}
+
+      {/* Page Header */}
+      <PageHeader
+        variant="banner"
+        title="Monthly Report"
+        subtitle={report ? `FY${fiscalYear}` : undefined}
+        icon={BarChart3}
+        actions={
+          <>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-brand-navy hover:bg-brand-navy-800 rounded-lg transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              <span className="hidden sm:inline">Settings</span>
+            </button>
+
+            {report && (
+              <>
+                <button
+                  onClick={() => handleSaveSnapshot('draft')}
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-brand-orange hover:bg-brand-orange-600 rounded-lg transition-colors"
+                >
+                  <Save className="w-4 h-4" />
+                  <span className="hidden sm:inline">Save</span>
+                </button>
+                <button
+                  onClick={handleExportPDF}
+                  disabled={isExporting}
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'Export PDF'}</span>
+                </button>
+              </>
+            )}
+          </>
+        }
+      />
+
+      <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
+        {/* Month Selector */}
+        <MonthSelector
+          selectedMonth={selectedMonth}
+          fiscalYear={fiscalYear}
+          onChange={handleMonthChange}
+        />
+
+        {/* Xero Connection Banner */}
+        <XeroConnectionBanner
+          xeroConnection={xeroConnection}
+          isExpired={xeroExpired}
+          isLoading={xeroLoading}
+          isSyncing={xeroSyncing}
+          onConnect={xeroConnect}
+          onSync={async () => {
+            const success = await xeroSync()
+            if (success) {
+              // Reload account mappings after sync
+              loadMappings()
+            }
+          }}
+          onManage={xeroManage}
+        />
+
+        {/* Reconciliation Gate (only on report tab) */}
+        {activeTab === 'report' && (
+          <ReconciliationGate
+            reconciliation={reconciliation}
+            isLoading={reconLoading}
+            selectedMonth={selectedMonth}
+            onProceedDraft={() => handleGenerateReport(true)}
+          />
+        )}
+
+        {/* Generate Report Button */}
+        {activeTab === 'report' && !report && mappings.length > 0 && (
+          <div className="mb-6 text-center">
+            <button
+              onClick={() => handleGenerateReport()}
+              disabled={reportLoading}
+              className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium text-white bg-brand-orange hover:bg-brand-orange-600 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {reportLoading ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+              ) : (
+                <><BarChart3 className="w-4 h-4" /> Generate Report</>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Error */}
+        {reportError && activeTab === 'report' && (
+          <div className="mb-6 p-4 bg-red-50 rounded-lg border border-red-200">
+            <p className="text-sm text-red-800">{reportError}</p>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <MonthlyReportTabs
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          hasUnmapped={unmapped.length > 0}
+          showSubscriptions={!!(settings?.sections.subscription_detail && (settings?.subscription_account_codes || []).length > 0)}
+          showWages={!!(settings?.sections.payroll_detail && (settings?.wages_account_names || []).length > 0)}
+        />
+
+        {/* Tab Content */}
+        {activeTab === 'report' && report && (
+          <BudgetVsActualDashboard
+            report={report}
+            commentary={commentary}
+            commentaryLoading={commentaryLoading}
+            onCommentaryChange={handleCommentaryChange}
+            onTabChange={setActiveTab}
+          />
+        )}
+
+        {activeTab === 'report' && !report && mappings.length === 0 && !mappingsLoading && (
+          <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+            <BarChart3 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <h3 className="text-lg font-medium text-gray-900">Set Up Account Mappings</h3>
+            <p className="text-sm text-gray-500 mt-1 max-w-md mx-auto">
+              Before generating a report, you need to map your Xero accounts to report categories.
+            </p>
+            <button
+              onClick={() => setActiveTab('mapping')}
+              className="mt-4 inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-brand-navy hover:bg-brand-navy-800 rounded-lg transition-colors"
+            >
+              Set Up Mappings
+            </button>
+          </div>
+        )}
+
+        {activeTab === 'full-year' && (
+          <>
+            {fullYearLoading && (
+              <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+                <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-3" />
+                <p className="text-sm text-gray-600">Loading full year projection...</p>
+              </div>
+            )}
+            {fullYearError && (
+              <div className="mb-6 p-4 bg-red-50 rounded-lg border border-red-200">
+                <p className="text-sm text-red-800">{fullYearError}</p>
+              </div>
+            )}
+            {fullYearReport && !fullYearLoading && (
+              <FullYearProjectionTable report={fullYearReport} />
+            )}
+          </>
+        )}
+
+        {activeTab === 'trends' && (
+          <>
+            {fullYearLoading && (
+              <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+                <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-3" />
+                <p className="text-sm text-gray-600">Loading trend data...</p>
+              </div>
+            )}
+            {fullYearError && (
+              <div className="mb-6 p-4 bg-red-50 rounded-lg border border-red-200">
+                <p className="text-sm text-red-800">{fullYearError}</p>
+              </div>
+            )}
+            {fullYearReport && !fullYearLoading && (
+              <TrendCharts report={fullYearReport} />
+            )}
+          </>
+        )}
+
+        {activeTab === 'subscriptions' && (
+          <SubscriptionAnalysisTab
+            data={subscriptionDetail}
+            isLoading={subscriptionLoading}
+            error={subscriptionError}
+            onOpenSettings={() => setShowSettings(true)}
+          />
+        )}
+
+        {activeTab === 'wages' && (
+          <WagesAnalysisTab
+            data={wagesDetail}
+            isLoading={wagesLoading}
+            error={wagesError}
+            onOpenSettings={() => setShowSettings(true)}
+          />
+        )}
+
+        {activeTab === 'mapping' && (
+          <AccountMappingEditor
+            businessId={businessId}
+            mappings={mappings}
+            unmapped={unmapped}
+            isLoading={mappingsLoading}
+            onAutoMap={autoMap}
+            onSaveMapping={saveMapping}
+            onConfirmAll={confirmAll}
+            onRefresh={loadMappings}
+          />
+        )}
+
+        {activeTab === 'history' && (
+          <ReportHistory
+            businessId={businessId}
+            onLoadSnapshot={handleLoadHistorySnapshot}
+          />
+        )}
+      </div>
+
+      {/* Settings Panel */}
+      {settings && (
+        <ReportSettingsPanel
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+          businessId={businessId}
+          settings={settings}
+          onSettingsChange={(newSettings) => {
+            setSettings(newSettings)
+            // Re-generate report if it was already generated
+            if (report) {
+              handleGenerateReport()
+            }
+          }}
+        />
+      )}
+    </div>
+  )
+}
