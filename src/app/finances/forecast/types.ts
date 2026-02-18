@@ -157,7 +157,8 @@ export interface FinancialForecast {
   revenue_goal?: number
   gross_profit_goal?: number
   net_profit_goal?: number
-  goal_source?: 'goals_wizard' | 'annual_plan' | 'manual'
+  goal_source?: 'goals_wizard' | 'annual_plan' | 'manual' | 'wizard_v4'
+  assumptions?: Record<string, any>  // ForecastAssumptions from wizard v4
   annual_plan_id?: string
   revenue_distribution_method?: DistributionMethod
   revenue_distribution_data?: { [monthKey: string]: number }
@@ -699,6 +700,115 @@ export const INVESTMENT_ACCOUNT_CATEGORIES: Record<string, { label: string }> = 
 }
 
 export type InvestmentAccountCategory = keyof typeof INVESTMENT_ACCOUNT_CATEGORIES
+
+// ============================================================================
+// Cashflow Forecast Types (Calxa-style cash budget)
+// ============================================================================
+
+export interface LoanSchedule {
+  name: string
+  balance: number
+  monthly_repayment: number
+  interest_rate: number               // Annual rate e.g. 0.065 = 6.5%
+  is_interest_only: boolean
+}
+
+export interface CashflowAssumptions {
+  // Cash timing
+  dso_days: number                    // Days Sales Outstanding
+  dso_auto_calculated: boolean
+  dpo_days: number                    // Days Payable Outstanding
+  dpo_auto_calculated: boolean
+
+  // GST
+  gst_registered: boolean
+  gst_rate: number                    // 0.10 default (10%)
+  gst_reporting_frequency: 'monthly' | 'quarterly'
+  gst_applicable_expense_pct: number  // % of non-wage OpEx that has GST (default 0.80)
+
+  // Superannuation
+  super_payment_frequency: 'monthly' | 'quarterly'
+
+  // PAYG Withholding (employee tax withheld from wages)
+  payg_wh_reporting_frequency: 'monthly' | 'quarterly'
+
+  // PAYG Instalments (company income tax instalments to ATO)
+  payg_instalment_amount: number
+  payg_instalment_frequency: 'quarterly' | 'annual' | 'none'
+
+  // Opening balances (from Xero BS or manual)
+  opening_bank_balance: number
+  opening_trade_debtors: number
+  opening_trade_creditors: number
+  opening_gst_liability: number
+  opening_payg_wh_liability: number
+  opening_payg_instalment_liability: number
+  opening_super_liability: number
+  opening_stock: number
+
+  // Stock/Inventory changes (monthly overrides)
+  planned_stock_changes: Record<string, number>  // { "2026-02": 5000 }
+
+  // Loan schedules
+  loans: LoanSchedule[]
+
+  // Metadata
+  balance_date: string
+  last_xero_sync_at?: string
+}
+
+export interface CashflowLine {
+  label: string
+  value: number
+}
+
+export interface CashflowExpenseGroup {
+  group: string
+  lines: CashflowLine[]
+  subtotal: number
+}
+
+export interface CashflowForecastMonth {
+  month: string                       // 'YYYY-MM'
+  monthLabel: string                  // 'Feb 2026'
+  source: 'actual' | 'forecast'
+  bank_at_beginning: number
+
+  // Income section (GST-inclusive cash receipts, DSO-adjusted)
+  income_lines: CashflowLine[]
+  cash_inflows: number
+
+  // COGS section (GST-inclusive cash payments, DPO-adjusted)
+  cogs_lines: CashflowLine[]
+
+  // Expense section (grouped by category, GST-inclusive where applicable)
+  expense_groups: CashflowExpenseGroup[]
+  cash_outflows: number
+
+  // Balance sheet — Assets
+  asset_lines: CashflowLine[]
+  movement_in_assets: number
+
+  // Balance sheet — Liabilities
+  liability_lines: CashflowLine[]
+  movement_in_liabilities: number
+
+  // Other income
+  other_income_lines: CashflowLine[]
+  other_inflows: number
+
+  net_movement: number
+  bank_at_end: number
+}
+
+export interface CashflowForecastData {
+  forecast_id: string
+  assumptions: CashflowAssumptions
+  months: CashflowForecastMonth[]
+  totals: CashflowForecastMonth       // Annual total column
+  lowest_bank_balance: number
+  lowest_bank_month: string
+}
 
 // Validation concern for forecast review
 export interface ValidationConcern {

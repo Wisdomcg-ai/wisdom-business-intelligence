@@ -106,8 +106,8 @@ const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
       defaultOpen: true,
       items: [
         { label: 'Financial Forecast', href: '/finances/forecast', icon: TrendingUp },
-        { label: 'Budget vs Actual', href: '/finances/budget', icon: Banknote, disabled: true, badge: 'Soon' },
-        { label: '13-Week Rolling Cashflow', href: '/finances/cashflow', icon: Banknote, disabled: true, badge: 'Soon' },
+        { label: 'Monthly Report', href: '/finances/monthly-report', icon: BarChart3 },
+        { label: 'Cashflow Forecast', href: '/finances/cashflow', icon: Banknote },
       ],
     },
     {
