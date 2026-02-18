@@ -157,8 +157,8 @@ export async function POST(request: NextRequest) {
       budgetPLLines = bLines || []
     }
 
-    // 4. Load xero_pl_lines (actuals)
-    const { data: xeroLines, error: xeroErr } = await supabase
+    // 4. Load xero_pl_lines (actuals) — deduplicate by account_name
+    const { data: rawXeroLines, error: xeroErr } = await supabase
       .from('xero_pl_lines')
       .select('account_name, account_type, section, monthly_values')
       .eq('business_id', business_id)
@@ -166,6 +166,22 @@ export async function POST(request: NextRequest) {
     if (xeroErr) {
       console.error('[Full Year] Error loading xero_pl_lines:', xeroErr)
       // If the table doesn't exist yet, treat as empty (no actuals synced)
+    }
+
+    // Deduplicate: keep one row per account_name (merge monthly_values if needed)
+    const xeroDedup = new Map<string, any>()
+    for (const row of (rawXeroLines || [])) {
+      const existing = xeroDedup.get(row.account_name)
+      if (existing) {
+        existing.monthly_values = { ...existing.monthly_values, ...row.monthly_values }
+      } else {
+        xeroDedup.set(row.account_name, { ...row })
+      }
+    }
+    const xeroLines = Array.from(xeroDedup.values())
+
+    if (rawXeroLines && rawXeroLines.length !== xeroLines.length) {
+      console.warn(`[Full Year] Deduplicated xero_pl_lines: ${rawXeroLines.length} rows → ${xeroLines.length} unique accounts`)
     }
 
     // 5. Build lookup maps
@@ -181,6 +197,9 @@ export async function POST(request: NextRequest) {
     const findBudgetByName = buildFuzzyLookup(budgetPLLines, (bl) => bl.account_name)
 
     const matchedBudgetLineIds = new Set<string>()
+    const matchedBudgetLineNames = new Set<string>()
+    // Prevent same budget line from being counted for multiple Xero accounts
+    const claimedBudgetLineIds = new Set<string>()
 
     // 6. Process each Xero line into full-year format
     const categoryLines: Record<string, FullYearLine[]> = {
@@ -208,8 +227,17 @@ export async function POST(request: NextRequest) {
         budgetLine = findBudgetByName(xero.account_name)
       }
 
-      if (budgetLine) matchedBudgetLineIds.add(budgetLine.id)
-      const budgetMonths: Record<string, number> = budgetLine?.forecast_months || {}
+      if (budgetLine) {
+        matchedBudgetLineIds.add(budgetLine.id)
+        matchedBudgetLineNames.add(budgetLine.account_name.toLowerCase())
+      }
+
+      // Prevent double-counting: only the first Xero account to claim a budget line gets its values
+      const budgetAlreadyClaimed = budgetLine && claimedBudgetLineIds.has(budgetLine.id)
+      if (budgetLine && !budgetAlreadyClaimed) {
+        claimedBudgetLineIds.add(budgetLine.id)
+      }
+      const budgetMonths: Record<string, number> = (budgetLine && !budgetAlreadyClaimed) ? (budgetLine.forecast_months || {}) : {}
 
       // Build 12 month entries
       const months: FullYearMonthData[] = allFYMonths.map(m => {
@@ -250,9 +278,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 7. Add budget-only lines
+    // 7. Add budget-only lines (skip duplicates by name)
+    const addedBudgetOnlyNames = new Set<string>()
     for (const bl of budgetPLLines) {
       if (matchedBudgetLineIds.has(bl.id)) continue
+
+      // Skip if a forecast line with this name was already matched to a Xero account
+      // or already added as budget-only (handles duplicate forecast_pl_lines rows)
+      const blNameLower = bl.account_name.toLowerCase()
+      if (matchedBudgetLineNames.has(blNameLower)) continue
+      if (addedBudgetOnlyNames.has(blNameLower)) continue
+      addedBudgetOnlyNames.add(blNameLower)
 
       const budgetMonths: Record<string, number> = bl.forecast_months || {}
       const category = bl.category || 'Operating Expenses'

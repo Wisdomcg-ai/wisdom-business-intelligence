@@ -192,8 +192,9 @@ export async function POST(request: NextRequest) {
       budgetPLLines = bLines || []
     }
 
-    // 4. Load xero_pl_lines (actuals)
-    const { data: xeroLines, error: xeroErr } = await supabase
+    // 4. Load xero_pl_lines (actuals) — deduplicate by account_name
+    //    Duplicate rows can occur if sync-xero and sync-all race against each other
+    const { data: rawXeroLines, error: xeroErr } = await supabase
       .from('xero_pl_lines')
       .select('account_name, account_type, section, monthly_values')
       .eq('business_id', business_id)
@@ -201,6 +202,23 @@ export async function POST(request: NextRequest) {
     if (xeroErr) {
       console.error('[Report Generate] Error loading xero_pl_lines:', xeroErr)
       return NextResponse.json({ error: 'Failed to load Xero actuals' }, { status: 500 })
+    }
+
+    // Deduplicate: keep one row per account_name (merge monthly_values if needed)
+    const xeroDedup = new Map<string, { account_name: string; account_type: string; section: string; monthly_values: Record<string, number> }>()
+    for (const row of (rawXeroLines || [])) {
+      const existing = xeroDedup.get(row.account_name)
+      if (existing) {
+        // Merge monthly_values — later values overwrite earlier ones
+        existing.monthly_values = { ...existing.monthly_values, ...row.monthly_values }
+      } else {
+        xeroDedup.set(row.account_name, { ...row })
+      }
+    }
+    const xeroLines = Array.from(xeroDedup.values())
+
+    if (rawXeroLines && rawXeroLines.length !== xeroLines.length) {
+      console.warn(`[Report Generate] Deduplicated xero_pl_lines: ${rawXeroLines.length} rows → ${xeroLines.length} unique accounts`)
     }
 
     // 5. Build lookup maps
@@ -239,9 +257,16 @@ export async function POST(request: NextRequest) {
     const fyEnd = `${fiscal_year}-06`
     const allFYMonths = getMonthRange(fyStart, fyEnd)
 
-    // Track which budget lines were matched
+    // Track which budget lines were matched (for budget-only section later)
     const matchedBudgetLineIds = new Set<string>()
-    const matchLog: { xero: string; budget: string | null; method: string }[] = []
+    // Also track matched budget line names (lowercase) — handles duplicate forecast lines
+    // with the same name but different IDs
+    const matchedBudgetLineNames = new Set<string>()
+    // Track which budget lines have already had their budget values assigned to a Xero line.
+    // This prevents the same forecast line's budget from being counted multiple times when
+    // multiple Xero accounts fuzzy-match to the same forecast line.
+    const claimedBudgetLineIds = new Set<string>()
+    const matchLog: { xero: string; budget: string | null; method: string; budgetClaimed: boolean }[] = []
 
     // 6. Process each Xero actual line
     const categoryLines: Record<string, ReportLine[]> = {
@@ -280,14 +305,31 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      if (budgetLine) {
+        matchedBudgetLineIds.add(budgetLine.id)
+        matchedBudgetLineNames.add(budgetLine.account_name.toLowerCase())
+      }
+
+      // Prevent double-counting: if this budget line's values were already assigned
+      // to another Xero account, this Xero line gets actuals only (budget = 0).
+      const budgetAlreadyClaimed = budgetLine && claimedBudgetLineIds.has(budgetLine.id)
+      if (budgetLine && !budgetAlreadyClaimed) {
+        claimedBudgetLineIds.add(budgetLine.id)
+      }
+
       matchLog.push({
         xero: xero.account_name,
         budget: budgetLine?.account_name || null,
         method: matchMethod,
+        budgetClaimed: !budgetAlreadyClaimed,
       })
 
-      if (budgetLine) matchedBudgetLineIds.add(budgetLine.id)
-      const budgetMonths: Record<string, number> = budgetLine?.forecast_months || {}
+      if (budgetAlreadyClaimed) {
+        console.warn(`[Report Generate] Budget line "${budgetLine.account_name}" already claimed — skipping budget for Xero account "${xero.account_name}"`)
+      }
+
+      // Only use budget values if this is the first Xero account to claim this budget line
+      const budgetMonths: Record<string, number> = (budgetLine && !budgetAlreadyClaimed) ? (budgetLine.forecast_months || {}) : {}
 
       // Monthly values
       const actual = monthlyValues[report_month] || 0
@@ -337,9 +379,19 @@ export async function POST(request: NextRequest) {
     }
 
     // 7. Add budget-only lines (forecast lines with no matching Xero actual)
+    // Also track by name to prevent duplicate forecast lines (same name, different ID)
+    // from adding budget values twice.
+    const addedBudgetOnlyNames = new Set<string>()
     if (hasBudget) {
       for (const bl of budgetPLLines) {
         if (matchedBudgetLineIds.has(bl.id)) continue
+
+        // Skip if a forecast line with this same name was already matched to a Xero account
+        // or already added as budget-only (handles duplicate forecast_pl_lines rows)
+        const blNameLower = bl.account_name.toLowerCase()
+        if (matchedBudgetLineNames.has(blNameLower)) continue
+        if (addedBudgetOnlyNames.has(blNameLower)) continue
+        addedBudgetOnlyNames.add(blNameLower)
 
         const budgetMonths: Record<string, number> = bl.forecast_months || {}
         const category = bl.category || 'Operating Expenses'
@@ -516,20 +568,27 @@ export async function POST(request: NextRequest) {
     // Debug: log match results
     const matched = matchLog.filter(m => m.method !== 'none')
     const unmatched = matchLog.filter(m => m.method === 'none')
+    const duplicateBudgetMatches = matchLog.filter(m => m.method !== 'none' && !m.budgetClaimed)
     const unmatchedBudgetLines = budgetPLLines.filter(bl => !matchedBudgetLineIds.has(bl.id))
+    const skippedByName = unmatchedBudgetLines.filter(bl => matchedBudgetLineNames.has(bl.account_name.toLowerCase()))
+    const skippedByDupName = unmatchedBudgetLines.filter(bl => !matchedBudgetLineNames.has(bl.account_name.toLowerCase()) && addedBudgetOnlyNames.has(bl.account_name.toLowerCase()) === false)
 
     console.log('[Report Generate] Matching results:', {
       xeroAccountsTotal: matchLog.length,
       matchedToBudget: matched.length,
       unmatchedXero: unmatched.length,
       unmatchedBudgetLines: unmatchedBudgetLines.length,
+      budgetDuplicatesBlocked: duplicateBudgetMatches.length,
+      budgetOnlySkippedByName: skippedByName.length,
+      budgetOnlyAdded: addedBudgetOnlyNames.size,
       matchMethods: {
         forecast_pl_line_id: matched.filter(m => m.method === 'forecast_pl_line_id').length,
         forecast_pl_line_name: matched.filter(m => m.method === 'forecast_pl_line_name').length,
         name_fallback: matched.filter(m => m.method === 'name_fallback').length,
       },
+      budgetOnlySkippedNames: skippedByName.map(bl => bl.account_name),
       unmatchedXeroSample: unmatched.slice(0, 10).map(m => m.xero),
-      unmatchedBudgetSample: unmatchedBudgetLines.slice(0, 10).map((bl: any) => bl.account_name),
+      unmatchedBudgetSample: unmatchedBudgetLines.filter(bl => !matchedBudgetLineNames.has(bl.account_name.toLowerCase())).slice(0, 10).map((bl: any) => bl.account_name),
     })
 
     const report = {
