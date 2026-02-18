@@ -28,7 +28,7 @@ export default function CashflowForecastTable({ data }: CashflowForecastTablePro
     setCollapsedGroups(prev => ({ ...prev, [group]: !prev[group] }))
   }
 
-  const allColumns = [...data.months, data.totals]
+  const allColumns = data.months
 
   return (
     <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -39,14 +39,11 @@ export default function CashflowForecastTable({ data }: CashflowForecastTablePro
             <tr className="bg-brand-navy text-white">
               <th className="sticky left-0 z-10 bg-brand-navy px-3 py-1 text-left" />
               {allColumns.map((col) => {
-                const isTotal = col.month === 'total'
-                const label = isTotal ? '' : col.source === 'actual' ? 'Actual' : 'Forecast'
+                const label = col.source === 'actual' ? 'Actual' : 'Forecast'
                 return (
                   <th
                     key={`source-${col.month}`}
-                    className={`px-2 py-1 text-right min-w-[90px] ${
-                      isTotal ? 'bg-brand-navy-800 border-l border-white/20' : ''
-                    }`}
+                    className="px-2 py-1 text-right min-w-[90px]"
                   >
                     {label && (
                       <span className={`text-[9px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${
@@ -67,9 +64,7 @@ export default function CashflowForecastTable({ data }: CashflowForecastTablePro
               {allColumns.map((col) => (
                 <th
                   key={col.month}
-                  className={`px-2 py-2 text-right font-semibold min-w-[90px] whitespace-nowrap ${
-                    col.month === 'total' ? 'bg-brand-navy-800 border-l border-white/20' : ''
-                  }`}
+                  className="px-2 py-2 text-right font-semibold min-w-[90px] whitespace-nowrap"
                 >
                   {col.monthLabel}
                 </th>
@@ -167,9 +162,7 @@ function BankRow({ label, columns, getValue, variant }: {
         return (
           <td
             key={col.month}
-            className={`px-2 py-2.5 text-right font-bold text-sm ${
-              col.month === 'total' ? 'border-l border-white/20' : ''
-            } ${variant === 'end' && val < 0 ? 'text-red-400' : ''}`}
+            className={`px-2 py-2.5 text-right font-bold text-sm ${variant === 'end' && val < 0 ? 'text-red-400' : ''}`}
           >
             {fmtCash(val)}
           </td>
@@ -206,9 +199,7 @@ function SubtotalRow({ label, columns, getValue, negative, bold }: {
         return (
           <td
             key={col.month}
-            className={`px-2 py-2 text-right text-xs ${valueClass(val, true)} ${
-              col.month === 'total' ? 'bg-gray-100 border-l border-gray-200' : ''
-            }`}
+            className={`px-2 py-2 text-right text-xs ${valueClass(val, true)}`}
           >
             {fmtCash(val)}
           </td>
@@ -238,8 +229,8 @@ function renderLineRows(
           <td
             key={col.month}
             className={`px-2 py-1.5 text-right text-xs ${valueClass(val)} ${
-              col.source === 'actual' && col.month !== 'total' ? 'bg-green-50/50' : ''
-            } ${col.month === 'total' ? 'bg-gray-50 border-l border-gray-200' : ''}`}
+              col.source === 'actual' ? 'bg-green-50/50' : ''
+            }`}
           >
             {fmtCash(val)}
           </td>
@@ -297,9 +288,7 @@ function ExpenseGroupRows({ groupName, labels, columns, isCollapsed, onToggle, d
           return (
             <td
               key={col.month}
-              className={`px-2 py-1.5 text-right text-xs font-semibold ${valueClass(val)} ${
-                col.month === 'total' ? 'bg-gray-100 border-l border-gray-200' : ''
-              }`}
+              className={`px-2 py-1.5 text-right text-xs font-semibold ${valueClass(val)}`}
             >
               {isCollapsed ? fmtCash(val) : ''}
             </td>
@@ -320,8 +309,8 @@ function ExpenseGroupRows({ groupName, labels, columns, isCollapsed, onToggle, d
               <td
                 key={col.month}
                 className={`px-2 py-1.5 text-right text-xs ${valueClass(val)} ${
-                  col.source === 'actual' && col.month !== 'total' ? 'bg-green-50/50' : ''
-                } ${col.month === 'total' ? 'bg-gray-50 border-l border-gray-200' : ''}`}
+                  col.source === 'actual' ? 'bg-green-50/50' : ''
+                }`}
               >
                 {fmtCash(val)}
               </td>
@@ -342,9 +331,7 @@ function ExpenseGroupRows({ groupName, labels, columns, isCollapsed, onToggle, d
             return (
               <td
                 key={col.month}
-                className={`px-2 py-1 text-right text-xs font-medium italic ${valueClass(val)} ${
-                  col.month === 'total' ? 'bg-gray-50 border-l border-gray-200' : ''
-                }`}
+                className={`px-2 py-1 text-right text-xs font-medium italic ${valueClass(val)}`}
               >
                 {fmtCash(val)}
               </td>
@@ -363,42 +350,36 @@ function ExpenseGroupRows({ groupName, labels, columns, isCollapsed, onToggle, d
 function getAllIncomeLabels(data: CashflowForecastData): string[] {
   const labels = new Set<string>()
   for (const m of data.months) for (const l of m.income_lines) labels.add(l.label)
-  if (data.totals) for (const l of data.totals.income_lines) labels.add(l.label)
   return Array.from(labels)
 }
 
 function getAllCOGSLabels(data: CashflowForecastData): string[] {
   const labels = new Set<string>()
   for (const m of data.months) for (const l of m.cogs_lines) labels.add(l.label)
-  if (data.totals) for (const l of data.totals.cogs_lines) labels.add(l.label)
   return Array.from(labels)
 }
 
 function getAllAssetLabels(data: CashflowForecastData): string[] {
   const labels = new Set<string>()
   for (const m of data.months) for (const l of m.asset_lines) labels.add(l.label)
-  if (data.totals) for (const l of data.totals.asset_lines) labels.add(l.label)
   return Array.from(labels)
 }
 
 function getAllLiabilityLabels(data: CashflowForecastData): string[] {
   const labels = new Set<string>()
   for (const m of data.months) for (const l of m.liability_lines) labels.add(l.label)
-  if (data.totals) for (const l of data.totals.liability_lines) labels.add(l.label)
   return Array.from(labels)
 }
 
 function getAllOtherIncomeLabels(data: CashflowForecastData): string[] {
   const labels = new Set<string>()
   for (const m of data.months) for (const l of m.other_income_lines) labels.add(l.label)
-  if (data.totals) for (const l of data.totals.other_income_lines) labels.add(l.label)
   return Array.from(labels)
 }
 
 function getAllExpenseGroups(data: CashflowForecastData): string[] {
   const groups = new Set<string>()
   for (const m of data.months) for (const g of m.expense_groups) groups.add(g.group)
-  if (data.totals) for (const g of data.totals.expense_groups) groups.add(g.group)
   return Array.from(groups)
 }
 
@@ -406,10 +387,6 @@ function getAllExpenseLabelsInGroup(data: CashflowForecastData, groupName: strin
   const labels = new Set<string>()
   for (const m of data.months) {
     const group = m.expense_groups.find(g => g.group === groupName)
-    if (group) for (const l of group.lines) labels.add(l.label)
-  }
-  if (data.totals) {
-    const group = data.totals.expense_groups.find(g => g.group === groupName)
     if (group) for (const l of group.lines) labels.add(l.label)
   }
   return Array.from(labels)

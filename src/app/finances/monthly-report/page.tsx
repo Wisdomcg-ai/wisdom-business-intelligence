@@ -20,6 +20,9 @@ import TrendCharts from './components/TrendCharts'
 import XeroConnectionBanner from './components/XeroConnectionBanner'
 import SubscriptionAnalysisTab from './components/SubscriptionAnalysisTab'
 import WagesAnalysisTab from './components/WagesAnalysisTab'
+import ForecastService from '@/app/finances/forecast/services/forecast-service'
+import { generateCashflowForecast, getDefaultCashflowAssumptions } from '@/lib/cashflow/engine'
+import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year'
 import { useMonthlyReport } from './hooks/useMonthlyReport'
 import { useFullYearReport } from './hooks/useFullYearReport'
 import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
@@ -382,11 +385,43 @@ export default function MonthlyReportPage() {
         }
       }
 
+      // Load cashflow forecast data for PDF
+      let cashflowForecast = undefined
+      if (businessId) {
+        try {
+          const forecastFY = getForecastFiscalYear()
+          const { forecast } = await ForecastService.getOrCreateForecast(businessId, userId, forecastFY)
+          if (forecast?.id) {
+            const plLines = await ForecastService.loadPLLines(forecast.id)
+            if (plLines.length > 0) {
+              // Load assumptions
+              let assumptions = getDefaultCashflowAssumptions()
+              const assumptionsRes = await fetch(`/api/forecast/cashflow/assumptions?forecast_id=${forecast.id}`)
+              if (assumptionsRes.ok) {
+                const { data: savedAssumptions } = await assumptionsRes.json()
+                if (savedAssumptions) {
+                  assumptions = {
+                    ...assumptions,
+                    ...savedAssumptions,
+                    loans: savedAssumptions.loans || [],
+                    planned_stock_changes: savedAssumptions.planned_stock_changes || {},
+                  }
+                }
+              }
+              cashflowForecast = generateCashflowForecast(plLines, null, assumptions, forecast)
+            }
+          }
+        } catch (err) {
+          console.error('[MonthlyReport] Failed to load cashflow for PDF:', err)
+        }
+      }
+
       const pdf = new MonthlyReportPDFService(report, {
         commentary,
         fullYearReport: fyReport || undefined,
         subscriptionDetail: subDetail || undefined,
         wagesDetail: wDetail || undefined,
+        cashflowForecast,
       })
       const doc = pdf.generate()
       const monthLabel = new Date(report.report_month + '-01')
@@ -544,6 +579,7 @@ export default function MonthlyReportPage() {
           hasUnmapped={unmapped.length > 0}
           showSubscriptions={!!(settings?.sections.subscription_detail && (settings?.subscription_account_codes || []).length > 0)}
           showWages={!!(settings?.sections.payroll_detail && (settings?.wages_account_names || []).length > 0)}
+          showCashflow={false}
         />
 
         {/* Tab Content */}

@@ -1,12 +1,14 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { GeneratedReport, ReportSection, ReportLine, MonthlyReportSettings, VarianceCommentary, FullYearReport, SubscriptionDetailData, WagesDetailData } from '../types'
+import type { CashflowForecastData } from '@/app/finances/forecast/types'
 
 interface PDFOptions {
   commentary?: VarianceCommentary
   fullYearReport?: FullYearReport
   subscriptionDetail?: SubscriptionDetailData
   wagesDetail?: WagesDetailData
+  cashflowForecast?: CashflowForecastData
 }
 
 // A4 dimensions in mm
@@ -51,6 +53,9 @@ export class MonthlyReportPDFService {
     }
     if (this.options.wagesDetail && this.options.wagesDetail.accounts.length > 0) {
       this.addWagesDetailPage()
+    }
+    if (this.options.cashflowForecast && this.options.cashflowForecast.months.length > 0) {
+      this.addCashflowForecastPage()
     }
     if (this.options.fullYearReport) {
       this.addFullYearProjection()
@@ -782,6 +787,215 @@ export class MonthlyReportPDFService {
         },
       })
     }
+  }
+
+  // =====================================================================
+  // Cashflow Forecast (LANDSCAPE — expanded month-by-month cash budget)
+  // =====================================================================
+  private addCashflowForecastPage(): void {
+    const cf = this.options.cashflowForecast!
+    this.addPage('landscape')
+
+    this.doc.setFontSize(14)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.text('Cashflow Forecast', this.margin, this.yPosition)
+    this.yPosition += 6
+
+    // Alert if bank goes negative
+    if (cf.lowest_bank_balance < 0) {
+      this.doc.setFontSize(8)
+      this.doc.setFont('helvetica', 'bold')
+      this.doc.setTextColor(220, 38, 38)
+      const monthLabel = cf.months.find(m => m.month === cf.lowest_bank_month)?.monthLabel || cf.lowest_bank_month
+      this.doc.text(
+        `Warning: Bank balance goes negative in ${monthLabel} (${this.fmtCashflow(cf.lowest_bank_balance)})`,
+        this.margin, this.yPosition
+      )
+      this.doc.setTextColor(0, 0, 0)
+      this.yPosition += 6
+    }
+
+    this.doc.setFontSize(7)
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.text(
+      `DSO: ${cf.assumptions.dso_days} days | DPO: ${cf.assumptions.dpo_days} days | GST: ${cf.assumptions.gst_registered ? `${cf.assumptions.gst_rate * 100}%` : 'N/A'}`,
+      this.margin, this.yPosition
+    )
+    this.yPosition += 6
+
+    const monthLabels = cf.months.map(m => m.monthLabel)
+    const headers = ['', ...monthLabels]
+    const fmtC = (v: number) => this.fmtCashflow(v)
+
+    // Collect all unique labels across months for each section
+    const allIncomeLabels = new Set<string>()
+    const allCOGSLabels = new Set<string>()
+    const allExpenseGroups = new Map<string, Set<string>>() // group -> labels
+    const allAssetLabels = new Set<string>()
+    const allLiabilityLabels = new Set<string>()
+    const allOtherIncomeLabels = new Set<string>()
+
+    for (const m of cf.months) {
+      for (const l of m.income_lines) allIncomeLabels.add(l.label)
+      for (const l of m.cogs_lines) allCOGSLabels.add(l.label)
+      for (const g of m.expense_groups) {
+        if (!allExpenseGroups.has(g.group)) allExpenseGroups.set(g.group, new Set())
+        for (const l of g.lines) allExpenseGroups.get(g.group)!.add(l.label)
+      }
+      for (const l of m.asset_lines) allAssetLabels.add(l.label)
+      for (const l of m.liability_lines) allLiabilityLabels.add(l.label)
+      for (const l of m.other_income_lines) allOtherIncomeLabels.add(l.label)
+    }
+
+    // Style definitions
+    const GRAY_BG: [number, number, number] = [243, 244, 246]
+    const SECTION_BG: [number, number, number] = [229, 231, 235]
+    const navyS = { fontStyle: 'bold' as const, fillColor: NAVY as number[], textColor: [255, 255, 255] as number[], fontSize: 6 }
+    const sectionS = { fontStyle: 'bold' as const, fillColor: SECTION_BG as number[], fontSize: 6 }
+    const subtotalS = { fontStyle: 'bold' as const, fillColor: GRAY_BG as number[], fontSize: 6 }
+    const groupHeaderS = { fontStyle: 'bold' as const, fontSize: 6 }
+    const detailS = { fontSize: 6 }
+    const boldS = { fontStyle: 'bold' as const, fontSize: 6 }
+
+    // Helper: build a styled row
+    const makeRow = (label: string, values: number[], style: Record<string, any>): any[] => {
+      const cells: any[] = [{ content: label, styles: style }]
+      for (const v of values) cells.push({ content: fmtC(v), styles: style })
+      return cells
+    }
+
+    const makeDetailRow = (label: string, values: number[]): any[] => {
+      const cells: any[] = [{ content: `    ${label}`, styles: detailS }]
+      for (const v of values) cells.push({ content: fmtC(v), styles: detailS })
+      return cells
+    }
+
+    const getLineValue = (lines: { label: string; value: number }[], label: string) =>
+      lines.find(l => l.label === label)?.value || 0
+
+    const tableData: any[][] = []
+
+    // Bank at Beginning
+    tableData.push(makeRow('Bank at Beginning', cf.months.map(m => m.bank_at_beginning), navyS))
+
+    // Income section
+    tableData.push(makeRow('Income', [], sectionS).slice(0, 1).concat(
+      cf.months.map(() => ({ content: '', styles: sectionS }))
+    ))
+    for (const label of allIncomeLabels) {
+      tableData.push(makeDetailRow(label, cf.months.map(m => getLineValue(m.income_lines, label))))
+    }
+    tableData.push(makeRow('Cash Inflows from Operations', cf.months.map(m => m.cash_inflows), subtotalS))
+
+    // COGS section
+    if (allCOGSLabels.size > 0) {
+      tableData.push(makeRow('Cost of Sales', [], sectionS).slice(0, 1).concat(
+        cf.months.map(() => ({ content: '', styles: sectionS }))
+      ))
+      for (const label of allCOGSLabels) {
+        tableData.push(makeDetailRow(label, cf.months.map(m => getLineValue(m.cogs_lines, label))))
+      }
+    }
+
+    // Expenses section
+    if (allExpenseGroups.size > 0) {
+      tableData.push(makeRow('Expenses', [], sectionS).slice(0, 1).concat(
+        cf.months.map(() => ({ content: '', styles: sectionS }))
+      ))
+      for (const [groupName, labels] of allExpenseGroups) {
+        // Group header with subtotal values
+        tableData.push(makeRow(`  ${groupName}`, cf.months.map(m => {
+          const g = m.expense_groups.find(eg => eg.group === groupName)
+          return g?.subtotal || 0
+        }), groupHeaderS))
+        // Individual lines within group
+        for (const label of labels) {
+          tableData.push(makeDetailRow(label, cf.months.map(m => {
+            const g = m.expense_groups.find(eg => eg.group === groupName)
+            return g ? getLineValue(g.lines, label) : 0
+          })))
+        }
+      }
+    }
+
+    // Cash Outflows
+    tableData.push(makeRow('Cash Outflows from Operations', cf.months.map(m => -m.cash_outflows), subtotalS))
+
+    // Assets
+    if (allAssetLabels.size > 0) {
+      tableData.push(makeRow('Balance Sheet — Assets', [], sectionS).slice(0, 1).concat(
+        cf.months.map(() => ({ content: '', styles: sectionS }))
+      ))
+      for (const label of allAssetLabels) {
+        tableData.push(makeDetailRow(label, cf.months.map(m => getLineValue(m.asset_lines, label))))
+      }
+      tableData.push(makeRow('Movement in Assets', cf.months.map(m => m.movement_in_assets), subtotalS))
+    }
+
+    // Liabilities
+    if (allLiabilityLabels.size > 0) {
+      tableData.push(makeRow('Balance Sheet — Liabilities', [], sectionS).slice(0, 1).concat(
+        cf.months.map(() => ({ content: '', styles: sectionS }))
+      ))
+      for (const label of allLiabilityLabels) {
+        tableData.push(makeDetailRow(label, cf.months.map(m => getLineValue(m.liability_lines, label))))
+      }
+      tableData.push(makeRow('Movement in Liabilities', cf.months.map(m => m.movement_in_liabilities), subtotalS))
+    }
+
+    // Other Income
+    if (allOtherIncomeLabels.size > 0) {
+      tableData.push(makeRow('Other Income', [], sectionS).slice(0, 1).concat(
+        cf.months.map(() => ({ content: '', styles: sectionS }))
+      ))
+      for (const label of allOtherIncomeLabels) {
+        tableData.push(makeDetailRow(label, cf.months.map(m => getLineValue(m.other_income_lines, label))))
+      }
+      tableData.push(makeRow('Other Inflows', cf.months.map(m => m.other_inflows), subtotalS))
+    }
+
+    // Net Movement
+    tableData.push(makeRow('Net Movement', cf.months.map(m => m.net_movement), boldS))
+
+    // Bank at End — red text if negative
+    const bankEndRow: any[] = [{ content: 'Bank at End', styles: navyS }]
+    for (const m of cf.months) {
+      bankEndRow.push({
+        content: fmtC(m.bank_at_end),
+        styles: { ...navyS, textColor: m.bank_at_end < 0 ? [248, 113, 113] : [255, 255, 255] },
+      })
+    }
+    tableData.push(bankEndRow)
+
+    autoTable(this.doc, {
+      startY: this.yPosition,
+      head: [headers],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold', fontSize: 6, halign: 'center' },
+      bodyStyles: { fontSize: 6 },
+      columnStyles: { 0: { cellWidth: 48 } },
+      margin: { left: this.margin, right: this.margin },
+      didParseCell: (data) => {
+        if (data.column.index > 0 && data.section !== 'head') {
+          data.cell.styles.halign = 'right'
+        }
+        // Red text for negative values in detail rows
+        if (data.section === 'body' && data.column.index > 0) {
+          const text = typeof data.cell.raw === 'string' ? data.cell.raw : ''
+          if (text.startsWith('(')) {
+            data.cell.styles.textColor = [220, 38, 38]
+          }
+        }
+      },
+    })
+  }
+
+  private fmtCashflow(value: number): string {
+    if (Math.abs(value) < 1) return '-'
+    const abs = Math.abs(value)
+    const formatted = abs.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+    return value < 0 ? `(${formatted})` : formatted
   }
 
   // =====================================================================
