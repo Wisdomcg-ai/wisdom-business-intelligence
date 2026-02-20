@@ -42,3 +42,16 @@ next-env.d.ts
 .env.local
 .aws-sam/
 lambda/
+
+# project archive & docs (not part of the app)
+/_archive/
+/docs/
+*.bak
+*.pdf
+*.png
+!src/**/*.png
+!public/**/*.png
+
+# supabase local
+supabase/.temp/
+supabase/.gitignore
