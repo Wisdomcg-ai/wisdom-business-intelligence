@@ -1,6 +1,6 @@
 // Monthly Report Types
 
-export type ReportTab = 'report' | 'full-year' | 'trends' | 'subscriptions' | 'wages' | 'mapping' | 'history'
+export type ReportTab = 'report' | 'full-year' | 'trends' | 'charts' | 'subscriptions' | 'wages' | 'cashflow' | 'mapping' | 'history'
 
 export type ReportStatus = 'draft' | 'final'
 
@@ -32,6 +32,18 @@ export interface ReportSections {
   balance_sheet: boolean
   cashflow: boolean
   trend_charts: boolean
+  // Chart toggles
+  chart_cash_runway: boolean
+  chart_cumulative_net_cash: boolean
+  chart_working_capital_gap: boolean
+  chart_revenue_vs_expenses: boolean
+  chart_revenue_breakdown: boolean
+  chart_variance_heatmap: boolean
+  chart_budget_burn_rate: boolean
+  chart_break_even: boolean
+  chart_team_cost_pct: boolean
+  chart_cost_per_employee: boolean
+  chart_subscription_creep: boolean
 }
 
 export interface MonthlyReportSettings {
@@ -46,6 +58,7 @@ export interface MonthlyReportSettings {
   budget_forecast_id?: string | null
   subscription_account_codes?: string[]
   wages_account_names?: string[]
+  pdf_layout?: import('./types/pdf-layout').PDFLayout | null
   created_at?: string
   updated_at?: string
 }
@@ -59,6 +72,19 @@ export const DEFAULT_SECTIONS: ReportSections = {
   balance_sheet: false,
   cashflow: false,
   trend_charts: true,
+  // P&L charts ON by default
+  chart_revenue_vs_expenses: true,
+  chart_revenue_breakdown: true,
+  chart_variance_heatmap: true,
+  chart_budget_burn_rate: true,
+  chart_break_even: true,
+  // Data-dependent charts OFF by default
+  chart_cash_runway: false,
+  chart_cumulative_net_cash: false,
+  chart_working_capital_gap: false,
+  chart_team_cost_pct: false,
+  chart_cost_per_employee: false,
+  chart_subscription_creep: false,
 }
 
 // ============================================
@@ -251,9 +277,18 @@ export interface TrendDataPoint {
 // Variance Commentary
 // ============================================
 
+export interface VendorTransaction {
+  date: string
+  vendor: string          // Clean vendor name for this specific transaction
+  context: string | null  // Additional detail only when it adds value (e.g. invoice description)
+  amount: number
+  type: 'invoice' | 'bank'
+}
+
 export interface VendorSummary {
   vendor: string
   amount: number
+  transactions?: VendorTransaction[]
 }
 
 export interface VarianceCommentaryEntry {
@@ -341,3 +376,4 @@ export interface WagesDetailData {
   payroll_available: boolean
   pay_run_dates: string[]
 }
+

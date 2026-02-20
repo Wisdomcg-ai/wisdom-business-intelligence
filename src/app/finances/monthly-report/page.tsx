@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, BarChart3, Settings, Download, Save } from 'lucide-react'
+import dynamic from 'next/dynamic'
+import { Loader2, BarChart3, Settings, Download, Save, LayoutGrid } from 'lucide-react'
 import { toast } from 'sonner'
 import PageHeader from '@/components/ui/PageHeader'
 import MonthlyReportTabs from './components/MonthlyReportTabs'
@@ -20,6 +21,8 @@ import TrendCharts from './components/TrendCharts'
 import XeroConnectionBanner from './components/XeroConnectionBanner'
 import SubscriptionAnalysisTab from './components/SubscriptionAnalysisTab'
 import WagesAnalysisTab from './components/WagesAnalysisTab'
+import ChartsTab from './components/ChartsTab'
+import CashflowTab from './components/CashflowTab'
 import ForecastService from '@/app/finances/forecast/services/forecast-service'
 import { generateCashflowForecast, getDefaultCashflowAssumptions } from '@/lib/cashflow/engine'
 import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year'
@@ -32,7 +35,14 @@ import { useAccountMappings } from './hooks/useAccountMappings'
 import { useReconciliation } from './hooks/useReconciliation'
 import { loadSettings, getCurrentFiscalYear, getDefaultReportMonth } from './services/monthly-report-service'
 import { MonthlyReportPDFService } from './services/monthly-report-pdf-service'
+import type { CashflowForecastData } from '@/app/finances/forecast/types'
+import { usePDFLayout } from './hooks/usePDFLayout'
 import type { ReportTab, MonthlyReportSettings, VarianceCommentary, GeneratedReport } from './types'
+
+const PDFLayoutEditorModal = dynamic(
+  () => import('./components/layout-editor/PDFLayoutEditorModal'),
+  { ssr: false }
+)
 
 export default function MonthlyReportPage() {
   const supabase = createClient()
@@ -48,15 +58,20 @@ export default function MonthlyReportPage() {
   const [selectedMonth, setSelectedMonth] = useState(getDefaultReportMonth())
   const [settings, setSettings] = useState<MonthlyReportSettings | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [showLayoutEditor, setShowLayoutEditor] = useState(false)
 
   // Commentary state
   const [commentary, setCommentary] = useState<VarianceCommentary | undefined>(undefined)
   const [commentaryLoading, setCommentaryLoading] = useState(false)
 
+  // Cashflow forecast state (shared between cashflow tab, charts tab, and PDF export)
+  const [cashflowForecast, setCashflowForecast] = useState<CashflowForecastData | null>(null)
+  const [cashflowLoading, setCashflowLoading] = useState(false)
+
   const [activeTab, setActiveTab] = useState<ReportTab>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('monthly-report-active-tab')
-      if (saved && ['report', 'full-year', 'trends', 'subscriptions', 'wages', 'mapping', 'history'].includes(saved)) {
+      if (saved && ['report', 'full-year', 'trends', 'charts', 'subscriptions', 'wages', 'cashflow', 'mapping', 'history'].includes(saved)) {
         return saved as ReportTab
       }
     }
@@ -121,6 +136,48 @@ export default function MonthlyReportPage() {
     handleSync: xeroSync,
     handleManage: xeroManage,
   } = useXeroConnection(businessId)
+
+  const {
+    layout: pdfLayout,
+    isSaving: layoutSaving,
+    saveLayout,
+  } = usePDFLayout(businessId, settings, setSettings)
+
+  // Load cashflow forecast (reusable for tab, charts, and PDF)
+  const loadCashflowForecast = useCallback(async () => {
+    if (!businessId || !userId || cashflowLoading) return
+    setCashflowLoading(true)
+    try {
+      const forecastFY = getForecastFiscalYear()
+      const { forecast } = await ForecastService.getOrCreateForecast(businessId, userId, forecastFY)
+      if (forecast?.id) {
+        const plLines = await ForecastService.loadPLLines(forecast.id)
+        if (plLines.length > 0) {
+          let assumptions = getDefaultCashflowAssumptions()
+          const assumptionsRes = await fetch(`/api/forecast/cashflow/assumptions?forecast_id=${forecast.id}`)
+          if (assumptionsRes.ok) {
+            const { data: savedAssumptions } = await assumptionsRes.json()
+            if (savedAssumptions) {
+              assumptions = {
+                ...assumptions,
+                ...savedAssumptions,
+                loans: savedAssumptions.loans || [],
+                planned_stock_changes: savedAssumptions.planned_stock_changes || {},
+              }
+            }
+          }
+          const result = generateCashflowForecast(plLines, null, assumptions, forecast)
+          setCashflowForecast(result)
+          return result
+        }
+      }
+    } catch (err) {
+      console.error('[MonthlyReport] Failed to load cashflow forecast:', err)
+    } finally {
+      setCashflowLoading(false)
+    }
+    return null
+  }, [businessId, userId, cashflowLoading])
 
   // Save active tab
   useEffect(() => {
@@ -229,14 +286,14 @@ export default function MonthlyReportPage() {
 
   // Lazy load full year data when tab is active
   useEffect(() => {
-    if ((activeTab === 'full-year' || activeTab === 'trends') && !fullYearReport && !fullYearLoading && !fullYearError && businessId) {
+    if ((activeTab === 'full-year' || activeTab === 'trends' || activeTab === 'charts') && !fullYearReport && !fullYearLoading && !fullYearError && businessId) {
       loadFullYear(fiscalYear)
     }
   }, [activeTab, fullYearReport, fullYearLoading, fullYearError, businessId, fiscalYear, loadFullYear])
 
   // Lazy load subscription detail when tab is active
   useEffect(() => {
-    if (activeTab === 'subscriptions' && !subscriptionDetail && !subscriptionLoading && !subscriptionError && businessId && settings) {
+    if ((activeTab === 'subscriptions' || activeTab === 'charts') && !subscriptionDetail && !subscriptionLoading && !subscriptionError && businessId && settings) {
       const codes = settings.subscription_account_codes || []
       if (codes.length > 0) {
         loadSubscriptionDetail(selectedMonth, codes)
@@ -246,7 +303,7 @@ export default function MonthlyReportPage() {
 
   // Lazy load wages detail when tab is active
   useEffect(() => {
-    if (activeTab === 'wages' && !wagesDetail && !wagesLoading && !wagesError && businessId && settings) {
+    if ((activeTab === 'wages' || activeTab === 'charts') && !wagesDetail && !wagesLoading && !wagesError && businessId && settings) {
       const names = settings.wages_account_names || []
       if (names.length > 0) {
         loadWagesDetail(selectedMonth, fiscalYear, names, settings.budget_forecast_id)
@@ -254,21 +311,28 @@ export default function MonthlyReportPage() {
     }
   }, [activeTab, wagesDetail, wagesLoading, wagesError, businessId, selectedMonth, fiscalYear, settings, loadWagesDetail])
 
+  // Lazy load cashflow forecast when cashflow tab or charts tab is active
+  useEffect(() => {
+    if ((activeTab === 'cashflow' || activeTab === 'charts') && !cashflowForecast && !cashflowLoading && businessId && userId) {
+      loadCashflowForecast()
+    }
+  }, [activeTab, cashflowForecast, cashflowLoading, businessId, userId, loadCashflowForecast])
+
   // Fetch commentary after report generation — expenses over budget only
   const fetchCommentary = useCallback(async (reportData: GeneratedReport) => {
     if (!businessId) return
     setCommentaryLoading(true)
 
     try {
-      // Only expense sections (COGS, OpEx, Other Expenses) where actual > budget (variance_amount < 0)
+      // Only expense sections (COGS, OpEx, Other Expenses) where actual >= $500 over budget
       const expenseSections = ['Cost of Sales', 'Operating Expenses', 'Other Expenses']
       const expenseLines: { account_name: string; xero_account_name: string }[] = []
 
       for (const section of reportData.sections) {
         if (!expenseSections.includes(section.category)) continue
         for (const line of section.lines) {
-          // variance_amount < 0 means actual > budget for expenses (budget - actual convention)
-          if (line.variance_amount < 0 && !line.is_budget_only) {
+          // variance_amount <= -500 means actual is $500+ over budget for expenses
+          if (line.variance_amount <= -500 && !line.is_budget_only) {
             expenseLines.push({
               account_name: line.account_name,
               xero_account_name: line.xero_account_name || line.account_name,
@@ -385,35 +449,10 @@ export default function MonthlyReportPage() {
         }
       }
 
-      // Load cashflow forecast data for PDF
-      let cashflowForecast = undefined
-      if (businessId) {
-        try {
-          const forecastFY = getForecastFiscalYear()
-          const { forecast } = await ForecastService.getOrCreateForecast(businessId, userId, forecastFY)
-          if (forecast?.id) {
-            const plLines = await ForecastService.loadPLLines(forecast.id)
-            if (plLines.length > 0) {
-              // Load assumptions
-              let assumptions = getDefaultCashflowAssumptions()
-              const assumptionsRes = await fetch(`/api/forecast/cashflow/assumptions?forecast_id=${forecast.id}`)
-              if (assumptionsRes.ok) {
-                const { data: savedAssumptions } = await assumptionsRes.json()
-                if (savedAssumptions) {
-                  assumptions = {
-                    ...assumptions,
-                    ...savedAssumptions,
-                    loans: savedAssumptions.loans || [],
-                    planned_stock_changes: savedAssumptions.planned_stock_changes || {},
-                  }
-                }
-              }
-              cashflowForecast = generateCashflowForecast(plLines, null, assumptions, forecast)
-            }
-          }
-        } catch (err) {
-          console.error('[MonthlyReport] Failed to load cashflow for PDF:', err)
-        }
+      // Load cashflow forecast data for PDF (reuse cached if available)
+      let cfData: CashflowForecastData | undefined = cashflowForecast || undefined
+      if (!cfData && businessId) {
+        cfData = (await loadCashflowForecast()) || undefined
       }
 
       const pdf = new MonthlyReportPDFService(report, {
@@ -421,7 +460,9 @@ export default function MonthlyReportPage() {
         fullYearReport: fyReport || undefined,
         subscriptionDetail: subDetail || undefined,
         wagesDetail: wDetail || undefined,
-        cashflowForecast,
+        cashflowForecast: cfData || undefined,
+        sections: settings?.sections,
+        pdfLayout: settings?.pdf_layout ?? null,
       })
       const doc = pdf.generate()
       const monthLabel = new Date(report.report_month + '-01')
@@ -483,6 +524,13 @@ export default function MonthlyReportPage() {
         actions={
           <>
             <button
+              onClick={() => setShowLayoutEditor(true)}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-brand-navy hover:bg-brand-navy-800 rounded-lg transition-colors"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span className="hidden sm:inline">Layout</span>
+            </button>
+            <button
               onClick={() => setShowSettings(true)}
               className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-brand-navy hover:bg-brand-navy-800 rounded-lg transition-colors"
             >
@@ -497,7 +545,16 @@ export default function MonthlyReportPage() {
                   className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-brand-orange hover:bg-brand-orange-600 rounded-lg transition-colors"
                 >
                   <Save className="w-4 h-4" />
-                  <span className="hidden sm:inline">Save</span>
+                  <span className="hidden sm:inline">Save Draft</span>
+                </button>
+                <button
+                  onClick={() => handleSaveSnapshot('final')}
+                  disabled={report.is_draft}
+                  title={report.is_draft ? 'Reconcile all transactions before finalising' : 'Save as final report'}
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Save className="w-4 h-4" />
+                  <span className="hidden sm:inline">Finalise</span>
                 </button>
                 <button
                   onClick={handleExportPDF}
@@ -579,7 +636,8 @@ export default function MonthlyReportPage() {
           hasUnmapped={unmapped.length > 0}
           showSubscriptions={!!(settings?.sections.subscription_detail && (settings?.subscription_account_codes || []).length > 0)}
           showWages={!!(settings?.sections.payroll_detail && (settings?.wages_account_names || []).length > 0)}
-          showCashflow={false}
+          showCashflow={!!(settings?.sections.cashflow)}
+          showCharts={!!(settings?.sections && Object.entries(settings.sections).some(([k, v]) => k.startsWith('chart_') && v))}
         />
 
         {/* Tab Content */}
@@ -665,6 +723,29 @@ export default function MonthlyReportPage() {
           />
         )}
 
+        {activeTab === 'charts' && settings && (
+          <ChartsTab
+            sections={settings.sections}
+            report={report}
+            fullYearReport={fullYearReport}
+            fullYearLoading={fullYearLoading}
+            cashflowForecast={cashflowForecast}
+            cashflowLoading={cashflowLoading}
+            wagesDetail={wagesDetail}
+            wagesLoading={wagesLoading}
+            subscriptionDetail={subscriptionDetail}
+            subscriptionLoading={subscriptionLoading}
+            wagesAccountNames={settings.wages_account_names || []}
+          />
+        )}
+
+        {activeTab === 'cashflow' && (
+          <CashflowTab
+            data={cashflowForecast}
+            isLoading={cashflowLoading}
+          />
+        )}
+
         {activeTab === 'mapping' && (
           <AccountMappingEditor
             businessId={businessId}
@@ -702,6 +783,23 @@ export default function MonthlyReportPage() {
           }}
         />
       )}
+
+      {/* PDF Layout Editor Modal */}
+      <PDFLayoutEditorModal
+        isOpen={showLayoutEditor}
+        onClose={() => setShowLayoutEditor(false)}
+        initialLayout={pdfLayout}
+        sections={settings?.sections}
+        onSave={saveLayout}
+        isSaving={layoutSaving}
+        availableData={{
+          report: !!report,
+          fullYear: !!fullYearReport,
+          cashflow: !!cashflowForecast,
+          subscriptions: !!subscriptionDetail,
+          wages: !!wagesDetail,
+        }}
+      />
     </div>
   )
 }

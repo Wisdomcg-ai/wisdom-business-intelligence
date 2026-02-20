@@ -7,7 +7,18 @@
  * - Subscription detail tab
  */
 
-// Common vendor name mappings for normalization
+// ── Types ────────────────────────────────────────────────────────
+
+export type VendorSource = 'contact' | 'description' | 'mapping'
+
+export interface VendorInfo {
+  vendor: string          // Clean vendor name (always present)
+  context: string | null  // Additional context only when it adds value beyond the vendor name
+  source: VendorSource    // Where the vendor name was derived from
+}
+
+// ── Known Vendor Mappings ────────────────────────────────────────
+
 export const VENDOR_MAPPINGS: Record<string, string> = {
   'SLACK': 'Slack',
   'XERO': 'Xero',
@@ -77,47 +88,245 @@ export const VENDOR_MAPPINGS: Record<string, string> = {
   'SITESATSCALE': 'Sites at Scale',
   'APPLE': 'Apple',
   'APPLE.COM': 'Apple',
+  // Common Australian retailers / service providers
+  'BUNNINGS': 'Bunnings',
+  'OFFICEWORKS': 'Officeworks',
+  'KMART': 'Kmart',
+  'TARGET': 'Target',
+  'WOOLWORTHS': 'Woolworths',
+  'COLES': 'Coles',
+  'ALDI': 'Aldi',
+  'JB HI-FI': 'JB Hi-Fi',
+  'JB HI FI': 'JB Hi-Fi',
+  'JBHIFI': 'JB Hi-Fi',
+  'HARVEY NORMAN': 'Harvey Norman',
+  'SUPERCHEAP': 'Supercheap Auto',
+  'REPCO': 'Repco',
+  'AUTOBARN': 'Autobarn',
+  'TOTAL TOOLS': 'Total Tools',
+  'SYDNEY TOOLS': 'Sydney Tools',
+  'MITRE 10': 'Mitre 10',
+  'IKEA': 'IKEA',
+  'COSTCO': 'Costco',
+  'UBER': 'Uber',
+  'DIDI': 'DiDi',
+  'MENULOG': 'Menulog',
+  'DOORDASH': 'DoorDash',
+  'BP ': 'BP',
+  'AMPOL': 'Ampol',
+  'CALTEX': 'Caltex',
+  'SHELL': 'Shell',
+  'OPTUS': 'Optus',
+  'VODAFONE': 'Vodafone',
+  'AMAYSIM': 'Amaysim',
+  'AUSPOST': 'Australia Post',
+  'AUSTRALIA POST': 'Australia Post',
+  'SENDLE': 'Sendle',
+  'STARTRACK': 'StarTrack',
+  'CARSALES': 'Carsales',
 }
 
-export function extractVendorName(contactName: string, description: string): string {
-  const text = (contactName || description || '').toUpperCase().trim()
+// ── Payment Intermediaries ───────────────────────────────────────
 
-  // Remove common transaction prefixes
-  let cleaned = text.replace(/^(DIRECT DEBIT|DD|PAYPAL \*|PAY\*|SQ \*|STRIPE|RECURRING|SUBSCRIPTION|PAYMENT TO|PAID TO|TRANSFER TO)\s*/i, '')
+const PAYMENT_INTERMEDIARIES = [
+  'PAYPAL',
+  'SQUARE',
+  'SQ ',
+  'AFTERPAY',
+  'ZIPPAY',
+  'ZIP PAY',
+]
 
-  // Try to match known vendors first
+function isPaymentIntermediary(contactName: string): boolean {
+  const upper = contactName.toUpperCase().trim()
+  return PAYMENT_INTERMEDIARIES.some(prefix => upper.startsWith(prefix))
+}
+
+// ── Generic / Noise Detection ────────────────────────────────────
+
+const GENERIC_DESCRIPTIONS = new Set([
+  'PAYMENT', 'TRANSFER', 'DIRECT DEBIT', 'DD', 'DEPOSIT', 'WITHDRAWAL',
+  'DEBIT', 'CREDIT', 'REFUND', 'INVOICE', 'BILL', 'PURCHASE',
+  'TRANSACTION', 'BANK TRANSFER', 'BANK FEE', 'FEE', 'CHARGE',
+  'SUBSCRIPTION', 'RECURRING', 'MONTHLY', 'ANNUAL',
+])
+
+function isGenericDescription(text: string): boolean {
+  const upper = text.toUpperCase().trim()
+  return GENERIC_DESCRIPTIONS.has(upper) || upper.length < 3
+}
+
+// ── Text Cleaning Helpers ────────────────────────────────────────
+
+function stripReferenceNumbers(text: string): string {
+  return text
+    .replace(/\b\d{8,}\b/g, '')
+    .replace(/\b[A-Z]{0,3}\d{6,}\b/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+function cleanBankNarrative(text: string): string {
+  return text
+    .replace(/\s*\(\d{3,}\)\s*/g, '')
+    .replace(/\b\d{3,6}\b/g, '')
+    .replace(/\s+(PTY|LTD|P\/L|ABN|ACN)\b.*/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+function stripRegionSuffix(text: string): string {
+  return text
+    .replace(/\b(AUSTRALIA|AU|US|UK|NZ|EU)\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+function titleCase(text: string): string {
+  return text.split(/\s+/).map(word =>
+    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+  ).join(' ')
+}
+
+function matchKnownVendor(text: string): string | null {
+  const upper = text.toUpperCase().trim()
+  const cleaned = upper.replace(
+    /^(DIRECT DEBIT|DD|PAYPAL \*|PAYPAL|PAY\*|SQ \*|STRIPE|RECURRING|SUBSCRIPTION|PAYMENT TO|PAID TO|TRANSFER TO)\s*/,
+    ''
+  )
   for (const [pattern, vendorName] of Object.entries(VENDOR_MAPPINGS)) {
     if (cleaned.includes(pattern.toUpperCase())) {
       return vendorName
     }
   }
+  for (const [pattern, vendorName] of Object.entries(VENDOR_MAPPINGS)) {
+    if (upper.includes(pattern.toUpperCase())) {
+      return vendorName
+    }
+  }
+  return null
+}
 
-  // Also check description if contact didn't match
-  if (contactName && description && contactName !== description) {
-    const descCleaned = description.toUpperCase().trim()
-    for (const [pattern, vendorName] of Object.entries(VENDOR_MAPPINGS)) {
-      if (descCleaned.includes(pattern.toUpperCase())) {
-        return vendorName
+/**
+ * Check if description adds meaningful context beyond the vendor name.
+ * Returns the cleaned description if useful, null otherwise.
+ */
+function extractUsefulContext(
+  description: string,
+  vendorName: string,
+  source: VendorSource
+): string | null {
+  if (!description || !description.trim()) return null
+
+  const desc = description.trim()
+
+  // If vendor was derived FROM the description, description is redundant
+  if (source === 'description') return null
+
+  // Skip generic descriptions
+  if (isGenericDescription(desc)) return null
+
+  // If the description is basically the same as the vendor name, skip
+  const descUpper = desc.toUpperCase().replace(/[^A-Z0-9\s]/g, '').trim()
+  const vendorUpper = vendorName.toUpperCase().replace(/[^A-Z0-9\s]/g, '').trim()
+  if (descUpper === vendorUpper) return null
+  if (descUpper.startsWith(vendorUpper) && descUpper.length - vendorUpper.length < 10) return null
+
+  // If the description looks like a bank narrative (all caps, store numbers, location codes)
+  // and already contains the vendor name, it's just noise
+  const isBankNarrative = desc === desc.toUpperCase() && /\d{3,}/.test(desc)
+  if (isBankNarrative && descUpper.includes(vendorUpper)) return null
+
+  // Description adds value — clean it up
+  const cleaned = stripReferenceNumbers(desc)
+    .replace(/\s*\(\d{3,}\)\s*/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+
+  if (!cleaned || isGenericDescription(cleaned)) return null
+
+  return cleaned
+}
+
+// ── Main Extraction ──────────────────────────────────────────────
+
+/**
+ * Extract structured vendor info from Xero contact name and line item description.
+ * Returns vendor name, optional context (only when it adds value), and source.
+ */
+export function extractVendorInfo(contactName: string, description: string): VendorInfo {
+  // ── Payment intermediary path (PayPal, Square, etc.) ──
+  if (contactName && isPaymentIntermediary(contactName)) {
+    // Try known vendor in description
+    if (description) {
+      const descMatch = matchKnownVendor(description)
+      if (descMatch) {
+        return { vendor: descMatch, context: null, source: 'mapping' }
       }
+    }
+
+    // Use description as vendor if meaningful
+    if (description && description.trim() && !isGenericDescription(description)) {
+      const cleaned = cleanBankNarrative(stripReferenceNumbers(description.trim()))
+      if (cleaned && !isGenericDescription(cleaned)) {
+        return { vendor: titleCase(cleaned), context: null, source: 'description' }
+      }
+    }
+
+    // Fall back to cleaned intermediary name
+    const cleanedContact = stripRegionSuffix(stripReferenceNumbers(contactName))
+    if (cleanedContact && !isGenericDescription(cleanedContact)) {
+      return { vendor: titleCase(cleanedContact), context: null, source: 'contact' }
+    }
+    return { vendor: 'PayPal', context: null, source: 'contact' }
+  }
+
+  // ── Standard path ──
+
+  // Try known vendor match on contact name
+  if (contactName) {
+    const contactMatch = matchKnownVendor(contactName)
+    if (contactMatch) {
+      const context = extractUsefulContext(description, contactMatch, 'mapping')
+      return { vendor: contactMatch, context, source: 'mapping' }
     }
   }
 
-  // Clean up and return the original contact/description
+  // Try known vendor match on description
+  if (description) {
+    const descMatch = matchKnownVendor(description)
+    if (descMatch) {
+      return { vendor: descMatch, context: null, source: 'mapping' }
+    }
+  }
+
+  // Use contact name as vendor (with description as potential context)
   if (contactName && contactName.trim()) {
-    return contactName.trim().split(/\s+/).map(word =>
-      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    ).join(' ')
+    const cleaned = stripReferenceNumbers(contactName.trim())
+    if (cleaned) {
+      const vendor = titleCase(cleaned)
+      const context = extractUsefulContext(description, vendor, 'contact')
+      return { vendor, context, source: 'contact' }
+    }
   }
 
-  // Fall back to description
-  const words = cleaned.split(/[\s\-\_\*]+/).filter(w => w.length > 2)
-  if (words.length > 0) {
-    return words.slice(0, 3).map(w =>
-      w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-    ).join(' ')
+  // Fall back to description as vendor (bank feed — no contact)
+  if (description && description.trim()) {
+    const cleaned = cleanBankNarrative(stripReferenceNumbers(description.trim()))
+    if (cleaned && !isGenericDescription(cleaned)) {
+      return { vendor: titleCase(cleaned), context: null, source: 'description' }
+    }
   }
 
-  return description.slice(0, 50) || 'Unknown Vendor'
+  return { vendor: description?.slice(0, 50) || 'Unknown Vendor', context: null, source: 'description' }
+}
+
+/**
+ * Backward-compatible wrapper — returns just the vendor name string.
+ * Used by subscription-detail and subscription-transactions routes.
+ */
+export function extractVendorName(contactName: string, description: string): string {
+  return extractVendorInfo(contactName, description).vendor
 }
 
 export function createVendorKey(vendorName: string): string {

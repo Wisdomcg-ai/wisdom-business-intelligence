@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Pencil, Check, X, Plus } from 'lucide-react'
-import type { GeneratedReport, ReportLine, ReportSection, MonthlyReportSettings, VarianceCommentary, VendorSummary, ReportTab } from '../types'
+import { Pencil, Check, X, Plus, ChevronDown, ChevronRight, MessageSquarePlus, FileText, Landmark } from 'lucide-react'
+import type { GeneratedReport, ReportLine, ReportSection, MonthlyReportSettings, VarianceCommentary, VendorSummary, VendorTransaction, ReportTab } from '../types'
 
 interface BudgetVsActualTableProps {
   report: GeneratedReport
@@ -156,22 +156,92 @@ function formatVendorAmount(amount: number): string {
   return `$${formatted}`
 }
 
-function VendorSummaryDisplay({ vendors }: { vendors: VendorSummary[] }) {
+function formatDate(dateStr: string): string {
+  if (!dateStr) return ''
+  try {
+    return new Date(dateStr).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+  } catch {
+    return dateStr
+  }
+}
+
+function TransactionDrillDown({ vendors }: { vendors: VendorSummary[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const totalTransactions = vendors.reduce((sum, v) => sum + (v.transactions?.length || 0), 0)
+
   if (vendors.length === 0) return null
+
   return (
-    <span className="text-xs text-gray-600">
-      {vendors.map((v, i) => (
-        <span key={v.vendor}>
-          {i > 0 && ', '}
-          {v.vendor} ({formatVendorAmount(v.amount)})
-        </span>
-      ))}
-    </span>
+    <div className="mt-2">
+      {/* Vendor pills */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        {vendors.map((v) => (
+          <span
+            key={v.vendor}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700"
+          >
+            {v.vendor}
+            <span className="text-gray-500">{formatVendorAmount(v.amount)}</span>
+          </span>
+        ))}
+      </div>
+
+      {/* Drill-down toggle */}
+      {totalTransactions > 0 && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="mt-1.5 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+        >
+          {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          {expanded ? 'Hide' : 'Show'} {totalTransactions} transaction{totalTransactions !== 1 ? 's' : ''}
+        </button>
+      )}
+
+      {/* Transaction details */}
+      {expanded && (
+        <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-gray-50 text-gray-600">
+                <th className="px-3 py-1.5 text-left font-medium">Date</th>
+                <th className="px-3 py-1.5 text-left font-medium">Vendor</th>
+                <th className="px-3 py-1.5 text-left font-medium w-8">Type</th>
+                <th className="px-3 py-1.5 text-right font-medium">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vendors.flatMap(v =>
+                (v.transactions || []).map((txn, i) => (
+                  <tr key={`${v.vendor}-${i}`} className="border-t border-gray-100 hover:bg-gray-50">
+                    <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{formatDate(txn.date)}</td>
+                    <td className="px-3 py-1.5">
+                      <div className="font-medium text-gray-800">{txn.vendor || v.vendor}</div>
+                      {txn.context && (
+                        <div className="text-gray-500 truncate max-w-[300px]" title={txn.context}>{txn.context}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5 text-gray-400" title={txn.type === 'invoice' ? 'Invoice' : 'Bank Transaction'}>
+                      {txn.type === 'invoice' ? (
+                        <FileText className="w-3 h-3" />
+                      ) : (
+                        <Landmark className="w-3 h-3" />
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-gray-800 whitespace-nowrap">{formatVendorAmount(txn.amount)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }
 
 function CommentaryLine({
   accountName,
+  variance,
   vendors,
   coachNote,
   detailTabRef,
@@ -179,6 +249,7 @@ function CommentaryLine({
   onTabChange,
 }: {
   accountName: string
+  variance: number
   vendors: VendorSummary[]
   coachNote: string
   detailTabRef?: 'subscriptions' | 'wages' | null
@@ -201,56 +272,77 @@ function CommentaryLine({
   const tabLabel = detailTabRef === 'subscriptions' ? 'Subscriptions' : detailTabRef === 'wages' ? 'Wages' : null
 
   return (
-    <div className="py-1.5 px-3 rounded hover:bg-gray-50 group">
-      <div className="flex items-start gap-2">
-        <div className="flex-1 text-xs">
-          <span className="font-semibold text-gray-900">{accountName}</span>
-          {vendors.length > 0 && (
-            <>
-              <span className="text-gray-400 mx-1">|</span>
-              <VendorSummaryDisplay vendors={vendors} />
-            </>
-          )}
+    <div className="py-3 px-4 rounded-lg border border-gray-200 bg-white">
+      {/* Header row */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-gray-900">{accountName}</span>
+            <span className="text-xs font-medium text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
+              {formatVendorAmount(Math.abs(variance))} over budget
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
           {detailTabRef && tabLabel && onTabChange && (
             <button
               onClick={() => onTabChange(detailTabRef)}
-              className="ml-2 text-brand-orange hover:text-brand-orange-600 font-medium"
+              className="text-xs text-brand-orange hover:text-brand-orange-600 font-medium"
             >
-              See {tabLabel} tab →
+              {tabLabel} tab →
             </button>
           )}
         </div>
-        {!editing && onNoteChange && (
+      </div>
+
+      {/* Vendor drill-down */}
+      <TransactionDrillDown vendors={vendors} />
+
+      {/* Coach note section */}
+      <div className="mt-2">
+        {editing ? (
+          <div className="flex items-start gap-2">
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              placeholder="Add your coaching note — what caused this variance? What should the client do about it?"
+              className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+              rows={3}
+              autoFocus
+            />
+            <div className="flex flex-col gap-1">
+              <button onClick={handleSave} className="p-1.5 text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 rounded" title="Save note">
+                <Check className="w-4 h-4" />
+              </button>
+              <button onClick={handleCancel} className="p-1.5 text-gray-400 hover:text-gray-600 bg-gray-50 hover:bg-gray-100 rounded" title="Cancel">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ) : coachNote ? (
+          <div className="flex items-start gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+            <MessageSquarePlus className="w-3.5 h-3.5 text-brand-orange mt-0.5 flex-shrink-0" />
+            <p className="flex-1 text-sm text-gray-800">{coachNote}</p>
+            {onNoteChange && (
+              <button
+                onClick={() => setEditing(true)}
+                className="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0"
+                title="Edit note"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        ) : onNoteChange ? (
           <button
             onClick={() => setEditing(true)}
-            className="p-0.5 text-gray-300 hover:text-gray-500 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-            title="Add note"
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-orange transition-colors px-1 py-0.5"
           >
-            {coachNote ? <Pencil className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+            <MessageSquarePlus className="w-4 h-4" />
+            Add coaching note
           </button>
-        )}
+        ) : null}
       </div>
-      {/* Coach note display / edit */}
-      {editing ? (
-        <div className="mt-1 flex items-start gap-1 ml-0">
-          <textarea
-            value={editText}
-            onChange={(e) => setEditText(e.target.value)}
-            placeholder="Add coach note..."
-            className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-brand-orange"
-            rows={2}
-            autoFocus
-          />
-          <button onClick={handleSave} className="p-1 text-green-600 hover:text-green-800">
-            <Check className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={handleCancel} className="p-1 text-gray-400 hover:text-gray-600">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      ) : coachNote ? (
-        <p className="mt-0.5 ml-0 text-xs text-brand-orange-600 italic">{coachNote}</p>
-      ) : null}
     </div>
   )
 }
@@ -387,9 +479,15 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
       )}
 
       {commentary && Object.keys(commentary).length > 0 && (
-        <div className="border-t border-gray-200 p-4">
-          <h3 className="text-sm font-semibold text-gray-800 mb-3">Expense Commentary</h3>
-          <div className="space-y-3">
+        <div className="border-t-2 border-red-200 bg-red-50/30 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-1 h-5 bg-red-500 rounded-full" />
+            <h3 className="text-base font-bold text-gray-900">Expense Commentary</h3>
+            <span className="text-xs text-gray-500">
+              {Object.keys(commentary).length} account{Object.keys(commentary).length !== 1 ? 's' : ''} over budget
+            </span>
+          </div>
+          <div className="space-y-4">
             {report.sections
               .filter(s => ['Cost of Sales', 'Operating Expenses', 'Other Expenses'].includes(s.category))
               .map((section) => {
@@ -397,21 +495,24 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                 if (sectionComments.length === 0) return null
                 return (
                   <div key={`commentary-section-${section.category}`}>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{section.category}</p>
-                    {sectionComments.map(l => {
-                      const entry = commentary[l.account_name]
-                      return (
-                        <CommentaryLine
-                          key={`commentary-${l.account_name}`}
-                          accountName={l.account_name}
-                          vendors={entry.vendor_summary || []}
-                          coachNote={entry.coach_note || ''}
-                          detailTabRef={entry.detail_tab_ref}
-                          onNoteChange={onCommentaryChange}
-                          onTabChange={onTabChange}
-                        />
-                      )
-                    })}
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">{section.category}</p>
+                    <div className="space-y-2">
+                      {sectionComments.map(l => {
+                        const entry = commentary[l.account_name]
+                        return (
+                          <CommentaryLine
+                            key={`commentary-${l.account_name}`}
+                            accountName={l.account_name}
+                            variance={l.variance_amount}
+                            vendors={entry.vendor_summary || []}
+                            coachNote={entry.coach_note || ''}
+                            detailTabRef={entry.detail_tab_ref}
+                            onNoteChange={onCommentaryChange}
+                            onTabChange={onTabChange}
+                          />
+                        )
+                      })}
+                    </div>
                   </div>
                 )
               })}
