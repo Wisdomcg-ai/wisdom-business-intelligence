@@ -132,7 +132,7 @@ export default function SwotPage() {
         .eq('quarter', currentQuarter.quarter)
         .eq('year', currentQuarter.year)
         .eq('type', 'quarterly')
-        .single();
+        .maybeSingle();
 
       console.log('[SWOT] Query result for current quarter:', {
         existingSwot: existingSwot ? { id: existingSwot.id, itemCount: existingSwot.swot_items?.length } : null,
@@ -184,7 +184,7 @@ export default function SwotPage() {
             .order('year', { ascending: false })
             .order('quarter', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
           if (!recentError && recentSwotWithItems && recentSwotWithItems.swot_items?.length > 0) {
             console.log('[SWOT] Found recent SWOT with items from Q' + recentSwotWithItems.quarter + ' ' + recentSwotWithItems.year);
@@ -243,7 +243,7 @@ export default function SwotPage() {
             )
           `)
           .eq('id', newSwot)
-          .single();
+          .maybeSingle();
 
         if (refetchError) throw refetchError;
 
@@ -420,7 +420,7 @@ export default function SwotPage() {
           .eq('business_id', businessId)
           .order('created_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (goals?.year_type) {
           const loadedYearType = goals.year_type as YearType;

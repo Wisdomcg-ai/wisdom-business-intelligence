@@ -82,7 +82,7 @@ export default function HiringRoadmapPage() {
         .from('team_data')
         .select('hiring_roadmap')
         .eq('user_id', targetUserId)
-        .single();
+        .maybeSingle();
 
       if (existingData?.hiring_roadmap) {
         const loadedData = existingData.hiring_roadmap as HiringRoadmapData;

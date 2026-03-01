@@ -174,7 +174,7 @@ export class WeeklyMetricsService {
         .select('*')
         .eq('business_id', businessId)
         .eq('week_ending_date', weekEndingDate)
-        .single()
+        .maybeSingle()
 
       if (existingSnapshot) {
         return { snapshot: this.mapFromDatabase(existingSnapshot) }

@@ -17,7 +17,7 @@ async function verifyBusinessAccess(userId: string, businessId: string): Promise
     .select('id')
     .eq('id', businessId)
     .or(`owner_id.eq.${userId},assigned_coach_id.eq.${userId}`)
-    .single()
+    .maybeSingle()
 
   if (business) return true
 
@@ -27,7 +27,7 @@ async function verifyBusinessAccess(userId: string, businessId: string): Promise
     .select('id')
     .eq('id', businessId)
     .eq('user_id', userId)
-    .single()
+    .maybeSingle()
 
   return !!profile
 }

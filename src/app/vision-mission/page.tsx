@@ -193,7 +193,7 @@ export default function VisionMissionPage() {
         .from('strategy_data')
         .select('vision_mission')
         .eq('user_id', targetUserId)
-        .single();
+        .maybeSingle();
 
       if (existingData?.vision_mission) {
         const vmData = existingData.vision_mission as VisionMissionData;

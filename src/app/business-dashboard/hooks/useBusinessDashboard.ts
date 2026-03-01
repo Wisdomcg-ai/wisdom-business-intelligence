@@ -81,7 +81,7 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
       console.log('[BusinessDashboard] Waiting for BusinessContext to load...')
       return
     }
-    loadData()
+    loadData().catch(console.error)
   }, [isContextLoading])
 
   // Auto-scroll to current week when data loads
@@ -100,7 +100,7 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
   // Reload data when week preference changes
   useEffect(() => {
     if (mounted && businessId && userId) {
-      loadCurrentWeekSnapshot()
+      loadCurrentWeekSnapshot().catch(console.error)
     }
   }, [weekPreference, mounted, businessId, userId])
 

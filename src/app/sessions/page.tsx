@@ -78,7 +78,7 @@ export default function ClientSessionsPage() {
           .from('businesses')
           .select('assigned_coach_id')
           .eq('id', bizId)
-          .single()
+          .maybeSingle()
 
         if (business) {
           setCoachId(business.assigned_coach_id)

@@ -296,7 +296,7 @@ export default function WeeklyReviewPage() {
           .from('business_profiles')
           .select('id')
           .eq('business_id', activeBusiness.id)
-          .single()
+          .maybeSingle()
 
         if (profile?.id) {
           bizId = profile.id
@@ -310,7 +310,7 @@ export default function WeeklyReviewPage() {
           .from('business_profiles')
           .select('id')
           .eq('user_id', targetUserId)
-          .single()
+          .maybeSingle()
         bizId = profile?.id || user.id
       }
       setBusinessId(bizId)
@@ -363,7 +363,7 @@ export default function WeeklyReviewPage() {
         .select('role')
         .eq('business_id', bizId)
         .eq('user_id', targetUserId)
-        .single()
+        .maybeSingle()
 
       const isOwnerAdmin = userRole?.role === 'owner' || userRole?.role === 'admin'
       setIsOwnerOrAdmin(isOwnerAdmin)
@@ -373,7 +373,7 @@ export default function WeeklyReviewPage() {
         .from('users')
         .select('first_name, last_name')
         .eq('id', user.id)
-        .single()
+        .maybeSingle()
 
       if (userData?.first_name) {
         setCurrentUserName(`${userData.first_name} ${userData.last_name || ''}`.trim())

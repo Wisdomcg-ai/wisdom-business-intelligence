@@ -181,7 +181,7 @@ export default function ClientFilePage() {
         businessQuery = businessQuery.eq('assigned_coach_id', user.id)
       }
 
-      const { data: businessData, error: businessError } = await businessQuery.single()
+      const { data: businessData, error: businessError } = await businessQuery.maybeSingle()
 
       if (businessError || !businessData) {
         setError('Client not found or you do not have access')

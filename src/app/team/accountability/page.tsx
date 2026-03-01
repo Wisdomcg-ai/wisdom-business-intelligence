@@ -80,7 +80,7 @@ export default function AccountabilityChartPage() {
         .from('team_data')
         .select('accountability_chart')
         .eq('user_id', targetUserId)
-        .single();
+        .maybeSingle();
 
       if (existingData?.accountability_chart) {
         const loadedData = existingData.accountability_chart as AccountabilityData;

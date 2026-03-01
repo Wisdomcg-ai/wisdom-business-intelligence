@@ -172,7 +172,7 @@ export default function CoachGoalsPage() {
         .from('businesses')
         .select('assigned_coach_id')
         .eq('id', clientId)
-        .single()
+        .maybeSingle()
 
       if (error || !business || business.assigned_coach_id !== user.id) {
         router.push('/coach/clients')

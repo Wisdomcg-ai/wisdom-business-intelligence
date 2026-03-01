@@ -159,7 +159,7 @@ export default function CoachForecastPage() {
         .from('businesses')
         .select('id, owner_id, assigned_coach_id')
         .eq('id', clientId)
-        .single()
+        .maybeSingle()
 
       if (businessError || !business || business.assigned_coach_id !== user.id) {
         console.error('Coach access denied:', businessError)
@@ -310,7 +310,7 @@ export default function CoachForecastPage() {
         .from('businesses')
         .select('owner_id')
         .eq('id', clientId)
-        .single()
+        .maybeSingle()
 
       if (!business?.owner_id) {
         toast.error('Could not find client user')

@@ -61,23 +61,25 @@ export function useActiveBusinessId() {
           .maybeSingle()
 
         let business = null
+        let fetchError = null
         if (businessUser) {
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from('businesses')
             .select('id')
             .eq('id', businessUser.business_id)
             .maybeSingle()
           business = data
+          fetchError = error
         } else {
           // Fallback: try to find a business owned by this user
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from('businesses')
             .select('id')
             .eq('owner_id', user.id)
             .maybeSingle()
           business = data
+          fetchError = error
         }
-        const fetchError = null
 
         if (fetchError || !business) {
           // User might be a coach with no own business - that's OK

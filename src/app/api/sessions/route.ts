@@ -72,7 +72,7 @@ export async function POST(request: Request) {
       .from('system_roles')
       .select('role')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!roleData || (roleData.role !== 'coach' && roleData.role !== 'super_admin')) {
       return NextResponse.json({ error: 'Access denied. Coach privileges required.' }, { status: 403 })
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
       .select('id')
       .eq('id', business_id)
       .eq('assigned_coach_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!business) {
       return NextResponse.json({ error: 'Business not found or access denied' }, { status: 404 })

@@ -187,7 +187,7 @@ export class WeeklyReviewService {
         .select('*')
         .eq('business_id', businessId)
         .eq('week_start_date', weekStartDate)
-        .single()
+        .maybeSingle()
 
       if (existingReview) {
         console.log('[Weekly Review] ✅ Found existing review for week:', weekStartDate)
@@ -208,7 +208,7 @@ export class WeeklyReviewService {
         .eq('business_id', businessId)
         .eq('user_id', userId)
         .eq('week_start_date', prevWeekStartStr)
-        .single()
+        .maybeSingle()
 
       // Carry forward incomplete priorities from last week
       let carriedTopPriorities: WeeklyPriority[] = []

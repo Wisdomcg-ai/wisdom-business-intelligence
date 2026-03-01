@@ -144,7 +144,7 @@ export default function SessionDetailPage() {
         .from('session_notes')
         .select('*')
         .eq('id', sessionId)
-        .single()
+        .maybeSingle()
 
       if (error || !sessionData) {
         console.error('Error loading session:', error)
@@ -165,7 +165,7 @@ export default function SessionDetailPage() {
         .from('businesses')
         .select('id, business_name, owner_id')
         .eq('id', sessionData.business_id)
-        .single()
+        .maybeSingle()
 
       if (businessData) {
         setBusiness(businessData)
