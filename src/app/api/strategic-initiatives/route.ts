@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       .from('businesses')
       .select('owner_id')
       .eq('id', business_id)
-      .single();
+      .maybeSingle();
 
     if (business?.owner_id) {
       // Get the business_profiles.id using the owner's user_id
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
         .from('business_profiles')
         .select('id')
         .eq('user_id', business.owner_id)
-        .single();
+        .maybeSingle();
 
       if (profile?.id) {
         profileBusinessId = profile.id;

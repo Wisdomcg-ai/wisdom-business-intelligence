@@ -55,7 +55,7 @@ export default function ClientAnalyticsPage() {
         .from('businesses')
         .select('id')
         .eq('owner_id', user.id)
-        .single()
+        .maybeSingle()
 
       bizId = businessData?.id || null
     }

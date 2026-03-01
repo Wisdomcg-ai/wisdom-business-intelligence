@@ -84,7 +84,7 @@ export default function QuarterlyReviewPage() {
           .from('business_profiles')
           .select('id')
           .eq('business_id', activeBusiness.id)
-          .single()
+          .maybeSingle()
 
         if (profile?.id) {
           bizId = profile.id
@@ -98,7 +98,7 @@ export default function QuarterlyReviewPage() {
           .from('business_profiles')
           .select('id')
           .eq('user_id', targetUserId)
-          .single()
+          .maybeSingle()
 
         if (!profile?.id) {
           setIsLoading(false)

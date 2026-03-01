@@ -9,9 +9,11 @@ import { getValidAccessToken } from '@/lib/xero/token-manager';
 
 export const dynamic = 'force-dynamic';
 
+// Service client with cache disabled to prevent stale token reads
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
+  process.env.SUPABASE_SERVICE_KEY!,
+  { global: { fetch: (url: any, init: any) => fetch(url, { ...init, cache: 'no-store' as RequestCache }) } }
 );
 
 // Keywords that indicate SaaS/subscription expense accounts
@@ -53,6 +55,24 @@ const EXCLUDE_KEYWORDS = [
   'payroll',
 ];
 
+async function fetchXeroAccounts(accessToken: string, tenantId: string, filterType: string) {
+  const accountTypeFilter = filterType === 'all'
+    ? 'Type=="REVENUE"||Type=="OTHERINCOME"||Type=="DIRECTCOSTS"||Type=="EXPENSE"||Type=="OVERHEADS"||Type=="OTHERCURRENTASSET"||Type=="OTHERCURRENTLIABILITY"'
+    : 'Type=="EXPENSE"||Type=="OVERHEADS"||Type=="DIRECTCOSTS"'
+
+  return fetch(
+    `https://api.xero.com/api.xro/2.0/Accounts?where=${encodeURIComponent(accountTypeFilter)}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'xero-tenant-id': tenantId,
+        'Accept': 'application/json'
+      },
+      cache: 'no-store',
+    }
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -63,62 +83,71 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
     }
 
-    console.log('[Chart of Accounts] Fetching for business:', businessId);
-
     // Get the Xero connection
     const { data: connection, error: connError } = await supabase
       .from('xero_connections')
       .select('*')
       .eq('business_id', businessId)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
 
     if (connError || !connection) {
-      console.error('[Chart of Accounts] No active Xero connection');
       return NextResponse.json({ error: 'No active Xero connection' }, { status: 404 });
     }
 
     // Get valid access token
-    const tokenResult = await getValidAccessToken(connection, supabase);
+    let tokenResult = await getValidAccessToken(connection, supabase);
 
     if (!tokenResult.success) {
-      console.error('[Chart of Accounts] Token refresh failed:', tokenResult.error);
-      return NextResponse.json({ error: 'Xero connection expired' }, { status: 401 });
+      return NextResponse.json({ error: 'Xero connection expired. Please reconnect Xero.' }, { status: 401 });
     }
 
-    const accessToken = tokenResult.accessToken!;
+    // Fetch from Xero
+    let response = await fetchXeroAccounts(tokenResult.accessToken!, connection.tenant_id, filterType);
 
-    // Fetch Chart of Accounts from Xero - only EXPENSE type accounts
-    const response = await fetch(
-      'https://api.xero.com/api.xro/2.0/Accounts?where=Type=="EXPENSE"||Type=="OVERHEADS"||Type=="DIRECTCOSTS"',
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'xero-tenant-id': connection.tenant_id,
-          'Accept': 'application/json'
-        }
+    // If Xero returns 401, force a token refresh and retry once
+    if (response.status === 401) {
+      console.log('[Chart of Accounts] Xero returned 401, forcing token refresh...');
+
+      // Expire the token in the DB to force the token manager to refresh
+      await supabase
+        .from('xero_connections')
+        .update({ expires_at: new Date(0).toISOString() })
+        .eq('id', connection.id);
+
+      tokenResult = await getValidAccessToken(connection, supabase);
+
+      if (!tokenResult.success) {
+        return NextResponse.json(
+          { error: tokenResult.message || 'Xero connection expired. Please reconnect Xero.' },
+          { status: 401 }
+        );
       }
-    );
+
+      response = await fetchXeroAccounts(tokenResult.accessToken!, connection.tenant_id, filterType);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[Chart of Accounts] Xero API error:', response.status, errorText);
-      return NextResponse.json({ error: 'Failed to fetch accounts from Xero' }, { status: 500 });
+
+      const status = response.status === 401 || response.status === 403 ? 401
+        : response.status === 429 ? 429
+        : 502;
+      return NextResponse.json(
+        { error: 'Failed to fetch accounts from Xero', xeroStatus: response.status },
+        { status }
+      );
     }
 
     const data = await response.json();
-    console.log('[Chart of Accounts] Fetched', data.Accounts?.length || 0, 'expense accounts from Xero');
 
     // Helper function to check if account is a subscription-type account
     const isSubscriptionAccount = (accountName: string): boolean => {
       const nameLower = accountName.toLowerCase();
-
-      // Check if any exclude keyword matches
       if (EXCLUDE_KEYWORDS.some(keyword => nameLower.includes(keyword))) {
         return false;
       }
-
-      // Check if any subscription keyword matches
       return SUBSCRIPTION_ACCOUNT_KEYWORDS.some(keyword => nameLower.includes(keyword));
     };
 
@@ -133,15 +162,11 @@ export async function GET(request: NextRequest) {
         isSuggested: isSubscriptionAccount(acc.Name),
       }));
 
-    // If filter is 'subscription', only return subscription-related accounts
     if (filterType === 'subscription') {
       accounts = accounts.filter((acc: any) => acc.isSuggested);
     }
 
-    // Sort by name
     accounts.sort((a: any, b: any) => a.accountName.localeCompare(b.accountName));
-
-    console.log('[Chart of Accounts] Returning', accounts.length, 'accounts (filter:', filterType + ')');
 
     return NextResponse.json({
       success: true,

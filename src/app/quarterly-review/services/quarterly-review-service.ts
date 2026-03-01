@@ -36,7 +36,7 @@ export class QuarterlyReviewService {
       .eq('business_id', businessId)
       .eq('quarter', quarter)
       .eq('year', year)
-      .single();
+      .maybeSingle();
 
     if (error && error.code !== 'PGRST116') {
       console.error('Error fetching quarterly review:', error);
@@ -51,12 +51,14 @@ export class QuarterlyReviewService {
       .from('quarterly_reviews')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error fetching quarterly review by ID:', error);
       throw error;
     }
+
+    if (!data) return null;
 
     return data;
   }

@@ -429,7 +429,7 @@ export async function PATCH(request: Request) {
       .from('system_roles')
       .select('role')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!roleData || roleData.role !== 'super_admin') {
       return NextResponse.json({ error: 'Access denied. Super admin privileges required.' }, { status: 403 })
@@ -484,7 +484,7 @@ export async function DELETE(request: Request) {
       .from('system_roles')
       .select('role')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!roleData || roleData.role !== 'super_admin') {
       return NextResponse.json({ error: 'Access denied. Super admin privileges required.' }, { status: 403 })
@@ -502,7 +502,7 @@ export async function DELETE(request: Request) {
       .from('businesses')
       .select('owner_id')
       .eq('id', clientId)
-      .single()
+      .maybeSingle()
 
     // Delete in order to handle foreign key constraints
     // 1. Delete user_permissions

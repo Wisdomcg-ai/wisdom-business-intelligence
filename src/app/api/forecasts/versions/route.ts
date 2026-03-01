@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       .from('financial_forecasts')
       .select('*')
       .eq('id', forecastId)
-      .single()
+      .maybeSingle()
 
     if (forecastError || !currentForecast) {
       return NextResponse.json({ error: 'Forecast not found' }, { status: 404 })

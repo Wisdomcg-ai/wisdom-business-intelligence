@@ -76,7 +76,7 @@ export default function SwotPage() {
       .from('businesses')
       .select('owner_id, name, owner_email')
       .eq('id', businessIdFromContext)
-      .single();
+      .maybeSingle();
 
     if (businessData?.owner_id) {
       possibleUserIds.push(businessData.owner_id);

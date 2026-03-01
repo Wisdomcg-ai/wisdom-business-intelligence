@@ -77,7 +77,7 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
   // Load data on mount
   useEffect(() => {
     setMounted(true)
-    loadData()
+    loadData().catch(console.error)
   }, [])
 
   // Auto-scroll to current week when data loads
@@ -96,7 +96,7 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
   // Reload data when week preference changes
   useEffect(() => {
     if (mounted && businessId && userId) {
-      loadCurrentWeekSnapshot()
+      loadCurrentWeekSnapshot().catch(console.error)
     }
   }, [weekPreference, mounted, businessId, userId])
 

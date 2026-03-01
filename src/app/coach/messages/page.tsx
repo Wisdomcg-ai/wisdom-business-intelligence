@@ -226,7 +226,7 @@ export default function MessagesPage() {
       .from('businesses')
       .select('owner_id')
       .eq('id', selectedConversation.businessId)
-      .single()
+      .maybeSingle()
 
     // Prepare message data
     const messageData: any = {
@@ -299,7 +299,7 @@ export default function MessagesPage() {
         .from('businesses')
         .select('owner_id')
         .eq('id', businessId)
-        .single()
+        .maybeSingle()
 
       return supabase
         .from('messages')

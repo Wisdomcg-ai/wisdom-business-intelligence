@@ -30,7 +30,7 @@ export async function GET(
       .from('financial_forecasts')
       .select('*')
       .eq('id', forecastId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('[Forecast API] Error fetching forecast:', error);
@@ -42,7 +42,7 @@ export async function GET(
       .from('businesses')
       .select('id, owner_id, assigned_coach_id')
       .eq('id', forecast.business_id)
-      .single();
+      .maybeSingle();
 
     if (!business) {
       return NextResponse.json({ error: 'Business not found' }, { status: 404 });

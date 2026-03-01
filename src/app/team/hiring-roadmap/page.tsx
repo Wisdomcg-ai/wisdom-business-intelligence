@@ -2,27 +2,23 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Save, Plus, Trash2, UserPlus, ArrowLeft } from 'lucide-react';
+import { Save, HeartHandshake, ArrowLeft, Sparkles, Trophy, TrendingUp, Building, DollarSign, Users } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import PageHeader from '@/components/ui/PageHeader';
 
-interface HiringPriority {
-  role: string;
-  salary: string;
-  start_date: string;
-  comments: string;
-}
-
-interface HiringRoadmapData {
-  hiring_priorities: HiringPriority[];
+interface TeamCultureData {
+  core_values: string;
+  team_rituals: string;
   recognition_rewards: string;
   growth_opportunities: string;
   work_environment: string;
   compensation_strategy: string;
+  // Legacy field — ignored but preserved if present
+  hiring_priorities?: unknown;
 }
 
-export default function HiringRoadmapPage() {
+export default function TeamCulturePage() {
   const router = useRouter();
   const supabase = createClient();
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
@@ -35,25 +31,21 @@ export default function HiringRoadmapPage() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState<HiringRoadmapData>({
-    hiring_priorities: [
-      { role: '', salary: '', start_date: '', comments: '' },
-      { role: '', salary: '', start_date: '', comments: '' }
-    ],
+  const [formData, setFormData] = useState<TeamCultureData>({
+    core_values: '',
+    team_rituals: '',
     recognition_rewards: '',
     growth_opportunities: '',
     work_environment: '',
-    compensation_strategy: ''
+    compensation_strategy: '',
   });
 
-  // Ref to track latest form data to avoid stale closures in auto-save
-  const formDataRef = useRef<HiringRoadmapData>(formData);
+  const formDataRef = useRef<TeamCultureData>(formData);
 
-  // Helper to update both state and ref atomically
-  const updateFormData = (updater: (prev: HiringRoadmapData) => HiringRoadmapData) => {
+  const updateFormData = (updater: (prev: TeamCultureData) => TeamCultureData) => {
     setFormData(prev => {
       const newData = updater(prev);
-      formDataRef.current = newData; // Sync ref immediately
+      formDataRef.current = newData;
       return newData;
     });
   };
@@ -74,21 +66,27 @@ export default function HiringRoadmapPage() {
         return;
       }
 
-      // Use activeBusiness ownerId if viewing as coach, otherwise current user
       const targetUserId = activeBusiness?.ownerId || user.id;
 
-      // Load from team_data table
       const { data: existingData } = await supabase
         .from('team_data')
         .select('hiring_roadmap')
         .eq('user_id', targetUserId)
-        .single();
+        .maybeSingle();
 
       if (existingData?.hiring_roadmap) {
-        const loadedData = existingData.hiring_roadmap as HiringRoadmapData;
-        setFormData(loadedData);
-        formDataRef.current = loadedData; // Sync ref
-        lastSavedDataRef.current = JSON.stringify(existingData.hiring_roadmap);
+        const loaded = existingData.hiring_roadmap as TeamCultureData;
+        const merged: TeamCultureData = {
+          core_values: loaded.core_values || '',
+          team_rituals: loaded.team_rituals || '',
+          recognition_rewards: loaded.recognition_rewards || '',
+          growth_opportunities: loaded.growth_opportunities || '',
+          work_environment: loaded.work_environment || '',
+          compensation_strategy: loaded.compensation_strategy || '',
+        };
+        setFormData(merged);
+        formDataRef.current = merged;
+        lastSavedDataRef.current = JSON.stringify(merged);
       }
 
       setLoading(false);
@@ -112,7 +110,6 @@ export default function HiringRoadmapPage() {
   };
 
   const saveData = async () => {
-    // Read from ref to avoid stale closure issue
     const dataToSave = formDataRef.current;
     const currentDataString = JSON.stringify(dataToSave);
     if (currentDataString === lastSavedDataRef.current) {
@@ -127,7 +124,6 @@ export default function HiringRoadmapPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Use activeBusiness ownerId if viewing as coach, otherwise current user
       const targetUserId = activeBusiness?.ownerId || user.id;
 
       const { error } = await supabase
@@ -153,53 +149,83 @@ export default function HiringRoadmapPage() {
     }
   };
 
-  const updateHiringPriority = (index: number, field: keyof HiringPriority, value: string) => {
-    updateFormData(prev => {
-      const newPriorities = [...prev.hiring_priorities];
-      newPriorities[index] = { ...newPriorities[index], [field]: value };
-      return { ...prev, hiring_priorities: newPriorities };
-    });
-    handleFieldChange();
-  };
-
-  const addHiringPriority = () => {
-    if (formData.hiring_priorities.length < 10) {
-      updateFormData(prev => ({
-        ...prev,
-        hiring_priorities: [...prev.hiring_priorities, { role: '', salary: '', start_date: '', comments: '' }]
-      }));
-      handleFieldChange();
-    }
-  };
-
-  const removeHiringPriority = (index: number) => {
-    if (formData.hiring_priorities.length > 2) {
-      updateFormData(prev => ({
-        ...prev,
-        hiring_priorities: prev.hiring_priorities.filter((_, i) => i !== index)
-      }));
-      handleFieldChange();
-    }
-  };
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading hiring roadmap...</p>
+          <p className="text-gray-600">Loading...</p>
         </div>
       </div>
     );
   }
 
+  const sections = [
+    {
+      key: 'core_values' as const,
+      icon: Sparkles,
+      title: 'Core Values',
+      description: 'What values define your team? These guide hiring, decisions, and daily behaviour.',
+      placeholder: 'e.g., Ownership — we treat the business like our own. Transparency — we share the good and the bad openly. Growth mindset — we learn from mistakes and improve constantly.',
+      rows: 4,
+    },
+    {
+      key: 'team_rituals' as const,
+      icon: Users,
+      title: 'Team Rituals & Rhythms',
+      description: 'Regular practices that build connection and keep everyone aligned.',
+      placeholder: 'e.g., Monday morning standup (15 min), monthly team lunch, quarterly offsite, Friday wins Slack channel, annual planning day.',
+      rows: 3,
+    },
+    {
+      key: 'recognition_rewards' as const,
+      icon: Trophy,
+      title: 'Recognition & Rewards',
+      description: 'How will you recognise and reward great performance?',
+      placeholder: 'e.g., Monthly shoutouts in all-hands, spot bonuses for above-and-beyond work, annual awards ceremony, peer-nominated recognition.',
+      rows: 3,
+    },
+    {
+      key: 'growth_opportunities' as const,
+      icon: TrendingUp,
+      title: 'Growth & Development',
+      description: 'What development and advancement opportunities will you offer?',
+      placeholder: 'e.g., $2,000/year learning budget per person, quarterly career conversations, internal promotion pathways, mentorship pairing, conference attendance.',
+      rows: 3,
+    },
+    {
+      key: 'work_environment' as const,
+      icon: Building,
+      title: 'Work Environment',
+      description: 'What kind of workplace will you create?',
+      placeholder: 'e.g., Hybrid model (3 days office, 2 days remote), flexible start times, dog-friendly office, quarterly team social events, wellness allowance.',
+      rows: 3,
+    },
+    {
+      key: 'compensation_strategy' as const,
+      icon: DollarSign,
+      title: 'Compensation Strategy',
+      description: 'How will you structure pay and benefits to attract and retain talent?',
+      placeholder: 'e.g., Pay at 75th percentile for market, annual salary reviews, performance bonuses (10-20% of base), superannuation above minimum, health insurance.',
+      rows: 3,
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-gray-50">
       <PageHeader
         variant="banner"
-        title="Hiring Roadmap"
-        subtitle="Plan your hiring priorities and retention strategy"
-        icon={UserPlus}
+        title="Team Culture & Retention"
+        subtitle="Define your culture and build a workplace people don't want to leave"
+        icon={HeartHandshake}
         actions={
           <div className="flex flex-col items-end gap-1">
             {saving && (
@@ -210,7 +236,7 @@ export default function HiringRoadmapPage() {
             )}
             {!saving && lastSaved && (
               <span className="text-sm text-brand-orange">
-                ✓ Saved {lastSaved.toLocaleTimeString()}
+                Saved {lastSaved.toLocaleTimeString()}
               </span>
             )}
             {hasUnsavedChanges && !saving && (
@@ -223,176 +249,39 @@ export default function HiringRoadmapPage() {
         }
       />
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
-
+      <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="space-y-6">
-          {/* Hiring Priorities */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800">Hiring Priorities</h2>
-            <p className="text-gray-600 mb-4">
-              What roles do you need to hire in the next 12 months to achieve your goals?
-            </p>
-
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left p-3 font-medium text-gray-700">Role</th>
-                    <th className="text-left p-3 font-medium text-gray-700">Estimated Annual Salary</th>
-                    <th className="text-left p-3 font-medium text-gray-700">Estimated Start Date</th>
-                    <th className="text-left p-3 font-medium text-gray-700">Comments</th>
-                    <th className="p-3 w-10"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {formData.hiring_priorities.map((priority, index) => (
-                    <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="p-3">
-                        <input
-                          type="text"
-                          value={priority.role}
-                          onChange={(e) => updateHiringPriority(index, 'role', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-                          placeholder="e.g., Sales Manager"
-                        />
-                      </td>
-                      <td className="p-3">
-                        <input
-                          type="text"
-                          value={priority.salary}
-                          onChange={(e) => updateHiringPriority(index, 'salary', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-                          placeholder="e.g., $75,000"
-                        />
-                      </td>
-                      <td className="p-3">
-                        <input
-                          type="date"
-                          value={priority.start_date}
-                          onChange={(e) => updateHiringPriority(index, 'start_date', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-                        />
-                      </td>
-                      <td className="p-3">
-                        <input
-                          type="text"
-                          value={priority.comments}
-                          onChange={(e) => updateHiringPriority(index, 'comments', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-                          placeholder="Additional notes"
-                        />
-                      </td>
-                      <td className="p-3">
-                        {formData.hiring_priorities.length > 2 && (
-                          <button
-                            type="button"
-                            onClick={() => removeHiringPriority(index)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Remove row"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {formData.hiring_priorities.length < 10 && (
-              <button
-                type="button"
-                onClick={addHiringPriority}
-                className="mt-4 flex items-center gap-2 px-4 py-2 text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
-              >
-                <Plus className="h-4 w-4" />
-                Add Another Role
-              </button>
-            )}
-            <p className="mt-2 text-sm text-gray-500">
-              You can add up to {10 - formData.hiring_priorities.length} more roles
-            </p>
-          </div>
-
-          {/* Retention Strategy */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800">Retention Strategy</h2>
-            <p className="text-gray-600 mb-4">
-              How will you keep your best people engaged and committed?
-            </p>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Recognition & Rewards
-                </label>
+          {sections.map((section) => {
+            const Icon = section.icon;
+            return (
+              <div key={section.key} className="bg-white rounded-lg shadow-sm p-6">
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="w-8 h-8 bg-brand-navy/10 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Icon className="w-4 h-4 text-brand-navy" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-900">{section.title}</h2>
+                    <p className="text-sm text-gray-500 mt-0.5">{section.description}</p>
+                  </div>
+                </div>
                 <textarea
-                  value={formData.recognition_rewards}
+                  value={formData[section.key]}
                   onChange={(e) => {
-                    updateFormData(prev => ({ ...prev, recognition_rewards: e.target.value }));
+                    updateFormData(prev => ({ ...prev, [section.key]: e.target.value }));
                     handleFieldChange();
                   }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-                  rows={3}
-                  placeholder="How will you recognize and reward great performance? (e.g., bonuses, public recognition, perks)"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm leading-relaxed"
+                  rows={section.rows}
+                  placeholder={section.placeholder}
                 />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Growth Opportunities
-                </label>
-                <textarea
-                  value={formData.growth_opportunities}
-                  onChange={(e) => {
-                    updateFormData(prev => ({ ...prev, growth_opportunities: e.target.value }));
-                    handleFieldChange();
-                  }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-                  rows={3}
-                  placeholder="What development and advancement opportunities will you offer? (e.g., training, mentorship, career paths)"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Work Environment
-                </label>
-                <textarea
-                  value={formData.work_environment}
-                  onChange={(e) => {
-                    updateFormData(prev => ({ ...prev, work_environment: e.target.value }));
-                    handleFieldChange();
-                  }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-                  rows={3}
-                  placeholder="What kind of workplace will you create? (e.g., flexibility, remote options, culture initiatives)"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Compensation Strategy
-                </label>
-                <textarea
-                  value={formData.compensation_strategy}
-                  onChange={(e) => {
-                    updateFormData(prev => ({ ...prev, compensation_strategy: e.target.value }));
-                    handleFieldChange();
-                  }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-                  rows={3}
-                  placeholder="How will you structure pay and benefits? (e.g., competitive base, bonuses, equity, benefits package)"
-                />
-              </div>
-            </div>
-          </div>
+            );
+          })}
 
           {/* Navigation */}
           <div className="flex justify-between items-center pb-8">
             <button
-              onClick={() => router.push('/accountability')}
+              onClick={() => router.push('/team/accountability')}
               className="flex items-center gap-2 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
             >
               <ArrowLeft className="w-4 h-4" />

@@ -36,7 +36,7 @@ export default function CoachNavbar({ businessId }: CoachNavbarProps) {
         .from('businesses')
         .select('name, business_name')
         .eq('id', activeBusinessId)
-        .single()
+        .maybeSingle()
 
       if (!error && data) {
         setBusinessName(data.name || data.business_name)

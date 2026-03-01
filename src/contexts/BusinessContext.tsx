@@ -181,7 +181,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         .from('businesses')
         .select('id, name, owner_id, industry, status, assigned_coach_id')
         .eq('id', businessId)
-        .single()
+        .maybeSingle()
 
       console.log('[BusinessContext] Business fetch result:', { business: business?.name, error: fetchError?.message })
 

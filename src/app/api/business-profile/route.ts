@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
       .from('business_profiles')
       .select('*')
       .eq('business_id', businessId)
-      .single();
+      .maybeSingle();
 
     if (profileError && profileError.code !== 'PGRST116') {
       console.error('[business-profile] Error fetching profile:', profileError);

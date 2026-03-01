@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
       .from('businesses')
       .select('id, owner_id, assigned_coach_id')
       .eq('id', business_id)
-      .single();
+      .maybeSingle();
 
     if (!business) {
       return NextResponse.json({ error: 'Business not found' }, { status: 404 });
@@ -275,10 +275,34 @@ export async function POST(request: NextRequest) {
     );
 
     if (plLines.length > 0) {
-      await supabaseAdmin
+      // Use RPC or sequential delete+insert. Delete first, verify empty, then insert.
+      // This prevents duplicates from concurrent sync operations.
+      const { error: deleteError } = await supabaseAdmin
         .from('xero_pl_lines')
         .delete()
         .eq('business_id', business_id);
+
+      if (deleteError) {
+        console.error('[Sync Xero] Delete failed:', deleteError);
+        return NextResponse.json(
+          { error: 'Database delete failed', detail: deleteError.message },
+          { status: 500 }
+        );
+      }
+
+      // Verify deletion completed before inserting
+      const { count } = await supabaseAdmin
+        .from('xero_pl_lines')
+        .select('*', { count: 'exact', head: true })
+        .eq('business_id', business_id);
+
+      if (count && count > 0) {
+        console.warn(`[Sync Xero] ${count} rows still exist after delete — retrying delete`);
+        await supabaseAdmin
+          .from('xero_pl_lines')
+          .delete()
+          .eq('business_id', business_id);
+      }
 
       // Try inserting with account_code; if column doesn't exist yet, retry without it
       let insertError: any = null;

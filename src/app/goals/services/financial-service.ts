@@ -149,7 +149,7 @@ export class FinancialService {
         .from('business_financial_goals')
         .select('*')
         .eq('business_id', businessId)
-        .single()
+        .maybeSingle()
 
       if (error) {
         // If no data found, return null (not an error)

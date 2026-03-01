@@ -80,7 +80,7 @@ export default function AccountabilityChartPage() {
         .from('team_data')
         .select('accountability_chart')
         .eq('user_id', targetUserId)
-        .single();
+        .maybeSingle();
 
       if (existingData?.accountability_chart) {
         const loadedData = existingData.accountability_chart as AccountabilityData;
@@ -296,7 +296,7 @@ export default function AccountabilityChartPage() {
               }}
               className="px-8 py-3 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 font-medium"
             >
-              Continue to Hiring Roadmap →
+              Continue to Culture & Retention →
             </button>
           </div>
         </div>

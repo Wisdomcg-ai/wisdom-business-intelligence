@@ -314,7 +314,7 @@ function StrategicPlanningContent() {
           .order('year', { ascending: false })
           .order('quarter', { ascending: false })
           .limit(1)
-          .single()
+          .maybeSingle()
 
         if (analysisError || !analysis) {
           console.log('[Goals] No SWOT analysis found:', analysisError?.message)

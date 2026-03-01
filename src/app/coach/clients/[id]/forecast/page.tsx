@@ -159,7 +159,7 @@ export default function CoachForecastPage() {
         .from('businesses')
         .select('id, owner_id, assigned_coach_id')
         .eq('id', clientId)
-        .single()
+        .maybeSingle()
 
       if (businessError || !business || business.assigned_coach_id !== user.id) {
         console.error('Coach access denied:', businessError)
@@ -629,7 +629,7 @@ export default function CoachForecastPage() {
             />
           )}
 
-          {activeTab === 'payroll' && (
+          {(activeTab as string) === 'payroll' && (
             <PayrollTable
               forecast={forecast}
               employees={employees}

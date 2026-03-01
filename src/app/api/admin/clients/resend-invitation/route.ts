@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       .from('system_roles')
       .select('role')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!roleData || (roleData.role !== 'super_admin' && roleData.role !== 'coach')) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       .from('businesses')
       .select('id, name, business_name, owner_id, owner_name')
       .eq('owner_email', email)
-      .single()
+      .maybeSingle()
 
     if (businessError || !business) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 })
