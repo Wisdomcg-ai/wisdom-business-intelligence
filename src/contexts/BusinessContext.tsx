@@ -387,12 +387,13 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
       // SECURITY: Verify the user has access to this business
       const isOwner = business.owner_id === currentUser.id
       const isAssignedCoach = business.assigned_coach_id === currentUser.id
+      const isCoach = currentUser.role === 'coach'
       const isSuperAdmin = currentUser.role === 'admin'
 
-      // If not owner, assigned coach, or super admin, check team membership
+      // If not owner, coach, or super admin, check team membership
       let isTeamMember = false
       let teamMemberRole: string | null = null
-      if (!isOwner && !isAssignedCoach && !isSuperAdmin) {
+      if (!isOwner && !isAssignedCoach && !isCoach && !isSuperAdmin) {
         const { data: teamMember } = await supabase
           .from('business_users')
           .select('id, role')
@@ -406,7 +407,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
       }
 
       // Deny access if no valid relationship exists
-      if (!isOwner && !isAssignedCoach && !isSuperAdmin && !isTeamMember) {
+      if (!isOwner && !isAssignedCoach && !isCoach && !isSuperAdmin && !isTeamMember) {
         console.error('[BusinessContext] Access denied - user not authorized for this business:', {
           userId: currentUser.id,
           businessId,
