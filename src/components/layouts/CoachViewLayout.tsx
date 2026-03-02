@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import {
@@ -23,7 +22,6 @@ import {
   Users,
   Compass,
   Award,
-  Loader2,
   ChevronDown,
   ChevronUp
 } from 'lucide-react'
@@ -115,8 +113,7 @@ interface CoachViewLayoutProps {
 }
 
 export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
-  const router = useRouter()
-  const { activeBusiness, isLoading, error } = useBusinessContext()
+  const { activeBusiness } = useBusinessContext()
   const [expandedSections, setExpandedSections] = useState<string[]>([
     'DASHBOARD',
     'START HERE',
@@ -137,35 +134,7 @@ export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
 
   const navigation = getClientNavigation(clientId)
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
-          <p className="text-gray-500">Loading client view...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Client</h3>
-          <p className="text-gray-500 mb-4">{error}</p>
-          <Link
-            href="/coach/clients"
-            className="text-brand-orange hover:text-brand-orange-700 font-medium"
-          >
-            Back to Clients
-          </Link>
-        </div>
-      </div>
-    )
-  }
-
+  // Always render sidebar + banner — only the content area shows loading/error
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Coach View Banner */}
@@ -190,8 +159,8 @@ export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
       </div>
 
       <div className="flex">
-        {/* Client Sidebar */}
-        <aside className="hidden lg:block w-64 bg-white border-r border-gray-200 min-h-[calc(100svh-52px)] sm:min-h-[calc(100vh-52px)] sticky top-[52px]">
+        {/* Client Sidebar — always visible */}
+        <aside className="hidden lg:block w-64 bg-white border-r border-gray-200 min-h-[calc(100svh-52px)] sm:min-h-[calc(100vh-52px)] sticky top-[52px] flex-shrink-0">
           <nav className="py-4">
             {navigation.map((section) => (
               <div key={section.title} className="border-b border-gray-100 last:border-b-0">
@@ -235,7 +204,7 @@ export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 min-h-[calc(100svh-52px)] sm:min-h-[calc(100vh-52px)]">
+        <main className="flex-1 min-h-[calc(100svh-52px)] sm:min-h-[calc(100vh-52px)] overflow-y-auto">
           {children}
         </main>
       </div>
