@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
-import { Printer, Loader2, ExternalLink, CheckCircle2, Circle, Lightbulb, FileText } from 'lucide-react'
+import { Printer, Loader2, ExternalLink, CheckCircle2, Circle, Lightbulb, FileText, ChevronDown } from 'lucide-react'
+import type { QuarterInfo } from '@/app/goals/utils/quarters'
 import { calculateQuarters, determinePlanYear } from '@/app/goals/utils/quarters'
 import type { YearType } from '@/app/goals/types'
 import PageHeader from '@/components/ui/PageHeader'
@@ -89,6 +90,9 @@ export default function OnePagePlan() {
   const [data, setData] = useState<OnePagePlanData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [allQuarters, setAllQuarters] = useState<QuarterInfo[]>([])
+  const [selectedQuarterId, setSelectedQuarterId] = useState<string | null>(null)
+  const [showQuarterPicker, setShowQuarterPicker] = useState(false)
 
   // Calculate strategic health metrics
   const calculatePlanHealth = (planData: OnePagePlanData) => {
@@ -189,7 +193,7 @@ export default function OnePagePlan() {
     }
   }, [])
 
-  const loadAllData = async () => {
+  const loadAllData = async (overrideQuarterId?: string) => {
     try {
       setLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
@@ -462,17 +466,41 @@ export default function OnePagePlan() {
 
       // Calculate quarters based on year type
       const quarters = calculateQuarters(yearType, planYear)
-      // Find the PLANNING quarter (next quarter, not current) - users plan ahead
-      const currentQuarterIdx = quarters.findIndex(q => q.isCurrent)
-      const planningQuarterIdx = currentQuarterIdx >= 0
-        ? (currentQuarterIdx + 1) % 4
-        : 0
-      // Use planning quarter (next quarter) instead of current quarter
-      const planningQuarterInfo = quarters[planningQuarterIdx]
-      const currentQuarter = planningQuarterInfo.label // 'Q1', 'Q2', etc.
-      const currentQuarterLabel = `${planningQuarterInfo.label} (${planningQuarterInfo.months}) - Planning`
+      setAllQuarters(quarters)
 
-      devLog('[One Page Plan] 📅 Year settings:', { yearType, planYear, currentQuarter, currentQuarterLabel, planningForNextQuarter: true })
+      // Determine which quarter to display
+      const currentQuarterIdx = quarters.findIndex(q => q.isCurrent)
+      const nextQuarterIdx = currentQuarterIdx >= 0 ? (currentQuarterIdx + 1) % 4 : -1
+
+      // If user manually selected a quarter, use that
+      const effectiveQuarterId = overrideQuarterId || selectedQuarterId
+      let displayQuarterIdx: number
+      if (effectiveQuarterId) {
+        displayQuarterIdx = quarters.findIndex(q => q.id === effectiveQuarterId)
+        if (displayQuarterIdx < 0) displayQuarterIdx = currentQuarterIdx >= 0 ? currentQuarterIdx : 0
+      } else {
+        // Smart default: show current quarter, but switch to next quarter if it has rocks data
+        let nextQuarterHasData = false
+        if (nextQuarterIdx >= 0) {
+          const nextQKey = quarters[nextQuarterIdx].id // 'q1', 'q2', etc.
+          const { count } = await supabase
+            .from('strategic_initiatives')
+            .select('id', { count: 'exact', head: true })
+            .eq('business_id', businessId)
+            .eq('step_type', nextQKey)
+          nextQuarterHasData = (count || 0) > 0
+        }
+        displayQuarterIdx = nextQuarterHasData ? nextQuarterIdx : (currentQuarterIdx >= 0 ? currentQuarterIdx : 0)
+        // Store the auto-selected quarter so the picker reflects it
+        setSelectedQuarterId(quarters[displayQuarterIdx].id)
+      }
+
+      const displayQuarterInfo = quarters[displayQuarterIdx]
+      const isCurrent = displayQuarterIdx === currentQuarterIdx
+      const currentQuarter = displayQuarterInfo.label // 'Q1', 'Q2', etc.
+      const currentQuarterLabel = `${displayQuarterInfo.label} (${displayQuarterInfo.months})${isCurrent ? '' : ' - Planning'}`
+
+      devLog('[One Page Plan] 📅 Year settings:', { yearType, planYear, currentQuarter, currentQuarterLabel, displayQuarterIdx })
 
       // Load KPIs
       const { data: kpisData, error: kpiError } = await supabase
@@ -736,6 +764,58 @@ export default function OnePagePlan() {
           }
         />
       </div>
+
+      {/* Quarter Selector - Hidden when printing */}
+      {allQuarters.length > 0 && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 mb-2 print:hidden">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-600">Viewing quarter:</span>
+            <div className="relative">
+              <button
+                onClick={() => setShowQuarterPicker(!showQuarterPicker)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg text-sm font-medium text-gray-800 shadow-sm"
+              >
+                {allQuarters.find(q => q.id === selectedQuarterId)?.label || 'Select'}{' '}
+                ({allQuarters.find(q => q.id === selectedQuarterId)?.months})
+                {allQuarters.find(q => q.id === selectedQuarterId)?.isCurrent && (
+                  <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">Current</span>
+                )}
+                <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
+              </button>
+              {showQuarterPicker && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowQuarterPicker(false)} />
+                  <div className="absolute left-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-50 py-1">
+                    {allQuarters.map((q) => (
+                      <button
+                        key={q.id}
+                        onClick={() => {
+                          setSelectedQuarterId(q.id)
+                          setShowQuarterPicker(false)
+                          loadAllData(q.id)
+                        }}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${
+                          q.id === selectedQuarterId ? 'bg-brand-orange-50 text-brand-orange font-medium' : 'text-gray-700'
+                        }`}
+                      >
+                        <span>{q.label} ({q.months})</span>
+                        <div className="flex items-center gap-1.5">
+                          {q.isCurrent && (
+                            <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">Current</span>
+                          )}
+                          {q.isPast && (
+                            <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-medium">Past</span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Strategic Health Dashboard - Hidden when printing */}
       {data && (() => {
