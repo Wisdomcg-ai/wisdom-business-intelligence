@@ -1,5 +1,3 @@
-const { withSentryConfig } = require('@sentry/nextjs');
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Suppress ESLint warnings during builds (they're shown during development)
@@ -94,20 +92,21 @@ const nextConfig = {
   },
 }
 
-// Only use Sentry config if org/project are set, otherwise use plain nextConfig
-const sentryOptions = {
-  // Upload source maps to Sentry but don't expose them publicly
-  hideSourceMaps: true,
-
-  // Suppress build logs from Sentry plugin
-  silent: true,
-
-  // Org and project from env vars
-  org: process.env.SENTRY_ORG,
-  project: process.env.SENTRY_PROJECT,
+// Only use Sentry config if the package is installed and org/project are set
+let withSentryConfig;
+try {
+  withSentryConfig = require('@sentry/nextjs').withSentryConfig;
+} catch {
+  // @sentry/nextjs not installed — skip
 }
 
-// Skip Sentry webpack plugin if org/project not configured (still captures errors via DSN)
-module.exports = process.env.SENTRY_ORG && process.env.SENTRY_PROJECT
-  ? withSentryConfig(nextConfig, sentryOptions)
-  : nextConfig
+if (withSentryConfig && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT) {
+  module.exports = withSentryConfig(nextConfig, {
+    hideSourceMaps: true,
+    silent: true,
+    org: process.env.SENTRY_ORG,
+    project: process.env.SENTRY_PROJECT,
+  });
+} else {
+  module.exports = nextConfig;
+}
