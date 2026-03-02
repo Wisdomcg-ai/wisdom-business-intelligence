@@ -444,14 +444,14 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         viewerRole = 'owner'
       } else if (isTeamMember && teamMemberRole) {
         viewerRole = teamMemberRole as ViewerContext['role']
-      } else if (isAssignedCoach || isSuperAdmin) {
+      } else if (isAssignedCoach || isCoach || isSuperAdmin) {
         viewerRole = 'coach'
       } else {
         viewerRole = 'viewer'
       }
 
       const permissions = getPermissionsForRole(viewerRole, isOwner)
-      const isViewingAsCoach = isAssignedCoach || (isSuperAdmin && !isOwner && !isTeamMember)
+      const isViewingAsCoach = isAssignedCoach || isCoach || (isSuperAdmin && !isOwner && !isTeamMember)
 
       setViewerContext({
         role: viewerRole,
