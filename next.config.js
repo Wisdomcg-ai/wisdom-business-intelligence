@@ -27,6 +27,17 @@ const nextConfig = {
     optimizePackageImports: ['lucide-react', '@supabase/supabase-js'],
   },
 
+  // Suppress Edge Runtime warnings for @supabase/supabase-js (uses process.version for diagnostics)
+  webpack: (config, { nextRuntime }) => {
+    if (nextRuntime === 'edge') {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        process: false,
+      };
+    }
+    return config;
+  },
+
   // Security and caching headers
   async headers() {
     // Security headers that apply to all routes

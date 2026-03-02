@@ -1,5 +1,5 @@
-// Sentry is dynamically imported to avoid webpack patching issues in development
-import type { SeverityLevel } from '@sentry/nextjs'
+// Sentry integration removed — @sentry/nextjs is not installed
+type SeverityLevel = 'fatal' | 'error' | 'warning' | 'log' | 'info' | 'debug'
 
 /**
  * Error tracking utility
@@ -69,31 +69,9 @@ class ErrorTracker {
       this.errorQueue = this.errorQueue.slice(-this.maxQueueSize)
     }
 
-    // Send to Sentry in production
+    // Log errors in production (Sentry not installed)
     if (process.env.NODE_ENV === 'production') {
-      import('@sentry/nextjs').then((Sentry) => {
-        const severityMap: Record<string, string> = {
-          critical: 'fatal',
-          high: 'error',
-          medium: 'warning',
-          low: 'info',
-        }
-        const sentryLevel = severityMap[severity] || 'error'
-
-        if (error instanceof Error) {
-          Sentry.captureException(error, {
-            level: sentryLevel as SeverityLevel,
-            tags: { action: context.action },
-            extra: { ...context.metadata, userId: context.userId, route: context.route },
-          })
-        } else {
-          Sentry.captureMessage(String(error), {
-            level: sentryLevel as SeverityLevel,
-            tags: { action: context.action },
-            extra: { ...context.metadata, userId: context.userId, route: context.route },
-          })
-        }
-      }).catch(() => {})
+      console.error(`[${severity.toUpperCase()}]`, trackedError.message, context)
     }
   }
 
