@@ -75,6 +75,8 @@ const getClientNavigation = (clientId: string): NavSection[] => [
     defaultOpen: true,
     items: [
       { label: 'Financial Forecast', href: `/coach/clients/${clientId}/view/finances/forecast`, icon: TrendingUp },
+      { label: 'Monthly Report', href: `/coach/clients/${clientId}/view/finances/monthly-report`, icon: BarChart3 },
+      { label: 'Cashflow Forecast', href: `/coach/clients/${clientId}/view/finances/cashflow`, icon: Target },
     ],
   },
   {
@@ -102,6 +104,7 @@ const getClientNavigation = (clientId: string): NavSection[] => [
     items: [
       { label: 'Marketing', href: `/coach/clients/${clientId}/view/marketing/value-prop`, icon: LineChart },
       { label: 'Team', href: `/coach/clients/${clientId}/view/team/accountability`, icon: Users },
+      { label: 'Org Chart Builder', href: `/coach/clients/${clientId}/view/team/org-chart`, icon: Users },
     ],
   },
 ]
