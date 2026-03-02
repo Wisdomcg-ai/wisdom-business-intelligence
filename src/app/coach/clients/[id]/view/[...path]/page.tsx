@@ -73,6 +73,8 @@ const getPageComponent = (path: string[]) => {
 
     // FINANCES
     'finances/forecast': () => import('@/app/finances/forecast/page'),
+    'finances/monthly-report': () => import('@/app/finances/monthly-report/page'),
+    'finances/cashflow': () => import('@/app/finances/cashflow/page'),
     'finances/budget': () => import('@/app/finances/forecast/page'),
 
     // EXECUTE
@@ -155,8 +157,8 @@ const getCoachViewNavigation = (clientId: string): NavSection[] => {
       defaultOpen: true,
       items: [
         { label: 'Financial Forecast', href: `${base}/finances/forecast`, icon: TrendingUp },
-        { label: 'Budget vs Actual', href: '#', icon: Banknote, disabled: true, badge: 'Soon' },
-        { label: '13-Week Rolling Cashflow', href: '#', icon: Banknote, disabled: true, badge: 'Soon' },
+        { label: 'Monthly Report', href: `${base}/finances/monthly-report`, icon: BarChart3 },
+        { label: 'Cashflow Forecast', href: `${base}/finances/cashflow`, icon: Banknote },
       ],
     },
     {
