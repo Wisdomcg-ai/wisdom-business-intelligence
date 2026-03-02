@@ -22,9 +22,16 @@ interface PLForecastTableProps {
   plLines: PLLine[]
   onSave: (lines: PLLine[]) => void
   onChange?: () => void // Optional callback when data changes
+  defaultViewMode?: 'view' | 'setup'
 }
 
-export default function PLForecastTable({ forecast, plLines, onSave, onChange }: PLForecastTableProps) {
+export default function PLForecastTable({ forecast, plLines, onSave, onChange, defaultViewMode }: PLForecastTableProps) {
+  // Dynamic FY labels from forecast data
+  const baselineFY = `FY${(forecast.fiscal_year - 1) % 100}`
+  const forecastFY = `FY${forecast.fiscal_year % 100}`
+  // Current FY starts in July of previous calendar year (e.g. FY26 starts 2025-07)
+  const currentFYStart = `${forecast.fiscal_year - 1}-07`
+
   const [lines, setLines] = useState<PLLine[]>(plLines)
   const [monthColumns, setMonthColumns] = useState<Array<{
     key: string
@@ -38,7 +45,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
   const [editingCell, setEditingCell] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState<string>('')
   const [historicalDataLocked, setHistoricalDataLocked] = useState<boolean>(true)
-  const [viewMode, setViewMode] = useState<'view' | 'setup'>('setup') // Toggle between view and setup modes
+  const [viewMode, setViewMode] = useState<'view' | 'setup'>(defaultViewMode || 'setup') // Toggle between view and setup modes
   const [showFormulas, setShowFormulas] = useState<boolean>(false) // Toggle to show formulas instead of values
   const [cellFormulas, setCellFormulas] = useState<Map<string, string>>(new Map()) // Track formulas by cell ID
 
@@ -79,7 +86,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
     )
 
     // Find the index of the last BASELINE month (for visual separator after FY25)
-    // This is where we'll insert the FY25 Total, % Revenue, Avg/Mo, and Method columns
+    // This is where we'll insert the {baselineFY} Total, % Revenue, Avg/Mo, and Method columns
     const lastBaselineIdx = columns.reduce((lastIdx, col, idx) => col.isBaseline === true ? idx : lastIdx, -1)
 
     console.log('[PLForecastTable] Generated columns:', {
@@ -633,12 +640,12 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
               {historicalDataLocked ? (
                 <>
                   <Lock className="w-4 h-4" />
-                  FY25 Locked
+                  {baselineFY} Locked
                 </>
               ) : (
                 <>
                   <Unlock className="w-4 h-4" />
-                  FY25 Unlocked
+                  {baselineFY} Unlocked
                 </>
               )}
             </button>
@@ -662,7 +669,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
         </div>
       </div>
 
-      <div className="overflow-x-auto relative">
+      <div className="overflow-auto relative max-h-[70vh]">
         <table className="w-full">
           <thead className="sticky top-0 z-20">
             <tr className="border-b border-gray-200">
@@ -670,9 +677,9 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                 Account
               </th>
               {monthColumns.map((col, idx) => {
-                const isLastActual = idx === lastActualIndex; // Last actual month
-                // In View mode, only show forecast columns
-                if (viewMode === 'view' && col.isActual) return null
+                const isLastActual = idx === lastActualIndex;
+                // In View mode, hide baseline (prior FY) columns — only show current FY
+                if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
 
                 return (
                   <React.Fragment key={col.key}>
@@ -686,13 +693,13 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                     {isLastActual && viewMode === 'setup' && (
                       <>
                         <th className="sticky top-0 px-4 py-3 text-right text-xs font-medium text-brand-orange-700 uppercase tracking-wider min-w-[160px] bg-brand-orange-100">
-                          FY25 Total
+                          {baselineFY} Total
                         </th>
                         <th className="sticky top-0 px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider min-w-[120px] bg-amber-50">
                           % Revenue
                         </th>
                         <th className="sticky top-0 px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider min-w-[140px] bg-amber-50">
-                          FY25 Avg/Mo
+                          {baselineFY} Avg/Mo
                         </th>
                         <th className="sticky top-0 px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider min-w-[180px] bg-slate-100 border-r-2 border-slate-300">
                           <div className="flex items-center gap-2">
@@ -706,7 +713,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                 )
               })}
               <th className="sticky right-0 top-0 z-40 px-4 py-3 text-right text-xs font-medium text-green-700 uppercase tracking-wider min-w-[160px] bg-green-100 border-l-2 border-gray-300 shadow-[-2px_0_4px_rgba(0,0,0,0.05)]">
-                FY26 Total
+                {forecastFY} Total
               </th>
             </tr>
             <tr className="border-b border-gray-200 bg-gray-50">
@@ -715,9 +722,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
               </th>
               {monthColumns.map((col, idx) => {
                 const isLastActual = idx === lastActualIndex;
-                // In View mode, only show forecast columns
-                if (viewMode === 'view' && col.isActual) return null
-
+                if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
                 return (
                   <React.Fragment key={col.key}>
                     <th
@@ -761,33 +766,22 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                   {/* Category Header */}
                   <tr className="bg-gray-100">
                     <td className="sticky left-0 z-20 bg-gray-100 px-6 py-3 border-r-2 border-gray-300 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
-                      <div className="flex items-center justify-between">
-                        <button
-                          onClick={() => toggleCategory(category)}
-                          className="flex items-center space-x-2 hover:text-brand-orange transition-colors"
-                        >
-                          {isExpanded ? (
-                            <ChevronDown className="w-4 h-4" />
-                          ) : (
-                            <ChevronRight className="w-4 h-4" />
-                          )}
-                          <span className="font-bold text-gray-900">{category}</span>
-                        </button>
-                        <button
-                          onClick={() => addLine(category)}
-                          className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-brand-orange bg-brand-orange-50 rounded hover:bg-brand-orange-100 transition-colors"
-                          title="Add new row"
-                        >
-                          <Plus className="w-3 h-3" />
-                          Add Row
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => toggleCategory(category)}
+                        className="flex items-center space-x-2 hover:text-brand-orange transition-colors"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="w-4 h-4" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4" />
+                        )}
+                        <span className="font-bold text-gray-900">{category}</span>
+                      </button>
                     </td>
                     {monthColumns.map((col, idx) => {
                       const total = calculateCategoryTotal(category, col.key, col.isForecast)
                       const isLastActual = idx === lastActualIndex;
-                      // In View mode, only show forecast columns
-                      if (viewMode === 'view' && col.isActual) return null
+                      if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
 
                       return (
                         <React.Fragment key={col.key}>
@@ -863,8 +857,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                           const cellKey = `${globalIdx}-${col.key}`;
                           const isEditing = editingCell === cellKey;
                           const isDisabled = col.isActual && historicalDataLocked;
-                          // In View mode, only show forecast columns
-                          if (viewMode === 'view' && col.isActual) return null
+                          if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
 
                           return (
                             <React.Fragment key={col.key}>
@@ -971,21 +964,6 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                     )
                   })}
 
-                  {/* Add Line Button */}
-                  {isExpanded && (
-                    <tr>
-                      <td colSpan={monthColumns.length + 3} className="px-6 py-2">
-                        <button
-                          onClick={() => addLine(category)}
-                          className="flex items-center space-x-2 text-sm text-brand-orange hover:text-brand-orange-700 font-medium"
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span>Add Line</span>
-                        </button>
-                      </td>
-                    </tr>
-                  )}
-
                   {/* Gross Profit after Cost of Sales */}
                   {category === 'Cost of Sales' && (
                     <>
@@ -996,8 +974,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                         {monthColumns.map((col, idx) => {
                           const grossProfit = calculateGrossProfit(col.key, col.isForecast)
                           const isLastActual = idx === lastActualIndex;
-                          // In View mode, only show forecast columns
-                          if (viewMode === 'view' && col.isActual) return null
+                          if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
 
                           return (
                             <React.Fragment key={col.key}>
@@ -1042,8 +1019,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                           const grossProfit = calculateGrossProfit(col.key, col.isForecast)
                           const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0
                           const isLastActual = idx === lastActualIndex;
-                          // In View mode, only show forecast columns
-                          if (viewMode === 'view' && col.isActual) return null
+                          if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
 
                           return (
                             <React.Fragment key={col.key}>
@@ -1101,9 +1077,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
               {monthColumns.map((col, idx) => {
                 const netProfit = calculateNetProfit(col.key, col.isForecast)
                 const isLastActual = idx === lastActualIndex;
-                // In View mode, only show forecast columns
-                if (viewMode === 'view' && col.isActual) return null
-
+                if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
                 return (
                   <React.Fragment key={col.key}>
                     <td
@@ -1151,9 +1125,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange }:
                 const netProfit = calculateNetProfit(col.key, col.isForecast)
                 const netMargin = revenue > 0 ? (netProfit / revenue) * 100 : 0
                 const isLastActual = idx === lastActualIndex;
-                // In View mode, only show forecast columns
-                if (viewMode === 'view' && col.isActual) return null
-
+                if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
                 return (
                   <React.Fragment key={col.key}>
                     <td

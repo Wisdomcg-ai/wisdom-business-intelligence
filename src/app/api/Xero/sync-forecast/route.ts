@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { createRouteHandlerClient } from '@/lib/supabase/server';
-import { encrypt, decrypt } from '@/lib/utils/encryption';
+import { getValidAccessToken } from '@/lib/xero/token-manager';
 
 export const dynamic = 'force-dynamic'
 
-// Service client for database operations (bypasses RLS)
-const supabaseAdmin = createClient(
+const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
 );
@@ -27,17 +25,6 @@ const ACCOUNT_TYPE_MAPPING: { [key: string]: string } = {
 
 export async function POST(request: NextRequest) {
   try {
-    // SECURITY: Verify user is authenticated
-    const supabaseAuth = await createRouteHandlerClient();
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
     const { business_id, forecast_id } = await request.json();
 
     if (!business_id || !forecast_id) {
@@ -47,52 +34,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // SECURITY: Verify user has access to this business
-    const { data: businessAccess } = await supabaseAuth
-      .from('businesses')
-      .select('id, owner_id, assigned_coach_id')
-      .eq('id', business_id)
-      .single();
-
-    if (!businessAccess) {
-      return NextResponse.json(
-        { error: 'Business not found or access denied' },
-        { status: 403 }
-      );
-    }
-
-    // Check if user is owner, assigned coach, or team member
-    const isOwner = businessAccess.owner_id === user.id;
-    const isCoach = businessAccess.assigned_coach_id === user.id;
-
-    if (!isOwner && !isCoach) {
-      // Check if user is a team member
-      const { data: teamMember } = await supabaseAuth
-        .from('business_users')
-        .select('id')
-        .eq('business_id', business_id)
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .maybeSingle();
-
-      if (!teamMember) {
-        return NextResponse.json(
-          { error: 'Access denied' },
-          { status: 403 }
-        );
-      }
-    }
-
-    // Get the Xero connection (use admin client to bypass RLS for Xero data)
-    const { data: connection, error: connError } = await supabaseAdmin
+    // Get the Xero connection
+    const { data: connection, error: connError } = await supabase
       .from('xero_connections')
       .select('*')
       .eq('business_id', business_id)
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .eq('is_active', true)
       .maybeSingle();
 
-    if (connError || !connection || !connection.is_active) {
+    if (connError || !connection) {
       return NextResponse.json(
         { error: 'No active Xero connection found' },
         { status: 404 }
@@ -100,11 +50,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the forecast details to determine date range
-    const { data: forecast, error: forecastError } = await supabaseAdmin
+    const { data: forecast, error: forecastError } = await supabase
       .from('financial_forecasts')
       .select('*')
       .eq('id', forecast_id)
-      .single();
+      .maybeSingle();
 
     if (forecastError || !forecast) {
       return NextResponse.json(
@@ -113,54 +63,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Decrypt tokens from database
-    const decryptedAccessToken = decrypt(connection.access_token);
-    const decryptedRefreshToken = decrypt(connection.refresh_token);
+    // Get valid access token using the robust token manager
+    // This handles: refresh threshold (15 min), retry logic, race conditions
+    const tokenResult = await getValidAccessToken(connection, supabase);
 
-    // Check if token needs refresh
-    const now = new Date();
-    const expiry = new Date(connection.expires_at);
-    let accessToken = decryptedAccessToken;
-
-    if (expiry <= now) {
-      // Refresh the token
-      const refreshResponse = await fetch('https://identity.xero.com/connect/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': `Basic ${Buffer.from(
-            `${process.env.XERO_CLIENT_ID}:${process.env.XERO_CLIENT_SECRET}`
-          ).toString('base64')}`
+    if (!tokenResult.success) {
+      console.error('[Xero Sync] Token refresh failed:', tokenResult.error, tokenResult.message);
+      return NextResponse.json(
+        {
+          error: tokenResult.message || 'Xero connection expired. Please reconnect Xero from the Integrations page.',
+          details: tokenResult.error,
+          needsReconnect: tokenResult.shouldDeactivate
         },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: decryptedRefreshToken
-        })
-      });
-
-      if (!refreshResponse.ok) {
-        return NextResponse.json(
-          { error: 'Failed to refresh Xero token' },
-          { status: 401 }
-        );
-      }
-
-      const tokens = await refreshResponse.json();
-      accessToken = tokens.access_token;
-
-      // Update tokens in database (encrypted)
-      const newExpiry = new Date();
-      newExpiry.setSeconds(newExpiry.getSeconds() + tokens.expires_in);
-
-      await supabaseAdmin
-        .from('xero_connections')
-        .update({
-          access_token: encrypt(tokens.access_token),
-          refresh_token: encrypt(tokens.refresh_token),
-          expires_at: newExpiry.toISOString()
-        })
-        .eq('id', connection.id);
+        { status: 401 }
+      );
     }
+
+    const accessToken = tokenResult.accessToken!;
 
     // Fetch P&L data for BOTH baseline and actual periods
     // Baseline = prior FY for comparison/patterns (e.g., FY25: Jul 2024 - Jun 2025)
@@ -238,12 +157,15 @@ export async function POST(request: NextRequest) {
             let category = 'Operating Expenses';
             const sectionTitle = section.Title?.toUpperCase() || '';
 
-            if (sectionTitle.includes('INCOME') || sectionTitle.includes('REVENUE') || sectionTitle.includes('SALES')) {
-              category = 'Revenue';
-            } else if (sectionTitle.includes('COST OF SALES') || sectionTitle.includes('DIRECT COSTS')) {
-              category = 'Cost of Sales';
-            } else if (sectionTitle.includes('OTHER INCOME')) {
+            // Check for "Other Income" FIRST since it also contains "INCOME"
+            if (sectionTitle.includes('OTHER INCOME')) {
               category = 'Other Income';
+            } else if (sectionTitle.includes('INCOME') || sectionTitle.includes('REVENUE') || sectionTitle.includes('SALES') || sectionTitle.includes('TRADING INCOME')) {
+              category = 'Revenue';
+            } else if (sectionTitle.includes('COST OF SALES') || sectionTitle.includes('DIRECT COSTS') || sectionTitle.includes('COST OF GOODS')) {
+              category = 'Cost of Sales';
+            } else if (sectionTitle.includes('OTHER EXPENSE')) {
+              category = 'Other Expenses';
             }
 
             // Process rows
@@ -331,9 +253,21 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Read existing lines to preserve forecast_months (wizard-generated budget data)
+    const { data: existingLines } = await supabase
+      .from('forecast_pl_lines')
+      .select('account_name, forecast_months, forecast_method, is_from_payroll, sort_order')
+      .eq('forecast_id', forecast_id);
+
+    // Build lookup: account_name → existing line data
+    const existingLookup = new Map<string, any>();
+    (existingLines || []).forEach(line => {
+      existingLookup.set(line.account_name, line);
+    });
+
     // Delete existing Xero-synced lines for this forecast
     console.log('[Sync] Deleting existing Xero lines...');
-    const { error: deleteError } = await supabaseAdmin
+    const { error: deleteError } = await supabase
       .from('forecast_pl_lines')
       .delete()
       .eq('forecast_id', forecast_id)
@@ -343,17 +277,26 @@ export async function POST(request: NextRequest) {
       console.error('[Sync] Delete error:', deleteError);
     }
 
-    // Insert new lines
+    // Insert new lines, preserving forecast_months from existing wizard-generated data
     if (plLines.length > 0) {
-      const linesToInsert = plLines.map((line, index) => ({
-        forecast_id,
-        ...line,
-        sort_order: index,
-        forecast_months: {} // Start with empty forecast months
-      }));
+      const linesToInsert = plLines.map((line, index) => {
+        const existing = existingLookup.get(line.account_name);
+        const preservedForecastMonths = existing?.forecast_months && Object.keys(existing.forecast_months).length > 0
+          ? existing.forecast_months
+          : {};
+        const preservedMethod = existing?.forecast_method || undefined;
 
-      console.log(`[Sync] Inserting ${linesToInsert.length} lines...`);
-      const { data: insertedData, error: insertError } = await supabaseAdmin
+        return {
+          forecast_id,
+          ...line,
+          sort_order: existing?.sort_order ?? index,
+          forecast_months: preservedForecastMonths,
+          forecast_method: preservedMethod,
+        };
+      });
+
+      console.log(`[Sync] Inserting ${linesToInsert.length} lines (${linesToInsert.filter(l => Object.keys(l.forecast_months).length > 0).length} with preserved forecast data)...`);
+      const { data: insertedData, error: insertError } = await supabase
         .from('forecast_pl_lines')
         .insert(linesToInsert)
         .select();
@@ -372,13 +315,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Update last sync time
-    await supabaseAdmin
+    await supabase
       .from('xero_connections')
       .update({ last_synced_at: new Date().toISOString() })
       .eq('id', connection.id);
 
     // Update the forecast's last sync timestamp
-    await supabaseAdmin
+    await supabase
       .from('financial_forecasts')
       .update({
         last_xero_sync_at: new Date().toISOString()

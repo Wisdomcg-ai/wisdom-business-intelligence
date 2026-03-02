@@ -38,7 +38,8 @@ import {
   Flame,
   Compass,
   Layers,
-  AlertCircle
+  AlertCircle,
+  HeartHandshake,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -191,7 +192,7 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
       items: [
         { name: 'Accountability Chart', href: '/accountability', icon: UserCheck },
         { name: 'Org Chart Builder', href: '/team/org-chart', icon: Users },
-        { name: 'Hiring Roadmap', href: '/team/hiring-roadmap', icon: UserCheck },
+        { name: 'Culture & Retention', href: '/team/hiring-roadmap', icon: HeartHandshake },
         { name: 'Team Scorecard', href: '#', icon: BarChart3, disabled: true }
       ]
     },

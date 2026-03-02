@@ -1,409 +1,415 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { Target, TrendingUp, Save, RefreshCw, AlertCircle, Sparkles } from 'lucide-react'
-import type { FinancialForecast, DistributionMethod } from '../types'
-import OpExBulkControls from './OpExBulkControls'
-import AnnualPlanProgressWidget from './AnnualPlanProgressWidget'
-import { ForecastValidationService, ValidationIssue } from '../services/validation-service'
+import { useMemo } from 'react'
+import { TrendingUp, Users, Receipt, Wallet, Building2, Pencil, ArrowUpRight, ArrowDownRight, Minus, Target } from 'lucide-react'
+import type { ForecastAssumptions } from './wizard-v4/types/assumptions'
 
 interface AssumptionsTabProps {
-  forecast: FinancialForecast
-  onSave: (data: {
-    revenue_goal: number
-    gross_profit_goal: number
-    net_profit_goal: number
-    revenue_distribution_method: DistributionMethod
-    cogs_percentage: number
-  }, options?: { isAutoSave?: boolean }) => void
-  onImportFromAnnualPlan: () => void
-  onApplyBulkOpExIncrease: (percentageIncrease: number) => void
-  isSaving: boolean
+  assumptions: ForecastAssumptions | null
+  onEditStep: (step: number) => void
+  fiscalYear: number
 }
 
-export default function AssumptionsTab({
-  forecast,
-  onSave,
-  onImportFromAnnualPlan,
-  onApplyBulkOpExIncrease,
-  isSaving
-}: AssumptionsTabProps) {
-  const [goals, setGoals] = useState({
-    revenue: forecast.revenue_goal || 0,
-    grossProfit: forecast.gross_profit_goal || 0,
-    netProfit: forecast.net_profit_goal || 0
-  })
+function fmt(amount: number): string {
+  if (Math.abs(amount) >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`
+  if (Math.abs(amount) >= 1_000) return `$${Math.round(amount / 1_000)}k`
+  return `$${Math.round(amount)}`
+}
 
-  const [distributionMethod, setDistributionMethod] = useState<DistributionMethod>(
-    forecast.revenue_distribution_method || 'even'
+function SectionHeader({ title, icon: Icon, onEdit }: { title: string; icon: React.ElementType; onEdit: () => void }) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2">
+        <Icon className="w-4 h-4 text-brand-navy" />
+        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+      </div>
+      <button
+        onClick={onEdit}
+        className="flex items-center gap-1.5 text-xs font-medium text-brand-navy hover:text-brand-navy-800 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-brand-navy-50"
+      >
+        <Pencil className="w-3 h-3" />
+        Edit
+      </button>
+    </div>
   )
+}
 
-  const [cogsPercentage, setCogsPercentage] = useState<number>(() => {
-    // Load from saved percentage first
-    if (forecast.cogs_percentage !== undefined && forecast.cogs_percentage !== null) {
-      return forecast.cogs_percentage * 100 // Convert from decimal (0.40) to percentage (40)
-    }
-    // Otherwise calculate from goals
-    if (forecast.revenue_goal && forecast.gross_profit_goal) {
-      const cogs = forecast.revenue_goal - forecast.gross_profit_goal
-      return (cogs / forecast.revenue_goal) * 100
-    }
-    return 40
-  })
+export default function AssumptionsTab({ assumptions, onEditStep, fiscalYear }: AssumptionsTabProps) {
+  if (!assumptions) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center">
+        <Target className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+        <p className="text-gray-500 mb-1">No assumptions recorded yet.</p>
+        <p className="text-sm text-gray-400">Use the wizard to build your forecast.</p>
+      </div>
+    )
+  }
 
-  // Validation state
-  const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>([])
+  const baselineFY = `FY${(fiscalYear - 1) % 100}`
+  const currentFY = `FY${fiscalYear % 100}`
 
-  // Update state when forecast prop changes (e.g., after import)
-  useEffect(() => {
-    setGoals({
-      revenue: forecast.revenue_goal || 0,
-      grossProfit: forecast.gross_profit_goal || 0,
-      netProfit: forecast.net_profit_goal || 0
+  // Revenue calculations
+  const revenueData = useMemo(() => {
+    const lines = assumptions.revenue?.lines || []
+    return lines.map(line => {
+      const forecastTotal = line.growthType === 'fixed_amount'
+        ? line.priorYearTotal + (line.fixedGrowthAmount || 0)
+        : line.priorYearTotal * (1 + (line.growthPct || 0) / 100)
+      return { ...line, forecastTotal }
     })
+  }, [assumptions.revenue])
 
-    // Update COGS percentage if available
-    if (forecast.cogs_percentage !== undefined && forecast.cogs_percentage !== null) {
-      setCogsPercentage(forecast.cogs_percentage * 100)
-    } else if (forecast.revenue_goal && forecast.gross_profit_goal) {
-      const cogs = forecast.revenue_goal - forecast.gross_profit_goal
-      setCogsPercentage((cogs / forecast.revenue_goal) * 100)
-    }
-  }, [forecast.revenue_goal, forecast.gross_profit_goal, forecast.net_profit_goal, forecast.cogs_percentage])
+  const totalPriorRevenue = revenueData.reduce((s, l) => s + l.priorYearTotal, 0)
+  const totalForecastRevenue = revenueData.reduce((s, l) => s + l.forecastTotal, 0)
 
-  // Validate inputs in real-time
-  useEffect(() => {
-    const issues: ValidationIssue[] = []
+  // COGS
+  const cogsLines = assumptions.cogs?.lines || []
 
-    // Validate revenue goal
-    const revenueIssue = ForecastValidationService.validateRevenueGoal(goals.revenue)
-    if (revenueIssue) issues.push(revenueIssue)
+  // Team
+  const team = assumptions.team
+  const existingTeam = team?.existingTeam?.filter(m => m.includeInForecast !== false) || []
+  const plannedHires = team?.plannedHires || []
+  const departures = team?.departures || []
+  const superRate = team?.superannuationPct || 12
 
-    // Validate COGS percentage
-    const cogsIssue = ForecastValidationService.validateCogsPercentage(cogsPercentage)
-    if (cogsIssue) issues.push(cogsIssue)
+  // OpEx
+  const opexLines = assumptions.opex?.lines || []
 
-    setValidationIssues(issues)
-  }, [goals.revenue, cogsPercentage])
+  // Subscriptions
+  const subs = assumptions.subscriptions
 
-  // Auto-save when goals or settings change (with debounce)
-  useEffect(() => {
-    // Don't auto-save if there are critical validation errors
-    const hasCriticalErrors = validationIssues.some(i => i.severity === 'error')
-    if (hasCriticalErrors) return
+  // CapEx
+  const capexItems = assumptions.capex?.items || []
 
-    // Don't auto-save if goals haven't changed from the saved values
-    const hasChanges =
-      goals.revenue !== (forecast.revenue_goal || 0) ||
-      goals.netProfit !== (forecast.net_profit_goal || 0) ||
-      cogsPercentage !== ((forecast.cogs_percentage || 0) * 100) ||
-      distributionMethod !== (forecast.revenue_distribution_method || 'even')
-
-    if (!hasChanges) return
-
-    // Debounce auto-save by 1.5 seconds
-    const timer = setTimeout(() => {
-      handleSave(true) // Pass true to indicate this is an auto-save
-    }, 1500)
-
-    return () => clearTimeout(timer)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goals.revenue, goals.netProfit, cogsPercentage, distributionMethod, validationIssues])
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value)
-  }
-
-  // Auto-calculate GP from revenue and COGS%
-  const calculatedGP = goals.revenue * (1 - cogsPercentage / 100)
-
-  const handleSave = (isAutoSave: boolean = false) => {
-    onSave({
-      revenue_goal: goals.revenue,
-      gross_profit_goal: calculatedGP,
-      net_profit_goal: goals.netProfit,
-      revenue_distribution_method: distributionMethod,
-      cogs_percentage: cogsPercentage / 100
-    }, { isAutoSave })
-  }
-
-  const hasGoals = goals.revenue > 0
+  // Goals
+  const goals = assumptions.goals
 
   return (
-    <div className="p-6 space-y-8">
-      {/* Annual Goals Section */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <Target className="w-6 h-6 text-brand-orange" />
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">FY{forecast.fiscal_year} Annual Goals</h2>
-              <p className="text-sm text-gray-500">Set your financial targets for the year</p>
-            </div>
-          </div>
-          <button
-            onClick={onImportFromAnnualPlan}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-orange bg-brand-orange-50 rounded-lg hover:bg-brand-orange-100 transition-colors"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Import from Annual Plan
-          </button>
-        </div>
-
-        {/* Import Indicator */}
-        {forecast.goal_source === 'goals_wizard' && forecast.annual_plan_id && (
-          <div className="mb-4 p-3 bg-brand-orange-50 border border-brand-orange-200 rounded-lg">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-brand-orange" />
-              <span className="text-sm font-medium text-brand-navy">
-                Goals imported from Goals & Targets wizard
-              </span>
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-3 gap-4">
-          <div className="border border-gray-200 rounded-lg p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Annual Revenue Goal
-            </label>
-            <input
-              type="number"
-              value={goals.revenue || ''}
-              onChange={(e) => setGoals({ ...goals, revenue: parseFloat(e.target.value) || 0 })}
-              className={`w-full px-3 py-2 text-lg font-bold text-gray-900 border rounded focus:ring-2 focus:ring-brand-orange ${
-                validationIssues.some(i => i.field === 'revenue_goal' && i.severity === 'error')
-                  ? 'border-red-300 bg-red-50'
-                  : validationIssues.some(i => i.field === 'revenue_goal' && i.severity === 'warning')
-                  ? 'border-yellow-300'
-                  : 'border-gray-300'
-              }`}
-              placeholder="0"
-            />
-            {validationIssues
-              .filter(i => i.field === 'revenue_goal')
-              .map((issue, idx) => (
-                <div key={idx} className={`mt-2 text-xs ${
-                  issue.severity === 'error' ? 'text-red-600' : 'text-yellow-600'
-                }`}>
-                  {issue.message}
-                </div>
-              ))}
-          </div>
-
-          <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Gross Profit Goal
-            </label>
-            <div className="text-lg font-bold text-gray-900">
-              {formatCurrency(calculatedGP)}
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              Auto-calculated: {(100 - cogsPercentage).toFixed(1)}% margin
-            </div>
-          </div>
-
-          <div className="border border-gray-200 rounded-lg p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Net Profit Goal
-            </label>
-            <input
-              type="number"
-              value={goals.netProfit || ''}
-              onChange={(e) => setGoals({ ...goals, netProfit: parseFloat(e.target.value) || 0 })}
-              className="w-full px-3 py-2 text-lg font-bold text-gray-900 border border-gray-300 rounded focus:ring-2 focus:ring-brand-orange"
-              placeholder="0"
-            />
-            <div className="text-xs text-gray-500 mt-1">
-              Target profit after all expenses
-            </div>
+    <div className="space-y-6">
+      {/* Goals Summary */}
+      {goals && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <SectionHeader title="Goals" icon={Target} onEdit={() => onEditStep(1)} />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="py-2 text-left text-xs font-medium text-gray-500 uppercase">Year</th>
+                  <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                  <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Gross Profit %</th>
+                  <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Net Profit %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {goals.year1 && (
+                  <tr>
+                    <td className="py-2.5 font-medium text-gray-900">{currentFY}</td>
+                    <td className="py-2.5 text-right font-semibold text-gray-900">{fmt(goals.year1.revenue)}</td>
+                    <td className="py-2.5 text-right text-gray-700">{goals.year1.grossProfitPct.toFixed(1)}%</td>
+                    <td className="py-2.5 text-right text-gray-700">{goals.year1.netProfitPct.toFixed(1)}%</td>
+                  </tr>
+                )}
+                {goals.year2 && (
+                  <tr>
+                    <td className="py-2.5 font-medium text-gray-900">FY{(fiscalYear + 1) % 100}</td>
+                    <td className="py-2.5 text-right font-semibold text-gray-900">{fmt(goals.year2.revenue)}</td>
+                    <td className="py-2.5 text-right text-gray-700">{goals.year2.grossProfitPct.toFixed(1)}%</td>
+                    <td className="py-2.5 text-right text-gray-700">{goals.year2.netProfitPct.toFixed(1)}%</td>
+                  </tr>
+                )}
+                {goals.year3 && (
+                  <tr>
+                    <td className="py-2.5 font-medium text-gray-900">FY{(fiscalYear + 2) % 100}</td>
+                    <td className="py-2.5 text-right font-semibold text-gray-900">{fmt(goals.year3.revenue)}</td>
+                    <td className="py-2.5 text-right text-gray-700">{goals.year3.grossProfitPct.toFixed(1)}%</td>
+                    <td className="py-2.5 text-right text-gray-700">{goals.year3.netProfitPct.toFixed(1)}%</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
-
-      {/* Annual Plan Progress Widget */}
-      {hasGoals && forecast.annual_plan_id && (
-        <AnnualPlanProgressWidget forecast={forecast} />
       )}
 
-      {hasGoals && (
-        <>
-          {/* Revenue Distribution Section */}
-          <div className="border-t border-gray-200 pt-8">
-            <div className="flex items-center gap-3 mb-4">
-              <TrendingUp className="w-6 h-6 text-green-600" />
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Revenue Distribution</h2>
-                <p className="text-sm text-gray-500">How should revenue be spread across the year?</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <button
-                onClick={() => setDistributionMethod('even')}
-                className={`p-4 rounded-lg border-2 transition-all text-left ${
-                  distributionMethod === 'even'
-                    ? 'border-green-500 bg-green-50'
-                    : 'border-gray-200 bg-white hover:border-gray-300'
-                }`}
-              >
-                <div className={`text-sm font-bold mb-1 ${
-                  distributionMethod === 'even' ? 'text-green-900' : 'text-gray-900'
-                }`}>
-                  Even Split
-                </div>
-                <div className="text-xs text-gray-500">
-                  Equal amount each month ({formatCurrency(goals.revenue / 12)}/mo)
-                </div>
-              </button>
-
-              <button
-                onClick={() => setDistributionMethod('seasonal_pattern')}
-                className={`p-4 rounded-lg border-2 transition-all text-left ${
-                  distributionMethod === 'seasonal_pattern'
-                    ? 'border-green-500 bg-green-50'
-                    : 'border-gray-200 bg-white hover:border-gray-300'
-                }`}
-              >
-                <div className={`text-sm font-bold mb-1 ${
-                  distributionMethod === 'seasonal_pattern' ? 'text-green-900' : 'text-gray-900'
-                }`}>
-                  Seasonal Pattern
-                </div>
-                <div className="text-xs text-gray-500">
-                  Repeat FY25 monthly pattern, scaled to goal
-                </div>
-              </button>
-
-              <button
-                onClick={() => setDistributionMethod('custom')}
-                className={`p-4 rounded-lg border-2 transition-all text-left ${
-                  distributionMethod === 'custom'
-                    ? 'border-green-500 bg-green-50'
-                    : 'border-gray-200 bg-white hover:border-gray-300'
-                }`}
-              >
-                <div className={`text-sm font-bold mb-1 ${
-                  distributionMethod === 'custom' ? 'text-green-900' : 'text-gray-900'
-                }`}>
-                  Custom
-                </div>
-                <div className="text-xs text-gray-500">
-                  Set custom amounts in P&L table
-                </div>
-              </button>
-            </div>
-          </div>
-
-          {/* Cost Assumptions Section */}
-          <div className="border-t border-gray-200 pt-8">
-            <div className="mb-4">
-              <h2 className="text-xl font-bold text-gray-900 mb-1">Cost Assumptions</h2>
-              <p className="text-sm text-gray-500">Set your cost structure</p>
-            </div>
-
-            {/* COGS */}
-            <div className="border border-gray-200 rounded-lg p-4 mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Cost of Sales (COGS) %
-              </label>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={cogsPercentage}
-                  onChange={(e) => setCogsPercentage(parseFloat(e.target.value))}
-                  className="flex-1"
-                />
-                <input
-                  type="number"
-                  value={cogsPercentage}
-                  onChange={(e) => setCogsPercentage(parseFloat(e.target.value) || 0)}
-                  className={`w-20 px-3 py-2 text-sm font-bold text-gray-900 border rounded focus:ring-2 focus:ring-brand-orange ${
-                    validationIssues.some(i => i.field === 'cogs_percentage' && i.severity === 'error')
-                      ? 'border-red-300 bg-red-50'
-                      : validationIssues.some(i => i.field === 'cogs_percentage' && i.severity === 'warning')
-                      ? 'border-yellow-300'
-                      : 'border-gray-300'
-                  }`}
-                />
-                <span className="text-sm font-medium text-gray-600">%</span>
-              </div>
-              <div className="mt-2 text-xs text-gray-500">
-                COGS: {formatCurrency(goals.revenue * (cogsPercentage / 100))} |
-                GP Margin: {(100 - cogsPercentage).toFixed(1)}%
-              </div>
-              {validationIssues
-                .filter(i => i.field === 'cogs_percentage')
-                .map((issue, idx) => (
-                  <div key={idx} className={`mt-2 text-xs ${
-                    issue.severity === 'error' ? 'text-red-600' : 'text-yellow-600'
-                  }`}>
-                    ⚠️ {issue.message} - {issue.suggestion}
-                  </div>
+      {/* Revenue */}
+      {revenueData.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <SectionHeader title="Revenue" icon={TrendingUp} onEdit={() => onEditStep(3)} />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="py-2 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
+                  <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">{baselineFY}</th>
+                  <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Growth</th>
+                  <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">{currentFY} Forecast</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {revenueData.map((line, i) => (
+                  <tr key={i}>
+                    <td className="py-2.5 text-gray-900">{line.accountName}</td>
+                    <td className="py-2.5 text-right text-gray-600">{fmt(line.priorYearTotal)}</td>
+                    <td className="py-2.5 text-right">
+                      <span className={`inline-flex items-center gap-1 ${(line.growthPct || 0) > 0 ? 'text-green-600' : (line.growthPct || 0) < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                        {(line.growthPct || 0) > 0 && <ArrowUpRight className="w-3 h-3" />}
+                        {(line.growthPct || 0) < 0 && <ArrowDownRight className="w-3 h-3" />}
+                        {(line.growthPct || 0) === 0 && <Minus className="w-3 h-3" />}
+                        {line.growthType === 'percentage' ? `${line.growthPct || 0}%` : fmt(line.fixedGrowthAmount || 0)}
+                      </span>
+                    </td>
+                    <td className="py-2.5 text-right font-semibold text-gray-900">{fmt(line.forecastTotal)}</td>
+                  </tr>
                 ))}
-            </div>
-
-            {/* OpEx Quick Setup */}
-            <div className="mt-4">
-              <OpExBulkControls onApplyBulkIncrease={onApplyBulkOpExIncrease} />
-            </div>
+                <tr className="border-t-2 border-slate-200">
+                  <td className="py-2.5 font-semibold text-gray-900">Total</td>
+                  <td className="py-2.5 text-right font-semibold text-gray-900">{fmt(totalPriorRevenue)}</td>
+                  <td className="py-2.5 text-right font-semibold text-gray-600">
+                    {totalPriorRevenue > 0 ? `${(((totalForecastRevenue - totalPriorRevenue) / totalPriorRevenue) * 100).toFixed(1)}%` : '—'}
+                  </td>
+                  <td className="py-2.5 text-right font-semibold text-gray-900">{fmt(totalForecastRevenue)}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-
-          {/* Summary */}
-          <div className="border-t border-gray-200 pt-8">
-            <div className="bg-brand-orange-50 border border-brand-orange-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-brand-orange mt-0.5" />
-                <div className="flex-1">
-                  <h3 className="text-sm font-bold text-brand-navy mb-2">Forecast Summary</h3>
-                  <div className="grid grid-cols-2 gap-6 text-sm">
-                    <div>
-                      <div className="text-brand-orange-700 mb-1">Revenue Goal</div>
-                      <div className="font-bold text-brand-navy text-lg">{formatCurrency(goals.revenue)}</div>
-                    </div>
-                    <div>
-                      <div className="text-brand-orange-700 mb-1">Gross Profit</div>
-                      <div className="font-bold text-brand-navy text-lg">{formatCurrency(calculatedGP)}</div>
-                      <div className="text-xs text-brand-orange">{(100 - cogsPercentage).toFixed(1)}% margin</div>
-                    </div>
-                  </div>
-                  <div className="mt-3 text-xs text-brand-orange-700">
-                    💡 Operating expenses and net profit will be calculated line-by-line in the P&L Forecast tab
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Save Button */}
-          <div className="flex items-center justify-end gap-3 pt-4">
-            <button
-              onClick={() => handleSave(false)}
-              disabled={isSaving || goals.revenue === 0}
-              className="flex items-center gap-2 px-6 py-3 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Save className="w-4 h-4" />
-              {isSaving ? 'Saving...' : 'Save & Generate Forecast'}
-            </button>
-          </div>
-        </>
+        </div>
       )}
 
-      {!hasGoals && (
-        <div className="text-center py-12">
-          <Target className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Set Your Annual Revenue Goal</h3>
-          <p className="text-sm text-gray-500">
-            Enter your revenue target above to start building your forecast
-          </p>
+      {/* COGS */}
+      {cogsLines.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <SectionHeader title="Cost of Sales" icon={TrendingUp} onEdit={() => onEditStep(3)} />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="py-2 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
+                  <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">{baselineFY}</th>
+                  <th className="py-2 text-left text-xs font-medium text-gray-500 uppercase pl-4">Type</th>
+                  <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Rate / Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {cogsLines.map((line, i) => (
+                  <tr key={i}>
+                    <td className="py-2.5 text-gray-900">{line.accountName}</td>
+                    <td className="py-2.5 text-right text-gray-600">{fmt(line.priorYearTotal)}</td>
+                    <td className="py-2.5 text-left text-gray-500 pl-4 capitalize">{line.costBehavior}</td>
+                    <td className="py-2.5 text-right text-gray-900">
+                      {line.costBehavior === 'variable' ? `${line.percentOfRevenue}% of revenue` : fmt((line.monthlyAmount || 0) * 12)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Team */}
+      {(existingTeam.length > 0 || plannedHires.length > 0) && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <SectionHeader title="Team" icon={Users} onEdit={() => onEditStep(4)} />
+
+          {existingTeam.length > 0 && (
+            <>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-2">Existing Team ({existingTeam.length})</p>
+              <div className="overflow-x-auto mb-4">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className="py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                      <th className="py-2 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                      <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Salary</th>
+                      <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Increase</th>
+                      <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Total Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {existingTeam.map((member, i) => {
+                      const adjustedSalary = member.currentSalary * (1 + member.salaryIncreasePct / 100)
+                      const totalCost = adjustedSalary * (1 + superRate / 100)
+                      return (
+                        <tr key={i}>
+                          <td className="py-2 text-gray-900">{member.name}</td>
+                          <td className="py-2 text-gray-600">{member.role}</td>
+                          <td className="py-2 text-right text-gray-600">{fmt(member.currentSalary)}</td>
+                          <td className="py-2 text-right text-gray-500">{member.salaryIncreasePct}%</td>
+                          <td className="py-2 text-right font-medium text-gray-900">{fmt(totalCost)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {plannedHires.length > 0 && (
+            <>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-2">New Hires ({plannedHires.length})</p>
+              <div className="overflow-x-auto mb-4">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className="py-2 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                      <th className="py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                      <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Salary</th>
+                      <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Start</th>
+                      <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Total Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {plannedHires.map((hire, i) => {
+                      const totalCost = hire.salary * (1 + superRate / 100)
+                      return (
+                        <tr key={i}>
+                          <td className="py-2 text-gray-900">{hire.role}</td>
+                          <td className="py-2 text-gray-500 capitalize">{hire.employmentType}</td>
+                          <td className="py-2 text-right text-gray-600">{fmt(hire.salary)}</td>
+                          <td className="py-2 text-right text-gray-500">{hire.startMonth}</td>
+                          <td className="py-2 text-right font-medium text-gray-900">{fmt(totalCost)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {departures.length > 0 && (
+            <p className="text-sm text-gray-500 mb-2">{departures.length} planned departure{departures.length !== 1 ? 's' : ''}</p>
+          )}
+
+          <div className="flex gap-4 text-xs text-gray-500 pt-2 border-t border-slate-100">
+            <span>Super: {superRate}%</span>
+            {team?.workCoverPct ? <span>WorkCover: {team.workCoverPct}%</span> : null}
+            {team?.payrollTaxPct ? <span>Payroll Tax: {team.payrollTaxPct}%</span> : null}
+          </div>
+        </div>
+      )}
+
+      {/* Operating Expenses */}
+      {opexLines.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <SectionHeader title="Operating Expenses" icon={Receipt} onEdit={() => onEditStep(5)} />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="py-2 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
+                  <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">{baselineFY}</th>
+                  <th className="py-2 text-left text-xs font-medium text-gray-500 uppercase pl-4">Behavior</th>
+                  <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">{currentFY} Forecast</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {opexLines
+                  .sort((a, b) => b.priorYearTotal - a.priorYearTotal)
+                  .map((line, i) => {
+                    let forecastAmt = line.priorYearTotal
+                    if (line.costBehavior === 'fixed') forecastAmt = (line.monthlyAmount || 0) * 12
+                    else if (line.costBehavior === 'variable') forecastAmt = (line.percentOfRevenue || 0) / 100 * totalForecastRevenue
+                    else if (line.costBehavior === 'adhoc') forecastAmt = line.expectedAnnualAmount || 0
+                    else if (line.costBehavior === 'seasonal') forecastAmt = line.seasonalTargetAmount || line.priorYearTotal * (1 + (line.seasonalGrowthPct || 0) / 100)
+
+                    const behaviorLabel: Record<string, string> = {
+                      fixed: `${fmt(line.monthlyAmount || 0)}/mo`,
+                      variable: `${line.percentOfRevenue}% of rev`,
+                      adhoc: 'Ad-hoc',
+                      seasonal: line.seasonalGrowthPct ? `+${line.seasonalGrowthPct}% seasonal` : 'Seasonal',
+                    }
+
+                    return (
+                      <tr key={i}>
+                        <td className="py-2 text-gray-900">{line.accountName}</td>
+                        <td className="py-2 text-right text-gray-600">{fmt(line.priorYearTotal)}</td>
+                        <td className="py-2 text-left text-gray-500 pl-4 text-xs">{behaviorLabel[line.costBehavior] || line.costBehavior}</td>
+                        <td className="py-2 text-right font-medium text-gray-900">{fmt(forecastAmt)}</td>
+                      </tr>
+                    )
+                  })}
+                <tr className="border-t-2 border-slate-200">
+                  <td className="py-2.5 font-semibold text-gray-900">Total</td>
+                  <td className="py-2.5 text-right font-semibold text-gray-900">{fmt(opexLines.reduce((s, l) => s + l.priorYearTotal, 0))}</td>
+                  <td className="py-2.5"></td>
+                  <td className="py-2.5 text-right font-semibold text-gray-900">
+                    {fmt(opexLines.reduce((s, l) => {
+                      if (l.costBehavior === 'fixed') return s + (l.monthlyAmount || 0) * 12
+                      if (l.costBehavior === 'variable') return s + (l.percentOfRevenue || 0) / 100 * totalForecastRevenue
+                      if (l.costBehavior === 'adhoc') return s + (l.expectedAnnualAmount || 0)
+                      if (l.costBehavior === 'seasonal') return s + (l.seasonalTargetAmount || l.priorYearTotal * (1 + (l.seasonalGrowthPct || 0) / 100))
+                      return s + l.priorYearTotal
+                    }, 0))}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Subscriptions */}
+      {subs && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <SectionHeader title="Subscriptions Audit" icon={Wallet} onEdit={() => onEditStep(6)} />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+            <div className="text-center p-3 bg-green-50 rounded-lg">
+              <p className="text-xs text-gray-500">Essential</p>
+              <p className="text-sm font-semibold text-green-700">{fmt(subs.essentialAnnual)}</p>
+            </div>
+            <div className="text-center p-3 bg-amber-50 rounded-lg">
+              <p className="text-xs text-gray-500">Review</p>
+              <p className="text-sm font-semibold text-amber-700">{fmt(subs.reviewAnnual)}</p>
+            </div>
+            <div className="text-center p-3 bg-orange-50 rounded-lg">
+              <p className="text-xs text-gray-500">Reduce</p>
+              <p className="text-sm font-semibold text-orange-700">{fmt(subs.reduceAnnual)}</p>
+            </div>
+            <div className="text-center p-3 bg-red-50 rounded-lg">
+              <p className="text-xs text-gray-500">Cancel</p>
+              <p className="text-sm font-semibold text-red-700">{fmt(subs.cancelAnnual)}</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-sm text-gray-600 pt-3 border-t border-slate-100">
+            <span>{subs.vendorCount} vendors audited</span>
+            <span>Total: <strong>{fmt(subs.totalAnnual)}/yr</strong></span>
+            <span className="text-green-600 font-medium">Potential savings: {fmt(subs.potentialSavings)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* CapEx */}
+      {capexItems.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <SectionHeader title="Capital Expenditure" icon={Building2} onEdit={() => onEditStep(7)} />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                  <th className="py-2 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                  <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Month</th>
+                  <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {capexItems.map((item, i) => (
+                  <tr key={i}>
+                    <td className="py-2 text-gray-900">{item.name}</td>
+                    <td className="py-2 text-gray-500 capitalize">{item.category}</td>
+                    <td className="py-2 text-right text-gray-500">{item.month}</td>
+                    <td className="py-2 text-right font-medium text-gray-900">{fmt(item.amount)}</td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-slate-200">
+                  <td colSpan={3} className="py-2.5 font-semibold text-gray-900">Total</td>
+                  <td className="py-2.5 text-right font-semibold text-gray-900">{fmt(capexItems.reduce((s, item) => s + item.amount, 0))}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

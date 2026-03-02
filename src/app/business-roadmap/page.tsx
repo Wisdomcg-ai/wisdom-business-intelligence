@@ -36,7 +36,7 @@ const BUILD_LINKS: Record<string, { href: string; label: string }> = {
   "SWOT Analysis": { href: "/swot", label: "SWOT Analysis" },
   "90 Day Planning": { href: "/quarterly-review", label: "Quarterly Review" },
   "Team Accountability": { href: "/team/accountability", label: "Accountability Chart" },
-  "Hiring Plan": { href: "/team/hiring-roadmap", label: "Hiring Roadmap" },
+  "Hiring Plan": { href: "/team/hiring-roadmap", label: "Culture & Retention" },
 }
 
 export default function WisdomRoadmapTable() {

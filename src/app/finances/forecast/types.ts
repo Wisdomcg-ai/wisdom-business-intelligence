@@ -157,7 +157,8 @@ export interface FinancialForecast {
   revenue_goal?: number
   gross_profit_goal?: number
   net_profit_goal?: number
-  goal_source?: 'goals_wizard' | 'annual_plan' | 'manual'
+  goal_source?: 'goals_wizard' | 'annual_plan' | 'manual' | 'wizard_v4'
+  assumptions?: Record<string, any>  // ForecastAssumptions from wizard v4
   annual_plan_id?: string
   revenue_distribution_method?: DistributionMethod
   revenue_distribution_data?: { [monthKey: string]: number }
@@ -225,6 +226,7 @@ export interface XeroConnection {
   is_active: boolean
   last_synced_at?: string
   created_at?: string
+  expires_at?: string
 }
 
 // Helper types for UI
@@ -311,4 +313,533 @@ export interface WhatIfParameters {
   revenueChange: number // -50 to +100 (percentage)
   cogsChange: number // -20 to +20 (percentage points)
   opexChange: number // -20 to +50 (percentage)
+}
+
+// ============================================================================
+// Forecast Wizard V2 Types
+// ============================================================================
+
+export type WizardMode = 'guided' | 'quick'
+export type WizardStep = 'setup' | 'team' | 'costs' | 'investments' | 'projections' | 'review'
+export type DecisionType = 'new_hire' | 'remove_employee' | 'salary_change' | 'investment' | 'cost_added' | 'cost_changed' | 'goal_adjusted' | 'year_projection' | 'team_confirmed' | 'costs_confirmed' | 'investments_confirmed' | 'projections_confirmed'
+export type InvestmentType = 'capex' | 'opex'
+export type RecurrenceType = 'monthly' | 'quarterly' | 'annual'
+export type YearGranularity = 'monthly' | 'quarterly' | 'annual'
+export type AIConfidence = 'high' | 'medium' | 'low'
+
+export interface WizardSession {
+  id: string
+  forecast_id?: string
+  user_id: string
+  business_id: string
+  started_at: string
+  completed_at?: string
+  mode: WizardMode
+  current_step: WizardStep
+  steps_completed: Record<WizardStep, {
+    completed: boolean
+    time_spent_seconds: number
+    completed_at?: string
+  }>
+  dropped_off_at?: WizardStep
+  years_selected: number[] // [1], [1,2], [1,2,3]
+  created_at: string
+  updated_at: string
+}
+
+export interface ForecastDecision {
+  id: string
+  forecast_id?: string // Optional for in-memory decisions
+  session_id?: string
+  user_id?: string // Optional for in-memory decisions
+  business_id?: string // Optional for in-memory decisions
+  decision_type: DecisionType | string // Allow flexibility for parsing
+  decision_data: Record<string, unknown>
+  reasoning?: string
+  user_reasoning?: string // User's explanation for the decision
+  ai_suggestion?: {
+    suggestion: string
+    reasoning: string
+    confidence: AIConfidence
+  }
+  user_accepted_ai?: boolean
+  ai_confidence?: AIConfidence
+  linked_initiative_id?: string
+  linked_pl_line_id?: string
+  created_at: string
+}
+
+export interface ForecastInvestment {
+  id: string
+  forecast_id: string
+  user_id: string
+  business_id: string
+  initiative_id?: string
+  name: string
+  description?: string
+  investment_type: InvestmentType
+  amount: number
+  start_month: string
+  is_recurring: boolean
+  recurrence?: RecurrenceType
+  end_month?: string
+  pl_account_category?: string
+  pl_line_id?: string
+  depreciation_years?: number
+  reasoning?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ForecastYear {
+  id: string
+  forecast_id: string
+  user_id: string
+  business_id: string
+  year_number: 1 | 2 | 3
+  fiscal_year: number
+  granularity: YearGranularity
+  revenue_target?: number
+  revenue_growth_percent?: number
+  gross_margin_percent?: number
+  net_profit_percent?: number
+  headcount_start?: number
+  headcount_end?: number
+  headcount_change?: number
+  planned_roles?: string[]
+  team_cost_estimate?: number
+  opex_estimate?: number
+  capex_estimate?: number
+  quarterly_data?: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', {
+    revenue?: number
+    costs?: number
+    profit?: number
+  }>
+  notes?: string
+  assumptions?: string
+  created_at: string
+  updated_at: string
+}
+
+// Strategic Initiative (from existing table)
+export interface StrategicInitiative {
+  id: string
+  business_id: string
+  user_id: string
+  title: string
+  description?: string
+  notes?: string
+  category?: 'marketing' | 'operations' | 'finance' | 'people' | 'systems' | 'product' | 'customer_experience' | 'other'
+  priority?: 'high' | 'medium' | 'low'
+  estimated_effort?: 'small' | 'medium' | 'large'
+  status?: 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold'
+  progress_percentage?: number
+  quarter_assigned?: 'Q1' | 'Q2' | 'Q3' | 'Q4'
+  year_assigned?: number
+  selected?: boolean
+  created_at: string
+  updated_at: string
+}
+
+// Xero Employee (from payroll)
+export interface XeroEmployee {
+  employee_id: string
+  first_name: string
+  last_name: string
+  full_name: string
+  job_title?: string
+  start_date?: string
+  termination_date?: string
+  annual_salary?: number
+  hourly_rate?: number
+  hours_per_week?: number
+  pay_frequency?: 'weekly' | 'fortnightly' | 'monthly'
+  classification?: WageClassification
+  is_active: boolean
+  from_xero: boolean
+}
+
+// Goals (from goals table)
+export interface BusinessGoals {
+  id?: string
+  business_id?: string
+  fiscal_year?: number
+  // Year type: 'FY' = Financial Year (Jul-Jun), 'CY' = Calendar Year (Jan-Dec)
+  year_type?: 'FY' | 'CY'
+
+  // Year 1 targets
+  revenue_target?: number
+  gross_profit_target?: number
+  profit_target?: number
+  gross_margin_percent?: number
+  net_profit_percent?: number
+
+  // Year 2 targets (multi-year planning)
+  revenue_year2?: number
+  gross_profit_year2?: number
+  net_profit_year2?: number
+
+  // Year 3 targets (multi-year planning)
+  revenue_year3?: number
+  gross_profit_year3?: number
+  net_profit_year3?: number
+
+  headcount_target?: number
+  key_objectives?: string[]
+  created_at?: string
+  updated_at?: string
+}
+
+// Operating expense category summary
+export interface OpExCategory {
+  category: string
+  account_name: string
+  total: number
+  monthly_average: number
+}
+
+// Revenue/COGS line item from Xero
+export interface PLLineItem {
+  account_name: string
+  category: string
+  total: number
+  by_month: Record<string, number>
+  percent_of_revenue?: number
+}
+
+// Period financial summary
+export interface PeriodSummary {
+  period_label: string
+  start_month: string
+  end_month: string
+  months_count: number
+  total_revenue: number
+  total_cogs: number
+  gross_profit: number
+  gross_margin_percent: number
+  operating_expenses: number
+  operating_expenses_by_category: OpExCategory[]
+  net_profit: number
+  net_margin_percent: number
+  // Monthly breakdown for seasonality
+  revenue_by_month?: Record<string, number>
+  seasonality_pattern?: number[] // 12 percentages for FY months (Jul-Jun)
+  // Individual line items
+  revenue_lines?: PLLineItem[]
+  cogs_lines?: PLLineItem[]
+}
+
+// Historical P&L summary for AI context
+export interface HistoricalPLSummary {
+  has_xero_data: boolean
+
+  // Prior complete FY - the baseline for comparison
+  prior_fy?: PeriodSummary
+
+  // Current FY Year-to-Date - what's already happened
+  current_ytd?: PeriodSummary & {
+    // Run rate projections
+    run_rate_revenue: number
+    run_rate_opex: number
+    run_rate_net_profit: number
+    // Variance vs prior FY
+    revenue_vs_prior_percent: number
+    opex_vs_prior_percent: number
+  }
+
+  // Forecast period - what we're planning
+  forecast_period?: {
+    start_month: string
+    end_month: string
+    months_remaining: number
+  }
+
+  // User adjustments/notes for the AI to consider
+  adjustments?: {
+    month: string
+    account: string
+    note: string
+    exclude_from_run_rate?: boolean
+  }[]
+}
+
+// Wizard Context (for AI CFO)
+export interface WizardContext {
+  business_id: string
+  business_name?: string
+  industry?: string
+  fiscal_year: number
+  goals: BusinessGoals
+  current_team: XeroEmployee[]
+  strategic_initiatives: StrategicInitiative[]
+  existing_forecast?: FinancialForecast
+  session: WizardSession
+  decisions_made: ForecastDecision[]
+  // Xero connection and historical data
+  xero_connected?: boolean
+  historical_pl?: HistoricalPLSummary
+}
+
+// AI CFO Message
+export interface CFOMessage {
+  id: string
+  role: 'cfo' | 'user' | 'system'
+  content: string
+  timestamp: string
+  step?: WizardStep
+  structured_input?: {
+    type: 'salary' | 'amount' | 'percentage' | 'select' | 'multi_select' | 'date' | 'confirm'
+    options?: { label: string; value: string }[]
+    placeholder?: string
+    validation?: Record<string, unknown>
+  }
+  ai_suggestion?: {
+    suggestion: string | number
+    reasoning: string
+    confidence: AIConfidence
+    source?: string
+  }
+}
+
+// Wizard State
+export interface WizardState {
+  mode: WizardMode
+  currentStep: WizardStep
+  session: WizardSession | null
+  messages: CFOMessage[]
+  context: WizardContext | null
+  isLoading: boolean
+  error: string | null
+
+  // Step data
+  setupData: {
+    goalsLoaded: boolean
+    yearsSelected: number[]
+    xeroConnected: boolean
+  }
+  teamData: {
+    existingTeam: XeroEmployee[]
+    plannedHires: Partial<ForecastEmployee>[]
+    plannedDepartures: { employee_id: string; end_month: string }[]
+  }
+  costsData: {
+    categories: {
+      category: string
+      items: { name: string; annual_amount: number; is_monthly: boolean }[]
+    }[]
+  }
+  investmentsData: {
+    investments: ForecastInvestment[]
+  }
+  projectionsData: {
+    year2?: Partial<ForecastYear>
+    year3?: Partial<ForecastYear>
+  }
+
+  // Live preview
+  livePreview: {
+    revenue: number
+    cogs: number
+    grossProfit: number
+    grossMargin: number
+    teamCosts: number
+    opex: number
+    netProfit: number
+    netMargin: number
+    vsTarget: number
+  }
+}
+
+// Wizard Validation Result
+export interface ValidationResult {
+  isValid: boolean
+  meetsGoals: boolean
+  concerns: {
+    severity: 'critical' | 'warning' | 'info'
+    area: string
+    message: string
+    suggestion?: string
+  }[]
+  summary: {
+    revenue: number
+    grossProfit: number
+    grossMargin: number
+    netProfit: number
+    netMargin: number
+    targetNetMargin: number
+    variance: number
+  }
+  aiCommentary?: string
+}
+
+// Cost Categories with descriptions
+export const COST_CATEGORIES: Record<string, { label: string; description: string }> = {
+  rent_occupancy: { label: 'Rent & Occupancy', description: 'Office rent, building costs' },
+  utilities: { label: 'Utilities & Services', description: 'Power, water, internet' },
+  technology: { label: 'Technology & Software', description: 'SaaS, hosting, licenses' },
+  marketing: { label: 'Marketing & Advertising', description: 'Ads, campaigns, content' },
+  insurance: { label: 'Insurance', description: 'Business insurance policies' },
+  professional_fees: { label: 'Professional Fees', description: 'Accounting, legal, consulting' },
+  travel: { label: 'Travel & Entertainment', description: 'Business travel, client entertainment' },
+  office_supplies: { label: 'Office & Supplies', description: 'Stationery, equipment' },
+  training: { label: 'Training & Development', description: 'Staff training, courses' },
+  other: { label: 'Other Operating Costs', description: 'Miscellaneous expenses' }
+}
+
+export type CostCategory = keyof typeof COST_CATEGORIES
+
+// Investment Account Categories with labels
+export const INVESTMENT_ACCOUNT_CATEGORIES: Record<string, { label: string }> = {
+  marketing: { label: 'Marketing' },
+  technology: { label: 'Technology' },
+  equipment: { label: 'Equipment' },
+  training: { label: 'Training' },
+  professional_services: { label: 'Professional Services' },
+  research_development: { label: 'Research & Development' },
+  other: { label: 'Other' }
+}
+
+export type InvestmentAccountCategory = keyof typeof INVESTMENT_ACCOUNT_CATEGORIES
+
+// ============================================================================
+// Cashflow Forecast Types (Calxa-style cash budget)
+// ============================================================================
+
+export interface LoanSchedule {
+  name: string
+  balance: number
+  monthly_repayment: number
+  interest_rate: number               // Annual rate e.g. 0.065 = 6.5%
+  is_interest_only: boolean
+}
+
+export interface CashflowAssumptions {
+  // Cash timing
+  dso_days: number                    // Days Sales Outstanding
+  dso_auto_calculated: boolean
+  dpo_days: number                    // Days Payable Outstanding
+  dpo_auto_calculated: boolean
+
+  // GST
+  gst_registered: boolean
+  gst_rate: number                    // 0.10 default (10%)
+  gst_reporting_frequency: 'monthly' | 'quarterly'
+  gst_applicable_expense_pct: number  // % of non-wage OpEx that has GST (default 0.80)
+
+  // Superannuation
+  super_payment_frequency: 'monthly' | 'quarterly'
+
+  // PAYG Withholding (employee tax withheld from wages)
+  payg_wh_reporting_frequency: 'monthly' | 'quarterly'
+
+  // PAYG Instalments (company income tax instalments to ATO)
+  payg_instalment_amount: number
+  payg_instalment_frequency: 'quarterly' | 'annual' | 'none'
+
+  // Opening balances (from Xero BS or manual)
+  opening_bank_balance: number
+  opening_trade_debtors: number
+  opening_trade_creditors: number
+  opening_gst_liability: number
+  opening_payg_wh_liability: number
+  opening_payg_instalment_liability: number
+  opening_super_liability: number
+  opening_stock: number
+
+  // Stock/Inventory changes (monthly overrides)
+  planned_stock_changes: Record<string, number>  // { "2026-02": 5000 }
+
+  // Loan schedules
+  loans: LoanSchedule[]
+
+  // Metadata
+  balance_date: string
+  last_xero_sync_at?: string
+}
+
+export interface CashflowLine {
+  label: string
+  value: number
+}
+
+export interface CashflowExpenseGroup {
+  group: string
+  lines: CashflowLine[]
+  subtotal: number
+}
+
+export interface CashflowForecastMonth {
+  month: string                       // 'YYYY-MM'
+  monthLabel: string                  // 'Feb 2026'
+  source: 'actual' | 'forecast'
+  bank_at_beginning: number
+
+  // Income section (GST-inclusive cash receipts, DSO-adjusted)
+  income_lines: CashflowLine[]
+  cash_inflows: number
+
+  // COGS section (GST-inclusive cash payments, DPO-adjusted)
+  cogs_lines: CashflowLine[]
+
+  // Expense section (grouped by category, GST-inclusive where applicable)
+  expense_groups: CashflowExpenseGroup[]
+  cash_outflows: number
+
+  // Balance sheet — Assets
+  asset_lines: CashflowLine[]
+  movement_in_assets: number
+
+  // Balance sheet — Liabilities
+  liability_lines: CashflowLine[]
+  movement_in_liabilities: number
+
+  // Other income
+  other_income_lines: CashflowLine[]
+  other_inflows: number
+
+  net_movement: number
+  bank_at_end: number
+}
+
+export interface CashflowForecastData {
+  forecast_id: string
+  assumptions: CashflowAssumptions
+  months: CashflowForecastMonth[]
+  totals: CashflowForecastMonth       // Annual total column
+  lowest_bank_balance: number
+  lowest_bank_month: string
+}
+
+// Validation concern for forecast review
+export interface ValidationConcern {
+  severity: 'error' | 'warning' | 'info'
+  category: string
+  message: string
+  suggestion?: string
+}
+
+// Forecast summary for review
+export interface ForecastSummary {
+  revenue: {
+    year1: number
+    year2?: number
+    year3?: number
+  }
+  costs: {
+    team: number
+    operations: number
+    investments: number
+    total: number
+  }
+  profit: {
+    gross: number
+    net: number
+    margin: number
+  }
+  headcount: {
+    current: number
+    planned: number
+    endOfYear: number
+  }
+  keyDecisions: string[]
 }

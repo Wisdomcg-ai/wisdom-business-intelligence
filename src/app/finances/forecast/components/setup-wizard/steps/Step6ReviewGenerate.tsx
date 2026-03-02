@@ -11,10 +11,12 @@ import {
   TrendingUp,
   Calendar,
   DollarSign,
-  Percent,
   ArrowRight,
   Play,
-  BarChart3
+  MessageSquare,
+  Info,
+  Lightbulb,
+  AlertCircle
 } from 'lucide-react'
 import type { SetupWizardData, DistributionMethod } from '../types'
 
@@ -42,347 +44,402 @@ export default function Step6ReviewGenerate({
     }).format(value)
   }
 
-  // Calculate summary metrics
+  // Calculate the complete P&L summary
   const summary = useMemo(() => {
+    // Revenue and COGS
     const cogsAmount = data.revenueGoal - data.grossProfitGoal
     const cogsPercent = data.revenueGoal > 0 ? (cogsAmount / data.revenueGoal) * 100 : 0
+    const grossMargin = 100 - cogsPercent
 
-    const totalOpEx = data.totalWagesOpEx + data.totalOpExForecast
-    const opexPercent = data.revenueGoal > 0 ? (totalOpEx / data.revenueGoal) * 100 : 0
+    // Total OpEx (including strategic investments)
+    const teamCosts = data.totalWagesOpEx + data.totalWagesCOGS
+    const opexCosts = data.totalOpExForecast
+    const strategicCosts = data.totalInvestmentCost || 0
+    const totalOpEx = data.totalWagesOpEx + opexCosts + strategicCosts
 
+    // Calculate what net profit will actually be
     const calculatedNetProfit = data.grossProfitGoal - totalOpEx
     const netMargin = data.revenueGoal > 0 ? (calculatedNetProfit / data.revenueGoal) * 100 : 0
 
+    // Gap to target
     const profitGap = calculatedNetProfit - data.netProfitGoal
     const isOnTrack = profitGap >= 0
+    const gapPercent = data.netProfitGoal > 0
+      ? (profitGap / data.netProfitGoal) * 100
+      : 0
 
     return {
       cogsAmount,
       cogsPercent,
+      grossMargin,
+      teamCosts,
+      opexCosts,
+      strategicCosts,
       totalOpEx,
-      opexPercent,
       calculatedNetProfit,
       netMargin,
       profitGap,
+      gapPercent,
       isOnTrack
     }
   }, [data])
 
-  // Validation checks
+  // CFO Insight - the main "does it work?" assessment
+  const getCFOInsight = () => {
+    if (data.revenueGoal === 0) {
+      return {
+        type: 'warning' as const,
+        title: 'Missing Revenue Goal',
+        message: "You haven't set a revenue goal yet. Go back to Step 1 to import your targets from your Annual Plan."
+      }
+    }
+
+    if (summary.isOnTrack && summary.gapPercent > 20) {
+      return {
+        type: 'success' as const,
+        title: 'Looking Strong',
+        message: `You're on track to keep ${formatCurrency(summary.calculatedNetProfit)} - that's ${formatCurrency(summary.profitGap)} more than your goal. You've got a healthy buffer built in.`
+      }
+    }
+
+    if (summary.isOnTrack && summary.gapPercent >= 0) {
+      return {
+        type: 'success' as const,
+        title: 'On Track',
+        message: `Your numbers work. You'll keep ${formatCurrency(summary.calculatedNetProfit)} (${summary.netMargin.toFixed(1)}% of what you make), which hits your goal${summary.profitGap > 0 ? ` with ${formatCurrency(summary.profitGap)} to spare` : ''}.`
+      }
+    }
+
+    if (summary.profitGap < 0 && Math.abs(summary.gapPercent) <= 10) {
+      return {
+        type: 'info' as const,
+        title: 'Nearly There',
+        message: `You're ${formatCurrency(Math.abs(summary.profitGap))} short of your profit goal - that's only ${Math.abs(summary.gapPercent).toFixed(0)}% off. A few small adjustments and you'll be there.`
+      }
+    }
+
+    return {
+      type: 'warning' as const,
+      title: 'Budget Gap to Close',
+      message: `Your current plan shows ${formatCurrency(Math.abs(summary.profitGap))} less profit than your goal. You'll need to cut costs or increase revenue to hit your target.`
+    }
+  }
+
+  const cfoInsight = getCFOInsight()
+
+  // Validation summary
   const validations = useMemo(() => {
-    const checks = []
-
-    // Goals check
-    if (data.revenueGoal > 0) {
-      checks.push({ label: 'Revenue goal set', passed: true, value: formatCurrency(data.revenueGoal) })
-    } else {
-      checks.push({ label: 'Revenue goal set', passed: false, value: 'Not set' })
-    }
-
-    // Prior year data check
-    if (data.hasActualData) {
-      checks.push({ label: 'Prior year data imported', passed: true, value: data.dataSource })
-    } else {
-      checks.push({ label: 'Prior year data imported', passed: false, value: 'Optional - will use even distribution' })
-    }
-
-    // Team planning check
-    if (data.teamMembers.length > 0) {
-      checks.push({
+    return [
+      {
+        label: 'Revenue & profit goals',
+        passed: data.revenueGoal > 0 && data.grossProfitGoal > 0,
+        icon: Target
+      },
+      {
         label: 'Team planned',
-        passed: true,
-        value: `${data.teamMembers.length} members, ${formatCurrency(data.totalWagesOpEx + data.totalWagesCOGS)} total wages`
-      })
-    } else {
-      checks.push({ label: 'Team planned', passed: false, value: 'No team members added' })
-    }
+        passed: data.teamMembers.length > 0,
+        icon: Users
+      },
+      {
+        label: 'Running costs set',
+        passed: data.opexCategories.length > 0,
+        icon: Wallet
+      },
+      {
+        label: 'Projects costed',
+        passed: data.strategicInvestments.length === 0 ||
+          data.strategicInvestments.every(i => i.cost > 0),
+        icon: Lightbulb
+      }
+    ]
+  }, [data])
 
-    // OpEx check
-    if (data.opexCategories.length > 0) {
-      checks.push({
-        label: 'Operating costs planned',
-        passed: true,
-        value: `${data.opexCategories.length} categories, ${formatCurrency(data.totalOpExForecast)}`
-      })
-    } else {
-      checks.push({ label: 'Operating costs planned', passed: false, value: 'No categories set' })
-    }
-
-    // Budget check
-    if (summary.isOnTrack) {
-      checks.push({
-        label: 'Budget aligned with profit goal',
-        passed: true,
-        value: `${formatCurrency(summary.profitGap)} buffer`
-      })
-    } else {
-      checks.push({
-        label: 'Budget aligned with profit goal',
-        passed: false,
-        value: `${formatCurrency(Math.abs(summary.profitGap))} over budget`
-      })
-    }
-
-    return checks
-  }, [data, summary, formatCurrency])
-
-  const allPassed = validations.every(v => v.passed) || validations.filter(v => !v.passed).every(v =>
-    v.label === 'Prior year data imported' || v.label === 'Team planned' || v.label === 'Operating costs planned'
-  )
+  const passedCount = validations.filter(v => v.passed).length
+  const hasRequiredData = data.revenueGoal > 0
 
   return (
     <div className="space-y-6">
-      {/* Teaching Banner */}
-      <div className="bg-gradient-to-r from-brand-orange to-brand-orange-700 rounded-lg p-5 text-white">
+      {/* CFO Header */}
+      <div className="bg-gradient-to-r from-brand-navy to-brand-navy-800 rounded-xl p-6 text-white">
         <div className="flex items-start gap-4">
-          <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Sparkles className="w-5 h-5 text-white" />
+          <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center flex-shrink-0">
+            <MessageSquare className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h3 className="font-bold text-lg mb-1">Step 6: Review & Generate</h3>
-            <p className="text-brand-orange-100 text-sm">
-              Let's make sure everything looks right before we build your forecast.
-              This is your last chance to adjust before generating.
+            <h3 className="font-bold text-xl mb-2">Does It All Work?</h3>
+            <p className="text-white/80">
+              Let me run the numbers and show you if your plan adds up.
+              If there's a gap, I'll help you see where to look.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-4">
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Target className="w-4 h-4 text-brand-orange" />
-            <span className="text-xs font-medium text-gray-500 uppercase">Revenue Goal</span>
-          </div>
-          <div className="text-xl font-bold text-gray-900">
-            {formatCurrency(data.revenueGoal)}
-          </div>
+      {/* CFO Insight - Main Assessment */}
+      <div className={`rounded-xl p-6 flex items-start gap-4 ${
+        cfoInsight.type === 'success' ? 'bg-green-50 border border-green-200' :
+        cfoInsight.type === 'warning' ? 'bg-amber-50 border border-amber-200' :
+        'bg-blue-50 border border-blue-200'
+      }`}>
+        <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
+          cfoInsight.type === 'success' ? 'bg-green-100' :
+          cfoInsight.type === 'warning' ? 'bg-amber-100' :
+          'bg-blue-100'
+        }`}>
+          {cfoInsight.type === 'success' ? (
+            <CheckCircle className="w-6 h-6 text-green-600" />
+          ) : cfoInsight.type === 'warning' ? (
+            <AlertTriangle className="w-6 h-6 text-amber-600" />
+          ) : (
+            <Info className="w-6 h-6 text-blue-600" />
+          )}
         </div>
-
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Percent className="w-4 h-4 text-green-600" />
-            <span className="text-xs font-medium text-gray-500 uppercase">Gross Margin</span>
-          </div>
-          <div className="text-xl font-bold text-gray-900">
-            {(100 - summary.cogsPercent).toFixed(1)}%
-          </div>
-          <div className="text-xs text-gray-500">
-            GP: {formatCurrency(data.grossProfitGoal)}
-          </div>
-        </div>
-
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Wallet className="w-4 h-4 text-brand-orange-600" />
-            <span className="text-xs font-medium text-gray-500 uppercase">Total OpEx</span>
-          </div>
-          <div className="text-xl font-bold text-gray-900">
-            {formatCurrency(summary.totalOpEx)}
-          </div>
-          <div className="text-xs text-gray-500">
-            {summary.opexPercent.toFixed(1)}% of revenue
-          </div>
-        </div>
-
-        <div className={`border rounded-xl p-4 ${summary.isOnTrack
-            ? 'bg-green-50 border-green-200'
-            : 'bg-red-50 border-red-200'
+        <div>
+          <h4 className={`font-bold text-lg mb-1 ${
+            cfoInsight.type === 'success' ? 'text-green-900' :
+            cfoInsight.type === 'warning' ? 'text-amber-900' :
+            'text-blue-900'
           }`}>
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="w-4 h-4 text-gray-600" />
-            <span className="text-xs font-medium text-gray-500 uppercase">Net Profit</span>
-          </div>
-          <div className={`text-xl font-bold ${summary.isOnTrack ? 'text-green-700' : 'text-red-700'}`}>
-            {formatCurrency(summary.calculatedNetProfit)}
-          </div>
-          <div className="text-xs text-gray-500">
-            {summary.netMargin.toFixed(1)}% margin
-          </div>
+            {cfoInsight.title}
+          </h4>
+          <p className={`text-sm ${
+            cfoInsight.type === 'success' ? 'text-green-800' :
+            cfoInsight.type === 'warning' ? 'text-amber-800' :
+            'text-blue-800'
+          }`}>
+            {cfoInsight.message}
+          </p>
         </div>
       </div>
 
-      {/* Profit Analysis */}
-      {!summary.isOnTrack && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+      {/* The Numbers - Visual P&L Summary */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h4 className="font-semibold text-gray-900">FY{fiscalYear} Forecast Summary</h4>
+        </div>
+
+        <div className="p-5 space-y-3">
+          {/* Revenue */}
+          <div className="flex justify-between items-center py-2">
+            <span className="text-gray-700">Revenue</span>
+            <span className="font-bold text-gray-900 text-lg">{formatCurrency(data.revenueGoal)}</span>
+          </div>
+
+          {/* Less COGS */}
+          <div className="flex justify-between items-center py-2 text-sm">
+            <span className="text-gray-500 pl-4">Less: Cost of delivery ({summary.cogsPercent.toFixed(0)}%)</span>
+            <span className="text-gray-600">({formatCurrency(summary.cogsAmount)})</span>
+          </div>
+
+          {/* Gross Profit */}
+          <div className="flex justify-between items-center py-2 border-t border-gray-100">
             <div>
-              <h4 className="font-semibold text-red-900 mb-1">Profit Goal Warning</h4>
-              <p className="text-sm text-red-800">
-                Your planned costs exceed what's needed to hit your net profit goal of{' '}
-                {formatCurrency(data.netProfitGoal)} by {formatCurrency(Math.abs(summary.profitGap))}.
-                You can still generate the forecast, but consider:
-              </p>
-              <ul className="mt-2 text-sm text-red-800 list-disc list-inside space-y-1">
-                <li>Reducing operating expenses</li>
-                <li>Increasing your revenue goal</li>
-                <li>Improving your gross margin (reducing COGS)</li>
-              </ul>
+              <span className="text-gray-700 font-medium">What You Make</span>
+              <span className="text-xs text-gray-400 ml-2">(Gross Profit)</span>
+            </div>
+            <div className="text-right">
+              <span className="font-bold text-gray-900">{formatCurrency(data.grossProfitGoal)}</span>
+              <span className="text-xs text-gray-500 ml-2">({summary.grossMargin.toFixed(0)}%)</span>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Validation Checklist */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h4 className="font-semibold text-gray-900">Pre-Generate Checklist</h4>
-          <span className={`text-sm font-medium ${allPassed ? 'text-green-600' : 'text-amber-600'}`}>
-            {validations.filter(v => v.passed).length}/{validations.length} complete
-          </span>
-        </div>
-
-        <div className="divide-y divide-gray-100">
-          {validations.map((check, index) => (
-            <div key={index} className="px-5 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {check.passed ? (
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                ) : (
-                  <div className="w-5 h-5 rounded-full border-2 border-gray-300" />
-                )}
-                <span className={`text-sm ${check.passed ? 'text-gray-900' : 'text-gray-500'}`}>
-                  {check.label}
-                </span>
-              </div>
-              <span className="text-sm text-gray-500">{check.value}</span>
+          {/* Operating Expenses Breakdown */}
+          <div className="flex justify-between items-center py-2 text-sm">
+            <span className="text-gray-500 pl-4">Back Office wages</span>
+            <span className="text-gray-600">({formatCurrency(data.totalWagesOpEx)})</span>
+          </div>
+          <div className="flex justify-between items-center py-2 text-sm">
+            <span className="text-gray-500 pl-4">Other running costs</span>
+            <span className="text-gray-600">({formatCurrency(summary.opexCosts)})</span>
+          </div>
+          {summary.strategicCosts > 0 && (
+            <div className="flex justify-between items-center py-2 text-sm">
+              <span className="text-gray-500 pl-4">Big projects</span>
+              <span className="text-gray-600">({formatCurrency(summary.strategicCosts)})</span>
             </div>
-          ))}
+          )}
+
+          {/* Total OpEx */}
+          <div className="flex justify-between items-center py-2 text-sm border-t border-gray-100">
+            <span className="text-gray-600 pl-4">Total running costs</span>
+            <span className="text-gray-700 font-medium">({formatCurrency(summary.totalOpEx)})</span>
+          </div>
+
+          {/* Net Profit */}
+          <div className={`flex justify-between items-center py-3 border-t-2 rounded-lg px-3 -mx-3 ${
+            summary.isOnTrack ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'
+          }`}>
+            <div>
+              <span className="font-bold text-gray-900">What You Keep</span>
+              <span className="text-xs text-gray-400 ml-2">(Net Profit)</span>
+            </div>
+            <div className="text-right">
+              <span className={`font-bold text-xl ${summary.isOnTrack ? 'text-green-700' : 'text-red-700'}`}>
+                {formatCurrency(summary.calculatedNetProfit)}
+              </span>
+              <span className="text-xs text-gray-500 ml-2">({summary.netMargin.toFixed(1)}%)</span>
+            </div>
+          </div>
+
+          {/* Gap to Target */}
+          {data.netProfitGoal > 0 && (
+            <div className="flex justify-between items-center py-2 text-sm">
+              <span className="text-gray-500">Your target: {formatCurrency(data.netProfitGoal)}</span>
+              <span className={summary.isOnTrack ? 'text-green-600' : 'text-red-600'}>
+                {summary.isOnTrack ? '+' : ''}{formatCurrency(summary.profitGap)} {summary.isOnTrack ? 'buffer' : 'gap'}
+              </span>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Quick Checks */}
+      <div className="grid grid-cols-4 gap-3">
+        {validations.map((check, index) => {
+          const Icon = check.icon
+          return (
+            <div
+              key={index}
+              className={`p-3 rounded-lg text-center ${
+                check.passed ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'
+              }`}
+            >
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center mx-auto mb-2 ${
+                check.passed ? 'bg-green-100' : 'bg-gray-200'
+              }`}>
+                {check.passed ? (
+                  <CheckCircle className="w-4 h-4 text-green-600" />
+                ) : (
+                  <Icon className="w-4 h-4 text-gray-400" />
+                )}
+              </div>
+              <div className={`text-xs ${check.passed ? 'text-green-700' : 'text-gray-500'}`}>
+                {check.label}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Distribution Method */}
       <div className="bg-white border border-gray-200 rounded-xl p-5">
-        <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <h4 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
           <Calendar className="w-5 h-5 text-brand-orange" />
-          Revenue Distribution Method
+          How Should I Spread Your Revenue?
         </h4>
         <p className="text-sm text-gray-600 mb-4">
-          How should we spread your revenue goal across the 12 months?
+          Choose how to distribute your {formatCurrency(data.revenueGoal)} target across the year.
         </p>
 
         <div className="grid grid-cols-3 gap-4">
           <button
             onClick={() => onUpdate({ distributionMethod: 'even' })}
-            className={`p-4 rounded-lg border-2 transition-all text-left ${data.distributionMethod === 'even'
-                ? 'border-brand-orange-500 bg-brand-orange-50'
+            className={`p-4 rounded-lg border-2 transition-all text-left ${
+              data.distributionMethod === 'even'
+                ? 'border-brand-orange bg-brand-orange-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
+            }`}
           >
-            <div className={`text-sm font-bold mb-1 ${data.distributionMethod === 'even' ? 'text-brand-navy' : 'text-gray-900'
-              }`}>
-              Even Split
+            <div className={`text-sm font-bold mb-1 ${
+              data.distributionMethod === 'even' ? 'text-brand-navy' : 'text-gray-900'
+            }`}>
+              Even Monthly
             </div>
             <div className="text-xs text-gray-500">
-              Same amount each month ({formatCurrency(data.revenueGoal / 12)}/mo)
+              {formatCurrency(data.revenueGoal / 12)} each month
             </div>
           </button>
 
           <button
             onClick={() => onUpdate({ distributionMethod: 'seasonal_pattern' })}
             disabled={!data.hasActualData}
-            className={`p-4 rounded-lg border-2 transition-all text-left ${data.distributionMethod === 'seasonal_pattern'
-                ? 'border-brand-orange-500 bg-brand-orange-50'
+            className={`p-4 rounded-lg border-2 transition-all text-left ${
+              data.distributionMethod === 'seasonal_pattern'
+                ? 'border-brand-orange bg-brand-orange-50'
                 : data.hasActualData
                   ? 'border-gray-200 bg-white hover:border-gray-300'
                   : 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
-              }`}
+            }`}
           >
-            <div className={`text-sm font-bold mb-1 ${data.distributionMethod === 'seasonal_pattern' ? 'text-brand-navy' : 'text-gray-900'
-              }`}>
-              Match FY{fiscalYear - 1} Pattern
+            <div className={`text-sm font-bold mb-1 ${
+              data.distributionMethod === 'seasonal_pattern' ? 'text-brand-navy' : 'text-gray-900'
+            }`}>
+              Last Year's Pattern
             </div>
             <div className="text-xs text-gray-500">
-              {data.hasActualData
-                ? 'Uses your actual seasonal pattern'
-                : 'Requires prior year data'}
+              {data.hasActualData ? 'Match your FY seasonal trends' : 'Needs prior year data'}
             </div>
           </button>
 
           <button
             onClick={() => onUpdate({ distributionMethod: 'custom' })}
-            className={`p-4 rounded-lg border-2 transition-all text-left ${data.distributionMethod === 'custom'
-                ? 'border-brand-orange-500 bg-brand-orange-50'
+            className={`p-4 rounded-lg border-2 transition-all text-left ${
+              data.distributionMethod === 'custom'
+                ? 'border-brand-orange bg-brand-orange-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
+            }`}
           >
-            <div className={`text-sm font-bold mb-1 ${data.distributionMethod === 'custom' ? 'text-brand-navy' : 'text-gray-900'
-              }`}>
+            <div className={`text-sm font-bold mb-1 ${
+              data.distributionMethod === 'custom' ? 'text-brand-navy' : 'text-gray-900'
+            }`}>
               Custom
             </div>
             <div className="text-xs text-gray-500">
-              Enter custom amounts in P&L table
+              Set your own monthly targets
             </div>
           </button>
         </div>
       </div>
 
       {/* What Happens Next */}
-      <div className="bg-gradient-to-br from-brand-orange-50 to-brand-orange-100 border border-brand-orange-200 rounded-xl p-5">
-        <h4 className="font-semibold text-brand-navy mb-3 flex items-center gap-2">
-          <ArrowRight className="w-5 h-5 text-brand-orange" />
-          What Happens When You Generate
+      <div className="bg-gray-50 rounded-xl p-5">
+        <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+          <ArrowRight className="w-4 h-4 text-brand-orange" />
+          When You Generate
         </h4>
-        <ul className="space-y-2 text-sm text-brand-orange-800">
-          <li className="flex items-start gap-2">
-            <span className="text-brand-orange font-bold mt-0.5">1.</span>
-            <span>
-              <strong>Revenue distribution:</strong> Your {formatCurrency(data.revenueGoal)} goal
-              will be spread across months using your selected method
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="flex items-start gap-2">
+            <DollarSign className="w-4 h-4 text-brand-orange mt-0.5 flex-shrink-0" />
+            <span className="text-gray-700">
+              I'll build a month-by-month P&L forecast you can fine-tune
             </span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-brand-orange font-bold mt-0.5">2.</span>
-            <span>
-              <strong>COGS calculation:</strong> Cost of sales will be calculated at{' '}
-              {summary.cogsPercent.toFixed(1)}% of revenue each month
+          </div>
+          <div className="flex items-start gap-2">
+            <Calendar className="w-4 h-4 text-brand-navy mt-0.5 flex-shrink-0" />
+            <span className="text-gray-700">
+              Team costs will spread based on their start months
             </span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-brand-orange font-bold mt-0.5">3.</span>
-            <span>
-              <strong>OpEx allocation:</strong> Your operating expenses will be distributed
-              based on the methods you selected
-            </span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-brand-orange font-bold mt-0.5">4.</span>
-            <span>
-              <strong>P&L table:</strong> You'll be taken to the detailed P&L forecast where
-              you can fine-tune individual line items
-            </span>
-          </li>
-        </ul>
+          </div>
+        </div>
       </div>
 
       {/* Generate Button */}
-      <div className="flex items-center justify-center pt-4">
+      <div className="flex flex-col items-center justify-center pt-4 gap-3">
         <button
           onClick={onGenerate}
-          disabled={isGenerating || data.revenueGoal === 0}
-          className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-brand-orange to-brand-orange-700 text-white rounded-xl hover:from-brand-orange-700 hover:to-brand-orange-800 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={isGenerating || !hasRequiredData}
+          className="flex items-center gap-3 px-10 py-4 bg-gradient-to-r from-brand-orange to-brand-orange-700 text-white rounded-xl hover:from-brand-orange-700 hover:to-brand-orange-800 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isGenerating ? (
             <>
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              <span className="text-lg font-semibold">Generating Forecast...</span>
+              <span className="text-lg font-semibold">Building Your Forecast...</span>
             </>
           ) : (
             <>
-              <Play className="w-5 h-5" />
+              <Sparkles className="w-5 h-5" />
               <span className="text-lg font-semibold">Generate FY{fiscalYear} Forecast</span>
             </>
           )}
         </button>
-      </div>
 
-      {data.revenueGoal === 0 && (
-        <p className="text-center text-sm text-gray-500">
-          Please set a revenue goal in Step 1 before generating
-        </p>
-      )}
+        {!hasRequiredData && (
+          <p className="text-sm text-gray-500 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4" />
+            Set a revenue goal in Step 1 to continue
+          </p>
+        )}
+      </div>
     </div>
   )
 }

@@ -17,6 +17,9 @@ export function createServiceRoleClient() {
       auth: {
         autoRefreshToken: false,
         persistSession: false
+      },
+      global: {
+        fetch: (url: any, init: any) => fetch(url, { ...init, cache: 'no-store' as RequestCache })
       }
     }
   );

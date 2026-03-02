@@ -16,6 +16,7 @@ interface UseXeroSyncOptions {
 
 interface UseXeroSyncReturn {
   isSyncing: boolean
+  isConnectionExpired: boolean
   handleConnectXero: () => void
   handleDisconnectXero: () => void
   handleSyncFromXero: () => Promise<void>
@@ -32,12 +33,15 @@ export function useXeroSync({
 }: UseXeroSyncOptions): UseXeroSyncReturn {
   const supabase = createClient()
   const [isSyncing, setIsSyncing] = useState(false)
+  const [isConnectionExpired, setIsConnectionExpired] = useState(false)
 
   const handleConnectXero = useCallback(() => {
     if (!businessId) {
       toast.error('No business found. Please create a business profile first.')
       return
     }
+    // Reset expired state since we're reconnecting
+    setIsConnectionExpired(false)
     // Directly start OAuth flow instead of redirecting to integrations
     window.location.href = `/api/Xero/auth?business_id=${businessId}&return_to=/finances/forecast`
   }, [businessId])
@@ -63,9 +67,16 @@ export function useXeroSync({
       const result = await response.json()
 
       if (result.success) {
+        setIsConnectionExpired(false)
         const lines = await ForecastService.loadPLLines(forecastId)
         onPlLinesUpdate(lines)
         toast.success('Successfully synced data from Xero!')
+      } else if (response.status === 401) {
+        // Token expired - need to reconnect
+        setIsConnectionExpired(true)
+        toast.error('Xero connection expired. Click "Reconnect Xero" above to refresh your connection.', {
+          duration: 8000
+        })
       } else {
         toast.error('Error syncing from Xero: ' + result.error)
       }
@@ -183,6 +194,7 @@ export function useXeroSync({
 
   return {
     isSyncing,
+    isConnectionExpired,
     handleConnectXero,
     handleDisconnectXero,
     handleSyncFromXero,

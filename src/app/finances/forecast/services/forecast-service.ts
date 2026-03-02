@@ -473,17 +473,11 @@ export class ForecastService {
         .from('xero_connections')
         .select('*')
         .eq('business_id', businessId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+        .eq('is_active', true)
+        .single()
 
-      if (error) {
+      if (error && error.code !== 'PGRST116') {
         console.error('[Forecast] Error loading Xero connection:', error)
-        return null
-      }
-
-      // Check is_active in JS to avoid potential boolean filter issues at DB level
-      if (!data || !data.is_active) {
         return null
       }
 

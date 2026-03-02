@@ -15,13 +15,19 @@ const REDIRECT_URI = `${APP_URL}/api/Xero/callback`;
 // Xero OAuth URL
 const XERO_AUTH_URL = 'https://login.xero.com/identity/connect/authorize';
 
-// Scopes we need for P&L and financial data
+// Scopes we need for P&L, financial data, and payroll
 const SCOPES = [
   'offline_access',           // Required for refresh tokens
   'accounting.transactions.read',
   'accounting.reports.read',
   'accounting.settings.read',
-  'accounting.contacts.read'
+  'accounting.contacts.read',
+  // 'finance.statements.read',  // Finance API — cashflow (needs app config in Xero portal)
+  'payroll.employees',        // Payroll employee access (AU)
+  'payroll.employees.read',   // Read payroll employees
+  'payroll.payruns.read',     // Read pay runs and payslips
+  'payroll.settings',         // Payroll settings access
+  'payroll.settings.read'     // Read payroll settings
 ].join(' ');
 
 export async function GET(request: NextRequest) {
@@ -98,18 +104,26 @@ export async function GET(request: NextRequest) {
     const xeroAuthUrl = authUrl.toString();
     console.log('Redirecting to Xero auth:', xeroAuthUrl);
 
-    // Redirect to Xero using a 307 redirect
-    return new NextResponse(null, {
-      status: 307,
-      headers: {
-        'Location': xeroAuthUrl
-      }
-    });
+    // Redirect to Xero with cache-busting headers
+    const response = NextResponse.redirect(xeroAuthUrl);
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    return response;
 
   } catch (error) {
     console.error('[Xero Auth] Error:', error);
+    console.error('[Xero Auth] Error message:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('[Xero Auth] Environment check:', {
+      hasXeroClientId: !!process.env.XERO_CLIENT_ID,
+      hasEncryptionKey: !!process.env.ENCRYPTION_KEY,
+      hasOAuthStateSecret: !!process.env.OAUTH_STATE_SECRET,
+      hasAppUrl: !!process.env.NEXT_PUBLIC_APP_URL,
+      appUrl: process.env.NEXT_PUBLIC_APP_URL || 'not set'
+    });
+    // Return error message with hint for debugging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to initiate Xero connection. Please try again.' },
+      { error: `Failed to connect to Xero. Please try again. (${errorMessage})` },
       { status: 500 }
     );
   }

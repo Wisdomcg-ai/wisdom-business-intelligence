@@ -81,7 +81,7 @@ export const SECTION_PERMISSION_MAP: Record<string, keyof SectionPermissions | n
   'Accountability Chart': 'business_engines',
   'Org Chart Builder': 'business_engines',
   'Team Performance': 'business_engines',
-  'Hiring Roadmap': 'business_engines',
+  'Culture & Retention': 'business_engines',
   'Systems': 'business_engines',
   'Systems & Processes': 'business_engines',
 

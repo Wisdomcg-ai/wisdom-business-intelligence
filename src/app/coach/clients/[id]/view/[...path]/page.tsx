@@ -42,6 +42,7 @@ import {
   Gauge,
   Briefcase,
   Lightbulb,
+  HeartHandshake,
 } from 'lucide-react'
 
 // Map of path to component imports - MUST match all client routes
@@ -90,6 +91,7 @@ const getPageComponent = (path: string[]) => {
     // BUSINESS ENGINES - Team
     'team/accountability': () => import('@/app/team/accountability/page'),
     'team/hiring-roadmap': () => import('@/app/team/hiring-roadmap/page'),
+    'team/org-chart': () => import('@/app/team/org-chart/page'),
 
     // REVIEW
     'quarterly-review': () => import('@/app/quarterly-review/page'),
@@ -197,9 +199,9 @@ const getCoachViewNavigation = (clientId: string): NavSection[] => {
           icon: Users,
           children: [
             { label: 'Accountability Chart', href: `${base}/team/accountability`, icon: Network },
-            { label: 'Org Chart Builder', href: '#', icon: Users, disabled: true, badge: 'Soon' },
+            { label: 'Org Chart Builder', href: `${base}/team/org-chart`, icon: Network },
             { label: 'Team Performance', href: '#', icon: Activity, disabled: true, badge: 'Soon' },
-            { label: 'Hiring Roadmap', href: `${base}/team/hiring-roadmap`, icon: Building2 },
+            { label: 'Culture & Retention', href: `${base}/team/hiring-roadmap`, icon: HeartHandshake },
           ],
         },
         {

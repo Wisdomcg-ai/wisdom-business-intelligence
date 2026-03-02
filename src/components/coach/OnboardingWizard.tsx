@@ -552,7 +552,7 @@ function Step3Modules({ data, updateData }: StepProps) {
       title: 'Team',
       modules: [
         { key: 'accountability' as const, label: 'Accountability Chart', description: 'Team roles and responsibilities' },
-        { key: 'hiringRoadmap' as const, label: 'Hiring Roadmap', description: 'Future hiring plans' },
+        { key: 'hiringRoadmap' as const, label: 'Culture & Retention', description: 'Team culture and retention strategy' },
       ]
     },
     {
