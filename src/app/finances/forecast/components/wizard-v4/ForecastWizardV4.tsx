@@ -514,19 +514,19 @@ export function ForecastWizardV4({
           const goals: Goals | undefined = goalsData.goals
             ? {
                 year1: {
-                  revenue: goalsData.goals.revenue_target || 0,
-                  grossProfitPct: 50,
-                  netProfitPct: goalsData.goals.net_profit_percent || 15,
+                  revenue: goalsData.goals.revenue_year1 || 0,
+                  grossProfitPct: goalsData.goals.gross_margin_year1 || 50,
+                  netProfitPct: goalsData.goals.net_margin_year1 || 15,
                 },
                 year2: {
-                  revenue: goalsData.goals.revenue_target_y2 || goalsData.goals.revenue_target * 1.2 || 0,
-                  grossProfitPct: 52,
-                  netProfitPct: (goalsData.goals.net_profit_percent || 15) + 2,
+                  revenue: goalsData.goals.revenue_year2 || (goalsData.goals.revenue_year1 ? Math.round(goalsData.goals.revenue_year1 * 1.2) : 0),
+                  grossProfitPct: goalsData.goals.gross_margin_year2 || goalsData.goals.gross_margin_year1 || 52,
+                  netProfitPct: goalsData.goals.net_margin_year2 || (goalsData.goals.net_margin_year1 ? goalsData.goals.net_margin_year1 + 2 : 17),
                 },
                 year3: {
-                  revenue: goalsData.goals.revenue_target_y3 || goalsData.goals.revenue_target * 1.4 || 0,
-                  grossProfitPct: 55,
-                  netProfitPct: (goalsData.goals.net_profit_percent || 15) + 5,
+                  revenue: goalsData.goals.revenue_year3 || (goalsData.goals.revenue_year1 ? Math.round(goalsData.goals.revenue_year1 * 1.4) : 0),
+                  grossProfitPct: goalsData.goals.gross_margin_year3 || goalsData.goals.gross_margin_year1 || 55,
+                  netProfitPct: goalsData.goals.net_margin_year3 || (goalsData.goals.net_margin_year1 ? goalsData.goals.net_margin_year1 + 5 : 20),
                 },
               }
             : undefined;
