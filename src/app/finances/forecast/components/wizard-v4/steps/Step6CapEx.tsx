@@ -55,7 +55,10 @@ export function Step6CapEx({ state, actions, fiscalYear, businessId }: Step6CapE
       try {
         const response = await fetch(`/api/strategic-initiatives?business_id=${businessId}&annual_plan_only=true`);
         const data = await response.json();
-        console.log('[Step6CapEx] Strategic initiatives response:', { status: response.status, ok: response.ok, count: data.initiatives?.length, data });
+        console.log('[Step6CapEx] Strategic initiatives response:', { status: response.status, ok: response.ok, count: data.initiatives?.length });
+        if (data._debug) {
+          console.log('[Step6CapEx] DEBUG:', JSON.stringify(data._debug, null, 2));
+        }
         if (response.ok) {
           setInitiatives(data.initiatives || []);
         }
