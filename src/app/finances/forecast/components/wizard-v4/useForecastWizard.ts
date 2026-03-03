@@ -36,11 +36,15 @@ import type {
   CapExItem as CapExAssumptionItem,
 } from './types/assumptions';
 
+// Bump this to force all users to re-init from APIs (invalidates stale localStorage)
+const WIZARD_VERSION = 2;
+
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
 const createInitialState = (fiscalYearStart: number, businessId: string): ForecastWizardState => ({
+  wizardVersion: WIZARD_VERSION,
   businessId,
   fiscalYearStart,
   status: 'draft',
@@ -83,8 +87,12 @@ const loadStateFromStorage = (businessId: string, fiscalYear: number): ForecastW
     const stored = localStorage.getItem(key);
     if (stored) {
       const parsed = JSON.parse(stored);
-      // Validate it has the expected structure
+      // Validate it has the expected structure and matching version
       if (parsed && parsed.businessId === businessId && parsed.fiscalYearStart === fiscalYear) {
+        if (parsed.wizardVersion !== WIZARD_VERSION) {
+          console.log('[ForecastWizard] Version mismatch (stored:', parsed.wizardVersion, 'current:', WIZARD_VERSION, ') — forcing re-init');
+          return null;
+        }
         console.log('[ForecastWizard] Restored state from localStorage');
         return parsed as ForecastWizardState;
       }
@@ -100,7 +108,7 @@ const saveStateToStorage = (state: ForecastWizardState) => {
   if (typeof window === 'undefined') return;
   try {
     const key = getStorageKey(state.businessId, state.fiscalYearStart);
-    localStorage.setItem(key, JSON.stringify(state));
+    localStorage.setItem(key, JSON.stringify({ ...state, wizardVersion: WIZARD_VERSION }));
   } catch (err) {
     console.error('[ForecastWizard] Error saving to localStorage:', err);
   }

@@ -206,6 +206,9 @@ export interface PriorYearData {
 }
 
 export interface ForecastWizardState {
+  // Version marker for localStorage invalidation
+  wizardVersion?: number;
+
   // Metadata
   businessId: string;
   fiscalYearStart: number;
