@@ -110,12 +110,22 @@ export function ForecastWizardV4({
       if (hasRestoredData) {
         console.log('[ForecastWizardV4] State restored from localStorage, skipping full API initialization');
 
-        // Always refresh goals and business profile so they stay in sync
+        // Always refresh goals, business profile, and team (if missing) so they stay in sync
         try {
-          const [goalsRes, profileRes] = await Promise.all([
+          const fetchPromises: Promise<Response>[] = [
             fetch(`/api/goals?business_id=${businessId}`),
             fetch(`/api/business-profile?business_id=${businessId}`),
-          ]);
+          ];
+          // If team members are empty, try to fetch them
+          const needsTeam = !state.teamMembers || state.teamMembers.length === 0;
+          if (needsTeam) {
+            fetchPromises.push(fetch(`/api/Xero/employees?business_id=${businessId}`));
+            // Also fetch saved forecast assumptions as fallback
+            if (existingForecastId) {
+              fetchPromises.push(fetch(`/api/forecast/${existingForecastId}`));
+            }
+          }
+          const [goalsRes, profileRes, teamRes, forecastRes] = await Promise.all(fetchPromises);
 
           if (goalsRes.ok) {
             const goalsData = await goalsRes.json();
@@ -155,8 +165,56 @@ export function ForecastWizardV4({
               console.log('[ForecastWizardV4] Refreshed business profile:', profileData.profile.industry);
             }
           }
+
+          // Refresh team members if they were missing from cache
+          if (needsTeam) {
+            let teamLoaded = false;
+            // Try Xero employees first
+            if (teamRes?.ok) {
+              const teamData = await teamRes.json();
+              if (teamData.employees?.length > 0) {
+                console.log('[ForecastWizardV4] Refreshing team from Xero:', teamData.employees.length, 'employees');
+                for (const emp of teamData.employees) {
+                  let salary = emp.annual_salary || 0;
+                  if (!salary && emp.hourly_rate) {
+                    salary = emp.hourly_rate * (emp.hours_per_week || 38) * 52;
+                  }
+                  if (!salary) salary = 80000;
+                  actionsRef.current.addTeamMember({
+                    name: emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown',
+                    role: emp.job_title || 'Team Member',
+                    type: (emp.employment_type as 'full-time' | 'part-time' | 'casual' | 'contractor') || 'full-time',
+                    hoursPerWeek: emp.hours_per_week || 38,
+                    currentSalary: salary,
+                    increasePct: 3,
+                    isFromXero: emp.from_xero ?? true,
+                  });
+                }
+                teamLoaded = true;
+              }
+            }
+            // Fallback: restore from saved forecast assumptions
+            if (!teamLoaded && forecastRes?.ok) {
+              const forecastData = await forecastRes.json();
+              const savedAssumptions = forecastData?.forecast?.assumptions;
+              if (savedAssumptions?.team?.existingTeam?.length > 0) {
+                console.log('[ForecastWizardV4] Refreshing team from saved assumptions:', savedAssumptions.team.existingTeam.length, 'members');
+                for (const emp of savedAssumptions.team.existingTeam) {
+                  actionsRef.current.addTeamMember({
+                    name: emp.name,
+                    role: emp.role,
+                    type: (emp.employmentType as 'full-time' | 'part-time' | 'casual' | 'contractor') || 'full-time',
+                    hoursPerWeek: emp.hoursPerWeek || 38,
+                    currentSalary: emp.currentSalary,
+                    increasePct: emp.salaryIncreasePct || 3,
+                    isFromXero: emp.isFromXero ?? false,
+                  });
+                }
+              }
+            }
+          }
         } catch (err) {
-          console.warn('[ForecastWizardV4] Could not refresh goals/profile:', err);
+          console.warn('[ForecastWizardV4] Could not refresh goals/profile/team:', err);
         }
 
         // Still need to load the forecast ID so generate targets the correct forecast
