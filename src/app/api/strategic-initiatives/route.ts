@@ -20,43 +20,48 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 })
     }
 
-    // The wizard passes businesses.id but strategic_initiatives may use
-    // business_profiles.id or user_id. Look up the profile ID first.
+    // The wizard passes businesses.id. Strategic initiatives are stored with
+    // user_id (the business owner). We need to find the owner to query correctly.
+    // Also try business_profiles.id as the business_id FK.
+
+    // Collect all IDs to try for user_id and business_id lookups
+    const userIdsToTry: string[] = [user.id]
+    const businessIdsToTry: string[] = [businessId]
+
+    // Look up business owner
+    const { data: business } = await supabase
+      .from('businesses')
+      .select('owner_id')
+      .eq('id', businessId)
+      .maybeSingle()
+
+    if (business?.owner_id && business.owner_id !== user.id) {
+      userIdsToTry.push(business.owner_id)
+    }
+
+    // Look up business_profiles.id (the FK used in some tables)
     const { data: profile } = await supabase
       .from('business_profiles')
       .select('id, user_id')
       .eq('business_id', businessId)
       .maybeSingle()
 
-    const profileId = profile?.id
-    const profileUserId = profile?.user_id
-
-    // Try querying with business_id (profile ID), then user_id fallback
-    // matching the pattern from /api/annual-plan/route.ts
-    let initiatives = null
-
-    // First try: query by business_id = profileId
-    if (profileId) {
-      let query = supabase
-        .from('strategic_initiatives')
-        .select('id, title, description, priority, step_type, estimated_cost, is_monthly_cost')
-        .eq('business_id', profileId)
-
-      if (annualPlanOnly) {
-        query = query.or('step_type.eq.twelve_month,selected_for_annual_plan.eq.true')
-      }
-
-      const { data, error } = await query.order('created_at', { ascending: false })
-
-      if (!error && data && data.length > 0) {
-        initiatives = data
-      }
+    if (profile?.id) {
+      businessIdsToTry.push(profile.id)
+    }
+    if (profile?.user_id && !userIdsToTry.includes(profile.user_id)) {
+      userIdsToTry.push(profile.user_id)
     }
 
-    // Second try: query by user_id (same fallback as annual-plan route)
-    if (!initiatives && (profileUserId || user.id)) {
-      const userId = profileUserId || user.id
+    console.log('[API /strategic-initiatives] Looking up initiatives:', {
+      businessId,
+      userIdsToTry,
+      businessIdsToTry,
+      annualPlanOnly,
+    })
 
+    // Try by user_id first (matches annual-plan route pattern)
+    for (const userId of userIdsToTry) {
       let query = supabase
         .from('strategic_initiatives')
         .select('id, title, description, priority, step_type, estimated_cost, is_monthly_cost')
@@ -68,17 +73,18 @@ export async function GET(request: Request) {
 
       const { data, error } = await query.order('created_at', { ascending: false })
 
-      if (!error && data) {
-        initiatives = data
+      if (!error && data && data.length > 0) {
+        console.log('[API /strategic-initiatives] Found', data.length, 'initiatives via user_id:', userId)
+        return NextResponse.json({ initiatives: data })
       }
     }
 
-    // Third try: query with raw businessId directly
-    if (!initiatives) {
+    // Try by business_id
+    for (const bizId of businessIdsToTry) {
       let query = supabase
         .from('strategic_initiatives')
         .select('id, title, description, priority, step_type, estimated_cost, is_monthly_cost')
-        .eq('business_id', businessId)
+        .eq('business_id', bizId)
 
       if (annualPlanOnly) {
         query = query.or('step_type.eq.twelve_month,selected_for_annual_plan.eq.true')
@@ -86,12 +92,14 @@ export async function GET(request: Request) {
 
       const { data, error } = await query.order('created_at', { ascending: false })
 
-      if (!error && data) {
-        initiatives = data
+      if (!error && data && data.length > 0) {
+        console.log('[API /strategic-initiatives] Found', data.length, 'initiatives via business_id:', bizId)
+        return NextResponse.json({ initiatives: data })
       }
     }
 
-    return NextResponse.json({ initiatives: initiatives || [] })
+    console.log('[API /strategic-initiatives] No initiatives found for any ID combination')
+    return NextResponse.json({ initiatives: [] })
 
   } catch (error) {
     console.error('[API /strategic-initiatives] Unexpected error:', error)
