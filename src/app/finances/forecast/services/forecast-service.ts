@@ -101,6 +101,10 @@ export class ForecastService {
 
       if (existing && existing.length > 0) {
         const forecast = existing[0]
+        // Map wizard_v4 assumptions from category_assumptions if dedicated column doesn't exist
+        if (!forecast.assumptions && forecast.category_assumptions?.wizard_v4?.assumptions) {
+          forecast.assumptions = forecast.category_assumptions.wizard_v4.assumptions
+        }
         console.log('[Forecast] Found existing forecast:', forecast.id, 'fiscal_year:', forecast.fiscal_year)
 
         // Calculate correct periods based on current date (handles rolling forecasts)
