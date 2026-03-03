@@ -103,16 +103,17 @@ export class ForecastService {
       }
 
       // Try to find existing forecast for this business (any fiscal year)
-      // Use limit(1) instead of single() to avoid 406 errors when multiple forecasts exist
+      // Prefer the most recently updated forecast
       const { data: existing, error: fetchError } = await this.supabase
         .from('financial_forecasts')
         .select('*')
         .in('business_id', idsToTry)
-        .order('created_at', { ascending: false })
-        .limit(1)
+        .order('updated_at', { ascending: false })
+        .limit(10)
 
       if (existing && existing.length > 0) {
-        const forecast = existing[0]
+        // Prefer a forecast that has assumptions (wizard-generated) over empty ones
+        const forecast = existing.find(f => f.assumptions != null) || existing[0]
         // Map wizard_v4 assumptions from category_assumptions if dedicated column doesn't exist
         if (!forecast.assumptions && forecast.category_assumptions?.wizard_v4?.assumptions) {
           forecast.assumptions = forecast.category_assumptions.wizard_v4.assumptions
