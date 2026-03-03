@@ -53,61 +53,59 @@ export async function GET(request: Request) {
       userIdsToTry.push(profile.user_id)
     }
 
-    console.log('[API /strategic-initiatives] IDs to try:', { userIdsToTry, businessIdsToTry, annualPlanOnly })
+    // Track debug info to return in response
+    const _debug: Record<string, unknown> = {
+      userId: user.id,
+      businessId,
+      businessOwnerId: business?.owner_id,
+      businessLookupError: bizErr?.message,
+      profileId: profile?.id,
+      profileUserId: profile?.user_id,
+      profileLookupError: profErr?.message,
+      userIdsToTry,
+      businessIdsToTry,
+      annualPlanOnly,
+      queries: [] as Record<string, unknown>[],
+    }
 
     // First: try a broad query by user_id WITHOUT the annual plan filter
-    // to see if ANY initiatives exist at all
     for (const userId of userIdsToTry) {
       const { data: allData, error: allErr } = await supabase
         .from('strategic_initiatives')
         .select('id, title, step_type, selected_for_annual_plan')
         .eq('user_id', userId)
 
-      console.log('[API /strategic-initiatives] All initiatives for user_id', userId, ':', {
-        count: allData?.length || 0,
-        error: allErr?.message,
-        sample: allData?.slice(0, 3).map(d => ({ id: d.id, title: d.title, step_type: d.step_type, selected: d.selected_for_annual_plan })),
-      })
+      const queryInfo = { type: 'user_id', id: userId, count: allData?.length || 0, error: allErr?.message }
+      ;(_debug.queries as Record<string, unknown>[]).push(queryInfo)
 
       if (allData && allData.length > 0) {
-        // Now apply the annual plan filter if needed
         if (annualPlanOnly) {
           const filtered = allData.filter(
             i => i.step_type === 'twelve_month' || i.selected_for_annual_plan === true
           )
-          console.log('[API /strategic-initiatives] After annual plan filter:', filtered.length, 'of', allData.length)
-
           if (filtered.length > 0) {
-            // Re-fetch with full columns for the filtered IDs
             const { data: fullData } = await supabase
               .from('strategic_initiatives')
               .select('id, title, description, priority, step_type, estimated_cost, is_monthly_cost')
               .in('id', filtered.map(i => i.id))
               .order('created_at', { ascending: false })
-
-            return NextResponse.json({ initiatives: fullData || [] })
+            return NextResponse.json({ initiatives: fullData || [], _debug })
           }
-
-          // Return all initiatives if none match the annual plan filter
-          // (better to show something than nothing)
-          console.log('[API /strategic-initiatives] No annual plan filter matches, returning all')
+          // No annual plan matches — return all
           const { data: fullData } = await supabase
             .from('strategic_initiatives')
             .select('id, title, description, priority, step_type, estimated_cost, is_monthly_cost')
             .eq('user_id', userId)
             .order('created_at', { ascending: false })
-
-          return NextResponse.json({ initiatives: fullData || [] })
+          return NextResponse.json({ initiatives: fullData || [], _debug })
         }
 
-        // No filter — return all
         const { data: fullData } = await supabase
           .from('strategic_initiatives')
           .select('id, title, description, priority, step_type, estimated_cost, is_monthly_cost')
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
-
-        return NextResponse.json({ initiatives: fullData || [] })
+        return NextResponse.json({ initiatives: fullData || [], _debug })
       }
     }
 
@@ -119,15 +117,15 @@ export async function GET(request: Request) {
         .eq('business_id', bizId)
         .order('created_at', { ascending: false })
 
-      console.log('[API /strategic-initiatives] business_id query:', bizId, 'count:', data?.length, 'error:', error?.message)
+      const queryInfo = { type: 'business_id', id: bizId, count: data?.length || 0, error: error?.message }
+      ;(_debug.queries as Record<string, unknown>[]).push(queryInfo)
 
       if (!error && data && data.length > 0) {
-        return NextResponse.json({ initiatives: data })
+        return NextResponse.json({ initiatives: data, _debug })
       }
     }
 
-    console.log('[API /strategic-initiatives] No initiatives found for any ID combination')
-    return NextResponse.json({ initiatives: [] })
+    return NextResponse.json({ initiatives: [], _debug })
 
   } catch (error) {
     console.error('[API /strategic-initiatives] Unexpected error:', error)
