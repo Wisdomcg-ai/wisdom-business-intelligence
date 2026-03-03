@@ -20,23 +20,37 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Query business_financial_goals - try direct business_id first
-    const { data, error } = await supabase
-      .from('business_financial_goals')
-      .select('*')
+    // business_financial_goals uses business_profiles.id as its business_id,
+    // but the wizard passes businesses.id. Look up the profile ID first.
+    const { data: profile } = await supabase
+      .from('business_profiles')
+      .select('id')
       .eq('business_id', businessId)
       .maybeSingle()
 
-    if (error) {
-      console.error('[API /goals] Error:', error)
-      return NextResponse.json({ goals: null })
+    const profileId = profile?.id
+
+    // Try profile ID first (correct FK), fall back to direct business_id
+    const idsToTry = profileId ? [profileId, businessId] : [businessId]
+
+    for (const id of idsToTry) {
+      const { data, error } = await supabase
+        .from('business_financial_goals')
+        .select('*')
+        .eq('business_id', id)
+        .maybeSingle()
+
+      if (error) {
+        console.error('[API /goals] Error querying with id:', id, error)
+        continue
+      }
+
+      if (data) {
+        return NextResponse.json({ goals: data })
+      }
     }
 
-    if (!data) {
-      return NextResponse.json({ goals: null })
-    }
-
-    return NextResponse.json({ goals: data })
+    return NextResponse.json({ goals: null })
   } catch (err) {
     console.error('[API /goals] Unexpected error:', err)
     return NextResponse.json({ goals: null })
