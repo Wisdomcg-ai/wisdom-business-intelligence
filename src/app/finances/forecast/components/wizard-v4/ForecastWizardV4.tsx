@@ -108,7 +108,39 @@ export function ForecastWizardV4({
       );
 
       if (hasRestoredData) {
-        console.log('[ForecastWizardV4] State restored from localStorage, skipping API initialization');
+        console.log('[ForecastWizardV4] State restored from localStorage, skipping full API initialization');
+
+        // Always refresh goals from the One Page Plan so they stay in sync
+        try {
+          const goalsRes = await fetch(`/api/goals?business_id=${businessId}`);
+          if (goalsRes.ok) {
+            const goalsData = await goalsRes.json();
+            if (goalsData.goals) {
+              const freshGoals: Goals = {
+                year1: {
+                  revenue: goalsData.goals.revenue_year1 || 0,
+                  grossProfitPct: goalsData.goals.gross_margin_year1 || 50,
+                  netProfitPct: goalsData.goals.net_margin_year1 || 15,
+                },
+                year2: {
+                  revenue: goalsData.goals.revenue_year2 || (goalsData.goals.revenue_year1 ? Math.round(goalsData.goals.revenue_year1 * 1.2) : 0),
+                  grossProfitPct: goalsData.goals.gross_margin_year2 || goalsData.goals.gross_margin_year1 || 52,
+                  netProfitPct: goalsData.goals.net_margin_year2 || (goalsData.goals.net_margin_year1 ? goalsData.goals.net_margin_year1 + 2 : 17),
+                },
+                year3: {
+                  revenue: goalsData.goals.revenue_year3 || (goalsData.goals.revenue_year1 ? Math.round(goalsData.goals.revenue_year1 * 1.4) : 0),
+                  grossProfitPct: goalsData.goals.gross_margin_year3 || goalsData.goals.gross_margin_year1 || 55,
+                  netProfitPct: goalsData.goals.net_margin_year3 || (goalsData.goals.net_margin_year1 ? goalsData.goals.net_margin_year1 + 5 : 20),
+                },
+              };
+              console.log('[ForecastWizardV4] Refreshed goals from One Page Plan:', freshGoals);
+              actionsRef.current.updateGoals(freshGoals);
+            }
+          }
+        } catch (err) {
+          console.warn('[ForecastWizardV4] Could not refresh goals:', err);
+        }
+
         // Still need to load the forecast ID so generate targets the correct forecast
         if (!forecastId) {
           try {
