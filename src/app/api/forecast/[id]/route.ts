@@ -38,20 +38,51 @@ export async function GET(
     }
 
     // Verify access: user owns the business, is a team member, or is a coach/admin
-    const { data: business } = await supabase
+    // forecast.business_id is business_profiles.id (FK), so look up the actual business
+    let businessId = forecast.business_id
+    let ownerId: string | null = null
+
+    // Try direct lookup in businesses table first
+    const { data: bizDirect } = await supabase
       .from('businesses')
-      .select('owner_id')
+      .select('id, owner_id')
       .eq('id', forecast.business_id)
       .maybeSingle()
 
-    const isOwner = business?.owner_id === user.id
+    if (bizDirect) {
+      businessId = bizDirect.id
+      ownerId = bizDirect.owner_id
+    } else {
+      // forecast.business_id is likely business_profiles.id — resolve to businesses.id
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('business_id, user_id')
+        .eq('id', forecast.business_id)
+        .maybeSingle()
+
+      if (profile?.business_id) {
+        businessId = profile.business_id
+        const { data: biz } = await supabase
+          .from('businesses')
+          .select('owner_id')
+          .eq('id', profile.business_id)
+          .maybeSingle()
+        ownerId = biz?.owner_id || null
+      }
+      // Also check if the profile user matches
+      if (profile?.user_id === user.id) {
+        ownerId = user.id // treat profile owner as business owner
+      }
+    }
+
+    const isOwner = ownerId === user.id
 
     if (!isOwner) {
       // Check if user is a team member of this business
       const { data: teamMember } = await supabase
         .from('business_users')
         .select('id')
-        .eq('business_id', forecast.business_id)
+        .eq('business_id', businessId)
         .eq('user_id', user.id)
         .eq('status', 'active')
         .maybeSingle()

@@ -76,10 +76,23 @@ export async function POST(request: Request) {
       }
     }
 
+    // financial_forecasts.business_id FK references business_profiles(id),
+    // but the wizard passes businesses.id — translate it
+    let profileId = businessId
+    const { data: profile } = await supabase
+      .from('business_profiles')
+      .select('id')
+      .eq('business_id', businessId)
+      .maybeSingle()
+
+    if (profile?.id) {
+      profileId = profile.id
+    }
+
     // Build the forecast data to upsert
     const year1 = summary?.year1 || {}
     const forecastData: Record<string, unknown> = {
-      business_id: businessId,
+      business_id: profileId,
       user_id: user.id,
       fiscal_year: fiscalYear,
       name: forecastName || `FY${fiscalYear} Forecast`,
@@ -150,7 +163,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('[wizard-v4/generate] Error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     )
   }

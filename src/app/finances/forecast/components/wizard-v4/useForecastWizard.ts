@@ -37,7 +37,7 @@ import type {
 } from './types/assumptions';
 
 // Bump this to force all users to re-init from APIs (invalidates stale localStorage)
-const WIZARD_VERSION = 3;
+const WIZARD_VERSION = 4;
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
