@@ -90,9 +90,6 @@ export async function POST(request: Request) {
     }
 
     // Build the forecast data to upsert
-    // NOTE: columns 'assumptions', 'forecast_duration', 'wizard_state' may not exist
-    // in production (migration 20260303 not applied). Store wizard data in the
-    // existing 'category_assumptions' JSONB column instead.
     const year1 = summary?.year1 || {}
     const forecastData: Record<string, unknown> = {
       business_id: profileId,
@@ -108,13 +105,9 @@ export async function POST(request: Request) {
       gross_profit_goal: year1.grossProfit || 0,
       net_profit_goal: year1.netProfit || 0,
       goal_source: 'wizard_v4',
-      category_assumptions: {
-        wizard_v4: {
-          assumptions: assumptions || null,
-          forecast_duration: forecastDuration || 1,
-          wizard_state: summary || null,
-        },
-      },
+      assumptions: assumptions || null,
+      forecast_duration: forecastDuration || 1,
+      wizard_state: summary || null,
       updated_at: new Date().toISOString(),
     }
 

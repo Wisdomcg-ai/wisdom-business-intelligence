@@ -102,11 +102,9 @@ export async function GET(
       }
     }
 
-    // Map wizard_v4 data from category_assumptions back to top-level 'assumptions'
-    // so the wizard can read it (migration for dedicated columns not applied in production)
-    const wizardV4 = forecast.category_assumptions?.wizard_v4
-    if (wizardV4?.assumptions && !forecast.assumptions) {
-      forecast.assumptions = wizardV4.assumptions
+    // Fallback: if assumptions were previously saved in category_assumptions, map them
+    if (!forecast.assumptions && forecast.category_assumptions?.wizard_v4?.assumptions) {
+      forecast.assumptions = forecast.category_assumptions.wizard_v4.assumptions
     }
 
     return NextResponse.json({ forecast })
