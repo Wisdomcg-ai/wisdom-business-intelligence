@@ -66,10 +66,22 @@ export function ForecastSelector({
   const loadForecasts = async () => {
     setIsLoading(true);
     try {
+      // financial_forecasts.business_id references business_profiles(id),
+      // but callers pass businesses.id — search with both
+      const idsToTry: string[] = [businessId];
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('business_id', businessId)
+        .maybeSingle();
+      if (profile?.id && profile.id !== businessId) {
+        idsToTry.push(profile.id);
+      }
+
       const { data, error } = await supabase
         .from('financial_forecasts')
         .select('*')
-        .eq('business_id', businessId)
+        .in('business_id', idsToTry)
         .eq('fiscal_year', fiscalYear)
         .order('is_active', { ascending: false })
         .order('updated_at', { ascending: false });
