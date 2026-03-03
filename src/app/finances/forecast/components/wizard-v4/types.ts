@@ -351,6 +351,7 @@ export interface YearlySummary {
   teamCosts: number;
   opex: number;
   depreciation: number;
+  investments?: number;
   otherExpenses: number;
   netProfit: number;
   netProfitPct: number;

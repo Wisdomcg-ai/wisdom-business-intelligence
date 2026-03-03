@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { TrendingUp, Target, DollarSign, Calendar, Check, Building2, AlertTriangle, ExternalLink } from 'lucide-react';
 import { ForecastWizardState, WizardActions, ForecastDuration, formatCurrency, YearlyGoals } from '../types';
 import Link from 'next/link';
@@ -18,13 +19,18 @@ const DURATION_OPTIONS: { value: ForecastDuration; label: string; description: s
 
 export function Step1Goals({ state, actions, fiscalYear }: Step1GoalsProps) {
   const { goals, forecastDuration, durationLocked, businessProfile } = state;
+  const [editingField, setEditingField] = useState<string | null>(null);
 
   const handleChange = (
     year: 'year1' | 'year2' | 'year3',
     field: 'revenue' | 'grossProfitPct' | 'netProfitPct',
     value: string
   ) => {
-    const numValue = parseFloat(value.replace(/[^0-9.]/g, '')) || 0;
+    let numValue = parseFloat(value.replace(/[^0-9.]/g, '')) || 0;
+    // Clamp percentage fields to 0-100
+    if (field === 'grossProfitPct' || field === 'netProfitPct') {
+      numValue = Math.max(0, Math.min(100, numValue));
+    }
     const currentYearGoals = goals[year] || { revenue: 0, grossProfitPct: 50, netProfitPct: 15 };
     actions.updateGoals({
       ...goals,
@@ -69,8 +75,12 @@ export function Step1Goals({ state, actions, fiscalYear }: Step1GoalsProps) {
               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                value={yearGoals.revenue ? yearGoals.revenue.toLocaleString() : ''}
+                value={editingField === `${yearKey}-revenue`
+                  ? (yearGoals.revenue || '')
+                  : yearGoals.revenue ? yearGoals.revenue.toLocaleString() : ''}
                 onChange={(e) => handleChange(yearKey, 'revenue', e.target.value)}
+                onFocus={() => setEditingField(`${yearKey}-revenue`)}
+                onBlur={() => setEditingField(null)}
                 placeholder={yearNum === 1 ? '2,500,000' : yearNum === 2 ? '3,000,000' : '3,500,000'}
                 className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
               />

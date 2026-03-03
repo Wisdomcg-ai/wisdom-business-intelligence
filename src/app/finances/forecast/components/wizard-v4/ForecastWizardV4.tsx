@@ -112,11 +112,15 @@ export function ForecastWizardV4({
         // Still need to load the forecast ID so generate targets the correct forecast
         if (!forecastId) {
           try {
-            const res = await fetch(`/api/forecast?business_id=${businessId}&fiscal_year=${fiscalYear}`);
-            const data = await res.json();
-            if (data.forecast?.id) {
-              setForecastId(data.forecast.id);
-              console.log('[ForecastWizardV4] Loaded forecast ID from API:', data.forecast.id);
+            // Look up existing forecasts for this business/fiscal year
+            const res = await fetch(`/api/forecasts/versions?business_id=${businessId}&fiscal_year=${fiscalYear}`);
+            if (res.ok) {
+              const data = await res.json();
+              const activeForecast = (data.versions || []).find((v: { is_active?: boolean }) => v.is_active) || (data.versions || [])[0];
+              if (activeForecast?.id) {
+                setForecastId(activeForecast.id);
+                console.log('[ForecastWizardV4] Loaded forecast ID from versions API:', activeForecast.id);
+              }
             }
           } catch (err) {
             console.warn('[ForecastWizardV4] Could not load forecast ID:', err);
@@ -205,26 +209,27 @@ export function ForecastWizardV4({
           console.log('[ForecastWizardV4] No cached P&L data, attempting auto-sync...');
           try {
             // First, get or create a forecast to sync to
-            const forecastRes = await fetch(`/api/forecast?business_id=${businessId}&fiscal_year=${fiscalYear}`);
-            const forecastData = await forecastRes.json();
-            let targetForecastId = forecastData.forecast?.id;
+            let targetForecastId: string | null = existingForecastId || null;
+
+            if (!targetForecastId) {
+              // Try to find an existing forecast via versions endpoint
+              try {
+                const versionsRes = await fetch(`/api/forecasts/versions?business_id=${businessId}&fiscal_year=${fiscalYear}`);
+                if (versionsRes.ok) {
+                  const versionsData = await versionsRes.json();
+                  const active = (versionsData.versions || []).find((v: { is_active?: boolean }) => v.is_active) || (versionsData.versions || [])[0];
+                  if (active?.id) targetForecastId = active.id;
+                }
+              } catch { /* ignore */ }
+            }
 
             if (!targetForecastId) {
               // Create a draft forecast to sync to
               console.log('[ForecastWizardV4] Creating draft forecast for sync...');
-              const createRes = await fetch('/api/forecast', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  business_id: businessId,
-                  fiscal_year: fiscalYear,
-                  name: `FY${fiscalYear} Forecast`,
-                }),
-              });
-              if (createRes.ok) {
-                const createData = await createRes.json();
-                targetForecastId = createData.forecast?.id;
-              }
+              try {
+                const savedId = await actionsRef.current.saveDraft(null, `FY${fiscalYear} Forecast`);
+                if (savedId) targetForecastId = savedId;
+              } catch { /* ignore */ }
             }
 
             if (targetForecastId) {
@@ -903,20 +908,17 @@ export function ForecastWizardV4({
   const handleRefreshFromXero = async () => {
     setIsSyncing(true);
     try {
-      // First, get or create a forecast to sync to
-      let forecastId: string | null = null;
+      // Use existing forecastId if available, otherwise create via saveDraft
+      let syncForecastId: string | null = forecastId || existingForecastId || null;
 
-      const forecastRes = await fetch(`/api/forecast?business_id=${businessId}&fiscal_year=${fiscalYear}`);
-      const forecastData = await forecastRes.json();
-
-      if (forecastData.forecast?.id) {
-        forecastId = forecastData.forecast.id;
-      } else {
+      if (!syncForecastId) {
         // No forecast exists - create a draft first
         toast.info('Creating draft forecast...');
         try {
-          forecastId = await actions.saveDraft();
-          if (!forecastId) {
+          syncForecastId = await actions.saveDraft();
+          if (syncForecastId) {
+            setForecastId(syncForecastId);
+          } else {
             toast.error('Failed to create draft forecast');
             return;
           }
@@ -932,7 +934,7 @@ export function ForecastWizardV4({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          forecast_id: forecastId,
+          forecast_id: syncForecastId,
           business_id: businessId,
         }),
       });

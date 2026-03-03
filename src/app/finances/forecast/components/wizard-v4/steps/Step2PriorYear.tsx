@@ -137,7 +137,6 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
   const [insights, setInsights] = useState<AIInsight[]>([]);
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
   const [insightsLoaded, setInsightsLoaded] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
   const [dataHash, setDataHash] = useState<string | null>(null);
 
   // Current YTD data (would come from API in real implementation)
@@ -1125,24 +1124,20 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
         </div>
       )}
 
-      {/* Confirmation */}
+      {/* Baseline confirmation note */}
       <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={confirmed}
-            onChange={(e) => setConfirmed(e.target.checked)}
-            className="mt-1 w-4 h-4 text-brand-navy rounded focus:ring-brand-navy"
-          />
+        <div className="flex items-start gap-3">
+          <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
           <div>
             <p className="font-medium text-gray-900">
-              This analysis looks correct - use as my forecasting baseline
+              This data will be used as your forecasting baseline
             </p>
             <p className="text-sm text-gray-500 mt-1">
-              The data, patterns, and any flagged anomalies above will be used to inform your FY{fiscalYear} forecast.
+              The data, patterns, and any flagged anomalies above will inform your FY{fiscalYear} forecast.
+              Click "Continue" to proceed to the next step.
             </p>
           </div>
-        </label>
+        </div>
       </div>
     </div>
   );

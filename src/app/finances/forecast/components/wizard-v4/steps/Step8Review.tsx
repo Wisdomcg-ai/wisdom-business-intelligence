@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Lightbulb,
   ChevronRight, ChevronDown, Users, Building2, Receipt, Wallet,
@@ -49,7 +49,7 @@ type HealthStatus = 'good' | 'ok' | 'concern';
 
 const emptySummary: YearlySummary = {
   revenue: 0, cogs: 0, grossProfit: 0, grossProfitPct: 0,
-  teamCosts: 0, opex: 0, depreciation: 0, otherExpenses: 0,
+  teamCosts: 0, opex: 0, depreciation: 0, investments: 0, otherExpenses: 0,
   netProfit: 0, netProfitPct: 0,
 };
 
@@ -97,6 +97,7 @@ function PLWaterfallChart({ data }: { data: YearlySummary }) {
     { name: 'Gross Profit', value: data.grossProfit, isSubtotal: true },
     { name: 'Team', value: -data.teamCosts },
     { name: 'OpEx', value: -data.opex },
+    ...((data.investments || 0) > 0 ? [{ name: 'Invest', value: -(data.investments || 0) }] : []),
     { name: 'Other', value: -data.otherExpenses },
     { name: 'Net Profit', value: data.netProfit, isTotal: true },
   ];
@@ -341,7 +342,7 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
   }, [summary, state.newHires]);
 
   // Initialize toggles from base
-  useState(() => { setWhatIfToggles(baseToggles); });
+  useEffect(() => { setWhatIfToggles(baseToggles); }, [baseToggles]);
 
   const toggleWhatIf = (id: string) => {
     setWhatIfToggles(prev => prev.map(t =>
@@ -394,8 +395,8 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
     { step: 3, label: 'Revenue & COGS', hasData: state.revenueLines.length > 0, icon: TrendingUp },
     { step: 4, label: 'Team', hasData: state.teamMembers.length > 0 || state.newHires.length > 0, icon: Users },
     { step: 5, label: 'OpEx', hasData: state.opexLines.length > 0, icon: Receipt },
-    { step: 6, label: 'Subscriptions', hasData: true, icon: Wallet }, // Optional step - always "done"
-    { step: 7, label: 'CapEx & Other', hasData: true, icon: Building2 }, // Optional step
+    { step: 6, label: 'Subscriptions', hasData: state.opexLines.some(l => l.isSubscription), icon: Wallet },
+    { step: 7, label: 'CapEx & Other', hasData: state.capexItems.length > 0 || state.otherExpenses.length > 0, icon: Building2 },
   ], [goals, state]);
 
   const completedCount = completionSteps.filter(s => s.hasData).length;
@@ -717,6 +718,11 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
                 ))}
               </PLRow>
 
+              {/* Investments */}
+              {(adjustedData.investments || 0) > 0 && (
+                <PLRow label="Strategic Investments" amount={-(adjustedData.investments || 0)} />
+              )}
+
               {/* Other */}
               {adjustedData.otherExpenses > 0 && (
                 <PLRow label="Other Expenses" amount={-adjustedData.otherExpenses} />
@@ -920,7 +926,7 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
           {onGenerate && (
             <button
               onClick={onGenerate}
-              disabled={isSaving || completedCount < 3}
+              disabled={isSaving || !(completionSteps[0].hasData && (completionSteps[2].hasData || summary.year1.revenue > 0))}
               className="inline-flex items-center gap-2 px-8 py-3 text-sm font-semibold bg-white text-brand-navy rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSaving ? (
@@ -936,9 +942,9 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
               )}
             </button>
           )}
-          {completedCount < 3 && (
+          {!(completionSteps[0].hasData && (completionSteps[2].hasData || summary.year1.revenue > 0)) && (
             <p className="text-xs text-white/50 mt-3">
-              Complete at least Goals, Revenue & COGS, and Team steps to generate.
+              Complete at least Goals and Revenue to generate your forecast.
             </p>
           )}
         </div>

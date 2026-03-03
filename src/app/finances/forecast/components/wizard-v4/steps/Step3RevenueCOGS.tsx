@@ -21,7 +21,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const { revenuePattern, revenueLines, cogsLines, activeYear, goals, priorYear, currentYTD } = state;
   const [showAddRevenue, setShowAddRevenue] = useState(false);
   const [showAddCOGS, setShowAddCOGS] = useState(false);
-  const [newLineName, setNewLineName] = useState('');
+  const [newRevenueName, setNewRevenueName] = useState('');
+  const [newCOGSName, setNewCOGSName] = useState('');
 
   // Quarterly percentage state for Year 2 and Year 3
   const [year2Pcts, setYear2Pcts] = useState<QuarterlyPcts>({ q1: 25, q2: 25, q3: 25, q4: 25 });
@@ -86,22 +87,6 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     const percentages: Record<string, number> = {};
 
     if (revenueLines.length === 0) return percentages;
-
-    // Debug: Log Year 1 data to understand the split
-    if (activeYear > 1) {
-      console.log('[getLinePercentages] Debug for Year', activeYear, {
-        revenueLineCount: revenueLines.length,
-        lines: revenueLines.map(l => ({
-          id: l.id,
-          name: l.name,
-          year1MonthlyKeys: Object.keys(l.year1Monthly),
-          year1MonthlyValues: Object.values(l.year1Monthly),
-          year1Total: Object.values(l.year1Monthly).reduce((s, v) => s + v, 0),
-          year2Quarterly: l.year2Quarterly,
-          year3Quarterly: l.year3Quarterly,
-        })),
-      });
-    }
 
     if (activeYear === 1) {
       // For Year 1, calculate % from current values (actuals + projections)
@@ -284,6 +269,9 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const handlePatternChange = (pattern: 'seasonal' | 'straight-line' | 'manual') => {
     actions.setRevenuePattern(pattern);
 
+    // Manual mode: don't auto-distribute, let user enter each cell
+    if (pattern === 'manual') return;
+
     // Get targets for ALL years
     const year1Target = goals.year1?.revenue || 0;
     const year2Target = goals.year2?.revenue || 0;
@@ -426,25 +414,25 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   };
 
   const handleAddRevenueLine = () => {
-    if (!newLineName.trim()) return;
+    if (!newRevenueName.trim()) return;
     actions.addRevenueLine({
-      name: newLineName.trim(),
+      name: newRevenueName.trim(),
       year1Monthly: {},
       year2Quarterly: { q1: 0, q2: 0, q3: 0, q4: 0 },
       year3Quarterly: { q1: 0, q2: 0, q3: 0, q4: 0 },
     });
-    setNewLineName('');
+    setNewRevenueName('');
     setShowAddRevenue(false);
   };
 
   const handleAddCOGSLine = () => {
-    if (!newLineName.trim()) return;
+    if (!newCOGSName.trim()) return;
     actions.addCOGSLine({
-      name: newLineName.trim(),
+      name: newCOGSName.trim(),
       costBehavior: 'variable',
       percentOfRevenue: 0,
     });
-    setNewLineName('');
+    setNewCOGSName('');
     setShowAddCOGS(false);
   };
 
@@ -596,8 +584,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
           <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex gap-2">
             <input
               type="text"
-              value={newLineName}
-              onChange={(e) => setNewLineName(e.target.value)}
+              value={newRevenueName}
+              onChange={(e) => setNewRevenueName(e.target.value)}
               placeholder="Enter line item name..."
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
               autoFocus
@@ -611,7 +599,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
             <button
               onClick={() => {
                 setShowAddRevenue(false);
-                setNewLineName('');
+                setNewRevenueName('');
               }}
               className="px-4 py-2 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
             >
@@ -842,8 +830,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
           <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex gap-2">
             <input
               type="text"
-              value={newLineName}
-              onChange={(e) => setNewLineName(e.target.value)}
+              value={newCOGSName}
+              onChange={(e) => setNewCOGSName(e.target.value)}
               placeholder="Enter COGS item name..."
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
               autoFocus
@@ -857,7 +845,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
             <button
               onClick={() => {
                 setShowAddCOGS(false);
-                setNewLineName('');
+                setNewCOGSName('');
               }}
               className="px-4 py-2 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
             >
@@ -922,7 +910,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                           value={line.percentOfRevenue || ''}
                           onChange={(e) =>
                             actions.updateCOGSLine(line.id, {
-                              percentOfRevenue: parseFloat(e.target.value) || 0,
+                              percentOfRevenue: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)),
                             })
                           }
                           placeholder="0"

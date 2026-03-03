@@ -289,6 +289,28 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         };
       });
 
+      // Auto-populate Y2/Y3 quarterly revenue from goals
+      if (revenueLines.length > 0) {
+        let year1Total = 0;
+        revenueLines.forEach(line => {
+          year1Total += Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
+        });
+
+        const distributeGoalRevenue = (goalRevenue: number, yearKey: 'year2Quarterly' | 'year3Quarterly') => {
+          if (goalRevenue <= 0) return;
+          revenueLines.forEach(line => {
+            const lineY1 = Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
+            const share = year1Total > 0 ? lineY1 / year1Total : 1 / revenueLines.length;
+            const lineTarget = goalRevenue * share;
+            const perQ = Math.round(lineTarget / 4);
+            line[yearKey] = { q1: perQ, q2: perQ, q3: perQ, q4: Math.round(lineTarget - perQ * 3) };
+          });
+        };
+
+        if (prev.goals.year2?.revenue) distributeGoalRevenue(prev.goals.year2.revenue, 'year2Quarterly');
+        if (prev.goals.year3?.revenue) distributeGoalRevenue(prev.goals.year3.revenue, 'year3Quarterly');
+      }
+
       return {
         ...prev,
         priorYear: data,
@@ -724,6 +746,29 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
           }];
         }
 
+        // Auto-populate Y2/Y3 quarterly revenue from goals
+        const goalsToUse = data.goals || prev.goals;
+        if (revenueLines.length > 0) {
+          let year1Total = 0;
+          revenueLines.forEach(line => {
+            year1Total += Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
+          });
+
+          const distributeGoalRevenue = (goalRevenue: number, yearKey: 'year2Quarterly' | 'year3Quarterly') => {
+            if (goalRevenue <= 0) return;
+            revenueLines.forEach(line => {
+              const lineY1 = Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
+              const share = year1Total > 0 ? lineY1 / year1Total : 1 / revenueLines.length;
+              const lineTarget = goalRevenue * share;
+              const perQ = Math.round(lineTarget / 4);
+              line[yearKey] = { q1: perQ, q2: perQ, q3: perQ, q4: Math.round(lineTarget - perQ * 3) };
+            });
+          };
+
+          if (goalsToUse.year2?.revenue) distributeGoalRevenue(goalsToUse.year2.revenue, 'year2Quarterly');
+          if (goalsToUse.year3?.revenue) distributeGoalRevenue(goalsToUse.year3.revenue, 'year3Quarterly');
+        }
+
         // Create COGS lines from prior year data - default to variable (% of revenue)
         let cogsLines: COGSLine[] = [];
         if (data.priorYear.cogs.byLine.length > 0) {
@@ -807,8 +852,13 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         }, 0);
       }
 
-      // Revenue comes from detailed Step 3 data only - no goals fallback.
-      // If user hasn't filled in revenue lines yet, show $0 so they know to go back.
+      // Goals fallback: if no revenue lines are filled in yet, use goals
+      if (revenue === 0) {
+        const yearGoals = yearNum === 1 ? state.goals.year1 : yearNum === 2 ? state.goals.year2 : state.goals.year3;
+        if (yearGoals && yearGoals.revenue > 0) {
+          revenue = yearGoals.revenue;
+        }
+      }
 
       // COGS - from detailed Step 3 data only, no goals fallback
       const cogs = state.cogsLines.reduce((sum, line) => {
@@ -892,7 +942,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
 
         // Calculate salary with increases for subsequent years
         const yearsAfterStart = targetFY - hireFY;
-        const hireIncreasePct = (state.defaultOpExIncreasePct || 3) / 100;
+        const hireIncreasePct = 3 / 100; // Standard 3% annual salary increase
         const salary = hire.salary * Math.pow(1 + hireIncreasePct, yearsAfterStart);
         const superAmount = hire.type !== 'contractor' ? salary * SUPER_RATE : 0;
 
@@ -905,6 +955,23 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       // Bonuses (assume same each year for now)
       const bonusTotal = state.bonuses.reduce((sum, b) => sum + b.amount, 0);
       teamCosts += bonusTotal;
+
+      // Commissions - based on percentage of linked revenue line
+      for (const commission of state.commissions) {
+        const revLine = state.revenueLines.find(r => r.id === commission.revenueLineId);
+        if (!revLine) continue;
+        let lineRevenue = 0;
+        if (yearNum === 1) {
+          lineRevenue = Object.values(revLine.year1Monthly).reduce((a, b) => a + b, 0);
+        } else if (yearNum === 2) {
+          const q = revLine.year2Quarterly;
+          lineRevenue = q.q1 + q.q2 + q.q3 + q.q4;
+        } else {
+          const q = revLine.year3Quarterly;
+          lineRevenue = q.q1 + q.q2 + q.q3 + q.q4;
+        }
+        teamCosts += lineRevenue * (commission.percentOfRevenue / 100);
+      }
 
       // OpEx - handle all cost behaviors including seasonal
       const defaultIncrease = state.defaultOpExIncreasePct || 3;
@@ -949,8 +1016,14 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         return sum + lineAmount;
       }, 0);
 
-      // Depreciation
-      const depreciation = state.capexItems.reduce((sum, item) => sum + item.annualDepreciation, 0);
+      // Depreciation - pro-rate by purchase month in Year 1
+      const depreciation = state.capexItems.reduce((sum, item) => {
+        if (yearNum === 1) {
+          const monthsRemaining = 13 - item.month;
+          return sum + (item.annualDepreciation * monthsRemaining) / 12;
+        }
+        return sum + item.annualDepreciation;
+      }, 0);
 
       // Other Expenses - one-off expenses only count in Y1
       const otherExpenses = state.otherExpenses.reduce((sum, exp) => {
@@ -961,8 +1034,13 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         return sum + exp.amount;
       }, 0);
 
+      // Investment costs (one-time strategic spends, Year 1 only)
+      const investments = yearNum === 1
+        ? state.investments.reduce((sum, inv) => sum + inv.totalBudget, 0)
+        : 0;
+
       // Net Profit
-      const netProfit = grossProfit - teamCosts - opex - depreciation - otherExpenses;
+      const netProfit = grossProfit - teamCosts - opex - depreciation - otherExpenses - investments;
       const netProfitPct = revenue > 0 ? (netProfit / revenue) * 100 : 0;
 
       return {
@@ -973,6 +1051,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         teamCosts: Math.round(teamCosts),
         opex: Math.round(opex),
         depreciation: Math.round(depreciation),
+        investments: Math.round(investments),
         otherExpenses: Math.round(otherExpenses),
         netProfit: Math.round(netProfit),
         netProfitPct: Math.round(netProfitPct * 10) / 10,
