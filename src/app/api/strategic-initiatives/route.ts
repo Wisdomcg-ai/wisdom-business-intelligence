@@ -20,31 +20,31 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 })
     }
 
-    // The wizard passes businesses.id. Strategic initiatives are stored with
-    // user_id (the business owner). We need to find the owner to query correctly.
-    // Also try business_profiles.id as the business_id FK.
-
-    // Collect all IDs to try for user_id and business_id lookups
+    // Collect all IDs to try
     const userIdsToTry: string[] = [user.id]
     const businessIdsToTry: string[] = [businessId]
 
     // Look up business owner
-    const { data: business } = await supabase
+    const { data: business, error: bizErr } = await supabase
       .from('businesses')
       .select('owner_id')
       .eq('id', businessId)
       .maybeSingle()
 
+    console.log('[API /strategic-initiatives] Business lookup:', { businessId, owner_id: business?.owner_id, error: bizErr?.message })
+
     if (business?.owner_id && business.owner_id !== user.id) {
       userIdsToTry.push(business.owner_id)
     }
 
-    // Look up business_profiles.id (the FK used in some tables)
-    const { data: profile } = await supabase
+    // Look up business_profiles.id
+    const { data: profile, error: profErr } = await supabase
       .from('business_profiles')
       .select('id, user_id')
       .eq('business_id', businessId)
       .maybeSingle()
+
+    console.log('[API /strategic-initiatives] Profile lookup:', { profileId: profile?.id, profileUserId: profile?.user_id, error: profErr?.message })
 
     if (profile?.id) {
       businessIdsToTry.push(profile.id)
@@ -53,47 +53,75 @@ export async function GET(request: Request) {
       userIdsToTry.push(profile.user_id)
     }
 
-    console.log('[API /strategic-initiatives] Looking up initiatives:', {
-      businessId,
-      userIdsToTry,
-      businessIdsToTry,
-      annualPlanOnly,
-    })
+    console.log('[API /strategic-initiatives] IDs to try:', { userIdsToTry, businessIdsToTry, annualPlanOnly })
 
-    // Try by user_id first (matches annual-plan route pattern)
+    // First: try a broad query by user_id WITHOUT the annual plan filter
+    // to see if ANY initiatives exist at all
     for (const userId of userIdsToTry) {
-      let query = supabase
+      const { data: allData, error: allErr } = await supabase
         .from('strategic_initiatives')
-        .select('id, title, description, priority, step_type, estimated_cost, is_monthly_cost')
+        .select('id, title, step_type, selected_for_annual_plan')
         .eq('user_id', userId)
 
-      if (annualPlanOnly) {
-        query = query.or('step_type.eq.twelve_month,selected_for_annual_plan.eq.true')
-      }
+      console.log('[API /strategic-initiatives] All initiatives for user_id', userId, ':', {
+        count: allData?.length || 0,
+        error: allErr?.message,
+        sample: allData?.slice(0, 3).map(d => ({ id: d.id, title: d.title, step_type: d.step_type, selected: d.selected_for_annual_plan })),
+      })
 
-      const { data, error } = await query.order('created_at', { ascending: false })
+      if (allData && allData.length > 0) {
+        // Now apply the annual plan filter if needed
+        if (annualPlanOnly) {
+          const filtered = allData.filter(
+            i => i.step_type === 'twelve_month' || i.selected_for_annual_plan === true
+          )
+          console.log('[API /strategic-initiatives] After annual plan filter:', filtered.length, 'of', allData.length)
 
-      if (!error && data && data.length > 0) {
-        console.log('[API /strategic-initiatives] Found', data.length, 'initiatives via user_id:', userId)
-        return NextResponse.json({ initiatives: data })
+          if (filtered.length > 0) {
+            // Re-fetch with full columns for the filtered IDs
+            const { data: fullData } = await supabase
+              .from('strategic_initiatives')
+              .select('id, title, description, priority, step_type, estimated_cost, is_monthly_cost')
+              .in('id', filtered.map(i => i.id))
+              .order('created_at', { ascending: false })
+
+            return NextResponse.json({ initiatives: fullData || [] })
+          }
+
+          // Return all initiatives if none match the annual plan filter
+          // (better to show something than nothing)
+          console.log('[API /strategic-initiatives] No annual plan filter matches, returning all')
+          const { data: fullData } = await supabase
+            .from('strategic_initiatives')
+            .select('id, title, description, priority, step_type, estimated_cost, is_monthly_cost')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+
+          return NextResponse.json({ initiatives: fullData || [] })
+        }
+
+        // No filter — return all
+        const { data: fullData } = await supabase
+          .from('strategic_initiatives')
+          .select('id, title, description, priority, step_type, estimated_cost, is_monthly_cost')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+
+        return NextResponse.json({ initiatives: fullData || [] })
       }
     }
 
-    // Try by business_id
+    // Fallback: try by business_id
     for (const bizId of businessIdsToTry) {
-      let query = supabase
+      const { data, error } = await supabase
         .from('strategic_initiatives')
         .select('id, title, description, priority, step_type, estimated_cost, is_monthly_cost')
         .eq('business_id', bizId)
+        .order('created_at', { ascending: false })
 
-      if (annualPlanOnly) {
-        query = query.or('step_type.eq.twelve_month,selected_for_annual_plan.eq.true')
-      }
-
-      const { data, error } = await query.order('created_at', { ascending: false })
+      console.log('[API /strategic-initiatives] business_id query:', bizId, 'count:', data?.length, 'error:', error?.message)
 
       if (!error && data && data.length > 0) {
-        console.log('[API /strategic-initiatives] Found', data.length, 'initiatives via business_id:', bizId)
         return NextResponse.json({ initiatives: data })
       }
     }
