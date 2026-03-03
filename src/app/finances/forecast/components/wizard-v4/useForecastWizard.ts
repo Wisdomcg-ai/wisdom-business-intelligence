@@ -1258,7 +1258,9 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to save draft');
+        const errBody = await response.json().catch(() => ({}));
+        console.error('[saveDraft] Server error:', response.status, errBody);
+        throw new Error(`Failed to save draft: ${errBody?.details || errBody?.error || response.status}`);
       }
 
       const result = await response.json();
@@ -1296,7 +1298,9 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate forecast');
+        const errBody = await response.json().catch(() => ({}));
+        console.error('[generateForecast] Server error:', response.status, errBody);
+        throw new Error(`Failed to generate forecast: ${errBody?.details || errBody?.error || response.status}`);
       }
 
       const result = await response.json();
