@@ -110,9 +110,13 @@ export function ForecastWizardV4({
       if (hasRestoredData) {
         console.log('[ForecastWizardV4] State restored from localStorage, skipping full API initialization');
 
-        // Always refresh goals from the One Page Plan so they stay in sync
+        // Always refresh goals and business profile so they stay in sync
         try {
-          const goalsRes = await fetch(`/api/goals?business_id=${businessId}`);
+          const [goalsRes, profileRes] = await Promise.all([
+            fetch(`/api/goals?business_id=${businessId}`),
+            fetch(`/api/business-profile?business_id=${businessId}`),
+          ]);
+
           if (goalsRes.ok) {
             const goalsData = await goalsRes.json();
             if (goalsData.goals) {
@@ -137,8 +141,22 @@ export function ForecastWizardV4({
               actionsRef.current.updateGoals(freshGoals);
             }
           }
+
+          if (profileRes.ok) {
+            const profileData = await profileRes.json();
+            if (profileData.profile) {
+              actionsRef.current.setBusinessProfile({
+                industry: profileData.profile.industry,
+                employeeCount: profileData.profile.employee_count,
+                annualRevenue: profileData.profile.annual_revenue,
+                businessModel: profileData.profile.business_model,
+                profileCompleted: profileData.profile.profile_completed,
+              });
+              console.log('[ForecastWizardV4] Refreshed business profile:', profileData.profile.industry);
+            }
+          }
         } catch (err) {
-          console.warn('[ForecastWizardV4] Could not refresh goals:', err);
+          console.warn('[ForecastWizardV4] Could not refresh goals/profile:', err);
         }
 
         // Still need to load the forecast ID so generate targets the correct forecast
