@@ -45,20 +45,22 @@ export function Step6CapEx({ state, actions, fiscalYear, businessId }: Step6CapE
 
   const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
 
-  // Load strategic initiatives
+  // Load strategic initiatives from annual plan
   useEffect(() => {
     if (!businessId) return;
 
     const loadInitiatives = async () => {
       setLoadingInitiatives(true);
+      console.log('[Step6CapEx] Loading initiatives for business:', businessId);
       try {
         const response = await fetch(`/api/strategic-initiatives?business_id=${businessId}&annual_plan_only=true`);
+        const data = await response.json();
+        console.log('[Step6CapEx] Initiatives loaded:', response.status, data.initiatives?.length ?? 0, 'items');
         if (response.ok) {
-          const data = await response.json();
           setInitiatives(data.initiatives || []);
         }
       } catch (error) {
-        console.error('Failed to load initiatives:', error);
+        console.error('[Step6CapEx] Failed to load initiatives:', error);
       } finally {
         setLoadingInitiatives(false);
       }
