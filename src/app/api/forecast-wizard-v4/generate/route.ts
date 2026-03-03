@@ -32,11 +32,11 @@ export async function POST(request: Request) {
       )
     }
 
-    // Verify user has access to this business (RLS handles most of this,
-    // but explicitly check for extra safety)
+    // Verify user has access to this business
+    // businessId is businesses.id — check ownership, team membership, or coach/admin role
     const { data: business, error: bizError } = await supabase
-      .from('business_profiles')
-      .select('id')
+      .from('businesses')
+      .select('id, owner_id')
       .eq('id', businessId)
       .maybeSingle()
 
@@ -45,6 +45,35 @@ export async function POST(request: Request) {
         { error: 'Business not found or access denied' },
         { status: 403 }
       )
+    }
+
+    const isOwner = business.owner_id === user.id
+    if (!isOwner) {
+      // Check team membership
+      const { data: teamMember } = await supabase
+        .from('business_users')
+        .select('id')
+        .eq('business_id', businessId)
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .maybeSingle()
+
+      if (!teamMember) {
+        // Check coach/admin
+        const { data: roleData } = await supabase
+          .from('system_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        const isCoachOrAdmin = roleData?.role === 'coach' || roleData?.role === 'super_admin'
+        if (!isCoachOrAdmin) {
+          return NextResponse.json(
+            { error: 'Business not found or access denied' },
+            { status: 403 }
+          )
+        }
+      }
     }
 
     // Build the forecast data to upsert

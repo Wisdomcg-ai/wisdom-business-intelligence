@@ -37,24 +37,37 @@ export async function GET(
       return NextResponse.json({ error: 'Forecast not found' }, { status: 404 })
     }
 
-    // Verify access: user owns the forecast's business or is a coach
+    // Verify access: user owns the business, is a team member, or is a coach/admin
     const { data: business } = await supabase
       .from('businesses')
-      .select('user_id')
+      .select('owner_id')
       .eq('id', forecast.business_id)
       .maybeSingle()
 
-    if (business?.user_id !== user.id) {
-      // Check if user is a coach/admin
-      const { data: roleData } = await supabase
-        .from('system_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .single()
+    const isOwner = business?.owner_id === user.id
 
-      const isCoachOrAdmin = roleData?.role === 'coach' || roleData?.role === 'super_admin'
-      if (!isCoachOrAdmin) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!isOwner) {
+      // Check if user is a team member of this business
+      const { data: teamMember } = await supabase
+        .from('business_users')
+        .select('id')
+        .eq('business_id', forecast.business_id)
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .maybeSingle()
+
+      if (!teamMember) {
+        // Check if user is a coach/admin
+        const { data: roleData } = await supabase
+          .from('system_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        const isCoachOrAdmin = roleData?.role === 'coach' || roleData?.role === 'super_admin'
+        if (!isCoachOrAdmin) {
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+        }
       }
     }
 
