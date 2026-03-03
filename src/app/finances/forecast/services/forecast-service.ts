@@ -90,12 +90,24 @@ export class ForecastService {
     fiscalYear: number
   ): Promise<{ forecast: FinancialForecast | null; error?: string }> {
     try {
+      // financial_forecasts.business_id FK references business_profiles(id),
+      // but callers pass businesses.id — collect both IDs to search
+      const idsToTry: string[] = [businessId]
+      const { data: profile } = await this.supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('business_id', businessId)
+        .maybeSingle()
+      if (profile?.id && profile.id !== businessId) {
+        idsToTry.push(profile.id)
+      }
+
       // Try to find existing forecast for this business (any fiscal year)
       // Use limit(1) instead of single() to avoid 406 errors when multiple forecasts exist
       const { data: existing, error: fetchError } = await this.supabase
         .from('financial_forecasts')
         .select('*')
-        .eq('business_id', businessId)
+        .in('business_id', idsToTry)
         .order('created_at', { ascending: false })
         .limit(1)
 
@@ -176,8 +188,10 @@ export class ForecastService {
       // Calculate periods based on current date
       const periods = this.calculateForecastPeriods(fiscalYear)
 
+      // Use business_profiles.id for FK compliance
+      const profileBusinessId = profile?.id || businessId
       const newForecast: Partial<FinancialForecast> = {
-        business_id: businessId,
+        business_id: profileBusinessId,
         user_id: userId,
         name: periods.is_rolling
           ? `FY${fiscalYear} Forecast (${new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})`
