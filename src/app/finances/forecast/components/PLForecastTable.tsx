@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { Plus, X, ChevronDown, ChevronRight, Calculator, TrendingUp, Lock, Unlock, Eye, Settings, FunctionSquare, Undo2, Redo2 } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { FinancialForecast, PLLine, ForecastMethod } from '../types'
@@ -32,7 +32,67 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
   // Current FY starts in July of previous calendar year (e.g. FY26 starts 2025-07)
   const currentFYStart = `${forecast.fiscal_year - 1}-07`
 
-  const [lines, setLines] = useState<PLLine[]>(plLines)
+  // Deduplicate lines with same account_name + category (wizard can create duplicates of Xero lines)
+  const hasDeduplicatedRef = useRef<boolean>(false)
+  const deduplicatedPlLines = useMemo(() => {
+    if (plLines.length === 0) return plLines
+
+    const groups = new Map<string, PLLine[]>()
+    for (const line of plLines) {
+      const key = `${line.category}|${line.account_name.toLowerCase().trim()}`
+      const group = groups.get(key) || []
+      group.push(line)
+      groups.set(key, group)
+    }
+
+    const result: PLLine[] = []
+    for (const group of groups.values()) {
+      if (group.length === 1) {
+        result.push(group[0])
+        continue
+      }
+
+      // Multiple lines with same name+category — merge them
+      // Prefer the Xero line as base (has DB id and actual data)
+      const base = group.find(l => l.is_from_xero && l.id) || group.find(l => l.id) || group[0]
+      const merged: PLLine = {
+        ...base,
+        actual_months: { ...(base.actual_months || {}) },
+        forecast_months: { ...(base.forecast_months || {}) },
+      }
+
+      // Merge data from all duplicate lines
+      for (const line of group) {
+        if (line === base) continue
+        // Actuals: fill in any missing months (Xero data is authoritative)
+        for (const [mk, val] of Object.entries(line.actual_months || {})) {
+          if (val && !merged.actual_months[mk]) {
+            merged.actual_months[mk] = val
+          }
+        }
+        // Forecasts: non-Xero (wizard) values win over Xero auto-forecasts
+        for (const [mk, val] of Object.entries(line.forecast_months || {})) {
+          if (val && (!line.is_from_xero || !merged.forecast_months[mk])) {
+            merged.forecast_months[mk] = val
+          }
+        }
+        // Preserve forecast_method from wizard line if base doesn't have one
+        if (!merged.forecast_method && line.forecast_method) {
+          merged.forecast_method = line.forecast_method
+        }
+      }
+
+      result.push(merged)
+    }
+
+    if (result.length < plLines.length) {
+      console.log(`[PLForecastTable] Deduplicated: ${plLines.length} → ${result.length} lines (merged ${plLines.length - result.length} duplicates)`)
+    }
+
+    return result
+  }, [plLines])
+
+  const [lines, setLines] = useState<PLLine[]>(deduplicatedPlLines)
   const [monthColumns, setMonthColumns] = useState<Array<{
     key: string
     label: string
@@ -47,6 +107,31 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
   const [historicalDataLocked, setHistoricalDataLocked] = useState<boolean>(true)
   const [viewMode, setViewMode] = useState<'view' | 'setup'>(defaultViewMode || 'setup') // Toggle between view and setup modes
   const [showFormulas, setShowFormulas] = useState<boolean>(false) // Toggle to show formulas instead of values
+
+  // Current FY columns (non-baseline, deduplicated) — used for FY26 Total calculations
+  // This ensures totals use the EXACT same actual/forecast flags as the displayed cells
+  const currentFYColumns = useMemo(() => {
+    const cols = monthColumns.filter(col => !col.isBaseline && col.key >= currentFYStart)
+    const seen = new Set<string>()
+    return cols.filter(col => {
+      if (seen.has(col.key)) return false
+      seen.add(col.key)
+      return true
+    })
+  }, [monthColumns, currentFYStart])
+
+  // In View Mode: only show current FY columns (actuals + forecast, no baseline)
+  // In Setup Mode: show all columns (baseline + actuals + forecast)
+  const displayColumns = useMemo(() => {
+    if (viewMode === 'view') return currentFYColumns
+    // Setup mode: all columns, deduplicated
+    const seen = new Set<string>()
+    return monthColumns.filter(col => {
+      if (seen.has(col.key)) return false
+      seen.add(col.key)
+      return true
+    })
+  }, [viewMode, monthColumns, currentFYColumns])
   const [cellFormulas, setCellFormulas] = useState<Map<string, string>>(new Map()) // Track formulas by cell ID
 
   // Undo/Redo state
@@ -64,16 +149,29 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
     // IMPORTANT: Use only BASELINE months (FY25) for analysis, not current year actuals (FY26 YTD)
     const baselineMonthKeys = monthColumns.filter(c => c.isBaseline === true).map(c => c.key)
     if (baselineMonthKeys.length > 0) {
-      const linesWithAnalysis = plLines.map(line => ({
+      const linesWithAnalysis = deduplicatedPlLines.map(line => ({
         ...line,
         // Only recalculate analysis if it doesn't exist - preserve existing forecast_method and analysis
-        analysis: line.analysis || ForecastingEngine.calculateAnalysis(line, plLines, baselineMonthKeys)
+        analysis: line.analysis || ForecastingEngine.calculateAnalysis(line, deduplicatedPlLines, baselineMonthKeys)
       }))
       setLines(linesWithAnalysis)
+
+      // If duplicates were merged, persist the clean version to DB (once per page load)
+      if (deduplicatedPlLines.length < plLines.length && !hasDeduplicatedRef.current) {
+        hasDeduplicatedRef.current = true
+        console.log(`[PLForecastTable] Saving deduplicated lines to DB...`)
+        onSave(linesWithAnalysis)
+      }
     } else {
-      setLines(plLines)
+      setLines(deduplicatedPlLines)
+
+      if (deduplicatedPlLines.length < plLines.length && !hasDeduplicatedRef.current) {
+        hasDeduplicatedRef.current = true
+        console.log(`[PLForecastTable] Saving deduplicated lines to DB...`)
+        onSave(deduplicatedPlLines)
+      }
     }
-  }, [plLines, monthColumns])
+  }, [deduplicatedPlLines, monthColumns])
 
   useEffect(() => {
     const columns = ForecastService.generateMonthColumns(
@@ -91,27 +189,74 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
 
     console.log('[PLForecastTable] Generated columns:', {
       count: columns.length,
-      columnKeys: columns.map(c => c.key),
       baselineColumns: columns.filter(c => c.isBaseline === true).map(c => c.key),
       currentYearActuals: columns.filter(c => c.isActual && c.isBaseline === false).map(c => c.key),
       forecastColumns: columns.filter(c => c.isForecast).map(c => c.key),
-      lastBaselineIndex: lastBaselineIdx
+      lastBaselineIndex: lastBaselineIdx,
+      forecastDates: {
+        actual: `${forecast.actual_start_month} to ${forecast.actual_end_month}`,
+        forecast: `${forecast.forecast_start_month} to ${forecast.forecast_end_month}`,
+        baseline: `${forecast.baseline_start_month || 'none'} to ${forecast.baseline_end_month || 'none'}`
+      }
     })
-    if (lines.length > 0) {
-      console.log('[PLForecastTable] First line data keys:', Object.keys(lines[0].actual_months || {}))
-    }
     setMonthColumns(columns)
     setLastActualIndex(lastBaselineIdx)
   }, [forecast.actual_start_month, forecast.actual_end_month, forecast.forecast_start_month, forecast.forecast_end_month, forecast.baseline_start_month, forecast.baseline_end_month])
 
+  // Diagnostic: log line data to identify doubling source
+  useEffect(() => {
+    if (lines.length === 0 || monthColumns.length === 0) return
+
+    const cats = ['Revenue', 'Cost of Sales', 'Operating Expenses', 'Other Income', 'Other Expenses']
+    const fyCols = monthColumns.filter(c => !c.isBaseline && c.key >= currentFYStart)
+    const seen = new Set<string>()
+    const dedupedFYCols = fyCols.filter(c => { if (seen.has(c.key)) return false; seen.add(c.key); return true })
+
+    console.group('[PLForecastTable] DATA DIAGNOSTIC')
+    console.log('FY columns for total:', dedupedFYCols.length,
+      '(actual:', dedupedFYCols.filter(c => c.isActual).length,
+      'forecast:', dedupedFYCols.filter(c => c.isForecast).length, ')')
+
+    for (const cat of cats) {
+      const catLines = lines.filter(l => l.category === cat)
+      if (catLines.length === 0) continue
+
+      const lineInfo = catLines.map(line => {
+        const fKeys = Object.keys(line.forecast_months || {}).filter(k => k >= currentFYStart).sort()
+        const aKeys = Object.keys(line.actual_months || {}).filter(k => k >= currentFYStart).sort()
+        const fTotal = fKeys.reduce((s, k) => s + (line.forecast_months?.[k] || 0), 0)
+        const aTotal = aKeys.reduce((s, k) => s + (line.actual_months?.[k] || 0), 0)
+        return {
+          name: line.account_name,
+          id: line.id?.substring(0, 8),
+          is_from_xero: line.is_from_xero,
+          actualMonths: aKeys.length,
+          actualTotal: Math.round(aTotal),
+          forecastMonths: fKeys.length,
+          forecastTotal: Math.round(fTotal),
+          fy26Total: Math.round(calculateLineFY26Total(line))
+        }
+      })
+      console.table(lineInfo)
+
+      // Check for duplicates
+      const names = catLines.map(l => l.account_name.toLowerCase().trim())
+      const dupes = names.filter((n, i) => names.indexOf(n) !== i)
+      if (dupes.length > 0) {
+        console.warn(`⚠️ DUPLICATE LINES in ${cat}:`, Array.from(new Set(dupes)))
+      }
+    }
+    console.groupEnd()
+  }, [lines, monthColumns])
+
   // Initialize history with first state
   useEffect(() => {
-    if (plLines.length > 0 && !historyInitialized.current) {
-      setHistory([{ lines: plLines, timestamp: Date.now() }])
+    if (deduplicatedPlLines.length > 0 && !historyInitialized.current) {
+      setHistory([{ lines: deduplicatedPlLines, timestamp: Date.now() }])
       setHistoryIndex(0)
       historyInitialized.current = true
     }
-  }, [plLines])
+  }, [deduplicatedPlLines])
 
   // Save to history when lines change (for undo/redo)
   const saveToHistory = (newLines: PLLine[]) => {
@@ -377,19 +522,14 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
   }
 
   const calculateLineFY26Total = (line: PLLine): number => {
-    // Sum FY26 actuals + forecasts (2025-07 to 2026-06)
-    const fy26ActualColumns = monthColumns.filter(col => col.isActual && col.isBaseline === false)
-    const fy26ForecastColumns = monthColumns.filter(col => col.isForecast)
-
-    const actualTotal = fy26ActualColumns.reduce((sum, col) => {
-      return sum + (line.actual_months?.[col.key] || 0)
+    // Sum current FY months using the SAME actual/forecast flags as the displayed cells
+    // This guarantees the FY26 Total always matches the sum of individual cell values
+    return currentFYColumns.reduce((sum, col) => {
+      const value = col.isForecast
+        ? (line.forecast_months?.[col.key] || 0)
+        : (line.actual_months?.[col.key] || 0)
+      return sum + value
     }, 0)
-
-    const forecastTotal = fy26ForecastColumns.reduce((sum, col) => {
-      return sum + (line.forecast_months?.[col.key] || 0)
-    }, 0)
-
-    return actualTotal + forecastTotal
   }
 
   const calculateCategoryFY25Total = (category: string): number => {
@@ -676,10 +816,13 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
               <th className="sticky left-0 top-0 z-40 bg-white px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r-2 border-gray-300 min-w-[250px] shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                 Account
               </th>
-              {monthColumns.map((col, idx) => {
+              {viewMode === 'view' && (
+                <th className="sticky top-0 px-4 py-3 text-right text-xs font-medium text-slate-700 uppercase tracking-wider min-w-[140px] bg-slate-100 border-r-2 border-slate-200">
+                  {baselineFY} Total
+                </th>
+              )}
+              {displayColumns.map((col, idx) => {
                 const isLastActual = idx === lastActualIndex;
-                // In View mode, hide baseline (prior FY) columns — only show current FY
-                if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
 
                 return (
                   <React.Fragment key={col.key}>
@@ -720,9 +863,13 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
               <th className="sticky left-0 top-[52px] z-40 bg-gray-50 px-6 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r-2 border-gray-300 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
 
               </th>
-              {monthColumns.map((col, idx) => {
+              {viewMode === 'view' && (
+                <th className="sticky top-[52px] px-4 py-2 text-right text-xs font-medium text-slate-500 bg-slate-100 border-r-2 border-slate-200">
+                  Prior Year
+                </th>
+              )}
+              {displayColumns.map((col, idx) => {
                 const isLastActual = idx === lastActualIndex;
-                if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
                 return (
                   <React.Fragment key={col.key}>
                     <th
@@ -778,10 +925,14 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
                         <span className="font-bold text-gray-900">{category}</span>
                       </button>
                     </td>
-                    {monthColumns.map((col, idx) => {
+                    {viewMode === 'view' && (
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-slate-700 bg-slate-50 border-r-2 border-slate-200">
+                        {formatCurrency(calculateCategoryFY25Total(category))}
+                      </td>
+                    )}
+                    {displayColumns.map((col, idx) => {
                       const total = calculateCategoryTotal(category, col.key, col.isForecast)
                       const isLastActual = idx === lastActualIndex;
-                      if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
 
                       return (
                         <React.Fragment key={col.key}>
@@ -850,14 +1001,18 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
                             </button>
                           </div>
                         </td>
-                        {monthColumns.map((col, idx) => {
+                        {viewMode === 'view' && (
+                          <td className="px-4 py-2 text-right text-sm text-slate-700 bg-slate-50 border-r-2 border-slate-200">
+                            {formatCurrency(calculateLineFY25Total(line))}
+                          </td>
+                        )}
+                        {displayColumns.map((col, idx) => {
                           const months = col.isForecast ? line.forecast_months : line.actual_months
                           const value = months[col.key] || 0
                           const isLastActual = idx === lastActualIndex;
                           const cellKey = `${globalIdx}-${col.key}`;
                           const isEditing = editingCell === cellKey;
                           const isDisabled = col.isActual && historicalDataLocked;
-                          if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
 
                           return (
                             <React.Fragment key={col.key}>
@@ -971,10 +1126,14 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
                         <td className="sticky left-0 z-10 bg-gray-50 px-6 py-3 border-r-2 border-gray-300 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                           <span className="text-gray-900">Gross Profit</span>
                         </td>
-                        {monthColumns.map((col, idx) => {
+                        {viewMode === 'view' && (
+                          <td className="px-4 py-3 text-right text-sm font-bold text-slate-900 bg-slate-50 border-r-2 border-slate-200">
+                            {formatCurrency(calculateGrossProfitFY25Total())}
+                          </td>
+                        )}
+                        {displayColumns.map((col, idx) => {
                           const grossProfit = calculateGrossProfit(col.key, col.isForecast)
                           const isLastActual = idx === lastActualIndex;
-                          if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
 
                           return (
                             <React.Fragment key={col.key}>
@@ -1014,12 +1173,21 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
                         <td className="sticky left-0 z-10 bg-green-50 px-6 py-3 border-r-2 border-gray-300 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                           <span className="text-gray-900 font-semibold italic">Gross Margin %</span>
                         </td>
-                        {monthColumns.map((col, idx) => {
+                        {viewMode === 'view' && (
+                          <td className="px-4 py-3 text-right text-sm font-semibold text-slate-700 bg-slate-50 border-r-2 border-slate-200">
+                            {(() => {
+                              const fy25Revenue = calculateCategoryFY25Total('Revenue')
+                              const fy25GP = calculateGrossProfitFY25Total()
+                              const fy25Margin = fy25Revenue > 0 ? (fy25GP / fy25Revenue) * 100 : 0
+                              return `${fy25Margin.toFixed(1)}%`
+                            })()}
+                          </td>
+                        )}
+                        {displayColumns.map((col, idx) => {
                           const revenue = calculateCategoryTotal('Revenue', col.key, col.isForecast)
                           const grossProfit = calculateGrossProfit(col.key, col.isForecast)
                           const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0
                           const isLastActual = idx === lastActualIndex;
-                          if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
 
                           return (
                             <React.Fragment key={col.key}>
@@ -1074,10 +1242,16 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
               <td className="sticky left-0 z-10 bg-gray-100 px-6 py-3 border-r-2 border-gray-300 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                 <span className="text-gray-900">Net Profit</span>
               </td>
-              {monthColumns.map((col, idx) => {
+              {viewMode === 'view' && (
+                <td className={`px-4 py-3 text-right text-sm font-bold ${
+                  calculateNetProfitFY25Total() >= 0 ? 'text-green-700' : 'text-red-700'
+                } bg-slate-50 border-r-2 border-slate-200`}>
+                  {formatCurrency(calculateNetProfitFY25Total())}
+                </td>
+              )}
+              {displayColumns.map((col, idx) => {
                 const netProfit = calculateNetProfit(col.key, col.isForecast)
                 const isLastActual = idx === lastActualIndex;
-                if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
                 return (
                   <React.Fragment key={col.key}>
                     <td
@@ -1120,12 +1294,21 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
               <td className="sticky left-0 z-10 bg-brand-orange-50 px-6 py-3 border-r-2 border-gray-300 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                 <span className="text-gray-900 font-semibold italic">Net Margin %</span>
               </td>
-              {monthColumns.map((col, idx) => {
+              {viewMode === 'view' && (
+                <td className="px-4 py-3 text-right text-sm font-semibold text-slate-700 bg-slate-50 border-r-2 border-slate-200">
+                  {(() => {
+                    const fy25Revenue = calculateCategoryFY25Total('Revenue')
+                    const fy25NP = calculateNetProfitFY25Total()
+                    const fy25Margin = fy25Revenue > 0 ? (fy25NP / fy25Revenue) * 100 : 0
+                    return `${fy25Margin.toFixed(1)}%`
+                  })()}
+                </td>
+              )}
+              {displayColumns.map((col, idx) => {
                 const revenue = calculateCategoryTotal('Revenue', col.key, col.isForecast)
                 const netProfit = calculateNetProfit(col.key, col.isForecast)
                 const netMargin = revenue > 0 ? (netProfit / revenue) * 100 : 0
                 const isLastActual = idx === lastActualIndex;
-                if (viewMode === 'view' && (col.isBaseline || col.key < currentFYStart)) return null
                 return (
                   <React.Fragment key={col.key}>
                     <td
