@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       .from('system_roles')
       .select('role')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!roleData || (roleData.role !== 'coach' && roleData.role !== 'super_admin')) {
       return NextResponse.json({ error: 'Access denied. Coach or admin privileges required.' }, { status: 403 })

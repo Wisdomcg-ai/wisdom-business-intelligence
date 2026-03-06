@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       .from('system_roles')
       .select('role')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (!roleData || roleData.role !== 'super_admin') {
       return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });

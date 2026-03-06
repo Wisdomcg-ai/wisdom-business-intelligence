@@ -231,23 +231,18 @@ export class ForecastService {
    * Load P&L lines for a forecast
    */
   static async loadPLLines(forecastId: string): Promise<PLLine[]> {
-    try {
-      const { data, error } = await this.supabase
-        .from('forecast_pl_lines')
-        .select('*')
-        .eq('forecast_id', forecastId)
-        .order('sort_order', { ascending: true })
+    const { data, error } = await this.supabase
+      .from('forecast_pl_lines')
+      .select('*')
+      .eq('forecast_id', forecastId)
+      .order('sort_order', { ascending: true })
 
-      if (error) {
-        console.error('[Forecast] Error loading P&L lines:', error)
-        return []
-      }
-
-      return data || []
-    } catch (err) {
-      console.error('[Forecast] Error:', err)
-      return []
+    if (error) {
+      console.error('[Forecast] Error loading P&L lines:', error)
+      throw new Error(`Failed to load P&L lines: ${error.message}`)
     }
+
+    return data || []
   }
 
   /**
@@ -330,32 +325,27 @@ export class ForecastService {
    * Load employees for a forecast
    */
   static async loadEmployees(forecastId: string): Promise<ForecastEmployee[]> {
-    try {
-      const { data, error } = await this.supabase
-        .from('forecast_employees')
-        .select('*')
-        .eq('forecast_id', forecastId)
-        .order('sort_order', { ascending: true })
+    const { data, error } = await this.supabase
+      .from('forecast_employees')
+      .select('*')
+      .eq('forecast_id', forecastId)
+      .order('sort_order', { ascending: true })
 
-      if (error) {
-        console.error('[Forecast] Error loading employees:', error)
-        return []
-      }
-
-      // Convert dates from YYYY-MM-DD back to YYYY-MM format for display
-      const employees = (data || []).map(emp => ({
-        ...emp,
-        start_date: emp.start_date ? emp.start_date.substring(0, 7) : undefined,
-        end_date: emp.end_date ? emp.end_date.substring(0, 7) : undefined,
-        // Ensure classification is set from category if not already set
-        classification: emp.classification || (emp.category === 'Wages COGS' ? 'cogs' : 'opex')
-      }))
-
-      return employees
-    } catch (err) {
-      console.error('[Forecast] Error:', err)
-      return []
+    if (error) {
+      console.error('[Forecast] Error loading employees:', error)
+      throw new Error(`Failed to load employees: ${error.message}`)
     }
+
+    // Convert dates from YYYY-MM-DD back to YYYY-MM format for display
+    const employees = (data || []).map(emp => ({
+      ...emp,
+      start_date: emp.start_date ? emp.start_date.substring(0, 7) : undefined,
+      end_date: emp.end_date ? emp.end_date.substring(0, 7) : undefined,
+      // Ensure classification is set from category if not already set
+      classification: emp.classification || (emp.category === 'Wages COGS' ? 'cogs' : 'opex')
+    }))
+
+    return employees
   }
 
   /**

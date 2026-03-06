@@ -84,11 +84,17 @@ export default function Step4AnnualPlan({
       }
 
       // Load from business_profiles table where key_roles is stored
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('business_profiles')
         .select('key_roles, owner_info')
         .eq('business_id', businessId)
-        .single()
+        .maybeSingle()
+
+        if (profileError) {
+          console.error('[Annual Plan] Error loading business profile:', profileError)
+          loadFromLocalStorage()
+          return
+        }
 
         if (profile) {
           const members: TeamMember[] = []

@@ -17,7 +17,7 @@ async function verifyUserAccess(userId: string, businessId: string): Promise<boo
     .from('businesses')
     .select('owner_id, assigned_coach_id')
     .eq('id', businessId)
-    .single();
+    .maybeSingle();
 
   if (business?.owner_id === userId || business?.assigned_coach_id === userId) {
     return true;
@@ -29,7 +29,7 @@ async function verifyUserAccess(userId: string, businessId: string): Promise<boo
     .select('id')
     .eq('business_id', businessId)
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (membership) {
     return true;
@@ -40,7 +40,7 @@ async function verifyUserAccess(userId: string, businessId: string): Promise<boo
     .from('system_roles')
     .select('role')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   return role?.role === 'super_admin';
 }

@@ -20,6 +20,26 @@ export async function GET(request: Request) {
   }
 
   try {
+    // Verify the user has access to this business
+    const { data: businessAccess } = await supabase
+      .from('business_users')
+      .select('business_id')
+      .eq('user_id', user.id)
+      .eq('business_id', businessId)
+      .maybeSingle()
+
+    // Also check if user is the business owner or assigned coach
+    const { data: businessOwnerOrCoach } = await supabase
+      .from('businesses')
+      .select('id')
+      .eq('id', businessId)
+      .or(`owner_id.eq.${user.id},assigned_coach_id.eq.${user.id}`)
+      .maybeSingle()
+
+    if (!businessAccess && !businessOwnerOrCoach) {
+      return NextResponse.json({ goals: null, error: 'Access denied' }, { status: 403 })
+    }
+
     // business_financial_goals uses business_profiles.id as its business_id,
     // but the wizard passes businesses.id. Look up the profile ID first.
     const { data: profile } = await supabase

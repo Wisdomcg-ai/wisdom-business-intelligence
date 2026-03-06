@@ -26,7 +26,7 @@ async function getAuthenticatedUser() {
 export async function GET(request: NextRequest) {
   try {
     // SECURITY: Verify user is authenticated
-    const { user, error: authError } = await getAuthenticatedUser()
+    const { user, error: authError, supabase } = await getAuthenticatedUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -36,6 +36,45 @@ export async function GET(request: NextRequest) {
 
     if (!forecastId) {
       return NextResponse.json({ error: 'forecast_id is required' }, { status: 400 })
+    }
+
+    // Verify user owns or has access to this forecast
+    const { data: forecast } = await supabaseAdmin
+      .from('financial_forecasts')
+      .select('business_id')
+      .eq('id', forecastId)
+      .maybeSingle()
+
+    if (forecast) {
+      const { data: bizAccess } = await supabase
+        .from('businesses')
+        .select('id')
+        .or(`id.eq.${forecast.business_id},owner_id.eq.${user.id},assigned_coach_id.eq.${user.id}`)
+        .limit(1)
+        .maybeSingle()
+
+      // Also check via business_profiles
+      let hasAccess = !!bizAccess
+      if (!hasAccess) {
+        const { data: profileBiz } = await supabaseAdmin
+          .from('business_profiles')
+          .select('business_id')
+          .eq('id', forecast.business_id)
+          .maybeSingle()
+        if (profileBiz) {
+          const { data: bizAccess2 } = await supabase
+            .from('businesses')
+            .select('id')
+            .eq('id', profileBiz.business_id)
+            .or(`owner_id.eq.${user.id},assigned_coach_id.eq.${user.id}`)
+            .maybeSingle()
+          hasAccess = !!bizAccess2
+        }
+      }
+
+      if (!hasAccess) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
     }
 
     // Fetch scenarios (use admin client since we verified auth above)
@@ -113,7 +152,7 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Error creating scenario:', error)
       return NextResponse.json(
-        { error: error.message || 'Failed to create scenario' },
+        { error: 'Failed to create scenario' },
         { status: 500 }
       )
     }
@@ -163,7 +202,7 @@ export async function PATCH(request: NextRequest) {
     if (error) {
       console.error('Error updating scenario:', error)
       return NextResponse.json(
-        { error: error.message || 'Failed to update scenario' },
+        { error: 'Failed to update scenario' },
         { status: 500 }
       )
     }
@@ -222,7 +261,7 @@ export async function DELETE(request: NextRequest) {
     if (error) {
       console.error('Error deleting scenario:', error)
       return NextResponse.json(
-        { error: error.message || 'Failed to delete scenario' },
+        { error: 'Failed to delete scenario' },
         { status: 500 }
       )
     }

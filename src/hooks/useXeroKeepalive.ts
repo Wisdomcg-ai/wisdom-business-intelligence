@@ -31,14 +31,22 @@ export function useXeroKeepalive(
   const { onStatusChange, showToasts = true } = options;
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastStatusRef = useRef<XeroConnectionStatus | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [status, setStatus] = useState<XeroConnectionStatus | null>(null);
   const failureCountRef = useRef(0);
 
   const refreshTokens = useCallback(async () => {
     if (!businessId) return;
 
+    // Abort any in-flight request
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
-      const response = await fetch(`/api/Xero/status?business_id=${businessId}`);
+      const response = await fetch(`/api/Xero/status?business_id=${businessId}`, {
+        signal: controller.signal
+      });
       const data = await response.json();
 
       const newStatus: XeroConnectionStatus = {
@@ -108,6 +116,7 @@ export function useXeroKeepalive(
       }
 
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       failureCountRef.current++;
       console.error('[Xero Keepalive] Network error (attempt', failureCountRef.current, '):', error);
 
@@ -146,6 +155,7 @@ export function useXeroKeepalive(
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
+      abortControllerRef.current?.abort();
     };
   }, [businessId, enabled, refreshTokens]);
 

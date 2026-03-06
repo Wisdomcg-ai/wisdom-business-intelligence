@@ -5,6 +5,7 @@ import { X, Settings } from 'lucide-react'
 import { toast } from 'sonner'
 import type { MonthlyReportSettings, ReportSections, ForecastOption, AccountMapping } from '../types'
 import { createClient } from '@/lib/supabase/client'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 
 interface ReportSettingsPanelProps {
   isOpen: boolean
@@ -94,12 +95,20 @@ export default function ReportSettingsPanel({
   useEffect(() => {
     async function loadData() {
       const supabase = createClient()
-      const [forecastRes, mappingRes] = await Promise.all([
-        supabase
+      // Resolve business_profiles.id from businesses.id
+      const idsToTry = await resolveBusinessIds(supabase, businessId)
+      let forecastRes: any = { data: [] }
+      for (const id of idsToTry) {
+        const res = await supabase
           .from('financial_forecasts')
           .select('id, name, fiscal_year, forecast_type, is_active')
-          .eq('business_id', businessId)
-          .order('created_at', { ascending: false }),
+          .eq('business_id', id)
+          .order('created_at', { ascending: false })
+        if (res.data && res.data.length > 0) { forecastRes = res; break }
+        forecastRes = res // keep last result
+      }
+      const [, mappingRes] = await Promise.all([
+        Promise.resolve(forecastRes),
         supabase
           .from('account_mappings')
           .select('xero_account_code, xero_account_name, report_category, forecast_pl_line_name')

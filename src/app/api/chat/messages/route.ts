@@ -26,7 +26,7 @@ export async function GET(request: Request) {
       .from('businesses')
       .select('assigned_coach_id, owner_id')
       .eq('id', businessId)
-      .single()
+      .maybeSingle()
 
     if (!business || (business.assigned_coach_id !== user.id && business.owner_id !== user.id)) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
       .from('businesses')
       .select('assigned_coach_id, owner_id')
       .eq('id', business_id)
-      .single()
+      .maybeSingle()
 
     if (!business || (business.assigned_coach_id !== user.id && business.owner_id !== user.id)) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })

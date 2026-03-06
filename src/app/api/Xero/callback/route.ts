@@ -281,26 +281,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Step 5: Save to database using atomic delete + insert
+    // Step 5: Save to database using upsert (avoids delete-then-insert race condition)
     console.log('[Xero Callback] Saving connection for business:', businessId, 'tenant:', tenant.tenantId);
 
-    // Delete ALL existing connections for this business (clean slate)
-    const { error: deleteError } = await supabase
+    // First delete any OTHER connections for this business (different tenant)
+    await supabase
       .from('xero_connections')
       .delete()
-      .eq('business_id', businessId);
+      .eq('business_id', businessId)
+      .neq('tenant_id', tenant.tenantId);
 
-    if (deleteError) {
-      console.error('[Xero Callback] Delete failed:', deleteError);
-      return NextResponse.redirect(
-        new URL('/integrations?error=database_error', request.url)
-      );
-    }
-
-    // Insert fresh connection
-    const { data: insertedData, error: insertError } = await supabase
+    // Upsert the connection (insert or update based on business_id)
+    const { data: insertedData, error: upsertError } = await supabase
       .from('xero_connections')
-      .insert({
+      .upsert({
         business_id: businessId,
         user_id: userId,
         tenant_id: tenant.tenantId,
@@ -309,13 +303,15 @@ export async function GET(request: NextRequest) {
         refresh_token: encrypt(tokens.refresh_token),
         expires_at: expiresAt.toISOString(),
         is_active: true
+      }, {
+        onConflict: 'business_id'
       })
       .select();
 
-    console.log('[Xero Callback] Insert result:', { data: insertedData, error: insertError });
+    console.log('[Xero Callback] Upsert result:', { data: insertedData, error: upsertError });
 
-    if (insertError || !insertedData || insertedData.length === 0) {
-      console.error('[Xero Callback] Insert failed:', insertError);
+    if (upsertError || !insertedData || insertedData.length === 0) {
+      console.error('[Xero Callback] Upsert failed:', upsertError);
       return NextResponse.redirect(
         new URL('/integrations?error=database_error', request.url)
       );

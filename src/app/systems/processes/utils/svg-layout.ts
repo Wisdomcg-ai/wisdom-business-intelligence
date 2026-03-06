@@ -8,9 +8,9 @@ export const SVG = {
   CARD_H: 56,              // taller cards for 3-line names
   DECISION_H: 74,          // diamond height
   ANNOTATION_H: 60,        // rich annotation space below card
-  GAP_X: 50,               // wide gap between columns for connector routing
+  GAP_X: 90,               // wide gap between columns for connector routing + stagger room
   LANE_H: 190,             // taller lanes: card(56) + annotation(60) + padding(74)
-  LANE_GAP: 6,             // small gap between lanes
+  LANE_GAP: 16,            // routing corridor between lanes
   PAD: 24,                 // outer padding
   CONNECTOR_STROKE: 2,
   ARROW_SIZE: 8,
@@ -53,6 +53,7 @@ export interface SVGLayout {
   columnCount: number
   totalW: number
   totalH: number
+  stepLaneMap: Map<string, string>
 }
 
 // Phase header: single dark charcoal style
@@ -121,9 +122,16 @@ export function getAltBranchStepIds(
         }
       }
 
-      // Find the target whose chain has the most steps (longest branch)
-      let longestIdx = 0
-      let longestLen = 0
+      // Determine which branch to push down (alt-branch position).
+      // Priority: if flows have explicit colors, push the "red" (No) branch down.
+      // Otherwise, push the SHORTER chain down (main path stays at normal Y).
+
+      // Check if any target has an explicit red color
+      const redTarget = sameLaneTargets.find((t) => t.color === 'red')
+      const greenTarget = sameLaneTargets.find((t) => t.color === 'green')
+
+      // Compute chain lengths for each target
+      const chainLengths: { idx: number; len: number }[] = []
       for (let i = 0; i < sameLaneTargets.length; i++) {
         const startCol = sameLaneTargets[i].col
         const endCol = i < sameLaneTargets.length - 1
@@ -132,24 +140,44 @@ export function getAltBranchStepIds(
         const chainLen = laneSteps.filter(
           (s) => s.order_num >= startCol && (endCol === Infinity || s.order_num < endCol) && s.id !== decision.id
         ).length
-        if (chainLen > longestLen) {
-          longestLen = chainLen
-          longestIdx = i
-        }
+        chainLengths.push({ idx: i, len: chainLen })
       }
 
-      if (longestLen <= 1) {
+      const maxChainLen = Math.max(...chainLengths.map((c) => c.len))
+
+      if (maxChainLen <= 1) {
         // All chains are single steps — simple branching: non-main targets drop down
         for (const t of sameLaneTargets) {
           if (t.col < maxTargetCol) {
             altBranchIds.add(t.stepId)
           }
         }
+      } else if (redTarget) {
+        // Color-based: push the red (No) branch chain to alt-branch position
+        const redIdx = sameLaneTargets.findIndex((t) => t.stepId === redTarget.stepId)
+        const startCol = sameLaneTargets[redIdx].col
+        const endCol = redIdx < sameLaneTargets.length - 1
+          ? sameLaneTargets[redIdx + 1].col
+          : Infinity
+        for (const step of laneSteps) {
+          if (step.id === decision.id) continue
+          if (step.order_num >= startCol && (endCol === Infinity || step.order_num < endCol)) {
+            altBranchIds.add(step.id)
+          }
+        }
       } else {
-        // Push the longest chain to lower Y
-        const startCol = sameLaneTargets[longestIdx].col
-        const endCol = longestIdx < sameLaneTargets.length - 1
-          ? sameLaneTargets[longestIdx + 1].col
+        // No colors: push the SHORTER chain down (keep main/longer path at normal Y)
+        let shortestIdx = 0
+        let shortestLen = Infinity
+        for (const cl of chainLengths) {
+          if (cl.len < shortestLen) {
+            shortestLen = cl.len
+            shortestIdx = cl.idx
+          }
+        }
+        const startCol = sameLaneTargets[shortestIdx].col
+        const endCol = shortestIdx < sameLaneTargets.length - 1
+          ? sameLaneTargets[shortestIdx + 1].col
           : Infinity
         for (const step of laneSteps) {
           if (step.id === decision.id) continue
@@ -280,6 +308,7 @@ export function calculateSVGLayout(
   // Calculate step positions with dynamic lane heights
   const stepPositions = new Map<string, StepPosition>()
   const lanePositions: LanePosition[] = []
+  const stepLaneMap = new Map<string, string>()
 
   let cumulativeY = PAD + titleOffsetY + phaseOffsetY
 
@@ -304,6 +333,7 @@ export function calculateSVGLayout(
       .sort((a, b) => a.order_num - b.order_num)
 
     laneSteps.forEach((step) => {
+      stepLaneMap.set(step.id, lane.id)
       const compactCol = columnMap.get(step.order_num) ?? 0
       const isDecision = step.step_type === 'decision'
       const cardH = isDecision ? SVG.DECISION_H : CARD_H
@@ -371,5 +401,6 @@ export function calculateSVGLayout(
     columnCount,
     totalW: Math.max(totalW, 400),
     totalH: Math.max(totalH, 200),
+    stepLaneMap,
   }
 }

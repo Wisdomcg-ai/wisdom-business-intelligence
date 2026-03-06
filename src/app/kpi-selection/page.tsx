@@ -67,14 +67,19 @@ export default function KPISelectionPage() {
       // Fallback to localStorage
       const storedProfile = localStorage.getItem('businessProfile')
       if (storedProfile) {
-        const profile = JSON.parse(storedProfile)
-        setBusinessProfile({
-          id: profile.id || 'temp-id-123',
-          business_name: profile.business_name || 'Your Business',
-          industry: profile.industry || 'building_construction',
-          revenueStage: getRevenueStage(profile.annual_revenue),
-          currentRevenue: profile.annual_revenue || 500000
-        })
+        try {
+          const profile = JSON.parse(storedProfile)
+          setBusinessProfile({
+            id: profile.id || 'temp-id-123',
+            business_name: profile.business_name || 'Your Business',
+            industry: profile.industry || 'building_construction',
+            revenueStage: getRevenueStage(profile.annual_revenue),
+            currentRevenue: profile.annual_revenue || 500000
+          })
+        } catch {
+          console.error('Corrupted businessProfile in localStorage')
+          localStorage.removeItem('businessProfile')
+        }
       }
     } catch (error) {
       console.error('Error loading business profile:', error)
@@ -114,7 +119,12 @@ export default function KPISelectionPage() {
       // Fallback to localStorage
       const storedKPIs = localStorage.getItem('selectedKPIs')
       if (storedKPIs) {
-        setSelectedKPIs(JSON.parse(storedKPIs))
+        try {
+          setSelectedKPIs(JSON.parse(storedKPIs))
+        } catch {
+          console.error('Corrupted selectedKPIs in localStorage')
+          localStorage.removeItem('selectedKPIs')
+        }
       }
     } catch (error) {
       console.error('Error loading KPIs:', error)

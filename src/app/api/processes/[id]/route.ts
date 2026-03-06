@@ -1,6 +1,56 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 
+// Helper: verify the authenticated user has access to a process
+async function verifyProcessAccess(
+  supabase: Awaited<ReturnType<typeof createRouteHandlerClient>>,
+  processId: string,
+  userId: string
+) {
+  // Fetch the process to check ownership
+  const { data: process, error } = await supabase
+    .from('process_diagrams')
+    .select('id, user_id')
+    .eq('id', processId)
+    .single()
+
+  if (error || !process) {
+    return { allowed: false, status: 404, message: 'Process not found' }
+  }
+
+  // Owner always has access
+  if (process.user_id === userId) {
+    return { allowed: true }
+  }
+
+  // Check if requesting user is a team member of a business owned by the process creator
+  const { data: accessCheck } = await supabase
+    .from('business_users')
+    .select('business_id, businesses!inner(owner_id)')
+    .eq('user_id', userId)
+
+  const hasTeamAccess = accessCheck?.some(
+    (bu: any) => (bu.businesses as any)?.owner_id === process.user_id
+  )
+
+  if (hasTeamAccess) {
+    return { allowed: true }
+  }
+
+  // Check if requesting user is a coach assigned to a business owned by the process creator
+  const { data: coachCheck } = await supabase
+    .from('businesses')
+    .select('id')
+    .eq('assigned_coach_id', userId)
+    .eq('owner_id', process.user_id)
+
+  if (coachCheck && coachCheck.length > 0) {
+    return { allowed: true }
+  }
+
+  return { allowed: false, status: 403, message: 'Access denied' }
+}
+
 // GET /api/processes/[id] — get a single process
 export async function GET(
   request: Request,
@@ -15,6 +65,12 @@ export async function GET(
     }
 
     const { id } = params
+
+    // Verify access before returning data
+    const access = await verifyProcessAccess(supabase, id, user.id)
+    if (!access.allowed) {
+      return NextResponse.json({ error: access.message }, { status: access.status })
+    }
 
     const { data, error } = await supabase
       .from('process_diagrams')
@@ -48,6 +104,13 @@ export async function PUT(
     }
 
     const { id } = params
+
+    // Verify access before allowing update
+    const access = await verifyProcessAccess(supabase, id, user.id)
+    if (!access.allowed) {
+      return NextResponse.json({ error: access.message }, { status: access.status })
+    }
+
     const body = await request.json()
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
@@ -93,6 +156,12 @@ export async function DELETE(
     }
 
     const { id } = params
+
+    // Verify access before allowing delete
+    const access = await verifyProcessAccess(supabase, id, user.id)
+    if (!access.allowed) {
+      return NextResponse.json({ error: access.message }, { status: access.status })
+    }
 
     const { error } = await supabase
       .from('process_diagrams')

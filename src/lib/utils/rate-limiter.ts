@@ -48,6 +48,16 @@ export const RATE_LIMIT_CONFIGS = {
   ai: {
     windowMs: 60 * 60 * 1000,
     maxRequests: 30
+  },
+  // Email sending (10 per hour per user)
+  email: {
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 10
+  },
+  // Report generation (20 per hour per user)
+  report: {
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 20
   }
 } as const
 

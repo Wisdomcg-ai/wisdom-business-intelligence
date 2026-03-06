@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,15 +29,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'business_id required' }, { status: 400 })
     }
 
-    // 1. Find active forecast
-    const { data: forecast } = await supabaseAdmin
-      .from('financial_forecasts')
-      .select('id, name, fiscal_year, is_active, is_completed, created_at, updated_at')
-      .eq('business_id', business_id)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    // 1. Find active forecast (resolve business_profiles.id from businesses.id)
+    const idsToTry = await resolveBusinessIds(supabaseAdmin, business_id)
+    let forecast: any = null
+    for (const id of idsToTry) {
+      const { data: fc } = await supabaseAdmin
+        .from('financial_forecasts')
+        .select('id, name, fiscal_year, is_active, is_completed, created_at, updated_at')
+        .eq('business_id', id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (fc) { forecast = fc; break }
+    }
 
     // 2. Get forecast_pl_lines
     let forecastLines: any[] = []

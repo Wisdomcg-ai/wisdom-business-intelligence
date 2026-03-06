@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { buildFuzzyLookup, isAccountMatch } from '@/lib/utils/account-matching'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 
 export const dynamic = 'force-dynamic'
 
@@ -86,16 +87,20 @@ export async function POST(request: NextRequest) {
     // ===== 1. Resolve forecast ID =====
     let forecastId = budget_forecast_id
     if (!forecastId) {
-      const { data: forecast } = await supabase
-        .from('financial_forecasts')
-        .select('id')
-        .eq('business_id', business_id)
-        .eq('fiscal_year', fiscal_year)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      forecastId = forecast?.id
+      // Resolve business_profiles.id from businesses.id
+      const idsToTry = await resolveBusinessIds(supabase, business_id)
+      for (const id of idsToTry) {
+        const { data: forecast } = await supabase
+          .from('financial_forecasts')
+          .select('id')
+          .eq('business_id', id)
+          .eq('fiscal_year', fiscal_year)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (forecast) { forecastId = forecast.id; break }
+      }
     }
 
     // ===== 2. Fetch DB data in parallel =====

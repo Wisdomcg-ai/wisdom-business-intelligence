@@ -1,8 +1,7 @@
 import jsPDF from 'jspdf'
 import type { ProcessSnapshot, ProcessStepData, DecisionOption } from '@/types/process-builder'
 import { calculateSVGLayout, SVG, type LayoutOverrides } from './svg-layout'
-import { calculateConnectorPath } from './connector-math'
-import type { Rect } from './connector-math'
+import { calculateAllConnectorPaths } from './connector-math'
 
 // PDF Generator v8 — white cards, teal connectors, fit-to-page scaling
 // ─── Color palette ──────────────────────────────────────────────────
@@ -180,19 +179,18 @@ export function generateProcessPDF(
   })
 
   // ─── Connectors (drawn behind cards) ──────────────────────────
+  const allPaths = calculateAllConnectorPaths(
+    snapshot.flows,
+    snapshot.steps,
+    layout.stepPositions,
+    layout.lanePositions,
+    layout.stepLaneMap
+  )
+
   snapshot.flows.forEach((flow) => {
-    const fromPos = layout.stepPositions.get(flow.from_step_id)
-    const toPos = layout.stepPositions.get(flow.to_step_id)
-    if (!fromPos || !toPos) return
+    const connector = allPaths.get(flow.id)
+    if (!connector) return
 
-    const fromStep = snapshot.steps.find((s) => s.id === flow.from_step_id)
-    const isDecisionNo = fromStep?.step_type === 'decision' &&
-      !!flow.condition_color && flow.condition_color !== 'green'
-
-    const fromRect: Rect = { x: fromPos.x, y: fromPos.y, w: fromPos.w, h: fromPos.h }
-    const toRect: Rect = { x: toPos.x, y: toPos.y, w: toPos.w, h: toPos.h }
-
-    const connector = calculateConnectorPath(fromRect, toRect, flow.condition_label, flow.condition_color, isDecisionNo)
     const color: [number, number, number] = (flow.condition_color && FLOW_COLOR_MAP[flow.condition_color]) || [13, 148, 136]  // teal #0D9488
 
     doc.setDrawColor(...color)

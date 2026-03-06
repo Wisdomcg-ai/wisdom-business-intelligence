@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,17 +38,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Business not found' }, { status: 404 });
     }
 
-    // Get the latest forecast
-    const { data: forecast, error: forecastError } = await supabase
-      .from('financial_forecasts')
-      .select('id, fiscal_year')
-      .eq('business_id', businessId)
-      .order('fiscal_year', { ascending: false })
-      .limit(1)
-      .single();
+    // Get the latest forecast (resolve business_profiles.id from businesses.id)
+    const idsToTry = await resolveBusinessIds(supabase, businessId);
+    let forecast: any = null;
+    for (const id of idsToTry) {
+      const { data: fc } = await supabase
+        .from('financial_forecasts')
+        .select('id, fiscal_year')
+        .eq('business_id', id)
+        .order('fiscal_year', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (fc) { forecast = fc; break; }
+    }
 
-    if (forecastError || !forecast) {
-      console.log('[Xero accounts] No forecast found:', forecastError?.message);
+    if (!forecast) {
+      console.log('[Xero accounts] No forecast found');
       // No forecast data yet - return empty list
       return NextResponse.json({ accounts: [] });
     }

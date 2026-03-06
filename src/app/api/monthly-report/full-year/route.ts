@@ -102,11 +102,13 @@ export async function POST(request: NextRequest) {
     const fyEnd = `${fiscal_year}-06`
     const allFYMonths = getMonthRange(fyStart, fyEnd)
 
-    // Determine the last actual month (current month or earlier)
+    // Determine the last actual month (previous month — current month hasn't ended yet)
     const now = new Date()
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    // Last actual month is the lesser of current month and FY end
-    const lastActualMonth = currentMonth <= fyEnd ? currentMonth : fyEnd
+    const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth() // getMonth() is 0-indexed
+    const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+    const previousMonth = `${prevYear}-${String(prevMonth).padStart(2, '0')}`
+    // Last actual month is the lesser of previous month and FY end
+    const lastActualMonth = previousMonth <= fyEnd ? previousMonth : fyEnd
 
     // 1. Load settings to determine budget forecast
     const { data: settingsRow } = await supabase
@@ -127,6 +129,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Load budget forecast
+    // financial_forecasts.business_id references business_profiles.id, not businesses.id
     let budgetForecast: any = null
     let budgetPLLines: any[] = []
 
@@ -138,15 +141,29 @@ export async function POST(request: NextRequest) {
         .single()
       budgetForecast = fc
     } else {
-      const { data: fc } = await supabase
-        .from('financial_forecasts')
-        .select('id, name')
+      // Resolve business_profiles.id from businesses.id
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('id')
         .eq('business_id', business_id)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
         .maybeSingle()
-      budgetForecast = fc
+
+      const idsToTry = profile?.id ? [profile.id, business_id] : [business_id]
+
+      for (const id of idsToTry) {
+        const { data: fc } = await supabase
+          .from('financial_forecasts')
+          .select('id, name')
+          .eq('business_id', id)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (fc) {
+          budgetForecast = fc
+          break
+        }
+      }
     }
 
     if (budgetForecast) {

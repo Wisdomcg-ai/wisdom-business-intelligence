@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Check, AlertCircle, Wand2, CheckCircle, Link2, Unlink } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import type { AccountMapping, ReportCategory, ForecastPLLine } from '../types'
 import UnmappedAccountsAlert from './UnmappedAccountsAlert'
 
@@ -44,15 +45,20 @@ export default function AccountMappingEditor({
   useEffect(() => {
     async function loadForecastLines() {
       const supabase = createClient()
-      // Get the active forecast
-      const { data: forecast } = await supabase
-        .from('financial_forecasts')
-        .select('id')
-        .eq('business_id', businessId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      // Get the active forecast (resolve business_profiles.id from businesses.id)
+      const idsToTry = await resolveBusinessIds(supabase, businessId)
+      let forecast: any = null
+      for (const id of idsToTry) {
+        const { data: fc } = await supabase
+          .from('financial_forecasts')
+          .select('id')
+          .eq('business_id', id)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (fc) { forecast = fc; break }
+      }
 
       if (forecast) {
         const { data: lines } = await supabase

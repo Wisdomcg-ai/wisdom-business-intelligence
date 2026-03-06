@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
+import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 
 export const dynamic = 'force-dynamic'
 
@@ -108,6 +110,13 @@ function getPriorYearMonth(monthKey: string): string {
  */
 export async function POST(request: NextRequest) {
   try {
+    // Auth check
+    const authSupabase = await createRouteHandlerClient()
+    const { data: { user }, error: authError } = await authSupabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await request.json()
     const { business_id, report_month, fiscal_year, force_draft } = body
 
@@ -116,6 +125,29 @@ export async function POST(request: NextRequest) {
         { error: 'business_id, report_month, and fiscal_year are required' },
         { status: 400 }
       )
+    }
+
+    // Rate limit: 20 reports per hour per user
+    const rateLimit = checkRateLimit(
+      createRateLimitKey('report-generate', user.id),
+      RATE_LIMIT_CONFIGS.report
+    )
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Try again later.' },
+        { status: 429 }
+      )
+    }
+
+    // Verify user owns or coaches this business
+    const { data: bizAccess } = await authSupabase
+      .from('businesses')
+      .select('id')
+      .eq('id', business_id)
+      .or(`owner_id.eq.${user.id},assigned_coach_id.eq.${user.id}`)
+      .maybeSingle()
+    if (!bizAccess) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // 1. Load settings
@@ -159,6 +191,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Determine budget forecast
+    // financial_forecasts.business_id references business_profiles.id, not businesses.id
+    // So we need to resolve the profile ID first
     let budgetForecast: any = null
     let budgetPLLines: any[] = []
     let budgetForecastName: string | undefined
@@ -171,15 +205,30 @@ export async function POST(request: NextRequest) {
         .single()
       budgetForecast = fc
     } else {
-      const { data: fc } = await supabase
-        .from('financial_forecasts')
-        .select('id, name')
+      // Look up the business_profiles.id for this businesses.id
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('id')
         .eq('business_id', business_id)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
         .maybeSingle()
-      budgetForecast = fc
+
+      // Try both profile ID and direct business_id to handle both FK patterns
+      const idsToTry = profile?.id ? [profile.id, business_id] : [business_id]
+
+      for (const id of idsToTry) {
+        const { data: fc } = await supabase
+          .from('financial_forecasts')
+          .select('id, name')
+          .eq('business_id', id)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (fc) {
+          budgetForecast = fc
+          break
+        }
+      }
     }
 
     const hasBudget = !!budgetForecast

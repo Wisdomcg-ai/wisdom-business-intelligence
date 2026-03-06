@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { extractVendorName, createVendorKey } from '@/lib/utils/vendor-normalization'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 
 export const dynamic = 'force-dynamic'
 
@@ -265,15 +266,19 @@ export async function POST(request: NextRequest) {
       let forecastId: string | null = settingsRow?.budget_forecast_id || null
 
       if (!forecastId) {
-        const { data: fc } = await supabase
-          .from('financial_forecasts')
-          .select('id')
-          .eq('business_id', business_id)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        forecastId = fc?.id || null
+        // Resolve business_profiles.id from businesses.id
+        const idsToTry = await resolveBusinessIds(supabase, business_id)
+        for (const id of idsToTry) {
+          const { data: fc } = await supabase
+            .from('financial_forecasts')
+            .select('id')
+            .eq('business_id', id)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          if (fc) { forecastId = fc.id; break }
+        }
       }
 
       if (forecastId) {

@@ -12,7 +12,32 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('user_id') || user.id
+    const requestedUserId = searchParams.get('user_id')
+    const userId = requestedUserId || user.id
+
+    // If requesting another user's processes, verify access
+    if (requestedUserId && requestedUserId !== user.id) {
+      // Check if the requesting user is a team member or coach of a business owned by the target user
+      const { data: accessCheck } = await supabase
+        .from('business_users')
+        .select('business_id, businesses!inner(owner_id)')
+        .eq('user_id', user.id)
+
+      const { data: coachCheck } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('assigned_coach_id', user.id)
+        .eq('owner_id', requestedUserId)
+
+      const hasTeamAccess = accessCheck?.some(
+        (bu: any) => (bu.businesses as any)?.owner_id === requestedUserId
+      )
+      const hasCoachAccess = coachCheck && coachCheck.length > 0
+
+      if (!hasTeamAccess && !hasCoachAccess) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+    }
 
     const { data, error } = await supabase
       .from('process_diagrams')
@@ -50,6 +75,29 @@ export async function POST(request: Request) {
     }
 
     const targetUserId = user_id || user.id
+
+    // If creating for another user, verify access
+    if (user_id && user_id !== user.id) {
+      const { data: accessCheck } = await supabase
+        .from('business_users')
+        .select('business_id, businesses!inner(owner_id)')
+        .eq('user_id', user.id)
+
+      const { data: coachCheck } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('assigned_coach_id', user.id)
+        .eq('owner_id', user_id)
+
+      const hasTeamAccess = accessCheck?.some(
+        (bu: any) => (bu.businesses as any)?.owner_id === user_id
+      )
+      const hasCoachAccess = coachCheck && coachCheck.length > 0
+
+      if (!hasTeamAccess && !hasCoachAccess) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+    }
 
     const { data, error } = await supabase
       .from('process_diagrams')

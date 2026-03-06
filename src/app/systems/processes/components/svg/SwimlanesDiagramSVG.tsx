@@ -126,6 +126,8 @@ export default function SwimlanesDiagramSVG({
         flows={snapshot.flows}
         steps={snapshot.steps}
         stepPositions={layout.stepPositions}
+        lanePositions={layout.lanePositions}
+        stepLaneMap={layout.stepLaneMap}
         selectedFlowId={selectedFlowId}
         onFlowClick={onFlowClick}
         onFlowDelete={onFlowDelete}

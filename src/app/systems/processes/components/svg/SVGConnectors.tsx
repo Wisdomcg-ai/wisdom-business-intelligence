@@ -2,15 +2,16 @@
 
 import { useMemo } from 'react'
 import type { ProcessFlowData, ProcessStepData, DecisionOption } from '@/types/process-builder'
-import type { StepPosition } from '../../utils/svg-layout'
+import type { StepPosition, LanePosition } from '../../utils/svg-layout'
 import { SVG } from '../../utils/svg-layout'
-import { calculateConnectorPath, pointsToSVGPath, assignDecisionExitSides } from '../../utils/connector-math'
-import type { Rect, ExitSide } from '../../utils/connector-math'
+import { calculateAllConnectorPaths, pointsToSVGPath } from '../../utils/connector-math'
 
 interface SVGConnectorsProps {
   flows: ProcessFlowData[]
   steps: ProcessStepData[]
   stepPositions: Map<string, StepPosition>
+  lanePositions: LanePosition[]
+  stepLaneMap: Map<string, string>
   selectedFlowId?: string | null
   onFlowClick?: (flowId: string) => void
   onFlowDelete?: (flowId: string) => void
@@ -39,6 +40,8 @@ export default function SVGConnectors({
   flows,
   steps,
   stepPositions,
+  lanePositions,
+  stepLaneMap,
   selectedFlowId,
   onFlowClick,
   onFlowDelete,
@@ -95,46 +98,16 @@ export default function SVGConnectors({
     })
   }, [flows, steps])
 
-  // Pre-compute position-based exit sides for all decision steps
-  const decisionExitMap = useMemo(() => {
-    const map = new Map<string, ExitSide>()
-    // Group decision flows by their source decision step
-    const decisionStepIds = new Set(
-      steps.filter((s) => s.step_type === 'decision').map((s) => s.id)
+  // Batch-compute all connector paths with stagger deconfliction
+  const allPaths = useMemo(() => {
+    return calculateAllConnectorPaths(
+      repairedFlows,
+      steps,
+      stepPositions,
+      lanePositions,
+      stepLaneMap
     )
-    const flowsByDecision = new Map<string, { flowId: string; toRect: Rect }[]>()
-
-    for (const flow of repairedFlows) {
-      if (!decisionStepIds.has(flow.from_step_id)) continue
-      // Skip auto-connected sequential flows from decisions
-      if (flow.id.startsWith('auto-') && flow.flow_type === 'sequential' && !flow.condition_label) continue
-
-      const fromPos = stepPositions.get(flow.from_step_id)
-      const toPos = stepPositions.get(flow.to_step_id)
-      if (!fromPos || !toPos) continue
-
-      if (!flowsByDecision.has(flow.from_step_id)) {
-        flowsByDecision.set(flow.from_step_id, [])
-      }
-      flowsByDecision.get(flow.from_step_id)!.push({
-        flowId: flow.id,
-        toRect: { x: toPos.x, y: toPos.y, w: toPos.w, h: toPos.h },
-      })
-    }
-
-    // For each decision, assign exit sides based on target positions
-    for (const [stepId, targets] of flowsByDecision) {
-      const fromPos = stepPositions.get(stepId)
-      if (!fromPos) continue
-      const fromRect: Rect = { x: fromPos.x, y: fromPos.y, w: fromPos.w, h: fromPos.h }
-      const assignments = assignDecisionExitSides(fromRect, targets)
-      for (const [flowId, side] of assignments) {
-        map.set(flowId, side)
-      }
-    }
-
-    return map
-  }, [repairedFlows, steps, stepPositions])
+  }, [repairedFlows, steps, stepPositions, lanePositions, stepLaneMap])
 
   return (
     <g>
@@ -209,30 +182,9 @@ export default function SVGConnectors({
         </marker>
       </defs>
 
-      {/* Pre-compute position-based exit sides for each decision step */}
       {repairedFlows.map((flow) => {
-        const fromPos = stepPositions.get(flow.from_step_id)
-        const toPos = stepPositions.get(flow.to_step_id)
-        if (!fromPos || !toPos) return null
-
-        const fromStep = steps.find((s) => s.id === flow.from_step_id)
-        const fromRect: Rect = { x: fromPos.x, y: fromPos.y, w: fromPos.w, h: fromPos.h }
-        const toRect: Rect = { x: toPos.x, y: toPos.y, w: toPos.w, h: toPos.h }
-
-        // For decision steps, use position-based exit side (route toward target)
-        let exitSide: ExitSide | undefined
-        if (fromStep?.step_type === 'decision') {
-          exitSide = decisionExitMap.get(flow.id)
-        }
-
-        const connector = calculateConnectorPath(
-          fromRect,
-          toRect,
-          flow.condition_label,
-          flow.condition_color,
-          undefined,
-          exitSide
-        )
+        const connector = allPaths.get(flow.id)
+        if (!connector) return null
 
         const pathData = pointsToSVGPath(connector.points)
         const isFlowSelected = selectedFlowId === flow.id

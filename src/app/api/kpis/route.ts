@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
     if (upsertError) {
       console.error('Error upserting KPIs:', upsertError)
       return NextResponse.json(
-        { error: 'Failed to save KPIs', details: upsertError.message },
+        { error: 'Failed to save KPIs' },
         { status: 500 }
       )
     }

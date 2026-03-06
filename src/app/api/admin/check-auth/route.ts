@@ -21,7 +21,7 @@ export async function GET() {
       .from('system_roles')
       .select('role')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     return NextResponse.json({
       authenticated: true,
@@ -39,7 +39,7 @@ export async function GET() {
     console.error('Auth check error:', error)
     return NextResponse.json({
       error: 'Server error',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: 'Internal server error'
     }, { status: 500 })
   }
 }

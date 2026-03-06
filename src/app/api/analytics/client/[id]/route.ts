@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 
 export async function GET(
   request: Request,
@@ -59,13 +60,18 @@ export async function GET(
       .eq('business_id', businessId)
       .order('created_at', { ascending: true })
 
-    // Get forecast data if available
-    const { data: forecasts } = await supabase
-      .from('financial_forecasts')
-      .select('id, created_at, version_name, forecast_data')
-      .eq('business_id', businessId)
-      .order('created_at', { ascending: false })
-      .limit(10)
+    // Get forecast data if available (resolve business_profiles.id from businesses.id)
+    const idsToTry = await resolveBusinessIds(supabase, businessId)
+    let forecasts: any[] | null = null
+    for (const id of idsToTry) {
+      const { data: fcs } = await supabase
+        .from('financial_forecasts')
+        .select('id, created_at, version_name, forecast_data')
+        .eq('business_id', id)
+        .order('created_at', { ascending: false })
+        .limit(10)
+      if (fcs && fcs.length > 0) { forecasts = fcs; break }
+    }
 
     // Process session frequency data (by month)
     const sessionsByMonth = processSessionsByMonth(sessions || [])

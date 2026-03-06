@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
     if (userError || !user) {
       console.error('[Admin Client Create] Not authenticated:', userError)
-      return NextResponse.json({ error: 'Unauthorized', details: userError?.message }, { status: 401 })
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Check if user is super admin

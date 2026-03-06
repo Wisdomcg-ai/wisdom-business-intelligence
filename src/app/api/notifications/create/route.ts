@@ -28,6 +28,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
+    // Verify requester can notify target user (must be coach, admin, or same business)
+    if (target_user_id !== user.id) {
+      const { data: coachAccess } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('assigned_coach_id', user.id)
+        .eq('owner_id', target_user_id)
+        .limit(1)
+        .maybeSingle()
+
+      const { data: teamAccess } = await supabase
+        .from('business_users')
+        .select('business_id')
+        .eq('user_id', user.id)
+        .limit(1)
+
+      const { data: targetTeam } = await supabase
+        .from('business_users')
+        .select('business_id')
+        .eq('user_id', target_user_id)
+        .limit(1)
+
+      const sharedBusiness = teamAccess?.some(t =>
+        targetTeam?.some(tt => tt.business_id === t.business_id)
+      )
+
+      if (!coachAccess && !sharedBusiness) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+    }
+
     // Insert notification
     const { data: notification, error } = await supabase
       .from('notifications')

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 
 export const dynamic = 'force-dynamic'
 
@@ -92,14 +93,22 @@ export async function POST(request: NextRequest) {
     let matchedByCode = 0
     let matchedByName = 0
 
-    const { data: activeForecast, error: forecastError } = await supabase
-      .from('financial_forecasts')
-      .select('id')
-      .eq('business_id', business_id)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    // Resolve business_profiles.id from businesses.id
+    const idsToTry = await resolveBusinessIds(supabase, business_id)
+    let activeForecast: any = null
+    let forecastError: any = null
+    for (const id of idsToTry) {
+      const { data: fc, error: err } = await supabase
+        .from('financial_forecasts')
+        .select('id')
+        .eq('business_id', id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (fc) { activeForecast = fc; break }
+      if (err) forecastError = err
+    }
 
     if (forecastError) {
       console.error('[Auto-Map] Error fetching active forecast:', forecastError)

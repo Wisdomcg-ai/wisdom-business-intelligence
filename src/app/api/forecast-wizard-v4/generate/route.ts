@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
 
 export const dynamic = 'force-dynamic'
 
@@ -156,14 +157,66 @@ export async function POST(request: Request) {
       resultForecastId = inserted.id
     }
 
+    // Generate P&L lines from assumptions (only on final generate, not drafts)
+    let plLinesGenerated = 0
+    if (!isDraft && assumptions) {
+      try {
+        const { data: existingPLLines } = await supabase
+          .from('forecast_pl_lines')
+          .select('*')
+          .eq('forecast_id', resultForecastId)
+          .order('sort_order', { ascending: true })
+
+        const generatedLines = convertAssumptionsToPLLines({
+          assumptions,
+          forecastStartMonth: forecastData.forecast_start_month as string,
+          forecastEndMonth: forecastData.forecast_end_month as string,
+          fiscalYear,
+          forecastDuration: forecastDuration || 1,
+          existingLines: existingPLLines || [],
+        })
+
+        if (generatedLines.length > 0) {
+          const linesToUpsert = generatedLines.map((line, i) => ({
+            id: line.id || crypto.randomUUID(),
+            forecast_id: resultForecastId,
+            account_name: line.account_name,
+            account_code: line.account_code,
+            category: line.category,
+            subcategory: line.subcategory,
+            sort_order: line.sort_order ?? i,
+            actual_months: line.actual_months || {},
+            forecast_months: line.forecast_months || {},
+            is_from_xero: line.is_from_xero || false,
+            is_manual: false,
+          }))
+
+          const { error: plError } = await supabase
+            .from('forecast_pl_lines')
+            .upsert(linesToUpsert, { onConflict: 'id' })
+
+          if (plError) {
+            console.error('[wizard-v4/generate] P&L lines error:', plError)
+            // Non-fatal — forecast was saved, P&L lines just failed
+          } else {
+            plLinesGenerated = generatedLines.length
+          }
+        }
+      } catch (plErr) {
+        console.error('[wizard-v4/generate] P&L lines generation error:', plErr)
+        // Non-fatal
+      }
+    }
+
     return NextResponse.json({
       success: true,
       forecastId: resultForecastId,
+      plLinesGenerated,
     })
   } catch (error) {
     console.error('[wizard-v4/generate] Error:', error)
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : String(error) },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

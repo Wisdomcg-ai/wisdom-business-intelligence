@@ -11,7 +11,6 @@ import PageHeader from '@/components/ui/PageHeader'
 import MonthlyReportTabs from './components/MonthlyReportTabs'
 import MonthSelector from './components/MonthSelector'
 import ReconciliationGate from './components/ReconciliationGate'
-import DraftWatermark from './components/DraftWatermark'
 import BudgetVsActualDashboard from './components/BudgetVsActualDashboard'
 import AccountMappingEditor from './components/AccountMappingEditor'
 import ReportHistory from './components/ReportHistory'
@@ -512,9 +511,6 @@ export default function MonthlyReportPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Draft watermark */}
-      {report?.is_draft && <DraftWatermark />}
-
       {/* Page Header */}
       <PageHeader
         variant="banner"

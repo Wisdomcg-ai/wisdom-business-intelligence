@@ -170,14 +170,6 @@ export class MonthlyReportPDFService {
     const monthLong = this.formatMonth(report.report_month)
     const settings = report.settings
 
-    // DRAFT watermark
-    if (report.is_draft) {
-      this.doc.setFontSize(60)
-      this.doc.setTextColor(255, 200, 200)
-      this.doc.text('DRAFT', this.pageWidth / 2, this.pageHeight / 2, { align: 'center', angle: 30 })
-      this.doc.setTextColor(0, 0, 0)
-    }
-
     // Header
     this.doc.setFontSize(18)
     this.doc.setFont('helvetica', 'bold')
@@ -486,13 +478,6 @@ export class MonthlyReportPDFService {
     this.doc.setFont('helvetica', 'bold')
     this.doc.text(`Budget vs Actual Detail — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
     this.yPosition += 8
-
-    if (this.report.is_draft) {
-      this.doc.setFontSize(60)
-      this.doc.setTextColor(255, 200, 200)
-      this.doc.text('DRAFT', this.pageWidth / 2, this.pageHeight / 2, { align: 'center', angle: 30 })
-      this.doc.setTextColor(0, 0, 0)
-    }
 
     const headers: string[] = ['Account', 'Budget', 'Actual', 'Var ($)', 'Var (%)']
     const varianceCols = [3, 4] // Var ($) and Var (%)
