@@ -1,5 +1,5 @@
-import type { ProcessSnapshot, ProcessStepData, ProcessFlowData } from '@/types/process-builder'
-import { DEFAULT_SNAPSHOT } from '@/types/process-builder'
+import type { ProcessSnapshot, ProcessStepData, ProcessFlowData, PhaseDefinition } from '@/types/process-builder'
+import { DEFAULT_SNAPSHOT, PHASE_COLOR_PALETTE } from '@/types/process-builder'
 import type { BuilderState, BuilderAction } from '../types'
 
 const MAX_HISTORY = 50
@@ -85,43 +85,75 @@ function pushHistory(state: BuilderState, newSnapshot: ProcessSnapshot): Builder
 
 // ─── Auto-connect: rebuild within-lane sequential flows, preserve cross-lane ──
 
-function autoConnect(snapshot: ProcessSnapshot): ProcessFlowData[] {
-  // Keep non-sequential flows, decision flows, AND cross-lane sequential flows
-  const preservedFlows = snapshot.flows.filter((f) => {
-    if (f.flow_type === 'decision') return true
-    if (f.flow_type !== 'sequential') return true
-    // Keep flows with condition labels/colors (manually or decision-created)
-    if (f.condition_label || f.condition_color) return true
-    // Keep non-auto flows FROM decision steps — these are decision branches
-    // (AI mapper creates them as flow_type='sequential' without markers)
-    const from = snapshot.steps.find((s) => s.id === f.from_step_id)
-    if (from?.step_type === 'decision' && !f.id.startsWith('auto-')) return true
-    // Keep cross-lane sequential flows
-    const to = snapshot.steps.find((s) => s.id === f.to_step_id)
-    if (!from || !to) return false
-    return from.swimlane_id !== to.swimlane_id
-  })
+function autoConnect(snapshot: ProcessSnapshot, excludeStepId?: string): ProcessFlowData[] {
+  // Preserve ALL explicitly created flows (non-auto-generated).
+  // Only regenerate auto-generated flows (id starts with 'auto-').
+  // This ensures user-created flows from port clicks / drag-connects
+  // survive even when they're same-lane sequential without decision markers.
+  const preservedFlows = snapshot.flows.filter((f) => !f.id.startsWith('auto-'))
 
   // Repair decision flows missing condition_color — assign from option order
   const repairedFlows = repairDecisionFlowColors(preservedFlows, snapshot.steps)
 
   // Build sets to prevent auto-flow through decision branches
-  // Use repairedFlows which have corrected flow_type and condition_color
-  const noAutoFlowFrom = new Set<string>()  // decision steps — their exits are handled by decision flows
-  const noAutoFlowTo = new Set<string>()    // same-lane decision flow targets
+  const noAutoFlowFrom = new Set<string>()  // steps that shouldn't get auto-outgoing flows
+  const noAutoFlowTo = new Set<string>()    // steps that shouldn't get auto-incoming flows
   const preservedPairs = new Set<string>()  // dedup: skip if a preserved flow already connects these
 
-  for (const flow of repairedFlows) {
-    if (flow.flow_type !== 'decision' && !flow.condition_color && !flow.condition_label) continue
-    const from = snapshot.steps.find((s) => s.id === flow.from_step_id)
-    const to = snapshot.steps.find((s) => s.id === flow.to_step_id)
-    if (!from || !to) continue
-    noAutoFlowFrom.add(from.id)
-    if (from.swimlane_id === to.swimlane_id) noAutoFlowTo.add(to.id)
+  // Exclude a step from auto-connect entirely (used for port-added steps
+  // where the explicit flow hasn't been dispatched yet)
+  if (excludeStepId) {
+    noAutoFlowFrom.add(excludeStepId)
+    noAutoFlowTo.add(excludeStepId)
   }
 
   for (const flow of repairedFlows) {
     preservedPairs.add(`${flow.from_step_id}→${flow.to_step_id}`)
+
+    // Decision flow blocking: don't auto-flow from decision steps or to/from their targets.
+    // Decision targets must not auto-connect to adjacent-by-order-num steps because
+    // those adjacent steps may be on a different branch of the decision.
+    if (flow.flow_type === 'decision' || flow.condition_color || flow.condition_label) {
+      const from = snapshot.steps.find((s) => s.id === flow.from_step_id)
+      const to = snapshot.steps.find((s) => s.id === flow.to_step_id)
+      if (from && to) {
+        noAutoFlowFrom.add(from.id)
+        if (from.swimlane_id === to.swimlane_id) {
+          noAutoFlowTo.add(to.id)
+          noAutoFlowFrom.add(to.id)  // also block auto-flow FROM the target
+        }
+      }
+    }
+
+    // Block auto-flow FROM any step that already has an explicit same-lane outgoing flow.
+    // This prevents autoConnect from creating unwanted connections between
+    // decision branches that interleave by order_num.
+    const from = snapshot.steps.find((s) => s.id === flow.from_step_id)
+    const to = snapshot.steps.find((s) => s.id === flow.to_step_id)
+    if (from && to && from.swimlane_id === to.swimlane_id) {
+      noAutoFlowFrom.add(from.id)
+    }
+  }
+
+  // Propagate noAutoFlowFrom transitively through explicit same-lane flow chains.
+  // If a step is blocked from auto-outgoing, its explicit flow targets should also
+  // be blocked — they're part of an explicitly-routed branch (e.g. decision No path).
+  // Guard: max iterations = number of steps to prevent infinite loops from cyclic flows.
+  const maxIter = snapshot.steps.length
+  let iterCount = 0
+  let propagated = true
+  while (propagated && iterCount < maxIter) {
+    propagated = false
+    iterCount++
+    for (const flow of repairedFlows) {
+      if (!noAutoFlowFrom.has(flow.from_step_id)) continue
+      const from = snapshot.steps.find((s) => s.id === flow.from_step_id)
+      const to = snapshot.steps.find((s) => s.id === flow.to_step_id)
+      if (from && to && from.swimlane_id === to.swimlane_id && !noAutoFlowFrom.has(to.id)) {
+        noAutoFlowFrom.add(to.id)
+        propagated = true
+      }
+    }
   }
 
   // Rebuild within-lane sequential flows, respecting decision branches
@@ -134,7 +166,9 @@ function autoConnect(snapshot: ProcessSnapshot): ProcessFlowData[] {
     for (let i = 0; i < laneSteps.length - 1; i++) {
       const fromId = laneSteps[i].id
       const toId = laneSteps[i + 1].id
-      // Don't auto-flow FROM a decision step (decision flows handle its exits)
+      // Don't auto-connect steps at the same column (parallel branches)
+      if (laneSteps[i].order_num === laneSteps[i + 1].order_num) continue
+      // Don't auto-flow FROM a decision step or step with explicit outgoing flow
       if (noAutoFlowFrom.has(fromId)) continue
       // Don't auto-flow TO a step that is a same-lane decision flow target
       if (noAutoFlowTo.has(toId)) continue
@@ -202,6 +236,56 @@ function nextColumnInLane(steps: ProcessStepData[], swimlaneId: string): number 
   return Math.max(...laneSteps.map((s) => s.order_num)) + 1
 }
 
+// ─── Phase migration: auto-create PhaseDefinition[] from phase_name ──
+
+function migratePhaseNames(snapshot: ProcessSnapshot): { snapshot: ProcessSnapshot; migrated: boolean } {
+  // Already has phases — nothing to do
+  if (snapshot.phases && snapshot.phases.length > 0) {
+    // Ensure phases array exists on snapshot (old JSON may omit it)
+    return { snapshot, migrated: false }
+  }
+
+  // Collect unique phase_name values in order of first appearance
+  const seen = new Map<string, number>() // name → first order_num
+  for (const step of [...snapshot.steps].sort((a, b) => a.order_num - b.order_num)) {
+    if (step.phase_name && !seen.has(step.phase_name)) {
+      seen.set(step.phase_name, step.order_num)
+    }
+  }
+
+  if (seen.size === 0) {
+    return { snapshot: { ...snapshot, phases: [] }, migrated: false }
+  }
+
+  // Create PhaseDefinition for each unique name
+  const phases: PhaseDefinition[] = []
+  let order = 0
+  for (const [name] of seen) {
+    phases.push({
+      id: crypto.randomUUID(),
+      name,
+      color: PHASE_COLOR_PALETTE[order % PHASE_COLOR_PALETTE.length],
+      order: order++,
+    })
+  }
+
+  // Build name → id lookup
+  const nameToId = new Map(phases.map((p) => [p.name, p.id]))
+
+  // Set phase_id on each step
+  const steps = snapshot.steps.map((s) => {
+    if (s.phase_name && nameToId.has(s.phase_name)) {
+      return { ...s, phase_id: nameToId.get(s.phase_name) }
+    }
+    return s
+  })
+
+  return {
+    snapshot: { ...snapshot, phases, steps },
+    migrated: true,
+  }
+}
+
 // ─── Initial state factory ───────────────────────────────────────────
 
 export function createInitialState(
@@ -211,23 +295,27 @@ export function createInitialState(
   snapshot?: ProcessSnapshot
 ): BuilderState {
   const snap = snapshot || DEFAULT_SNAPSHOT
+  // Ensure phases array exists (old JSON may omit it)
+  const snapWithPhases = snap.phases ? snap : { ...snap, phases: [] }
   // Repair decision flows missing condition_color on initial load
-  const repairedFlows = repairDecisionFlowColors(snap.flows, snap.steps)
-  const repairedSnap = repairedFlows !== snap.flows
-    ? { ...snap, flows: repairedFlows }
-    : snap
-  // If flows were repaired, mark as dirty so they get saved
-  const needsSave = repairedFlows !== snap.flows
+  const repairedFlows = repairDecisionFlowColors(snapWithPhases.flows, snapWithPhases.steps)
+  const repairedSnap = repairedFlows !== snapWithPhases.flows
+    ? { ...snapWithPhases, flows: repairedFlows }
+    : snapWithPhases
+  // Migrate phase_name → first-class phases
+  const { snapshot: migratedSnap, migrated: phasesMigrated } = migratePhaseNames(repairedSnap)
+  // If flows were repaired or phases migrated, mark as dirty so they get saved
+  const needsSave = repairedFlows !== snapWithPhases.flows || phasesMigrated
   return {
     processId,
     processName: name || '',
     description: description || '',
-    snapshot: repairedSnap,
+    snapshot: migratedSnap,
     selectedStepId: null,
     detailPanelOpen: false,
     zoom: 1,
     isDirty: needsSave,
-    history: [repairedSnap],
+    history: [migratedSnap],
     historyIndex: 0,
   }
 }
@@ -359,16 +447,80 @@ export function builderReducer(
       return pushHistory(state, newSnap)
     }
 
+    // ── Phases ───────────────────────────────────────────────────────
+    case 'ADD_PHASE': {
+      const newSnap: ProcessSnapshot = {
+        ...state.snapshot,
+        phases: [...state.snapshot.phases, action.payload],
+      }
+      return pushHistory(state, newSnap)
+    }
+
+    case 'UPDATE_PHASE': {
+      const newSnap: ProcessSnapshot = {
+        ...state.snapshot,
+        phases: state.snapshot.phases.map((p) =>
+          p.id === action.payload.id ? { ...p, ...action.payload.updates } : p
+        ),
+      }
+      return pushHistory(state, newSnap)
+    }
+
+    case 'DELETE_PHASE': {
+      const newSnap: ProcessSnapshot = {
+        ...state.snapshot,
+        phases: state.snapshot.phases.filter((p) => p.id !== action.payload),
+        steps: state.snapshot.steps.map((s) =>
+          s.phase_id === action.payload
+            ? { ...s, phase_id: undefined, phase_name: undefined }
+            : s
+        ),
+      }
+      return pushHistory(state, newSnap)
+    }
+
+    case 'REORDER_PHASE': {
+      const { id, newOrder } = action.payload
+      const sorted = [...state.snapshot.phases].sort((a, b) => a.order - b.order)
+      const fromIdx = sorted.findIndex((p) => p.id === id)
+      if (fromIdx === -1) return state
+      const [moved] = sorted.splice(fromIdx, 1)
+      sorted.splice(newOrder, 0, moved)
+      const reordered = sorted.map((p, i) => ({ ...p, order: i }))
+      const newSnap: ProcessSnapshot = { ...state.snapshot, phases: reordered }
+      return pushHistory(state, newSnap)
+    }
+
     // ── Steps ───────────────────────────────────────────────────────
     case 'ADD_STEP': {
-      // Place at the next available column in the lane
-      const col = nextColumnInLane(state.snapshot.steps, action.payload.swimlane_id)
-      const step = { ...action.payload, order_num: col }
+      const { allowSameColumn, ...stepData } = action.payload
+      // If order_num > 0 is explicitly provided and no conflict, respect it
+      let col: number
+      if (stepData.order_num > 0) {
+        if (allowSameColumn) {
+          col = stepData.order_num
+        } else {
+          const conflict = state.snapshot.steps.find(
+            (s) => s.swimlane_id === stepData.swimlane_id && s.order_num === stepData.order_num
+          )
+          col = conflict ? nextColumnInLane(state.snapshot.steps, stepData.swimlane_id) : stepData.order_num
+        }
+      } else {
+        col = nextColumnInLane(state.snapshot.steps, stepData.swimlane_id)
+      }
+      const step = { ...stepData, order_num: col }
+      // Auto-assign phase_id if step has phase_name but no phase_id
+      if (step.phase_name && !step.phase_id && state.snapshot.phases.length > 0) {
+        const matchingPhase = state.snapshot.phases.find((p) => p.name === step.phase_name)
+        if (matchingPhase) step.phase_id = matchingPhase.id
+      }
       const newSnap: ProcessSnapshot = {
         ...state.snapshot,
         steps: [...state.snapshot.steps, step],
       }
-      newSnap.flows = autoConnect(newSnap)
+      // When adding from a port (allowSameColumn), exclude the new step from
+      // auto-connect — the explicit flow will be created in a subsequent ADD_FLOW
+      newSnap.flows = autoConnect(newSnap, allowSameColumn ? step.id : undefined)
       return pushHistory(state, newSnap)
     }
 
@@ -379,24 +531,43 @@ export function builderReducer(
           s.id === action.payload.id ? { ...s, ...action.payload.updates } : s
         ),
       }
+      // When step_type changes, clean up and re-run autoConnect
+      if (action.payload.updates.step_type) {
+        const oldStep = state.snapshot.steps.find((s) => s.id === action.payload.id)
+        // Converting FROM decision: strip decision attributes from outgoing flows
+        if (oldStep?.step_type === 'decision' && action.payload.updates.step_type !== 'decision') {
+          newSnap.flows = newSnap.flows.map((f) => {
+            if (f.from_step_id !== action.payload.id) return f
+            if (!f.condition_color && !f.condition_label && f.flow_type !== 'decision') return f
+            return {
+              ...f,
+              flow_type: 'sequential' as const,
+              condition_label: undefined,
+              condition_color: undefined,
+            }
+          })
+        }
+        newSnap.flows = autoConnect(newSnap)
+      }
       return pushHistory(state, newSnap)
     }
 
     case 'DELETE_STEP': {
+      const idsToDelete = new Set(Array.isArray(action.payload) ? action.payload : [action.payload])
       const newSnap: ProcessSnapshot = {
         ...state.snapshot,
-        steps: state.snapshot.steps.filter((s) => s.id !== action.payload),
+        steps: state.snapshot.steps.filter((s) => !idsToDelete.has(s.id)),
         flows: state.snapshot.flows.filter(
-          (f) => f.from_step_id !== action.payload && f.to_step_id !== action.payload
+          (f) => !idsToDelete.has(f.from_step_id) && !idsToDelete.has(f.to_step_id)
         ),
       }
-      // Don't re-compact columns — gaps are fine, layout engine compacts at render time
       newSnap.flows = autoConnect(newSnap)
 
+      const selectedCleared = state.selectedStepId && idsToDelete.has(state.selectedStepId)
       return {
         ...pushHistory(state, newSnap),
-        selectedStepId: state.selectedStepId === action.payload ? null : state.selectedStepId,
-        detailPanelOpen: state.selectedStepId === action.payload ? false : state.detailPanelOpen,
+        selectedStepId: selectedCleared ? null : state.selectedStepId,
+        detailPanelOpen: selectedCleared ? false : state.detailPanelOpen,
       }
     }
 
@@ -483,6 +654,133 @@ export function builderReducer(
       return pushHistory(state, newSnap)
     }
 
+    case 'INSERT_STEP_BETWEEN': {
+      const { newStep, fromStepId, toStepId, oldFlowId } = action.payload
+      const fromStep = state.snapshot.steps.find((s) => s.id === fromStepId)
+      const toStep = state.snapshot.steps.find((s) => s.id === toStepId)
+      if (!fromStep || !toStep) return state
+
+      // Position new step at midpoint order_num
+      const midOrder = Math.floor((fromStep.order_num + toStep.order_num) / 2)
+      let insertOrder = midOrder
+      // If conflict, shift subsequent steps
+      let updatedSteps = [...state.snapshot.steps]
+      const conflict = updatedSteps.find(
+        (s) => s.swimlane_id === newStep.swimlane_id && s.order_num === insertOrder
+      )
+      if (conflict || insertOrder === fromStep.order_num || insertOrder === toStep.order_num) {
+        // Insert right after fromStep and shift toStep + subsequent forward
+        insertOrder = fromStep.order_num + 1
+        const stepsToShift = updatedSteps.filter(
+          (s) => s.swimlane_id === newStep.swimlane_id && s.order_num >= insertOrder
+        )
+        const shiftIds = new Set(stepsToShift.map((s) => s.id))
+        updatedSteps = updatedSteps.map((s) =>
+          shiftIds.has(s.id) ? { ...s, order_num: s.order_num + 1 } : s
+        )
+      }
+
+      const positioned = { ...newStep, order_num: insertOrder }
+      updatedSteps.push(positioned)
+
+      // Remove old flow, add from→new and new→to flows
+      let updatedFlows = state.snapshot.flows.filter((f) => f.id !== oldFlowId)
+      const oldFlow = state.snapshot.flows.find((f) => f.id === oldFlowId)
+      const isDecisionFlow = oldFlow?.flow_type === 'decision' || !!oldFlow?.condition_color
+      // Use non-auto ID for decision flows so autoConnect preserves the attributes
+      const firstFlowId = isDecisionFlow
+        ? `flow-${fromStepId}-${positioned.id}`
+        : `auto-${fromStepId}-${positioned.id}`
+      updatedFlows.push({
+        id: firstFlowId,
+        from_step_id: fromStepId,
+        to_step_id: positioned.id,
+        flow_type: oldFlow?.flow_type || 'sequential',
+        condition_label: oldFlow?.condition_label,
+        condition_color: oldFlow?.condition_color,
+      })
+      updatedFlows.push({
+        id: `auto-${positioned.id}-${toStepId}`,
+        from_step_id: positioned.id,
+        to_step_id: toStepId,
+        flow_type: 'sequential',
+      })
+
+      const newSnap: ProcessSnapshot = {
+        ...state.snapshot,
+        steps: updatedSteps,
+        flows: updatedFlows,
+      }
+      newSnap.flows = autoConnect(newSnap)
+      return pushHistory(state, newSnap)
+    }
+
+    case 'DUPLICATE_STEP': {
+      const original = state.snapshot.steps.find((s) => s.id === action.payload)
+      if (!original) return state
+      const col = nextColumnInLane(state.snapshot.steps, original.swimlane_id)
+      const dup: ProcessStepData = {
+        ...original,
+        id: crypto.randomUUID(),
+        action_name: `${original.action_name} (copy)`,
+        order_num: col,
+      }
+      const newSnap: ProcessSnapshot = {
+        ...state.snapshot,
+        steps: [...state.snapshot.steps, dup],
+      }
+      newSnap.flows = autoConnect(newSnap)
+      return pushHistory(state, newSnap)
+    }
+
+    case 'MOVE_STEPS': {
+      const { stepIds, targetSwimlaneId } = action.payload
+      const idsSet = new Set(stepIds)
+      let updatedSteps = state.snapshot.steps.map((s) => {
+        if (!idsSet.has(s.id)) return s
+        const col = nextColumnInLane(
+          state.snapshot.steps.filter((ss) => !idsSet.has(ss.id) || ss.id === s.id),
+          targetSwimlaneId
+        )
+        return { ...s, swimlane_id: targetSwimlaneId, order_num: col }
+      })
+      const newSnap: ProcessSnapshot = {
+        ...state.snapshot,
+        steps: updatedSteps,
+      }
+      newSnap.flows = autoConnect(newSnap)
+      return pushHistory(state, newSnap)
+    }
+
+    case 'UPDATE_STEPS_TYPE': {
+      const { stepIds, stepType } = action.payload
+      const idsSet = new Set(stepIds)
+      const newSnap: ProcessSnapshot = {
+        ...state.snapshot,
+        steps: state.snapshot.steps.map((s) =>
+          idsSet.has(s.id) ? { ...s, step_type: stepType } : s
+        ),
+      }
+      return pushHistory(state, newSnap)
+    }
+
+    case 'SWAP_STEP_ORDER': {
+      const { stepIdA, stepIdB } = action.payload
+      const stepA = state.snapshot.steps.find((s) => s.id === stepIdA)
+      const stepB = state.snapshot.steps.find((s) => s.id === stepIdB)
+      if (!stepA || !stepB) return state
+      const newSnap: ProcessSnapshot = {
+        ...state.snapshot,
+        steps: state.snapshot.steps.map((s) => {
+          if (s.id === stepIdA) return { ...s, order_num: stepB.order_num }
+          if (s.id === stepIdB) return { ...s, order_num: stepA.order_num }
+          return s
+        }),
+      }
+      newSnap.flows = autoConnect(newSnap)
+      return pushHistory(state, newSnap)
+    }
+
     // ── Flows ───────────────────────────────────────────────────────
     case 'ADD_FLOW': {
       // Align target step column for the new cross-lane flow
@@ -526,6 +824,7 @@ export function builderReducer(
         ...state.snapshot,
         flows: state.snapshot.flows.filter((f) => f.id !== action.payload),
       }
+      newSnap.flows = autoConnect(newSnap)
       return pushHistory(state, newSnap)
     }
 

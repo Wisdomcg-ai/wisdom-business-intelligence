@@ -106,7 +106,7 @@ export async function POST(request: Request) {
         name: name.trim(),
         description: description || null,
         status: 'draft',
-        process_data: process_data || { notes: [], swimlanes: [], steps: [], flows: [] },
+        process_data: process_data || { notes: [], swimlanes: [], phases: [], steps: [], flows: [] },
         step_count: 0,
         decision_count: 0,
         swimlane_count: 0,

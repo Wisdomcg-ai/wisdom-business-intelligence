@@ -52,7 +52,7 @@ export function generateProcessPDF(
   const sorted = [...snapshot.swimlanes].sort((a, b) => a.order - b.order)
 
   // First pass: calculate default layout to measure column count
-  const defaultLayout = calculateSVGLayout(sorted, snapshot.steps, snapshot.flows)
+  const defaultLayout = calculateSVGLayout(sorted, snapshot.steps, snapshot.flows, undefined, undefined, snapshot.phases)
   const columnCount = defaultLayout.columnCount
 
   // Progressive compaction for wide diagrams so they fit on the page
@@ -66,7 +66,7 @@ export function generateProcessPDF(
 
   // Don't pass processName — PDF has its own header, no need for in-diagram title offset
   const layout = pdfOverrides
-    ? calculateSVGLayout(sorted, snapshot.steps, snapshot.flows, undefined, pdfOverrides)
+    ? calculateSVGLayout(sorted, snapshot.steps, snapshot.flows, undefined, pdfOverrides, snapshot.phases)
     : defaultLayout
 
   // ─── Page sizing: fit diagram on page, allow moderate width extension ─
@@ -114,7 +114,7 @@ export function generateProcessPDF(
   const fontCard = Math.max(5, Math.min(10, cardW_mm * 0.22))
   const fontAnnotation = Math.max(4, Math.min(7, cardW_mm * 0.16))
   const fontBadge = Math.max(3.5, Math.min(6, cardW_mm * 0.14))
-  const fontPhase = Math.max(5.5, Math.min(11, cardW_mm * 0.24))
+  const fontPhase = Math.max(6.5, Math.min(13, cardW_mm * 0.28))
   const fontLane = Math.max(5, Math.min(9, cardW_mm * 0.22))
   const fontFlowLabel = Math.max(4.5, Math.min(7, cardW_mm * 0.18))
 
@@ -124,32 +124,38 @@ export function generateProcessPDF(
   doc.setFont('helvetica', 'bold')
   doc.text(processName, pageW / 2, 8, { align: 'center' })
 
-  // ─── Phase header: dark charcoal bar spanning full width ─────
+  // ─── Phase zones: full-height colored border + header bar (like Trades PDF) ─────
   if (layout.phaseHeaders.length > 0) {
-    const phY = py(SVG.PAD)
-    const phH = ps(SVG.PHASE_HEADER_H - 4)
-    const sidebarW = pdfOverrides?.sidebarW ?? SVG.SIDEBAR_W
-    const barX = px(sidebarW)
-    const barW = ps(layout.totalW - sidebarW)
+    const phHeaderY = py(pdfOverrides?.pad ?? SVG.PAD)
+    const phHeaderH = ps(SVG.PHASE_HEADER_H - 4)
 
-    // Full-width dark bar
-    doc.setFillColor(31, 41, 55)  // #1F2937
-    doc.rect(barX, phY, barW, phH, 'F')
+    // Zone extends from header top to bottom of last lane
+    const lastLane = layout.lanePositions[layout.lanePositions.length - 1]
+    const zoneBottom = lastLane ? py(lastLane.y + lastLane.h) : phHeaderY + phHeaderH
+    const zoneH = zoneBottom - phHeaderY
+    const bodyY = phHeaderY + phHeaderH
 
-    // Phase labels + dividers
     layout.phaseHeaders.forEach((phase, idx) => {
-      doc.setTextColor(255, 255, 255)
+      const bgColor = hexToRGB(phase.color.bg)
+      const txtColor = hexToRGB(phase.color.text)
+      const phX = px(phase.x)
+      const phW = ps(phase.w)
+
+      // Full-height border outline
+      doc.setDrawColor(...bgColor)
+      doc.setLineWidth(Math.max(0.5, 1.2 * scale))
+      doc.setFillColor(bgColor[0], bgColor[1], bgColor[2])
+      doc.roundedRect(phX, phHeaderY, phW, zoneH, 1.5, 1.5, 'D')
+
+      // Header bar — filled with phase color
+      doc.setFillColor(...bgColor)
+      doc.rect(phX, phHeaderY, phW, phHeaderH, 'F')
+
+      // Phase label
+      doc.setTextColor(...txtColor)
       doc.setFontSize(fontPhase)
       doc.setFont('helvetica', 'bold')
-      doc.text(phase.name, px(phase.x + phase.w / 2), phY + phH / 2 + fontPhase * 0.15, { align: 'center' })
-
-      // Vertical divider between phases
-      if (idx < layout.phaseHeaders.length - 1) {
-        const divX = px(phase.x + phase.w + SVG.GAP_X / 2)
-        doc.setDrawColor(255, 255, 255)
-        doc.setLineWidth(0.3)
-        doc.line(divX, phY + 2, divX, phY + phH - 2)
-      }
+      doc.text(phase.name, phX + phW / 2, phHeaderY + phHeaderH / 2 + fontPhase * 0.15, { align: 'center' })
     })
   }
 

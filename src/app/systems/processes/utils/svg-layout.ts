@@ -1,14 +1,14 @@
-import type { SwimlaneDefinition, ProcessStepData, ProcessFlowData, SwimlaneColor } from '@/types/process-builder'
+import type { SwimlaneDefinition, ProcessStepData, ProcessFlowData, SwimlaneColor, PhaseDefinition } from '@/types/process-builder'
 
 // ─── SVG Layout Constants ────────────────────────────────────────────
 export const SVG = {
-  PHASE_HEADER_H: 32,
+  PHASE_HEADER_H: 44,
   SIDEBAR_W: 64,           // wide sidebar for rotated lane names
   CARD_W: 160,             // wider cards for multi-word step names
   CARD_H: 56,              // taller cards for 3-line names
   DECISION_H: 74,          // diamond height
   ANNOTATION_H: 60,        // rich annotation space below card
-  GAP_X: 90,               // wide gap between columns for connector routing + stagger room
+  GAP_X: 60,               // gap between columns for connector routing
   LANE_H: 190,             // taller lanes: card(56) + annotation(60) + padding(74)
   LANE_GAP: 16,            // routing corridor between lanes
   PAD: 24,                 // outer padding
@@ -39,6 +39,7 @@ export interface LanePosition {
 }
 
 export interface PhaseHeader {
+  id: string
   name: string
   x: number
   w: number
@@ -82,10 +83,34 @@ export function getAltBranchStepIds(
 ): Set<string> {
   const altBranchIds = new Set<string>()
 
+  // Helper: walk forward through flows from a starting step,
+  // collecting all same-lane downstream steps (BFS on the flow graph).
+  function getDownstreamChain(startId: string, laneStepIds: Set<string>, excludeId: string): Set<string> {
+    const visited = new Set<string>()
+    const queue = [startId]
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      if (visited.has(current)) continue
+      visited.add(current)
+      for (const f of flows) {
+        if (
+          f.from_step_id === current &&
+          laneStepIds.has(f.to_step_id) &&
+          f.to_step_id !== excludeId &&
+          !visited.has(f.to_step_id)
+        ) {
+          queue.push(f.to_step_id)
+        }
+      }
+    }
+    return visited
+  }
+
   for (const lane of swimlanes) {
     const laneSteps = steps
       .filter((s) => s.swimlane_id === lane.id)
       .sort((a, b) => a.order_num - b.order_num)
+    const laneStepIds = new Set(laneSteps.map((s) => s.id))
 
     // Find all decision steps in this lane
     const decisions = laneSteps.filter((s) => s.step_type === 'decision')
@@ -98,91 +123,69 @@ export function getAltBranchStepIds(
           (f.flow_type === 'decision' || f.condition_color)
       )
 
-      const sameLaneTargets: { stepId: string; col: number; color?: string }[] = []
+      const sameLaneTargets: { stepId: string; color?: string }[] = []
       for (const df of decisionFlows) {
         const target = laneSteps.find((s) => s.id === df.to_step_id)
         if (target) {
-          sameLaneTargets.push({ stepId: target.id, col: target.order_num, color: df.condition_color })
+          sameLaneTargets.push({ stepId: target.id, color: df.condition_color })
         }
       }
 
-      if (sameLaneTargets.length < 2) continue
-
-      sameLaneTargets.sort((a, b) => a.col - b.col)
-      const maxTargetCol = sameLaneTargets[sameLaneTargets.length - 1].col
-      const targetIds = new Set(sameLaneTargets.map((t) => t.stepId))
-
-      // Count intermediate steps in the zone that are NOT decision targets
-      let intermediateCount = 0
-      for (const step of laneSteps) {
-        if (step.id === decision.id) continue
-        if (targetIds.has(step.id)) continue
-        if (step.order_num > decision.order_num && step.order_num <= maxTargetCol) {
-          intermediateCount++
+      // Single target: if it's the red/No branch, still push it down
+      // so the No path looks correct even before the Yes path exists
+      if (sameLaneTargets.length === 1) {
+        if (sameLaneTargets[0].color === 'red') {
+          const redChain = getDownstreamChain(sameLaneTargets[0].stepId, laneStepIds, decision.id)
+          for (const stepId of redChain) {
+            altBranchIds.add(stepId)
+          }
         }
+        continue
       }
 
       // Determine which branch to push down (alt-branch position).
-      // Priority: if flows have explicit colors, push the "red" (No) branch down.
-      // Otherwise, push the SHORTER chain down (main path stays at normal Y).
+      // PRIORITY 1: Color-based — push the "red" (No) branch down.
+      // PRIORITY 2: Chain-length — push the shorter chain down.
+      //
+      // Uses flow-graph traversal (not column ranges) to correctly identify
+      // the complete downstream chain for each branch.
 
-      // Check if any target has an explicit red color
       const redTarget = sameLaneTargets.find((t) => t.color === 'red')
-      const greenTarget = sameLaneTargets.find((t) => t.color === 'green')
 
-      // Compute chain lengths for each target
-      const chainLengths: { idx: number; len: number }[] = []
-      for (let i = 0; i < sameLaneTargets.length; i++) {
-        const startCol = sameLaneTargets[i].col
-        const endCol = i < sameLaneTargets.length - 1
-          ? sameLaneTargets[i + 1].col
-          : Infinity
-        const chainLen = laneSteps.filter(
-          (s) => s.order_num >= startCol && (endCol === Infinity || s.order_num < endCol) && s.id !== decision.id
-        ).length
-        chainLengths.push({ idx: i, len: chainLen })
-      }
-
-      const maxChainLen = Math.max(...chainLengths.map((c) => c.len))
-
-      if (maxChainLen <= 1) {
-        // All chains are single steps — simple branching: non-main targets drop down
-        for (const t of sameLaneTargets) {
-          if (t.col < maxTargetCol) {
-            altBranchIds.add(t.stepId)
-          }
-        }
-      } else if (redTarget) {
-        // Color-based: push the red (No) branch chain to alt-branch position
-        const redIdx = sameLaneTargets.findIndex((t) => t.stepId === redTarget.stepId)
-        const startCol = sameLaneTargets[redIdx].col
-        const endCol = redIdx < sameLaneTargets.length - 1
-          ? sameLaneTargets[redIdx + 1].col
-          : Infinity
-        for (const step of laneSteps) {
-          if (step.id === decision.id) continue
-          if (step.order_num >= startCol && (endCol === Infinity || step.order_num < endCol)) {
-            altBranchIds.add(step.id)
+      if (redTarget) {
+        // Walk the flow graph from the red (No) target
+        const redChain = getDownstreamChain(redTarget.stepId, laneStepIds, decision.id)
+        // Exclude steps also reachable from the green (Yes) branch (merge points)
+        const greenTarget = sameLaneTargets.find((t) => t.color === 'green')
+        const greenChain = greenTarget
+          ? getDownstreamChain(greenTarget.stepId, laneStepIds, decision.id)
+          : new Set<string>()
+        for (const stepId of redChain) {
+          if (!greenChain.has(stepId)) {
+            altBranchIds.add(stepId)
           }
         }
       } else {
-        // No colors: push the SHORTER chain down (keep main/longer path at normal Y)
-        let shortestIdx = 0
+        // No color info: push the SHORTER chain down
+        let shortestChain: Set<string> | null = null
+        let longestChain: Set<string> | null = null
         let shortestLen = Infinity
-        for (const cl of chainLengths) {
-          if (cl.len < shortestLen) {
-            shortestLen = cl.len
-            shortestIdx = cl.idx
+        for (const target of sameLaneTargets) {
+          const chain = getDownstreamChain(target.stepId, laneStepIds, decision.id)
+          if (chain.size < shortestLen) {
+            shortestLen = chain.size
+            if (shortestChain) longestChain = shortestChain
+            shortestChain = chain
+          } else {
+            longestChain = chain
           }
         }
-        const startCol = sameLaneTargets[shortestIdx].col
-        const endCol = shortestIdx < sameLaneTargets.length - 1
-          ? sameLaneTargets[shortestIdx + 1].col
-          : Infinity
-        for (const step of laneSteps) {
-          if (step.id === decision.id) continue
-          if (step.order_num >= startCol && (endCol === Infinity || step.order_num < endCol)) {
-            altBranchIds.add(step.id)
+        if (shortestChain) {
+          // Exclude merge points (steps also on the longer chain)
+          for (const stepId of shortestChain) {
+            if (!longestChain || !longestChain.has(stepId)) {
+              altBranchIds.add(stepId)
+            }
           }
         }
       }
@@ -263,7 +266,8 @@ export function calculateSVGLayout(
   steps: ProcessStepData[],
   flows?: ProcessFlowData[],
   processName?: string,
-  overrides?: LayoutOverrides
+  overrides?: LayoutOverrides,
+  phases?: PhaseDefinition[]
 ): SVGLayout {
   // Allow PDF to use compact spacing while on-screen SVG uses standard constants
   const CARD_W = overrides?.cardW ?? SVG.CARD_W
@@ -288,7 +292,7 @@ export function calculateSVGLayout(
   const columnCount = usedColumns.length
 
   // Determine if we have phase headers or title
-  const hasPhases = layoutSteps.some((s) => s.phase_name)
+  const hasPhases = (phases && phases.length > 0) || layoutSteps.some((s) => s.phase_name)
   const hasTitle = !!processName
   const phaseOffsetY = hasPhases ? SVG.PHASE_HEADER_H : 0
   const titleOffsetY = hasTitle ? SVG.TITLE_H : 0
@@ -340,7 +344,9 @@ export function calculateSVGLayout(
       const x = SIDEBAR_W + PAD + compactCol * (CARD_W + GAP_X)
       const topPad = 16
       const isAltBranch = altBranchIds.has(step.id)
-      const y = laneY + topPad + (isAltBranch ? BRANCH_OFFSET_Y : 0) + (isDecision ? -4 : 0)
+      // Center-align decision diamonds with action cards so connectors are horizontal
+      const decisionOffset = isDecision ? -(SVG.DECISION_H - CARD_H) / 2 : 0
+      const y = laneY + topPad + (isAltBranch ? BRANCH_OFFSET_Y : 0) + decisionOffset
 
       stepPositions.set(step.id, {
         x,
@@ -356,37 +362,88 @@ export function calculateSVGLayout(
   // Build phase headers
   const phaseHeaders: PhaseHeader[] = []
   if (hasPhases) {
-    const colPhase = new Map<number, string>()
-    for (const s of layoutSteps) {
-      if (s.phase_name && !colPhase.has(s.order_num)) {
-        colPhase.set(s.order_num, s.phase_name)
-      }
-    }
+    if (phases && phases.length > 0) {
+      // First-class phases: one wide overarching header per phase
+      // spanning from its first column to its last column
+      const sortedPhases = [...phases].sort((a, b) => a.order - b.order)
+      for (const phase of sortedPhases) {
+        // Find all compact columns that contain steps with this phase_id
+        let minCol = Infinity
+        let maxCol = -1
+        for (const s of layoutSteps) {
+          if (s.phase_id === phase.id) {
+            const cc = columnMap.get(s.order_num)
+            if (cc !== undefined) {
+              if (cc < minCol) minCol = cc
+              if (cc > maxCol) maxCol = cc
+            }
+          }
+        }
+        if (maxCol < 0) continue // no steps in this phase
 
-    const bands: { name: string; startCol: number; endCol: number }[] = []
-    for (let i = 0; i < usedColumns.length; i++) {
-      const phase = colPhase.get(usedColumns[i])
-      if (!phase) continue
-      const compactCol = columnMap.get(usedColumns[i]) ?? i
-      const last = bands[bands.length - 1]
-      if (last && last.name === phase && last.endCol === compactCol - 1) {
-        last.endCol = compactCol
-      } else {
-        bands.push({ name: phase, startCol: compactCol, endCol: compactCol })
+        // Single wide header from first to last column
+        const x = SIDEBAR_W + PAD + minCol * (CARD_W + GAP_X)
+        const span = maxCol - minCol + 1
+        const w = span * (CARD_W + GAP_X) - GAP_X
+        phaseHeaders.push({
+          id: phase.id,
+          name: phase.name,
+          x,
+          w,
+          color: { bg: phase.color.primary, text: phase.color.text },
+        })
       }
-    }
+    } else {
+      // Fallback: legacy phase_name scan (backward compat)
+      const colPhase = new Map<number, string>()
+      for (const s of layoutSteps) {
+        if (s.phase_name && !colPhase.has(s.order_num)) {
+          colPhase.set(s.order_num, s.phase_name)
+        }
+      }
 
-    bands.forEach((band, idx) => {
-      const x = SIDEBAR_W + PAD + band.startCol * (CARD_W + GAP_X)
-      const span = band.endCol - band.startCol + 1
-      const w = span * (CARD_W + GAP_X) - GAP_X
-      phaseHeaders.push({
-        name: band.name,
-        x,
-        w,
-        color: PHASE_COLORS[idx % PHASE_COLORS.length],
+      const bands: { name: string; startCol: number; endCol: number }[] = []
+      for (let i = 0; i < usedColumns.length; i++) {
+        const phase = colPhase.get(usedColumns[i])
+        if (!phase) continue
+        const compactCol = columnMap.get(usedColumns[i]) ?? i
+        const last = bands[bands.length - 1]
+        if (last && last.name === phase && last.endCol === compactCol - 1) {
+          last.endCol = compactCol
+        } else {
+          bands.push({ name: phase, startCol: compactCol, endCol: compactCol })
+        }
+      }
+
+      bands.forEach((band, idx) => {
+        const x = SIDEBAR_W + PAD + band.startCol * (CARD_W + GAP_X)
+        const span = band.endCol - band.startCol + 1
+        const w = span * (CARD_W + GAP_X) - GAP_X
+        phaseHeaders.push({
+          id: `legacy-${idx}`,
+          name: band.name,
+          x,
+          w,
+          color: PHASE_COLORS[idx % PHASE_COLORS.length],
+        })
       })
-    })
+    }
+    // Clip overlaps then close gaps between adjacent phase headers
+    if (phaseHeaders.length > 1) {
+      const sorted = [...phaseHeaders].sort((a, b) => a.x - b.x)
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const current = phaseHeaders.find((p) => p.id === sorted[i].id)!
+        const next = phaseHeaders.find((p) => p.id === sorted[i + 1].id)!
+        const currentRight = current.x + current.w
+        // Clip: if current overlaps next, trim current to end where next starts
+        if (currentRight > next.x) {
+          current.w = next.x - current.x
+        }
+        // Close gap: if there's space between them, extend current to meet next
+        const gap = next.x - (current.x + current.w)
+        if (gap > 0) current.w += gap
+      }
+    }
   }
 
   const totalW = SIDEBAR_W + PAD * 2

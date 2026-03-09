@@ -15,7 +15,7 @@ import {
   Plus,
   X,
 } from 'lucide-react'
-import type { ProcessStepData, StepType, SwimlaneColor, DecisionOption } from '@/types/process-builder'
+import type { ProcessStepData, StepType, SwimlaneColor, DecisionOption, PhaseDefinition } from '@/types/process-builder'
 
 const DECISION_COLORS = [
   { value: 'green', label: 'Green', hex: '#10B981' },
@@ -37,6 +37,7 @@ interface CaptureStepRowProps {
   onMoveUp: () => void
   onMoveDown: () => void
   dragHandleProps?: Record<string, unknown>
+  phases?: PhaseDefinition[]
 }
 
 const STEP_TYPE_OPTIONS: { value: StepType; label: string; icon: React.ReactNode }[] = [
@@ -59,6 +60,7 @@ export default function CaptureStepRow({
   onMoveUp,
   onMoveDown,
   dragHandleProps,
+  phases,
 }: CaptureStepRowProps) {
   const [expanded, setExpanded] = useState(false)
   const rowRef = useRef<HTMLDivElement>(null)
@@ -122,6 +124,53 @@ export default function CaptureStepRow({
           {step.action_name}
         </span>
 
+        {/* Phase pill (clickable to cycle) */}
+        {phases && phases.length > 0 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              const sortedP = [...phases].sort((a, b) => a.order - b.order)
+              const currentIdx = step.phase_id
+                ? sortedP.findIndex((p) => p.id === step.phase_id)
+                : -1
+              // Cycle: none → first phase → second phase → ... → none
+              const nextIdx = currentIdx + 1
+              if (nextIdx >= sortedP.length) {
+                onUpdate({ phase_id: undefined, phase_name: undefined })
+              } else {
+                onUpdate({ phase_id: sortedP[nextIdx].id, phase_name: sortedP[nextIdx].name })
+              }
+            }}
+            className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors"
+            style={
+              step.phase_id && phases.find((p) => p.id === step.phase_id)
+                ? {
+                    backgroundColor: phases.find((p) => p.id === step.phase_id)!.color.tint,
+                    borderColor: phases.find((p) => p.id === step.phase_id)!.color.primary + '40',
+                    color: phases.find((p) => p.id === step.phase_id)!.color.border,
+                  }
+                : {
+                    backgroundColor: '#F9FAFB',
+                    borderColor: '#E5E7EB',
+                    color: '#9CA3AF',
+                  }
+            }
+            title={step.phase_id ? 'Click to change phase' : 'Click to assign a phase'}
+          >
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{
+                backgroundColor: step.phase_id && phases.find((p) => p.id === step.phase_id)
+                  ? phases.find((p) => p.id === step.phase_id)!.color.primary
+                  : '#D1D5DB',
+              }}
+            />
+            {step.phase_id && phases.find((p) => p.id === step.phase_id)
+              ? phases.find((p) => p.id === step.phase_id)!.name
+              : '—'}
+          </button>
+        )}
+
         {/* Type badge */}
         <span className="flex items-center gap-1 text-[10px] text-gray-400 uppercase tracking-wide shrink-0">
           {typeOption?.icon}
@@ -184,6 +233,29 @@ export default function CaptureStepRow({
               ))}
             </div>
           </Field>
+
+          {/* Phase */}
+          {phases && phases.length > 0 && (
+            <Field label="Phase">
+              <select
+                value={step.phase_id || ''}
+                onChange={(e) => {
+                  const phaseId = e.target.value || undefined
+                  const phase = phases.find((p) => p.id === phaseId)
+                  onUpdate({
+                    phase_id: phaseId,
+                    phase_name: phase?.name,
+                  })
+                }}
+                className="w-full text-sm border border-gray-200 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-300 focus:border-orange-300 bg-white"
+              >
+                <option value="">None</option>
+                {[...phases].sort((a, b) => a.order - b.order).map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </Field>
+          )}
 
           {/* Decision options (up to 4) */}
           {step.step_type === 'decision' && (

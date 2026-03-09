@@ -27,6 +27,15 @@ interface SwimlanesDiagramSVGProps {
   tempConnector?: { fromX: number; fromY: number; toX: number; toY: number } | null
   // Title
   processName?: string
+  // Inline editing
+  editingStepId?: string | null
+  onStepDoubleClick?: (stepId: string) => void
+  onStepNameCommit?: (stepId: string, newName: string) => void
+  // Animations
+  newlyAddedStepId?: string | null
+  deletingStepIds?: string[] | null
+  // Connector insert
+  onInsertStepBetween?: (fromStepId: string, toStepId: string, flowId: string) => string | void
 }
 
 export default function SwimlanesDiagramSVG({
@@ -43,10 +52,16 @@ export default function SwimlanesDiagramSVG({
   highlightLaneId,
   tempConnector,
   processName,
+  editingStepId,
+  onStepDoubleClick,
+  onStepNameCommit,
+  newlyAddedStepId,
+  deletingStepIds,
+  onInsertStepBetween,
 }: SwimlanesDiagramSVGProps) {
   const layout = useMemo(
-    () => calculateSVGLayout(snapshot.swimlanes, snapshot.steps, snapshot.flows, processName),
-    [snapshot.swimlanes, snapshot.steps, snapshot.flows, processName]
+    () => calculateSVGLayout(snapshot.swimlanes, snapshot.steps, snapshot.flows, processName, undefined, snapshot.phases),
+    [snapshot.swimlanes, snapshot.steps, snapshot.flows, processName, snapshot.phases]
   )
 
   const hasTitle = !!processName
@@ -71,31 +86,29 @@ export default function SwimlanesDiagramSVG({
       viewBox={`0 0 ${layout.totalW} ${layout.totalH}`}
       className="select-none"
     >
-      {/* Title bar */}
+      {/* Title text */}
       {hasTitle && processName && (
-        <g>
-          <rect
-            x={0}
-            y={SVG.PAD}
-            width={layout.totalW}
-            height={SVG.TITLE_H - 8}
-            fill="#1F2937"
-            rx={4}
-          />
-          <text
-            x={layout.totalW / 2}
-            y={SVG.PAD + (SVG.TITLE_H - 8) / 2}
-            textAnchor="middle"
-            dominantBaseline="central"
-            fill="white"
-            fontSize={14}
-            fontWeight={700}
-            className="pointer-events-none select-none"
-          >
-            {processName}
-          </text>
-        </g>
+        <text
+          x={layout.totalW / 2}
+          y={SVG.PAD + (SVG.TITLE_H - 8) / 2}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill="#1F2937"
+          fontSize={16}
+          fontWeight={700}
+          className="pointer-events-none select-none"
+        >
+          {processName}
+        </text>
       )}
+
+      {/* Phase zones (full-height colored regions — rendered behind lanes) */}
+      <SVGPhaseHeaders
+        phaseHeaders={layout.phaseHeaders}
+        lanePositions={layout.lanePositions}
+        totalW={layout.totalW}
+        titleOffsetY={titleOffsetY}
+      />
 
       {/* Lane backgrounds + sidebar */}
       <SVGLaneSidebar lanePositions={layout.lanePositions} totalW={layout.totalW} />
@@ -118,9 +131,6 @@ export default function SwimlanesDiagramSVG({
         )
       })}
 
-      {/* Phase headers */}
-      <SVGPhaseHeaders phaseHeaders={layout.phaseHeaders} totalW={layout.totalW} titleOffsetY={titleOffsetY} />
-
       {/* Connectors (behind cards) */}
       <SVGConnectors
         flows={snapshot.flows}
@@ -131,6 +141,7 @@ export default function SwimlanesDiagramSVG({
         selectedFlowId={selectedFlowId}
         onFlowClick={onFlowClick}
         onFlowDelete={onFlowDelete}
+        onInsertStepBetween={onInsertStepBetween}
       />
 
       {/* Step cards + annotations */}
@@ -159,7 +170,12 @@ export default function SwimlanesDiagramSVG({
               isSelected={selectedStepId === step.id}
               isDocumented={isDocumented}
               isDragFaded={dragStepId === step.id}
+              isEditing={editingStepId === step.id}
+              isNew={newlyAddedStepId === step.id}
+              isDeleting={deletingStepIds?.includes(step.id) ?? false}
               onClick={onStepClick}
+              onDoubleClick={onStepDoubleClick}
+              onNameCommit={onStepNameCommit}
               onMouseEnter={(id, e) => onStepHover(id, e)}
               onMouseLeave={() => onStepHover(null)}
               onMouseDown={onStepMouseDown}

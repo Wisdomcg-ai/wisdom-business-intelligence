@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { ProcessFlowData, ProcessStepData, DecisionOption } from '@/types/process-builder'
 import type { StepPosition, LanePosition } from '../../utils/svg-layout'
 import { SVG } from '../../utils/svg-layout'
@@ -15,6 +15,7 @@ interface SVGConnectorsProps {
   selectedFlowId?: string | null
   onFlowClick?: (flowId: string) => void
   onFlowDelete?: (flowId: string) => void
+  onInsertStepBetween?: (fromStepId: string, toStepId: string, flowId: string) => string | void
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -45,7 +46,9 @@ export default function SVGConnectors({
   selectedFlowId,
   onFlowClick,
   onFlowDelete,
+  onInsertStepBetween,
 }: SVGConnectorsProps) {
+  const [hoveredFlowId, setHoveredFlowId] = useState<string | null>(null)
   // Repair decision flows missing condition_color — handles AI mapper flows (flow_type='sequential')
   const repairedFlows = useMemo(() => {
     return flows.map((flow) => {
@@ -200,6 +203,10 @@ export default function SVGConnectors({
         const markerId = isFlowSelected ? 'arrow-selected'
           : (flow.condition_color && ARROW_MARKER_MAP[flow.condition_color]) || 'arrow-default'
 
+        // Skip connector label if the source is a decision step (diamond already shows labels)
+        const fromStep = steps.find((s) => s.id === flow.from_step_id)
+        const showLabel = connector.label && connector.labelPosition && fromStep?.step_type !== 'decision'
+
         // Calculate midpoint for delete button
         const midpoint = connector.points.length >= 2
           ? {
@@ -212,20 +219,20 @@ export default function SVGConnectors({
 
         return (
           <g key={flow.id}>
-            {/* Invisible wider hit area for clicking */}
-            {onFlowClick && (
-              <path
-                d={pathData}
-                fill="none"
-                stroke="transparent"
-                strokeWidth={12}
-                className="cursor-pointer"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onFlowClick(flow.id)
-                }}
-              />
-            )}
+            {/* Invisible wider hit area for clicking and hover detection */}
+            <path
+              d={pathData}
+              fill="none"
+              stroke="transparent"
+              strokeWidth={16}
+              className={onFlowClick ? 'cursor-pointer' : undefined}
+              onClick={onFlowClick ? (e) => {
+                e.stopPropagation()
+                onFlowClick(flow.id)
+              } : undefined}
+              onMouseEnter={() => setHoveredFlowId(flow.id)}
+              onMouseLeave={() => setHoveredFlowId(null)}
+            />
             {/* Visible connector path */}
             <path
               d={pathData}
@@ -235,7 +242,7 @@ export default function SVGConnectors({
               markerEnd={`url(#${markerId})`}
               className={onFlowClick ? 'pointer-events-none' : undefined}
             />
-            {connector.label && connector.labelPosition && (
+            {showLabel && connector.label && connector.labelPosition && (
               <g>
                 {/* Label pill background */}
                 <rect
@@ -292,6 +299,40 @@ export default function SVGConnectors({
                   className="pointer-events-none select-none"
                 >
                   ×
+                </text>
+              </g>
+            )}
+
+            {/* Insert "+" button on hover */}
+            {hoveredFlowId === flow.id && !isFlowSelected && midpoint && onInsertStepBetween && (
+              <g
+                className="cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onInsertStepBetween(flow.from_step_id, flow.to_step_id, flow.id)
+                }}
+                onMouseEnter={() => setHoveredFlowId(flow.id)}
+              >
+                <circle
+                  cx={midpoint.x}
+                  cy={midpoint.y}
+                  r={10}
+                  fill="#F97316"
+                  stroke="white"
+                  strokeWidth={2}
+                  style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.2))' }}
+                />
+                <text
+                  x={midpoint.x}
+                  y={midpoint.y + 1}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fill="white"
+                  fontSize={14}
+                  fontWeight={700}
+                  className="pointer-events-none select-none"
+                >
+                  +
                 </text>
               </g>
             )}

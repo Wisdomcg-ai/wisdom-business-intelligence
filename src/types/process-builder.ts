@@ -4,7 +4,7 @@
 // ============================================================================
 
 export type StepType = 'action' | 'decision' | 'wait' | 'automation'
-export type FlowType = 'sequential' | 'decision' | 'loop' | 'parallel'
+export type FlowType = 'sequential' | 'decision' | 'loop' | 'parallel' | 'handoff'
 export type ProcessStatus = 'draft' | 'published' | 'archived'
 
 // ─── Client-side Types ───────────────────────────────────────────────
@@ -29,6 +29,21 @@ export interface SwimlaneDefinition {
   order: number
 }
 
+export interface PhaseColor {
+  name: string
+  primary: string   // header background
+  border: string    // darker accent
+  tint: string      // light column tint
+  text: string      // text on header (white)
+}
+
+export interface PhaseDefinition {
+  id: string
+  name: string
+  color: PhaseColor
+  order: number
+}
+
 export interface DecisionOption {
   label: string
   color: string // 'green' | 'red' | 'blue' | 'orange'
@@ -40,6 +55,7 @@ export interface ProcessStepData {
   order_num: number
   action_name: string
   step_type: StepType
+  phase_id?: string
   phase_name?: string
   description?: string
   business_purpose?: string
@@ -67,6 +83,7 @@ export interface ProcessFlowData {
 export interface ProcessSnapshot {
   notes: StickyNote[]
   swimlanes: SwimlaneDefinition[]
+  phases: PhaseDefinition[]
   steps: ProcessStepData[]
   flows: ProcessFlowData[]
 }
@@ -112,9 +129,21 @@ export const STICKY_NOTE_COLORS = [
   '#F1F5F9', // slate-100
 ]
 
+export const PHASE_COLOR_PALETTE: PhaseColor[] = [
+  { name: 'Orange',   primary: '#EA580C', border: '#C2410C', tint: '#FFF7ED', text: '#FFFFFF' },
+  { name: 'Teal',     primary: '#0D9488', border: '#0F766E', tint: '#F0FDFA', text: '#FFFFFF' },
+  { name: 'Blue',     primary: '#2563EB', border: '#1D4ED8', tint: '#EFF6FF', text: '#FFFFFF' },
+  { name: 'Purple',   primary: '#7C3AED', border: '#6D28D9', tint: '#F5F3FF', text: '#FFFFFF' },
+  { name: 'Rose',     primary: '#E11D48', border: '#BE123C', tint: '#FFF1F2', text: '#FFFFFF' },
+  { name: 'Emerald',  primary: '#059669', border: '#047857', tint: '#ECFDF5', text: '#FFFFFF' },
+  { name: 'Amber',    primary: '#D97706', border: '#B45309', tint: '#FFFBEB', text: '#FFFFFF' },
+  { name: 'Charcoal', primary: '#1F2937', border: '#111827', tint: '#F9FAFB', text: '#FFFFFF' },
+]
+
 export const DEFAULT_SNAPSHOT: ProcessSnapshot = {
   notes: [],
   swimlanes: [],
+  phases: [],
   steps: [],
   flows: [],
 }

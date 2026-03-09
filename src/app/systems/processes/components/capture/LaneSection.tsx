@@ -12,6 +12,7 @@ import type {
   ProcessStepData,
   SwimlaneDefinition,
   SwimlaneColor,
+  PhaseDefinition,
 } from '@/types/process-builder'
 import type { BuilderAction } from '../../types'
 import CaptureStepRow from './CaptureStepRow'
@@ -21,6 +22,7 @@ interface LaneSectionProps {
   steps: ProcessStepData[]
   selectedStepId: string | null
   dispatch: React.Dispatch<BuilderAction>
+  phases?: PhaseDefinition[]
 }
 
 export default function LaneSection({
@@ -28,6 +30,7 @@ export default function LaneSection({
   steps,
   selectedStepId,
   dispatch,
+  phases,
 }: LaneSectionProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [editingName, setEditingName] = useState(false)
@@ -83,16 +86,9 @@ export default function LaneSection({
     const swapIdx = direction === 'up' ? idx - 1 : idx + 1
     if (swapIdx < 0 || swapIdx >= laneSteps.length) return
 
-    const currentOrder = laneSteps[idx].order_num
-    const swapOrder = laneSteps[swapIdx].order_num
-
     dispatch({
-      type: 'UPDATE_STEP',
-      payload: { id: laneSteps[idx].id, updates: { order_num: swapOrder } },
-    })
-    dispatch({
-      type: 'UPDATE_STEP',
-      payload: { id: laneSteps[swapIdx].id, updates: { order_num: currentOrder } },
+      type: 'SWAP_STEP_ORDER',
+      payload: { stepIdA: laneSteps[idx].id, stepIdB: laneSteps[swapIdx].id },
     })
   }
 
@@ -125,6 +121,7 @@ export default function LaneSection({
             className="flex-1 text-sm font-semibold text-gray-800"
             onDoubleClick={(e) => {
               e.stopPropagation()
+              setNameValue(lane.name)
               setEditingName(true)
             }}
           >
@@ -190,6 +187,7 @@ export default function LaneSection({
               onDelete={() => dispatch({ type: 'DELETE_STEP', payload: step.id })}
               onMoveUp={() => handleMoveStep(step.id, 'up')}
               onMoveDown={() => handleMoveStep(step.id, 'down')}
+              phases={phases}
             />
           ))}
 

@@ -50,29 +50,28 @@ function routeConnector(
   const toCX = to.x + to.w / 2
   const toCY = to.y + to.h / 2
 
-  // ─── Bottom exit (decision "No" to lower target) ─────────────
+  // ─── Bottom exit (decision "No" branch) ─────────────────────
   if (exitPoint === 'bottom') {
     const goingRight = toCX > fromCX
+
     if (Math.abs(fromCX - toCX) < 20) {
       // Same column: straight down
       return [{ x: fromCX, y: fromBottom }, { x: toCX, y: to.y }]
     }
     if (goingRight) {
-      // L-shape: down to target Y, then right
+      // Forward: L-shape — down to target Y, then right
       return [
         { x: fromCX, y: fromBottom },
         { x: fromCX, y: toCY },
         { x: toLeft, y: toCY },
       ]
     }
-    // Backward: down, then left through lane gap
-    const loopY = laneBounds
-      ? laneBounds.y + laneBounds.h + SVG.LANE_GAP / 2
-      : fromBottom + CLEARANCE + 16
+    // Backward: dip below then back left
+    const swingY = Math.max(fromBottom, to.y + to.h) + CLEARANCE
     return [
       { x: fromCX, y: fromBottom },
-      { x: fromCX, y: loopY },
-      { x: toLeft - CLEARANCE, y: loopY },
+      { x: fromCX, y: swingY },
+      { x: toLeft - CLEARANCE, y: swingY },
       { x: toLeft - CLEARANCE, y: toCY },
       { x: toLeft, y: toCY },
     ]
@@ -81,23 +80,24 @@ function routeConnector(
   // ─── Top exit (decision branch to higher target) ─────────────
   if (exitPoint === 'top') {
     const goingRight = toCX > fromCX
+
     if (Math.abs(fromCX - toCX) < 20) {
       return [{ x: fromCX, y: fromTop }, { x: toCX, y: to.y + to.h }]
     }
     if (goingRight) {
+      // Forward: L-shape — up to target Y, then right
       return [
         { x: fromCX, y: fromTop },
         { x: fromCX, y: toCY },
         { x: toLeft, y: toCY },
       ]
     }
-    const loopY = laneBounds
-      ? laneBounds.y - SVG.LANE_GAP / 2
-      : fromTop - CLEARANCE - 16
+    // Backward: rise above then back left
+    const swingY = Math.min(fromTop, to.y) - CLEARANCE
     return [
       { x: fromCX, y: fromTop },
-      { x: fromCX, y: loopY },
-      { x: toLeft - CLEARANCE, y: loopY },
+      { x: fromCX, y: swingY },
+      { x: toLeft - CLEARANCE, y: swingY },
       { x: toLeft - CLEARANCE, y: toCY },
       { x: toLeft, y: toCY },
     ]
@@ -228,7 +228,7 @@ function applyStagger(points: Point[], flowId: string, offsets: Map<string, numb
   return out
 }
 
-/** Midpoint of the longest segment — good spot for a label */
+/** Position label on the longest segment, biased toward the source to avoid arrow overlap */
 function getLabelPosition(points: Point[]): Point | undefined {
   if (points.length < 2) return undefined
   let bestLen = 0
@@ -239,10 +239,34 @@ function getLabelPosition(points: Point[]): Point | undefined {
     const len = Math.sqrt(dx * dx + dy * dy)
     if (len > bestLen) { bestLen = len; bestIdx = i }
   }
+  // Bias toward source end (40% along the segment) to keep clear of arrowhead
+  const t = 0.35
   return {
-    x: (points[bestIdx].x + points[bestIdx + 1].x) / 2,
-    y: (points[bestIdx].y + points[bestIdx + 1].y) / 2,
+    x: points[bestIdx].x + (points[bestIdx + 1].x - points[bestIdx].x) * t,
+    y: points[bestIdx].y + (points[bestIdx + 1].y - points[bestIdx].y) * t,
   }
+}
+
+/**
+ * After stagger, some joints may become non-orthogonal (diagonal).
+ * Insert knee points to restore right angles at every joint.
+ */
+function ensureOrthogonal(points: Point[]): Point[] {
+  if (points.length < 2) return points
+  const out: Point[] = [points[0]]
+  for (let i = 1; i < points.length; i++) {
+    const prev = out[out.length - 1]
+    const curr = points[i]
+    const dx = Math.abs(curr.x - prev.x)
+    const dy = Math.abs(curr.y - prev.y)
+    // If neither horizontal nor vertical (both dx and dy are significant), add a knee
+    if (dx > 1 && dy > 1) {
+      // Prefer horizontal-first elbow (match the dominant direction of movement)
+      out.push({ x: curr.x, y: prev.y })
+    }
+    out.push(curr)
+  }
+  return out
 }
 
 // ─── Public API ─────────────────────────────────────────────────────
@@ -283,22 +307,41 @@ export function calculateAllConnectorPaths(
   }
 
   for (const [stepId, decFlows] of decisionFlowGroups) {
-    if (decFlows.length < 2) continue
     const fromPos = stepPositions.get(stepId)
     if (!fromPos) continue
     const fromCY = fromPos.y + fromPos.h / 2
 
-    for (const flow of decFlows) {
-      const toPos = stepPositions.get(flow.to_step_id)
-      if (!toPos) continue
-      const toCY = toPos.y + toPos.h / 2
-
-      if (toCY > fromCY + 20) {
+    // Single-branch decisions: assign exit based on color
+    // (red/No exits bottom, green/Yes exits right)
+    if (decFlows.length === 1) {
+      const flow = decFlows[0]
+      if (flow.condition_color === 'red') {
         decisionExitPoints.set(flow.id, 'bottom')
-      } else if (toCY < fromCY - 20) {
-        decisionExitPoints.set(flow.id, 'top')
       } else {
         decisionExitPoints.set(flow.id, 'right')
+      }
+      continue
+    }
+
+    for (const flow of decFlows) {
+      // Assign exit point based on color: green/Yes → right, red/No → bottom
+      // This follows the standard convention: Yes goes right, No goes down
+      if (flow.condition_color === 'red') {
+        decisionExitPoints.set(flow.id, 'bottom')
+      } else if (flow.condition_color === 'green') {
+        decisionExitPoints.set(flow.id, 'right')
+      } else {
+        // Fallback: use target position
+        const toPos = stepPositions.get(flow.to_step_id)
+        if (!toPos) continue
+        const toCY = toPos.y + toPos.h / 2
+        if (toCY > fromCY + 20) {
+          decisionExitPoints.set(flow.id, 'bottom')
+        } else if (toCY < fromCY - 20) {
+          decisionExitPoints.set(flow.id, 'top')
+        } else {
+          decisionExitPoints.set(flow.id, 'right')
+        }
       }
     }
   }
@@ -334,10 +377,10 @@ export function calculateAllConnectorPaths(
   }
   const offsets = computeStagger(allSegs)
 
-  // ─── Phase 3: apply stagger and output ────────────────────────
+  // ─── Phase 3: apply stagger, fix orthogonality, and output ──
   for (const [fid, path] of rawPaths) {
     if (offsets.size > 0) {
-      const pts = applyStagger(path.points, fid, offsets)
+      const pts = ensureOrthogonal(applyStagger(path.points, fid, offsets))
       result.set(fid, { ...path, points: pts, labelPosition: getLabelPosition(pts) })
     } else {
       result.set(fid, path)
@@ -349,7 +392,11 @@ export function calculateAllConnectorPaths(
 
 export function pointsToSVGPath(points: Point[]): string {
   if (points.length < 2) return ''
-  return points.map((p, i) => (i === 0 ? `M${p.x},${p.y}` : `L${p.x},${p.y}`)).join(' ')
+  let d = `M${points[0].x},${points[0].y}`
+  for (let i = 1; i < points.length; i++) {
+    d += ` L${points[i].x},${points[i].y}`
+  }
+  return d
 }
 
 export function getArrowhead(points: Point[]): string {

@@ -38,7 +38,7 @@ export default function NewProcessModal({ onClose, onCreate }: NewProcessModalPr
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+      <div className={`bg-white rounded-xl shadow-xl w-full mx-4 ${step === 'template' ? 'max-w-2xl' : 'max-w-lg'}`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-lg font-semibold text-gray-900">
             {step === 'name' ? 'New Process' : 'Choose a Template'}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { ProcessStepData, SwimlaneColor, DecisionOption } from '@/types/process-builder'
 import type { StepPosition } from '../../utils/svg-layout'
 
@@ -12,7 +12,12 @@ interface SVGStepCardProps {
   isSelected: boolean
   isDocumented: boolean
   isDragFaded?: boolean
+  isEditing?: boolean
+  isNew?: boolean
+  isDeleting?: boolean
   onClick: (stepId: string) => void
+  onDoubleClick?: (stepId: string) => void
+  onNameCommit?: (stepId: string, newName: string) => void
   onMouseEnter: (stepId: string, e: React.MouseEvent) => void
   onMouseLeave: () => void
   onMouseDown?: (stepId: string, e: React.MouseEvent) => void
@@ -27,18 +32,45 @@ export default function SVGStepCard({
   isSelected,
   isDocumented,
   isDragFaded,
+  isEditing,
+  isNew,
+  isDeleting,
   onClick,
+  onDoubleClick,
+  onNameCommit,
   onMouseEnter,
   onMouseLeave,
   onMouseDown,
   onPortMouseDown,
 }: SVGStepCardProps) {
   const [isHovered, setIsHovered] = useState(false)
+  const [hoveredPort, setHoveredPort] = useState<'right' | 'bottom' | 'left' | 'top' | null>(null)
+  const [editValue, setEditValue] = useState(step.action_name)
+  const inputRef = useRef<HTMLInputElement>(null)
   const isDecision = step.step_type === 'decision'
   const cx = pos.x + pos.w / 2
   const cy = pos.y + pos.h / 2
 
+  // Focus input when editing starts
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      setEditValue(step.action_name)
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [isEditing, step.action_name])
+
+  const commitEdit = () => {
+    const trimmed = editValue.trim()
+    if (trimmed && trimmed !== step.action_name) {
+      onNameCommit?.(step.id, trimmed)
+    } else {
+      onNameCommit?.(step.id, step.action_name) // cancel - revert
+    }
+  }
+
   const handleMouseEnter = (e: React.MouseEvent) => {
+    if (isEditing) return
     setIsHovered(true)
     onMouseEnter(step.id, e)
   }
@@ -49,8 +81,20 @@ export default function SVGStepCard({
   }
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return
+    if (e.button !== 0 || isEditing) return
     onMouseDown?.(step.id, e)
+  }
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onDoubleClick?.(step.id)
+  }
+
+  // Animation styles
+  const animStyle: React.CSSProperties = {
+    transition: 'transform 300ms ease-out, opacity 250ms ease-out',
+    ...(isDeleting ? { opacity: 0, transform: 'scale(0.8)' } : {}),
+    ...(isNew ? { animation: 'stepFadeIn 200ms ease-out' } : {}),
   }
 
   const handlePortMouseDown = (port: 'right' | 'bottom' | 'left' | 'top', e: React.MouseEvent) => {
@@ -78,35 +122,88 @@ export default function SVGStepCard({
         {options.length >= 1 && (
           <circle cx={rightPortX} cy={rightPortY} r={5} fill="white"
             stroke={OPTION_COLOR_MAP[options[0].color] || '#10B981'} strokeWidth={2}
-            className="cursor-crosshair" onMouseDown={(e) => handlePortMouseDown('right', e)} />
+            className="cursor-crosshair" onMouseDown={(e) => handlePortMouseDown('right', e)}
+            onMouseEnter={() => setHoveredPort('right')} onMouseLeave={() => setHoveredPort(null)} />
         )}
         {options.length >= 2 && (
           <circle cx={bottomPortX} cy={bottomPortY} r={5} fill="white"
             stroke={OPTION_COLOR_MAP[options[1].color] || '#EF4444'} strokeWidth={2}
-            className="cursor-crosshair" onMouseDown={(e) => handlePortMouseDown('bottom', e)} />
+            className="cursor-crosshair" onMouseDown={(e) => handlePortMouseDown('bottom', e)}
+            onMouseEnter={() => setHoveredPort('bottom')} onMouseLeave={() => setHoveredPort(null)} />
         )}
         {options.length >= 3 && (
           <circle cx={leftPortX} cy={leftPortY} r={5} fill="white"
             stroke={OPTION_COLOR_MAP[options[2].color] || '#3B82F6'} strokeWidth={2}
-            className="cursor-crosshair" onMouseDown={(e) => handlePortMouseDown('left', e)} />
+            className="cursor-crosshair" onMouseDown={(e) => handlePortMouseDown('left', e)}
+            onMouseEnter={() => setHoveredPort('left')} onMouseLeave={() => setHoveredPort(null)} />
         )}
         {options.length >= 4 && (
           <circle cx={topPortX} cy={topPortY} r={5} fill="white"
             stroke={OPTION_COLOR_MAP[options[3].color] || '#F97316'} strokeWidth={2}
-            className="cursor-crosshair" onMouseDown={(e) => handlePortMouseDown('top', e)} />
+            className="cursor-crosshair" onMouseDown={(e) => handlePortMouseDown('top', e)}
+            onMouseEnter={() => setHoveredPort('top')} onMouseLeave={() => setHoveredPort(null)} />
         )}
       </>
     ) : (
       <>
         <circle cx={rightPortX} cy={rightPortY} r={5} fill="white"
           stroke="#3B82F6" strokeWidth={2} className="cursor-crosshair"
-          onMouseDown={(e) => handlePortMouseDown('right', e)} />
+          onMouseDown={(e) => handlePortMouseDown('right', e)}
+          onMouseEnter={() => setHoveredPort('right')} onMouseLeave={() => setHoveredPort(null)} />
         <circle cx={bottomPortX} cy={bottomPortY} r={5} fill="white"
           stroke="#3B82F6" strokeWidth={2} className="cursor-crosshair"
-          onMouseDown={(e) => handlePortMouseDown('bottom', e)} />
+          onMouseDown={(e) => handlePortMouseDown('bottom', e)}
+          onMouseEnter={() => setHoveredPort('bottom')} onMouseLeave={() => setHoveredPort(null)} />
+        <circle cx={leftPortX} cy={leftPortY} r={5} fill="white"
+          stroke="#3B82F6" strokeWidth={2} className="cursor-crosshair"
+          onMouseDown={(e) => handlePortMouseDown('left', e)}
+          onMouseEnter={() => setHoveredPort('left')} onMouseLeave={() => setHoveredPort(null)} />
+        <circle cx={topPortX} cy={topPortY} r={5} fill="white"
+          stroke="#3B82F6" strokeWidth={2} className="cursor-crosshair"
+          onMouseDown={(e) => handlePortMouseDown('top', e)}
+          onMouseEnter={() => setHoveredPort('top')} onMouseLeave={() => setHoveredPort(null)} />
       </>
     )
   )
+
+  // Instant tooltip when hovering a port circle
+  const portTooltipElement = hoveredPort && (() => {
+    const portPositions: Record<string, { px: number; py: number; anchor: 'start' | 'middle' | 'end'; dx: number; dy: number }> = {
+      right:  { px: rightPortX,  py: rightPortY,  anchor: 'start', dx: 10, dy: -8 },
+      bottom: { px: bottomPortX, py: bottomPortY, anchor: 'middle', dx: 0, dy: 14 },
+      left:   { px: leftPortX,   py: leftPortY,   anchor: 'end', dx: -10, dy: -8 },
+      top:    { px: topPortX,    py: topPortY,     anchor: 'middle', dx: 0, dy: -14 },
+    }
+    const { px, py, anchor, dx, dy } = portPositions[hoveredPort]
+    const tx = px + dx
+    const ty = py + dy
+    const label = 'Click to add step \u00b7 Drag to connect'
+    const textW = label.length * 4.6
+    const padX = 6
+    const padY = 4
+    const rectW = textW + padX * 2
+    const rectH = 16 + padY
+    const rectX = anchor === 'end' ? tx - rectW : anchor === 'middle' ? tx - rectW / 2 : tx
+    const rectY = ty - rectH / 2 - 1
+
+    return (
+      <g className="pointer-events-none">
+        <rect x={rectX - 1} y={rectY} width={rectW + 2} height={rectH} rx={4} fill="#1F2937" opacity={0.9} />
+        <text
+          x={anchor === 'end' ? tx - padX : anchor === 'middle' ? tx : tx + padX}
+          y={ty}
+          textAnchor={anchor}
+          dominantBaseline="central"
+          fill="white"
+          fontSize={9}
+          fontWeight={500}
+          className="pointer-events-none select-none"
+        >
+          {label}
+        </text>
+      </g>
+    )
+  })()
 
   if (isDecision) {
     // Diamond — white fill, thick colored border
@@ -119,11 +216,13 @@ export default function SVGStepCard({
     return (
       <g
         className="cursor-pointer"
-        onClick={() => onClick(step.id)}
+        onClick={(e) => { e.stopPropagation(); if (!isEditing) onClick(step.id) }}
+        onDoubleClick={handleDoubleClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onMouseDown={handleMouseDown}
         opacity={isDragFaded ? 0.3 : 1}
+        style={animStyle}
       >
         {/* Shadow */}
         <polygon
@@ -143,13 +242,31 @@ export default function SVGStepCard({
           fill={laneColor.border}
           opacity={0.1}
         />
-        {/* Name text — word-wrapped, dark on white */}
-        {renderDecisionText(step.action_name, cx, cy, dw)}
+        {/* Name text or inline editor */}
+        {isEditing ? (
+          <foreignObject x={cx - 60} y={cy - 14} width={120} height={28}>
+            <input
+              ref={inputRef}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); commitEdit() }
+                if (e.key === 'Escape') { e.preventDefault(); onNameCommit?.(step.id, step.action_name) }
+                e.stopPropagation()
+              }}
+              onBlur={commitEdit}
+              className="w-full h-full px-1 text-center text-xs font-semibold text-gray-800 bg-white border border-orange-400 rounded outline-none"
+              style={{ fontSize: '10px' }}
+            />
+          </foreignObject>
+        ) : (
+          renderDecisionText(step.action_name, cx, cy, dw)
+        )}
         {/* Decision option labels around edges */}
         {options.length >= 1 && (
           <text
             x={cx + dw + 8}
-            y={cy - 4}
+            y={cy - 14}
             textAnchor="start"
             dominantBaseline="central"
             fill={OPTION_COLOR_MAP[options[0].color] || '#10B981'}
@@ -213,6 +330,7 @@ export default function SVGStepCard({
           />
         )}
         {portElements}
+        {portTooltipElement}
       </g>
     )
   }
@@ -224,11 +342,13 @@ export default function SVGStepCard({
   return (
     <g
       className="cursor-pointer"
-      onClick={() => onClick(step.id)}
+      onClick={(e) => { e.stopPropagation(); if (!isEditing) onClick(step.id) }}
+      onDoubleClick={handleDoubleClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onMouseDown={handleMouseDown}
       opacity={isDragFaded ? 0.3 : 1}
+      style={animStyle}
     >
       {/* Subtle shadow */}
       <rect
@@ -264,8 +384,26 @@ export default function SVGStepCard({
         fill={laneColor.border}
       />
 
-      {/* Step name — up to 3 lines, centered, dark text */}
-      {renderCardText(lines, cx, cy, pos.h)}
+      {/* Step name — inline editor or text */}
+      {isEditing ? (
+        <foreignObject x={pos.x + accentW + 4} y={cy - 14} width={pos.w - accentW - 28} height={28}>
+          <input
+            ref={inputRef}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); commitEdit() }
+              if (e.key === 'Escape') { e.preventDefault(); onNameCommit?.(step.id, step.action_name) }
+              e.stopPropagation()
+            }}
+            onBlur={commitEdit}
+            className="w-full h-full px-2 text-xs font-semibold text-gray-800 bg-white border border-orange-400 rounded outline-none"
+            style={{ fontSize: '11px' }}
+          />
+        </foreignObject>
+      ) : (
+        renderCardText(lines, cx, cy, pos.h)
+      )}
 
       {/* Order badge (top-right) — smaller */}
       <circle
@@ -350,6 +488,7 @@ export default function SVGStepCard({
       )}
 
       {portElements}
+      {portTooltipElement}
     </g>
   )
 }
