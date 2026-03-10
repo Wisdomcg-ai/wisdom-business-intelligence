@@ -55,45 +55,42 @@ export function generateProcessPDF(
   const defaultLayout = calculateSVGLayout(sorted, snapshot.steps, snapshot.flows, undefined, undefined, snapshot.phases)
   const columnCount = defaultLayout.columnCount
 
-  // Progressive compaction for wide diagrams so they fit on the page
-  const pdfOverrides: LayoutOverrides | undefined = columnCount > 14
-    ? { cardW: 100, gapX: 20, laneH: 140, sidebarW: 44, pad: 14, branchOffsetY: 55 }
+  // Lane heights with compact annotation space (single-line text, no pills)
+  const pdfOverrides: LayoutOverrides = columnCount > 14
+    ? { cardW: 100, gapX: 20, laneH: 115, sidebarW: 44, pad: 14, branchOffsetY: 55 }
     : columnCount > 10
-    ? { cardW: 120, gapX: 25, laneH: 150, sidebarW: 48, pad: 16, branchOffsetY: 60 }
+    ? { cardW: 120, gapX: 25, laneH: 130, sidebarW: 48, pad: 16, branchOffsetY: 60 }
     : columnCount > 8
-    ? { cardW: 140, gapX: 35, sidebarW: 56, pad: 20 }
-    : undefined
+    ? { cardW: 140, gapX: 35, laneH: 140, sidebarW: 56, pad: 20 }
+    : { laneH: 150 }
 
   // Don't pass processName — PDF has its own header, no need for in-diagram title offset
-  const layout = pdfOverrides
-    ? calculateSVGLayout(sorted, snapshot.steps, snapshot.flows, undefined, pdfOverrides, snapshot.phases)
-    : defaultLayout
+  const layout = calculateSVGLayout(sorted, snapshot.steps, snapshot.flows, undefined, pdfOverrides, snapshot.phases)
 
-  // ─── Page sizing: fit diagram on page, allow moderate width extension ─
-  const pageH = options.paperSize === 'a3' ? 297 : 210
+  // ─── Page sizing: scale by width, page height flexes to content ─────
   const standardW = options.paperSize === 'a3' ? 420 : 297
-  const maxW = standardW * 2          // allow up to 2× standard width for wide diagrams
-  const headerH = 12                  // simple title line
+  const maxW = standardW * 2
+  const headerH = 12
   const footerH = options.showLegend ? 14 : 6
   const margin = 8
 
-  const availableH = pageH - headerH - footerH - margin * 2
-
-  // Scale to fill height first, then check if width fits within max bounds
-  const scaleByH = Math.min(availableH / layout.totalH, 1)
-  const widthAtHScale = layout.totalW * scaleByH + margin * 2
-
-  // If width-based scale fits within max width, use height scale; otherwise shrink to fit
+  // Scale to fit standard page width; expand page if scale would be too small
+  const scaleByStdW = Math.min((standardW - margin * 2) / layout.totalW, 1)
   const scaleByMaxW = (maxW - margin * 2) / layout.totalW
-  const scale = widthAtHScale <= maxW ? scaleByH : Math.min(scaleByH, scaleByMaxW, 1)
+  const scale = scaleByStdW >= 0.25 ? scaleByStdW : Math.min(scaleByMaxW, 1)
 
-  // Page width: exactly what the content needs (clamped between standard and max)
+  // Page width: standard unless diagram needs more room
   const contentW = layout.totalW * scale + margin * 2
   const pageW = Math.max(standardW, Math.min(maxW, contentW))
 
-  // Center the diagram in the available space
-  const diagramW = layout.totalW * scale
+  // Page height flexes to fit content — no vertical cramping
   const diagramH = layout.totalH * scale
+  const minPageH = options.paperSize === 'a3' ? 297 : 210
+  const pageH = Math.max(minPageH, diagramH + headerH + footerH + margin * 2)
+  const availableH = pageH - headerH - footerH - margin * 2
+
+  // Center the diagram
+  const diagramW = layout.totalW * scale
   const offsetX = margin + Math.max(0, (pageW - margin * 2 - diagramW) / 2)
   const offsetY = headerH + margin + Math.max(0, (availableH - diagramH) / 2)
 
@@ -111,12 +108,12 @@ export function generateProcessPDF(
   // ─── Font sizes: absolute floors ensure readability ───────────
   const effectiveCardW = pdfOverrides?.cardW ?? SVG.CARD_W
   const cardW_mm = effectiveCardW * scale
-  const fontCard = Math.max(5, Math.min(10, cardW_mm * 0.22))
-  const fontAnnotation = Math.max(4, Math.min(7, cardW_mm * 0.16))
-  const fontBadge = Math.max(3.5, Math.min(6, cardW_mm * 0.14))
-  const fontPhase = Math.max(6.5, Math.min(13, cardW_mm * 0.28))
-  const fontLane = Math.max(5, Math.min(9, cardW_mm * 0.22))
-  const fontFlowLabel = Math.max(4.5, Math.min(7, cardW_mm * 0.18))
+  const fontCard = Math.max(7, Math.min(10, cardW_mm * 0.22))
+  const fontAnnotation = Math.max(5.5, Math.min(7, cardW_mm * 0.16))
+  const fontBadge = Math.max(4, Math.min(6, cardW_mm * 0.14))
+  const fontPhase = Math.max(9, Math.min(13, cardW_mm * 0.28))
+  const fontLane = Math.max(7, Math.min(9, cardW_mm * 0.22))
+  const fontFlowLabel = Math.max(5.5, Math.min(7, cardW_mm * 0.18))
 
   // ─── Header: simple centered title on white ─────────────────
   doc.setTextColor(...COLORS.text)
@@ -141,13 +138,7 @@ export function generateProcessPDF(
       const phX = px(phase.x)
       const phW = ps(phase.w)
 
-      // Full-height border outline
-      doc.setDrawColor(...bgColor)
-      doc.setLineWidth(Math.max(0.5, 1.2 * scale))
-      doc.setFillColor(bgColor[0], bgColor[1], bgColor[2])
-      doc.roundedRect(phX, phHeaderY, phW, zoneH, 1.5, 1.5, 'D')
-
-      // Header bar — filled with phase color
+      // Header bar only — no border outline (SVG uses 4% opacity tint which is barely visible)
       doc.setFillColor(...bgColor)
       doc.rect(phX, phHeaderY, phW, phHeaderH, 'F')
 
@@ -168,20 +159,26 @@ export function generateProcessPDF(
     doc.setFillColor(...tintColor)
     doc.rect(px(0), py(lane.y), ps(layout.totalW), ps(lane.h), 'F')
 
-    // Colored sidebar bar
+    // Colored sidebar bar (matches SVG sidebar)
     const lnSidebarW = pdfOverrides?.sidebarW ?? SVG.SIDEBAR_W
     doc.setFillColor(...barColor)
     doc.rect(px(0), py(lane.y), ps(lnSidebarW), ps(lane.h), 'F')
 
-    // Rotated lane label
+    // Rotated lane label — manually centered in sidebar
+    // jsPDF's align:'center' only shifts x (broken for rotated text), so we center manually.
+    // angle:90 = CCW = text reads bottom-to-top, matching SVG rotate(-90).
+    const lnFontSize = Math.max(10, fontLane)
     doc.setTextColor(...COLORS.white)
-    doc.setFontSize(fontLane)
+    doc.setFontSize(lnFontSize)
     doc.setFont('helvetica', 'bold')
-    const labelX = px(lnSidebarW / 2)
-    const labelY = py(lane.y + lane.h / 2)
-    const maxChars = Math.floor(ps(lane.h) / (fontLane * 0.32))
-    const displayName = lane.name.length > maxChars ? lane.name.slice(0, maxChars - 1) + '…' : lane.name
-    doc.text(displayName, labelX, labelY + 1, { align: 'center', angle: 90 })
+    const label = lane.name.length > 22 ? lane.name.slice(0, 20) + '...' : lane.name
+    const textW = doc.getTextWidth(label) // mm
+    // Text flows upward from anchor → shift anchor DOWN by textW/2 to center vertically
+    const lnCy = py(lane.y + lane.h / 2) + textW / 2
+    // After 90° CCW rotation, characters extend LEFT of anchor → shift RIGHT to center in sidebar
+    const baselineShift = lnFontSize * 0.35 * 0.3528 // pt → mm
+    const lnCx = px(lnSidebarW / 2) + baselineShift
+    doc.text(label, lnCx, lnCy, { angle: 90 })
   })
 
   // ─── Connectors (drawn behind cards) ──────────────────────────
@@ -227,8 +224,9 @@ export function generateProcessPDF(
       doc.triangle(tipX, tipY, x1, y1, x2, y2, 'F')
     }
 
-    // Condition label pill
-    if (connector.label && connector.labelPosition) {
+    // Condition label pill — skip for decision sources (diamond already shows Yes/No labels)
+    const fromStep = snapshot.steps.find((s) => s.id === flow.from_step_id)
+    if (connector.label && connector.labelPosition && fromStep?.step_type !== 'decision') {
       const lx = px(connector.labelPosition.x)
       const ly = py(connector.labelPosition.y)
       doc.setFontSize(fontFlowLabel)
@@ -295,15 +293,19 @@ export function generateProcessPDF(
     doc.text('Step Types:', legendX + 4, legendY + 5.5)
     doc.setFont('helvetica', 'normal')
     legendX += doc.getTextWidth('Step Types:') + 10
-    const types = [
-      { label: 'Action', shape: '■' },
-      { label: 'Decision', shape: '◆' },
-      { label: 'Wait', shape: '⏳' },
-      { label: 'Automation', shape: '⚙' },
-    ]
-    types.forEach((t) => {
-      doc.text(`${t.shape} ${t.label}`, legendX, legendY + 6)
-      legendX += doc.getTextWidth(`${t.shape} ${t.label}`) + 10
+    const types = ['Action', 'Decision', 'Wait', 'Automation']
+    types.forEach((t, idx) => {
+      // Draw a small colored indicator before each type label
+      const dotY = legendY + 4.5
+      const dotR = 1.5
+      if (idx === 0) doc.setFillColor(13, 148, 136)       // teal - action
+      else if (idx === 1) doc.setFillColor(232, 119, 34)   // orange - decision
+      else if (idx === 2) doc.setFillColor(148, 163, 184)  // gray - wait
+      else doc.setFillColor(59, 130, 246)                   // blue - automation
+      doc.circle(legendX + dotR, dotY, dotR, 'F')
+      doc.setTextColor(...COLORS.text)
+      doc.text(t, legendX + dotR * 2 + 2, legendY + 6)
+      legendX += doc.getTextWidth(t) + dotR * 2 + 12
     })
   }
 
@@ -386,20 +388,6 @@ function renderActionCard(
     .findIndex((s) => s.id === step.id)
   doc.text(String(stepIndex + 1), badgeX, badgeY + fontBadge * 0.15, { align: 'center' })
 
-  // Green documented indicator (top-left)
-  const hasDetail = !!(step.description || step.systems_used.length > 0 || step.documents_needed.length > 0)
-  if (hasDetail) {
-    const indR = Math.max(1.8, 3 * scale)
-    const indX = sx + indR + Math.max(1, 1.5 * scale)
-    const indY = sy + indR + Math.max(1, 1.5 * scale)
-    doc.setFillColor(...COLORS.green)
-    doc.circle(indX, indY, indR, 'F')
-    doc.setTextColor(...COLORS.white)
-    doc.setFontSize(Math.max(4.5, fontBadge * 0.7))
-    doc.setFont('helvetica', 'bold')
-    doc.text('✓', indX, indY + 0.5, { align: 'center' })
-  }
-
   // Duration pill above card (matching SVG layout)
   if (showAnnotations && step.estimated_duration) {
     renderDurationPill(doc, step.estimated_duration, sx, sy, sw, scale, fontAnnotation)
@@ -479,31 +467,32 @@ function renderDecisionDiamond(
     doc.text(nameLines[i], cx, textStartY + i * lineH, { align: 'center' })
   }
 
-  // Decision option labels around diamond edges
+  // Decision option labels — positioned to match SVG (offset from diamond edges)
   const decOptions = getDecisionOptionsForPDF(step)
   const labelSize = Math.max(6, fontAnnotation)
   const gap = Math.max(2, 3 * scale)
+  const labelOffset = Math.max(3, 5 * scale) // extra offset like SVG's +8/+12px
 
   if (decOptions.length >= 1) {
     const optColor = FLOW_COLOR_MAP[decOptions[0].color] || COLORS.green
     doc.setTextColor(...optColor)
     doc.setFontSize(labelSize)
     doc.setFont('helvetica', 'bold')
-    doc.text(decOptions[0].label, cx + hw + gap, cy, { align: 'left' })
+    doc.text(decOptions[0].label, cx + hw + gap, cy - labelOffset, { align: 'left' })
   }
   if (decOptions.length >= 2) {
     const optColor = FLOW_COLOR_MAP[decOptions[1].color] || COLORS.red
     doc.setTextColor(...optColor)
     doc.setFontSize(labelSize)
     doc.setFont('helvetica', 'bold')
-    doc.text(decOptions[1].label, cx, cy + hh + gap + labelSize * 0.3, { align: 'center' })
+    doc.text(decOptions[1].label, cx + labelOffset, cy + hh + gap + labelSize * 0.3, { align: 'left' })
   }
   if (decOptions.length >= 3) {
     const optColor = FLOW_COLOR_MAP[decOptions[2].color] || COLORS.blue
     doc.setTextColor(...optColor)
     doc.setFontSize(labelSize)
     doc.setFont('helvetica', 'bold')
-    doc.text(decOptions[2].label, cx - hw - gap, cy, { align: 'right' })
+    doc.text(decOptions[2].label, cx - hw - gap, cy - labelOffset, { align: 'right' })
   }
   if (decOptions.length >= 4) {
     const optColor = FLOW_COLOR_MAP[decOptions[3].color] || [232, 119, 34]
@@ -530,7 +519,7 @@ function renderDurationPill(
   scale: number,
   fontSize: number
 ) {
-  const text = `⏱ ${duration}`
+  const text = duration
   const pillH = Math.max(4, 6 * scale)
   const textW = doc.setFontSize(fontSize).getTextWidth(text)
   const pillW = textW + Math.max(4, 6 * scale)
@@ -550,7 +539,7 @@ function renderDurationPill(
   doc.text(text, sx + sw / 2, pillY + pillH / 2 + fontSize * 0.13, { align: 'center' })
 }
 
-// ─── Annotations renderer (below card) ──────────────────────────────
+// ─── Compact annotations renderer (below card) ─────────────────────
 
 function renderAnnotations(
   doc: jsPDF,
@@ -561,82 +550,44 @@ function renderAnnotations(
   scale: number,
   fontSize: number
 ) {
-  // Duration is handled above the card now — skip it here
   const hasAnnotations = step.description ||
     step.systems_used.length > 0 || step.documents_needed.length > 0
   if (!hasAnnotations) return
 
-  let y = topY + Math.max(1.5, 2.5 * scale)
-  const lineH = fontSize * 0.45
-  const maxW = sw + Math.max(4, 8 * scale)
+  let y = topY + Math.max(1, 1.5 * scale)
+  const lineH = fontSize * 0.42
+  const maxW = sw
 
   doc.setFontSize(fontSize)
 
-  // Description (italic text, up to 3 lines)
+  // Description — single italic line, truncated to card width
   if (step.description) {
     doc.setTextColor(...COLORS.subtext)
     doc.setFont('helvetica', 'italic')
-    const cleanDesc = step.description.replace(/\n/g, ' | ')
-    const descLines = doc.splitTextToSize(cleanDesc, maxW) as string[]
-    for (let i = 0; i < Math.min(descLines.length, 3); i++) {
-      doc.text(descLines[i], sx + 1, y + lineH)
-      y += lineH + 0.6
-    }
-    y += 0.5
+    const cleanDesc = step.description.replace(/\n/g, ' ')
+    const lines = doc.splitTextToSize(cleanDesc, maxW) as string[]
+    doc.text(lines[0], sx + 1, y + lineH)
+    y += lineH + 0.5
   }
 
-  // Systems (blue badge pills)
+  // Systems — comma-separated, single blue text line
   if (step.systems_used.length > 0) {
-    step.systems_used.slice(0, 3).forEach((sys) => {
-      const text = sys.length > 20 ? sys.slice(0, 18) + '…' : sys
-      const pillH = Math.max(3.5, 5 * scale)
-      const textW = doc.setFontSize(fontSize).getTextWidth(text)
-      const dotR = Math.max(0.8, 1.2 * scale)
-      const pillW = dotR * 2 + 2 + textW + Math.max(3, 5 * scale)
-
-      // Blue-tinted pill
-      doc.setFillColor(239, 246, 255)  // #EFF6FF
-      doc.setDrawColor(191, 219, 254)  // #BFDBFE
-      doc.setLineWidth(0.2)
-      doc.roundedRect(sx, y, pillW, pillH, pillH / 2, pillH / 2, 'FD')
-
-      // Blue dot
-      doc.setFillColor(59, 130, 246)  // #3B82F6
-      doc.circle(sx + dotR + Math.max(1.5, 2.5 * scale), y + pillH / 2, dotR, 'F')
-
-      // Text
-      doc.setTextColor(29, 78, 216)  // #1D4ED8
-      doc.setFont('helvetica', 'normal')
-      doc.text(text, sx + dotR * 2 + Math.max(3, 5 * scale), y + pillH / 2 + fontSize * 0.13)
-      y += pillH + Math.max(0.8, 1.2 * scale)
-    })
+    doc.setTextColor(29, 78, 216)  // #1D4ED8
+    doc.setFont('helvetica', 'normal')
+    const text = step.systems_used.join(', ')
+    const lines = doc.splitTextToSize(text, maxW - 2) as string[]
+    doc.text(lines[0], sx + 1, y + lineH)
+    y += lineH + 0.5
   }
 
-  // Documents (amber badge pills)
+  // Documents — comma-separated, single amber text line
   if (step.documents_needed.length > 0) {
-    step.documents_needed.slice(0, 3).forEach((docName) => {
-      const text = docName.length > 20 ? docName.slice(0, 18) + '…' : docName
-      const pillH = Math.max(3.5, 5 * scale)
-      const textW = doc.setFontSize(fontSize).getTextWidth(text)
-      const dotR = Math.max(0.8, 1.2 * scale)
-      const pillW = dotR * 2 + 2 + textW + Math.max(3, 5 * scale)
-
-      // Amber-tinted pill
-      doc.setFillColor(255, 251, 235)  // #FFFBEB
-      doc.setDrawColor(253, 230, 138)  // #FDE68A
-      doc.setLineWidth(0.2)
-      doc.roundedRect(sx, y, pillW, pillH, pillH / 2, pillH / 2, 'FD')
-
-      // Amber dot
-      doc.setFillColor(217, 119, 6)  // #D97706
-      doc.circle(sx + dotR + Math.max(1.5, 2.5 * scale), y + pillH / 2, dotR, 'F')
-
-      // Text
-      doc.setTextColor(146, 64, 14)  // #92400E
-      doc.setFont('helvetica', 'normal')
-      doc.text(text, sx + dotR * 2 + Math.max(3, 5 * scale), y + pillH / 2 + fontSize * 0.13)
-      y += pillH + Math.max(0.8, 1.2 * scale)
-    })
+    doc.setTextColor(146, 64, 14)  // #92400E
+    doc.setFont('helvetica', 'normal')
+    const text = step.documents_needed.join(', ')
+    const lines = doc.splitTextToSize(text, maxW - 2) as string[]
+    doc.text(lines[0], sx + 1, y + lineH)
+    y += lineH + 0.5
   }
 }
 
@@ -653,3 +604,4 @@ function getDecisionOptionsForPDF(step: ProcessStepData): DecisionOption[] {
   }
   return options
 }
+
