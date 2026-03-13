@@ -1,15 +1,18 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/contexts/BusinessContext';
 import { quarterlyReviewService } from '../services/quarterly-review-service';
+import { strategicSyncService } from '../services/strategic-sync-service';
 import type {
   QuarterlyReview,
   QuarterNumber,
   WorkshopStep,
+  ReviewType,
   ActionReplay,
   FeedbackLoop,
+  FeedbackLoopMode,
   DashboardSnapshot,
   AssessmentSnapshot,
   RoadmapSnapshot,
@@ -18,10 +21,23 @@ import type {
   Rock,
   PersonalCommitments,
   OpenLoopDecisionRecord,
-  IssueResolution
+  IssueResolution,
+  RockReviewItem,
+  CustomerPulse,
+  PeopleReview,
+  AnnualPlanSnapshot,
+  RealignmentData,
+  InitiativeDecision,
+  CoachNotes,
+  ActionItem,
+  YearInReview,
+  VisionStrategyCheck,
+  NextYearTargets,
+  AnnualInitiativePlan
 } from '../types';
 import {
   WORKSHOP_STEPS,
+  getWorkshopSteps,
   getCurrentQuarter,
   getDefaultActionReplay,
   getDefaultFeedbackLoop,
@@ -35,6 +51,7 @@ interface UseQuarterlyReviewOptions {
   quarter?: QuarterNumber;
   year?: number;
   reviewId?: string;
+  reviewType?: ReviewType;
 }
 
 interface UseQuarterlyReviewReturn {
@@ -44,6 +61,7 @@ interface UseQuarterlyReviewReturn {
   error: string | null;
   isSaving: boolean;
   hasUnsavedChanges: boolean;
+  reviewType: ReviewType;
 
   // Quarter info
   quarter: QuarterNumber;
@@ -71,11 +89,16 @@ interface UseQuarterlyReviewReturn {
   // Part 1: Reflection
   updateDashboardSnapshot: (snapshot: DashboardSnapshot) => void;
   updateActionReplay: (actionReplay: ActionReplay) => void;
+  updateRocksReview: (rocks: RockReviewItem[]) => void;
+  updateScorecardCommentary: (commentary: string) => void;
 
   // Part 2: Analysis
   updateFeedbackLoop: (feedbackLoop: FeedbackLoop) => void;
+  updateFeedbackLoopMode: (mode: FeedbackLoopMode) => void;
   updateOpenLoopsDecisions: (decisions: OpenLoopDecisionRecord[]) => void;
   updateIssuesResolved: (issues: IssueResolution[]) => void;
+  updateCustomerPulse: (pulse: CustomerPulse) => void;
+  updatePeopleReview: (review: PeopleReview) => void;
 
   // Part 3: Strategic Review
   updateAssessmentSnapshot: (snapshot: AssessmentSnapshot) => void;
@@ -91,10 +114,24 @@ interface UseQuarterlyReviewReturn {
   }) => void;
 
   // Part 4: Planning
+  updateAnnualPlanSnapshot: (snapshot: AnnualPlanSnapshot) => void;
+  updateRealignmentDecision: (decision: RealignmentData) => void;
+  updateInitiativeDecisions: (decisions: InitiativeDecision[]) => void;
   updateQuarterlyTargets: (targets: QuarterlyTargets) => void;
   updateInitiativesChanges: (changes: InitiativesChanges) => void;
   updateQuarterlyRocks: (rocks: Rock[]) => void;
   updatePersonalCommitments: (commitments: PersonalCommitments) => void;
+  updateOneThing: (answer: string) => void;
+
+  // Annual Review (Option C)
+  updateYearInReview: (data: YearInReview) => void;
+  updateVisionStrategy: (data: VisionStrategyCheck) => void;
+  updateNextYearTargets: (data: NextYearTargets) => void;
+  updateAnnualInitiativePlan: (data: AnnualInitiativePlan) => void;
+
+  // Cross-cutting
+  updateCoachNotes: (notes: CoachNotes) => void;
+  updateActionItems: (items: ActionItem[]) => void;
 }
 
 export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): UseQuarterlyReviewReturn {
@@ -115,6 +152,13 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   const [businessId, setBusinessId] = useState<string | null>(options.businessId || null);
   const [userId, setUserId] = useState<string | null>(null);
 
+  // Review type from options or from loaded review
+  const reviewType: ReviewType = review?.review_type || options.reviewType || 'quarterly';
+  const workshopSteps = useMemo(() => getWorkshopSteps(reviewType), [reviewType]);
+
+  // Sync debounce ref
+  const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Get user and business on mount
   useEffect(() => {
     const getUserAndBusiness = async () => {
@@ -126,21 +170,16 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
       }
       setUserId(user.id);
 
-      // Determine which business to use:
-      // 1. If options.businessId is provided (explicit), use it
-      // 2. If activeBusiness is set (coach viewing client), use it
-      // 3. Otherwise, fetch user's own business
       if (options.businessId) {
         setBusinessId(options.businessId);
       } else if (activeBusiness?.id) {
         setBusinessId(activeBusiness.id);
       } else {
-        // Fetch user's own business
         const { data: business } = await supabase
           .from('businesses')
           .select('id')
           .eq('owner_id', user.id)
-          .single();
+          .maybeSingle();
 
         if (business) {
           setBusinessId(business.id);
@@ -162,25 +201,49 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     setError(null);
 
     try {
+      let data;
       if (options.reviewId) {
-        const data = await quarterlyReviewService.getReviewById(options.reviewId);
-        setReview(data);
+        data = await quarterlyReviewService.getReviewById(options.reviewId);
       } else {
-        const data = await quarterlyReviewService.getOrCreateReview(
+        data = await quarterlyReviewService.getOrCreateReview(
           businessId,
           userId,
           targetQuarter,
-          targetYear
+          targetYear,
+          options.reviewType
         );
-        setReview(data);
       }
+
+      if (data) {
+        // Migrate step IDs from old 6-step Part 4 to new 5-step Part 4
+        const stepMigration: Record<string, string> = {
+          '4.2': '4.1',
+          '4.3': '4.2',
+          '4.4': '4.2',
+          '4.5': '4.3',
+          '4.6': '4.4',
+        };
+
+        if (data.current_step && stepMigration[data.current_step]) {
+          data = { ...data, current_step: stepMigration[data.current_step] as WorkshopStep };
+        }
+
+        if (data.steps_completed) {
+          const migratedSteps = data.steps_completed.map((s: string) =>
+            (stepMigration[s] || s) as WorkshopStep
+          );
+          data = { ...data, steps_completed: [...new Set(migratedSteps)] as WorkshopStep[] };
+        }
+      }
+
+      setReview(data);
     } catch (err) {
       console.error('Error initializing review:', err);
       setError('Failed to load quarterly review');
     } finally {
       setIsLoading(false);
     }
-  }, [businessId, userId, targetQuarter, targetYear, options.reviewId]);
+  }, [businessId, userId, targetQuarter, targetYear, options.reviewId, options.reviewType]);
 
   // Fetch review when businessId is available
   useEffect(() => {
@@ -217,37 +280,63 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     return () => clearTimeout(timer);
   }, [hasUnsavedChanges, review, saveReview]);
 
-  // Progress calculations
+  // Two-way sync: after auto-save completes on steps 4.2 and 4.3, sync to strategic plan
+  useEffect(() => {
+    if (hasUnsavedChanges || !review || !businessId || !userId) return;
+    const step = review.current_step;
+    if (step !== '4.2' && step !== '4.3') return;
+
+    // Debounce sync to 5 seconds after save completes
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(async () => {
+      try {
+        if (step === '4.2') {
+          // Sync initiative decisions and quarterly targets
+          const qKey = `q${review.quarter}`;
+          await strategicSyncService.syncInitiativeChanges(businessId, userId, review.initiative_decisions || []);
+          await strategicSyncService.syncQuarterlyTargets(businessId, review.quarterly_targets || { revenue: 0, grossProfit: 0, netProfit: 0, kpis: [] }, qKey);
+        } else if (step === '4.3') {
+          // Sync rocks
+          await strategicSyncService.syncRocks(businessId, userId, review.quarterly_rocks || []);
+        }
+      } catch (err) {
+        console.error('[Sync] Background sync failed:', err);
+      }
+    }, 5000);
+
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, [hasUnsavedChanges, review?.current_step, businessId, userId]);
+
+  // Progress calculations - use dynamic step list based on review type
   const progressPercentage = useMemo(() => {
     if (!review) return 0;
-    // Exclude 'complete' from both counts to avoid >100%
     const completed = (review.steps_completed || []).filter(s => s !== 'complete').length;
-    const total = WORKSHOP_STEPS.length - 1; // Exclude 'complete'
+    const total = workshopSteps.length - 1; // Exclude 'complete'
     return Math.min(100, Math.round((completed / total) * 100));
-  }, [review]);
+  }, [review, workshopSteps]);
 
   const canNavigateToStep = useCallback((step: WorkshopStep): boolean => {
     if (!review) return false;
     if (step === 'prework') return true;
 
-    const stepIndex = WORKSHOP_STEPS.indexOf(step);
+    const stepIndex = workshopSteps.indexOf(step);
+    if (stepIndex === -1) return false;
     const completedSteps = review.steps_completed || [];
 
-    // Can navigate to any completed step or the next uncompleted step
     if (completedSteps.includes(step)) return true;
 
-    // Find the last completed step
     let lastCompletedIndex = -1;
-    for (let i = WORKSHOP_STEPS.length - 1; i >= 0; i--) {
-      if (completedSteps.includes(WORKSHOP_STEPS[i])) {
+    for (let i = workshopSteps.length - 1; i >= 0; i--) {
+      if (completedSteps.includes(workshopSteps[i])) {
         lastCompletedIndex = i;
         break;
       }
     }
 
-    // Can go to the next step after last completed
     return stepIndex <= lastCompletedIndex + 1;
-  }, [review]);
+  }, [review, workshopSteps]);
 
   // Navigation
   const goToStep = useCallback(async (step: WorkshopStep) => {
@@ -260,8 +349,8 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   const completeCurrentStep = useCallback(async () => {
     if (!review) return;
 
-    const currentIndex = WORKSHOP_STEPS.indexOf(review.current_step);
-    const nextStep = WORKSHOP_STEPS[currentIndex + 1] || 'complete';
+    const currentIndex = workshopSteps.indexOf(review.current_step);
+    const nextStep = workshopSteps[currentIndex + 1] || 'complete';
 
     const updated = await quarterlyReviewService.completeStep(
       review.id,
@@ -269,7 +358,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
       nextStep
     );
     setReview(updated);
-  }, [review]);
+  }, [review, workshopSteps]);
 
   const startWorkshop = useCallback(async () => {
     if (!review) return;
@@ -278,10 +367,29 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   }, [review]);
 
   const completeWorkshop = useCallback(async () => {
-    if (!review) return;
+    if (!review || !businessId || !userId) return;
+
+    // Final sync to strategic plan tables before completing
+    try {
+      await strategicSyncService.syncAll(
+        businessId,
+        userId,
+        review.initiative_decisions || [],
+        review.quarterly_targets || { revenue: 0, grossProfit: 0, netProfit: 0, kpis: [] },
+        `q${review.quarter}`,
+        review.quarterly_rocks || [],
+        (review.initiatives_changes?.added || []).map(a => ({
+          title: a.title,
+          category: a.category,
+        }))
+      );
+    } catch (err) {
+      console.error('[Sync] Final sync on complete failed:', err);
+    }
+
     const updated = await quarterlyReviewService.completeWorkshop(review.id);
     setReview(updated);
-  }, [review]);
+  }, [review, businessId, userId]);
 
   // Update helpers that set local state and mark unsaved
   const updateLocalState = useCallback((updater: (prev: QuarterlyReview) => QuarterlyReview) => {
@@ -299,7 +407,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
 
   const completePreWork = useCallback(async () => {
     if (!review) return;
-    await saveReview(); // Save any pending changes first
+    await saveReview();
     const updated = await quarterlyReviewService.completePreWork(review.id);
     setReview(updated);
   }, [review, saveReview]);
@@ -313,9 +421,21 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     updateLocalState(prev => ({ ...prev, action_replay: actionReplay }));
   }, [updateLocalState]);
 
+  const updateRocksReview = useCallback((rocks: RockReviewItem[]) => {
+    updateLocalState(prev => ({ ...prev, rocks_review: rocks }));
+  }, [updateLocalState]);
+
+  const updateScorecardCommentary = useCallback((commentary: string) => {
+    updateLocalState(prev => ({ ...prev, scorecard_commentary: commentary }));
+  }, [updateLocalState]);
+
   // Part 2 updates
   const updateFeedbackLoop = useCallback((feedbackLoop: FeedbackLoop) => {
     updateLocalState(prev => ({ ...prev, feedback_loop: feedbackLoop }));
+  }, [updateLocalState]);
+
+  const updateFeedbackLoopMode = useCallback((mode: FeedbackLoopMode) => {
+    updateLocalState(prev => ({ ...prev, feedback_loop_mode: mode }));
   }, [updateLocalState]);
 
   const updateOpenLoopsDecisions = useCallback((decisions: OpenLoopDecisionRecord[]) => {
@@ -324,6 +444,14 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
 
   const updateIssuesResolved = useCallback((issues: IssueResolution[]) => {
     updateLocalState(prev => ({ ...prev, issues_resolved: issues }));
+  }, [updateLocalState]);
+
+  const updateCustomerPulse = useCallback((pulse: CustomerPulse) => {
+    updateLocalState(prev => ({ ...prev, customer_pulse: pulse }));
+  }, [updateLocalState]);
+
+  const updatePeopleReview = useCallback((peopleReview: PeopleReview) => {
+    updateLocalState(prev => ({ ...prev, people_review: peopleReview }));
   }, [updateLocalState]);
 
   // Part 3 updates
@@ -359,6 +487,18 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   }, [updateLocalState]);
 
   // Part 4 updates
+  const updateAnnualPlanSnapshot = useCallback((snapshot: AnnualPlanSnapshot) => {
+    updateLocalState(prev => ({ ...prev, annual_plan_snapshot: snapshot }));
+  }, [updateLocalState]);
+
+  const updateRealignmentDecision = useCallback((decision: RealignmentData) => {
+    updateLocalState(prev => ({ ...prev, realignment_decision: decision }));
+  }, [updateLocalState]);
+
+  const updateInitiativeDecisions = useCallback((decisions: InitiativeDecision[]) => {
+    updateLocalState(prev => ({ ...prev, initiative_decisions: decisions }));
+  }, [updateLocalState]);
+
   const updateQuarterlyTargets = useCallback((targets: QuarterlyTargets) => {
     updateLocalState(prev => ({ ...prev, quarterly_targets: targets }));
   }, [updateLocalState]);
@@ -375,6 +515,36 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     updateLocalState(prev => ({ ...prev, personal_commitments: commitments }));
   }, [updateLocalState]);
 
+  const updateOneThing = useCallback((answer: string) => {
+    updateLocalState(prev => ({ ...prev, one_thing_answer: answer }));
+  }, [updateLocalState]);
+
+  // Annual Review (Option C) updates
+  const updateYearInReview = useCallback((data: YearInReview) => {
+    updateLocalState(prev => ({ ...prev, year_in_review: data }));
+  }, [updateLocalState]);
+
+  const updateVisionStrategy = useCallback((data: VisionStrategyCheck) => {
+    updateLocalState(prev => ({ ...prev, vision_strategy: data }));
+  }, [updateLocalState]);
+
+  const updateNextYearTargets = useCallback((data: NextYearTargets) => {
+    updateLocalState(prev => ({ ...prev, next_year_targets: data }));
+  }, [updateLocalState]);
+
+  const updateAnnualInitiativePlan = useCallback((data: AnnualInitiativePlan) => {
+    updateLocalState(prev => ({ ...prev, annual_initiative_plan: data }));
+  }, [updateLocalState]);
+
+  // Cross-cutting updates
+  const updateCoachNotes = useCallback((notes: CoachNotes) => {
+    updateLocalState(prev => ({ ...prev, coach_notes: notes }));
+  }, [updateLocalState]);
+
+  const updateActionItems = useCallback((items: ActionItem[]) => {
+    updateLocalState(prev => ({ ...prev, action_items: items }));
+  }, [updateLocalState]);
+
   return {
     // State
     review,
@@ -382,6 +552,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     error,
     isSaving,
     hasUnsavedChanges,
+    reviewType,
 
     // Quarter info
     quarter: targetQuarter,
@@ -409,11 +580,16 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     // Part 1
     updateDashboardSnapshot,
     updateActionReplay,
+    updateRocksReview,
+    updateScorecardCommentary,
 
     // Part 2
     updateFeedbackLoop,
+    updateFeedbackLoopMode,
     updateOpenLoopsDecisions,
     updateIssuesResolved,
+    updateCustomerPulse,
+    updatePeopleReview,
 
     // Part 3
     updateAssessmentSnapshot,
@@ -422,9 +598,23 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     updateConfidence,
 
     // Part 4
+    updateAnnualPlanSnapshot,
+    updateRealignmentDecision,
+    updateInitiativeDecisions,
     updateQuarterlyTargets,
     updateInitiativesChanges,
     updateQuarterlyRocks,
-    updatePersonalCommitments
+    updatePersonalCommitments,
+    updateOneThing,
+
+    // Annual Review (Option C)
+    updateYearInReview,
+    updateVisionStrategy,
+    updateNextYearTargets,
+    updateAnnualInitiativePlan,
+
+    // Cross-cutting
+    updateCoachNotes,
+    updateActionItems
   };
 }

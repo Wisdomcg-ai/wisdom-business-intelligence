@@ -697,8 +697,8 @@ function AssessmentContent() {
         return;
       }
 
-      // Use current user ID for the assessment
-      const targetUserId = user.id;
+      // Use activeBusiness ownerId if acting as coach, otherwise current user
+      const targetUserId = activeBusiness?.ownerId || user.id;
 
       // Calculate scores
       const sectionScores = calculateSectionScores();

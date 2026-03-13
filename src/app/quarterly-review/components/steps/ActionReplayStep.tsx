@@ -26,42 +26,42 @@ const COLUMN_CONFIG: Record<ActionColumn, {
     title: 'What Worked',
     description: 'Actions that delivered results',
     icon: CheckCircle2,
-    bgColor: 'bg-gray-50',
-    borderColor: 'border-gray-200',
-    iconColor: 'text-gray-600',
+    bgColor: 'bg-green-50',
+    borderColor: 'border-green-200',
+    iconColor: 'text-green-600',
     placeholder: 'e.g., Weekly team meetings improved communication'
   },
   didntWork: {
     title: "What Didn't Work",
     description: 'Actions that fell short',
     icon: XCircle,
-    bgColor: 'bg-gray-50',
-    borderColor: 'border-gray-200',
-    iconColor: 'text-gray-600',
+    bgColor: 'bg-red-50',
+    borderColor: 'border-red-200',
+    iconColor: 'text-red-500',
     placeholder: 'e.g., Cold email campaign had low response rate'
   },
   plannedButDidnt: {
     title: "Planned But Didn't Do",
     description: 'Intentions that got deferred',
     icon: AlertTriangle,
-    bgColor: 'bg-gray-50',
-    borderColor: 'border-gray-200',
-    iconColor: 'text-gray-600',
+    bgColor: 'bg-amber-50',
+    borderColor: 'border-amber-200',
+    iconColor: 'text-amber-500',
     placeholder: 'e.g., Website redesign kept getting pushed back'
   },
   newIdeas: {
     title: 'New Ideas',
     description: 'Insights for next quarter',
     icon: Lightbulb,
-    bgColor: 'bg-gray-50',
-    borderColor: 'border-gray-200',
-    iconColor: 'text-gray-600',
+    bgColor: 'bg-brand-orange-50',
+    borderColor: 'border-brand-orange-200',
+    iconColor: 'text-brand-orange',
     placeholder: 'e.g., Partner with complementary businesses'
   }
 };
 
 export function ActionReplayStep({ review, onUpdate }: ActionReplayStepProps) {
-  const actionReplay = review.action_replay || getDefaultActionReplay();
+  const actionReplay = { ...getDefaultActionReplay(), ...(review.action_replay || {}) };
   const [newItems, setNewItems] = useState<Record<ActionColumn, string>>({
     worked: '',
     didntWork: '',
@@ -84,7 +84,7 @@ export function ActionReplayStep({ review, onUpdate }: ActionReplayStepProps) {
   const removeItem = (column: ActionColumn, index: number) => {
     const updated = {
       ...actionReplay,
-      [column]: actionReplay[column].filter((_, i) => i !== index)
+      [column]: actionReplay[column].filter((_: string, i: number) => i !== index)
     };
     onUpdate(updated);
   };
@@ -103,7 +103,7 @@ export function ActionReplayStep({ review, onUpdate }: ActionReplayStepProps) {
   return (
     <div>
       <StepHeader
-        step="1.2"  // Now merged into 1.2 (Dashboard Review with Action Replay)
+        step="1.4"
         subtitle="Reflect on your actions from last quarter using the 4-column framework"
         estimatedTime={20}
         tip="Be honest - this is for learning, not judgment"
@@ -133,7 +133,7 @@ export function ActionReplayStep({ review, onUpdate }: ActionReplayStepProps) {
                 {items.length === 0 ? (
                   <p className="text-sm text-gray-400 italic">No items added yet</p>
                 ) : (
-                  items.map((item, index) => (
+                  items.map((item: string, index: number) => (
                     <div
                       key={index}
                       className="flex items-start gap-2 bg-white rounded-lg px-3 py-2 border border-gray-100 group"
@@ -178,14 +178,14 @@ export function ActionReplayStep({ review, onUpdate }: ActionReplayStepProps) {
       </div>
 
       {/* Key Insight */}
-      <div className="bg-gray-50 rounded-xl border border-gray-200 p-6">
+      <div className="bg-gradient-to-r from-brand-orange-50 to-slate-50 rounded-xl border border-brand-orange-200 p-6">
         <div className="flex items-center gap-2 mb-4">
           <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-gray-600" />
+            <Sparkles className="w-5 h-5 text-brand-orange" />
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">Key Insight</h3>
-            <p className="text-sm text-gray-500">What's the ONE thing you'll take forward from this reflection?</p>
+            <p className="text-sm text-gray-500">What&apos;s the ONE thing you&apos;ll take forward from this reflection?</p>
           </div>
         </div>
         <textarea
@@ -206,7 +206,7 @@ export function ActionReplayStep({ review, onUpdate }: ActionReplayStepProps) {
               <div className={`text-xl font-bold ${config.iconColor}`}>
                 {actionReplay[column].length}
               </div>
-              <div className="text-xs text-gray-600">{config.title.split(' ')[0]}</div>
+              <div className="text-xs text-gray-600">{config.title}</div>
             </div>
           );
         })}

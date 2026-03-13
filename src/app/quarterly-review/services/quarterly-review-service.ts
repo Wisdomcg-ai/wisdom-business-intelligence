@@ -9,6 +9,7 @@ import type {
   WorkshopStatus,
   ActionReplay,
   FeedbackLoop,
+  FeedbackLoopMode,
   DashboardSnapshot,
   AssessmentSnapshot,
   RoadmapSnapshot,
@@ -17,7 +18,15 @@ import type {
   Rock,
   PersonalCommitments,
   OpenLoopDecisionRecord,
-  IssueResolution
+  IssueResolution,
+  RockReviewItem,
+  CustomerPulse,
+  PeopleReview,
+  AnnualPlanSnapshot,
+  RealignmentData,
+  InitiativeDecision,
+  CoachNotes,
+  ActionItem
 } from '../types';
 
 export class QuarterlyReviewService {
@@ -83,7 +92,8 @@ export class QuarterlyReviewService {
     businessId: string,
     userId: string,
     quarter: QuarterNumber,
-    year: number
+    year: number,
+    reviewType?: string
   ): Promise<QuarterlyReview> {
     const { data, error } = await this.getSupabase()
       .from('quarterly_reviews')
@@ -92,18 +102,20 @@ export class QuarterlyReviewService {
         user_id: userId,
         quarter,
         year,
+        review_type: reviewType || 'quarterly',
         status: 'not_started',
         current_step: 'prework',
         steps_completed: []
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error creating quarterly review:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Failed to create review - access denied');
     return data;
   }
 
@@ -111,11 +123,12 @@ export class QuarterlyReviewService {
     businessId: string,
     userId: string,
     quarter: QuarterNumber,
-    year: number
+    year: number,
+    reviewType?: string
   ): Promise<QuarterlyReview> {
     const existing = await this.getReview(businessId, quarter, year);
     if (existing) return existing;
-    return this.createReview(businessId, userId, quarter, year);
+    return this.createReview(businessId, userId, quarter, year, reviewType);
   }
 
   async deleteReview(id: string): Promise<void> {
@@ -154,13 +167,14 @@ export class QuarterlyReviewService {
       .update(data)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating pre-work:', error);
       throw error;
     }
 
+    if (!updated) throw new Error('Review not found or access denied');
     return updated;
   }
 
@@ -175,13 +189,14 @@ export class QuarterlyReviewService {
       })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error completing pre-work:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -195,13 +210,14 @@ export class QuarterlyReviewService {
       .update({ dashboard_snapshot: snapshot })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating dashboard snapshot:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -211,13 +227,14 @@ export class QuarterlyReviewService {
       .update({ action_replay: actionReplay })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating action replay:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -231,13 +248,14 @@ export class QuarterlyReviewService {
       .update({ feedback_loop: feedbackLoop })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating feedback loop:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -247,13 +265,14 @@ export class QuarterlyReviewService {
       .update({ open_loops_decisions: decisions })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating open loops decisions:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -263,13 +282,14 @@ export class QuarterlyReviewService {
       .update({ issues_resolved: issues })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating issues resolved:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -283,13 +303,14 @@ export class QuarterlyReviewService {
       .update({ assessment_snapshot: snapshot })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating assessment snapshot:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -299,13 +320,14 @@ export class QuarterlyReviewService {
       .update({ roadmap_snapshot: snapshot })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating roadmap snapshot:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -315,13 +337,14 @@ export class QuarterlyReviewService {
       .update({ swot_analysis_id: swotAnalysisId })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating SWOT analysis ID:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -340,13 +363,14 @@ export class QuarterlyReviewService {
       })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating confidence:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -360,13 +384,14 @@ export class QuarterlyReviewService {
       .update({ quarterly_targets: targets })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating quarterly targets:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -376,13 +401,14 @@ export class QuarterlyReviewService {
       .update({ initiatives_changes: changes })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating initiatives changes:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -392,13 +418,14 @@ export class QuarterlyReviewService {
       .update({ quarterly_rocks: rocks })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating quarterly rocks:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -408,13 +435,169 @@ export class QuarterlyReviewService {
       .update({ personal_commitments: commitments })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating personal commitments:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
+    return data;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // New Step Data Updates (Restructured Workshop)
+  // ═══════════════════════════════════════════════════════════════
+
+  async updateRocksReview(id: string, rocks: RockReviewItem[]): Promise<QuarterlyReview> {
+    const { data, error } = await this.getSupabase()
+      .from('quarterly_reviews')
+      .update({ rocks_review: rocks })
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) { console.error('Error updating rocks review:', error); throw error; }
+    if (!data) throw new Error('Review not found or access denied');
+    return data;
+  }
+
+  async updateCustomerPulse(id: string, pulse: CustomerPulse): Promise<QuarterlyReview> {
+    const { data, error } = await this.getSupabase()
+      .from('quarterly_reviews')
+      .update({ customer_pulse: pulse })
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) { console.error('Error updating customer pulse:', error); throw error; }
+    if (!data) throw new Error('Review not found or access denied');
+    return data;
+  }
+
+  async updatePeopleReview(id: string, review: PeopleReview): Promise<QuarterlyReview> {
+    const { data, error } = await this.getSupabase()
+      .from('quarterly_reviews')
+      .update({ people_review: review })
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) { console.error('Error updating people review:', error); throw error; }
+    if (!data) throw new Error('Review not found or access denied');
+    return data;
+  }
+
+  async updateAnnualPlanSnapshot(id: string, snapshot: AnnualPlanSnapshot): Promise<QuarterlyReview> {
+    const { data, error } = await this.getSupabase()
+      .from('quarterly_reviews')
+      .update({ annual_plan_snapshot: snapshot })
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) { console.error('Error updating annual plan snapshot:', error); throw error; }
+    if (!data) throw new Error('Review not found or access denied');
+    return data;
+  }
+
+  async updateRealignmentDecision(id: string, decision: RealignmentData): Promise<QuarterlyReview> {
+    const { data, error } = await this.getSupabase()
+      .from('quarterly_reviews')
+      .update({ realignment_decision: decision })
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) { console.error('Error updating realignment decision:', error); throw error; }
+    if (!data) throw new Error('Review not found or access denied');
+    return data;
+  }
+
+  async updateInitiativeDecisions(id: string, decisions: InitiativeDecision[]): Promise<QuarterlyReview> {
+    const { data, error } = await this.getSupabase()
+      .from('quarterly_reviews')
+      .update({ initiative_decisions: decisions })
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) { console.error('Error updating initiative decisions:', error); throw error; }
+    if (!data) throw new Error('Review not found or access denied');
+    return data;
+  }
+
+  async updateCoachNotes(id: string, notes: CoachNotes): Promise<QuarterlyReview> {
+    const { data, error } = await this.getSupabase()
+      .from('quarterly_reviews')
+      .update({ coach_notes: notes })
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) { console.error('Error updating coach notes:', error); throw error; }
+    if (!data) throw new Error('Review not found or access denied');
+    return data;
+  }
+
+  async updateActionItems(id: string, items: ActionItem[]): Promise<QuarterlyReview> {
+    const { data, error } = await this.getSupabase()
+      .from('quarterly_reviews')
+      .update({ action_items: items })
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) { console.error('Error updating action items:', error); throw error; }
+    if (!data) throw new Error('Review not found or access denied');
+    return data;
+  }
+
+  async updateOneThing(id: string, answer: string): Promise<QuarterlyReview> {
+    const { data, error } = await this.getSupabase()
+      .from('quarterly_reviews')
+      .update({ one_thing_answer: answer })
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) { console.error('Error updating one thing:', error); throw error; }
+    if (!data) throw new Error('Review not found or access denied');
+    return data;
+  }
+
+  async updateFeedbackLoopMode(id: string, mode: FeedbackLoopMode): Promise<QuarterlyReview> {
+    const { data, error } = await this.getSupabase()
+      .from('quarterly_reviews')
+      .update({ feedback_loop_mode: mode })
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) { console.error('Error updating feedback loop mode:', error); throw error; }
+    if (!data) throw new Error('Review not found or access denied');
+    return data;
+  }
+
+  async getPreviousReview(businessId: string, quarter: QuarterNumber, year: number): Promise<QuarterlyReview | null> {
+    const prevQuarter = quarter === 1 ? 4 : (quarter - 1) as QuarterNumber;
+    const prevYear = quarter === 1 ? year - 1 : year;
+
+    const { data, error } = await this.getSupabase()
+      .from('quarterly_reviews')
+      .select('*')
+      .eq('business_id', businessId)
+      .eq('quarter', prevQuarter)
+      .eq('year', prevYear)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error fetching previous review:', error);
+      throw error;
+    }
+    return data;
+  }
+
+  async updateScorecardCommentary(id: string, commentary: string): Promise<QuarterlyReview> {
+    const { data, error } = await this.getSupabase()
+      .from('quarterly_reviews')
+      .update({ scorecard_commentary: commentary })
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) { console.error('Error updating scorecard commentary:', error); throw error; }
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -448,13 +631,14 @@ export class QuarterlyReviewService {
       .update(updateData)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating progress:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -481,13 +665,14 @@ export class QuarterlyReviewService {
       })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error starting workshop:', error);
       throw error;
     }
 
+    if (!data) throw new Error('Review not found or access denied');
     return data;
   }
 
@@ -501,12 +686,14 @@ export class QuarterlyReviewService {
       })
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error completing workshop:', error);
       throw error;
     }
+
+    if (!data) throw new Error('Review not found or access denied');
 
     // Create quarterly snapshot on completion
     if (data) {
@@ -658,11 +845,15 @@ export class QuarterlyReviewService {
       .update(updateData)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error updating review:', error);
       throw error;
+    }
+
+    if (!updated) {
+      throw new Error('Review not found or access denied');
     }
 
     return updated;

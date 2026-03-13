@@ -94,7 +94,7 @@ export async function POST(request: Request) {
     const year1 = summary?.year1 || {}
     const forecastData: Record<string, unknown> = {
       business_id: profileId,
-      user_id: user.id,
+      user_id: business.owner_id || user.id,
       fiscal_year: fiscalYear,
       name: forecastName || `FY${fiscalYear} Forecast`,
       year_type: 'FY',

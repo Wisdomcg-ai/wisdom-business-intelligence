@@ -151,6 +151,11 @@ function TimelineNode({
                         {rocksData.completed}/{rocksData.total} rocks
                       </span>
                     )}
+                    {review.customer_pulse && (review.customer_pulse as any).npsScore != null && (
+                      <span className="px-2 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-700">
+                        NPS {(review.customer_pulse as any).npsScore}
+                      </span>
+                    )}
                   </div>
                 )}
 
@@ -296,6 +301,77 @@ function TimelineNode({
                         <p className="text-sm text-blue-900">{review.key_learning}</p>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Last Quarter Rocks Review */}
+                {review.rocks_review && (review.rocks_review as any[]).length > 0 && (
+                  <div className="mt-4 p-4 bg-slate-50 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                      <Award className="w-4 h-4" />
+                      Rocks Accountability
+                    </h4>
+                    <div className="grid grid-cols-4 gap-2 text-center">
+                      {['completed', 'carry_forward', 'modified', 'dropped'].map(status => {
+                        const count = (review.rocks_review as any[]).filter((r: any) => r.decision === status).length;
+                        const labels: Record<string, string> = { completed: 'Done', carry_forward: 'Carry', modified: 'Modified', dropped: 'Dropped' };
+                        const colors: Record<string, string> = { completed: 'text-green-600', carry_forward: 'text-blue-600', modified: 'text-amber-600', dropped: 'text-red-600' };
+                        return (
+                          <div key={status}>
+                            <div className={`text-lg font-semibold ${colors[status]}`}>{count}</div>
+                            <div className="text-xs text-gray-500">{labels[status]}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Initiative Decisions Summary */}
+                {review.initiative_decisions && (review.initiative_decisions as any[]).length > 0 && (
+                  <div className="mt-4 p-4 bg-slate-50 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                      <Zap className="w-4 h-4" />
+                      Initiative Decisions ({(review.initiative_decisions as any[]).length})
+                    </h4>
+                    <div className="grid grid-cols-4 gap-2 text-center">
+                      {['keep', 'accelerate', 'defer', 'kill'].map(action => {
+                        const count = (review.initiative_decisions as any[]).filter((d: any) => d.action === action).length;
+                        const colors: Record<string, string> = { keep: 'text-blue-600', accelerate: 'text-green-600', defer: 'text-amber-600', kill: 'text-red-600' };
+                        return (
+                          <div key={action}>
+                            <div className={`text-lg font-semibold ${colors[action]}`}>{count}</div>
+                            <div className="text-xs text-gray-500 capitalize">{action}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Customer Pulse Summary */}
+                {review.customer_pulse && Object.keys(review.customer_pulse as object).length > 0 && (
+                  <div className="mt-4 p-4 bg-slate-50 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                      <Users className="w-4 h-4" />
+                      Customer Pulse
+                    </h4>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <div className="text-lg font-semibold text-green-600">+{(review.customer_pulse as any).clientsGained || 0}</div>
+                        <div className="text-xs text-gray-500">Gained</div>
+                      </div>
+                      <div>
+                        <div className="text-lg font-semibold text-red-600">-{(review.customer_pulse as any).clientsLost || 0}</div>
+                        <div className="text-xs text-gray-500">Lost</div>
+                      </div>
+                      {(review.customer_pulse as any).npsScore != null && (
+                        <div>
+                          <div className="text-lg font-semibold text-brand-orange">{(review.customer_pulse as any).npsScore}</div>
+                          <div className="text-xs text-gray-500">NPS</div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -627,7 +703,7 @@ export default function QuarterlyReviewHistoryPage() {
             .from('businesses')
             .select('id')
             .eq('owner_id', user.id)
-            .single();
+            .maybeSingle();
           bizId = business?.id || null;
         }
 

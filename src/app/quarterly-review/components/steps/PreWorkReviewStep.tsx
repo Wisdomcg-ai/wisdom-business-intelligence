@@ -2,7 +2,7 @@
 
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview } from '../../types';
-import { Lightbulb, AlertTriangle, BookOpen, Target, CheckCircle2, Edit3 } from 'lucide-react';
+import { Lightbulb, AlertTriangle, BookOpen, Target, CheckCircle2, Edit3, Trophy } from 'lucide-react';
 
 interface PreWorkReviewStepProps {
   review: QuarterlyReview;
@@ -74,20 +74,37 @@ export function PreWorkReviewStep({ review, onEditPreWork }: PreWorkReviewStepPr
         </div>
       </div>
 
+      {/* Celebrate Wins */}
+      {review.biggest_win && (
+        <div className="mb-8 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border-2 border-green-200 p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Trophy className="w-6 h-6 text-green-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-green-900 mb-1">Celebrate Your Win!</h3>
+              <p className="text-green-800 text-lg">{review.biggest_win}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Detailed Responses */}
       <div className="space-y-6">
-        {/* Biggest Win */}
-        <div className="bg-gray-50 rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center">
-              <Lightbulb className="w-4 h-4 text-gray-600" />
+        {/* Biggest Win (compact if celebrate section shown) */}
+        {!review.biggest_win && (
+          <div className="bg-gray-50 rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center">
+                <Lightbulb className="w-4 h-4 text-gray-600" />
+              </div>
+              <h3 className="font-semibold text-gray-900">Biggest Win</h3>
             </div>
-            <h3 className="font-semibold text-gray-900">Biggest Win</h3>
+            <p className="text-gray-700">
+              <span className="italic text-gray-500">Not provided</span>
+            </p>
           </div>
-          <p className="text-gray-700">
-            {review.biggest_win || <span className="italic text-gray-500">Not provided</span>}
-          </p>
-        </div>
+        )}
 
         {/* Biggest Challenge */}
         <div className="bg-gray-50 rounded-xl p-5">

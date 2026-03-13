@@ -1,33 +1,43 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, IssueResolution } from '../../types';
-import { Plus, X, AlertTriangle, CheckCircle2, MessageSquare, User, Calendar, Loader2, Lightbulb } from 'lucide-react';
+import {
+  Plus, X, AlertTriangle, CheckCircle2, MessageSquare, User,
+  Calendar, Loader2, Lightbulb, ShieldAlert, Inbox
+} from 'lucide-react';
+import {
+  getActiveIssues,
+  createIssue,
+  type Issue,
+  type CreateIssueInput
+} from '@/lib/services/issuesService';
 
 interface IssuesListStepProps {
   review: QuarterlyReview;
   onUpdate: (issues: IssueResolution[]) => void;
 }
 
-interface Issue {
-  id: string;
-  title: string;
-  description?: string;
-  priority?: 'high' | 'medium' | 'low' | null;
-  category?: string;
-  created_at: string;
-}
-
 export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [newIssue, setNewIssue] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const [activeIssueId, setActiveIssueId] = useState<string | null>(null);
-  const supabase = createClient();
   const { activeBusiness } = useBusinessContext();
+
+  // Form state — matches CreateIssueInput exactly
+  const [formData, setFormData] = useState<CreateIssueInput>({
+    title: '',
+    priority: null,
+    status: 'new',
+    owner: 'Me',
+    stated_problem: null,
+    root_cause: null,
+    solution: null
+  });
 
   const resolutions = review.issues_resolved || [];
 
@@ -37,63 +47,42 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
 
   const fetchIssues = async () => {
     try {
-      // Get current user for query
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setIsLoading(false);
-        return;
-      }
-
-      // Use activeBusiness owner ID if coach is viewing, otherwise use current user ID
-      const targetUserId = activeBusiness?.ownerId || user.id;
-
-      // Fetch issues - uses user_id not business_id
-      const { data, error } = await supabase
-        .from('issues_list')
-        .select('*')
-        .eq('user_id', targetUserId)
-        .eq('archived', false)
-        .order('created_at', { ascending: false });
-
-      // Handle different error types gracefully
-      if (error) {
-        console.log('Issues list query error:', error.message);
-        setIssues([]);
-      } else {
-        // Filter to only show unsolved issues
-        const filteredData = (data || []).filter((item: any) =>
-          item.status !== 'solved'
-        );
-        setIssues(filteredData);
-      }
+      const businessId = activeBusiness?.id;
+      const overrideUserId = activeBusiness?.ownerId;
+      const data = await getActiveIssues(overrideUserId, businessId);
+      // Filter to only show unsolved issues
+      const filtered = (data || []).filter(item => item.status !== 'solved');
+      setIssues(filtered);
     } catch (error) {
-      console.log('Issues list table not available');
+      console.log('Issues fetch error:', error);
       setIssues([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const addNewIssue = async () => {
-    if (!newIssue.trim()) return;
+  const handleAddIssue = async () => {
+    if (!formData.title.trim()) return;
+    setIsAdding(true);
 
     try {
-      const { data, error } = await supabase
-        .from('issues_list')
-        .insert({
-          business_id: review.business_id,
-          title: newIssue.trim(),
-          priority: 'medium',
-          is_resolved: false
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      setIssues([data, ...issues]);
-      setNewIssue('');
+      const businessId = activeBusiness?.id;
+      const newIssue = await createIssue(formData, undefined, businessId);
+      setIssues([newIssue, ...issues]);
+      setFormData({
+        title: '',
+        priority: null,
+        status: 'new',
+        owner: 'Me',
+        stated_problem: null,
+        root_cause: null,
+        solution: null
+      });
+      setShowAddForm(false);
     } catch (error) {
       console.error('Error adding issue:', error);
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -122,8 +111,11 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
 
   const resolvedCount = issues.filter(i => isResolved(i.id)).length;
 
-  const getPriorityColor = (priority: string) => {
-    return 'bg-slate-100 text-gray-700 border-slate-200';
+  const getPriorityLabel = (priority: number | null) => {
+    if (!priority) return null;
+    if (priority <= 1) return { label: 'High', color: 'bg-red-50 text-red-700 border-red-200' };
+    if (priority <= 3) return { label: 'Medium', color: 'bg-amber-50 text-amber-700 border-amber-200' };
+    return { label: 'Low', color: 'bg-gray-50 text-gray-600 border-gray-200' };
   };
 
   if (isLoading) {
@@ -131,7 +123,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
       <div>
         <StepHeader
           step="2.3"
-          subtitle="Identify, Discuss, and Solve key issues"
+          subtitle="Identify, Discuss, and Solve business problems"
           estimatedTime={25}
         />
         <div className="flex items-center justify-center py-12">
@@ -145,65 +137,141 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
     <div>
       <StepHeader
         step="2.3"
-        subtitle="Use the IDS (Identify, Discuss, Solve) framework to resolve issues"
+        subtitle="Use the IDS framework to solve internal business problems and blockers"
         estimatedTime={25}
-        tip="Focus on root causes, not symptoms"
+        tip="Focus on root causes, not symptoms. Issues are problems holding the business back."
       />
 
       {/* Progress */}
-      <div className="bg-gray-50 rounded-xl p-4 mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-            resolvedCount === issues.length && issues.length > 0
-              ? 'bg-slate-200'
-              : 'bg-slate-100'
-          }`}>
-            {resolvedCount === issues.length && issues.length > 0 ? (
-              <CheckCircle2 className="w-5 h-5 text-gray-600" />
-            ) : (
-              <AlertTriangle className="w-5 h-5 text-gray-600" />
-            )}
+      {issues.length > 0 && (
+        <div className="bg-gray-50 rounded-xl p-4 mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+              resolvedCount === issues.length && issues.length > 0
+                ? 'bg-slate-200'
+                : 'bg-slate-100'
+            }`}>
+              {resolvedCount === issues.length && issues.length > 0 ? (
+                <CheckCircle2 className="w-5 h-5 text-gray-600" />
+              ) : (
+                <AlertTriangle className="w-5 h-5 text-gray-600" />
+              )}
+            </div>
+            <div>
+              <p className="font-medium text-gray-900">Issues Resolved</p>
+              <p className="text-sm text-gray-600">{resolvedCount} of {issues.length} complete</p>
+            </div>
           </div>
-          <div>
-            <p className="font-medium text-gray-900">Issues Resolved</p>
-            <p className="text-sm text-gray-600">{resolvedCount} of {issues.length} complete</p>
+          <div className="text-2xl font-bold text-gray-900">
+            {issues.length > 0 ? Math.round((resolvedCount / issues.length) * 100) : 0}%
           </div>
         </div>
-        <div className="text-2xl font-bold text-gray-900">
-          {issues.length > 0 ? Math.round((resolvedCount / issues.length) * 100) : 0}%
-        </div>
-      </div>
+      )}
 
       {/* Add New Issue */}
       <div className="mb-6">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newIssue}
-            onChange={(e) => setNewIssue(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addNewIssue()}
-            placeholder="Add a new issue to discuss..."
-            className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-          />
+        {!showAddForm ? (
           <button
-            onClick={addNewIssue}
-            disabled={!newIssue.trim()}
-            className="px-4 py-3 bg-brand-orange text-white rounded-xl font-medium hover:bg-brand-orange-600 disabled:bg-gray-200 disabled:cursor-not-allowed flex items-center gap-2"
+            onClick={() => setShowAddForm(true)}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 hover:border-brand-orange hover:text-brand-orange transition-colors"
           >
             <Plus className="w-5 h-5" />
-            Add
+            Add a business problem or blocker to discuss
           </button>
-        </div>
+        ) : (
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 space-y-3">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-brand-orange" />
+                <span className="text-sm font-medium text-gray-700">New Issue</span>
+              </div>
+              <button
+                onClick={() => setShowAddForm(false)}
+                className="p-1 hover:bg-gray-200 rounded"
+              >
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+
+            {/* Title */}
+            <input
+              type="text"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleAddIssue()}
+              placeholder="What's the problem? e.g. 'Lead conversion rate has dropped 20%'"
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent bg-white"
+              autoFocus
+            />
+
+            {/* Owner & Stated Problem */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Owner</label>
+                <input
+                  type="text"
+                  value={formData.owner}
+                  onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+                  placeholder="Me"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Priority (optional)</label>
+                <select
+                  value={formData.priority ?? ''}
+                  onChange={(e) => setFormData({ ...formData, priority: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm bg-white"
+                >
+                  <option value="">No priority</option>
+                  <option value="1">1 - Highest</option>
+                  <option value="2">2 - High</option>
+                  <option value="3">3 - Medium</option>
+                  <option value="4">4 - Low</option>
+                  <option value="5">5 - Lowest</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleAddIssue}
+                disabled={!formData.title.trim() || isAdding}
+                className="px-4 py-2 bg-brand-orange text-white rounded-lg font-medium text-sm hover:bg-brand-orange-600 disabled:bg-gray-200 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isAdding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Add Issue
+              </button>
+              <button
+                onClick={() => setShowAddForm(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Issues List */}
       {issues.length === 0 ? (
         <div className="bg-gray-50 rounded-xl p-8 text-center border border-gray-200">
-          <CheckCircle2 className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-          <h3 className="font-semibold text-gray-900 mb-2">No Pending Issues!</h3>
-          <p className="text-gray-700">
-            Great job! Add any new issues that need to be resolved above.
+          <Inbox className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+          <h3 className="font-semibold text-gray-900 mb-2">No Business Issues Tracked</h3>
+          <p className="text-gray-600 text-sm max-w-md mx-auto">
+            Think about what&apos;s blocking growth or causing friction in your business.
+            Add problems that need solving above.
           </p>
+          <div className="mt-4 text-left max-w-sm mx-auto">
+            <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Common examples:</p>
+            <ul className="text-sm text-gray-600 space-y-1.5">
+              <li className="flex items-center gap-2"><AlertTriangle className="w-3 h-3 text-gray-400 flex-shrink-0" /> Cash flow is tight due to late-paying clients</li>
+              <li className="flex items-center gap-2"><AlertTriangle className="w-3 h-3 text-gray-400 flex-shrink-0" /> Team capacity bottleneck on delivery</li>
+              <li className="flex items-center gap-2"><AlertTriangle className="w-3 h-3 text-gray-400 flex-shrink-0" /> Lead pipeline has dried up</li>
+              <li className="flex items-center gap-2"><AlertTriangle className="w-3 h-3 text-gray-400 flex-shrink-0" /> No clear sales process or CRM</li>
+            </ul>
+          </div>
         </div>
       ) : (
         <div className="space-y-4">
@@ -211,6 +279,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
             const resolution = getResolution(issue.id);
             const resolved = isResolved(issue.id);
             const isActive = activeIssueId === issue.id;
+            const priorityInfo = getPriorityLabel(issue.priority);
 
             return (
               <div
@@ -232,21 +301,21 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
                         <AlertTriangle className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
                       )}
                       <div>
-                        <h4 className={`font-semibold ${resolved ? 'text-gray-900' : 'text-gray-900'}`}>
+                        <h4 className="font-semibold text-gray-900">
                           {issue.title}
                         </h4>
-                        {issue.description && (
-                          <p className="text-sm text-gray-600 mt-1">{issue.description}</p>
+                        {issue.stated_problem && (
+                          <p className="text-sm text-gray-600 mt-1">{issue.stated_problem}</p>
                         )}
                         <div className="flex items-center gap-2 mt-2">
-                          {issue.priority && typeof issue.priority === 'string' && (
-                          <span className={`text-xs px-2 py-0.5 rounded border ${getPriorityColor(issue.priority)}`}>
-                            {issue.priority.charAt(0).toUpperCase() + issue.priority.slice(1)} Priority
-                          </span>
-                        )}
-                          {issue.category && (
-                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                              {issue.category}
+                          {priorityInfo && (
+                            <span className={`text-xs px-2 py-0.5 rounded border ${priorityInfo.color}`}>
+                              {priorityInfo.label} Priority
+                            </span>
+                          )}
+                          {issue.owner && (
+                            <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
+                              {issue.owner}
                             </span>
                           )}
                         </div>
@@ -265,7 +334,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
                     <div>
                       <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                         <MessageSquare className="w-4 h-4 text-brand-orange" />
-                        Solution (What's the root cause and solution?)
+                        Solution (What&apos;s the root cause and solution?)
                       </label>
                       <textarea
                         value={resolution?.solution || ''}
@@ -330,9 +399,13 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
         <div className="flex items-start gap-3">
           <Lightbulb className="w-5 h-5 text-gray-600 mt-0.5" />
           <div>
-            <h4 className="font-medium text-gray-900">IDS Framework</h4>
-            <ul className="mt-2 text-sm text-gray-700 space-y-1">
-              <li><strong>Identify:</strong> State the issue clearly - what's the real problem?</li>
+            <h4 className="font-medium text-gray-900">IDS Framework — Business Problems</h4>
+            <p className="text-sm text-gray-600 mt-1 mb-2">
+              Issues are internal business problems and blockers — things holding you back from hitting your targets.
+              Different from open loops, which are commitments made to others.
+            </p>
+            <ul className="text-sm text-gray-700 space-y-1">
+              <li><strong>Identify:</strong> State the issue clearly — what&apos;s the real problem?</li>
               <li><strong>Discuss:</strong> Explore root causes, not just symptoms</li>
               <li><strong>Solve:</strong> Agree on one clear solution with owner and due date</li>
             </ul>

@@ -20,6 +20,7 @@ interface SwotItem {
   title: string;
   description?: string;
   status?: string;
+  actionable?: boolean;
 }
 
 interface SwotAnalysis {
@@ -288,7 +289,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
         .from('swot_analyses')
         .select(`*, swot_items (id, category, title, description, status)`)
         .eq('id', swotId)
-        .single();
+        .maybeSingle();
 
       if (newSwot) {
         setCurrentSwot(newSwot);
@@ -489,7 +490,37 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
                   key={item.id}
                   className={`p-3 rounded-lg border ${config.borderColor} ${config.bgColor}`}
                 >
-                  <span className="text-sm text-gray-800 font-medium">{item.title}</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-800 font-medium">{item.title}</span>
+                    <button
+                      onClick={async () => {
+                        // Toggle actionable tag on the SWOT item
+                        const newActionable = !item.actionable;
+                        try {
+                          await supabase
+                            .from('swot_items')
+                            .update({ description: newActionable ? 'actionable' : null })
+                            .eq('id', item.id);
+                          // Update local state
+                          if (currentSwot?.swot_items) {
+                            const updatedItems = currentSwot.swot_items.map(si =>
+                              si.id === item.id ? { ...si, actionable: newActionable, description: newActionable ? 'actionable' : undefined } : si
+                            );
+                            setCurrentSwot({ ...currentSwot, swot_items: updatedItems });
+                          }
+                        } catch (e) {
+                          console.error('Error toggling actionable:', e);
+                        }
+                      }}
+                      className={`ml-2 text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                        item.actionable || item.description === 'actionable'
+                          ? 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-300'
+                          : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-brand-orange-50'
+                      }`}
+                    >
+                      {item.actionable || item.description === 'actionable' ? 'Actionable' : 'Tag actionable'}
+                    </button>
+                  </div>
                 </div>
               ))
             )

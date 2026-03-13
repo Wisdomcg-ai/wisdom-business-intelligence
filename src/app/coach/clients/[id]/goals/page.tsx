@@ -199,6 +199,10 @@ export default function CoachGoalsPage() {
   const {
     isLoading,
     error,
+    // Auto-save status
+    isDirty,
+    saveStatus,
+    lastSaved: hookLastSaved,
     financialData,
     updateFinancialValue,
     coreMetrics,
@@ -234,9 +238,9 @@ export default function CoachGoalsPage() {
   const [swotItems, setSwotItems] = useState<SwotItem[]>([])
   const [loadingSwot, setLoadingSwot] = useState(false)
 
-  // Manual save function
+  // Manual save function (uses hook's auto-save, this is just a manual trigger)
   const handleSave = async () => {
-    if (isSaving) return
+    if (saveStatus === 'saving') return
 
     setIsSaving(true)
     try {
@@ -404,21 +408,32 @@ export default function CoachGoalsPage() {
                 <p className="text-base text-gray-600 mt-1">Build your 3-year roadmap, step by step</p>
               </div>
               <div className="flex items-center space-x-3">
-                {lastSaved && (
-                  <span className="text-xs text-gray-500">
-                    Last saved {lastSaved.toLocaleTimeString()}
-                  </span>
-                )}
+                {/* Auto-save status indicator */}
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm ${
+                  saveStatus === 'saving' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                  saveStatus === 'saved' ? 'bg-green-50 border-green-200 text-green-700' :
+                  saveStatus === 'error' ? 'bg-red-50 border-red-200 text-red-700' :
+                  isDirty ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                  'bg-gray-50 border-gray-200 text-gray-500'
+                }`}>
+                  {saveStatus === 'saving' && <Loader2 className="animate-spin h-3.5 w-3.5" />}
+                  {saveStatus === 'saving' && 'Saving...'}
+                  {saveStatus === 'saved' && 'Saved'}
+                  {saveStatus === 'error' && 'Save failed — check console'}
+                  {saveStatus === 'idle' && isDirty && 'Unsaved changes'}
+                  {saveStatus === 'idle' && !isDirty && hookLastSaved && 'All changes saved'}
+                  {saveStatus === 'idle' && !isDirty && !hookLastSaved && ''}
+                </div>
                 <button
                   onClick={handleSave}
-                  disabled={isSaving}
+                  disabled={saveStatus === 'saving' || (!isDirty && saveStatus !== 'error')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
-                    isSaving
+                    saveStatus === 'saving' || (!isDirty && saveStatus !== 'error')
                       ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                       : 'bg-brand-orange text-white hover:bg-brand-orange-600 shadow-sm hover:shadow-md'
                   }`}
                 >
-                  {isSaving ? (
+                  {saveStatus === 'saving' ? (
                     <>
                       <Loader2 className="animate-spin h-4 w-4" />
                       <span>Saving...</span>
@@ -426,7 +441,7 @@ export default function CoachGoalsPage() {
                   ) : (
                     <>
                       <Save className="h-4 w-4" />
-                      <span>Save Progress</span>
+                      <span>Save Now</span>
                     </>
                   )}
                 </button>

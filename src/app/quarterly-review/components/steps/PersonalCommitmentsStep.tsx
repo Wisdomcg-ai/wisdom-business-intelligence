@@ -12,7 +12,7 @@ interface PersonalCommitmentsStepProps {
 }
 
 export function PersonalCommitmentsStep({ review, onUpdate }: PersonalCommitmentsStepProps) {
-  const commitments = review.personal_commitments || getDefaultPersonalCommitments();
+  const commitments = { ...getDefaultPersonalCommitments(), ...(review.personal_commitments || {}) };
   const [newDate, setNewDate] = useState('');
 
   const updateField = (field: keyof PersonalCommitments, value: any) => {

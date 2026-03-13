@@ -64,7 +64,8 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
   // Loading & Error States
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [businessId, setBusinessId] = useState<string>('')
+  const [businessId, setBusinessId] = useState<string>('') // business_profiles.id — used for strategic data
+  const [businessesId, setBusinessesId] = useState<string>('') // businesses.id — used for FK-constrained tables (business_kpis)
   const [userId, setUserId] = useState<string>('')
   const [ownerUserId, setOwnerUserId] = useState<string>('') // The actual owner's user.id for SWOT queries
   const [industry, setIndustry] = useState<string>('building_construction')
@@ -315,6 +316,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       isSavingRef.current = true
       setSaveStatus('saving')
       console.log('[Strategic Planning] 💾 Saving to Supabase...')
+      console.log(`[Strategic Planning] 💾 businessId: ${businessId}, userId: ${userId}, saveUserId: ${saveUserId}, ownerUserId: ${ownerUserId}, isLoadComplete: ${isLoadComplete}`)
       console.log('[Strategic Planning] 📊 KPIs to save:', kpis.length, 'items')
       kpis.forEach((kpi, idx) => {
         console.log(`[Strategic Planning] KPI ${idx + 1}: "${kpi.name}" - current=${kpi.currentValue}, y1=${kpi.year1Target}, y2=${kpi.year2Target}, y3=${kpi.year3Target}`)
@@ -326,6 +328,11 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         q4: annualPlanByQuarter.q4?.map(i => ({ id: i.id, title: i.title, assignedTo: i.assignedTo }))
       })
 
+      // Save all sections independently - a failure in one section should NOT
+      // block saving other sections. This prevents cascading failures (e.g., a
+      // missing RLS policy on business_kpis blocking initiative saves).
+      const saveErrors: string[] = []
+
       // Save financial data, core metrics, and quarterly targets
       const financialResult = await FinancialService.saveFinancialGoals(
         businessId,
@@ -335,18 +342,19 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         coreMetrics,
         quarterlyTargets
       )
-
       if (!financialResult.success) {
-        setError(`Failed to save financial data: ${financialResult.error}`)
-        return false
+        console.error('[Strategic Planning] ❌ Financial save failed:', financialResult.error)
+        saveErrors.push(`Financial: ${financialResult.error}`)
       }
 
-      // Save KPIs
-      const kpiResult = await KPIService.saveUserKPIs(businessId, saveUserId, kpis)
-
+      // Save KPIs — use businesses.id for the FK-constrained business_id column
+      // business_kpis.business_id has FK REFERENCES businesses(id), so we must
+      // pass the actual businesses.id, not business_profiles.id
+      const kpiBusinessId = businessesId || businessId
+      const kpiResult = await KPIService.saveUserKPIs(kpiBusinessId, saveUserId, kpis)
       if (!kpiResult.success) {
-        setError(`Failed to save KPIs: ${kpiResult.error}`)
-        return false
+        console.error('[Strategic Planning] ❌ KPI save failed:', kpiResult.error)
+        saveErrors.push(`KPIs: ${kpiResult.error}`)
       }
 
       // Save strategic ideas (Step 2)
@@ -356,10 +364,9 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         strategicIdeas,
         'strategic_ideas'
       )
-
       if (!strategicIdeasResult.success) {
-        setError(`Failed to save strategic ideas: ${strategicIdeasResult.error}`)
-        return false
+        console.error('[Strategic Planning] ❌ Strategic ideas save failed:', strategicIdeasResult.error)
+        saveErrors.push(`Strategic ideas: ${strategicIdeasResult.error}`)
       }
 
       // Save roadmap suggestions (Step 3)
@@ -369,10 +376,9 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         roadmapSuggestions,
         'roadmap'
       )
-
       if (!roadmapResult.success) {
-        setError(`Failed to save roadmap: ${roadmapResult.error}`)
-        return false
+        console.error('[Strategic Planning] ❌ Roadmap save failed:', roadmapResult.error)
+        saveErrors.push(`Roadmap: ${roadmapResult.error}`)
       }
 
       // Save 12-month initiatives (Step 4)
@@ -382,97 +388,35 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         twelveMonthInitiatives,
         'twelve_month'
       )
-
       if (!twelveMonthResult.success) {
-        setError(`Failed to save 12-month initiatives: ${twelveMonthResult.error}`)
-        return false
+        console.error('[Strategic Planning] ❌ 12-month save failed:', twelveMonthResult.error)
+        saveErrors.push(`12-month initiatives: ${twelveMonthResult.error}`)
       }
 
       // Save quarterly plans (Step 5)
-      const q1Result = await StrategicPlanningService.saveInitiatives(
-        businessId,
-        saveUserId,
-        annualPlanByQuarter.q1,
-        'q1'
-      )
+      const q1Result = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, annualPlanByQuarter.q1, 'q1')
+      if (!q1Result.success) saveErrors.push(`Q1: ${q1Result.error}`)
 
-      if (!q1Result.success) {
-        setError(`Failed to save Q1 plan: ${q1Result.error}`)
-        return false
-      }
+      const q2Result = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, annualPlanByQuarter.q2, 'q2')
+      if (!q2Result.success) saveErrors.push(`Q2: ${q2Result.error}`)
 
-      const q2Result = await StrategicPlanningService.saveInitiatives(
-        businessId,
-        saveUserId,
-        annualPlanByQuarter.q2,
-        'q2'
-      )
+      const q3Result = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, annualPlanByQuarter.q3, 'q3')
+      if (!q3Result.success) saveErrors.push(`Q3: ${q3Result.error}`)
 
-      if (!q2Result.success) {
-        setError(`Failed to save Q2 plan: ${q2Result.error}`)
-        return false
-      }
-
-      const q3Result = await StrategicPlanningService.saveInitiatives(
-        businessId,
-        saveUserId,
-        annualPlanByQuarter.q3,
-        'q3'
-      )
-
-      if (!q3Result.success) {
-        setError(`Failed to save Q3 plan: ${q3Result.error}`)
-        return false
-      }
-
-      const q4Result = await StrategicPlanningService.saveInitiatives(
-        businessId,
-        saveUserId,
-        annualPlanByQuarter.q4,
-        'q4'
-      )
-
-      if (!q4Result.success) {
-        setError(`Failed to save Q4 plan: ${q4Result.error}`)
-        return false
-      }
+      const q4Result = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, annualPlanByQuarter.q4, 'q4')
+      if (!q4Result.success) saveErrors.push(`Q4: ${q4Result.error}`)
 
       // Save sprint focus (Step 6)
-      const sprintResult = await StrategicPlanningService.saveInitiatives(
-        businessId,
-        saveUserId,
-        sprintFocus,
-        'sprint'
-      )
-
-      if (!sprintResult.success) {
-        setError(`Failed to save sprint focus: ${sprintResult.error}`)
-        return false
-      }
+      const sprintResult = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, sprintFocus, 'sprint')
+      if (!sprintResult.success) saveErrors.push(`Sprint: ${sprintResult.error}`)
 
       // Save sprint key actions (Step 6)
-      const sprintActionsResult = await StrategicPlanningService.saveSprintActions(
-        businessId,
-        saveUserId,
-        sprintKeyActions
-      )
-
-      if (!sprintActionsResult.success) {
-        setError(`Failed to save sprint actions: ${sprintActionsResult.error}`)
-        return false
-      }
+      const sprintActionsResult = await StrategicPlanningService.saveSprintActions(businessId, saveUserId, sprintKeyActions)
+      if (!sprintActionsResult.success) saveErrors.push(`Sprint actions: ${sprintActionsResult.error}`)
 
       // Save operational activities
-      const operationalActivitiesResult = await OperationalActivitiesService.saveActivities(
-        businessId,
-        saveUserId,
-        operationalActivities
-      )
-
-      if (!operationalActivitiesResult.success) {
-        setError(`Failed to save operational activities: ${operationalActivitiesResult.error}`)
-        return false
-      }
+      const operationalActivitiesResult = await OperationalActivitiesService.saveActivities(businessId, saveUserId, operationalActivities)
+      if (!operationalActivitiesResult.success) saveErrors.push(`Operational activities: ${operationalActivitiesResult.error}`)
 
       // Also save to localStorage as backup
       if (typeof window !== 'undefined') {
@@ -495,14 +439,24 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         localStorage.setItem('strategicPlan', JSON.stringify(allData))
       }
 
-      console.log('[Strategic Planning] ✅ Successfully saved all data')
-
-      // NOTE: We intentionally do NOT reload state after save here
-      // Reloading could overwrite current state with empty arrays if business_id
-      // doesn't match. The proper UUIDs will be loaded on next page refresh.
-      // This prevents data loss while still saving correctly to DB.
-
       isSavingRef.current = false
+
+      // Report save results
+      if (saveErrors.length > 0) {
+        const errorMsg = saveErrors.join('\n')
+        console.error(`[Strategic Planning] ⚠️ ${saveErrors.length} section(s) failed to save:`, saveErrors)
+        console.error(`[SAVE DEBUG] ========================================`)
+        console.error(`[SAVE DEBUG] businessId: ${businessId}`)
+        console.error(`[SAVE DEBUG] saveUserId: ${saveUserId}`)
+        console.error(`[SAVE DEBUG] Errors:\n${errorMsg}`)
+        console.error(`[SAVE DEBUG] ========================================`)
+        // Show error status so user knows something went wrong
+        setSaveStatus('error')
+        // Don't reset isDirty — auto-save will retry
+        return false
+      }
+
+      console.log('[Strategic Planning] ✅ Successfully saved all data')
       setSaveStatus('saved')
       setLastSaved(new Date())
       setIsDirty(false)
@@ -516,6 +470,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
     }
   }, [
     businessId,
+    businessesId,
     userId,
     ownerUserId,
     financialData,
@@ -714,13 +669,16 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           }
 
           console.log(`[Strategic Planning] 📥 Coach view - loading client business: ${bizId}, owner: ${ownerUser}`)
+
+          // Track the original businesses.id for FK-constrained tables
+          setBusinessesId(overrideBusinessId)
         } else {
           // Normal user view - get their business_profile
           // IMPORTANT: Goals data is stored with business_profiles.id as the business_id
           // This is different from businesses.id - do not change this!
           const { data: profile, error: profileError } = await supabase
             .from('business_profiles')
-            .select('id, industry')
+            .select('id, industry, business_id')
             .eq('user_id', user.id)
             .single()
 
@@ -731,6 +689,11 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           ownerUser = user.id // For SWOT queries, SWOT stores with user.id as business_id
 
           console.log(`[Strategic Planning] 🔍 Using bizId: ${bizId}, ownerUser: ${ownerUser}`)
+
+          // Track the businesses.id for FK-constrained tables
+          if (profile?.business_id) {
+            setBusinessesId(profile.business_id)
+          }
 
           // Set industry from profile, fallback to default
           if (profile?.industry) {
@@ -753,7 +716,14 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         } = await FinancialService.loadFinancialGoals(bizId)
 
         // Load KPIs from Supabase
-        const loadedKPIs = await KPIService.getUserKPIs(bizId)
+        // business_kpis.business_id references businesses(id), so try that first
+        // Then fall back to business_profiles.id for legacy data
+        const kpiBizId = overrideBusinessId || bizId
+        let loadedKPIs = await KPIService.getUserKPIs(kpiBizId)
+        if (loadedKPIs.length === 0 && kpiBizId !== bizId) {
+          console.log(`[Strategic Planning] 🔄 No KPIs found with businesses.id, trying business_profiles.id`)
+          loadedKPIs = await KPIService.getUserKPIs(bizId)
+        }
 
         // Set loaded data or defaults
         if (loadedFinancialData) {
@@ -893,6 +863,9 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
     // 2. Data is dirty (user has made changes)
     // 3. We have business and user IDs
     if (!isLoadComplete || !isDirty || !businessId || !userId) {
+      if (isDirty) {
+        console.log(`[AutoSave] ⚠️ Dirty but can't save: isLoadComplete=${isLoadComplete}, businessId=${businessId ? 'set' : 'MISSING'}, userId=${userId ? 'set' : 'MISSING'}`)
+      }
       return
     }
 

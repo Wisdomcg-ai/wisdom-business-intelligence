@@ -1,5 +1,6 @@
 // Quarterly Review Workshop Types
 // Based on Matt Malouf's Wisdom Consulting Group methodology
+// Restructured: 19 steps across 4 parts (quarterly) or 5 parts (annual)
 
 export type QuarterNumber = 1 | 2 | 3 | 4;
 export type WorkshopStatus = 'not_started' | 'prework_complete' | 'in_progress' | 'completed';
@@ -7,53 +8,125 @@ export type ReviewType = 'quarterly' | 'annual' | 'mid-year';
 
 export type WorkshopStep =
   | 'prework'
-  | '1.1' | '1.2'  // 1.3 (Action Replay) merged into 1.2 (Dashboard Review)
-  | '2.1' | '2.2' | '2.3'
-  | '3.1' | '3.2' | '3.3'
-  | '4.1' | '4.2'  // 4.3/4.4 merged into 4.1/4.2
+  | '1.1' | '1.2' | '1.3' | '1.4'  // Part 1: Reflect
+  | '2.1' | '2.2' | '2.3' | '2.4' | '2.5'  // Part 2: Analyse
+  | '3.1' | '3.2'  // Part 3: Strategic Review
+  | 'A4.1' | 'A4.2' | 'A4.3' | 'A4.4'  // Part 4: Annual Planning (annual-only)
+  | '4.1' | '4.2' | '4.3' | '4.4'  // Part 4/5: Plan (quarterly) / Next Quarter (annual)
   | 'complete';
 
+// Standard quarterly review steps
 export const WORKSHOP_STEPS: WorkshopStep[] = [
   'prework',
-  '1.1', '1.2',  // 1.3 (Action Replay) merged into 1.2 (Dashboard Review)
-  '2.1', '2.2', '2.3',
-  '3.1', '3.2', '3.3',
-  '4.1', '4.2',  // 4.3/4.4 merged into 4.1/4.2
+  '1.1', '1.2', '1.3', '1.4',
+  '2.1', '2.2', '2.3', '2.4', '2.5',
+  '3.1', '3.2',
+  '4.1', '4.2', '4.3', '4.4',
   'complete'
 ];
+
+// Annual review steps (includes annual planning between Part 3 and Part 4)
+export const ANNUAL_WORKSHOP_STEPS: WorkshopStep[] = [
+  'prework',
+  '1.1', '1.2', '1.3', '1.4',           // Part 1: Reflect
+  '2.1', '2.2', '2.3', '2.4', '2.5',    // Part 2: Analyse
+  '3.1', '3.2',                           // Part 3: Strategic Review
+  'A4.1', 'A4.2', 'A4.3', 'A4.4',       // Part 4: Annual Planning (annual-only)
+  '4.1', '4.2', '4.3', '4.4',           // Part 5: Next Quarter Sprint
+  'complete'
+];
+
+/**
+ * Get the correct workshop steps based on review type
+ */
+export const getWorkshopSteps = (reviewType: ReviewType = 'quarterly'): WorkshopStep[] => {
+  return reviewType === 'annual' ? ANNUAL_WORKSHOP_STEPS : WORKSHOP_STEPS;
+};
 
 export const STEP_LABELS: Record<WorkshopStep, string> = {
   'prework': 'Pre-Work Questionnaire',
   '1.1': 'Pre-Work Review',
-  '1.2': 'Quarter Performance & Action Replay',  // Merged from 1.2 + 1.3
+  '1.2': 'Scorecard Review',
+  '1.3': 'Rocks Accountability',
+  '1.4': 'Action Replay',
   '2.1': 'Feedback Loop Framework',
   '2.2': 'Open Loops Audit',
   '2.3': 'Issues List (IDS)',
+  '2.4': 'Customer Pulse',
+  '2.5': 'People Review',
   '3.1': 'Assessment & Roadmap',
   '3.2': 'SWOT Update',
-  '3.3': 'Annual Target Confidence',
-  '4.1': 'Quarterly Targets & Execution',  // Includes rocks and commitments
-  '4.2': '90-Day Sprint Planning',  // Final planning step
+  // Annual-only steps
+  'A4.1': 'Year in Review',
+  'A4.2': 'Vision & Strategy Check',
+  'A4.3': 'Next Year Targets',
+  'A4.4': 'Annual Initiative Plan',
+  // Regular Part 4 (becomes Part 5 in annual)
+  '4.1': 'Annual Plan & Confidence',
+  '4.2': 'Quarterly Plan',
+  '4.3': 'Quarterly Rocks',
+  '4.4': 'Session Close',
   'complete': 'Review Complete'
 };
 
 export const PART_LABELS: Record<string, string> = {
-  '1': 'Reflection',
-  '2': 'Analysis',
+  '1': 'Reflect',
+  '2': 'Analyse',
   '3': 'Strategic Review',
-  '4': 'Planning'
+  '4': 'Plan'
+};
+
+// Annual review uses 5 parts
+export const ANNUAL_PART_LABELS: Record<string, string> = {
+  '1': 'Reflect',
+  '2': 'Analyse',
+  '3': 'Strategic Review',
+  'A4': 'Annual Planning',
+  '5': 'Next Quarter'
+};
+
+/**
+ * Get the part label based on review type
+ */
+export const getPartLabel = (part: string, reviewType: ReviewType = 'quarterly'): string => {
+  if (reviewType === 'annual') {
+    return ANNUAL_PART_LABELS[part] || PART_LABELS[part] || part;
+  }
+  return PART_LABELS[part] || part;
+};
+
+/**
+ * Get the part number for a given step in context of review type
+ */
+export const getStepPart = (step: WorkshopStep, reviewType: ReviewType = 'quarterly'): string => {
+  if (step === 'prework' || step === 'complete') return '';
+  if (step.startsWith('A4.')) return 'A4';
+  const part = step.split('.')[0];
+  // In annual reviews, regular Part 4 becomes Part 5
+  if (reviewType === 'annual' && part === '4') return '5';
+  return part;
 };
 
 export const PART_DURATIONS: Record<string, number> = {
-  '1': 60,
-  '2': 60,
-  '3': 60,
-  '4': 60
+  '1': 55,
+  '2': 70,
+  '3': 25,
+  '4': 75,
+  'A4': 90,
+  '5': 75
+};
+
+/**
+ * Check if current quarter is the last quarter of the year
+ */
+export const isLastQuarterOfYear = (quarter: QuarterNumber): boolean => {
+  return quarter === 4;
 };
 
 // Feedback Loop Areas
 export type FeedbackLoopArea = 'marketing' | 'sales' | 'operations' | 'finances' | 'people' | 'owner';
 export type FeedbackLoopColumn = 'stop' | 'less' | 'continue' | 'more' | 'start';
+export type FeedbackLoopMode = 'business_wide' | 'by_area';
 
 export const FEEDBACK_LOOP_AREAS: FeedbackLoopArea[] = ['marketing', 'sales', 'operations', 'finances', 'people', 'owner'];
 // Simplified to 3 essential columns (less/more kept in type for backwards compatibility)
@@ -94,7 +167,204 @@ export const OPEN_LOOP_DECISION_LABELS: Record<OpenLoopDecision, string> = {
   defer: 'Defer (to specific date)'
 };
 
-// Main Data Interfaces
+// ═══════════════════════════════════════════════════════════════
+// New Enums for Restructured Workshop
+// ═══════════════════════════════════════════════════════════════
+
+export type RockReviewDecision = 'completed' | 'carry_forward' | 'drop' | 'modify';
+export type RealignmentChoice = 'keep_targets' | 'adjust_targets';
+export type InitiativeAction = 'keep' | 'accelerate' | 'defer' | 'kill';
+export type PersonAction = 'retain' | 'develop' | 'performance_manage' | 'replace';
+
+// ═══════════════════════════════════════════════════════════════
+// New Interfaces for Restructured Workshop
+// ═══════════════════════════════════════════════════════════════
+
+// Step 1.3: Rocks Accountability
+export interface RockReviewItem {
+  rockId: string;
+  title: string;
+  owner: string;
+  successCriteria: string;
+  progressPercentage: number;
+  decision: RockReviewDecision;
+  outcomeNarrative: string;
+  lessonsLearned: string;
+}
+
+// Step 2.4: Customer Pulse
+export interface CustomerPulse {
+  compliments: string[];
+  complaints: string[];
+  trends: string[];
+  notes: string;
+}
+
+// Step 2.5: People Review
+export interface PersonAssessment {
+  name: string;
+  role: string;
+  action: PersonAction;
+  notes: string;
+}
+
+export interface HiringNeed {
+  role: string;
+  priority: 'urgent' | 'next_quarter' | 'future';
+  notes: string;
+}
+
+export interface PeopleReview {
+  assessments: PersonAssessment[];
+  hiringNeeds: HiringNeed[];
+  capacityNotes: string;
+  trainingNeeds: string;
+}
+
+// Step 4.1: Annual Plan Review
+export interface AnnualPlanSnapshot {
+  yearType: 'FY' | 'CY';
+  planYear: number;
+  currentQuarter: number;
+  remainingQuarters: number;
+  annualTargets: {
+    revenue: number;
+    grossProfit: number;
+    netProfit: number;
+  };
+  ytdActuals: {
+    revenue: number;
+    grossProfit: number;
+    netProfit: number;
+  };
+  remaining: {
+    revenue: number;
+    grossProfit: number;
+    netProfit: number;
+  };
+  runRateNeeded: {
+    revenue: number;
+    grossProfit: number;
+    netProfit: number;
+  };
+  strategicInitiatives: Array<{
+    id: string;
+    title: string;
+    status: string;
+    progressPercentage: number;
+  }>;
+}
+
+// Step 4.2: Confidence & Realignment
+export interface RealignmentData {
+  choice: RealignmentChoice;
+  executionChanges: string[];
+  adjustedTargets?: {
+    revenue: number;
+    grossProfit: number;
+    netProfit: number;
+  };
+  rationale: string;
+}
+
+// Step 4.3: Initiative Review
+export interface InitiativeDecision {
+  initiativeId: string;
+  title: string;
+  category: string;
+  currentStatus: string;
+  progressPercentage: number;
+  decision: InitiativeAction;
+  notes: string;
+  quarterAssigned?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Annual Review Interfaces (Option C)
+// ═══════════════════════════════════════════════════════════════
+
+// Step A4.1: Year in Review
+export interface YearInReview {
+  annualFinancials: {
+    revenue: { target: number; actual: number };
+    grossProfit: { target: number; actual: number };
+    netProfit: { target: number; actual: number };
+  };
+  rocksCompletionRate: number;
+  totalRocksAllYear: number;
+  completedRocksAllYear: number;
+  biggestAnnualWin: string;
+  biggestAnnualChallenge: string;
+  stateOfBusiness: string;
+  coachCommentary: string;
+}
+
+// Step A4.2: Vision & Strategy Check
+export interface VisionStrategyCheck {
+  currentVision: string;
+  currentMission: string;
+  coreValues: string[];
+  stillAligned: boolean;
+  proposedChanges: string;
+  oneYearPriorities: string[];
+  strategicShifts: string;
+}
+
+// Step A4.3: Next Year Targets
+export interface NextYearTargets {
+  nextYear: number;
+  yearType: 'FY' | 'CY';
+  revenue: number;
+  grossProfit: number;
+  netProfit: number;
+  stretchRevenue?: number;
+  stretchGrossProfit?: number;
+  stretchNetProfit?: number;
+  growthRateRevenue?: number;
+  growthRateGrossProfit?: number;
+  growthRateNetProfit?: number;
+  notes: string;
+}
+
+// Step A4.4: Annual Initiative Plan (stored as JSONB)
+export interface AnnualInitiativePlan {
+  nextYear: number;
+  yearType: 'FY' | 'CY';
+  quarterlyTargets: {
+    q1: { revenue: number; grossProfit: number; netProfit: number };
+    q2: { revenue: number; grossProfit: number; netProfit: number };
+    q3: { revenue: number; grossProfit: number; netProfit: number };
+    q4: { revenue: number; grossProfit: number; netProfit: number };
+  };
+  initiatives: Array<{
+    id: string;
+    title: string;
+    category: string;
+    quarterAssigned: string;
+    assignedTo?: string;
+    notes?: string;
+  }>;
+}
+
+// Coach Notes (keyed by step ID)
+export interface CoachNotes {
+  [stepId: string]: string;
+}
+
+// Action Items
+export interface ActionItem {
+  id: string;
+  description: string;
+  owner: string;
+  dueDate: string;
+  sourceStep: string;
+  completed: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Main Data Interface
+// ═══════════════════════════════════════════════════════════════
+
 export interface QuarterlyReview {
   id: string;
   business_id: string;
@@ -119,11 +389,16 @@ export interface QuarterlyReview {
   // Part 1: Reflection
   dashboard_snapshot: DashboardSnapshot;
   action_replay: ActionReplay;
+  rocks_review: RockReviewItem[];
+  scorecard_commentary: string | null;
 
   // Part 2: Analysis
   feedback_loop: FeedbackLoop;
+  feedback_loop_mode: FeedbackLoopMode;
   open_loops_decisions: OpenLoopDecisionRecord[];
   issues_resolved: IssueResolution[];
+  customer_pulse: CustomerPulse;
+  people_review: PeopleReview;
 
   // Part 3: Strategic
   assessment_snapshot: AssessmentSnapshot;
@@ -138,10 +413,24 @@ export interface QuarterlyReview {
   ytd_net_profit_annual: number | null;
 
   // Part 4: Planning
+  annual_plan_snapshot: AnnualPlanSnapshot;
+  realignment_decision: RealignmentData;
+  initiative_decisions: InitiativeDecision[];
   quarterly_targets: QuarterlyTargets;
   initiatives_changes: InitiativesChanges;
   quarterly_rocks: Rock[];
   personal_commitments: PersonalCommitments;
+  one_thing_answer: string | null;
+
+  // Annual Review (Option C) - only populated for annual reviews
+  year_in_review: YearInReview;
+  vision_strategy: VisionStrategyCheck;
+  next_year_targets: NextYearTargets;
+  annual_initiative_plan: AnnualInitiativePlan;
+
+  // Cross-cutting
+  coach_notes: CoachNotes;
+  action_items: ActionItem[];
 
   // Metadata
   current_step: WorkshopStep;
@@ -309,7 +598,10 @@ export interface PersonalCommitments {
   personalGoal: string;
 }
 
-// Helper to get default empty state
+// ═══════════════════════════════════════════════════════════════
+// Default Factories
+// ═══════════════════════════════════════════════════════════════
+
 export const getDefaultActionReplay = (): ActionReplay => ({
   worked: [],
   didntWork: [],
@@ -355,6 +647,84 @@ export const getDefaultPersonalCommitments = (): PersonalCommitments => ({
   daysOffPlanned: null,
   daysOffScheduled: [],
   personalGoal: ''
+});
+
+export const getDefaultCustomerPulse = (): CustomerPulse => ({
+  compliments: [],
+  complaints: [],
+  trends: [],
+  notes: ''
+});
+
+export const getDefaultPeopleReview = (): PeopleReview => ({
+  assessments: [],
+  hiringNeeds: [],
+  capacityNotes: '',
+  trainingNeeds: ''
+});
+
+export const getDefaultAnnualPlanSnapshot = (): AnnualPlanSnapshot => ({
+  yearType: 'CY',
+  planYear: new Date().getFullYear(),
+  currentQuarter: 1,
+  remainingQuarters: 3,
+  annualTargets: { revenue: 0, grossProfit: 0, netProfit: 0 },
+  ytdActuals: { revenue: 0, grossProfit: 0, netProfit: 0 },
+  remaining: { revenue: 0, grossProfit: 0, netProfit: 0 },
+  runRateNeeded: { revenue: 0, grossProfit: 0, netProfit: 0 },
+  strategicInitiatives: []
+});
+
+export const getDefaultRealignmentData = (): RealignmentData => ({
+  choice: 'keep_targets',
+  executionChanges: [],
+  rationale: ''
+});
+
+export const getDefaultYearInReview = (): YearInReview => ({
+  annualFinancials: {
+    revenue: { target: 0, actual: 0 },
+    grossProfit: { target: 0, actual: 0 },
+    netProfit: { target: 0, actual: 0 },
+  },
+  rocksCompletionRate: 0,
+  totalRocksAllYear: 0,
+  completedRocksAllYear: 0,
+  biggestAnnualWin: '',
+  biggestAnnualChallenge: '',
+  stateOfBusiness: '',
+  coachCommentary: '',
+});
+
+export const getDefaultVisionStrategyCheck = (): VisionStrategyCheck => ({
+  currentVision: '',
+  currentMission: '',
+  coreValues: [],
+  stillAligned: true,
+  proposedChanges: '',
+  oneYearPriorities: [],
+  strategicShifts: '',
+});
+
+export const getDefaultNextYearTargets = (): NextYearTargets => ({
+  nextYear: new Date().getFullYear() + 1,
+  yearType: 'CY',
+  revenue: 0,
+  grossProfit: 0,
+  netProfit: 0,
+  notes: '',
+});
+
+export const getDefaultAnnualInitiativePlan = (): AnnualInitiativePlan => ({
+  nextYear: new Date().getFullYear() + 1,
+  yearType: 'CY',
+  quarterlyTargets: {
+    q1: { revenue: 0, grossProfit: 0, netProfit: 0 },
+    q2: { revenue: 0, grossProfit: 0, netProfit: 0 },
+    q3: { revenue: 0, grossProfit: 0, netProfit: 0 },
+    q4: { revenue: 0, grossProfit: 0, netProfit: 0 },
+  },
+  initiatives: [],
 });
 
 // Year type (aligned with Goals Wizard)

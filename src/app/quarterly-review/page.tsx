@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { quarterlyReviewService } from './services/quarterly-review-service';
-import { getCurrentQuarter, getQuarterLabel } from './types';
+import { getCurrentQuarter, getQuarterLabel, isLastQuarterOfYear } from './types';
 import {
   Calendar,
   Clock,
@@ -14,7 +14,8 @@ import {
   FileText,
   BarChart3,
   Target,
-  History
+  History,
+  Star
 } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import PageHeader from '@/components/ui/PageHeader';
@@ -29,6 +30,7 @@ export default function QuarterlyReviewPage() {
   const [businessId, setBusinessId] = useState<string | null>(null);
 
   const { quarter, year } = getCurrentQuarter();
+  const isQ4 = isLastQuarterOfYear(quarter);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -50,7 +52,7 @@ export default function QuarterlyReviewPage() {
             .from('businesses')
             .select('id')
             .eq('owner_id', user.id)
-            .single();
+            .maybeSingle();
 
           if (bizError) {
             console.error('Error fetching business:', bizError);
@@ -79,8 +81,10 @@ export default function QuarterlyReviewPage() {
     fetchData();
   }, [supabase, router, contextLoading, activeBusiness?.id]);
 
-  const startNewReview = () => {
-    router.push(`/quarterly-review/workshop?quarter=${quarter}&year=${year}`);
+  const startNewReview = (type: 'quarterly' | 'annual' = 'quarterly') => {
+    const params = new URLSearchParams({ quarter: String(quarter), year: String(year) });
+    if (type === 'annual') params.set('type', 'annual');
+    router.push(`/quarterly-review/workshop?${params.toString()}`);
   };
 
   const continueReview = (reviewId: string) => {
@@ -170,7 +174,7 @@ export default function QuarterlyReviewPage() {
               </div>
             </div>
 
-            {/* CTA Button */}
+            {/* CTA Buttons */}
             {currentQuarterReview ? (
               currentQuarterReview.status === 'completed' ? (
                 <button
@@ -192,14 +196,35 @@ export default function QuarterlyReviewPage() {
                 </button>
               )
             ) : (
-              <button
-                onClick={startNewReview}
-                className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
-              >
-                <PlayCircle className="w-5 h-5" />
-                Start {getQuarterLabel(quarter, year)} Review
-                <ChevronRight className="w-4 h-4" />
-              </button>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={() => startNewReview('quarterly')}
+                  className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
+                >
+                  <PlayCircle className="w-5 h-5" />
+                  Start {getQuarterLabel(quarter, year)} Review
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+
+                {/* Annual Review CTA - only shown in Q4 */}
+                {isQ4 && (
+                  <button
+                    onClick={() => startNewReview('annual')}
+                    className="inline-flex items-center gap-2 bg-gradient-to-r from-brand-orange to-amber-500 text-white px-6 py-3 rounded-xl font-semibold hover:from-brand-orange-600 hover:to-amber-600 transition-all shadow-sm"
+                  >
+                    <Star className="w-5 h-5" />
+                    Start Annual Review
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Annual review explanation */}
+            {isQ4 && !currentQuarterReview && (
+              <p className="text-xs text-gray-500 mt-3 max-w-md">
+                The Annual Review includes all quarterly steps plus next-year planning: Year in Review, Vision &amp; Strategy Check, Next Year Targets, and Annual Initiative Plan.
+              </p>
             )}
           </div>
 
@@ -210,7 +235,7 @@ export default function QuarterlyReviewPage() {
                 {/* 11 actual steps (excludes 'complete' which is the final state) */}
                 {(() => {
                   const stepsCompleted = (currentQuarterReview.steps_completed || []).filter((s: string) => s !== 'complete').length;
-                  const totalSteps = 11;
+                  const totalSteps = currentQuarterReview.review_type === 'annual' ? 19 : 11;
                   const progressPercent = Math.min(100, Math.round((stepsCompleted / totalSteps) * 100));
                   return (
                     <>
@@ -292,11 +317,14 @@ export default function QuarterlyReviewPage() {
                   <div className="min-w-0">
                     <h3 className="font-semibold text-gray-900">
                       {getQuarterLabel(review.quarter, review.year)}
+                      {review.review_type === 'annual' && (
+                        <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Annual</span>
+                      )}
                     </h3>
                     <p className="text-sm text-gray-500">
                       {review.status === 'completed'
                         ? `Completed ${new Date(review.completed_at).toLocaleDateString()}`
-                        : `${Math.min(100, Math.round(((review.steps_completed || []).filter((s: string) => s !== 'complete').length) / 11 * 100))}% complete`
+                        : `${Math.min(100, Math.round(((review.steps_completed || []).filter((s: string) => s !== 'complete').length) / (review.review_type === 'annual' ? 19 : 11) * 100))}% complete`
                       }
                     </p>
                   </div>

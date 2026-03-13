@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { StepHeader } from '../StepHeader';
-import type { QuarterlyReview, FeedbackLoop, FeedbackLoopArea, FeedbackLoopColumn } from '../../types';
+import type { QuarterlyReview, FeedbackLoop, FeedbackLoopArea, FeedbackLoopColumn, FeedbackLoopMode } from '../../types';
 import {
   getDefaultFeedbackLoop,
   FEEDBACK_LOOP_AREAS,
@@ -11,11 +11,12 @@ import {
   FEEDBACK_LOOP_COLUMN_LABELS,
   FEEDBACK_LOOP_COLUMN_COLORS
 } from '../../types';
-import { Plus, X, Megaphone, ShoppingCart, Cog, Wallet, Users, User, StopCircle, Play, Sparkles } from 'lucide-react';
+import { Plus, X, Megaphone, ShoppingCart, Cog, Wallet, Users, User, StopCircle, Play, Sparkles, LayoutGrid, Building2 } from 'lucide-react';
 
 interface FeedbackLoopStepProps {
   review: QuarterlyReview;
   onUpdate: (feedbackLoop: FeedbackLoop) => void;
+  onUpdateMode?: (mode: FeedbackLoopMode) => void;
 }
 
 const AREA_ICONS: Record<FeedbackLoopArea, React.ElementType> = {
@@ -39,9 +40,28 @@ const COLUMN_HEADER_COLORS: Record<string, string> = {
   start: 'bg-brand-orange-100 text-brand-navy'
 };
 
-export function FeedbackLoopStep({ review, onUpdate }: FeedbackLoopStepProps) {
-  const feedbackLoop = review.feedback_loop || getDefaultFeedbackLoop();
+export function FeedbackLoopStep({ review, onUpdate, onUpdateMode }: FeedbackLoopStepProps) {
+  // Deep merge: each area (marketing, sales, etc.) could be {} from partial save
+  const rawLoop = review.feedback_loop || {};
+  const defaultLoop = getDefaultFeedbackLoop();
+  const feedbackLoop: FeedbackLoop = {
+    ...defaultLoop,
+    ...rawLoop,
+    marketing: { ...defaultLoop.marketing, ...((rawLoop as any).marketing || {}) },
+    sales: { ...defaultLoop.sales, ...((rawLoop as any).sales || {}) },
+    operations: { ...defaultLoop.operations, ...((rawLoop as any).operations || {}) },
+    finances: { ...defaultLoop.finances, ...((rawLoop as any).finances || {}) },
+    people: { ...defaultLoop.people, ...((rawLoop as any).people || {}) },
+    owner: { ...defaultLoop.owner, ...((rawLoop as any).owner || {}) },
+    topPriorities: (rawLoop as any).topPriorities || [],
+  };
+  const [mode, setMode] = useState<FeedbackLoopMode>(review.feedback_loop_mode || 'by_area');
   const [newItems, setNewItems] = useState<Record<string, string>>({});
+
+  const handleModeChange = (newMode: FeedbackLoopMode) => {
+    setMode(newMode);
+    onUpdateMode?.(newMode);
+  };
 
   const getKey = (area: FeedbackLoopArea, column: FeedbackLoopColumn) => `${area}-${column}`;
 
@@ -100,7 +120,75 @@ export function FeedbackLoopStep({ review, onUpdate }: FeedbackLoopStepProps) {
         tip="Focus on actionable changes you can make next quarter"
       />
 
-      {/* Single Grid View - 6 Areas × 3 Columns */}
+      {/* Mode Toggle */}
+      <div className="flex items-center gap-2 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
+        <button
+          onClick={() => handleModeChange('by_area')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            mode === 'by_area' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          <LayoutGrid className="w-4 h-4" />
+          By Area
+        </button>
+        <button
+          onClick={() => handleModeChange('business_wide')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            mode === 'business_wide' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          Business-Wide
+        </button>
+      </div>
+
+      {/* Business-Wide Mode */}
+      {mode === 'business_wide' ? (
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {FEEDBACK_LOOP_COLUMNS.map(column => {
+            const Icon = COLUMN_ICONS[column];
+            // Aggregate all areas for business-wide view - use 'owner' area as catch-all
+            const items = feedbackLoop.owner?.[column] || [];
+            const key = `bw-${column}`;
+            return (
+              <div key={column} className={`rounded-xl border-2 p-4 ${FEEDBACK_LOOP_COLUMN_COLORS[column]}`}>
+                <div className={`flex items-center gap-2 mb-3 ${COLUMN_HEADER_COLORS[column]} px-3 py-2 rounded-lg`}>
+                  <Icon className="w-4 h-4" />
+                  <span className="text-sm font-semibold">{FEEDBACK_LOOP_COLUMN_LABELS[column]}</span>
+                </div>
+                <div className="space-y-2 min-h-[120px] mb-3">
+                  {items.map((item, index) => (
+                    <div key={index} className="flex items-start gap-1 bg-white rounded px-2 py-1 border border-gray-100 group text-sm">
+                      <span className="flex-1 text-gray-700">{item}</span>
+                      <button onClick={() => removeItem('owner', column, index)} className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-gray-100 rounded transition-opacity">
+                        <X className="w-3 h-3 text-gray-400" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    value={newItems[key] || ''}
+                    onChange={(e) => setNewItems({ ...newItems, [key]: e.target.value })}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const v = (newItems[key] || '').trim(); if (v) { const areaData = feedbackLoop.owner; const updated: FeedbackLoop = { ...feedbackLoop, owner: { ...areaData, [column]: [...areaData[column], v] } }; onUpdate(updated); setNewItems({ ...newItems, [key]: '' }); } } }}
+                    placeholder="Add item..."
+                    className="flex-1 text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-brand-orange focus:border-brand-orange-500 bg-white"
+                  />
+                  <button
+                    onClick={() => { const v = (newItems[key] || '').trim(); if (v) { const areaData = feedbackLoop.owner; const updated: FeedbackLoop = { ...feedbackLoop, owner: { ...areaData, [column]: [...areaData[column], v] } }; onUpdate(updated); setNewItems({ ...newItems, [key]: '' }); } }}
+                    disabled={!(newItems[key] || '').trim()}
+                    className="p-1.5 bg-gray-800 text-white rounded hover:bg-gray-700 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+      /* By-Area Grid View - 6 Areas × 3 Columns */
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           {/* Header Row */}
@@ -202,6 +290,8 @@ export function FeedbackLoopStep({ review, onUpdate }: FeedbackLoopStepProps) {
           </tbody>
         </table>
       </div>
+
+      )}
 
       {/* Summary */}
       <div className="mt-6 flex items-center justify-between bg-gray-50 rounded-lg p-4 border border-gray-200">

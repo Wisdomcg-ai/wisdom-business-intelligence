@@ -5,22 +5,32 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuarterlyReview } from '../hooks/useQuarterlyReview';
 import { WorkshopProgress } from '../components/WorkshopProgress';
 import { WorkshopNav } from '../components/WorkshopNav';
-import { QuarterNumber, WORKSHOP_STEPS } from '../types';
+import { QuarterNumber, ReviewType, getWorkshopSteps } from '../types';
 
 // Step Components
 import { PreWorkStep } from '../components/steps/PreWorkStep';
 import { PreWorkReviewStep } from '../components/steps/PreWorkReviewStep';
-import { DashboardReviewStep } from '../components/steps/DashboardReviewStep';
-// ActionReplayStep is now merged into DashboardReviewStep (1.2)
+import { ScorecardReviewStep } from '../components/steps/ScorecardReviewStep';
+import { RocksReviewStep } from '../components/steps/RocksReviewStep';
+import { ActionReplayStep } from '../components/steps/ActionReplayStep';
 import { FeedbackLoopStep } from '../components/steps/FeedbackLoopStep';
 import { OpenLoopsStep } from '../components/steps/OpenLoopsStep';
 import { IssuesListStep } from '../components/steps/IssuesListStep';
+import { CustomerPulseStep } from '../components/steps/CustomerPulseStep';
+import { PeopleReviewStep } from '../components/steps/PeopleReviewStep';
 import { AssessmentRoadmapStep } from '../components/steps/AssessmentRoadmapStep';
 import { SwotUpdateStep } from '../components/steps/SwotUpdateStep';
-import { ConfidenceCheckStep } from '../components/steps/ConfidenceCheckStep';
-import { QuarterlyResetStep } from '../components/steps/QuarterlyResetStep';
-import { SprintPlanningStep } from '../components/steps/SprintPlanningStep';
+import { ConfidenceRealignmentStep } from '../components/steps/ConfidenceRealignmentStep';
+import { QuarterlyPlanStep } from '../components/steps/QuarterlyPlanStep';
+import { QuarterlyRocksStep } from '../components/steps/QuarterlyRocksStep';
+import { SessionCloseStep } from '../components/steps/SessionCloseStep';
 import { WorkshopCompleteStep } from '../components/steps/WorkshopCompleteStep';
+
+// Annual-only step components
+import { YearInReviewStep } from '../components/steps/YearInReviewStep';
+import { VisionStrategyStep } from '../components/steps/VisionStrategyStep';
+import { NextYearTargetsStep } from '../components/steps/NextYearTargetsStep';
+import { AnnualInitiativePlanStep } from '../components/steps/AnnualInitiativePlanStep';
 
 import { ArrowLeft, Menu, X } from 'lucide-react';
 
@@ -32,6 +42,8 @@ function ReviewContent() {
   const reviewId = searchParams?.get('id') || undefined;
   const quarter = searchParams?.get('quarter') ? parseInt(searchParams?.get('quarter')!) as QuarterNumber : undefined;
   const year = searchParams?.get('year') ? parseInt(searchParams?.get('year')!) : undefined;
+  const typeParam = searchParams?.get('type') as ReviewType | null;
+  const reviewType: ReviewType = typeParam === 'annual' ? 'annual' : 'quarterly';
 
   const {
     review,
@@ -48,38 +60,62 @@ function ReviewContent() {
     completeCurrentStep,
     saveReview,
     completeWorkshop,
+    reviewType: activeReviewType,
     // Pre-work
     updatePreWork,
     completePreWork,
-    // Part 1
+    // Part 1: Reflect
     updateDashboardSnapshot,
+    updateScorecardCommentary,
+    updateRocksReview,
     updateActionReplay,
-    // Part 2
+    // Part 2: Analyse
     updateFeedbackLoop,
+    updateFeedbackLoopMode,
     updateOpenLoopsDecisions,
     updateIssuesResolved,
-    // Part 3
+    updateCustomerPulse,
+    updatePeopleReview,
+    // Part 3: Strategic Review
     updateAssessmentSnapshot,
     updateRoadmapSnapshot,
     updateSwotAnalysisId,
+    // Part 4: Plan
+    updateAnnualPlanSnapshot,
     updateConfidence,
-    // Part 4
+    updateRealignmentDecision,
+    updateInitiativeDecisions,
     updateQuarterlyTargets,
     updateInitiativesChanges,
-    updateQuarterlyRocks
-  } = useQuarterlyReview({ reviewId, quarter, year });
+    updateQuarterlyRocks,
+    updatePersonalCommitments,
+    updateOneThing,
+    // Annual Review (Option C)
+    updateYearInReview,
+    updateVisionStrategy,
+    updateNextYearTargets,
+    updateAnnualInitiativePlan,
+    // Cross-cutting
+    updateCoachNotes,
+    updateActionItems
+  } = useQuarterlyReview({ reviewId, quarter, year, reviewType });
+
+  // Use the review's actual type (may differ from URL param if resuming existing review)
+  const effectiveReviewType = activeReviewType || reviewType;
+  const workshopSteps = getWorkshopSteps(effectiveReviewType);
 
   const handleBack = () => {
-    const currentIndex = WORKSHOP_STEPS.indexOf(currentStep);
+    const currentIndex = workshopSteps.indexOf(currentStep);
     if (currentIndex > 0) {
-      goToStep(WORKSHOP_STEPS[currentIndex - 1]);
+      goToStep(workshopSteps[currentIndex - 1]);
     }
   };
 
   const handleNext = async () => {
     if (currentStep === 'prework') {
       await completePreWork();
-    } else if (currentStep === '4.2') {
+    } else if (currentStep === workshopSteps[workshopSteps.length - 2]) {
+      // Last content step (before 'complete')
       await completeWorkshop();
       goToStep('complete');
     } else {
@@ -87,7 +123,7 @@ function ReviewContent() {
     }
   };
 
-  const canGoBack = WORKSHOP_STEPS.indexOf(currentStep) > 0 && currentStep !== 'complete';
+  const canGoBack = workshopSteps.indexOf(currentStep) > 0 && currentStep !== 'complete';
   const canGoForward = currentStep !== 'complete';
 
   if (isLoading) {
@@ -128,6 +164,8 @@ function ReviewContent() {
             onUpdate={updatePreWork}
           />
         );
+
+      // Part 1: Reflect
       case '1.1':
         return (
           <PreWorkReviewStep
@@ -136,19 +174,35 @@ function ReviewContent() {
           />
         );
       case '1.2':
-        // 1.2 includes both Dashboard Review and Action Replay (merged from 1.3)
         return (
-          <DashboardReviewStep
+          <ScorecardReviewStep
             review={review}
             onUpdate={updateDashboardSnapshot}
-            onUpdateActionReplay={updateActionReplay}
+            onUpdateCommentary={updateScorecardCommentary}
           />
         );
+      case '1.3':
+        return (
+          <RocksReviewStep
+            review={review}
+            onUpdate={updateRocksReview}
+          />
+        );
+      case '1.4':
+        return (
+          <ActionReplayStep
+            review={review}
+            onUpdate={updateActionReplay}
+          />
+        );
+
+      // Part 2: Analyse
       case '2.1':
         return (
           <FeedbackLoopStep
             review={review}
             onUpdate={updateFeedbackLoop}
+            onUpdateMode={updateFeedbackLoopMode}
           />
         );
       case '2.2':
@@ -165,6 +219,22 @@ function ReviewContent() {
             onUpdate={updateIssuesResolved}
           />
         );
+      case '2.4':
+        return (
+          <CustomerPulseStep
+            review={review}
+            onUpdate={updateCustomerPulse}
+          />
+        );
+      case '2.5':
+        return (
+          <PeopleReviewStep
+            review={review}
+            onUpdate={updatePeopleReview}
+          />
+        );
+
+      // Part 3: Strategic Review
       case '3.1':
         return (
           <AssessmentRoadmapStep
@@ -180,30 +250,74 @@ function ReviewContent() {
             onUpdate={updateSwotAnalysisId}
           />
         );
-      case '3.3':
+
+      // Annual-only steps (Part 4: Annual Planning)
+      case 'A4.1':
         return (
-          <ConfidenceCheckStep
+          <YearInReviewStep
             review={review}
-            onUpdate={updateConfidence}
+            onUpdate={updateYearInReview}
           />
         );
+      case 'A4.2':
+        return (
+          <VisionStrategyStep
+            review={review}
+            onUpdate={updateVisionStrategy}
+          />
+        );
+      case 'A4.3':
+        return (
+          <NextYearTargetsStep
+            review={review}
+            onUpdate={updateNextYearTargets}
+          />
+        );
+      case 'A4.4':
+        return (
+          <AnnualInitiativePlanStep
+            review={review}
+            onUpdate={updateAnnualInitiativePlan}
+          />
+        );
+
+      // Part 4/5: Plan (quarterly) / Next Quarter Sprint (annual)
       case '4.1':
         return (
-          <QuarterlyResetStep
+          <ConfidenceRealignmentStep
             review={review}
-            onUpdateTargets={updateQuarterlyTargets}
-            onUpdateInitiatives={updateInitiativesChanges}
-            onUpdateRocks={updateQuarterlyRocks}
+            onUpdateAnnualPlanSnapshot={updateAnnualPlanSnapshot}
+            onUpdateConfidence={updateConfidence}
+            onUpdateRealignment={updateRealignmentDecision}
           />
         );
       case '4.2':
         return (
-          <SprintPlanningStep
+          <QuarterlyPlanStep
             review={review}
-            onUpdateInitiatives={updateInitiativesChanges}
+            onUpdateInitiativeDecisions={updateInitiativeDecisions}
+            onUpdateQuarterlyTargets={updateQuarterlyTargets}
+            onUpdateInitiativesChanges={updateInitiativesChanges}
+          />
+        );
+      case '4.3':
+        return (
+          <QuarterlyRocksStep
+            review={review}
             onUpdateRocks={updateQuarterlyRocks}
           />
         );
+      case '4.4':
+        return (
+          <SessionCloseStep
+            review={review}
+            onUpdateOneThing={updateOneThing}
+            onUpdatePersonalCommitments={updatePersonalCommitments}
+            onUpdateActionItems={updateActionItems}
+            onUpdateCoachNotes={updateCoachNotes}
+          />
+        );
+
       case 'complete':
         return (
           <WorkshopCompleteStep
@@ -214,6 +328,10 @@ function ReviewContent() {
         return <div>Unknown step</div>;
     }
   };
+
+  const headerTitle = effectiveReviewType === 'annual'
+    ? `${quarterLabel} Annual Review`
+    : `${quarterLabel} Quarterly Review`;
 
   return (
     <div className="min-h-screen pb-24">
@@ -228,7 +346,7 @@ function ReviewContent() {
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
             <div>
-              <h1 className="font-semibold text-gray-900">{quarterLabel} Quarterly Review</h1>
+              <h1 className="font-semibold text-gray-900">{headerTitle}</h1>
               <p className="text-sm text-gray-500">{progressPercentage}% complete</p>
             </div>
           </div>
@@ -260,6 +378,7 @@ function ReviewContent() {
                 setShowSidebar(false);
               }}
               canNavigateToStep={canNavigateToStep}
+              reviewType={effectiveReviewType}
             />
           </div>
         </aside>
@@ -291,6 +410,7 @@ function ReviewContent() {
         onSave={saveReview}
         isSaving={isSaving}
         hasUnsavedChanges={hasUnsavedChanges}
+        reviewType={effectiveReviewType}
       />
     </div>
   );

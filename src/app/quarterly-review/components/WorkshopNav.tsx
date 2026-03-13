@@ -1,6 +1,6 @@
 'use client';
 
-import { WorkshopStep, WORKSHOP_STEPS, STEP_LABELS } from '../types';
+import { WorkshopStep, WORKSHOP_STEPS, STEP_LABELS, ReviewType, getWorkshopSteps } from '../types';
 import { ChevronLeft, ChevronRight, Save, Loader2 } from 'lucide-react';
 
 interface WorkshopNavProps {
@@ -14,6 +14,7 @@ interface WorkshopNavProps {
   isSaving?: boolean;
   hasUnsavedChanges?: boolean;
   nextLabel?: string;
+  reviewType?: ReviewType;
 }
 
 export function WorkshopNav({
@@ -26,15 +27,19 @@ export function WorkshopNav({
   onSave,
   isSaving,
   hasUnsavedChanges,
-  nextLabel
+  nextLabel,
+  reviewType = 'quarterly'
 }: WorkshopNavProps) {
-  const currentIndex = WORKSHOP_STEPS.indexOf(currentStep);
-  const isLastStep = currentStep === '4.2';
+  const steps = getWorkshopSteps(reviewType);
+  const currentIndex = steps.indexOf(currentStep);
+  // Last step before 'complete' is the session close
+  const lastContentStep = steps[steps.length - 2]; // step before 'complete'
+  const isLastStep = currentStep === lastContentStep;
   const isComplete = currentStep === 'complete';
 
   // Get previous and next step labels
-  const prevStep = currentIndex > 0 ? WORKSHOP_STEPS[currentIndex - 1] : null;
-  const nextStep = currentIndex < WORKSHOP_STEPS.length - 1 ? WORKSHOP_STEPS[currentIndex + 1] : null;
+  const prevStep = currentIndex > 0 ? steps[currentIndex - 1] : null;
+  const nextStep = currentIndex < steps.length - 1 ? steps[currentIndex + 1] : null;
 
   if (isComplete) {
     return null;

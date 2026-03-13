@@ -1,7 +1,13 @@
 'use client';
 
-import { WorkshopStep, WORKSHOP_STEPS, STEP_LABELS, PART_LABELS } from '../types';
+import { WorkshopStep, STEP_LABELS, PART_LABELS, ANNUAL_PART_LABELS, ReviewType, getWorkshopSteps, getStepPart } from '../types';
 import { CheckCircle2, Circle, PlayCircle } from 'lucide-react';
+
+interface PartDefinition {
+  number: string;
+  label: string;
+  steps: WorkshopStep[];
+}
 
 interface ReviewProgressProps {
   currentStep: WorkshopStep;
@@ -9,6 +15,25 @@ interface ReviewProgressProps {
   onStepClick?: (step: WorkshopStep) => void;
   canNavigateToStep?: (step: WorkshopStep) => boolean;
   compact?: boolean;
+  reviewType?: ReviewType;
+}
+
+function getPartsForReviewType(reviewType: ReviewType): PartDefinition[] {
+  if (reviewType === 'annual') {
+    return [
+      { number: '1', label: ANNUAL_PART_LABELS['1'], steps: ['1.1', '1.2', '1.3', '1.4'] as WorkshopStep[] },
+      { number: '2', label: ANNUAL_PART_LABELS['2'], steps: ['2.1', '2.2', '2.3', '2.4', '2.5'] as WorkshopStep[] },
+      { number: '3', label: ANNUAL_PART_LABELS['3'], steps: ['3.1', '3.2'] as WorkshopStep[] },
+      { number: '4', label: ANNUAL_PART_LABELS['A4'], steps: ['A4.1', 'A4.2', 'A4.3', 'A4.4'] as WorkshopStep[] },
+      { number: '5', label: ANNUAL_PART_LABELS['5'], steps: ['4.1', '4.2', '4.3', '4.4'] as WorkshopStep[] },
+    ];
+  }
+  return [
+    { number: '1', label: PART_LABELS['1'], steps: ['1.1', '1.2', '1.3', '1.4'] as WorkshopStep[] },
+    { number: '2', label: PART_LABELS['2'], steps: ['2.1', '2.2', '2.3', '2.4', '2.5'] as WorkshopStep[] },
+    { number: '3', label: PART_LABELS['3'], steps: ['3.1', '3.2'] as WorkshopStep[] },
+    { number: '4', label: PART_LABELS['4'], steps: ['4.1', '4.2', '4.3', '4.4'] as WorkshopStep[] },
+  ];
 }
 
 export function WorkshopProgress({
@@ -16,15 +41,11 @@ export function WorkshopProgress({
   stepsCompleted,
   onStepClick,
   canNavigateToStep,
-  compact = false
+  compact = false,
+  reviewType = 'quarterly'
 }: ReviewProgressProps) {
-  // Group steps by part (1.3 merged into 1.2, 4.3/4.4 removed)
-  const parts = [
-    { number: '1', steps: ['1.1', '1.2'] as WorkshopStep[] },
-    { number: '2', steps: ['2.1', '2.2', '2.3'] as WorkshopStep[] },
-    { number: '3', steps: ['3.1', '3.2', '3.3'] as WorkshopStep[] },
-    { number: '4', steps: ['4.1', '4.2'] as WorkshopStep[] }
-  ];
+  const parts = getPartsForReviewType(reviewType);
+  const workshopSteps = getWorkshopSteps(reviewType);
 
   const getStepStatus = (step: WorkshopStep): 'completed' | 'current' | 'upcoming' => {
     if (stepsCompleted.includes(step)) return 'completed';
@@ -39,7 +60,7 @@ export function WorkshopProgress({
   };
 
   // Calculate overall progress
-  const totalSteps = WORKSHOP_STEPS.length - 2; // Exclude prework and complete
+  const totalSteps = workshopSteps.length - 2; // Exclude prework and complete
   const completedCount = stepsCompleted.filter(s => s !== 'prework' && s !== 'complete').length;
   const progressPercentage = Math.min(100, Math.round((completedCount / totalSteps) * 100));
 
@@ -62,6 +83,19 @@ export function WorkshopProgress({
       </div>
     );
   }
+
+  // Get display step number for annual steps
+  const getStepDisplayNumber = (step: WorkshopStep): string => {
+    if (step.startsWith('A4.')) {
+      // Annual steps: A4.1 → 4.1, A4.2 → 4.2, etc.
+      return step.replace('A', '');
+    }
+    if (reviewType === 'annual' && step.startsWith('4.')) {
+      // In annual mode, regular 4.x steps display as 5.x
+      return step.replace('4.', '5.');
+    }
+    return step;
+  };
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -130,7 +164,7 @@ export function WorkshopProgress({
                     {part.number}
                   </span>
                   <span className="font-semibold text-gray-900">
-                    {PART_LABELS[part.number]}
+                    {part.label}
                   </span>
                 </div>
                 <span className="text-xs text-gray-500">
@@ -143,6 +177,7 @@ export function WorkshopProgress({
                 {part.steps.map(step => {
                   const status = getStepStatus(step);
                   const canNavigate = canNavigateToStep?.(step);
+                  const displayNumber = getStepDisplayNumber(step);
 
                   return (
                     <button
@@ -168,7 +203,7 @@ export function WorkshopProgress({
                         <p className={`text-sm truncate ${
                           status === 'current' ? 'font-medium text-brand-navy' : 'text-gray-700'
                         }`}>
-                          {step}. {STEP_LABELS[step].replace(/^\d+\.\d+\s*/, '')}
+                          {displayNumber}. {STEP_LABELS[step].replace(/^\d+\.\d+\s*/, '')}
                         </p>
                       </div>
                     </button>

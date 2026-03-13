@@ -30,7 +30,7 @@ export function InitiativesReviewStep({ review, onUpdate }: InitiativesReviewSte
   const supabase = createClient();
   const { activeBusiness } = useBusinessContext();
 
-  const changes = review.initiatives_changes || getDefaultInitiativesChanges();
+  const changes = { ...getDefaultInitiativesChanges(), ...(review.initiatives_changes || {}) };
 
   useEffect(() => {
     fetchInitiatives();

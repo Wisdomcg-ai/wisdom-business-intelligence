@@ -23,7 +23,13 @@ import {
   Lightbulb,
   Clock,
   Download,
-  Loader2
+  Loader2,
+  Users,
+  TrendingUp,
+  ClipboardList,
+  MessageSquare,
+  Zap,
+  ShieldCheck
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -345,6 +351,231 @@ export default function QuarterlySummaryPage() {
                 <p className="text-gray-800 font-medium">{commitments.personalGoal}</p>
               </div>
             )}
+          </div>
+        </section>
+      )}
+
+      {/* Rocks Review (Last Quarter) */}
+      {review.rocks_review && (review.rocks_review as any[]).length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-gray-600" />
+            Last Quarter Rocks Review
+          </h2>
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="grid grid-cols-4 gap-3 mb-4">
+              {['completed', 'carry_forward', 'modified', 'dropped'].map(status => {
+                const count = (review.rocks_review as any[]).filter((r: any) => r.decision === status).length;
+                const labels: Record<string, string> = { completed: 'Completed', carry_forward: 'Carry Forward', modified: 'Modified', dropped: 'Dropped' };
+                const colors: Record<string, string> = { completed: 'text-green-600', carry_forward: 'text-blue-600', modified: 'text-amber-600', dropped: 'text-red-600' };
+                return (
+                  <div key={status} className="text-center p-3 bg-gray-50 rounded-lg">
+                    <div className={`text-2xl font-bold ${colors[status]}`}>{count}</div>
+                    <div className="text-xs text-gray-600">{labels[status]}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="space-y-2">
+              {(review.rocks_review as any[]).map((rock: any, index: number) => (
+                <div key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900">{rock.title}</p>
+                    {rock.outcome && <p className="text-sm text-gray-600 mt-1">{rock.outcome}</p>}
+                  </div>
+                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                    rock.decision === 'completed' ? 'bg-green-100 text-green-700' :
+                    rock.decision === 'carry_forward' ? 'bg-blue-100 text-blue-700' :
+                    rock.decision === 'modified' ? 'bg-amber-100 text-amber-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {rock.decision?.replace('_', ' ')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Customer Pulse */}
+      {review.customer_pulse && Object.keys(review.customer_pulse as object).length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Users className="w-5 h-5 text-gray-600" />
+            Customer Pulse
+          </h2>
+          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+            {(review.customer_pulse as any).compliments?.length > 0 && (
+              <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                <p className="text-xs font-medium text-green-700 mb-2">Compliments</p>
+                <ul className="space-y-1">
+                  {(review.customer_pulse as any).compliments.map((item: string, i: number) => (
+                    <li key={i} className="text-sm text-gray-700">• {item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(review.customer_pulse as any).complaints?.length > 0 && (
+              <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                <p className="text-xs font-medium text-red-700 mb-2">Complaints</p>
+                <ul className="space-y-1">
+                  {(review.customer_pulse as any).complaints.map((item: string, i: number) => (
+                    <li key={i} className="text-sm text-gray-700">• {item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(review.customer_pulse as any).trends?.length > 0 && (
+              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <p className="text-xs font-medium text-blue-700 mb-2">Trends</p>
+                <ul className="space-y-1">
+                  {(review.customer_pulse as any).trends.map((item: string, i: number) => (
+                    <li key={i} className="text-sm text-gray-700">• {item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(review.customer_pulse as any).notes && (
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <p className="text-xs font-medium text-gray-600 mb-1">Notes</p>
+                <p className="text-sm text-gray-700">{(review.customer_pulse as any).notes}</p>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* People Review */}
+      {review.people_review && Object.keys(review.people_review as object).length > 0 && (review.people_review as any).assessments?.length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Users className="w-5 h-5 text-gray-600" />
+            People Review
+          </h2>
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-2 px-4">Name</th>
+                  <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-2 px-4">Role</th>
+                  <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-2 px-4">Action</th>
+                  <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-2 px-4">Comments</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(review.people_review as any).assessments.map((person: any, index: number) => (
+                  <tr key={index} className="border-b border-gray-100 last:border-b-0">
+                    <td className="py-2.5 px-4 text-sm font-medium text-gray-900">{person.name}</td>
+                    <td className="py-2.5 px-4 text-sm text-gray-600">{person.role}</td>
+                    <td className="py-2.5 px-4">
+                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                        person.action === 'retain' ? 'bg-green-100 text-green-700' :
+                        person.action === 'develop' ? 'bg-blue-100 text-blue-700' :
+                        person.action === 'performance_manage' ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {person.action?.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-4 text-sm text-gray-600">{person.notes || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* Initiative Decisions */}
+      {review.initiative_decisions && (review.initiative_decisions as any[]).length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Zap className="w-5 h-5 text-gray-600" />
+            Initiative Decisions
+          </h2>
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="space-y-3">
+              {(review.initiative_decisions as any[]).map((decision: any, index: number) => (
+                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium text-gray-900">{decision.title}</p>
+                    {decision.notes && <p className="text-sm text-gray-500">{decision.notes}</p>}
+                  </div>
+                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                    decision.action === 'keep' ? 'bg-blue-100 text-blue-700' :
+                    decision.action === 'accelerate' ? 'bg-green-100 text-green-700' :
+                    decision.action === 'defer' ? 'bg-amber-100 text-amber-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {decision.action}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* The One Thing */}
+      {review.one_thing_answer && (
+        <section className="mb-8">
+          <div className="bg-gradient-to-r from-brand-orange-50 to-orange-50 rounded-xl border-2 border-brand-orange-200 p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-brand-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <TrendingUp className="w-6 h-6 text-brand-orange" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-1">The One Thing</h3>
+                <p className="text-gray-700 text-lg">{review.one_thing_answer}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Action Items */}
+      {review.action_items && (review.action_items as any[]).length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <ClipboardList className="w-5 h-5 text-gray-600" />
+            Action Items
+          </h2>
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="space-y-2">
+              {(review.action_items as any[]).map((item: any, index: number) => (
+                <div key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <CheckCircle2 className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">{item.text || item.title}</p>
+                    <div className="flex gap-4 mt-1">
+                      {item.owner && <p className="text-xs text-gray-500">Owner: {item.owner}</p>}
+                      {item.dueDate && <p className="text-xs text-gray-500">Due: {item.dueDate}</p>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Coach Notes */}
+      {review.coach_notes && Object.values(review.coach_notes as object).some(v => v) && (
+        <section className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-gray-600" />
+            Coach Notes
+          </h2>
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="space-y-3">
+              {Object.entries(review.coach_notes as Record<string, string>).filter(([, v]) => v).map(([step, note]) => (
+                <div key={step} className="p-4 bg-gray-50 rounded-lg">
+                  <p className="text-xs font-medium text-gray-600 mb-1">Step {step}</p>
+                  <p className="text-sm text-gray-700">{note}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
       )}

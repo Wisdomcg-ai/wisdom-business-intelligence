@@ -2,138 +2,199 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, QuarterlyTargets } from '../../types';
 import { getDefaultQuarterlyTargets } from '../../types';
-import { Target, DollarSign, TrendingUp, Plus, X, Loader2, AlertTriangle } from 'lucide-react';
+import {
+  Target,
+  DollarSign,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Info,
+} from 'lucide-react';
 
 interface QuarterlyTargetsStepProps {
   review: QuarterlyReview;
-  onUpdate: (targets: QuarterlyTargets) => void;
+  onUpdateTargets: (targets: QuarterlyTargets) => void;
 }
 
-export function QuarterlyTargetsStep({ review, onUpdate }: QuarterlyTargetsStepProps) {
-  const [isLoading, setIsLoading] = useState(true);
-  const [annualTargets, setAnnualTargets] = useState<any>(null);
-  const [existingKpis, setExistingKpis] = useState<any[]>([]);
-  const [newKpiName, setNewKpiName] = useState('');
-  const supabase = createClient();
+interface BusinessKpi {
+  id: string;
+  kpi_id: string;
+  name: string;
+  friendly_name: string;
+  category: string;
+  unit: string;
+  year1_target: number;
+  current_value: number;
+  is_active: boolean;
+}
 
-  const targets = review.quarterly_targets || getDefaultQuarterlyTargets();
+function formatCurrency(value: number): string {
+  if (!value) return '$0';
+  return new Intl.NumberFormat('en-AU', {
+    style: 'currency',
+    currency: 'AUD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function parseCurrencyInput(value: string): number {
+  return parseInt(value.replace(/[$,\s]/g, '')) || 0;
+}
+
+export function QuarterlyTargetsStep({ review, onUpdateTargets }: QuarterlyTargetsStepProps) {
+  const [isLoading, setIsLoading] = useState(true);
+  const [businessKpis, setBusinessKpis] = useState<BusinessKpi[]>([]);
+
+  const supabase = createClient();
+  const { activeBusiness } = useBusinessContext();
+
+  const targets = { ...getDefaultQuarterlyTargets(), ...(review.quarterly_targets || {}) };
+  const snapshot = review.annual_plan_snapshot;
+  const realignment = review.realignment_decision;
+
+  const nextQuarter = review.quarter < 4 ? review.quarter + 1 : 1;
+  const nextYear = review.quarter < 4 ? review.year : review.year + 1;
 
   useEffect(() => {
-    fetchData();
+    fetchKpis();
   }, []);
 
-  const fetchData = async () => {
+  // Pre-populate targets from annual plan math or realignment
+  useEffect(() => {
+    if (isLoading) return;
+
+    // Only pre-populate if targets are all zero (not yet set)
+    if (targets.revenue > 0 || targets.grossProfit > 0 || targets.netProfit > 0) return;
+
+    let suggestedRevenue = 0;
+    let suggestedGrossProfit = 0;
+    let suggestedNetProfit = 0;
+
+    // If realignment happened with adjusted targets, use those
+    if (realignment?.choice === 'adjust_targets' && realignment.adjustedTargets) {
+      suggestedRevenue = Math.round(realignment.adjustedTargets.revenue / 4);
+      suggestedGrossProfit = Math.round(realignment.adjustedTargets.grossProfit / 4);
+      suggestedNetProfit = Math.round(realignment.adjustedTargets.netProfit / 4);
+    } else if (snapshot && snapshot.remainingQuarters > 0) {
+      // Use run rate from annual plan: (annual - YTD) / remaining quarters
+      suggestedRevenue = snapshot.runRateNeeded.revenue;
+      suggestedGrossProfit = snapshot.runRateNeeded.grossProfit;
+      suggestedNetProfit = snapshot.runRateNeeded.netProfit;
+    }
+
+    if (suggestedRevenue > 0 || suggestedGrossProfit > 0 || suggestedNetProfit > 0) {
+      onUpdateTargets({
+        ...targets,
+        revenue: suggestedRevenue,
+        grossProfit: suggestedGrossProfit,
+        netProfit: suggestedNetProfit,
+        kpis: targets.kpis.length > 0 ? targets.kpis : businessKpis.map((kpi) => ({
+          id: kpi.kpi_id,
+          name: kpi.friendly_name || kpi.name,
+          target: Math.round(kpi.year1_target / 4),
+          unit: kpi.unit,
+        })),
+      });
+    }
+  }, [isLoading, businessKpis]);
+
+  const fetchKpis = async () => {
     try {
-      // Fetch annual targets (may not exist)
-      let annual = null;
-      try {
-        const { data } = await supabase
-          .from('annual_targets')
-          .select('*')
-          .eq('business_id', review.business_id)
-          .eq('year', review.year)
-          .single();
-        annual = data;
-      } catch (e) {
-        console.log('Annual targets table not available');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setIsLoading(false);
+        return;
       }
 
-      // Fetch existing KPIs (may not exist or have different schema)
-      let kpis: any[] = [];
-      try {
-        const { data } = await supabase
-          .from('kpis')
-          .select('*')
-          .eq('business_id', review.business_id)
-          .eq('is_active', true);
-        kpis = data || [];
-      } catch (e) {
-        console.log('KPIs table not available');
-      }
+      const targetUserId = activeBusiness?.ownerId || user.id;
 
-      setAnnualTargets(annual);
-      setExistingKpis(kpis);
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('user_id', targetUserId)
+        .maybeSingle();
 
-      // Pre-populate with quarter portion of annual targets if not already set
-      if (annual && (!targets.revenue || targets.revenue === 0)) {
-        const defaultTargets: QuarterlyTargets = {
-          revenue: Math.round((annual.revenue_target || 0) / 4),
-          grossProfit: Math.round((annual.gross_profit_target || 0) / 4),
-          netProfit: Math.round((annual.net_profit_target || 0) / 4),
-          kpis: kpis?.map(kpi => ({
-            id: kpi.id,
-            name: kpi.name,
-            target: kpi.target_value || 0,
-            unit: kpi.unit
-          })) || []
-        };
-        onUpdate(defaultTargets);
+      const businessId = profile?.id || review.business_id;
+
+      const { data: kpisData } = await supabase
+        .from('business_kpis')
+        .select('*')
+        .eq('business_id', businessId)
+        .eq('is_active', true)
+        .order('category', { ascending: true });
+
+      if (kpisData) {
+        setBusinessKpis(kpisData);
+
+        // Initialize KPI targets if not yet set
+        if (targets.kpis.length === 0 && kpisData.length > 0) {
+          onUpdateTargets({
+            ...targets,
+            kpis: kpisData.map((kpi) => ({
+              id: kpi.kpi_id,
+              name: kpi.friendly_name || kpi.name,
+              target: Math.round(kpi.year1_target / 4),
+              unit: kpi.unit,
+            })),
+          });
+        }
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Error fetching KPIs:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const updateFinancial = (field: 'revenue' | 'grossProfit' | 'netProfit', value: number) => {
-    onUpdate({ ...targets, [field]: value });
+  const updateTarget = (field: 'revenue' | 'grossProfit' | 'netProfit', value: number) => {
+    onUpdateTargets({ ...targets, [field]: value });
   };
 
-  const updateKpi = (kpiId: string, newTarget: number) => {
-    const updated = targets.kpis.map(kpi =>
-      kpi.id === kpiId ? { ...kpi, target: newTarget } : kpi
-    );
-    onUpdate({ ...targets, kpis: updated });
-  };
-
-  const addKpi = () => {
-    if (!newKpiName.trim()) return;
-
-    const newKpi = {
-      id: `custom-${Date.now()}`,
-      name: newKpiName.trim(),
-      target: 0,
-      unit: ''
-    };
-    onUpdate({ ...targets, kpis: [...targets.kpis, newKpi] });
-    setNewKpiName('');
-  };
-
-  const removeKpi = (kpiId: string) => {
-    onUpdate({
+  const updateKpiTarget = (kpiId: string, value: number) => {
+    onUpdateTargets({
       ...targets,
-      kpis: targets.kpis.filter(kpi => kpi.id !== kpiId)
+      kpis: targets.kpis.map((kpi) =>
+        kpi.id === kpiId ? { ...kpi, target: value } : kpi
+      ),
     });
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-AU', {
-      style: 'currency',
-      currency: 'AUD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value);
+  // Calculate projected year-end based on current targets
+  const getProjectedYearEnd = (metric: 'revenue' | 'grossProfit' | 'netProfit') => {
+    if (!snapshot) return null;
+    const ytd = snapshot.ytdActuals[metric];
+    const projected = ytd + targets[metric] * (snapshot.remainingQuarters || 1);
+    return projected;
   };
 
-  const getNextQuarter = () => {
-    if (review.quarter === 4) {
-      return { quarter: 1, year: review.year + 1 };
+  const getReconciliationStatus = () => {
+    if (!snapshot || snapshot.annualTargets.revenue === 0) return null;
+
+    const annualTarget = realignment?.choice === 'adjust_targets' && realignment.adjustedTargets
+      ? realignment.adjustedTargets.revenue
+      : snapshot.annualTargets.revenue;
+
+    const projected = (snapshot.ytdActuals.revenue || 0) + targets.revenue * (snapshot.remainingQuarters || 1);
+
+    if (projected >= annualTarget) {
+      return { onTrack: true, projected, annual: annualTarget };
     }
-    return { quarter: review.quarter + 1, year: review.year };
+    return { onTrack: false, projected, annual: annualTarget };
   };
 
-  const nextQ = getNextQuarter();
+  const reconciliation = getReconciliationStatus();
 
   if (isLoading) {
     return (
       <div>
         <StepHeader
-          step="4.1"
-          subtitle="Set your quarterly financial targets and KPIs"
+          step="4.3"
+          subtitle="Set your quarterly financial and KPI targets"
           estimatedTime={15}
         />
         <div className="flex items-center justify-center py-12">
@@ -146,182 +207,266 @@ export function QuarterlyTargetsStep({ review, onUpdate }: QuarterlyTargetsStepP
   return (
     <div>
       <StepHeader
-        step="4.1"
-        subtitle={`Set your Q${nextQ.quarter} ${nextQ.year} financial targets and KPIs`}
+        step="4.3"
+        subtitle={`Set your targets for Q${nextQuarter} ${nextYear}`}
         estimatedTime={15}
-        tip="Numbers first - targets drive initiatives"
+        tip="These targets flow from your annual plan and any realignment decisions"
       />
 
-      {/* Annual Context */}
-      {annualTargets && (
-        <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <Target className="w-5 h-5 text-gray-600" />
-            <span className="font-medium text-gray-900">{review.year} Annual Targets (Reference)</span>
+      {/* Context: Where these numbers come from */}
+      <div className="bg-brand-orange-50 rounded-xl border border-brand-orange-200 p-4 mb-6">
+        <div className="flex items-start gap-3">
+          <Info className="w-5 h-5 text-brand-orange mt-0.5 flex-shrink-0" />
+          <div className="text-sm text-brand-orange-800">
+            {realignment?.choice === 'adjust_targets' && realignment.adjustedTargets ? (
+              <p>
+                <strong>Targets pre-populated from your realigned annual plan.</strong> You adjusted
+                your annual targets in the previous step. These quarterly targets reflect the new plan.
+              </p>
+            ) : snapshot && snapshot.runRateNeeded.revenue > 0 ? (
+              <p>
+                <strong>Targets pre-populated from annual plan math:</strong> (Annual target &minus; YTD actual)
+                &divide; {snapshot.remainingQuarters} remaining quarter{snapshot.remainingQuarters !== 1 ? 's' : ''} = run rate needed.
+                Adjust as needed.
+              </p>
+            ) : (
+              <p>
+                Enter your quarterly targets below. If you have an annual plan set up, targets will be
+                calculated automatically.
+              </p>
+            )}
           </div>
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div>
-              <span className="text-gray-600">Revenue:</span>
-              <span className="font-medium text-gray-900 ml-2">
-                {formatCurrency(annualTargets.revenue_target || 0)}
-              </span>
-            </div>
-            <div>
-              <span className="text-gray-600">Gross Profit:</span>
-              <span className="font-medium text-gray-900 ml-2">
-                {formatCurrency(annualTargets.gross_profit_target || 0)}
-              </span>
-            </div>
-            <div>
-              <span className="text-gray-600">Net Profit:</span>
-              <span className="font-medium text-gray-900 ml-2">
-                {formatCurrency(annualTargets.net_profit_target || 0)}
-              </span>
-            </div>
+        </div>
+      </div>
+
+      {/* Reconciliation Banner */}
+      {reconciliation && (
+        <div
+          className={`rounded-xl border-2 p-4 mb-6 ${
+            reconciliation.onTrack
+              ? 'bg-green-50 border-green-200'
+              : 'bg-amber-50 border-amber-200'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            {reconciliation.onTrack ? (
+              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            )}
+            <p className={`text-sm font-medium ${reconciliation.onTrack ? 'text-green-800' : 'text-amber-800'}`}>
+              These targets put you on track for{' '}
+              <strong>{formatCurrency(reconciliation.projected)}</strong> by year end
+              {reconciliation.onTrack
+                ? ` - on track to hit your ${formatCurrency(reconciliation.annual)} target.`
+                : ` - ${formatCurrency(reconciliation.annual - reconciliation.projected)} short of your ${formatCurrency(reconciliation.annual)} target.`}
+            </p>
           </div>
         </div>
       )}
 
-      {/* Quarterly Financial Targets */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-        <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <DollarSign className="w-5 h-5 text-gray-600" />
-          Q{nextQ.quarter} {nextQ.year} Financial Targets
+      {/* Financial Targets */}
+      <div className="bg-white rounded-xl border-2 border-gray-200 p-6 mb-6">
+        <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-6">
+          <DollarSign className="w-5 h-5 text-brand-orange" />
+          Q{nextQuarter} {nextYear} Financial Targets
         </h3>
 
-        <div className="space-y-4">
+        <div className="space-y-6">
           {/* Revenue */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Revenue Target
-            </label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-              <input
-                type="number"
-                value={targets.revenue || ''}
-                onChange={(e) => updateFinancial('revenue', parseInt(e.target.value) || 0)}
-                placeholder="0"
-                className="w-full pl-8 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent text-lg"
-              />
+          <div className="bg-brand-orange-50 rounded-xl p-5 border border-brand-orange-200">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-brand-orange" />
+                <span className="font-medium text-brand-orange-700">Revenue Target</span>
+              </div>
+              {snapshot && (
+                <span className="text-xs text-gray-500">
+                  Annual: {formatCurrency(
+                    realignment?.choice === 'adjust_targets' && realignment.adjustedTargets
+                      ? realignment.adjustedTargets.revenue
+                      : snapshot.annualTargets.revenue
+                  )}
+                </span>
+              )}
             </div>
-            {annualTargets && (
-              <p className="text-xs text-gray-500 mt-1">
-                Quarterly portion of annual: {formatCurrency((annualTargets.revenue_target || 0) / 4)}
-              </p>
-            )}
-          </div>
-
-          {/* Gross Profit */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Gross Profit Target
-            </label>
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
               <input
-                type="number"
-                value={targets.grossProfit || ''}
-                onChange={(e) => updateFinancial('grossProfit', parseInt(e.target.value) || 0)}
+                type="text"
+                value={targets.revenue ? targets.revenue.toLocaleString('en-AU') : ''}
+                onChange={(e) => updateTarget('revenue', parseCurrencyInput(e.target.value))}
                 placeholder="0"
-                className="w-full pl-8 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent text-lg"
+                className="w-full pl-8 pr-4 py-3 text-lg font-semibold border border-brand-orange-300 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent bg-white"
               />
             </div>
             {targets.revenue > 0 && targets.grossProfit > 0 && (
-              <p className="text-xs text-gray-500 mt-1">
+              <div className="mt-2 text-xs text-gray-500">
                 GP Margin: {((targets.grossProfit / targets.revenue) * 100).toFixed(1)}%
-              </p>
+              </div>
             )}
+            {(() => {
+              const proj = getProjectedYearEnd('revenue');
+              if (!proj || !snapshot) return null;
+              return (
+                <div className="mt-1 text-xs text-gray-500">
+                  Projected year-end: {formatCurrency(proj)}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Gross Profit */}
+          <div className="bg-green-50 rounded-xl p-5 border border-green-200">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-green-600" />
+                <span className="font-medium text-green-700">Gross Profit Target</span>
+              </div>
+              {snapshot && (
+                <span className="text-xs text-gray-500">
+                  Annual: {formatCurrency(
+                    realignment?.choice === 'adjust_targets' && realignment.adjustedTargets
+                      ? realignment.adjustedTargets.grossProfit
+                      : snapshot.annualTargets.grossProfit
+                  )}
+                </span>
+              )}
+            </div>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
+              <input
+                type="text"
+                value={targets.grossProfit ? targets.grossProfit.toLocaleString('en-AU') : ''}
+                onChange={(e) => updateTarget('grossProfit', parseCurrencyInput(e.target.value))}
+                placeholder="0"
+                className="w-full pl-8 pr-4 py-3 text-lg font-semibold border border-green-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+              />
+            </div>
+            {(() => {
+              const proj = getProjectedYearEnd('grossProfit');
+              if (!proj || !snapshot) return null;
+              return (
+                <div className="mt-2 text-xs text-gray-500">
+                  Projected year-end: {formatCurrency(proj)}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Net Profit */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Net Profit Target
-            </label>
+          <div className="bg-blue-50 rounded-xl p-5 border border-blue-200">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-blue-600" />
+                <span className="font-medium text-blue-700">Net Profit Target</span>
+              </div>
+              {snapshot && (
+                <span className="text-xs text-gray-500">
+                  Annual: {formatCurrency(
+                    realignment?.choice === 'adjust_targets' && realignment.adjustedTargets
+                      ? realignment.adjustedTargets.netProfit
+                      : snapshot.annualTargets.netProfit
+                  )}
+                </span>
+              )}
+            </div>
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
               <input
-                type="number"
-                value={targets.netProfit || ''}
-                onChange={(e) => updateFinancial('netProfit', parseInt(e.target.value) || 0)}
+                type="text"
+                value={targets.netProfit ? targets.netProfit.toLocaleString('en-AU') : ''}
+                onChange={(e) => updateTarget('netProfit', parseCurrencyInput(e.target.value))}
                 placeholder="0"
-                className="w-full pl-8 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent text-lg"
+                className="w-full pl-8 pr-4 py-3 text-lg font-semibold border border-blue-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
               />
             </div>
             {targets.revenue > 0 && targets.netProfit > 0 && (
-              <p className="text-xs text-gray-500 mt-1">
+              <div className="mt-2 text-xs text-gray-500">
                 Net Margin: {((targets.netProfit / targets.revenue) * 100).toFixed(1)}%
-              </p>
+              </div>
             )}
+            {(() => {
+              const proj = getProjectedYearEnd('netProfit');
+              if (!proj || !snapshot) return null;
+              return (
+                <div className="mt-1 text-xs text-gray-500">
+                  Projected year-end: {formatCurrency(proj)}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
 
       {/* KPI Targets */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-gray-600" />
-          Key Performance Indicators
-        </h3>
+      {targets.kpis.length > 0 && (
+        <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
+            <Target className="w-5 h-5 text-brand-orange" />
+            KPI Targets for Q{nextQuarter}
+          </h3>
 
-        {targets.kpis.length === 0 ? (
-          <div className="bg-gray-50 rounded-lg p-6 text-center mb-4">
-            <AlertTriangle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-            <p className="text-gray-600">No KPIs set. Add your key metrics below.</p>
-          </div>
-        ) : (
-          <div className="space-y-3 mb-4">
-            {targets.kpis.map(kpi => (
-              <div key={kpi.id} className="flex items-center gap-3 bg-gray-50 rounded-lg p-3">
-                <div className="flex-1">
-                  <span className="text-sm font-medium text-gray-700">{kpi.name}</span>
-                  {kpi.unit && (
-                    <span className="text-xs text-gray-500 ml-2">({kpi.unit})</span>
-                  )}
-                </div>
-                <input
-                  type="number"
-                  value={kpi.target || ''}
-                  onChange={(e) => updateKpi(kpi.id, parseInt(e.target.value) || 0)}
-                  placeholder="Target"
-                  className="w-32 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-orange"
-                />
-                <button
-                  onClick={() => removeKpi(kpi.id)}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+          <div className="space-y-3">
+            {targets.kpis.map((kpi) => {
+              const dbKpi = businessKpis.find((k) => k.kpi_id === kpi.id);
+              return (
+                <div
+                  key={kpi.id}
+                  className="flex items-center gap-4 bg-gray-50 rounded-lg p-4 border border-gray-200"
                 >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
+                  <div className="flex-1">
+                    <div className="font-medium text-gray-900 text-sm">{kpi.name}</div>
+                    {dbKpi && (
+                      <div className="text-xs text-gray-500">
+                        Annual target: {dbKpi.year1_target} {dbKpi.unit}
+                      </div>
+                    )}
+                  </div>
+                  <div className="w-40">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={kpi.target || ''}
+                        onChange={(e) => updateKpiTarget(kpi.id, parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-center focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+                      />
+                      {kpi.unit && (
+                        <span className="text-xs text-gray-500 whitespace-nowrap">{kpi.unit}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        )}
 
-        {/* Add KPI */}
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newKpiName}
-            onChange={(e) => setNewKpiName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addKpi()}
-            placeholder="Add a KPI (e.g., Lead Conversion Rate, Customer Satisfaction)..."
-            className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange"
-          />
-          <button
-            onClick={addKpi}
-            disabled={!newKpiName.trim()}
-            className="px-4 py-2 bg-brand-orange text-white rounded-lg font-medium hover:bg-brand-orange-600 disabled:bg-gray-200 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Add
-          </button>
+          {businessKpis.length > targets.kpis.length && (
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <p className="text-xs text-gray-500">
+                {businessKpis.length - targets.kpis.length} additional KPIs available. They will be
+                added when you save.
+              </p>
+            </div>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* No KPIs state */}
+      {targets.kpis.length === 0 && businessKpis.length === 0 && (
+        <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 text-center">
+          <Target className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-gray-600">No KPIs configured.</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Set up KPIs in your Goals wizard to track them each quarter.
+          </p>
+        </div>
+      )}
 
       {/* Summary */}
       <div className="mt-6 bg-gray-50 rounded-xl border border-gray-200 p-4">
-        <h4 className="font-medium text-gray-900 mb-2">Q{nextQ.quarter} Target Summary</h4>
+        <h4 className="font-medium text-gray-900 mb-2">Q{nextQuarter} {nextYear} Target Summary</h4>
         <div className="grid grid-cols-3 gap-4">
           <div className="text-center">
             <div className="text-2xl font-bold text-gray-900">{formatCurrency(targets.revenue)}</div>

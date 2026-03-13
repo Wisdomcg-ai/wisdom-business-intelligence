@@ -12,7 +12,12 @@ import {
   Sparkles,
   FileText,
   ArrowRight,
-  Download
+  Download,
+  Users,
+  TrendingUp,
+  ClipboardList,
+  MessageSquare,
+  Zap
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -140,6 +145,131 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
         </div>
       )}
 
+      {/* Last Quarter Rocks Review */}
+      {review.rocks_review && (review.rocks_review as any[]).length > 0 && (
+        <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Target className="w-5 h-5 text-gray-600" />
+            <h3 className="font-semibold text-gray-900">Last Quarter Rocks Review</h3>
+          </div>
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            {['completed', 'carry_forward', 'modified', 'dropped'].map(status => {
+              const count = (review.rocks_review as any[]).filter((r: any) => r.decision === status).length;
+              const labels: Record<string, string> = { completed: 'Completed', carry_forward: 'Carry Forward', modified: 'Modified', dropped: 'Dropped' };
+              const colors: Record<string, string> = { completed: 'text-green-600', carry_forward: 'text-blue-600', modified: 'text-amber-600', dropped: 'text-red-600' };
+              return (
+                <div key={status} className="text-center bg-white rounded-lg p-3 border border-gray-100">
+                  <div className={`text-2xl font-bold ${colors[status]}`}>{count}</div>
+                  <div className="text-xs text-gray-500">{labels[status]}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Customer Pulse Highlights */}
+      {review.customer_pulse && Object.keys(review.customer_pulse as object).length > 0 && (
+        <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="w-5 h-5 text-gray-600" />
+            <h3 className="font-semibold text-gray-900">Customer Pulse</h3>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="text-center bg-white rounded-lg p-3 border border-gray-100">
+              <div className="text-2xl font-bold text-green-600">{(review.customer_pulse as any).compliments?.length || 0}</div>
+              <div className="text-xs text-gray-500">Compliments</div>
+            </div>
+            <div className="text-center bg-white rounded-lg p-3 border border-gray-100">
+              <div className="text-2xl font-bold text-red-500">{(review.customer_pulse as any).complaints?.length || 0}</div>
+              <div className="text-xs text-gray-500">Complaints</div>
+            </div>
+            <div className="text-center bg-white rounded-lg p-3 border border-gray-100">
+              <div className="text-2xl font-bold text-blue-600">{(review.customer_pulse as any).trends?.length || 0}</div>
+              <div className="text-xs text-gray-500">Trends</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Initiative Decisions */}
+      {review.initiative_decisions && (review.initiative_decisions as any[]).length > 0 && (
+        <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Zap className="w-5 h-5 text-gray-600" />
+            <h3 className="font-semibold text-gray-900">Initiative Decisions</h3>
+          </div>
+          <div className="grid grid-cols-4 gap-3">
+            {['keep', 'accelerate', 'defer', 'kill'].map(action => {
+              const count = (review.initiative_decisions as any[]).filter((d: any) => d.action === action).length;
+              const labels: Record<string, string> = { keep: 'Keep', accelerate: 'Accelerate', defer: 'Defer', kill: 'Kill' };
+              const colors: Record<string, string> = { keep: 'text-blue-600', accelerate: 'text-green-600', defer: 'text-amber-600', kill: 'text-red-600' };
+              return (
+                <div key={action} className="text-center bg-white rounded-lg p-3 border border-gray-100">
+                  <div className={`text-2xl font-bold ${colors[action]}`}>{count}</div>
+                  <div className="text-xs text-gray-500">{labels[action]}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* The One Thing */}
+      {review.one_thing_answer && (
+        <div className="bg-gradient-to-r from-brand-orange-50 to-orange-50 rounded-xl border-2 border-brand-orange-200 p-6 mb-8">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-brand-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <TrendingUp className="w-6 h-6 text-brand-orange" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">The One Thing</h3>
+              <p className="text-gray-700 text-lg">{review.one_thing_answer}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action Items */}
+      {review.action_items && (review.action_items as any[]).length > 0 && (
+        <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <ClipboardList className="w-5 h-5 text-gray-600" />
+            <h3 className="font-semibold text-gray-900">Action Items ({(review.action_items as any[]).length})</h3>
+          </div>
+          <div className="space-y-2">
+            {(review.action_items as any[]).map((item: any, index: number) => (
+              <div key={index} className="flex items-start gap-3 bg-white rounded-lg p-3 border border-gray-100">
+                <CheckCircle2 className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900">{item.text || item.title}</p>
+                  {item.owner && <p className="text-xs text-gray-500">Owner: {item.owner}</p>}
+                  {item.dueDate && <p className="text-xs text-gray-500">Due: {item.dueDate}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Coach Notes */}
+      {review.coach_notes && Object.values(review.coach_notes as object).some(v => v) && (
+        <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <MessageSquare className="w-5 h-5 text-gray-600" />
+            <h3 className="font-semibold text-gray-900">Coach Notes</h3>
+          </div>
+          <div className="space-y-3">
+            {Object.entries(review.coach_notes as Record<string, string>).filter(([, v]) => v).map(([step, note]) => (
+              <div key={step} className="bg-white rounded-lg p-3 border border-gray-100">
+                <p className="text-xs text-gray-500 mb-1">Step {step}</p>
+                <p className="text-sm text-gray-700">{note}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Key Insights from Review */}
       <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-8">
         <div className="flex items-center gap-2 mb-4">
@@ -171,7 +301,7 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
 
           {review.one_thing_for_success && (
             <div className="bg-white rounded-lg p-4 border border-gray-100">
-              <p className="text-xs text-gray-500 mb-1">One Thing for Success</p>
+              <p className="text-xs text-gray-500 mb-1">One Thing for Success (Pre-Work)</p>
               <p className="text-sm text-gray-700">{review.one_thing_for_success}</p>
             </div>
           )}
