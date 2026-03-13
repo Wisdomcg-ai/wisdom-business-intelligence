@@ -138,11 +138,13 @@ export default function ValuePropositionPage() {
           onConflict: 'user_id'
         });
 
-      if (!error) {
+      if (error) {
+        console.error('[Value Prop] Auto-save failed:', error.message);
+      } else {
         setLastSaved(new Date());
       }
     } catch (error) {
-      console.error('Auto-save error:', error);
+      console.error('[Value Prop] Auto-save error:', error);
     } finally {
       setSaving(false);
     }

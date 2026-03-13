@@ -212,7 +212,14 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
 
     const updatedSnapshot = { ...currentSnapshot, ...updates }
     setCurrentSnapshot(updatedSnapshot)
-    await WeeklyMetricsService.saveSnapshot(updatedSnapshot)
+    try {
+      const result = await WeeklyMetricsService.saveSnapshot(updatedSnapshot)
+      if (result && !result.success) {
+        console.error('[Dashboard] Snapshot save failed:', result.error)
+      }
+    } catch (err) {
+      console.error('[Dashboard] Snapshot save error:', err)
+    }
   }, [currentSnapshot])
 
   // Update past snapshot
@@ -223,7 +230,14 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
     setSnapshots(prev => prev.map(s =>
       s.week_ending_date === snapshot.week_ending_date ? updatedSnapshot : s
     ))
-    await WeeklyMetricsService.saveSnapshot(updatedSnapshot)
+    try {
+      const result = await WeeklyMetricsService.saveSnapshot(updatedSnapshot)
+      if (result && !result.success) {
+        console.error('[Dashboard] Past snapshot save failed:', result.error)
+      }
+    } catch (err) {
+      console.error('[Dashboard] Past snapshot save error:', err)
+    }
   }, [])
 
   // Toggle quarter expansion

@@ -282,6 +282,61 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
     markDirty()
   }, [markDirty])
 
+  // Save via API route (used for coach/admin mode to bypass RLS)
+  const saveViaApi = useCallback(async (): Promise<boolean> => {
+    try {
+      console.log('[Strategic Planning] 💾 Saving via API route (coach mode)...')
+      const response = await fetch('/api/goals/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessId: businessesId || overrideBusinessId,
+          profileId: businessId,
+          ownerUserId: ownerUserId,
+          data: {
+            financial: {
+              financialData,
+              coreMetrics,
+              yearType,
+              quarterlyTargets
+            },
+            kpis,
+            initiatives: {
+              strategicIdeas,
+              roadmapSuggestions,
+              twelveMonthInitiatives,
+              q1: annualPlanByQuarter.q1 || [],
+              q2: annualPlanByQuarter.q2 || [],
+              q3: annualPlanByQuarter.q3 || [],
+              q4: annualPlanByQuarter.q4 || [],
+              sprintFocus
+            },
+            sprintKeyActions,
+            operationalActivities
+          }
+        })
+      })
+
+      const result = await response.json()
+      console.log('[Strategic Planning] 📡 API save result:', result)
+
+      if (!response.ok || !result.success) {
+        console.error('[Strategic Planning] ❌ API save failed:', result.errors || result.error)
+        return false
+      }
+
+      return true
+    } catch (err) {
+      console.error('[Strategic Planning] ❌ API save error:', err)
+      return false
+    }
+  }, [
+    businessId, businessesId, overrideBusinessId, ownerUserId,
+    financialData, coreMetrics, yearType, quarterlyTargets,
+    kpis, strategicIdeas, roadmapSuggestions, twelveMonthInitiatives,
+    annualPlanByQuarter, sprintFocus, sprintKeyActions, operationalActivities
+  ])
+
   // Save all data to Supabase with auto-debouncing
   const saveAllData = useCallback(async () => {
     // Guard: prevent concurrent saves
@@ -297,11 +352,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       }
 
       // CRITICAL: When coach is viewing a client, use the client's owner ID for saves
-      // The ownerUserId contains the actual business owner's ID, not the coach's ID
-      // This ensures data is saved under the correct owner and can be loaded by both
-      // the owner and the coach
       const saveUserId = ownerUserId || userId
-      console.log(`[Strategic Planning] 💾 Using saveUserId: ${saveUserId} (ownerUserId: ${ownerUserId}, userId: ${userId})`)
 
       // Guard: Don't save empty financial data (prevents data loss)
       if (financialData.revenue.current === 0 &&
@@ -315,41 +366,56 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
 
       isSavingRef.current = true
       setSaveStatus('saving')
-      console.log('[Strategic Planning] 💾 Saving to Supabase...')
-      console.log(`[Strategic Planning] 💾 businessId: ${businessId}, userId: ${userId}, saveUserId: ${saveUserId}, ownerUserId: ${ownerUserId}, isLoadComplete: ${isLoadComplete}`)
-      console.log('[Strategic Planning] 📊 KPIs to save:', kpis.length, 'items')
-      kpis.forEach((kpi, idx) => {
-        console.log(`[Strategic Planning] KPI ${idx + 1}: "${kpi.name}" - current=${kpi.currentValue}, y1=${kpi.year1Target}, y2=${kpi.year2Target}, y3=${kpi.year3Target}`)
-      })
-      console.log('[Strategic Planning] 📊 Annual Plan by Quarter:', {
-        q1: annualPlanByQuarter.q1?.map(i => ({ id: i.id, title: i.title, assignedTo: i.assignedTo })),
-        q2: annualPlanByQuarter.q2?.map(i => ({ id: i.id, title: i.title, assignedTo: i.assignedTo })),
-        q3: annualPlanByQuarter.q3?.map(i => ({ id: i.id, title: i.title, assignedTo: i.assignedTo })),
-        q4: annualPlanByQuarter.q4?.map(i => ({ id: i.id, title: i.title, assignedTo: i.assignedTo }))
-      })
+      console.log(`[Strategic Planning] 💾 Saving... businessId: ${businessId}, saveUserId: ${saveUserId}, isCoachMode: ${!!overrideBusinessId}`)
 
-      // Save all sections independently - a failure in one section should NOT
-      // block saving other sections. This prevents cascading failures (e.g., a
-      // missing RLS policy on business_kpis blocking initiative saves).
+      // COACH MODE: Use API route to bypass RLS
+      // When overrideBusinessId is set, the current user is a coach/admin viewing
+      // a client's data. The browser client's RLS policies may block direct writes,
+      // so we route through the API which uses the service role client.
+      if (overrideBusinessId) {
+        const apiSuccess = await saveViaApi()
+
+        // Also save to localStorage as backup
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('strategicPlan', JSON.stringify({
+            financialData, coreMetrics, kpis, yearType, strategicIdeas,
+            roadmapSuggestions, twelveMonthInitiatives, annualPlanByQuarter,
+            quarterlyTargets, monthlyTargets, sprintFocus, sprintKeyActions,
+            operationalActivities, lastSaved: new Date().toISOString()
+          }))
+        }
+
+        isSavingRef.current = false
+
+        if (apiSuccess) {
+          console.log('[Strategic Planning] ✅ API save successful (coach mode)')
+          setSaveStatus('saved')
+          setLastSaved(new Date())
+          setIsDirty(false)
+          return true
+        } else {
+          console.error('[Strategic Planning] ❌ API save failed (coach mode)')
+          setSaveStatus('error')
+          return false
+        }
+      }
+
+      // NORMAL MODE: Direct Supabase calls via services
+      console.log(`[Strategic Planning] 💾 Direct save mode (client/owner)`)
+
+      // Save all sections independently
       const saveErrors: string[] = []
 
-      // Save financial data, core metrics, and quarterly targets
+      // Save financial data
       const financialResult = await FinancialService.saveFinancialGoals(
-        businessId,
-        saveUserId,
-        financialData,
-        yearType,
-        coreMetrics,
-        quarterlyTargets
+        businessId, saveUserId, financialData, yearType, coreMetrics, quarterlyTargets
       )
       if (!financialResult.success) {
         console.error('[Strategic Planning] ❌ Financial save failed:', financialResult.error)
         saveErrors.push(`Financial: ${financialResult.error}`)
       }
 
-      // Save KPIs — use businesses.id for the FK-constrained business_id column
-      // business_kpis.business_id has FK REFERENCES businesses(id), so we must
-      // pass the actual businesses.id, not business_profiles.id
+      // Save KPIs — use businesses.id for FK-constrained column
       const kpiBusinessId = businessesId || businessId
       const kpiResult = await KPIService.saveUserKPIs(kpiBusinessId, saveUserId, kpis)
       if (!kpiResult.success) {
@@ -358,51 +424,24 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       }
 
       // Save strategic ideas (Step 2)
-      const strategicIdeasResult = await StrategicPlanningService.saveInitiatives(
-        businessId,
-        saveUserId,
-        strategicIdeas,
-        'strategic_ideas'
-      )
-      if (!strategicIdeasResult.success) {
-        console.error('[Strategic Planning] ❌ Strategic ideas save failed:', strategicIdeasResult.error)
-        saveErrors.push(`Strategic ideas: ${strategicIdeasResult.error}`)
-      }
+      const strategicIdeasResult = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, strategicIdeas, 'strategic_ideas')
+      if (!strategicIdeasResult.success) saveErrors.push(`Strategic ideas: ${strategicIdeasResult.error}`)
 
       // Save roadmap suggestions (Step 3)
-      const roadmapResult = await StrategicPlanningService.saveInitiatives(
-        businessId,
-        saveUserId,
-        roadmapSuggestions,
-        'roadmap'
-      )
-      if (!roadmapResult.success) {
-        console.error('[Strategic Planning] ❌ Roadmap save failed:', roadmapResult.error)
-        saveErrors.push(`Roadmap: ${roadmapResult.error}`)
-      }
+      const roadmapResult = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, roadmapSuggestions, 'roadmap')
+      if (!roadmapResult.success) saveErrors.push(`Roadmap: ${roadmapResult.error}`)
 
       // Save 12-month initiatives (Step 4)
-      const twelveMonthResult = await StrategicPlanningService.saveInitiatives(
-        businessId,
-        saveUserId,
-        twelveMonthInitiatives,
-        'twelve_month'
-      )
-      if (!twelveMonthResult.success) {
-        console.error('[Strategic Planning] ❌ 12-month save failed:', twelveMonthResult.error)
-        saveErrors.push(`12-month initiatives: ${twelveMonthResult.error}`)
-      }
+      const twelveMonthResult = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, twelveMonthInitiatives, 'twelve_month')
+      if (!twelveMonthResult.success) saveErrors.push(`12-month: ${twelveMonthResult.error}`)
 
       // Save quarterly plans (Step 5)
       const q1Result = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, annualPlanByQuarter.q1, 'q1')
       if (!q1Result.success) saveErrors.push(`Q1: ${q1Result.error}`)
-
       const q2Result = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, annualPlanByQuarter.q2, 'q2')
       if (!q2Result.success) saveErrors.push(`Q2: ${q2Result.error}`)
-
       const q3Result = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, annualPlanByQuarter.q3, 'q3')
       if (!q3Result.success) saveErrors.push(`Q3: ${q3Result.error}`)
-
       const q4Result = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, annualPlanByQuarter.q4, 'q4')
       if (!q4Result.success) saveErrors.push(`Q4: ${q4Result.error}`)
 
@@ -410,7 +449,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       const sprintResult = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, sprintFocus, 'sprint')
       if (!sprintResult.success) saveErrors.push(`Sprint: ${sprintResult.error}`)
 
-      // Save sprint key actions (Step 6)
+      // Save sprint key actions
       const sprintActionsResult = await StrategicPlanningService.saveSprintActions(businessId, saveUserId, sprintKeyActions)
       if (!sprintActionsResult.success) saveErrors.push(`Sprint actions: ${sprintActionsResult.error}`)
 
@@ -418,41 +457,21 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       const operationalActivitiesResult = await OperationalActivitiesService.saveActivities(businessId, saveUserId, operationalActivities)
       if (!operationalActivitiesResult.success) saveErrors.push(`Operational activities: ${operationalActivitiesResult.error}`)
 
-      // Also save to localStorage as backup
+      // localStorage backup
       if (typeof window !== 'undefined') {
-        const allData = {
-          financialData,
-          coreMetrics,
-          kpis,
-          yearType,
-          strategicIdeas,
-          roadmapSuggestions,
-          twelveMonthInitiatives,
-          annualPlanByQuarter,
-          quarterlyTargets,
-          monthlyTargets,
-          sprintFocus,
-          sprintKeyActions,
-          operationalActivities,
-          lastSaved: new Date().toISOString()
-        }
-        localStorage.setItem('strategicPlan', JSON.stringify(allData))
+        localStorage.setItem('strategicPlan', JSON.stringify({
+          financialData, coreMetrics, kpis, yearType, strategicIdeas,
+          roadmapSuggestions, twelveMonthInitiatives, annualPlanByQuarter,
+          quarterlyTargets, monthlyTargets, sprintFocus, sprintKeyActions,
+          operationalActivities, lastSaved: new Date().toISOString()
+        }))
       }
 
       isSavingRef.current = false
 
-      // Report save results
       if (saveErrors.length > 0) {
-        const errorMsg = saveErrors.join('\n')
-        console.error(`[Strategic Planning] ⚠️ ${saveErrors.length} section(s) failed to save:`, saveErrors)
-        console.error(`[SAVE DEBUG] ========================================`)
-        console.error(`[SAVE DEBUG] businessId: ${businessId}`)
-        console.error(`[SAVE DEBUG] saveUserId: ${saveUserId}`)
-        console.error(`[SAVE DEBUG] Errors:\n${errorMsg}`)
-        console.error(`[SAVE DEBUG] ========================================`)
-        // Show error status so user knows something went wrong
+        console.error(`[Strategic Planning] ⚠️ ${saveErrors.length} section(s) failed:`, saveErrors)
         setSaveStatus('error')
-        // Don't reset isDirty — auto-save will retry
         return false
       }
 
@@ -473,6 +492,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
     businessesId,
     userId,
     ownerUserId,
+    overrideBusinessId,
     financialData,
     coreMetrics,
     kpis,
@@ -482,10 +502,12 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
     twelveMonthInitiatives,
     annualPlanByQuarter,
     quarterlyTargets,
+    monthlyTargets,
     sprintFocus,
     sprintKeyActions,
     operationalActivities,
-    isLoadComplete
+    isLoadComplete,
+    saveViaApi
   ])
 
   // Load data from Supabase on mount
@@ -523,28 +545,48 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           // But Goals data is stored with business_profiles.id - we need to look it up!
           console.log(`[Strategic Planning] 🔍 Coach view - overrideBusinessId: ${overrideBusinessId}`)
 
-          // COMPREHENSIVE LOOKUP: Try multiple sources to find the correct IDs
-          // This mirrors the approach used in the coach client page and SWOT page
-          const possibleUserIds: string[] = []
+          // PRIMARY METHOD: Use API route to resolve IDs (bypasses RLS)
+          // The browser client may not have SELECT access to business_profiles,
+          // so we use a server-side API route with the service role client.
           let foundProfileId: string | null = null
           let foundIndustry: string | null = null
 
-          // Source 1: Get owner_id and owner_email from the businesses table
-          const { data: business, error: businessError } = await supabase
-            .from('businesses')
-            .select('owner_id, owner_email, name')
-            .eq('id', overrideBusinessId)
-            .single()
+          try {
+            const resolveResponse = await fetch(`/api/goals/resolve-business?business_id=${overrideBusinessId}`)
+            if (resolveResponse.ok) {
+              const resolved = await resolveResponse.json()
+              console.log(`[Strategic Planning] ✅ API resolved:`, resolved)
 
-          console.log(`[Strategic Planning] 🔍 Source 1 - Business lookup:`, { owner_id: business?.owner_id, owner_email: business?.owner_email, name: business?.name, error: businessError?.message })
-
-          if (business?.owner_id) {
-            possibleUserIds.push(business.owner_id)
-            ownerUser = business.owner_id
+              if (resolved.profileId) {
+                foundProfileId = resolved.profileId
+              }
+              if (resolved.industry) {
+                foundIndustry = resolved.industry
+              }
+              if (resolved.ownerUserId) {
+                ownerUser = resolved.ownerUserId
+              }
+            } else {
+              console.warn(`[Strategic Planning] ⚠️ API resolve failed (${resolveResponse.status}), falling back to client-side lookup`)
+            }
+          } catch (apiError) {
+            console.warn('[Strategic Planning] ⚠️ API resolve unavailable, falling back to client-side lookup')
           }
 
-          // Source 2: Check business_profiles by business_id
-          try {
+          // FALLBACK: Client-side lookup if API route failed
+          if (!foundProfileId) {
+            // Source 1: businesses table
+            const { data: business } = await supabase
+              .from('businesses')
+              .select('owner_id, owner_email, name')
+              .eq('id', overrideBusinessId)
+              .maybeSingle()
+
+            if (business?.owner_id) {
+              ownerUser = business.owner_id
+            }
+
+            // Source 2: business_profiles by business_id
             const { data: profileByBizId } = await supabase
               .from('business_profiles')
               .select('id, user_id, industry')
@@ -554,102 +596,22 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
             if (profileByBizId?.id) {
               foundProfileId = profileByBizId.id
               foundIndustry = profileByBizId.industry
-              if (profileByBizId.user_id && !possibleUserIds.includes(profileByBizId.user_id)) {
-                possibleUserIds.push(profileByBizId.user_id)
-              }
-              console.log(`[Strategic Planning] 🔍 Source 2 - Found profile by business_id:`, { profile_id: profileByBizId.id, user_id: profileByBizId.user_id })
             }
-          } catch (e) {
-            console.log(`[Strategic Planning] Source 2 lookup failed`)
-          }
 
-          // Source 3: Check business_users table
-          if (!foundProfileId) {
-            try {
-              const { data: businessUsers } = await supabase
-                .from('business_users')
-                .select('user_id')
-                .eq('business_id', overrideBusinessId)
-
-              if (businessUsers && businessUsers.length > 0) {
-                businessUsers.forEach((bu: any) => {
-                  if (bu.user_id && !possibleUserIds.includes(bu.user_id)) {
-                    possibleUserIds.push(bu.user_id)
-                    console.log(`[Strategic Planning] 🔍 Source 3 - Found user from business_users:`, bu.user_id)
-                  }
-                })
-              }
-            } catch (e) {
-              console.log(`[Strategic Planning] Source 3 lookup failed`)
-            }
-          }
-
-          // Source 4: Look up user by owner_email
-          if (!foundProfileId && business?.owner_email) {
-            try {
-              const { data: userByEmail } = await supabase
-                .from('users')
-                .select('id')
-                .eq('email', business.owner_email)
+            // Source 3: business_profiles by owner user_id
+            if (!foundProfileId && ownerUser) {
+              const { data: profileByUser } = await supabase
+                .from('business_profiles')
+                .select('id, industry')
+                .eq('user_id', ownerUser)
                 .maybeSingle()
 
-              if (userByEmail?.id && !possibleUserIds.includes(userByEmail.id)) {
-                possibleUserIds.push(userByEmail.id)
-                console.log(`[Strategic Planning] 🔍 Source 4 - Found user by email:`, business.owner_email, '->', userByEmail.id)
-              }
-            } catch (e) {
-              console.log(`[Strategic Planning] Source 4 lookup failed`)
-            }
-          }
-
-          // Source 5: Look up by business_name match
-          if (!foundProfileId && business?.name) {
-            try {
-              const { data: profilesByName } = await supabase
-                .from('business_profiles')
-                .select('id, user_id, industry')
-                .ilike('business_name', business.name)
-
-              if (profilesByName && profilesByName.length > 0) {
-                profilesByName.forEach((p: any) => {
-                  if (!foundProfileId && p.id) {
-                    foundProfileId = p.id
-                    foundIndustry = p.industry
-                  }
-                  if (p.user_id && !possibleUserIds.includes(p.user_id)) {
-                    possibleUserIds.push(p.user_id)
-                    console.log(`[Strategic Planning] 🔍 Source 5 - Found user by business_name match:`, business.name, '->', p.user_id)
-                  }
-                })
-              }
-            } catch (e) {
-              console.log(`[Strategic Planning] Source 5 lookup failed`)
-            }
-          }
-
-          // Now try to find business_profile using all possible user IDs
-          if (!foundProfileId && possibleUserIds.length > 0) {
-            for (const userId of possibleUserIds) {
-              try {
-                const { data: profileByUser } = await supabase
-                  .from('business_profiles')
-                  .select('id, industry')
-                  .eq('user_id', userId)
-                  .maybeSingle()
-
-                if (profileByUser?.id) {
-                  foundProfileId = profileByUser.id
-                  foundIndustry = profileByUser.industry
-                  console.log(`[Strategic Planning] ✅ Found profile via user_id lookup:`, userId, '->', profileByUser.id)
-                  break
-                }
-              } catch (e) {
-                // Continue to next user ID
+              if (profileByUser?.id) {
+                foundProfileId = profileByUser.id
+                foundIndustry = profileByUser.industry
               }
             }
           }
-
-          console.log(`[Strategic Planning] 📊 All possible user IDs:`, possibleUserIds)
 
           // Set the business ID and owner
           if (foundProfileId) {
@@ -658,17 +620,12 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
               setIndustry(foundIndustry)
             }
           } else {
-            // Last resort fallback - use overrideBusinessId directly
+            // Last resort fallback
             console.warn(`[Strategic Planning] ⚠️ No business_profiles found, using businesses.id as fallback`)
             bizId = overrideBusinessId
           }
 
-          // Update ownerUser if we found better user IDs
-          if (possibleUserIds.length > 0 && !ownerUser) {
-            ownerUser = possibleUserIds[0]
-          }
-
-          console.log(`[Strategic Planning] 📥 Coach view - loading client business: ${bizId}, owner: ${ownerUser}`)
+          console.log(`[Strategic Planning] 📥 Coach view - profileId: ${bizId}, owner: ${ownerUser}`)
 
           // Track the original businesses.id for FK-constrained tables
           setBusinessesId(overrideBusinessId)

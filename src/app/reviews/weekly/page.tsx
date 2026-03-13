@@ -443,7 +443,14 @@ export default function WeeklyReviewPage() {
 
     const saveTimer = setTimeout(async () => {
       setIsSaving(true)
-      await WeeklyReviewService.saveReview(review)
+      try {
+        const result = await WeeklyReviewService.saveReview(review)
+        if (result && result.error) {
+          console.error('[Weekly Review] ❌ Auto-save failed:', result.error)
+        }
+      } catch (err) {
+        console.error('[Weekly Review] ❌ Auto-save error:', err)
+      }
       setIsSaving(false)
     }, 1000)
 
