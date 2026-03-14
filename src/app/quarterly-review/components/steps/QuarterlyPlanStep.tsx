@@ -179,12 +179,12 @@ export function QuarterlyPlanStep({
     }));
   }, [yearType, planYear]);
 
-  // Init expanded quarters: all expanded by default (matching Step 4)
+  // Init expanded quarters: only current + future expanded (past collapsed)
   useEffect(() => {
     if (quarterColumns.length > 0 && expandedQuarters.size === 0) {
       const expanded = new Set<string>();
       quarterColumns.forEach((q) => {
-        expanded.add(q.id);
+        if (!q.isPast) expanded.add(q.id);
       });
       setExpandedQuarters(expanded);
     }
@@ -240,18 +240,33 @@ export function QuarterlyPlanStep({
 
   // ─── Checklist Completion ──────────────────────────────────
   const hasEditedTargets = useMemo(() => {
-    return Object.values(quarterFinancials).some((qf) =>
-      qf.revenue > 0 || qf.grossProfit > 0 || qf.netProfit > 0
-    );
-  }, [quarterFinancials]);
+    // Only check non-past quarter financials
+    const nonPastIds = quarterColumns.filter(q => !q.isPast).map(q => q.id);
+    if (nonPastIds.length === 0) return true; // All quarters past = complete
+    return nonPastIds.some((qId) => {
+      const qf = quarterFinancials[qId];
+      return qf && (qf.revenue > 0 || qf.grossProfit > 0 || qf.netProfit > 0);
+    });
+  }, [quarterFinancials, quarterColumns]);
 
   const allInitiativesHaveQuarter = useMemo(() => {
-    return decisions.length > 0 && decisions.every((d) => d.quarterAssigned && d.quarterAssigned !== 'unassigned');
-  }, [decisions]);
+    // Only require quarter assignment for non-past quarter decisions
+    const nonPastIds = new Set(quarterColumns.filter(q => !q.isPast).map(q => q.id));
+    const nonPastDecisions = decisions.filter((d) => {
+      // Include unassigned decisions and decisions in non-past quarters
+      return !d.quarterAssigned || d.quarterAssigned === 'unassigned' || nonPastIds.has(d.quarterAssigned);
+    });
+    return nonPastDecisions.length > 0 && nonPastDecisions.every((d) => d.quarterAssigned && d.quarterAssigned !== 'unassigned');
+  }, [decisions, quarterColumns]);
 
   const allInitiativesHaveDecision = useMemo(() => {
-    return decisions.length > 0 && decisions.every((d) => d.decision);
-  }, [decisions]);
+    // Only require decisions for non-past quarter initiatives
+    const nonPastIds = new Set(quarterColumns.filter(q => !q.isPast).map(q => q.id));
+    const nonPastDecisions = decisions.filter((d) => {
+      return !d.quarterAssigned || d.quarterAssigned === 'unassigned' || nonPastIds.has(d.quarterAssigned);
+    });
+    return nonPastDecisions.length > 0 && nonPastDecisions.every((d) => d.decision);
+  }, [decisions, quarterColumns]);
 
   const allComplete = hasEditedTargets && allInitiativesHaveQuarter && allInitiativesHaveDecision;
 
@@ -879,29 +894,36 @@ export function QuarterlyPlanStep({
                                 q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''
                               }`}
                             >
-                              <input
-                                type="text"
-                                value={
-                                  row.isPercentage
-                                    ? (cellValue ? `${cellValue.toFixed(1)}%` : '')
-                                    : (cellValue ? formatDollar(cellValue) : '')
-                                }
-                                onChange={(e) => {
-                                  if (row.isPercentage) {
-                                    updateFinancialCell(q.id, row.key, e.target.value.replace('%', ''));
-                                  } else {
-                                    updateFinancialCell(q.id, row.key, parseDollarInput(e.target.value).toString());
+                              {q.isPast ? (
+                                <div className="px-2 py-2 bg-green-50/50 border border-green-200 rounded-md text-sm text-center font-medium text-green-700">
+                                  {row.isPercentage
+                                    ? (cellValue ? `${cellValue.toFixed(1)}%` : '—')
+                                    : (cellValue ? formatDollar(cellValue) : '—')
                                   }
-                                }}
-                                placeholder={q.isPast || q.isCurrent ? 'Actual' : row.isPercentage ? '0%' : 'Target'}
-                                className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                  q.isPast
-                                    ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
-                                    : q.isCurrent
-                                    ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                    : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                }`}
-                              />
+                                </div>
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={
+                                    row.isPercentage
+                                      ? (cellValue ? `${cellValue.toFixed(1)}%` : '')
+                                      : (cellValue ? formatDollar(cellValue) : '')
+                                  }
+                                  onChange={(e) => {
+                                    if (row.isPercentage) {
+                                      updateFinancialCell(q.id, row.key, e.target.value.replace('%', ''));
+                                    } else {
+                                      updateFinancialCell(q.id, row.key, parseDollarInput(e.target.value).toString());
+                                    }
+                                  }}
+                                  placeholder={q.isCurrent ? 'Actual' : row.isPercentage ? '0%' : 'Target'}
+                                  className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                    q.isCurrent
+                                      ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                      : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                  }`}
+                                />
+                              )}
                             </td>
                           );
                         })}
@@ -1151,15 +1173,17 @@ export function QuarterlyPlanStep({
                     <div key={q.id} className="lg:col-span-1">
                       <div
                         className={`rounded-lg border-2 p-4 min-h-96 transition-all ${
-                          isDragTarget
+                          q.isPast
+                            ? 'bg-gray-100 border-gray-300 opacity-60'
+                            : isDragTarget
                             ? 'border-brand-orange ring-2 ring-brand-orange/30 bg-brand-orange-50'
                             : q.isNextQuarter
                             ? 'bg-brand-orange-50 border-brand-orange-300 ring-2 ring-brand-orange-200'
                             : getQuarterStatusColor(q)
                         }`}
-                        onDragOver={(e) => handleDragOver(e, q.id)}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, q.id)}
+                        onDragOver={q.isPast ? undefined : (e) => handleDragOver(e, q.id)}
+                        onDragLeave={q.isPast ? undefined : handleDragLeave}
+                        onDrop={q.isPast ? undefined : (e) => handleDrop(e, q.id)}
                       >
                         {/* Quarter Header */}
                         <button
@@ -1173,7 +1197,7 @@ export function QuarterlyPlanStep({
                                   {q.label}
                                 </h4>
                                 {q.isPast && (
-                                  <span className="text-[10px] px-1.5 py-0.5 bg-green-500 text-white rounded font-semibold">PAST</span>
+                                  <span className="text-[10px] px-1.5 py-0.5 bg-gray-300 text-gray-600 rounded font-semibold">PAST</span>
                                 )}
                                 {q.isCurrent && !q.isPast && (
                                   <span className="text-[10px] px-1.5 py-0.5 bg-amber-500 text-white rounded font-semibold">CURRENT</span>
@@ -1205,7 +1229,7 @@ export function QuarterlyPlanStep({
                           <div className="min-h-20">
                             {qInitiatives.length === 0 ? (
                               <p className={`text-xs text-center py-6 ${q.isPast ? 'text-gray-400' : 'text-gray-500'}`}>
-                                {q.isPast ? 'No initiatives recorded' : 'Drag initiatives here'}
+                                {q.isPast ? 'Quarter completed' : 'Drag initiatives here'}
                               </p>
                             ) : (
                               <div className="space-y-2">
