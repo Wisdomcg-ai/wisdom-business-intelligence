@@ -43,7 +43,9 @@ export default function Step4AnnualPlan({
   const QUARTERS = useMemo(() => calculateQuarters(yearType, planYear), [yearType, planYear])
   const yearLabel = `${yearType} ${planYear}`
 
-  const [expandedQuarters, setExpandedQuarters] = useState<Set<string>>(new Set())
+  const [expandedQuarters, setExpandedQuarters] = useState<Set<string>>(
+    new Set(['q1', 'q2', 'q3', 'q4'])
+  )
   const [draggedItem, setDraggedItem] = useState<{
     initiativeId: string
     sourceQuarter: string | 'unassigned'
@@ -56,12 +58,6 @@ export default function Step4AnnualPlan({
   const [newPersonRole, setNewPersonRole] = useState('')
   const [isSavingNewPerson, setIsSavingNewPerson] = useState(false)
 
-
-  // Expand only current + future quarters on mount
-  useEffect(() => {
-    const nonPast = QUARTERS.filter(q => !q.isPast).map(q => q.id)
-    setExpandedQuarters(new Set(nonPast))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load team members from Supabase or localStorage
   useEffect(() => {
@@ -351,16 +347,11 @@ export default function Step4AnnualPlan({
 
   // Batch Actions
   const handleStaggerByPriority = () => {
-    const distribution: Record<string, StrategicInitiative[]> = {}
-    // Preserve existing past quarter assignments, clear active quarters
-    QUARTERS.forEach(q => {
-      distribution[q.id] = q.isPast ? (annualPlanByQuarter[q.id] || []) : []
-    })
-    const activeQuarterIds = QUARTERS.filter(q => !q.isPast).map(q => q.id)
-
-    if (activeQuarterIds.length === 0) {
-      setAnnualPlanByQuarter(distribution)
-      return
+    const distribution: Record<string, StrategicInitiative[]> = {
+      q1: [],
+      q2: [],
+      q3: [],
+      q4: []
     }
 
     const priorityOrder = { high: 0, medium: 1, low: 2 }
@@ -370,29 +361,37 @@ export default function Step4AnnualPlan({
       return aPriority - bPriority
     })
 
-    // Helper to find first available quarter from a preferred order
-    const assignToFirst = (initiative: StrategicInitiative, preferredOrder: string[]) => {
-      for (const qId of preferredOrder) {
-        if (distribution[qId].length < MAX_PER_QUARTER) {
-          distribution[qId].push(initiative)
-          return
-        }
-      }
-    }
-
     sorted.forEach((initiative) => {
       if (initiative.priority === 'high') {
-        // High priority: fill earliest active quarters first
-        assignToFirst(initiative, activeQuarterIds)
+        if (distribution.q1.length < MAX_PER_QUARTER) {
+          distribution.q1.push(initiative)
+        } else if (distribution.q2.length < MAX_PER_QUARTER) {
+          distribution.q2.push(initiative)
+        } else if (distribution.q3.length < MAX_PER_QUARTER) {
+          distribution.q3.push(initiative)
+        } else if (distribution.q4.length < MAX_PER_QUARTER) {
+          distribution.q4.push(initiative)
+        }
       } else if (initiative.priority === 'medium') {
-        // Medium priority: start from second active quarter, wrap around
-        const rotated = activeQuarterIds.length > 1
-          ? [...activeQuarterIds.slice(1), activeQuarterIds[0]]
-          : activeQuarterIds
-        assignToFirst(initiative, rotated)
+        if (distribution.q2.length < MAX_PER_QUARTER) {
+          distribution.q2.push(initiative)
+        } else if (distribution.q3.length < MAX_PER_QUARTER) {
+          distribution.q3.push(initiative)
+        } else if (distribution.q4.length < MAX_PER_QUARTER) {
+          distribution.q4.push(initiative)
+        } else if (distribution.q1.length < MAX_PER_QUARTER) {
+          distribution.q1.push(initiative)
+        }
       } else {
-        // Low priority: fill latest active quarters first
-        assignToFirst(initiative, [...activeQuarterIds].reverse())
+        if (distribution.q3.length < MAX_PER_QUARTER) {
+          distribution.q3.push(initiative)
+        } else if (distribution.q4.length < MAX_PER_QUARTER) {
+          distribution.q4.push(initiative)
+        } else if (distribution.q2.length < MAX_PER_QUARTER) {
+          distribution.q2.push(initiative)
+        } else if (distribution.q1.length < MAX_PER_QUARTER) {
+          distribution.q1.push(initiative)
+        }
       }
     })
 
@@ -591,7 +590,7 @@ export default function Step4AnnualPlan({
   }
 
   // Calculate section completion status
-  const unlockedQuarters = QUARTERS.filter(q => !q.isPast)
+  const unlockedQuarters = QUARTERS.filter(q => !q.isLocked)
 
   // Section 1: At least 1 quarterly target set for any unlocked quarter
   const hasAnyQuarterlyTarget = unlockedQuarters.some(q => {
@@ -760,23 +759,19 @@ export default function Step4AnnualPlan({
                             <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{formatCurrency(financialData.revenue.year1)}</td>
                             {QUARTERS.map(q => (
                               <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                {q.isPast ? (
-                                  <div className="px-2 py-2 bg-green-50/50 border border-green-200 rounded-md text-sm text-center font-medium text-green-700">
-                                    {quarterlyTargets['revenue']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] ? formatDollar(parseFloat(quarterlyTargets['revenue'][q.id as 'q1' | 'q2' | 'q3' | 'q4'])) : '—'}
-                                  </div>
-                                ) : (
-                                  <input
-                                    type="text"
-                                    value={quarterlyTargets['revenue']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] ? formatDollar(parseFloat(quarterlyTargets['revenue'][q.id as 'q1' | 'q2' | 'q3' | 'q4'])) : ''}
-                                    onChange={(e) => updateQuarterlyTarget('revenue', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
-                                    placeholder={q.isCurrent ? 'Actual' : 'Target'}
-                                    className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                      q.isCurrent
-                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                    }`}
-                                  />
-                                )}
+                                <input
+                                  type="text"
+                                  value={quarterlyTargets['revenue']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] ? formatDollar(parseFloat(quarterlyTargets['revenue'][q.id as 'q1' | 'q2' | 'q3' | 'q4'])) : ''}
+                                  onChange={(e) => updateQuarterlyTarget('revenue', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
+                                  placeholder={q.isPast || q.isCurrent ? 'Actual' : 'Target'}
+                                  className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                    q.isPast
+                                      ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                      : q.isCurrent
+                                      ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                      : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                  }`}
+                                />
                               </td>
                             ))}
                             <td className={`px-4 py-3 text-sm text-center font-medium ${
@@ -809,23 +804,19 @@ export default function Step4AnnualPlan({
                             <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{formatCurrency(financialData.grossProfit.year1)}</td>
                             {QUARTERS.map(q => (
                               <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                {q.isPast ? (
-                                  <div className="px-2 py-2 bg-green-50/50 border border-green-200 rounded-md text-sm text-center font-medium text-green-700">
-                                    {quarterlyTargets['grossProfit']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] ? formatDollar(parseFloat(quarterlyTargets['grossProfit'][q.id as 'q1' | 'q2' | 'q3' | 'q4'])) : '—'}
-                                  </div>
-                                ) : (
-                                  <input
-                                    type="text"
-                                    value={quarterlyTargets['grossProfit']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] ? formatDollar(parseFloat(quarterlyTargets['grossProfit'][q.id as 'q1' | 'q2' | 'q3' | 'q4'])) : ''}
-                                    onChange={(e) => updateQuarterlyTarget('grossProfit', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
-                                    placeholder={q.isCurrent ? 'Actual' : 'Target'}
-                                    className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                      q.isCurrent
-                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                    }`}
-                                  />
-                                )}
+                                <input
+                                  type="text"
+                                  value={quarterlyTargets['grossProfit']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] ? formatDollar(parseFloat(quarterlyTargets['grossProfit'][q.id as 'q1' | 'q2' | 'q3' | 'q4'])) : ''}
+                                  onChange={(e) => updateQuarterlyTarget('grossProfit', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
+                                  placeholder={q.isPast || q.isCurrent ? 'Actual' : 'Target'}
+                                  className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                    q.isPast
+                                      ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                      : q.isCurrent
+                                      ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                      : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                  }`}
+                                />
                               </td>
                             ))}
                             <td className={`px-4 py-3 text-sm text-center font-medium ${
@@ -862,23 +853,19 @@ export default function Step4AnnualPlan({
                               <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{financialData.grossMargin.year1}%</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  {q.isPast ? (
-                                    <div className="px-2 py-2 bg-green-50/50 border border-green-200 rounded-md text-sm text-center font-medium text-green-700">
-                                      {quarterlyTargets['grossMargin']?.[q.id as keyof typeof quarterlyTargets['grossMargin']] ? `${parseFloat(quarterlyTargets['grossMargin'][q.id as keyof typeof quarterlyTargets['grossMargin']])}%` : '—'}
-                                    </div>
-                                  ) : (
-                                    <input
-                                      type="text"
-                                      value={quarterlyTargets['grossMargin']?.[q.id as keyof typeof quarterlyTargets['grossMargin']] ? `${parseFloat(quarterlyTargets['grossMargin'][q.id as keyof typeof quarterlyTargets['grossMargin']])}%` : ''}
-                                      onChange={(e) => updateQuarterlyTarget('grossMargin', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value.replace('%', ''))}
-                                      placeholder={q.isCurrent ? 'Actual' : 'Target'}
-                                      className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                        q.isCurrent
-                                          ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                          : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                      }`}
-                                    />
-                                  )}
+                                  <input
+                                    type="text"
+                                    value={quarterlyTargets['grossMargin']?.[q.id as keyof typeof quarterlyTargets['grossMargin']] ? `${parseFloat(quarterlyTargets['grossMargin'][q.id as keyof typeof quarterlyTargets['grossMargin']])}%` : ''}
+                                    onChange={(e) => updateQuarterlyTarget('grossMargin', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value.replace('%', ''))}
+                                    placeholder={q.isPast || q.isCurrent ? 'Actual' : 'Target'}
+                                    className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                      q.isPast
+                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                        : q.isCurrent
+                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                    }`}
+                                  />
                                 </td>
                               ))}
                               <td className="px-4 py-3 text-sm text-center font-medium text-gray-700">
@@ -897,23 +884,19 @@ export default function Step4AnnualPlan({
                             <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{formatCurrency(financialData.netProfit.year1)}</td>
                             {QUARTERS.map(q => (
                               <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                {q.isPast ? (
-                                  <div className="px-2 py-2 bg-green-50/50 border border-green-200 rounded-md text-sm text-center font-medium text-green-700">
-                                    {quarterlyTargets['netProfit']?.[q.id as keyof typeof quarterlyTargets['netProfit']] ? formatDollar(parseFloat(quarterlyTargets['netProfit'][q.id as keyof typeof quarterlyTargets['netProfit']])) : '—'}
-                                  </div>
-                                ) : (
-                                  <input
-                                    type="text"
-                                    value={quarterlyTargets['netProfit']?.[q.id as keyof typeof quarterlyTargets['netProfit']] ? formatDollar(parseFloat(quarterlyTargets['netProfit'][q.id as keyof typeof quarterlyTargets['netProfit']])) : ''}
-                                    onChange={(e) => updateQuarterlyTarget('netProfit', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
-                                    placeholder={q.isCurrent ? 'Actual' : 'Target'}
-                                    className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                      q.isCurrent
-                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                    }`}
-                                  />
-                                )}
+                                <input
+                                  type="text"
+                                  value={quarterlyTargets['netProfit']?.[q.id as keyof typeof quarterlyTargets['netProfit']] ? formatDollar(parseFloat(quarterlyTargets['netProfit'][q.id as keyof typeof quarterlyTargets['netProfit']])) : ''}
+                                  onChange={(e) => updateQuarterlyTarget('netProfit', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
+                                  placeholder={q.isPast || q.isCurrent ? 'Actual' : 'Target'}
+                                  className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                    q.isPast
+                                      ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                      : q.isCurrent
+                                      ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                      : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                  }`}
+                                />
                               </td>
                             ))}
                             <td className={`px-4 py-3 text-sm text-center font-medium ${
@@ -950,23 +933,19 @@ export default function Step4AnnualPlan({
                               <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{financialData.netMargin.year1}%</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  {q.isPast ? (
-                                    <div className="px-2 py-2 bg-green-50/50 border border-green-200 rounded-md text-sm text-center font-medium text-green-700">
-                                      {quarterlyTargets['netMargin']?.[q.id as keyof typeof quarterlyTargets['netMargin']] ? `${parseFloat(quarterlyTargets['netMargin'][q.id as keyof typeof quarterlyTargets['netMargin']])}%` : '—'}
-                                    </div>
-                                  ) : (
-                                    <input
-                                      type="text"
-                                      value={quarterlyTargets['netMargin']?.[q.id as keyof typeof quarterlyTargets['netMargin']] ? `${parseFloat(quarterlyTargets['netMargin'][q.id as keyof typeof quarterlyTargets['netMargin']])}%` : ''}
-                                      onChange={(e) => updateQuarterlyTarget('netMargin', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value.replace('%', ''))}
-                                      placeholder="0%"
-                                      className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                        q.isCurrent
-                                          ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                          : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                      }`}
-                                    />
-                                  )}
+                                  <input
+                                    type="text"
+                                    value={quarterlyTargets['netMargin']?.[q.id as keyof typeof quarterlyTargets['netMargin']] ? `${parseFloat(quarterlyTargets['netMargin'][q.id as keyof typeof quarterlyTargets['netMargin']])}%` : ''}
+                                    onChange={(e) => updateQuarterlyTarget('netMargin', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value.replace('%', ''))}
+                                    placeholder="0%"
+                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                      q.isPast
+                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                        : q.isCurrent
+                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                    }`}
+                                  />
                                 </td>
                               ))}
                               <td className="px-4 py-3 text-sm text-center font-medium text-gray-700">
@@ -1024,23 +1003,19 @@ export default function Step4AnnualPlan({
                               <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.leadsPerMonth.year1}</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  {q.isPast ? (
-                                    <div className="px-2 py-2 bg-green-50/50 border border-green-200 rounded-md text-sm text-center font-medium text-green-700">
-                                      {quarterlyTargets['leadsPerMonth']?.[q.id as keyof typeof quarterlyTargets['leadsPerMonth']] || '—'}
-                                    </div>
-                                  ) : (
-                                    <input
-                                      type="text"
-                                      value={quarterlyTargets['leadsPerMonth']?.[q.id as keyof typeof quarterlyTargets['leadsPerMonth']] || ''}
-                                      onChange={(e) => updateQuarterlyTarget('leadsPerMonth', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
-                                      placeholder="#"
-                                      className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                        q.isCurrent
-                                          ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                          : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                      }`}
-                                    />
-                                  )}
+                                  <input
+                                    type="text"
+                                    value={quarterlyTargets['leadsPerMonth']?.[q.id as keyof typeof quarterlyTargets['leadsPerMonth']] || ''}
+                                    onChange={(e) => updateQuarterlyTarget('leadsPerMonth', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
+                                    placeholder="#"
+                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                      q.isPast
+                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                        : q.isCurrent
+                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                    }`}
+                                  />
                                 </td>
                               ))}
                             </tr>
@@ -1058,23 +1033,19 @@ export default function Step4AnnualPlan({
                               <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.conversionRate.year1}%</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  {q.isPast ? (
-                                    <div className="px-2 py-2 bg-green-50/50 border border-green-200 rounded-md text-sm text-center font-medium text-green-700">
-                                      {quarterlyTargets['conversionRate']?.[q.id as keyof typeof quarterlyTargets['conversionRate']] || '—'}
-                                    </div>
-                                  ) : (
-                                    <input
-                                      type="text"
-                                      value={quarterlyTargets['conversionRate']?.[q.id as keyof typeof quarterlyTargets['conversionRate']] || ''}
-                                      onChange={(e) => updateQuarterlyTarget('conversionRate', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
-                                      placeholder="%"
-                                      className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                        q.isCurrent
-                                          ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                          : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                      }`}
-                                    />
-                                  )}
+                                  <input
+                                    type="text"
+                                    value={quarterlyTargets['conversionRate']?.[q.id as keyof typeof quarterlyTargets['conversionRate']] || ''}
+                                    onChange={(e) => updateQuarterlyTarget('conversionRate', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
+                                    placeholder="%"
+                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                      q.isPast
+                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                        : q.isCurrent
+                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                    }`}
+                                  />
                                 </td>
                               ))}
                             </tr>
@@ -1092,23 +1063,19 @@ export default function Step4AnnualPlan({
                               <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{formatCurrency(coreMetrics.avgTransactionValue.year1)}</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  {q.isPast ? (
-                                    <div className="px-2 py-2 bg-green-50/50 border border-green-200 rounded-md text-sm text-center font-medium text-green-700">
-                                      {quarterlyTargets['avgTransactionValue']?.[q.id as keyof typeof quarterlyTargets['avgTransactionValue']] ? formatDollar(parseFloat(quarterlyTargets['avgTransactionValue'][q.id as keyof typeof quarterlyTargets['avgTransactionValue']])) : '—'}
-                                    </div>
-                                  ) : (
-                                    <input
-                                      type="text"
-                                      value={quarterlyTargets['avgTransactionValue']?.[q.id as keyof typeof quarterlyTargets['avgTransactionValue']] ? formatDollar(parseFloat(quarterlyTargets['avgTransactionValue'][q.id as keyof typeof quarterlyTargets['avgTransactionValue']])) : ''}
-                                      onChange={(e) => updateQuarterlyTarget('avgTransactionValue', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
-                                      placeholder="$0"
-                                      className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                        q.isCurrent
-                                          ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                          : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                      }`}
-                                    />
-                                  )}
+                                  <input
+                                    type="text"
+                                    value={quarterlyTargets['avgTransactionValue']?.[q.id as keyof typeof quarterlyTargets['avgTransactionValue']] ? formatDollar(parseFloat(quarterlyTargets['avgTransactionValue'][q.id as keyof typeof quarterlyTargets['avgTransactionValue']])) : ''}
+                                    onChange={(e) => updateQuarterlyTarget('avgTransactionValue', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
+                                    placeholder="$0"
+                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                      q.isPast
+                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                        : q.isCurrent
+                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                    }`}
+                                  />
                                 </td>
                               ))}
                             </tr>
@@ -1126,23 +1093,19 @@ export default function Step4AnnualPlan({
                               <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.teamHeadcount.year1}</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  {q.isPast ? (
-                                    <div className="px-2 py-2 bg-green-50/50 border border-green-200 rounded-md text-sm text-center font-medium text-green-700">
-                                      {quarterlyTargets['teamHeadcount']?.[q.id as keyof typeof quarterlyTargets['teamHeadcount']] || '—'}
-                                    </div>
-                                  ) : (
-                                    <input
-                                      type="text"
-                                      value={quarterlyTargets['teamHeadcount']?.[q.id as keyof typeof quarterlyTargets['teamHeadcount']] || ''}
-                                      onChange={(e) => updateQuarterlyTarget('teamHeadcount', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
-                                      placeholder="#"
-                                      className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                        q.isCurrent
-                                          ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                          : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                      }`}
-                                    />
-                                  )}
+                                  <input
+                                    type="text"
+                                    value={quarterlyTargets['teamHeadcount']?.[q.id as keyof typeof quarterlyTargets['teamHeadcount']] || ''}
+                                    onChange={(e) => updateQuarterlyTarget('teamHeadcount', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
+                                    placeholder="#"
+                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                      q.isPast
+                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                        : q.isCurrent
+                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                    }`}
+                                  />
                                 </td>
                               ))}
                             </tr>
@@ -1214,23 +1177,19 @@ export default function Step4AnnualPlan({
                               <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.ownerHoursPerWeek.year1} hrs</td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  {q.isPast ? (
-                                    <div className="px-2 py-2 bg-green-50/50 border border-green-200 rounded-md text-sm text-center font-medium text-green-700">
-                                      {quarterlyTargets['ownerHoursPerWeek']?.[q.id as keyof typeof quarterlyTargets['ownerHoursPerWeek']] || '—'}
-                                    </div>
-                                  ) : (
-                                    <input
-                                      type="text"
-                                      value={quarterlyTargets['ownerHoursPerWeek']?.[q.id as keyof typeof quarterlyTargets['ownerHoursPerWeek']] || ''}
-                                      onChange={(e) => updateQuarterlyTarget('ownerHoursPerWeek', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
-                                      placeholder="#"
-                                      className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                        q.isCurrent
-                                          ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                          : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                      }`}
-                                    />
-                                  )}
+                                  <input
+                                    type="text"
+                                    value={quarterlyTargets['ownerHoursPerWeek']?.[q.id as keyof typeof quarterlyTargets['ownerHoursPerWeek']] || ''}
+                                    onChange={(e) => updateQuarterlyTarget('ownerHoursPerWeek', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
+                                    placeholder="#"
+                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                      q.isPast
+                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                        : q.isCurrent
+                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                    }`}
+                                  />
                                 </td>
                               ))}
                             </tr>
@@ -1312,23 +1271,19 @@ export default function Step4AnnualPlan({
                               </td>
                               {QUARTERS.map(q => (
                                 <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  {q.isPast ? (
-                                    <div className="px-2 py-2 bg-green-50/50 border border-green-200 rounded-md text-sm text-center font-medium text-green-700">
-                                      {quarterlyTargets[kpi.id]?.[q.id as keyof typeof quarterlyTargets[typeof kpi.id]] || '—'}
-                                    </div>
-                                  ) : (
-                                    <input
-                                      type="text"
-                                      value={quarterlyTargets[kpi.id]?.[q.id as keyof typeof quarterlyTargets[typeof kpi.id]] || ''}
-                                      onChange={(e) => updateQuarterlyTarget(kpi.id, q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
-                                      placeholder={getPlaceholder()}
-                                      className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                        q.isCurrent
-                                          ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                          : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                      }`}
-                                    />
-                                  )}
+                                  <input
+                                    type="text"
+                                    value={quarterlyTargets[kpi.id]?.[q.id as keyof typeof quarterlyTargets[typeof kpi.id]] || ''}
+                                    onChange={(e) => updateQuarterlyTarget(kpi.id, q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
+                                    placeholder={getPlaceholder()}
+                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                      q.isPast
+                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                        : q.isCurrent
+                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                    }`}
+                                  />
                                 </td>
                               ))}
                             </tr>
@@ -1386,7 +1341,7 @@ export default function Step4AnnualPlan({
                       <div
                         key={quarter.id}
                         className={`p-3 rounded-lg border-2 ${
-                          quarter.isPast
+                          quarter.isLocked
                             ? 'bg-gray-100 border-gray-300 opacity-60'
                             : isEmpty
                             ? 'bg-amber-50 border-amber-200'
@@ -1397,13 +1352,13 @@ export default function Step4AnnualPlan({
                       >
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-sm font-bold text-brand-navy">{quarter.label}</span>
-                          {quarter.isPast && (
-                            <span className="text-[9px] px-1.5 py-0.5 bg-gray-400 text-white rounded font-semibold">PAST</span>
+                          {quarter.isLocked && (
+                            <span className="text-[9px] px-1.5 py-0.5 bg-gray-400 text-white rounded font-semibold">LOCKED</span>
                           )}
                           {quarter.isNextQuarter && (
                             <span className="text-[9px] px-1.5 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLAN NOW</span>
                           )}
-                          {!quarter.isPast && !quarter.isNextQuarter && isComplete && (
+                          {!quarter.isLocked && !quarter.isNextQuarter && isComplete && (
                             <Check className="w-4 h-4 text-green-600" />
                           )}
                         </div>
@@ -1419,7 +1374,7 @@ export default function Step4AnnualPlan({
                             </span>
                           )}
                         </div>
-                        {isEmpty && !quarter.isPast && (
+                        {isEmpty && !quarter.isLocked && (
                           <p className="text-[10px] text-amber-600 mt-1">Needs initiatives</p>
                         )}
                       </div>
@@ -1553,7 +1508,7 @@ export default function Step4AnnualPlan({
                   const items = annualPlanByQuarter[quarter.id] || []
                   const isExpanded = expandedQuarters.has(quarter.id)
                   const isFull = items.length >= MAX_PER_QUARTER
-                  const isPastQuarter = quarter.isPast
+                  const isLockedQuarter = quarter.isLocked
                   const isCurrentQuarter = quarter.isCurrent
                   const isNextQuarter = quarter.isNextQuarter
 
@@ -1561,41 +1516,42 @@ export default function Step4AnnualPlan({
                     <div key={quarter.id} className="lg:col-span-1">
                       <div
                         className={`rounded-lg border-2 p-4 min-h-96 transition-all ${
-                          isPastQuarter
+                          isLockedQuarter
                             ? 'bg-gray-100 border-gray-300 opacity-60'
                             : isNextQuarter
                             ? 'bg-brand-orange-50 border-brand-orange-300 ring-2 ring-brand-orange-200'
                             : getStatusColor(status)
                         }`}
-                        onDragOver={isPastQuarter ? undefined : handleDragOver}
-                        onDragLeave={isPastQuarter ? undefined : handleDragLeave}
-                        onDrop={isPastQuarter ? undefined : (e) => handleDrop(e, quarter.id)}
+                        onDragOver={isLockedQuarter ? undefined : handleDragOver}
+                        onDragLeave={isLockedQuarter ? undefined : handleDragLeave}
+                        onDrop={isLockedQuarter ? undefined : (e) => handleDrop(e, quarter.id)}
                       >
                         {/* Quarter Header */}
                         <button
-                          onClick={() => toggleQuarter(quarter.id)}
+                          onClick={() => !isLockedQuarter && toggleQuarter(quarter.id)}
                           className="w-full text-left mb-4 pb-3 border-b border-current border-opacity-20"
+                          disabled={isLockedQuarter}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <h4 className={`font-bold text-sm uppercase tracking-wider ${isPastQuarter ? 'text-gray-500' : 'text-brand-navy'}`}>
+                                <h4 className={`font-bold text-sm uppercase tracking-wider ${isLockedQuarter ? 'text-gray-500' : 'text-brand-navy'}`}>
                                   {quarter.label}
                                 </h4>
                                 {quarter.isPast && (
                                   <span className="text-[10px] px-1.5 py-0.5 bg-gray-300 text-gray-600 rounded font-semibold">PAST</span>
                                 )}
                                 {isCurrentQuarter && !quarter.isPast && (
-                                  <span className="text-[10px] px-1.5 py-0.5 bg-amber-500 text-white rounded font-semibold">NOW</span>
+                                  <span className="text-[10px] px-1.5 py-0.5 bg-amber-500 text-white rounded font-semibold">NOW (LOCKED)</span>
                                 )}
                                 {isNextQuarter && (
                                   <span className="text-[10px] px-1.5 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLANNING</span>
                                 )}
                               </div>
-                              <p className={`text-xs mt-1 ${isPastQuarter ? 'text-gray-500' : 'text-gray-600'}`}>
+                              <p className={`text-xs mt-1 ${isLockedQuarter ? 'text-gray-500' : 'text-gray-600'}`}>
                                 {quarter.months} {quarter.startDate.getFullYear()}
                               </p>
-                              <p className={`text-xs mt-0.5 ${isPastQuarter ? 'text-gray-400' : 'text-gray-500'}`}>
+                              <p className={`text-xs mt-0.5 ${isLockedQuarter ? 'text-gray-400' : 'text-gray-500'}`}>
                                 {quarter.title}
                               </p>
                             </div>
@@ -1618,8 +1574,8 @@ export default function Step4AnnualPlan({
                           <div className="min-h-20">
 
                             {items.length === 0 ? (
-                              <p className={`text-xs text-center py-6 ${isPastQuarter ? 'text-gray-400' : 'text-gray-500'}`}>
-                                {isPastQuarter ? 'Quarter completed' : 'Drag initiatives here'}
+                              <p className={`text-xs text-center py-6 ${isLockedQuarter ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {isLockedQuarter ? 'Quarter is locked' : 'Drag initiatives here'}
                               </p>
                             ) : (
                               <div className="space-y-2">
@@ -1844,7 +1800,7 @@ export default function Step4AnnualPlan({
             {/* Completion Messages */}
             {(() => {
               // Check if all unlocked quarters have at least 1 initiative
-              const unlockedQuarters = QUARTERS.filter(q => !q.isPast)
+              const unlockedQuarters = QUARTERS.filter(q => !q.isLocked)
               const allUnlockedHaveInitiatives = unlockedQuarters.every(
                 q => (annualPlanByQuarter[q.id] || []).length > 0
               )

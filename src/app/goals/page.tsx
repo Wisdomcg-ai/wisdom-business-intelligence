@@ -412,11 +412,11 @@ function StrategicPlanningContent() {
   const step2Complete = (strategicIdeas?.length || 0) > 0
   // Step 3: 5-20 prioritized initiatives selected
   const step3Complete = (twelveMonthInitiatives?.length || 0) >= 5 && (twelveMonthInitiatives?.length || 0) <= 20
-  // Step 4: Quarterly targets + initiatives for non-past quarters
-  // (Past quarters are completed and don't require initiatives)
+  // Step 4: Quarterly targets + initiatives for unlocked quarters
+  // (Locked quarters = past + current, can't add initiatives to them mid-year)
   const planYear = determinePlanYear(yearType)
   const quarters = calculateQuarters(yearType, planYear)
-  const unlockedQuarters = quarters.filter(q => !q.isPast)
+  const unlockedQuarters = quarters.filter(q => !q.isLocked)
 
   // Check if at least 1 quarterly target is set for any unlocked quarter
   const hasAnyQuarterlyTarget = unlockedQuarters.some(q => {
@@ -437,7 +437,7 @@ function StrategicPlanningContent() {
 
   // Step 5: Planning quarter has initiatives + at least 1 operational activity
   // Find the planning quarter (next quarter)
-  const planningQuarter = quarters.find(q => q.isNextQuarter) || quarters.find(q => !q.isPast)
+  const planningQuarter = quarters.find(q => q.isNextQuarter) || quarters.find(q => !q.isLocked)
   const planningQuarterKey = planningQuarter?.id as 'q1' | 'q2' | 'q3' | 'q4' | undefined
   const planningQuarterInitiatives = planningQuarterKey ? (safeAnnualPlan[planningQuarterKey]?.length || 0) : 0
   const hasOperationalActivities = (operationalActivities?.length || 0) > 0
