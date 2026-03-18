@@ -6,18 +6,18 @@ import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { formatDollar, parseDollarInput } from '@/app/goals/utils/formatting';
 import { calculateQuarters } from '@/app/goals/utils/quarters';
 import { getInitials, getColorForName, parseTeamFromProfile, type TeamMember } from '@/app/goals/utils/team';
-import { getCategoryStyle } from '@/app/goals/utils/design-tokens';
+import { getCategoryStyle, getCardClasses } from '@/app/goals/utils/design-tokens';
 import type {
   QuarterlyReview,
   InitiativeDecision,
   InitiativeAction,
   QuarterlyTargets,
   InitiativesChanges,
+  RockReviewItem,
 } from '../../types';
 import {
   getDefaultQuarterlyTargets,
   getDefaultInitiativesChanges,
-  getCurrentQuarter,
   type YearType,
 } from '../../types';
 import {
@@ -45,17 +45,6 @@ interface QuarterlyPlanStepProps {
   onUpdateInitiativesChanges: (changes: InitiativesChanges) => void;
 }
 
-interface SupabaseInitiative {
-  id: string;
-  title: string;
-  description?: string;
-  category: string;
-  status: string;
-  progress_percentage: number;
-  quarter_assigned?: string;
-  assigned_to?: string;
-}
-
 type MetricKey = 'revenue' | 'grossProfit' | 'grossMargin' | 'netProfit' | 'netMargin';
 
 interface FinancialRow {
@@ -76,6 +65,7 @@ interface QuarterColumn {
   id: string;
   label: string;
   months: string;
+  title: string;
   isPast: boolean;
   isCurrent: boolean;
   isNextQuarter?: boolean;
@@ -96,10 +86,10 @@ const FINANCIAL_ROWS: FinancialRow[] = [
 ];
 
 const DECISION_OPTIONS: { value: InitiativeAction; label: string; activeColor: string; bgChip: string }[] = [
-  { value: 'keep', label: 'Keep', activeColor: 'bg-green-100 text-green-700 border-green-300', bgChip: 'bg-green-50 text-green-700 border-green-200' },
+  { value: 'keep', label: 'Continue', activeColor: 'bg-green-100 text-green-700 border-green-300', bgChip: 'bg-green-50 text-green-700 border-green-200' },
   { value: 'accelerate', label: 'Accelerate', activeColor: 'bg-blue-100 text-blue-700 border-blue-300', bgChip: 'bg-blue-50 text-blue-700 border-blue-200' },
-  { value: 'defer', label: 'Defer', activeColor: 'bg-amber-100 text-amber-700 border-amber-300', bgChip: 'bg-amber-50 text-amber-700 border-amber-200' },
-  { value: 'kill', label: 'Kill', activeColor: 'bg-red-100 text-red-700 border-red-300', bgChip: 'bg-red-50 text-red-700 border-red-200' },
+  { value: 'defer', label: 'Carry Forward', activeColor: 'bg-amber-100 text-amber-700 border-amber-300', bgChip: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { value: 'kill', label: 'Drop', activeColor: 'bg-red-100 text-red-700 border-red-300', bgChip: 'bg-red-50 text-red-700 border-red-200' },
 ];
 
 const MAX_PER_QUARTER = 5;
@@ -134,7 +124,6 @@ export function QuarterlyPlanStep({
 
   // ─── State ──────────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);
-  const [initiatives, setInitiatives] = useState<SupabaseInitiative[]>([]);
   const [yearType, setYearType] = useState<YearType>('CY');
   const [planYear, setPlanYear] = useState<number>(new Date().getFullYear());
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -149,6 +138,11 @@ export function QuarterlyPlanStep({
   const [annualTargets, setAnnualTargets] = useState<{ revenue: number; grossProfit: number; netProfit: number }>({
     revenue: 0, grossProfit: 0, netProfit: 0,
   });
+
+  // Core Business Metrics + KPIs (mirroring Goals Wizard Step 4)
+  const [coreMetrics, setCoreMetrics] = useState<Record<string, { year1: number }> | null>(null);
+  const [savedQuarterlyTargets, setSavedQuarterlyTargets] = useState<Record<string, { q1: string; q2: string; q3: string; q4: string }>>({});
+  const [kpis, setKpis] = useState<Array<{ id: string; name: string; unit: string; year1Target: number }>>([]);
 
   // Accordion expand state
   const [expandedQuarters, setExpandedQuarters] = useState<Set<string>>(new Set());
@@ -171,6 +165,7 @@ export function QuarterlyPlanStep({
       id: q.id,
       label: q.label,
       months: q.months,
+      title: q.title,
       isPast: q.isPast,
       isCurrent: q.isCurrent,
       isNextQuarter: q.isNextQuarter,
@@ -317,20 +312,20 @@ export function QuarterlyPlanStep({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setIsLoading(false); return; }
 
-      const targetUserId = activeBusiness?.ownerId || user.id;
-
+      // Resolve business_profiles.id via direct Supabase query (same pattern as RocksReviewStep)
+      const ownerUserId = activeBusiness?.ownerId || user.id;
       const { data: profile } = await supabase
         .from('business_profiles')
         .select('id, key_roles, owner_info')
-        .eq('user_id', targetUserId)
+        .eq('user_id', ownerUserId)
         .maybeSingle();
 
       const businessId = profile?.id || review.business_id;
+      const businessesId = review.business_id;
 
-      // Load Year Type + Goals
       const { data: goalsData } = await supabase
         .from('business_financial_goals')
-        .select('year_type, revenue_year1, gross_profit_year1, net_profit_year1, plan_year')
+        .select('year_type, revenue_year1, gross_profit_year1, net_profit_year1, leads_per_month_year1, conversion_rate_year1, avg_transaction_value_year1, team_headcount_year1, owner_hours_per_week_year1, quarterly_targets')
         .eq('business_id', businessId)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -339,16 +334,12 @@ export function QuarterlyPlanStep({
       const resolvedYearType: YearType = goalsData?.year_type || 'CY';
       setYearType(resolvedYearType);
 
-      if (goalsData?.plan_year) {
-        setPlanYear(goalsData.plan_year);
-      } else {
+      const resolvedPlanYear = (() => {
         const now = new Date();
-        if (resolvedYearType === 'FY') {
-          setPlanYear(now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear());
-        } else {
-          setPlanYear(now.getFullYear());
-        }
-      }
+        if (resolvedYearType === 'FY') return now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear();
+        return now.getFullYear();
+      })();
+      setPlanYear(resolvedPlanYear);
 
       if (goalsData) {
         setAnnualTargets({
@@ -356,6 +347,35 @@ export function QuarterlyPlanStep({
           grossProfit: goalsData.gross_profit_year1 || 0,
           netProfit: goalsData.net_profit_year1 || 0,
         });
+
+        // Populate core business metrics
+        const metrics: Record<string, { year1: number }> = {};
+        if (goalsData.leads_per_month_year1) metrics.leadsPerMonth = { year1: goalsData.leads_per_month_year1 };
+        if (goalsData.conversion_rate_year1) metrics.conversionRate = { year1: goalsData.conversion_rate_year1 };
+        if (goalsData.avg_transaction_value_year1) metrics.avgTransactionValue = { year1: goalsData.avg_transaction_value_year1 };
+        if (goalsData.team_headcount_year1) metrics.teamHeadcount = { year1: goalsData.team_headcount_year1 };
+        if (goalsData.owner_hours_per_week_year1) metrics.ownerHoursPerWeek = { year1: goalsData.owner_hours_per_week_year1 };
+        if (Object.keys(metrics).length > 0) setCoreMetrics(metrics);
+
+        // Populate saved quarterly targets from Goals Wizard
+        if (goalsData.quarterly_targets && typeof goalsData.quarterly_targets === 'object') {
+          setSavedQuarterlyTargets(goalsData.quarterly_targets as Record<string, { q1: string; q2: string; q3: string; q4: string }>);
+        }
+      }
+
+      // Load KPIs (uses businesses.id, not business_profiles.id)
+      const { data: kpiData } = await supabase
+        .from('business_kpis')
+        .select('kpi_id, name, friendly_name, unit, current_value, year1_target, year2_target, year3_target')
+        .eq('business_id', businessesId);
+
+      if (kpiData && kpiData.length > 0) {
+        setKpis(kpiData.map((k: any) => ({
+          id: k.kpi_id || k.name,
+          name: k.friendly_name || k.name,
+          unit: k.unit || '',
+          year1Target: k.year1_target || 0,
+        })));
       }
 
       // Load Team Members
@@ -370,37 +390,149 @@ export function QuarterlyPlanStep({
         if (members.length > 0) setTeamMembers(members);
       }
 
-      // Load Strategic Initiatives
-      const { data: initiativesData } = await supabase
+      // Load initiatives by step_type (q1, q2, q3, q4) — this is how Goals Wizard saves them
+      const { data: q1Data } = await supabase
         .from('strategic_initiatives')
-        .select('id, title, description, category, status, progress_percentage, quarter_assigned, assigned_to')
+        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type')
         .eq('business_id', businessId)
-        .in('status', ['in_progress', 'not_started'])
-        .order('created_at', { ascending: false });
+        .eq('step_type', 'q1')
+        .order('order_index', { ascending: true });
 
-      if (initiativesData) {
-        setInitiatives(initiativesData);
+      const { data: q2Data } = await supabase
+        .from('strategic_initiatives')
+        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type')
+        .eq('business_id', businessId)
+        .eq('step_type', 'q2')
+        .order('order_index', { ascending: true });
 
-        if (decisions.length === 0 && initiativesData.length > 0) {
-          const actualQ = getCurrentQuarter(resolvedYearType);
-          const initialDecisions: InitiativeDecision[] = initiativesData.map((i) => {
-            let qAssigned = 'unassigned';
-            if (i.quarter_assigned) {
-              const match = i.quarter_assigned.match(/[Qq](\d)/);
-              if (match) qAssigned = `q${match[1]}`;
-            }
-            return {
-              initiativeId: i.id,
-              title: i.title,
-              category: i.category || 'marketing',
-              currentStatus: i.status || 'active',
-              progressPercentage: i.progress_percentage || 0,
-              decision: 'keep' as InitiativeAction,
-              notes: '',
-              quarterAssigned: qAssigned,
-            };
+      const { data: q3Data } = await supabase
+        .from('strategic_initiatives')
+        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type')
+        .eq('business_id', businessId)
+        .eq('step_type', 'q3')
+        .order('order_index', { ascending: true });
+
+      const { data: q4Data } = await supabase
+        .from('strategic_initiatives')
+        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type')
+        .eq('business_id', businessId)
+        .eq('step_type', 'q4')
+        .order('order_index', { ascending: true });
+
+      // Build decisions from per-quarter queries with quarter already known
+      const allDecisions: InitiativeDecision[] = [];
+
+      const buildDecisions = (data: any[] | null, quarterId: string) => {
+        if (!data) return;
+        data.forEach(i => {
+          allDecisions.push({
+            initiativeId: i.id,
+            title: i.title,
+            category: i.category || 'marketing',
+            currentStatus: i.status || 'active',
+            progressPercentage: i.progress_percentage || 0,
+            decision: 'keep' as InitiativeAction,
+            notes: i.assigned_to ? `[Assigned: ${i.assigned_to}]` : '',
+            quarterAssigned: quarterId,
+            source: i.source,
+            ideaType: i.idea_type,
           });
-          onUpdateInitiativeDecisions(initialDecisions);
+        });
+      };
+
+      buildDecisions(q1Data, 'q1');
+      buildDecisions(q2Data, 'q2');
+      buildDecisions(q3Data, 'q3');
+      buildDecisions(q4Data, 'q4');
+
+      // Load unassigned pool (twelve_month + strategic_ideas not in q1-q4)
+      const assignedIds = new Set([
+        ...(q1Data || []).map(i => i.id),
+        ...(q2Data || []).map(i => i.id),
+        ...(q3Data || []).map(i => i.id),
+        ...(q4Data || []).map(i => i.id),
+      ]);
+
+      const { data: poolData } = await supabase
+        .from('strategic_initiatives')
+        .select('id, title, description, category, status, progress_percentage, assigned_to, source, idea_type, step_type')
+        .eq('business_id', businessId)
+        .in('step_type', ['twelve_month', 'strategic_ideas'])
+        .order('order_index', { ascending: true });
+
+      // Filter out items already in a quarter AND raw strategic_ideas (only show twelve_month)
+      const unassignedPool = (poolData || []).filter((i: any) => !assignedIds.has(i.id) && i.step_type !== 'strategic_ideas');
+
+      // Add unassigned pool items as "Available" (quarterAssigned = 'unassigned')
+      unassignedPool.forEach((i: any) => {
+        allDecisions.push({
+          initiativeId: i.id,
+          title: i.title,
+          category: i.category || 'marketing',
+          currentStatus: i.status || 'active',
+          progressPercentage: i.progress_percentage || 0,
+          decision: 'keep' as InitiativeAction,
+          notes: i.assigned_to ? `[Assigned: ${i.assigned_to}]` : '',
+          quarterAssigned: 'unassigned',
+          source: i.source,
+          ideaType: i.idea_type,
+        });
+      });
+
+      // Cross-reference Step 1.3 rock decisions onto 4.2 initiative decisions
+      // Always tag flags + set derived decisions. The reconcile step below
+      // will override with the user's saved 4.2 choices if they exist.
+      const rockDecisions = new Map<string, RockReviewItem>();
+      if (review.rocks_review && Array.isArray(review.rocks_review)) {
+        for (const rock of review.rocks_review) {
+          rockDecisions.set(rock.rockId, rock);
+        }
+      }
+
+      if (rockDecisions.size > 0) {
+        for (const d of allDecisions) {
+          const rock = rockDecisions.get(d.initiativeId);
+          if (rock) {
+            d.reviewedInStep1 = true;
+            d.rockReviewDecision = rock.decision;
+            if (rock.decision === 'completed') {
+              d.completedInStep1 = true;
+              d.decision = 'keep';
+            } else if (rock.decision === 'carry_forward' || rock.decision === 'modify') {
+              d.decision = 'keep';
+            } else if (rock.decision === 'drop') {
+              d.decision = 'kill';
+            }
+          }
+        }
+      }
+
+      // Reconcile DB data with existing decisions
+      if (allDecisions.length > 0) {
+        if (decisions.length === 0) {
+          // First load — use fresh DB data
+          onUpdateInitiativeDecisions(allDecisions);
+        } else {
+          // Reconcile: preserve user decisions/notes, but add new DB items and update quarters
+          const existingById = new Map(decisions.map(d => [d.initiativeId, d]));
+          const reconciled = allDecisions.map(fresh => {
+            const existing = existingById.get(fresh.initiativeId);
+            if (existing) {
+              // Keep user's decision and notes, but preserve 1.3 flags from fresh
+              // For completed-in-1.3 items, lock decision to 'keep' (not overridable)
+              const decision = fresh.completedInStep1 ? 'keep' as InitiativeAction : existing.decision;
+              return {
+                ...existing,    // Preserve ALL existing fields (why, outcome, tasks, milestones from 4.3)
+                ...fresh,       // Apply fresh database data (title, category, status, progress)
+                decision,       // Reconciled decision
+                notes: existing.notes || fresh.notes,
+              };
+            }
+            return fresh;
+          });
+          // Also keep any user-added initiatives (ids starting with 'new-')
+          const userAdded = decisions.filter(d => d.initiativeId.startsWith('new-'));
+          onUpdateInitiativeDecisions([...reconciled, ...userAdded]);
         }
       }
 
@@ -409,7 +541,7 @@ export function QuarterlyPlanStep({
         .from('quarterly_snapshots')
         .select('snapshot_quarter, snapshot_year, financial_snapshot')
         .eq('business_id', businessId)
-        .eq('snapshot_year', goalsData?.plan_year || new Date().getFullYear());
+        .eq('snapshot_year', resolvedPlanYear);
 
       const loadedFinancials: Record<string, QuarterlyFinancials> = {};
 
@@ -433,7 +565,7 @@ export function QuarterlyPlanStep({
       }
 
       // Pre-populate current/future quarters from run-rate if empty
-      const quarters = calculateQuarters(resolvedYearType, goalsData?.plan_year || new Date().getFullYear());
+      const quarters = calculateQuarters(resolvedYearType, resolvedPlanYear);
       quarters.forEach((q) => {
         if (!loadedFinancials[q.id] && !q.isPast) {
           let sugR = 0, sugGP = 0, sugNP = 0;
@@ -528,6 +660,17 @@ export function QuarterlyPlanStep({
       return next;
     });
   }, [quarterColumns, targets, onUpdateQuarterlyTargets]);
+
+  // ─── Core Metric / KPI Quarterly Target Handler ─────────────
+  const updateSavedQuarterlyTarget = useCallback((metric: string, quarter: 'q1' | 'q2' | 'q3' | 'q4', value: string) => {
+    setSavedQuarterlyTargets(prev => ({
+      ...prev,
+      [metric]: {
+        ...(prev[metric] || { q1: '', q2: '', q3: '', q4: '' }),
+        [quarter]: value,
+      },
+    }));
+  }, []);
 
   // ═══════════════════════════════════════════════════════════════
   // Initiative Decision Handlers
@@ -948,6 +1091,290 @@ export function QuarterlyPlanStep({
                 </p>
               </div>
             )}
+
+            {/* ═══════════════════ CORE BUSINESS METRICS TABLE ═══════════════════ */}
+            {coreMetrics && Object.keys(coreMetrics).length > 0 && (
+              <div className="mt-6">
+                <h4 className="text-sm font-semibold text-brand-navy mb-3">Core Business Metrics</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse border border-slate-200" style={{ tableLayout: 'fixed' }}>
+                    <colgroup>
+                      <col style={{ width: '21%' }} />
+                      <col style={{ width: '13%' }} />
+                      {quarterColumns.map((q) => (
+                        <col key={q.id} style={{ width: '16.5%' }} />
+                      ))}
+                    </colgroup>
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-brand-navy border-b border-r border-slate-200">Metric</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">
+                          {yearType} {planYear}
+                        </th>
+                        {quarterColumns.map(q => (
+                          <th
+                            key={q.id}
+                            className={`px-4 py-3 text-center text-sm font-semibold border-b border-r border-slate-200 ${
+                              q.isPast ? 'bg-green-50 text-green-800' : q.isCurrent ? 'bg-amber-50 text-amber-800' : 'text-brand-navy'
+                            }`}
+                          >
+                            <div className="flex flex-col items-center gap-1">
+                              <div className="flex items-center gap-1">
+                                <span>{q.label}</span>
+                                {q.isPast && <span className="text-[9px] px-1 py-0.5 bg-green-500 text-white rounded font-semibold">ACTUAL</span>}
+                                {q.isCurrent && !q.isPast && <span className="text-[9px] px-1 py-0.5 bg-amber-500 text-white rounded font-semibold">CURRENT</span>}
+                                {q.isNextQuarter && <span className="text-[9px] px-1 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLANNING</span>}
+                              </div>
+                              <span className="text-[10px] font-normal text-gray-500">{q.months}</span>
+                            </div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-slate-200">
+                      {/* Leads Per Month */}
+                      {coreMetrics.leadsPerMonth?.year1 > 0 && (
+                        <tr>
+                          <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Leads Per Month</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.leadsPerMonth.year1}</td>
+                          {quarterColumns.map(q => (
+                            <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
+                              <input
+                                type="text"
+                                value={savedQuarterlyTargets['leadsPerMonth']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] || ''}
+                                onChange={(e) => updateSavedQuarterlyTarget('leadsPerMonth', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
+                                placeholder="#"
+                                className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                  q.isPast
+                                    ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                    : q.isCurrent
+                                    ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                    : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                }`}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      )}
+                      {/* Conversion Rate */}
+                      {coreMetrics.conversionRate?.year1 > 0 && (
+                        <tr>
+                          <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Conversion Rate</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.conversionRate.year1}%</td>
+                          {quarterColumns.map(q => (
+                            <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
+                              <input
+                                type="text"
+                                value={savedQuarterlyTargets['conversionRate']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] || ''}
+                                onChange={(e) => updateSavedQuarterlyTarget('conversionRate', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
+                                placeholder="%"
+                                className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                  q.isPast
+                                    ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                    : q.isCurrent
+                                    ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                    : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                }`}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      )}
+                      {/* Avg Transaction Value */}
+                      {coreMetrics.avgTransactionValue?.year1 > 0 && (
+                        <tr>
+                          <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Avg Transaction Value</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{formatCurrency(coreMetrics.avgTransactionValue.year1)}</td>
+                          {quarterColumns.map(q => (
+                            <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
+                              <input
+                                type="text"
+                                value={savedQuarterlyTargets['avgTransactionValue']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] ? formatDollar(parseFloat(savedQuarterlyTargets['avgTransactionValue'][q.id as 'q1' | 'q2' | 'q3' | 'q4'])) : ''}
+                                onChange={(e) => updateSavedQuarterlyTarget('avgTransactionValue', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
+                                placeholder="$0"
+                                className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                  q.isPast
+                                    ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                    : q.isCurrent
+                                    ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                    : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                }`}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      )}
+                      {/* Team Headcount */}
+                      {coreMetrics.teamHeadcount?.year1 > 0 && (
+                        <tr>
+                          <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Team Headcount</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.teamHeadcount.year1}</td>
+                          {quarterColumns.map(q => (
+                            <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
+                              <input
+                                type="text"
+                                value={savedQuarterlyTargets['teamHeadcount']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] || ''}
+                                onChange={(e) => updateSavedQuarterlyTarget('teamHeadcount', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
+                                placeholder="#"
+                                className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                  q.isPast
+                                    ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                    : q.isCurrent
+                                    ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                    : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                }`}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      )}
+                      {/* Revenue per Employee (Auto-Calculated) */}
+                      {coreMetrics.teamHeadcount?.year1 > 0 && annualTargets.revenue > 0 && (() => {
+                        const rpeYear1 = coreMetrics.teamHeadcount!.year1 > 0
+                          ? annualTargets.revenue / coreMetrics.teamHeadcount!.year1
+                          : 0;
+                        return (
+                          <tr className="bg-brand-orange-50/50">
+                            <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">
+                              Revenue per Employee <span className="text-xs text-gray-500 font-normal">(Auto-Calc)</span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
+                              {formatCurrency(Math.round(rpeYear1))}
+                            </td>
+                            {quarterColumns.map(q => {
+                              const revQ = parseFloat(savedQuarterlyTargets['revenue']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] || '0') || (quarterFinancials[q.id]?.revenue || 0);
+                              const headQ = parseFloat(savedQuarterlyTargets['teamHeadcount']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] || '0') || 0;
+                              const rpe = headQ > 0 ? revQ / headQ : 0;
+                              return (
+                                <td key={q.id} className="px-4 py-2 border-r border-slate-200">
+                                  <div className="px-2 py-1.5 bg-slate-100 rounded text-sm text-center font-medium text-gray-700 border border-slate-200">
+                                    {rpe > 0 ? formatCurrency(Math.round(rpe)) : '-'}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })()}
+                      {/* Owner Hours Per Week */}
+                      {coreMetrics.ownerHoursPerWeek?.year1 > 0 && (
+                        <tr>
+                          <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Owner Hours Per Week</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.ownerHoursPerWeek.year1} hrs</td>
+                          {quarterColumns.map(q => (
+                            <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
+                              <input
+                                type="text"
+                                value={savedQuarterlyTargets['ownerHoursPerWeek']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] || ''}
+                                onChange={(e) => updateSavedQuarterlyTarget('ownerHoursPerWeek', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
+                                placeholder="#"
+                                className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                  q.isPast
+                                    ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                    : q.isCurrent
+                                    ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                    : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                }`}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ═══════════════════ KPIs TABLE ═══════════════════ */}
+            {kpis.length > 0 && (
+              <div className="mt-6">
+                <h4 className="text-sm font-semibold text-brand-navy mb-3">Key Performance Indicators</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse border border-slate-200" style={{ tableLayout: 'fixed' }}>
+                    <colgroup>
+                      <col style={{ width: '21%' }} />
+                      <col style={{ width: '13%' }} />
+                      {quarterColumns.map((q) => (
+                        <col key={q.id} style={{ width: '16.5%' }} />
+                      ))}
+                    </colgroup>
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-brand-navy border-b border-r border-slate-200">KPI</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">
+                          {yearType} {planYear}
+                        </th>
+                        {quarterColumns.map(q => (
+                          <th
+                            key={q.id}
+                            className={`px-4 py-3 text-center text-sm font-semibold border-b border-r border-slate-200 ${
+                              q.isPast ? 'bg-green-50 text-green-800' : q.isCurrent ? 'bg-amber-50 text-amber-800' : 'text-brand-navy'
+                            }`}
+                          >
+                            <div className="flex flex-col items-center gap-1">
+                              <div className="flex items-center gap-1">
+                                <span>{q.label}</span>
+                                {q.isPast && <span className="text-[9px] px-1 py-0.5 bg-green-500 text-white rounded font-semibold">ACTUAL</span>}
+                                {q.isCurrent && !q.isPast && <span className="text-[9px] px-1 py-0.5 bg-amber-500 text-white rounded font-semibold">CURRENT</span>}
+                                {q.isNextQuarter && <span className="text-[9px] px-1 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLANNING</span>}
+                              </div>
+                              <span className="text-[10px] font-normal text-gray-500">{q.months}</span>
+                            </div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-slate-200">
+                      {kpis.map((kpi) => {
+                        const unit = (kpi.unit || '').toLowerCase();
+                        const isCurrencyKpi = unit.includes('$') || unit.includes('dollar');
+                        const isPercentageKpi = unit.includes('%') || unit.includes('percent');
+
+                        const formatKPIValue = (value: number) => {
+                          if (!value) return '-';
+                          if (isCurrencyKpi) return formatCurrency(value);
+                          if (isPercentageKpi) return `${value.toFixed(1)}%`;
+                          return value.toLocaleString();
+                        };
+
+                        const getPlaceholder = () => {
+                          if (isCurrencyKpi) return '$';
+                          if (isPercentageKpi) return '%';
+                          return '#';
+                        };
+
+                        return (
+                          <tr key={kpi.id}>
+                            <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">{kpi.name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
+                              {formatKPIValue(kpi.year1Target)}
+                            </td>
+                            {quarterColumns.map(q => (
+                              <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
+                                <input
+                                  type="text"
+                                  value={savedQuarterlyTargets[kpi.id]?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] || ''}
+                                  onChange={(e) => updateSavedQuarterlyTarget(kpi.id, q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
+                                  placeholder={getPlaceholder()}
+                                  className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
+                                    q.isPast
+                                      ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
+                                      : q.isCurrent
+                                      ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
+                                      : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
+                                  }`}
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -956,10 +1383,10 @@ export function QuarterlyPlanStep({
       {stats.total > 0 && (
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-sm font-medium text-gray-600">Decisions:</span>
-          {stats.keep > 0 && <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">{stats.keep} keep</span>}
+          {stats.keep > 0 && <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">{stats.keep} continue</span>}
           {stats.accelerate > 0 && <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{stats.accelerate} accelerate</span>}
-          {stats.defer > 0 && <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">{stats.defer} defer</span>}
-          {stats.kill > 0 && <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">{stats.kill} kill</span>}
+          {stats.defer > 0 && <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">{stats.defer} carry forward</span>}
+          {stats.kill > 0 && <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">{stats.kill} drop</span>}
         </div>
       )}
 
@@ -1077,7 +1504,7 @@ export function QuarterlyPlanStep({
             )}
 
             {/* Empty State */}
-            {decisions.length === 0 && initiatives.length === 0 && (
+            {decisions.length === 0 && (
               <div className="bg-gray-50 rounded-xl border border-gray-200 p-8 text-center">
                 <p className="text-gray-600">No strategic initiatives found.</p>
                 <p className="text-sm text-gray-500 mt-1">
@@ -1113,24 +1540,51 @@ export function QuarterlyPlanStep({
                       ) : (
                         (initiativesByQuarter['unassigned'] || []).map((d, index) => {
                           const catStyle = getCategoryStyle(d.category);
+                          const uCardClasses = getCardClasses(d.source, draggedItem?.initiativeId === d.initiativeId, d.ideaType);
+                          const uIsSourced = d.source === 'roadmap' || d.source === 'strategic_ideas';
+                          const uIsOperational = d.ideaType === 'operational';
+                          const uIsDark = uIsSourced && !uIsOperational;
+
+                          const uSourceBadge = d.source === 'roadmap'
+                            ? { label: 'ROADMAP', bg: 'bg-white/20', text: 'text-white' }
+                            : d.ideaType === 'operational'
+                            ? { label: 'OPERATIONAL', bg: 'bg-gray-200', text: 'text-gray-700' }
+                            : d.source === 'strategic_ideas'
+                            ? { label: 'STRATEGIC', bg: 'bg-white/20', text: 'text-white' }
+                            : null;
+
                           return (
                             <div
                               key={d.initiativeId}
                               draggable
                               onDragStart={(e) => handleDragStart(e, d.initiativeId, 'unassigned')}
                               onDragEnd={handleDragEnd}
-                              className={`group flex items-start gap-2 p-3 rounded-lg border-2 cursor-move transition-all bg-white border-gray-200 hover:shadow-md ${
-                                draggedItem?.initiativeId === d.initiativeId ? 'opacity-40 scale-95 shadow-lg' : ''
-                              } ${d.decision === 'kill' ? 'opacity-60 bg-red-50 border-red-200' : ''}`}
+                              className={`group flex items-start gap-2 p-3 cursor-move transition-all ${
+                                d.decision === 'kill' ? 'opacity-60 bg-red-50 rounded-lg border-2 border-red-200' :
+                                uIsSourced ? uCardClasses.container :
+                                `rounded-lg border-2 bg-white border-gray-200 hover:shadow-md ${draggedItem?.initiativeId === d.initiativeId ? 'opacity-40 scale-95 shadow-lg' : ''}`
+                              }`}
                             >
-                              <GripVertical className="w-4 h-4 flex-shrink-0 mt-0.5 text-gray-300 group-hover:text-gray-500" />
+                              <GripVertical className={`w-4 h-4 flex-shrink-0 mt-0.5 ${uIsDark && d.decision !== 'kill' ? 'text-white/60 group-hover:text-white' : 'text-gray-300 group-hover:text-gray-500'}`} />
                               <div className="flex-1 min-w-0">
-                                <p className={`text-sm font-semibold leading-tight ${d.decision === 'kill' ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                                <p className={`text-sm font-semibold leading-tight ${
+                                  d.decision === 'kill' ? 'line-through text-gray-500' :
+                                  uIsDark ? uCardClasses.text : 'text-gray-900'
+                                }`}>
                                   {d.title}
                                 </p>
-                                <span className={`inline-block mt-2 px-2 py-0.5 text-[10px] rounded font-semibold ${catStyle.badgeBg} ${catStyle.badgeText}`}>
-                                  {catStyle.emoji} {catStyle.shortLabel}
-                                </span>
+                                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                                  {uSourceBadge && (
+                                    <span className={`inline-block px-2 py-0.5 text-[10px] rounded font-semibold ${uSourceBadge.bg} ${uSourceBadge.text}`}>
+                                      {uSourceBadge.label}
+                                    </span>
+                                  )}
+                                  <span className={`inline-block px-2 py-0.5 text-[10px] rounded font-semibold ${
+                                    uIsDark ? 'bg-white/20 text-white' : `${catStyle.badgeBg} ${catStyle.badgeText}`
+                                  }`}>
+                                    {catStyle.emoji} {catStyle.shortLabel}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           );
@@ -1298,6 +1752,26 @@ export function QuarterlyPlanStep({
                 })}
               </div>
             )}
+
+            {/* ═══════════════════ COMPLETION MESSAGES ═══════════════════ */}
+            {decisions.length > 0 && allComplete && (
+              <div className="mt-6 rounded-lg border-2 border-teal-300 bg-teal-50 p-4 text-center">
+                <p className="text-teal-800 font-bold text-sm">{'\u2705'} Step 4.2 Complete!</p>
+                <p className="text-teal-700 text-xs mt-1">All financial targets set, initiatives assigned, and decisions made.</p>
+              </div>
+            )}
+            {decisions.length > 0 && !allComplete && allInitiativesHaveQuarter && (
+              <div className="mt-6 rounded-lg border-2 border-teal-200 bg-teal-50/50 p-4 text-center">
+                <p className="text-teal-700 font-semibold text-sm">{'\u2705'} All initiatives assigned to quarters</p>
+                <p className="text-teal-600 text-xs mt-1">Review your decisions to complete this step.</p>
+              </div>
+            )}
+            {decisions.length > 0 && !allInitiativesHaveQuarter && (
+              <div className="mt-6 rounded-lg border-2 border-amber-200 bg-amber-50 p-4 text-center">
+                <p className="text-amber-800 font-semibold text-sm">{'\u26A0\uFE0F'} Some quarters still need initiatives</p>
+                <p className="text-amber-700 text-xs mt-1">Drag unassigned initiatives into quarters or use &quot;Distribute All&quot;.</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1348,36 +1822,79 @@ function InitiativeCard({
   const assignedMember = getAssignedMember(d);
   const isShowingAssignment = showAssignmentFor === d.initiativeId;
 
+  // Source-based card styling (navy/orange/white matching Goals Wizard)
+  const cardClasses = getCardClasses(d.source, isDragging, d.ideaType);
+  const isSourced = d.source === 'roadmap' || d.source === 'strategic_ideas';
+  const isOperational = d.ideaType === 'operational';
+  const isDarkCard = isSourced && !isOperational;
+
+  // Source badge info
+  const getSourceBadge = () => {
+    if (d.source === 'roadmap') return { label: 'ROADMAP', bg: 'bg-white/20', text: 'text-white' };
+    if (d.ideaType === 'operational') return { label: 'OPERATIONAL', bg: 'bg-gray-200', text: 'text-gray-700' };
+    if (d.source === 'strategic_ideas') return { label: 'STRATEGIC', bg: 'bg-white/20', text: 'text-white' };
+    return null;
+  };
+  const sourceBadge = getSourceBadge();
+
+  const isCompleted = d.completedInStep1 === true;
+  const isAssessedInStep1 = d.reviewedInStep1 === true && !isCompleted;
+
   return (
     <div
-      draggable={!isPast}
-      onDragStart={(e) => onDragStart(e, d.initiativeId, quarterId)}
+      draggable={!isPast && !isCompleted}
+      onDragStart={(e) => !isCompleted && onDragStart(e, d.initiativeId, quarterId)}
       onDragEnd={onDragEnd}
-      className={`p-3 rounded-lg border-2 transition-all group ${
-        isDragging ? 'opacity-40 scale-95 shadow-lg' :
-        d.decision === 'kill' ? 'opacity-60 bg-red-50 border-red-200' :
-        'bg-white border-gray-200 hover:shadow-md'
-      } ${!isPast ? 'cursor-move' : ''}`}
+      className={`p-3 transition-all group ${
+        isCompleted ? 'rounded-lg border-2 border-green-300 bg-green-50/60 opacity-75' :
+        d.decision === 'kill' ? 'opacity-60 bg-red-50 rounded-lg border-2 border-red-200' :
+        isSourced ? `${cardClasses.container}` :
+        `rounded-lg border-2 bg-white border-gray-200 hover:shadow-md ${isDragging ? 'opacity-40 scale-95 shadow-lg' : ''}`
+      } ${!isPast && !isCompleted ? 'cursor-move' : ''}`}
     >
       {/* Header Row with index number */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-start gap-2 flex-1">
-          <span className="text-xs font-bold mt-0.5 text-gray-400">
-            {index + 1}
+          <span className={`text-xs font-bold mt-0.5 ${isCompleted ? 'text-green-500' : isDarkCard && d.decision !== 'kill' ? 'text-white/60' : 'text-gray-400'}`}>
+            {isCompleted ? <Check className="w-3.5 h-3.5" /> : index + 1}
           </span>
           <div className="flex-1 min-w-0">
-            <p className={`text-sm font-semibold leading-tight ${d.decision === 'kill' ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+            <p className={`text-sm font-semibold leading-tight ${
+              isCompleted ? 'text-green-800' :
+              d.decision === 'kill' ? 'line-through text-gray-500' :
+              isDarkCard ? cardClasses.text : 'text-gray-900'
+            }`}>
               {d.title}
             </p>
-            {d.progressPercentage > 0 && (
-              <p className="text-xs mt-1 text-gray-500">{d.progressPercentage}% complete</p>
+            {d.progressPercentage > 0 && !isCompleted && (
+              <p className={`text-xs mt-1 ${isDarkCard ? cardClasses.subtext : 'text-gray-500'}`}>{d.progressPercentage}% complete</p>
             )}
-            <span className={`inline-block mt-2 px-2 py-0.5 text-[10px] rounded font-semibold ${catStyle.badgeBg} ${catStyle.badgeText}`}>
-              {catStyle.emoji} {catStyle.shortLabel}
-            </span>
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              {isCompleted && (
+                <span className="inline-block px-2 py-0.5 text-[10px] rounded font-semibold bg-green-500 text-white">
+                  Completed in 1.3
+                </span>
+              )}
+              {isAssessedInStep1 && (
+                <span className="inline-block px-2 py-0.5 text-[10px] rounded font-semibold bg-gray-200 text-gray-600">
+                  Assessed in 1.3
+                </span>
+              )}
+              {sourceBadge && (
+                <span className={`inline-block px-2 py-0.5 text-[10px] rounded font-semibold ${sourceBadge.bg} ${sourceBadge.text}`}>
+                  {sourceBadge.label}
+                </span>
+              )}
+              <span className={`inline-block px-2 py-0.5 text-[10px] rounded font-semibold ${
+                isCompleted ? 'bg-green-100 text-green-700' :
+                isDarkCard ? 'bg-white/20 text-white' : `${catStyle.badgeBg} ${catStyle.badgeText}`
+              }`}>
+                {catStyle.emoji} {catStyle.shortLabel}
+              </span>
+            </div>
           </div>
         </div>
-        {!isPast && (d.initiativeId.startsWith('new-') || d.initiativeId.startsWith('suggestion-')) && (
+        {!isPast && !isCompleted && (d.initiativeId.startsWith('new-') || d.initiativeId.startsWith('suggestion-')) && (
           <button
             onClick={() => removeInitiative(d.initiativeId)}
             className="opacity-0 group-hover:opacity-100 transition-all flex-shrink-0 text-gray-300 hover:text-red-600"
@@ -1389,7 +1906,7 @@ function InitiativeCard({
       </div>
 
       {/* Person Assignment - Rich dropdown matching Step 4 */}
-      {!isPast && (
+      {!isPast && !isCompleted && (
         <div className="relative mt-2">
           <button
             onClick={(e) => {
@@ -1478,8 +1995,8 @@ function InitiativeCard({
         </div>
       )}
 
-      {/* Decision Pills (compact row) */}
-      {!isPast && (
+      {/* Decision Pills (compact row) — hidden for completed-in-1.3 items */}
+      {!isPast && !isCompleted && (
         <div className="flex gap-1 mt-2">
           {DECISION_OPTIONS.map((opt) => (
             <button

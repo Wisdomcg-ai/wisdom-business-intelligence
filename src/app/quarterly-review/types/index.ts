@@ -64,7 +64,7 @@ export const STEP_LABELS: Record<WorkshopStep, string> = {
   // Regular Part 4 (becomes Part 5 in annual)
   '4.1': 'Annual Plan & Confidence',
   '4.2': 'Quarterly Plan',
-  '4.3': 'Quarterly Rocks',
+  '4.3': 'Sprint Planning',
   '4.4': 'Session Close',
   'complete': 'Review Complete'
 };
@@ -277,6 +277,33 @@ export interface InitiativeDecision {
   decision: InitiativeAction;
   notes: string;
   quarterAssigned?: string;
+  source?: 'strategic_ideas' | 'roadmap' | string;
+  ideaType?: 'strategic' | 'operational';
+  reviewedInStep1?: boolean;
+  completedInStep1?: boolean;
+  rockReviewDecision?: string;
+  // Sprint planning fields (added by Step 4.3)
+  why?: string;
+  outcome?: string;
+  startDate?: string;
+  endDate?: string;
+  assignedTo?: string;
+  milestones?: Array<{
+    id: string;
+    description: string;
+    targetDate: string;
+    isCompleted: boolean;
+  }>;
+  tasks?: Array<{
+    id: string;
+    task: string;
+    assignedTo: string;
+    minutesAllocated: number;
+    dueDate: string;
+    status: 'not_started' | 'in_progress' | 'done';
+    order: number;
+  }>;
+  totalHours?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════

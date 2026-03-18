@@ -32,12 +32,13 @@ import { VisionStrategyStep } from '../components/steps/VisionStrategyStep';
 import { NextYearTargetsStep } from '../components/steps/NextYearTargetsStep';
 import { AnnualInitiativePlanStep } from '../components/steps/AnnualInitiativePlanStep';
 
-import { ArrowLeft, Menu, X } from 'lucide-react';
+import { ArrowLeft, Menu, X, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 function ReviewContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [showSidebar, setShowSidebar] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false); // mobile
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // desktop
 
   const reviewId = searchParams?.get('id') || undefined;
   const quarter = searchParams?.get('quarter') ? parseInt(searchParams?.get('quarter')!) as QuarterNumber : undefined;
@@ -304,7 +305,7 @@ function ReviewContent() {
         return (
           <QuarterlyRocksStep
             review={review}
-            onUpdateRocks={updateQuarterlyRocks}
+            onUpdateInitiativeDecisions={updateInitiativeDecisions}
           />
         );
       case '4.4':
@@ -337,14 +338,29 @@ function ReviewContent() {
     <div className="min-h-screen pb-24">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-[1800px] mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="max-w-[2000px] mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => router.push('/quarterly-review')}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
+            {/* Sidebar toggle */}
+            <div className="relative group">
+              <button
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                {sidebarCollapsed
+                  ? <PanelLeftOpen className="w-5 h-5 text-gray-600" />
+                  : <PanelLeftClose className="w-5 h-5 text-gray-600" />
+                }
+              </button>
+              <span className="absolute left-1/2 -translate-x-1/2 top-full mt-1 px-2 py-1 text-xs text-white bg-gray-800 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                {sidebarCollapsed ? 'Show progress' : 'Hide progress'}
+              </span>
+            </div>
             <div>
               <h1 className="font-semibold text-gray-900">{headerTitle}</h1>
               <p className="text-sm text-gray-500">{progressPercentage}% complete</p>
@@ -361,13 +377,14 @@ function ReviewContent() {
         </div>
       </header>
 
-      <div className="max-w-[1800px] mx-auto px-6 py-6 flex gap-8">
+      <div className="max-w-[2000px] mx-auto px-4 py-6 flex gap-6">
         {/* Sidebar - Progress */}
         <aside className={`
-          fixed lg:relative inset-y-0 left-0 z-30 w-80 bg-white lg:bg-transparent
-          transform transition-transform duration-300 lg:transform-none
-          ${showSidebar ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-          lg:block pt-20 lg:pt-0 px-4 lg:px-0 overflow-y-auto
+          fixed lg:relative inset-y-0 left-0 z-30 bg-white lg:bg-transparent
+          transform transition-all duration-300
+          ${showSidebar ? 'translate-x-0' : '-translate-x-full'}
+          ${sidebarCollapsed ? 'lg:hidden' : 'lg:block lg:translate-x-0 lg:w-64 lg:shrink-0'}
+          w-80 pt-20 lg:pt-0 px-4 lg:px-0 overflow-y-auto
         `}>
           <div className="sticky top-6">
             <WorkshopProgress
@@ -393,7 +410,7 @@ function ReviewContent() {
 
         {/* Main Content */}
         <main className="flex-1 min-w-0">
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 lg:p-10">
+          <div className="bg-white rounded-2xl border border-gray-200 p-4 lg:p-6">
             {renderStep()}
           </div>
         </main>
