@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
-import type { QuarterlyReview, RockReviewItem, RockReviewDecision, Rock } from '../../types';
+import type { QuarterlyReview, RockReviewItem, RockReviewDecision, Rock, YearType } from '../../types';
+import { getCurrentQuarter } from '../../types';
 import {
   Mountain, ChevronDown, ChevronUp, CheckCircle2, ArrowRightCircle,
   Trash2, PenLine, Loader2, AlertCircle, Target, User
@@ -57,11 +58,25 @@ export function RocksReviewStep({ review, onUpdate }: RocksReviewStepProps) {
       console.log('[RocksReview] business_profiles.id:', profileId, 'for user:', targetUserId);
 
       if (profileId) {
+        // Look up yearType to calculate the correct current/previous quarter
+        const { data: goalsData } = await supabase
+          .from('business_financial_goals')
+          .select('year_type')
+          .eq('business_id', profileId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const yearType: YearType = goalsData?.year_type || 'CY';
+        const currentQtr = getCurrentQuarter(yearType);
+        const currentQuarterNum = currentQtr.quarter;
+
         // Rocks Review is backward-looking: reviewing what was planned for the PREVIOUS quarter.
-        // For a Q1 review, the previous planning quarter is Q4.
-        const prevQuarterNum = review.quarter === 1 ? 4 : review.quarter - 1;
+        const prevQuarterNum = currentQuarterNum === 1 ? 4 : currentQuarterNum - 1;
         const prevQuarterKey = `q${prevQuarterNum}`;
-        const currentQuarterKey = `q${review.quarter}`;
+        const currentQuarterKey = `q${currentQuarterNum}`;
+
+        console.log('[RocksReview] yearType:', yearType, '| current quarter:', currentQuarterNum, '| reviewing previous:', prevQuarterKey);
 
         // Source 1 (Primary): Quarterly initiatives from the Goals Wizard
         // Check previous quarter first (backward-looking), then current quarter as fallback

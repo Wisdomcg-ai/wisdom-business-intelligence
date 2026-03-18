@@ -11,10 +11,13 @@ import Step5SprintPlanning from './components/Step5SprintPlanning'
 import { Target, Calendar, Brain, Rocket, ChevronLeft, ChevronRight, CheckCircle, Loader2, TrendingUp, AlertCircle, HelpCircle, ChevronDown, Shield, AlertTriangle as AlertTriangleIcon, Lightbulb, Save, Cloud, CloudOff } from 'lucide-react'
 // Note: Coach view is at /coach/clients/[id]/goals
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { calculateQuarters, determinePlanYear } from './utils/quarters'
 import PageHeader from '@/components/ui/PageHeader'
+import { assemblePlanData } from '@/app/one-page-plan/services/plan-data-assembler'
+import { planSnapshotService } from '@/app/one-page-plan/services/plan-snapshot-service'
 
 type StepNumber = 1 | 2 | 3 | 4 | 5
 
@@ -200,6 +203,7 @@ function getSaveStatusDisplay(status: SaveStatus, isDirty: boolean, lastSaved: D
 
 function StrategicPlanningContent() {
   const searchParams = useSearchParams()
+  const goalsRouter = useRouter()
   const { activeBusiness, viewerContext, isLoading: isContextLoading } = useBusinessContext()
 
   // Hydration fix: ensure state matches between server and client
@@ -278,6 +282,49 @@ function StrategicPlanningContent() {
   const [showValidationWarning, setShowValidationWarning] = useState(false)
   const [swotItems, setSwotItems] = useState<SwotItem[]>([])
   const [loadingSwot, setLoadingSwot] = useState(false)
+  const [isCompleting, setIsCompleting] = useState(false)
+
+  // Handle "Complete" button - save, snapshot, then navigate
+  const handleComplete = async () => {
+    setIsCompleting(true)
+    try {
+      // 1. Flush any pending changes
+      await saveAllData()
+
+      // 2. Build plan data and create snapshot
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        )
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user && businessId) {
+          const result = await assemblePlanData({
+            supabase,
+            activeBusiness: activeBusiness ? { id: activeBusiness.id, ownerId: activeBusiness.ownerId } : null,
+          })
+          if (result) {
+            await planSnapshotService.createSnapshot({
+              businessId,
+              userId: user.id,
+              snapshotType: 'goals_wizard_complete',
+              planData: result.planData,
+              year: result.planData.planYear,
+            })
+          }
+        }
+      } catch (snapshotErr) {
+        console.warn('[Goals] Snapshot creation failed (non-blocking):', snapshotErr)
+      }
+
+      // 3. Navigate to dashboard
+      goalsRouter.push('/dashboard')
+    } catch (err) {
+      console.error('[Goals] Complete handler error:', err)
+      // Still navigate even if save/snapshot failed
+      goalsRouter.push('/dashboard')
+    }
+  }
 
   // Manual save function (still available as fallback)
   const handleSave = async () => {
@@ -1069,13 +1116,23 @@ function StrategicPlanningContent() {
                 <p className="text-base text-green-800 mb-6 max-w-md mx-auto">
                   You've completed all 5 steps and have a clear roadmap for the next 90 days and beyond.
                 </p>
-                <Link
-                  href="/dashboard"
-                  className="inline-flex items-center px-6 py-3 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg text-base font-semibold transition-colors shadow-md hover:shadow-lg"
+                <button
+                  onClick={handleComplete}
+                  disabled={isCompleting}
+                  className="inline-flex items-center px-6 py-3 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg text-base font-semibold transition-colors shadow-md hover:shadow-lg disabled:opacity-60"
                 >
-                  <CheckCircle className="w-5 h-5 mr-2" />
-                  Complete
-                </Link>
+                  {isCompleting ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-5 h-5 mr-2" />
+                      Complete
+                    </>
+                  )}
+                </button>
               </div>
             )}
 

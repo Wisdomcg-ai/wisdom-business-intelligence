@@ -15,7 +15,8 @@ import {
   BarChart3,
   Target,
   History,
-  Star
+  Star,
+  Pencil
 } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import PageHeader from '@/components/ui/PageHeader';
@@ -177,14 +178,23 @@ export default function QuarterlyReviewPage() {
             {/* CTA Buttons */}
             {currentQuarterReview ? (
               currentQuarterReview.status === 'completed' ? (
-                <button
-                  onClick={() => viewReview(currentQuarterReview.id)}
-                  className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
-                >
-                  <CheckCircle2 className="w-5 h-5" />
-                  View Summary
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={() => viewReview(currentQuarterReview.id)}
+                    className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
+                  >
+                    <CheckCircle2 className="w-5 h-5" />
+                    View Summary
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => continueReview(currentQuarterReview.id)}
+                    className="inline-flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-xl font-semibold hover:bg-gray-50 transition-colors"
+                  >
+                    <Pencil className="w-5 h-5" />
+                    Edit Review
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={() => continueReview(currentQuarterReview.id)}
@@ -329,13 +339,24 @@ export default function QuarterlyReviewPage() {
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => review.status === 'completed' ? viewReview(review.id) : continueReview(review.id)}
-                  className="text-brand-orange hover:text-brand-orange-700 font-medium text-sm flex items-center gap-1 flex-shrink-0"
-                >
-                  {review.status === 'completed' ? 'View Summary' : 'Continue'}
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  {review.status === 'completed' && (
+                    <button
+                      onClick={() => continueReview(review.id)}
+                      className="text-gray-500 hover:text-gray-700 font-medium text-sm flex items-center gap-1"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      Edit
+                    </button>
+                  )}
+                  <button
+                    onClick={() => review.status === 'completed' ? viewReview(review.id) : continueReview(review.id)}
+                    className="text-brand-orange hover:text-brand-orange-700 font-medium text-sm flex items-center gap-1"
+                  >
+                    {review.status === 'completed' ? 'View Summary' : 'Continue'}
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

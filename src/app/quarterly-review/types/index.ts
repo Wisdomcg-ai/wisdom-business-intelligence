@@ -12,7 +12,7 @@ export type WorkshopStep =
   | '2.1' | '2.2' | '2.3' | '2.4' | '2.5'  // Part 2: Analyse
   | '3.1' | '3.2'  // Part 3: Strategic Review
   | 'A4.1' | 'A4.2' | 'A4.3' | 'A4.4'  // Part 4: Annual Planning (annual-only)
-  | '4.1' | '4.2' | '4.3' | '4.4'  // Part 4/5: Plan (quarterly) / Next Quarter (annual)
+  | '4.1' | '4.2' | '4.3'  // Part 4/5: Plan (quarterly) / Next Quarter (annual)
   | 'complete';
 
 // Standard quarterly review steps
@@ -21,7 +21,7 @@ export const WORKSHOP_STEPS: WorkshopStep[] = [
   '1.1', '1.2', '1.3', '1.4',
   '2.1', '2.2', '2.3', '2.4', '2.5',
   '3.1', '3.2',
-  '4.1', '4.2', '4.3', '4.4',
+  '4.1', '4.2', '4.3',
   'complete'
 ];
 
@@ -32,7 +32,7 @@ export const ANNUAL_WORKSHOP_STEPS: WorkshopStep[] = [
   '2.1', '2.2', '2.3', '2.4', '2.5',    // Part 2: Analyse
   '3.1', '3.2',                           // Part 3: Strategic Review
   'A4.1', 'A4.2', 'A4.3', 'A4.4',       // Part 4: Annual Planning (annual-only)
-  '4.1', '4.2', '4.3', '4.4',           // Part 5: Next Quarter Sprint
+  '4.1', '4.2', '4.3',                   // Part 5: Next Quarter Sprint
   'complete'
 ];
 
@@ -65,7 +65,6 @@ export const STEP_LABELS: Record<WorkshopStep, string> = {
   '4.1': 'Annual Plan & Confidence',
   '4.2': 'Quarterly Plan',
   '4.3': 'Sprint Planning',
-  '4.4': 'Session Close',
   'complete': 'Review Complete'
 };
 

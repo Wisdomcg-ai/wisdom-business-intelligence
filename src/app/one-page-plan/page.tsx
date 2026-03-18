@@ -1,84 +1,25 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
-import { Printer, Loader2, ExternalLink, CheckCircle2, Circle, Lightbulb, FileText, ChevronDown } from 'lucide-react'
+import { Printer, Loader2, ExternalLink, CheckCircle2, Circle, Lightbulb, FileText, ChevronDown, History, ArrowLeft } from 'lucide-react'
 import type { QuarterInfo } from '@/app/goals/utils/quarters'
-import { calculateQuarters, determinePlanYear } from '@/app/goals/utils/quarters'
-import type { YearType } from '@/app/goals/types'
+import { calculateQuarters } from '@/app/goals/utils/quarters'
 import PageHeader from '@/components/ui/PageHeader'
+import type { OnePagePlanData, PlanSnapshot } from './types'
+import { assemblePlanData } from './services/plan-data-assembler'
+import { planSnapshotService } from './services/plan-snapshot-service'
 
 // Only log in development
 const isDev = process.env.NODE_ENV === 'development'
 const devLog = (message: string, ...args: any[]) => {
   if (isDev) {
     console.log(message, ...args)
-  }
-}
-
-interface OnePagePlanData {
-  // Vision/Mission/Values
-  vision: string
-  mission: string
-  coreValues: string[]
-
-  // SWOT
-  strengths: string[]
-  weaknesses: string[]
-  opportunities: string[]
-  threats: string[]
-
-  // Financial & Metrics
-  financialGoals: {
-    year3: { revenue: number; grossProfit: number; netProfit: number }
-    year1: { revenue: number; grossProfit: number; netProfit: number }
-    quarter: { revenue: number; grossProfit: number; netProfit: number }
-  }
-
-  coreMetrics: {
-    year3: { [key: string]: any }
-    year1: { [key: string]: any }
-    quarter: { [key: string]: any }
-  }
-
-  kpis: Array<{
-    name: string
-    category: string
-    year3Target: number
-    year1Target: number
-    quarterTarget: number
-  }>
-
-  // Strategic Initiatives (12-month plan)
-  strategicInitiatives: Array<{
-    title: string
-    quarters: string[] // ['Q1', 'Q3'] etc
-    owner?: string
-  }>
-
-  // Current Quarter Rocks (90-day sprint)
-  quarterlyRocks: Array<{
-    action: string
-    owner?: string
-    dueDate?: string
-  }>
-
-  currentQuarter: string
-  currentQuarterLabel: string // e.g., "Q2 (Oct-Dec)"
-  yearType: YearType
-  planYear: number
-  companyName: string
-
-  // Owner Personal Goals
-  ownerGoals: {
-    desiredHoursPerWeek?: number
-    currentHoursPerWeek?: number
-    primaryGoal?: string
-    timeHorizon?: string
-    exitStrategy?: string
   }
 }
 
@@ -93,6 +34,13 @@ export default function OnePagePlan() {
   const [allQuarters, setAllQuarters] = useState<QuarterInfo[]>([])
   const [selectedQuarterId, setSelectedQuarterId] = useState<string | null>(null)
   const [showQuarterPicker, setShowQuarterPicker] = useState(false)
+
+  // Version history state
+  const [snapshots, setSnapshots] = useState<PlanSnapshot[]>([])
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null)
+  const [isViewingSnapshot, setIsViewingSnapshot] = useState(false)
+  const [showVersionPicker, setShowVersionPicker] = useState(false)
+  const [livePlanData, setLivePlanData] = useState<OnePagePlanData | null>(null)
 
   // Calculate strategic health metrics
   const calculatePlanHealth = (planData: OnePagePlanData) => {
@@ -196,499 +144,85 @@ export default function OnePagePlan() {
   const loadAllData = async (overrideQuarterId?: string) => {
     try {
       setLoading(true)
-      const { data: { user } } = await supabase.auth.getUser()
 
-      devLog('[One Page Plan] 🔍 User:', user?.id)
+      const result = await assemblePlanData({
+        supabase,
+        activeBusiness: activeBusiness ? { id: activeBusiness.id, ownerId: activeBusiness.ownerId } : null,
+        selectedQuarterId: overrideQuarterId || selectedQuarterId || undefined,
+      })
 
-      if (!user) {
+      if (!result) {
         router.push('/auth/login')
         return
       }
 
-      // Determine which business to load:
-      // 1. If activeBusiness is set (coach viewing client), use it
-      // 2. Otherwise, load user's own business profile
-      let businessId: string
-      let profile: any = null
-
-      if (activeBusiness?.id) {
-        // Coach view - activeBusiness.id is businesses.id
-        const businessesId = activeBusiness.id
-        devLog('[One Page Plan] 🏢 Coach view - loading client business:', businessesId)
-
-        // Load profile by business_id instead of user_id
-        const { data: profileData, error: profileError } = await supabase
-          .from('business_profiles')
-          .select('id, industry, owner_info, key_roles')
-          .eq('business_id', businessesId)
-          .single()
-
-        profile = profileData
-        devLog('[One Page Plan] 🏢 Business Profile query (coach view):', { profile, error: profileError })
-
-        // CRITICAL: Use business_profiles.id for data queries (strategic_initiatives, etc.)
-        // These tables use business_profiles.id as their business_id, not businesses.id
-        businessId = profile?.id || businessesId
-        devLog('[One Page Plan] 🏢 Using businessId for data queries:', businessId)
-      } else {
-        // Normal user view - get their business profile
-        // Use activeBusiness.ownerId if available (coach viewing client)
-        const targetUserId = activeBusiness?.ownerId || user.id
-        const { data: profileData, error: profileError } = await supabase
-          .from('business_profiles')
-          .select('id, industry, owner_info, key_roles')
-          .eq('user_id', targetUserId)
-          .single()
-
-        profile = profileData
-        devLog('[One Page Plan] 🏢 Business Profile query:', { profile, error: profileError })
-
-        // Fallback to user.id if no profile (same as strategic planning wizard)
-        businessId = profile?.id || user.id
+      setData(result.planData)
+      setLivePlanData(result.planData)
+      setAllQuarters(result.allQuarters)
+      if (!overrideQuarterId && !selectedQuarterId) {
+        setSelectedQuarterId(result.selectedQuarterId)
       }
-
-      // Parse owner_info if it exists (JSONB field)
-      const ownerInfo = profile?.owner_info || {}
-
-      // Build team members lookup map (ID -> name) from profile data
-      // This matches how Step5SprintPlanning loads team members
-      const teamMembersMap: Record<string, string> = {}
-
-      // Add owner from owner_info
-      if (ownerInfo.owner_name) {
-        teamMembersMap[`owner-${businessId}`] = ownerInfo.owner_name
-      }
-
-      // Add business partners from owner_info.partners
-      if (ownerInfo.partners && Array.isArray(ownerInfo.partners)) {
-        ownerInfo.partners.forEach((partner: any, index: number) => {
-          if (partner.name && partner.name.trim()) {
-            teamMembersMap[`partner-${businessId}-${index}`] = partner.name
-          }
-        })
-      }
-
-      // Add team members from key_roles
-      if (profile?.key_roles && Array.isArray(profile.key_roles)) {
-        profile.key_roles.forEach((role: any, index: number) => {
-          if (role.name && role.name.trim()) {
-            teamMembersMap[`role-${businessId}-${index}`] = role.name
-          }
-        })
-      }
-
-      // Also load dynamically added team members from localStorage
-      // These are members added via Step5SprintPlanning with IDs like 'member-timestamp' or 'role-timestamp'
-      if (typeof window !== 'undefined') {
-        try {
-          const storedMembers = localStorage.getItem('team_members')
-          if (storedMembers) {
-            const members = JSON.parse(storedMembers)
-            if (Array.isArray(members)) {
-              members.forEach((member: any) => {
-                if (member.id && member.name) {
-                  teamMembersMap[member.id] = member.name
-                }
-              })
-            }
-          }
-        } catch (e) {
-          console.warn('[One Page Plan] Could not load team members from localStorage:', e)
-        }
-      }
-
-      devLog('[One Page Plan] 👥 Team Members Map:', teamMembersMap)
-
-      // Create flexible lookup arrays for fallback matching
-      // This handles cases where assigned_to uses a different business ID or simple index
-      const teamMembersList: { id: string; name: string; type: string; index: number }[] = []
-
-      // Build a list of all team members with their types and indices
-      if (ownerInfo.owner_name) {
-        teamMembersList.push({ id: `owner-${businessId}`, name: ownerInfo.owner_name, type: 'owner', index: 0 })
-      }
-      if (ownerInfo.partners && Array.isArray(ownerInfo.partners)) {
-        ownerInfo.partners.forEach((partner: any, index: number) => {
-          if (partner.name && partner.name.trim()) {
-            teamMembersList.push({ id: `partner-${businessId}-${index}`, name: partner.name, type: 'partner', index })
-          }
-        })
-      }
-      if (profile?.key_roles && Array.isArray(profile.key_roles)) {
-        profile.key_roles.forEach((role: any, index: number) => {
-          if (role.name && role.name.trim()) {
-            teamMembersList.push({ id: `role-${businessId}-${index}`, name: role.name, type: 'role', index })
-          }
-        })
-      }
-
-      // Smart team member resolver that handles:
-      // 1. Direct ID match (exact match in teamMembersMap)
-      // 2. Type+index match (e.g., "role-different-business-id-3" matches role at index 3)
-      // 3. Simple numeric index (e.g., "1" matches team member at position 1)
-      const resolveTeamMember = (assignedTo: string): string => {
-        if (!assignedTo) return ''
-
-        // Try direct lookup first
-        if (teamMembersMap[assignedTo]) {
-          return teamMembersMap[assignedTo]
-        }
-
-        // Try matching by type and index (handles different business IDs)
-        // Pattern: type-businessId-index (e.g., "role-uuid-3", "partner-uuid-1")
-        const typeIndexMatch = assignedTo.match(/^(owner|partner|role)-[a-f0-9-]+-(\d+)$/)
-        if (typeIndexMatch) {
-          const [, type, indexStr] = typeIndexMatch
-          const index = parseInt(indexStr, 10)
-          const match = teamMembersList.find(m => m.type === type && m.index === index)
-          if (match) {
-            console.log(`[One Page Plan] ✅ Resolved "${assignedTo}" via type+index to "${match.name}"`)
-            return match.name
-          }
-        }
-
-        // Handle owner-only format (no index)
-        if (assignedTo.match(/^owner-[a-f0-9-]+$/)) {
-          const match = teamMembersList.find(m => m.type === 'owner')
-          if (match) {
-            console.log(`[One Page Plan] ✅ Resolved "${assignedTo}" via owner type to "${match.name}"`)
-            return match.name
-          }
-        }
-
-        // Try simple numeric index (for legacy data like "1", "2", etc.)
-        if (/^\d+$/.test(assignedTo)) {
-          const index = parseInt(assignedTo, 10)
-          if (index >= 0 && index < teamMembersList.length) {
-            const match = teamMembersList[index]
-            console.log(`[One Page Plan] ✅ Resolved "${assignedTo}" via numeric index to "${match.name}"`)
-            return match.name
-          }
-        }
-
-        // No match found, return original
-        console.log(`[One Page Plan] ⚠️ Could not resolve "${assignedTo}" - returning as-is`)
-        return assignedTo
-      }
-
-      devLog('[One Page Plan] 👥 Team Members List:', teamMembersList)
-
-      // Get company name from businesses table
-      // Use business ID when viewing as coach, otherwise use owner_id
-      const targetOwnerId = activeBusiness?.ownerId || user.id
-      const { data: businessData } = activeBusiness?.id
-        ? await supabase
-            .from('businesses')
-            .select('name')
-            .eq('id', activeBusiness.id)
-            .single()
-        : await supabase
-            .from('businesses')
-            .select('name')
-            .eq('owner_id', targetOwnerId)
-            .limit(1)
-            .single()
-
-      const companyName = businessData?.name || 'Your Company'
-      devLog('[One Page Plan] ✅ Business ID:', businessId, 'Name:', companyName)
-
-      // Load Vision/Mission/Values
-      // When viewing as coach, use the client's owner ID instead of the coach's user ID
-      const ownerUserId = activeBusiness?.ownerId || user.id
-      const { data: visionMissionData, error: vmError } = await supabase
-        .from('strategy_data')
-        .select('vision_mission')
-        .eq('user_id', ownerUserId)
-        .single()
-
-      devLog('[One Page Plan] 📖 Vision/Mission data:', { data: visionMissionData, error: vmError })
-
-      const visionMission = visionMissionData?.vision_mission || {}
-
-      // Load SWOT - get ALL items from ALL analyses for this user (since items may be spread across quarters)
-      devLog('[One Page Plan] 📅 Looking for SWOT:', { businessId, ownerUserId })
-
-      let swotItems: any[] = []
-
-      // Get all SWOT analyses for this user (try both businessId and ownerUserId)
-      // When viewing as coach, use client's businessId and ownerId
-      const { data: allAnalyses, error: analysesError } = await supabase
-        .from('swot_analyses')
-        .select('id, business_id, quarter, year')
-        .or(`business_id.eq.${businessId},business_id.eq.${ownerUserId}`)
-
-      console.log('[One Page Plan] 💡 All user analyses:', JSON.stringify({
-        count: allAnalyses?.length || 0,
-        ids: allAnalyses?.map(a => a.id?.substring(0, 8)),
-        error: analysesError?.message
-      }))
-
-      if (allAnalyses && allAnalyses.length > 0) {
-        // Get all analysis IDs
-        const analysisIds = allAnalyses.map(a => a.id)
-
-        // Get ALL items from ALL analyses for this user
-        const { data: allItems, error: itemsError } = await supabase
-          .from('swot_items')
-          .select('id, swot_analysis_id, category, title, description, status')
-          .in('swot_analysis_id', analysisIds)
-          .or('status.eq.active,status.eq.carried-forward,status.is.null')
-          .order('created_at', { ascending: false })
-
-        console.log('[One Page Plan] 💡 All SWOT items for user:', JSON.stringify({
-          count: allItems?.length || 0,
-          byCategory: {
-            strength: allItems?.filter(i => i.category === 'strength').length || 0,
-            weakness: allItems?.filter(i => i.category === 'weakness').length || 0,
-            opportunity: allItems?.filter(i => i.category === 'opportunity').length || 0,
-            threat: allItems?.filter(i => i.category === 'threat').length || 0
-          },
-          error: itemsError?.message
-        }))
-
-        swotItems = allItems || []
-      }
-
-      devLog('[One Page Plan] 💡 SWOT items extracted:', swotItems?.length)
-
-      // Load Financial Goals & Core Metrics
-      const { data: financialGoals, error: finError } = await supabase
-        .from('business_financial_goals')
-        .select('*')
-        .eq('business_id', businessId)
-        .single()
-
-      devLog('[One Page Plan] 💰 Financial Goals data:', { data: financialGoals, error: finError })
-
-      // Get year type from financial goals (FY = July-June, CY = Jan-Dec)
-      const yearType: YearType = (financialGoals?.year_type as YearType) || 'FY'
-      const planYear = determinePlanYear(yearType)
-
-      // Calculate quarters based on year type
-      const quarters = calculateQuarters(yearType, planYear)
-      setAllQuarters(quarters)
-
-      // Determine which quarter to display
-      const currentQuarterIdx = quarters.findIndex(q => q.isCurrent)
-      const nextQuarterIdx = currentQuarterIdx >= 0 ? (currentQuarterIdx + 1) % 4 : -1
-
-      // If user manually selected a quarter, use that
-      const effectiveQuarterId = overrideQuarterId || selectedQuarterId
-      let displayQuarterIdx: number
-      if (effectiveQuarterId) {
-        displayQuarterIdx = quarters.findIndex(q => q.id === effectiveQuarterId)
-        if (displayQuarterIdx < 0) displayQuarterIdx = currentQuarterIdx >= 0 ? currentQuarterIdx : 0
-      } else {
-        // Smart default: show current quarter, but switch to next quarter if it has rocks data
-        let nextQuarterHasData = false
-        if (nextQuarterIdx >= 0) {
-          const nextQKey = quarters[nextQuarterIdx].id // 'q1', 'q2', etc.
-          const { count } = await supabase
-            .from('strategic_initiatives')
-            .select('id', { count: 'exact', head: true })
-            .eq('business_id', businessId)
-            .eq('step_type', nextQKey)
-          nextQuarterHasData = (count || 0) > 0
-        }
-        displayQuarterIdx = nextQuarterHasData ? nextQuarterIdx : (currentQuarterIdx >= 0 ? currentQuarterIdx : 0)
-        // Store the auto-selected quarter so the picker reflects it
-        setSelectedQuarterId(quarters[displayQuarterIdx].id)
-      }
-
-      const displayQuarterInfo = quarters[displayQuarterIdx]
-      const isCurrent = displayQuarterIdx === currentQuarterIdx
-      const currentQuarter = displayQuarterInfo.label // 'Q1', 'Q2', etc.
-      const currentQuarterLabel = `${displayQuarterInfo.label} (${displayQuarterInfo.months})${isCurrent ? '' : ' - Planning'}`
-
-      devLog('[One Page Plan] 📅 Year settings:', { yearType, planYear, currentQuarter, currentQuarterLabel, displayQuarterIdx })
-
-      // Load KPIs
-      const { data: kpisData, error: kpiError } = await supabase
-        .from('business_kpis')
-        .select('*')
-        .eq('business_id', businessId)
-
-      devLog('[One Page Plan] 📊 KPIs data:', { count: kpisData?.length, error: kpiError })
-
-      // Load Quarterly Targets
-      const { data: quarterlyTargetsData, error: qtError } = await supabase
-        .from('business_financial_goals')
-        .select('quarterly_targets')
-        .eq('business_id', businessId)
-        .single()
-
-      devLog('[One Page Plan] 📅 Quarterly Targets data:', { data: quarterlyTargetsData, error: qtError })
-
-      // Quarterly targets structure: { 'revenue': { q1: '...', q2: '...' }, 'grossProfit': {...}, ... }
-      // We need to transform it to { revenue: value, grossProfit: value, ... } for current quarter
-      const allQuarterlyTargets = quarterlyTargetsData?.quarterly_targets || {}
-      const qKey = currentQuarter.toLowerCase() as 'q1' | 'q2' | 'q3' | 'q4'
-
-      // Extract current quarter values from each metric
-      const currentQuarterTargets = {
-        revenue: parseFloat(allQuarterlyTargets['revenue']?.[qKey] || '0') || 0,
-        grossProfit: parseFloat(allQuarterlyTargets['grossProfit']?.[qKey] || '0') || 0,
-        netProfit: parseFloat(allQuarterlyTargets['netProfit']?.[qKey] || '0') || 0,
-        leadsPerMonth: parseFloat(allQuarterlyTargets['leadsPerMonth']?.[qKey] || '0') || 0,
-        conversionRate: parseFloat(allQuarterlyTargets['conversionRate']?.[qKey] || '0') || 0,
-        avgTransactionValue: parseFloat(allQuarterlyTargets['avgTransactionValue']?.[qKey] || '0') || 0,
-        teamHeadcount: parseFloat(allQuarterlyTargets['teamHeadcount']?.[qKey] || '0') || 0,
-        ownerHoursPerWeek: parseFloat(allQuarterlyTargets['ownerHoursPerWeek']?.[qKey] || '0') || 0,
-        customers: parseFloat(allQuarterlyTargets['customers']?.[qKey] || '0') || 0,
-      }
-
-      devLog('[One Page Plan] 📅 Current Quarter Targets:', { quarter: currentQuarter, qKey, raw: allQuarterlyTargets, parsed: currentQuarterTargets })
-
-      // Load Strategic Initiatives (12-month plan)
-      const { data: initiatives, error: initError } = await supabase
-        .from('strategic_initiatives')
-        .select('*')
-        .eq('business_id', businessId)
-        .eq('step_type', 'twelve_month')
-        .order('order_index', { ascending: true })
-
-      devLog('[One Page Plan] 🎯 Strategic Initiatives:', { count: initiatives?.length, error: initError })
-
-      // Load current quarter initiatives for rocks
-      const currentQuarterStepType = currentQuarter.toLowerCase() // 'q1', 'q2', 'q3', or 'q4'
-      const { data: quarterInitiatives, error: quarterError } = await supabase
-        .from('strategic_initiatives')
-        .select('*')
-        .eq('business_id', businessId)
-        .eq('step_type', currentQuarterStepType)
-        .order('order_index', { ascending: true })
-
-      console.log(`[One Page Plan] 🪨 ${currentQuarter} Initiatives:`, { count: quarterInitiatives?.length, error: quarterError })
-
-      // Note: We use quarterInitiatives (from strategic_initiatives table with current quarter filter)
-      // instead of sprint_key_actions because sprint_key_actions doesn't have a quarter field
-      // This ensures Quarterly Rocks always show the current quarter's initiatives
-      devLog('[One Page Plan] ⚡ Using Quarter Initiatives for Rocks:', { count: quarterInitiatives?.length })
-
-      // Debug: Log what we're about to assemble
-      devLog('[One Page Plan] 🔧 Assembling data...')
-      console.log('  - Vision Mission:', visionMission)
-      console.log('  - SWOT Items:', swotItems?.length)
-      console.log('  - Financial Goals structure:', financialGoals ? Object.keys(financialGoals) : 'null')
-      console.log('  - KPIs count:', kpisData?.length)
-
-      // Assemble the data
-      const planData: OnePagePlanData = {
-        vision: visionMission.vision_statement || '',
-        mission: visionMission.mission_statement || '',
-        coreValues: (visionMission.core_values || []).filter((v: string) => v.trim()),
-
-        // SWOT items already filtered by status in query - just filter by category
-        strengths: swotItems
-          .filter((item: any) => item.category === 'strength')
-          .slice(0, 5)
-          .map((item: any) => item.title),
-        weaknesses: swotItems
-          .filter((item: any) => item.category === 'weakness')
-          .slice(0, 5)
-          .map((item: any) => item.title),
-        opportunities: swotItems
-          .filter((item: any) => item.category === 'opportunity')
-          .slice(0, 5)
-          .map((item: any) => item.title),
-        threats: swotItems
-          .filter((item: any) => item.category === 'threat')
-          .slice(0, 5)
-          .map((item: any) => item.title),
-
-        financialGoals: {
-          year3: {
-            revenue: financialGoals?.revenue_year3 || 0,
-            grossProfit: financialGoals?.gross_profit_year3 || 0,
-            netProfit: financialGoals?.net_profit_year3 || 0,
-          },
-          year1: {
-            revenue: financialGoals?.revenue_year1 || 0,
-            grossProfit: financialGoals?.gross_profit_year1 || 0,
-            netProfit: financialGoals?.net_profit_year1 || 0,
-          },
-          quarter: {
-            revenue: currentQuarterTargets?.revenue || 0,
-            grossProfit: currentQuarterTargets?.grossProfit || 0,
-            netProfit: currentQuarterTargets?.netProfit || 0,
-          },
-        },
-
-        coreMetrics: {
-          year3: {
-            leadsPerMonth: financialGoals?.leads_per_month_year3 || 0,
-            conversionRate: financialGoals?.conversion_rate_year3 || 0,
-            avgTransactionValue: financialGoals?.avg_transaction_value_year3 || 0,
-            teamHeadcount: financialGoals?.team_headcount_year3 || 0,
-            ownerHoursPerWeek: financialGoals?.owner_hours_per_week_year3 || 0,
-          },
-          year1: {
-            leadsPerMonth: financialGoals?.leads_per_month_year1 || 0,
-            conversionRate: financialGoals?.conversion_rate_year1 || 0,
-            avgTransactionValue: financialGoals?.avg_transaction_value_year1 || 0,
-            teamHeadcount: financialGoals?.team_headcount_year1 || 0,
-            ownerHoursPerWeek: financialGoals?.owner_hours_per_week_year1 || 0,
-          },
-          quarter: {
-            leadsPerMonth: currentQuarterTargets?.leadsPerMonth || 0,
-            conversionRate: currentQuarterTargets?.conversionRate || 0,
-            avgTransactionValue: currentQuarterTargets?.avgTransactionValue || 0,
-            teamHeadcount: currentQuarterTargets?.teamHeadcount || 0,
-            ownerHoursPerWeek: currentQuarterTargets?.ownerHoursPerWeek || 0,
-          },
-        },
-
-        kpis: (kpisData || []).slice(0, 5).map((kpi: any) => ({
-          name: kpi.kpi_name || kpi.name,
-          category: kpi.category || '',
-          year3Target: kpi.year3_target || 0,
-          year1Target: kpi.year1_target || 0,
-          quarterTarget: kpi.quarter_target || 0,
-        })),
-
-        strategicInitiatives: (initiatives || []).map((init: any) => ({
-          title: init.title,
-          quarters: [], // We'll need to load quarterly assignments
-          owner: init.assigned_to ? resolveTeamMember(init.assigned_to) : undefined
-        })),
-
-        quarterlyRocks: (quarterInitiatives || []).map((init: any) => ({
-          action: init.title,
-          owner: init.assigned_to ? resolveTeamMember(init.assigned_to) : undefined,
-          dueDate: init.timeline
-        })),
-
-        currentQuarter,
-        currentQuarterLabel,
-        yearType,
-        planYear,
-        companyName,
-
-        ownerGoals: {
-          desiredHoursPerWeek: ownerInfo?.desired_hours,
-          currentHoursPerWeek: ownerInfo?.current_hours,
-          primaryGoal: ownerInfo?.primary_goal,
-          timeHorizon: ownerInfo?.time_horizon,
-          exitStrategy: ownerInfo?.exit_strategy
-        }
-      }
-
-      devLog('[One Page Plan] ✅ Final assembled data:', planData)
-      devLog('[One Page Plan] 📋 Strategic Initiatives Array:', planData.strategicInitiatives)
-      devLog('[One Page Plan] 📋 First Initiative:', planData.strategicInitiatives[0])
-      devLog('[One Page Plan] 🪨 Quarterly Rocks Array:', planData.quarterlyRocks)
-      devLog('[One Page Plan] 🪨 First Rock:', planData.quarterlyRocks[0])
-      devLog('[One Page Plan] 👤 Owner Goals:', planData.ownerGoals)
-      setData(planData)
       setLastUpdated(new Date())
+
+      // Load snapshots for version history (use businessId from profile)
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          let snapshotBusinessId: string | undefined
+          if (activeBusiness?.id) {
+            const { data: profileData } = await supabase
+              .from('business_profiles')
+              .select('id')
+              .eq('business_id', activeBusiness.id)
+              .single()
+            snapshotBusinessId = profileData?.id || activeBusiness.id
+          } else {
+            const targetUserId = activeBusiness?.ownerId || user.id
+            const { data: profileData } = await supabase
+              .from('business_profiles')
+              .select('id')
+              .eq('user_id', targetUserId)
+              .single()
+            snapshotBusinessId = profileData?.id || user.id
+          }
+          if (snapshotBusinessId) {
+            const snapshotsList = await planSnapshotService.getSnapshots(snapshotBusinessId)
+            setSnapshots(snapshotsList)
+          }
+        }
+      } catch (snapshotErr) {
+        console.warn('[One Page Plan] Could not load snapshots:', snapshotErr)
+      }
     } catch (err) {
-      console.error('[One Page Plan] ❌ Error loading data:', err)
-      console.error('[One Page Plan] ❌ Error details:', err instanceof Error ? err.message : String(err))
-      console.error('[One Page Plan] ❌ Error stack:', err instanceof Error ? err.stack : 'No stack trace')
+      console.error('[One Page Plan] Error loading data:', err)
       setError(`Failed to load plan data: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSelectSnapshot = async (snapshotId: string) => {
+    if (snapshotId === 'live') {
+      setIsViewingSnapshot(false)
+      setSelectedSnapshotId(null)
+      setData(livePlanData)
+      setShowVersionPicker(false)
+      return
+    }
+
+    const snapshot = snapshots.find(s => s.id === snapshotId)
+    if (snapshot) {
+      setIsViewingSnapshot(true)
+      setSelectedSnapshotId(snapshotId)
+      setData(snapshot.plan_data)
+      setShowVersionPicker(false)
+    }
+  }
+
+  const handleReturnToLive = () => {
+    setIsViewingSnapshot(false)
+    setSelectedSnapshotId(null)
+    setData(livePlanData)
   }
 
   const formatCurrency = (value: number) => {
@@ -745,14 +279,16 @@ export default function OnePagePlan() {
           backLink={{ href: '/dashboard', label: 'Back to Dashboard' }}
           actions={
             <>
-              <button
-                onClick={() => router.push('/goals')}
-                className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg font-medium text-sm"
-              >
-                <ExternalLink className="w-4 h-4" />
-                <span className="hidden sm:inline">Edit Strategic Plan</span>
-                <span className="sm:hidden">Edit</span>
-              </button>
+              {!isViewingSnapshot && (
+                <button
+                  onClick={() => router.push('/goals')}
+                  className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg font-medium text-sm"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span className="hidden sm:inline">Edit Strategic Plan</span>
+                  <span className="sm:hidden">Edit</span>
+                </button>
+              )}
               <button
                 onClick={handlePrint}
                 className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg font-medium text-sm"
@@ -765,8 +301,8 @@ export default function OnePagePlan() {
         />
       </div>
 
-      {/* Quarter Selector - Hidden when printing */}
-      {allQuarters.length > 0 && (
+      {/* Quarter Selector - Hidden when printing and when viewing snapshot */}
+      {allQuarters.length > 0 && !isViewingSnapshot && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 mb-2 print:hidden">
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-gray-600">Viewing quarter:</span>
@@ -816,6 +352,88 @@ export default function OnePagePlan() {
           </div>
         </div>
       )}
+
+      {/* Version History + Snapshot Banner - Hidden when printing */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-2 mb-2 print:hidden">
+        <div className="flex items-center justify-between gap-3">
+          {/* Version Picker */}
+          <div className="flex items-center gap-3">
+            <History className="w-4 h-4 text-gray-400" />
+            <div className="relative">
+              <button
+                onClick={() => setShowVersionPicker(!showVersionPicker)}
+                className={`flex items-center gap-2 px-3 py-1.5 border rounded-lg text-sm font-medium shadow-sm ${
+                  isViewingSnapshot
+                    ? 'bg-amber-50 border-amber-300 text-amber-800'
+                    : 'bg-white border-gray-300 hover:bg-gray-50 text-gray-800'
+                }`}
+              >
+                {isViewingSnapshot
+                  ? snapshots.find(s => s.id === selectedSnapshotId)?.label || 'Snapshot'
+                  : 'Live (Current)'}
+                <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
+              </button>
+              {showVersionPicker && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowVersionPicker(false)} />
+                  <div className="absolute left-0 mt-1 w-72 bg-white rounded-lg shadow-lg border border-gray-200 z-50 py-1 max-h-64 overflow-y-auto">
+                    <button
+                      onClick={() => handleSelectSnapshot('live')}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between ${
+                        !isViewingSnapshot ? 'bg-brand-orange-50 text-brand-orange font-medium' : 'text-gray-700'
+                      }`}
+                    >
+                      <span>Live (Current)</span>
+                      <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">Live</span>
+                    </button>
+                    {snapshots.length > 0 && (
+                      <div className="border-t border-gray-100 my-1" />
+                    )}
+                    {snapshots.map((snapshot) => (
+                      <button
+                        key={snapshot.id}
+                        onClick={() => handleSelectSnapshot(snapshot.id)}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${
+                          selectedSnapshotId === snapshot.id ? 'bg-brand-orange-50 text-brand-orange font-medium' : 'text-gray-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="truncate">{snapshot.label}</span>
+                          <span className="text-[10px] text-gray-400 ml-2 flex-shrink-0">v{snapshot.version_number}</span>
+                        </div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">
+                          {new Date(snapshot.created_at).toLocaleDateString()} {new Date(snapshot.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </button>
+                    ))}
+                    {snapshots.length === 0 && (
+                      <div className="px-4 py-3 text-xs text-gray-500 text-center">
+                        No snapshots yet. Complete the Goals Wizard or a Quarterly Review to create one.
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Snapshot active banner */}
+          {isViewingSnapshot && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs px-2 py-1 bg-amber-100 text-amber-800 rounded-full font-medium">
+                Historical Snapshot
+              </span>
+              <button
+                onClick={handleReturnToLive}
+                className="flex items-center gap-1 text-xs text-brand-orange hover:text-brand-orange-700 font-medium"
+              >
+                <ArrowLeft className="w-3 h-3" />
+                Return to live plan
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Strategic Health Dashboard - Hidden when printing */}
       {data && (() => {
@@ -893,19 +511,24 @@ export default function OnePagePlan() {
                   <div className="flex gap-1 overflow-x-auto">
                     {(() => {
                       const quarters = calculateQuarters(data.yearType, data.planYear)
-                      return quarters.map((q) => (
-                        <div
-                          key={q.id}
-                          className={`flex flex-col items-center justify-center rounded px-2 py-1.5 ${
-                            q.isCurrent
-                              ? 'bg-brand-orange text-white ring-2 ring-brand-orange-300'
-                              : 'bg-gray-100 text-gray-500'
-                          }`}
-                        >
-                          <span className="text-xs font-semibold">{q.label}</span>
-                          <span className={`text-[9px] ${q.isCurrent ? 'text-brand-orange-100' : 'text-gray-400'}`}>{q.months}</span>
-                        </div>
-                      ))
+                      return quarters.map((q) => {
+                        const isSelected = q.id === selectedQuarterId
+                        return (
+                          <div
+                            key={q.id}
+                            className={`flex flex-col items-center justify-center rounded px-2 py-1.5 ${
+                              isSelected
+                                ? 'bg-brand-orange text-white ring-2 ring-brand-orange-300'
+                                : q.isCurrent
+                                  ? 'bg-brand-orange-100 text-brand-orange ring-1 ring-brand-orange-200'
+                                  : 'bg-gray-100 text-gray-500'
+                            }`}
+                          >
+                            <span className="text-xs font-semibold">{q.label}</span>
+                            <span className={`text-[9px] ${isSelected ? 'text-brand-orange-100' : q.isCurrent ? 'text-brand-orange-400' : 'text-gray-400'}`}>{q.months}</span>
+                          </div>
+                        )
+                      })
                     })()}
                   </div>
                   <div className="mt-2 text-xs text-gray-600 space-y-0.5">

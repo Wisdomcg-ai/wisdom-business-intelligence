@@ -23,7 +23,6 @@ import { SwotUpdateStep } from '../components/steps/SwotUpdateStep';
 import { ConfidenceRealignmentStep } from '../components/steps/ConfidenceRealignmentStep';
 import { QuarterlyPlanStep } from '../components/steps/QuarterlyPlanStep';
 import { QuarterlyRocksStep } from '../components/steps/QuarterlyRocksStep';
-import { SessionCloseStep } from '../components/steps/SessionCloseStep';
 import { WorkshopCompleteStep } from '../components/steps/WorkshopCompleteStep';
 
 // Annual-only step components
@@ -51,6 +50,7 @@ function ReviewContent() {
     isLoading,
     error,
     isSaving,
+    isCompleting,
     hasUnsavedChanges,
     quarterLabel,
     currentStep,
@@ -89,16 +89,11 @@ function ReviewContent() {
     updateQuarterlyTargets,
     updateInitiativesChanges,
     updateQuarterlyRocks,
-    updatePersonalCommitments,
-    updateOneThing,
     // Annual Review (Option C)
     updateYearInReview,
     updateVisionStrategy,
     updateNextYearTargets,
     updateAnnualInitiativePlan,
-    // Cross-cutting
-    updateCoachNotes,
-    updateActionItems
   } = useQuarterlyReview({ reviewId, quarter, year, reviewType });
 
   // Use the review's actual type (may differ from URL param if resuming existing review)
@@ -116,9 +111,10 @@ function ReviewContent() {
     if (currentStep === 'prework') {
       await completePreWork();
     } else if (currentStep === workshopSteps[workshopSteps.length - 2]) {
-      // Last content step (before 'complete')
+      // Last content step — complete the review (sync + snapshots + mark complete)
       await completeWorkshop();
-      goToStep('complete');
+      // completeWorkshop() sets review.current_step='complete' via setReview(updated)
+      // This renders WorkshopCompleteStep (the summary) — no redirect needed
     } else {
       await completeCurrentStep();
     }
@@ -308,17 +304,6 @@ function ReviewContent() {
             onUpdateInitiativeDecisions={updateInitiativeDecisions}
           />
         );
-      case '4.4':
-        return (
-          <SessionCloseStep
-            review={review}
-            onUpdateOneThing={updateOneThing}
-            onUpdatePersonalCommitments={updatePersonalCommitments}
-            onUpdateActionItems={updateActionItems}
-            onUpdateCoachNotes={updateCoachNotes}
-          />
-        );
-
       case 'complete':
         return (
           <WorkshopCompleteStep
@@ -426,6 +411,7 @@ function ReviewContent() {
         onNext={handleNext}
         onSave={saveReview}
         isSaving={isSaving}
+        isCompleting={isCompleting}
         hasUnsavedChanges={hasUnsavedChanges}
         reviewType={effectiveReviewType}
       />

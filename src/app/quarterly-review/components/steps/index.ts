@@ -14,7 +14,6 @@ export { SwotUpdateStep } from './SwotUpdateStep';
 export { ConfidenceRealignmentStep } from './ConfidenceRealignmentStep';
 export { QuarterlyPlanStep } from './QuarterlyPlanStep';
 export { QuarterlyRocksStep } from './QuarterlyRocksStep';
-export { SessionCloseStep } from './SessionCloseStep';
 export { WorkshopCompleteStep } from './WorkshopCompleteStep';
 
 // Annual-only step components (Option C)

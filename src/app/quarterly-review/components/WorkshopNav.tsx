@@ -12,6 +12,7 @@ interface WorkshopNavProps {
   onNext: () => void;
   onSave?: () => void;
   isSaving?: boolean;
+  isCompleting?: boolean;
   hasUnsavedChanges?: boolean;
   nextLabel?: string;
   reviewType?: ReviewType;
@@ -26,6 +27,7 @@ export function WorkshopNav({
   onNext,
   onSave,
   isSaving,
+  isCompleting,
   hasUnsavedChanges,
   nextLabel,
   reviewType = 'quarterly'
@@ -44,6 +46,8 @@ export function WorkshopNav({
   if (isComplete) {
     return null;
   }
+
+  const nextDisabled = !canGoForward || isCompleting;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 py-4 px-6 z-50">
@@ -93,19 +97,28 @@ export function WorkshopNav({
         <div>
           <button
             onClick={onNext}
-            disabled={!canGoForward}
+            disabled={nextDisabled}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold transition-colors ${
-              canGoForward
-                ? isLastStep
+              nextDisabled
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : isLastStep
                   ? 'bg-brand-orange text-white hover:bg-brand-orange-600'
                   : 'bg-brand-orange text-white hover:bg-brand-orange-600'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             }`}
           >
-            <span>
-              {nextLabel || (isLastStep ? 'Complete Review' : nextStep ? STEP_LABELS[nextStep] : 'Next')}
-            </span>
-            <ChevronRight className="w-5 h-5" />
+            {isCompleting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Completing...</span>
+              </>
+            ) : (
+              <>
+                <span>
+                  {nextLabel || (isLastStep ? 'Complete Review' : nextStep ? STEP_LABELS[nextStep] : 'Next')}
+                </span>
+                <ChevronRight className="w-5 h-5" />
+              </>
+            )}
           </button>
         </div>
       </div>

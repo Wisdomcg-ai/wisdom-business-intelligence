@@ -379,6 +379,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
 
     return (
       <div
+        key={category}
         className={`bg-white rounded-lg shadow-sm border-2 ${config.borderColor} p-6`}
       >
         {/* Header - matches SwotGrid exactly */}

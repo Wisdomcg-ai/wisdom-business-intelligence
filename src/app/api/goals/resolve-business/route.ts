@@ -90,12 +90,40 @@ export async function GET(request: Request) {
       }
     }
 
+    // Also fetch year_type from financial goals (bypasses RLS)
+    // Try profileId first, then businessesId as fallback
+    let yearType = null
+    if (profileId) {
+      const { data: goals } = await admin
+        .from('business_financial_goals')
+        .select('year_type')
+        .eq('business_id', profileId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      yearType = goals?.year_type || null
+    }
+    // Fallback: try with businesses.id if profileId didn't find goals
+    if (!yearType && businessId) {
+      const { data: goalsFallback } = await admin
+        .from('business_financial_goals')
+        .select('year_type')
+        .eq('business_id', businessId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (goalsFallback) {
+        yearType = goalsFallback.year_type || null
+      }
+    }
+
     return NextResponse.json({
       profileId,
       businessesId: businessId,
       ownerUserId,
       industry: profileIndustry,
-      businessName: business.name
+      businessName: business.name,
+      yearType
     })
   } catch (err) {
     console.error('[API /goals/resolve-business] Error:', err)

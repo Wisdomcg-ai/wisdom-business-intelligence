@@ -25,14 +25,14 @@ function getPartsForReviewType(reviewType: ReviewType): PartDefinition[] {
       { number: '2', label: ANNUAL_PART_LABELS['2'], steps: ['2.1', '2.2', '2.3', '2.4', '2.5'] as WorkshopStep[] },
       { number: '3', label: ANNUAL_PART_LABELS['3'], steps: ['3.1', '3.2'] as WorkshopStep[] },
       { number: '4', label: ANNUAL_PART_LABELS['A4'], steps: ['A4.1', 'A4.2', 'A4.3', 'A4.4'] as WorkshopStep[] },
-      { number: '5', label: ANNUAL_PART_LABELS['5'], steps: ['4.1', '4.2', '4.3', '4.4'] as WorkshopStep[] },
+      { number: '5', label: ANNUAL_PART_LABELS['5'], steps: ['4.1', '4.2', '4.3'] as WorkshopStep[] },
     ];
   }
   return [
     { number: '1', label: PART_LABELS['1'], steps: ['1.1', '1.2', '1.3', '1.4'] as WorkshopStep[] },
     { number: '2', label: PART_LABELS['2'], steps: ['2.1', '2.2', '2.3', '2.4', '2.5'] as WorkshopStep[] },
     { number: '3', label: PART_LABELS['3'], steps: ['3.1', '3.2'] as WorkshopStep[] },
-    { number: '4', label: PART_LABELS['4'], steps: ['4.1', '4.2', '4.3', '4.4'] as WorkshopStep[] },
+    { number: '4', label: PART_LABELS['4'], steps: ['4.1', '4.2', '4.3'] as WorkshopStep[] },
   ];
 }
 

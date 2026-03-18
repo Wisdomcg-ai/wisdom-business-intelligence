@@ -240,9 +240,13 @@ export function QuarterlyPlanStep({
     );
   }, [quarterFinancials]);
 
+  // "Assigned" means current & future quarters each have at least one initiative.
+  // Items left in Available are intentionally unassigned — they don't block completion.
   const allInitiativesHaveQuarter = useMemo(() => {
-    return decisions.length > 0 && decisions.every((d) => d.quarterAssigned && d.quarterAssigned !== 'unassigned');
-  }, [decisions]);
+    if (decisions.length === 0) return false;
+    const futureOrCurrentQuarters = quarterColumns.filter(q => !q.isPast);
+    return futureOrCurrentQuarters.every(q => (initiativesByQuarter[q.id] || []).length > 0);
+  }, [decisions, quarterColumns, initiativesByQuarter]);
 
   const allInitiativesHaveDecision = useMemo(() => {
     return decisions.length > 0 && decisions.every((d) => d.decision);
@@ -445,12 +449,21 @@ export function QuarterlyPlanStep({
       buildDecisions(q3Data, 'q3');
       buildDecisions(q4Data, 'q4');
 
-      // Load unassigned pool (twelve_month + strategic_ideas not in q1-q4)
+      // Load unassigned pool (twelve_month not already assigned to q1-q4)
+      // Goals Wizard creates SEPARATE rows when assigning to quarters —
+      // the twelve_month row persists with a different ID. So we must
+      // filter by both ID and title to catch these duplicates.
       const assignedIds = new Set([
         ...(q1Data || []).map(i => i.id),
         ...(q2Data || []).map(i => i.id),
         ...(q3Data || []).map(i => i.id),
         ...(q4Data || []).map(i => i.id),
+      ]);
+      const assignedTitles = new Set([
+        ...(q1Data || []).map(i => (i.title || '').trim().toLowerCase()),
+        ...(q2Data || []).map(i => (i.title || '').trim().toLowerCase()),
+        ...(q3Data || []).map(i => (i.title || '').trim().toLowerCase()),
+        ...(q4Data || []).map(i => (i.title || '').trim().toLowerCase()),
       ]);
 
       const { data: poolData } = await supabase
@@ -460,8 +473,14 @@ export function QuarterlyPlanStep({
         .in('step_type', ['twelve_month', 'strategic_ideas'])
         .order('order_index', { ascending: true });
 
-      // Filter out items already in a quarter AND raw strategic_ideas (only show twelve_month)
-      const unassignedPool = (poolData || []).filter((i: any) => !assignedIds.has(i.id) && i.step_type !== 'strategic_ideas');
+      // Filter out:
+      // 1. Items already assigned to a quarter (by ID or by matching title)
+      // 2. Operational items (only show strategic)
+      const unassignedPool = (poolData || []).filter((i: any) =>
+        !assignedIds.has(i.id) &&
+        !assignedTitles.has((i.title || '').trim().toLowerCase()) &&
+        i.idea_type !== 'operational'
+      );
 
       // Add unassigned pool items as "Available" (quarterAssigned = 'unassigned')
       unassignedPool.forEach((i: any) => {
@@ -1427,9 +1446,9 @@ export function QuarterlyPlanStep({
                         key={q.id}
                         className={`p-3 rounded-lg border-2 ${
                           q.isPast
-                            ? 'bg-gray-100 border-gray-300 opacity-60'
+                            ? 'bg-gray-100 border-gray-200 opacity-60'
                             : isEmpty
-                            ? 'bg-amber-50 border-amber-200'
+                            ? 'bg-gray-50 border-gray-200'
                             : isComplete
                             ? 'bg-green-50 border-green-300'
                             : 'bg-brand-orange-50 border-brand-orange-200'
@@ -1768,8 +1787,8 @@ export function QuarterlyPlanStep({
             )}
             {decisions.length > 0 && !allInitiativesHaveQuarter && (
               <div className="mt-6 rounded-lg border-2 border-amber-200 bg-amber-50 p-4 text-center">
-                <p className="text-amber-800 font-semibold text-sm">{'\u26A0\uFE0F'} Some quarters still need initiatives</p>
-                <p className="text-amber-700 text-xs mt-1">Drag unassigned initiatives into quarters or use &quot;Distribute All&quot;.</p>
+                <p className="text-amber-800 font-semibold text-sm">{'\u26A0\uFE0F'} Current and future quarters need initiatives</p>
+                <p className="text-amber-700 text-xs mt-1">Assign initiatives to active quarters or use &quot;Distribute All&quot;.</p>
               </div>
             )}
           </div>

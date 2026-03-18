@@ -5,6 +5,7 @@ import { Plus, X, ChevronDown, ChevronUp, Briefcase, Sparkles, Clock, CheckCircl
 import {
   BUSINESS_ENGINES,
   FREQUENCY_LABELS,
+  SUGGESTED_OPERATIONAL_HABITS,
   getHabitsByEngine,
   type FrequencyOption,
   type SuggestedHabit
@@ -43,8 +44,23 @@ export default function OperationalPlanTab({
 }: OperationalPlanTabProps) {
   // Use prop state if provided, otherwise fall back to local state
   const [localActivities, setLocalActivities] = useState<OperationalActivity[]>([])
-  const activities = activitiesProp || localActivities
+  const rawActivities = activitiesProp || localActivities
   const setActivities = setActivitiesProp || setLocalActivities
+
+  // Auto-repair activities with missing engine (function) by matching against suggested habits
+  const activities = useMemo(() => {
+    const nameToEngine = new Map<string, string>()
+    for (const h of SUGGESTED_OPERATIONAL_HABITS) {
+      nameToEngine.set(h.name.toLowerCase(), h.engine)
+    }
+    return rawActivities.map(a => {
+      if (a.function && BUSINESS_ENGINES.some(e => e.id === a.function)) return a
+      const engine = nameToEngine.get((a.name || '').toLowerCase())
+      if (engine) return { ...a, function: engine }
+      // Fallback: put unmapped items in 'leadership' (general catch-all)
+      return { ...a, function: 'leadership' }
+    })
+  }, [rawActivities])
 
   // State for expanded engines
   const [expandedEngines, setExpandedEngines] = useState<Set<string>>(new Set(['time', 'leadership']))

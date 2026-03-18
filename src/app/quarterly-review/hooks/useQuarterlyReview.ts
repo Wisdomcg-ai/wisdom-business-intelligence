@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/contexts/BusinessContext';
 import { quarterlyReviewService } from '../services/quarterly-review-service';
 import { strategicSyncService } from '../services/strategic-sync-service';
+import { assemblePlanData } from '@/app/one-page-plan/services/plan-data-assembler';
+import { planSnapshotService } from '@/app/one-page-plan/services/plan-snapshot-service';
 import type {
   QuarterlyReview,
   QuarterNumber,
@@ -43,7 +45,8 @@ import {
   getDefaultFeedbackLoop,
   getDefaultQuarterlyTargets,
   getDefaultInitiativesChanges,
-  getDefaultPersonalCommitments
+  getDefaultPersonalCommitments,
+  type YearType
 } from '../types';
 
 interface UseQuarterlyReviewOptions {
@@ -60,6 +63,7 @@ interface UseQuarterlyReviewReturn {
   isLoading: boolean;
   error: string | null;
   isSaving: boolean;
+  isCompleting: boolean;
   hasUnsavedChanges: boolean;
   reviewType: ReviewType;
 
@@ -138,18 +142,19 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   const supabase = createClient();
   const { activeBusiness } = useBusinessContext();
 
-  // Determine quarter/year
-  const currentQtr = getCurrentQuarter();
-  const targetQuarter = options.quarter || currentQtr.quarter;
-  const targetYear = options.year || currentQtr.year;
+  // Quarter/year will be resolved after yearType lookup
+  const [resolvedQuarter, setResolvedQuarter] = useState<QuarterNumber>(options.quarter || getCurrentQuarter().quarter);
+  const [resolvedYear, setResolvedYear] = useState<number>(options.year || getCurrentQuarter().year);
 
   // State
   const [review, setReview] = useState<QuarterlyReview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(options.businessId || null);
+  const [profileBusinessId, setProfileBusinessId] = useState<string | null>(null); // business_profiles.id for sync
   const [userId, setUserId] = useState<string | null>(null);
 
   // Review type from options or from loaded review
@@ -159,7 +164,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   // Sync debounce ref
   const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Get user and business on mount
+  // Get user and business on mount, also resolve yearType for correct quarter
   useEffect(() => {
     const getUserAndBusiness = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -170,10 +175,11 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
       }
       setUserId(user.id);
 
+      let resolvedBusinessId: string | null = null;
       if (options.businessId) {
-        setBusinessId(options.businessId);
+        resolvedBusinessId = options.businessId;
       } else if (activeBusiness?.id) {
-        setBusinessId(activeBusiness.id);
+        resolvedBusinessId = activeBusiness.id;
       } else {
         const { data: business } = await supabase
           .from('businesses')
@@ -182,16 +188,72 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
           .maybeSingle();
 
         if (business) {
-          setBusinessId(business.id);
+          resolvedBusinessId = business.id;
         } else {
           setError('No business found');
           setIsLoading(false);
+          return;
         }
+      }
+      setBusinessId(resolvedBusinessId);
+
+      // Look up yearType so we calculate the correct quarter for FY businesses
+      // Uses fallback chain matching Goals Wizard pattern to find the financial goals row
+      if (!options.quarter && resolvedBusinessId) {
+        const targetUserId = activeBusiness?.ownerId || user.id;
+        const { data: profile } = await supabase
+          .from('business_profiles')
+          .select('id')
+          .eq('user_id', targetUserId)
+          .maybeSingle();
+        const goalsBusinessId = profile?.id || resolvedBusinessId;
+        setProfileBusinessId(goalsBusinessId);
+
+        // Try multiple IDs to find the financial goals row (same pattern as plan assembler)
+        let yearType: YearType = 'CY';
+        const idsToTry = [...new Set([goalsBusinessId, targetUserId, resolvedBusinessId].filter(Boolean))];
+
+        for (const tryId of idsToTry) {
+          const { data: goalsData } = await supabase
+            .from('business_financial_goals')
+            .select('year_type')
+            .eq('business_id', tryId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (goalsData?.year_type) {
+            yearType = goalsData.year_type as YearType;
+            console.log(`[QuarterlyReview] Found yearType=${yearType} with ID: ${tryId}`);
+            break;
+          }
+        }
+
+        // Also try business_profile_id column as legacy fallback
+        if (yearType === 'CY') {
+          const { data: legacyData } = await supabase
+            .from('business_financial_goals')
+            .select('year_type')
+            .eq('business_profile_id', goalsBusinessId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (legacyData?.year_type) {
+            yearType = legacyData.year_type as YearType;
+            console.log(`[QuarterlyReview] Found yearType=${yearType} via legacy business_profile_id`);
+          }
+        }
+
+        console.log(`[QuarterlyReview] Resolved yearType: ${yearType}, IDs tried:`, idsToTry);
+        const correctQtr = getCurrentQuarter(yearType);
+        setResolvedQuarter(correctQtr.quarter);
+        setResolvedYear(correctQtr.year);
+        console.log(`[QuarterlyReview] Resolved quarter: Q${correctQtr.quarter} ${correctQtr.year}`);
       }
     };
 
     getUserAndBusiness();
-  }, [options.businessId, supabase, activeBusiness?.id]);
+  }, [options.businessId, supabase, activeBusiness?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initialize or fetch review
   const initReview = useCallback(async () => {
@@ -208,8 +270,8 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
         data = await quarterlyReviewService.getOrCreateReview(
           businessId,
           userId,
-          targetQuarter,
-          targetYear,
+          resolvedQuarter,
+          resolvedYear,
           options.reviewType
         );
       }
@@ -219,9 +281,9 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
         const stepMigration: Record<string, string> = {
           '4.2': '4.1',
           '4.3': '4.2',
-          '4.4': '4.2',
+          '4.4': '4.3',
           '4.5': '4.3',
-          '4.6': '4.4',
+          '4.6': '4.3',
         };
 
         if (data.current_step && stepMigration[data.current_step]) {
@@ -234,6 +296,12 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
           );
           data = { ...data, steps_completed: [...new Set(migratedSteps)] as WorkshopStep[] };
         }
+
+        // When re-entering a completed review for editing, start at prework (editable).
+        // Skip '1.1' which is a read-only summary. All steps unlocked via canNavigateToStep.
+        if (data.status === 'completed' && data.current_step === 'complete') {
+          data = { ...data, current_step: 'prework' as WorkshopStep };
+        }
       }
 
       setReview(data);
@@ -243,7 +311,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     } finally {
       setIsLoading(false);
     }
-  }, [businessId, userId, targetQuarter, targetYear, options.reviewId, options.reviewType]);
+  }, [businessId, userId, resolvedQuarter, resolvedYear, options.reviewId, options.reviewType]);
 
   // Fetch review when businessId is available
   useEffect(() => {
@@ -258,9 +326,9 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
 
     setIsSaving(true);
     try {
-      const updated = await quarterlyReviewService.updateReview(review.id, review);
-      setReview(updated);
+      await quarterlyReviewService.updateReview(review.id, review);
       setHasUnsavedChanges(false);
+      // DO NOT setReview(updated) — it would overwrite freshly loaded initiative decisions
     } catch (err) {
       console.error('Error saving review:', err);
       setError('Failed to save changes');
@@ -280,25 +348,24 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     return () => clearTimeout(timer);
   }, [hasUnsavedChanges, review, saveReview]);
 
-  // Two-way sync: after auto-save completes on steps 4.2 and 4.3, sync to strategic plan
+  // Two-way sync: ONLY on step 4.3 (rocks), NOT on 4.2 (initiatives)
+  // Step 4.2 reads from strategic_initiatives but saves decisions to quarterly_reviews JSON
+  // This prevents the sync service from accidentally deleting Goals Wizard data
   useEffect(() => {
     if (hasUnsavedChanges || !review || !businessId || !userId) return;
+    // Don't run background sync on completed reviews being edited
+    if (review.status === 'completed') return;
     const step = review.current_step;
-    if (step !== '4.2' && step !== '4.3') return;
+    if (step !== '4.3') return; // Only sync rocks, not initiative decisions
 
-    // Debounce sync to 5 seconds after save completes
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(async () => {
       try {
-        if (step === '4.2') {
-          // Sync initiative decisions and quarterly targets
-          const qKey = `q${review.quarter}`;
-          await strategicSyncService.syncInitiativeChanges(businessId, userId, review.initiative_decisions || []);
-          await strategicSyncService.syncQuarterlyTargets(businessId, review.quarterly_targets || { revenue: 0, grossProfit: 0, netProfit: 0, kpis: [] }, qKey);
-        } else if (step === '4.3') {
-          // Sync rocks
-          await strategicSyncService.syncRocks(businessId, userId, review.quarterly_rocks || []);
-        }
+        // Use the NEXT quarter — quarterly review rocks are for the upcoming quarter, not the current one
+        const nextQ = resolvedQuarter === 4 ? 1 : (resolvedQuarter + 1);
+        const quarterKey = `q${nextQ}`;
+        const syncId = profileBusinessId || businessId;
+        await strategicSyncService.syncRocks(syncId, userId, review.quarterly_rocks || [], quarterKey);
       } catch (err) {
         console.error('[Sync] Background sync failed:', err);
       }
@@ -307,7 +374,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [hasUnsavedChanges, review?.current_step, businessId, userId]);
+  }, [hasUnsavedChanges, review?.current_step, businessId, userId, resolvedQuarter]);
 
   // Progress calculations - use dynamic step list based on review type
   const progressPercentage = useMemo(() => {
@@ -319,6 +386,10 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
 
   const canNavigateToStep = useCallback((step: WorkshopStep): boolean => {
     if (!review) return false;
+
+    // When the review is completed, all steps are freely navigable for editing
+    if (review.status === 'completed') return true;
+
     if (step === 'prework') return true;
 
     const stepIndex = workshopSteps.indexOf(step);
@@ -343,7 +414,12 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     if (!review || !canNavigateToStep(step)) return;
 
     setReview(prev => prev ? { ...prev, current_step: step } : null);
-    await quarterlyReviewService.updateProgress(review.id, step, review.steps_completed);
+
+    // When editing a completed review, only update current_step locally — don't call
+    // updateProgress which would recalculate status and revert 'completed' to 'in_progress'
+    if (review.status !== 'completed') {
+      await quarterlyReviewService.updateProgress(review.id, step, review.steps_completed);
+    }
   }, [review, canNavigateToStep]);
 
   const completeCurrentStep = useCallback(async () => {
@@ -351,6 +427,13 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
 
     const currentIndex = workshopSteps.indexOf(review.current_step);
     const nextStep = workshopSteps[currentIndex + 1] || 'complete';
+
+    // When editing a completed review, just navigate to next step without calling
+    // completeStep (which calls updateProgress and reverts status to 'in_progress')
+    if (review.status === 'completed') {
+      setReview(prev => prev ? { ...prev, current_step: nextStep } : null);
+      return;
+    }
 
     const updated = await quarterlyReviewService.completeStep(
       review.id,
@@ -367,29 +450,117 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   }, [review]);
 
   const completeWorkshop = useCallback(async () => {
-    if (!review || !businessId || !userId) return;
+    if (!review || !businessId || !userId || isCompleting) return;
 
-    // Final sync to strategic plan tables before completing
+    setIsCompleting(true);
+
     try {
-      await strategicSyncService.syncAll(
-        businessId,
-        userId,
-        review.initiative_decisions || [],
-        review.quarterly_targets || { revenue: 0, grossProfit: 0, netProfit: 0, kpis: [] },
-        `q${review.quarter}`,
-        review.quarterly_rocks || [],
-        (review.initiatives_changes?.added || []).map(a => ({
-          title: a.title,
-          category: a.category,
-        }))
-      );
-    } catch (err) {
-      console.error('[Sync] Final sync on complete failed:', err);
-    }
+      // Flush any pending auto-save first to prevent race conditions
+      if (hasUnsavedChanges) {
+        try {
+          await quarterlyReviewService.updateReview(review.id, review);
+          setHasUnsavedChanges(false);
+        } catch (flushErr) {
+          console.error('[Complete] Auto-save flush failed:', flushErr);
+          // Continue with completion — data was already saved by auto-save
+        }
+      }
 
-    const updated = await quarterlyReviewService.completeWorkshop(review.id);
-    setReview(updated);
-  }, [review, businessId, userId]);
+      // Helper to resolve business profile ID for snapshots
+      const getSnapshotBusinessId = async (): Promise<string | null> => {
+        try {
+          const targetUserId = activeBusiness?.ownerId || userId;
+          const { data: profileData } = await supabase
+            .from('business_profiles')
+            .select('id')
+            .eq('user_id', targetUserId)
+            .maybeSingle();
+          return profileData?.id || businessId;
+        } catch {
+          return businessId;
+        }
+      };
+
+      // 1. PRE-SYNC SNAPSHOT
+      try {
+        const snapshotBusinessId = await getSnapshotBusinessId();
+        if (snapshotBusinessId) {
+          const result = await assemblePlanData({
+            supabase,
+            activeBusiness: activeBusiness ? { id: activeBusiness.id, ownerId: activeBusiness.ownerId } : null,
+          });
+          if (result) {
+            await planSnapshotService.createSnapshot({
+              businessId: snapshotBusinessId,
+              userId,
+              snapshotType: 'quarterly_review_pre_sync',
+              planData: result.planData,
+              quarter: `Q${review.quarter}`,
+              year: review.year,
+              quarterlyReviewId: review.id,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[Snapshot] Pre-sync snapshot failed (non-blocking):', err);
+      }
+
+      // 2. SYNC: strategic plan tables
+      const syncBusinessId = profileBusinessId || (await getSnapshotBusinessId()) || businessId;
+      try {
+        const syncQuarterKey = `q${resolvedQuarter}`;
+        console.log('[Sync] Using syncBusinessId:', syncBusinessId, 'quarter:', syncQuarterKey, '(profileBusinessId:', profileBusinessId, 'businessId:', businessId, 'resolvedQ:', resolvedQuarter, 'reviewQ:', review.quarter, ')');
+        await strategicSyncService.syncAll(
+          syncBusinessId,
+          userId,
+          review.initiative_decisions || [],
+          review.quarterly_targets || { revenue: 0, grossProfit: 0, netProfit: 0, kpis: [] },
+          syncQuarterKey,
+          review.quarterly_rocks || [],
+          (review.initiatives_changes?.added || []).map(a => ({
+            title: a.title,
+            category: a.category,
+          })),
+          review.realignment_decision || undefined
+        );
+      } catch (err) {
+        console.error('[Sync] Final sync on complete failed:', err);
+      }
+
+      // 3. POST-SYNC SNAPSHOT
+      try {
+        const snapshotBusinessId = await getSnapshotBusinessId();
+        if (snapshotBusinessId) {
+          const result = await assemblePlanData({
+            supabase,
+            activeBusiness: activeBusiness ? { id: activeBusiness.id, ownerId: activeBusiness.ownerId } : null,
+          });
+          if (result) {
+            await planSnapshotService.createSnapshot({
+              businessId: snapshotBusinessId,
+              userId,
+              snapshotType: 'quarterly_review_post_sync',
+              planData: result.planData,
+              quarter: `Q${review.quarter}`,
+              year: review.year,
+              quarterlyReviewId: review.id,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[Snapshot] Post-sync snapshot failed (non-blocking):', err);
+      }
+
+      // 4. COMPLETE the workshop
+      const updated = await quarterlyReviewService.completeWorkshop(review.id);
+      setReview(updated);
+    } catch (err) {
+      console.error('[Complete] Workshop completion failed:', err);
+      setError('Failed to complete the review. Please try again.');
+    } finally {
+      setIsCompleting(false);
+    }
+  }, [review, businessId, profileBusinessId, userId, supabase, activeBusiness, isCompleting, hasUnsavedChanges]);
 
   // Update helpers that set local state and mark unsaved
   const updateLocalState = useCallback((updater: (prev: QuarterlyReview) => QuarterlyReview) => {
@@ -549,15 +720,16 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     // State
     review,
     isLoading,
+    isCompleting,
     error,
     isSaving,
     hasUnsavedChanges,
     reviewType,
 
     // Quarter info
-    quarter: targetQuarter,
-    year: targetYear,
-    quarterLabel: `Q${targetQuarter} ${targetYear}`,
+    quarter: resolvedQuarter,
+    year: resolvedYear,
+    quarterLabel: `Q${resolvedQuarter} ${resolvedYear}`,
 
     // Progress
     currentStep: review?.current_step || 'prework',

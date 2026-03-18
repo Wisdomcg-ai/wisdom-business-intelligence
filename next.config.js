@@ -24,7 +24,10 @@ const nextConfig = {
 
   // Experimental features for better performance
   experimental: {
-    optimizePackageImports: ['lucide-react', '@supabase/supabase-js'],
+    // Only optimize lucide-react (barrel file optimization).
+    // @supabase/supabase-js was removed — it caused vendor-chunks race conditions
+    // during dev cold starts (Cannot find module './vendor-chunks/next.js').
+    optimizePackageImports: ['lucide-react'],
   },
 
   // Suppress Edge Runtime warnings for @supabase/supabase-js (uses process.version for diagnostics)
