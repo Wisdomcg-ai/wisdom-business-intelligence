@@ -43,19 +43,27 @@ import {
   Gauge
 } from 'lucide-react';
 import Link from 'next/link';
+import { useCoachView } from '@/hooks/useCoachView';
 
 export default function QuarterlySummaryPage() {
   const params = useParams();
   const router = useRouter();
+  const { getPath, isCoachView } = useCoachView();
   const supabase = createClient();
   const [review, setReview] = useState<QuarterlyReview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [resolvedYearType, setResolvedYearType] = useState<YearType>('CY');
 
+  // In coach view, params.id is the client ID and the review ID is the last segment of params.path
+  // In normal view, params.id is the review ID
+  const reviewId = isCoachView && Array.isArray(params?.path)
+    ? (params.path as string[]).slice(-1)[0]
+    : params?.id as string;
+
   useEffect(() => {
     const fetchReview = async () => {
       try {
-        const data = await quarterlyReviewService.getReviewById(params?.id as string);
+        const data = await quarterlyReviewService.getReviewById(reviewId);
         setReview(data);
 
         // Resolve yearType to display correct quarter labels
@@ -94,10 +102,10 @@ export default function QuarterlySummaryPage() {
       }
     };
 
-    if (params?.id) {
+    if (reviewId) {
       fetchReview();
     }
-  }, [params?.id]);
+  }, [reviewId]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-AU', {
@@ -121,7 +129,7 @@ export default function QuarterlySummaryPage() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <p className="text-red-600 mb-4">Review not found</p>
-          <Link href="/quarterly-review" className="text-brand-orange hover:underline">
+          <Link href={getPath('/quarterly-review')} className="text-brand-orange hover:underline">
             Go back
           </Link>
         </div>
@@ -161,7 +169,7 @@ export default function QuarterlySummaryPage() {
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => router.push('/quarterly-review')}
+            onClick={() => router.push(getPath('/quarterly-review'))}
             className="p-2 hover:bg-gray-100 rounded-lg"
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
@@ -180,7 +188,7 @@ export default function QuarterlySummaryPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => router.push(`/quarterly-review/workshop?id=${params?.id}`)}
+            onClick={() => router.push(getPath(`/quarterly-review/workshop?id=${reviewId}`))}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg text-gray-700"
           >
             <Pencil className="w-4 h-4" />
@@ -769,12 +777,21 @@ export default function QuarterlySummaryPage() {
                   </div>
                   {assessment.engines && Object.keys(assessment.engines).length > 0 && (
                     <div className="space-y-2">
-                      {Object.entries(assessment.engines).map(([key, val]: [string, any]) => (
-                        <div key={key} className="flex justify-between text-sm">
-                          <span className="text-gray-600 capitalize">{key.replace(/_/g, ' ')}</span>
-                          <span className="font-medium">{val.score}/{val.max}</span>
-                        </div>
-                      ))}
+                      {Object.entries(assessment.engines).map(([key, val]: [string, any]) => {
+                        const pct = val.max > 0 ? Math.round((val.score / val.max) * 100) : 0;
+                        return (
+                          <div key={key} className="flex items-center gap-2 text-sm">
+                            <span className="text-gray-600 capitalize w-24">{key.replace(/_/g, ' ')}</span>
+                            <div className="flex-1 bg-gray-200 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full ${pct >= 80 ? 'bg-green-500' : pct >= 60 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className="font-medium w-10 text-right">{pct}%</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1138,7 +1155,7 @@ export default function QuarterlySummaryPage() {
       {/* Back Button */}
       <div className="text-center pt-8 border-t border-gray-200">
         <Link
-          href="/quarterly-review"
+          href={getPath('/quarterly-review')}
           className="inline-flex items-center gap-2 px-6 py-3 bg-brand-orange text-white rounded-xl font-medium hover:bg-brand-orange-600"
         >
           <ArrowLeft className="w-4 h-4" />

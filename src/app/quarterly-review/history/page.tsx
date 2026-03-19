@@ -30,6 +30,7 @@ import {
   Award
 } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import { useCoachView } from '@/hooks/useCoachView';
 import PageHeader from '@/components/ui/PageHeader';
 import Link from 'next/link';
 
@@ -76,6 +77,7 @@ function TimelineNode({
   isCompareMode: boolean;
   isSelected: boolean;
 }) {
+  const { getPath } = useCoachView();
   const isCompleted = review.status === 'completed';
   const rocksData = getRocksCompletion(review.quarterly_rocks);
   const targets = review.quarterly_targets;
@@ -386,7 +388,7 @@ function TimelineNode({
                   </button>
                   {!isCompleted && review.status === 'in_progress' && (
                     <Link
-                      href={`/quarterly-review/workshop?id=${review.id}`}
+                      href={getPath(`/quarterly-review/workshop?id=${review.id}`)}
                       className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
                     >
                       Continue Review
@@ -677,6 +679,7 @@ export default function QuarterlyReviewHistoryPage() {
   const router = useRouter();
   const supabase = createClient();
   const { activeBusiness, isLoading: contextLoading } = useBusinessContext();
+  const { getPath } = useCoachView();
 
   const [reviews, setReviews] = useState<QuarterlyReview[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -729,7 +732,7 @@ export default function QuarterlyReviewHistoryPage() {
   };
 
   const handleViewSummary = (id: string) => {
-    router.push(`/quarterly-review/summary/${id}`);
+    router.push(getPath(`/quarterly-review/summary/${id}`));
   };
 
   const handleToggleCompare = (id: string) => {
@@ -792,7 +795,7 @@ export default function QuarterlyReviewHistoryPage() {
         title="Quarterly Review Timeline"
         subtitle={`${completedCount} completed review${completedCount !== 1 ? 's' : ''}${inProgressCount > 0 ? ` • ${inProgressCount} in progress` : ''}`}
         icon={History}
-        backLink={{ href: '/quarterly-review', label: 'Back to Quarterly Review' }}
+        backLink={{ href: getPath('/quarterly-review'), label: 'Back to Quarterly Review' }}
         actions={
           reviews.filter(r => r.status === 'completed').length >= 2 && (
             <button
@@ -852,7 +855,7 @@ export default function QuarterlyReviewHistoryPage() {
               Start your first quarterly review to begin tracking your business journey over time.
             </p>
             <Link
-              href="/quarterly-review"
+              href={getPath('/quarterly-review')}
               className="inline-flex items-center gap-2 px-6 py-3 bg-brand-orange text-white rounded-xl font-medium hover:bg-brand-orange-600 transition-colors"
             >
               <Calendar className="w-5 h-5" />
@@ -901,7 +904,7 @@ export default function QuarterlyReviewHistoryPage() {
         {reviews.length > 0 && (
           <div className="text-center pt-8 mt-8 border-t border-gray-200">
             <Link
-              href="/quarterly-review"
+              href={getPath('/quarterly-review')}
               className="inline-flex items-center gap-2 text-brand-orange hover:text-brand-orange-700 font-medium"
             >
               <ArrowLeft className="w-4 h-4" />

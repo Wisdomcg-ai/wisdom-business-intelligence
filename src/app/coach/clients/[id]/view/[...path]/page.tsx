@@ -56,6 +56,9 @@ const getPageComponent = (path: string[]) => {
 
     // REVIEW
     'quarterly-review': () => import('@/app/quarterly-review/page'),
+    'quarterly-review/workshop': () => import('@/app/quarterly-review/workshop/page'),
+    'quarterly-review/history': () => import('@/app/quarterly-review/history/page'),
+    'quarterly-review/summary': () => import('@/app/quarterly-review/summary/[id]/page'),
 
     // SETTINGS
     'settings': () => import('@/app/settings/page'),
@@ -64,7 +67,14 @@ const getPageComponent = (path: string[]) => {
     'integrations': () => import('@/app/integrations/page'),
   }
 
-  return componentMap[fullPath]
+  // Exact match first
+  if (componentMap[fullPath]) return componentMap[fullPath]
+
+  // Dynamic route matching (e.g. quarterly-review/summary/[id])
+  const parentPath = path.slice(0, -1).join('/')
+  if (componentMap[parentPath]) return componentMap[parentPath]
+
+  return undefined
 }
 
 interface PageProps {

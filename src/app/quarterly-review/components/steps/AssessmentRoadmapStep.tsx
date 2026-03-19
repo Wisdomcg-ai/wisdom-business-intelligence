@@ -154,39 +154,49 @@ export function AssessmentRoadmapStep({ review, onUpdateAssessment, onUpdateRoad
 
       // Create snapshots
       if (assessment) {
-        // Build engine scores from the 8 business engines
+        // Build engine scores using actual max per engine (matches assessment/[id]/page.tsx)
         const engineScores: Record<string, { score: number; max: number }> = {};
-        const maxPerEngine = 12.5; // 100 / 8 engines
+        const engineMaxScores: Record<string, number> = {
+          attract: assessment.attract_max || 40,
+          convert: assessment.convert_max || 40,
+          deliver: assessment.deliver_max || 40,
+          people: assessment.people_max || 40,
+          systems: assessment.systems_max || 40,
+          finance: assessment.finance_max || 30,
+          leadership: assessment.leadership_max || 30,
+          time: assessment.time_max || 40,
+        };
 
         if (assessment.attract_score !== undefined) {
-          engineScores['attract'] = { score: assessment.attract_score, max: maxPerEngine };
+          engineScores['attract'] = { score: assessment.attract_score, max: engineMaxScores.attract };
         }
         if (assessment.convert_score !== undefined) {
-          engineScores['convert'] = { score: assessment.convert_score, max: maxPerEngine };
+          engineScores['convert'] = { score: assessment.convert_score, max: engineMaxScores.convert };
         }
         if (assessment.deliver_score !== undefined) {
-          engineScores['deliver'] = { score: assessment.deliver_score, max: maxPerEngine };
+          engineScores['deliver'] = { score: assessment.deliver_score, max: engineMaxScores.deliver };
         }
         if (assessment.people_score !== undefined) {
-          engineScores['people'] = { score: assessment.people_score, max: maxPerEngine };
+          engineScores['people'] = { score: assessment.people_score, max: engineMaxScores.people };
         }
         if (assessment.systems_score !== undefined) {
-          engineScores['systems'] = { score: assessment.systems_score, max: maxPerEngine };
+          engineScores['systems'] = { score: assessment.systems_score, max: engineMaxScores.systems };
         }
         if (assessment.finance_score !== undefined) {
-          engineScores['finance'] = { score: assessment.finance_score, max: maxPerEngine };
+          engineScores['finance'] = { score: assessment.finance_score, max: engineMaxScores.finance };
         }
         if (assessment.leadership_score !== undefined) {
-          engineScores['leadership'] = { score: assessment.leadership_score, max: maxPerEngine };
+          engineScores['leadership'] = { score: assessment.leadership_score, max: engineMaxScores.leadership };
         }
         if (assessment.time_score !== undefined) {
-          engineScores['time'] = { score: assessment.time_score, max: maxPerEngine };
+          engineScores['time'] = { score: assessment.time_score, max: engineMaxScores.time };
         }
 
+        const totalMax = assessment.total_max || 300;
         const assessmentSnapshot: AssessmentSnapshot = {
           totalScore: assessment.total_score || 0,
-          maxScore: 100,
-          percentage: assessment.percentage || 0,
+          maxScore: totalMax,
+          percentage: assessment.percentage || Math.round(((assessment.total_score || 0) / totalMax) * 100),
           engines: Object.keys(engineScores).length > 0 ? engineScores : undefined,
           assessmentDate: assessment.created_at,
           retakeRequested: false

@@ -31,11 +31,13 @@ import { VisionStrategyStep } from '../components/steps/VisionStrategyStep';
 import { NextYearTargetsStep } from '../components/steps/NextYearTargetsStep';
 import { AnnualInitiativePlanStep } from '../components/steps/AnnualInitiativePlanStep';
 
+import { useCoachView } from '@/hooks/useCoachView';
 import { ArrowLeft, Menu, X, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 function ReviewContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { getPath } = useCoachView();
   const [showSidebar, setShowSidebar] = useState(false); // mobile
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // desktop
 
@@ -140,7 +142,7 @@ function ReviewContent() {
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
           <button
-            onClick={() => router.push('/quarterly-review')}
+            onClick={() => router.push(getPath('/quarterly-review'))}
             className="text-brand-orange hover:underline"
           >
             Go back
@@ -326,7 +328,7 @@ function ReviewContent() {
         <div className="max-w-[2000px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => router.push('/quarterly-review')}
+              onClick={() => router.push(getPath('/quarterly-review'))}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <ArrowLeft className="w-5 h-5 text-gray-600" />

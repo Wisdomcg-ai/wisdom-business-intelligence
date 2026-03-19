@@ -20,6 +20,7 @@ import {
   Zap
 } from 'lucide-react';
 import Link from 'next/link';
+import { useCoachView } from '@/hooks/useCoachView';
 
 interface WorkshopCompleteStepProps {
   review: QuarterlyReview;
@@ -27,6 +28,7 @@ interface WorkshopCompleteStepProps {
 
 export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
   const router = useRouter();
+  const { getPath } = useCoachView();
 
   const getNextQuarter = () => {
     if (review.quarter === 4) {
@@ -315,7 +317,7 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
           <div className="flex items-center gap-3 text-gray-700">
             <CheckCircle2 className="w-5 h-5 text-gray-600" />
             <span>Update your One Page Business Plan</span>
-            <Link href="/business-plan" className="text-gray-600 hover:text-gray-700 text-sm ml-auto">
+            <Link href={getPath('/one-page-plan')} className="text-gray-600 hover:text-gray-700 text-sm ml-auto">
               Go to Plan →
             </Link>
           </div>
@@ -337,7 +339,7 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-4">
         <Link
-          href={`/quarterly-review/summary/${review.id}`}
+          href={getPath(`/quarterly-review/summary/${review.id}`)}
           className="flex-1 flex items-center justify-center gap-2 px-6 py-4 bg-brand-orange text-white rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
         >
           <FileText className="w-5 h-5" />
@@ -356,7 +358,7 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
         </button>
 
         <Link
-          href="/quarterly-review"
+          href={getPath('/quarterly-review')}
           className="flex-1 flex items-center justify-center gap-2 px-6 py-4 border-2 border-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition-colors"
         >
           Back to Reviews

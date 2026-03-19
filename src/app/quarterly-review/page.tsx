@@ -19,6 +19,7 @@ import {
   Pencil
 } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import { useCoachView } from '@/hooks/useCoachView';
 import PageHeader from '@/components/ui/PageHeader';
 import Link from 'next/link';
 
@@ -26,6 +27,7 @@ export default function QuarterlyReviewPage() {
   const router = useRouter();
   const supabase = createClient();
   const { activeBusiness, isLoading: contextLoading } = useBusinessContext();
+  const { getPath } = useCoachView();
   const [reviews, setReviews] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [businessId, setBusinessId] = useState<string | null>(null);
@@ -101,15 +103,15 @@ export default function QuarterlyReviewPage() {
   const startNewReview = (type: 'quarterly' | 'annual' = 'quarterly') => {
     const params = new URLSearchParams({ quarter: String(quarter), year: String(year) });
     if (type === 'annual') params.set('type', 'annual');
-    router.push(`/quarterly-review/workshop?${params.toString()}`);
+    router.push(getPath(`/quarterly-review/workshop?${params.toString()}`));
   };
 
   const continueReview = (reviewId: string) => {
-    router.push(`/quarterly-review/workshop?id=${reviewId}`);
+    router.push(getPath(`/quarterly-review/workshop?id=${reviewId}`));
   };
 
   const viewReview = (reviewId: string) => {
-    router.push(`/quarterly-review/summary/${reviewId}`);
+    router.push(getPath(`/quarterly-review/summary/${reviewId}`));
   };
 
   const currentQuarterReview = reviews.find(r => r.quarter === quarter && r.year === year);
@@ -134,7 +136,7 @@ export default function QuarterlyReviewPage() {
         actions={
           (pastReviews.length > 0 || currentQuarterReview?.status === 'completed') && (
             <Link
-              href="/quarterly-review/history"
+              href={getPath('/quarterly-review/history')}
               className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
             >
               <History className="w-4 h-4" />

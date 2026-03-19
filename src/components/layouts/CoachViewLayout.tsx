@@ -83,6 +83,7 @@ const getClientNavigation = (clientId: string): NavSection[] => [
     items: [
       { label: 'KPI Dashboard', href: `/coach/clients/${clientId}/view/business-dashboard`, icon: BarChart3 },
       { label: 'Weekly Review', href: `/coach/clients/${clientId}/view/reviews/weekly`, icon: Calendar },
+      { label: 'Quarterly Review', href: `/coach/clients/${clientId}/view/quarterly-review`, icon: Calendar },
       { label: 'Issues List', href: `/coach/clients/${clientId}/view/issues-list`, icon: AlertCircle },
       { label: 'Ideas Journal', href: `/coach/clients/${clientId}/view/ideas`, icon: Layers },
     ],
