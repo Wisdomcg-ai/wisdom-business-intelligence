@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/admin'
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,14 +22,19 @@ export async function POST(request: NextRequest) {
     }
 
     const userAgent = request.headers.get('user-agent') || null
+    const nowISO = new Date().toISOString()
 
-    // Upsert login record (update if exists, insert if not)
-    const { data, error } = await supabase
+    // Use admin client to bypass RLS — user is already authenticated above.
+    // The RLS FOR ALL policy can block the UPDATE part of upserts through PostgREST,
+    // causing login_at to never update after the initial INSERT.
+    const adminSupabase = createServiceRoleClient()
+
+    const { data, error } = await adminSupabase
       .from('user_logins')
       .upsert({
         user_id: user.id,
         business_id,
-        login_at: new Date().toISOString(),
+        login_at: nowISO,
         user_agent: userAgent
       }, {
         onConflict: 'user_id,business_id'
@@ -40,10 +46,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Fire-and-forget: also update users.last_login_at to keep both tables in sync
-    supabase
+    // Also update users.last_login_at to keep both tables in sync
+    adminSupabase
       .from('users')
-      .update({ last_login_at: new Date().toISOString() })
+      .update({ last_login_at: nowISO })
       .eq('id', user.id)
       .then(({ error: syncError }) => {
         if (syncError) {
