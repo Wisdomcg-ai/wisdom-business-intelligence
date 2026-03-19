@@ -510,17 +510,30 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
     })
   }, [loadCurrentUser])
 
-  // Listen for auth state changes - reload user when session becomes available
+  // Listen for auth state changes - reload user when session changes
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, _session) => {
-        if (event === 'SIGNED_IN' && !currentUserRef.current && !isLoadingUserRef.current) {
-          console.log('[BusinessContext] Auth SIGNED_IN detected, reloading user...')
-          isLoadingUserRef.current = true
-          try {
-            await loadCurrentUserRef.current()
-          } finally {
-            isLoadingUserRef.current = false
+        if (event === 'SIGNED_IN' && !isLoadingUserRef.current) {
+          const sessionUserId = _session?.user?.id
+          // Reload if no user loaded yet OR if the user changed (e.g. coach login replacing client session)
+          if (!currentUserRef.current || currentUserRef.current.id !== sessionUserId) {
+            console.log('[BusinessContext] Auth SIGNED_IN detected, reloading user...', {
+              previousUser: currentUserRef.current?.id,
+              newUser: sessionUserId,
+            })
+            // Clear stale business data when user changes
+            if (currentUserRef.current && currentUserRef.current.id !== sessionUserId) {
+              setActiveBusinessState(null)
+              setBusinessProfileId(null)
+              setViewerContext(defaultViewerContext)
+            }
+            isLoadingUserRef.current = true
+            try {
+              await loadCurrentUserRef.current()
+            } finally {
+              isLoadingUserRef.current = false
+            }
           }
         } else if (event === 'SIGNED_OUT') {
           setCurrentUser(null)

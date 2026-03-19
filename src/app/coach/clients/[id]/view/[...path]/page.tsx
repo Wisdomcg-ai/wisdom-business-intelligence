@@ -96,23 +96,34 @@ export default function CoachViewPage({ params }: PageProps) {
   const pathArray = params?.path
   const pathString = pathArray.join('/')
 
-  const { activeBusiness, setActiveBusiness, isLoading: contextLoading } = useBusinessContext()
+  const { currentUser, activeBusiness, setActiveBusiness, isLoading: contextLoading } = useBusinessContext()
   const [PageComponent, setPageComponent] = useState<React.ComponentType<any> | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [businessSet, setBusinessSet] = useState(false)
 
   // Set the active business when the page loads
+  // Wait for currentUser to be available (initial context load complete)
   useEffect(() => {
+    if (!currentUser || !clientId) return
+
     const initBusiness = async () => {
-      if (clientId && (!activeBusiness || activeBusiness.id !== clientId)) {
+      if (!activeBusiness || activeBusiness.id !== clientId) {
         console.log('[CoachViewPage] Setting active business to client:', clientId)
         await setActiveBusiness(clientId)
       }
-      setBusinessSet(true)
     }
     initBusiness()
-  }, [clientId, activeBusiness?.id, setActiveBusiness])
+  }, [clientId, currentUser, activeBusiness?.id, setActiveBusiness])
+
+  // Only mark business as set when activeBusiness actually matches the client
+  useEffect(() => {
+    if (activeBusiness?.id === clientId) {
+      setBusinessSet(true)
+    } else {
+      setBusinessSet(false)
+    }
+  }, [activeBusiness?.id, clientId])
 
   // Load the page component after business is set
   useEffect(() => {
