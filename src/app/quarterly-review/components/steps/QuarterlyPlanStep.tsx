@@ -100,13 +100,18 @@ const MAX_PER_PERSON = 3;
 // ═══════════════════════════════════════════════════════════════
 
 function formatCurrency(value: number): string {
-  if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
-  if (value >= 1000) return `$${(value / 1000).toFixed(0)}k`;
-  return `$${value.toLocaleString('en-AU')}`;
+  if (value === 0 || value === null || value === undefined) return '$0';
+  const abs = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+  if (abs >= 1000000) return `${sign}$${(abs / 1000000).toFixed(1)}M`;
+  if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(0)}k`;
+  return `${sign}$${abs.toLocaleString('en-AU')}`;
 }
 
 function parseCurrencyInput(value: string): number {
-  return parseInt(value.replace(/[$,\s]/g, '')) || 0;
+  const cleaned = value.replace(/[$,\s]/g, '');
+  if (cleaned === '' || cleaned === '-') return 0;
+  return parseInt(cleaned) || 0;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -138,6 +143,8 @@ export function QuarterlyPlanStep({
   const [annualTargets, setAnnualTargets] = useState<{ revenue: number; grossProfit: number; netProfit: number }>({
     revenue: 0, grossProfit: 0, netProfit: 0,
   });
+  // Raw string overrides for inputs — allows typing "-" without immediate parse
+  const [rawInputs, setRawInputs] = useState<Record<string, string>>({});
 
   // Core Business Metrics + KPIs (mirroring Goals Wizard Step 4)
   const [coreMetrics, setCoreMetrics] = useState<Record<string, { year1: number }> | null>(null);
@@ -1043,17 +1050,35 @@ export function QuarterlyPlanStep({
                             >
                               <input
                                 type="text"
-                                value={
-                                  row.isPercentage
-                                    ? (cellValue ? `${cellValue.toFixed(1)}%` : '')
-                                    : (cellValue ? formatDollar(cellValue) : '')
-                                }
-                                onChange={(e) => {
+                                value={(() => {
+                                  const rk = `${q.id}-${row.key}`;
+                                  if (rk in rawInputs) return rawInputs[rk];
+                                  if (row.isPercentage) return cellValue ? `${cellValue.toFixed(1)}%` : '';
+                                  return cellValue ? formatDollar(cellValue) : '';
+                                })()}
+                                onFocus={() => {
+                                  const rk = `${q.id}-${row.key}`;
                                   if (row.isPercentage) {
-                                    updateFinancialCell(q.id, row.key, e.target.value.replace('%', ''));
+                                    setRawInputs(prev => ({ ...prev, [rk]: cellValue ? cellValue.toFixed(1) : '' }));
                                   } else {
-                                    updateFinancialCell(q.id, row.key, parseDollarInput(e.target.value).toString());
+                                    setRawInputs(prev => ({ ...prev, [rk]: cellValue ? String(cellValue) : '' }));
                                   }
+                                }}
+                                onChange={(e) => {
+                                  const rk = `${q.id}-${row.key}`;
+                                  const v = e.target.value.replace(row.isPercentage ? /[^0-9.%-]/g : /[^0-9.-]/g, '');
+                                  setRawInputs(prev => ({ ...prev, [rk]: v }));
+                                }}
+                                onBlur={() => {
+                                  const rk = `${q.id}-${row.key}`;
+                                  const raw = rawInputs[rk] || '';
+                                  if (row.isPercentage) {
+                                    updateFinancialCell(q.id, row.key, raw.replace('%', ''));
+                                  } else {
+                                    const parsed = raw === '' || raw === '-' ? 0 : parseInt(raw.replace(/[$,]/g, '')) || 0;
+                                    updateFinancialCell(q.id, row.key, String(parsed));
+                                  }
+                                  setRawInputs(prev => { const next = { ...prev }; delete next[rk]; return next; });
                                 }}
                                 placeholder={q.isPast || q.isCurrent ? 'Actual' : row.isPercentage ? '0%' : 'Target'}
                                 className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
@@ -1208,8 +1233,15 @@ export function QuarterlyPlanStep({
                             <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
                               <input
                                 type="text"
-                                value={savedQuarterlyTargets['avgTransactionValue']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] ? formatDollar(parseFloat(savedQuarterlyTargets['avgTransactionValue'][q.id as 'q1' | 'q2' | 'q3' | 'q4'])) : ''}
-                                onChange={(e) => updateSavedQuarterlyTarget('avgTransactionValue', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
+                                value={(() => {
+                                  const rk = `atv-${q.id}`;
+                                  if (rk in rawInputs) return rawInputs[rk];
+                                  const sv = savedQuarterlyTargets['avgTransactionValue']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'];
+                                  return sv ? formatDollar(parseFloat(sv)) : '';
+                                })()}
+                                onFocus={() => { const rk = `atv-${q.id}`; const sv = savedQuarterlyTargets['avgTransactionValue']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4']; setRawInputs(prev => ({ ...prev, [rk]: sv && parseFloat(sv) ? sv : '' })); }}
+                                onChange={(e) => { const rk = `atv-${q.id}`; const v = e.target.value.replace(/[^0-9.-]/g, ''); setRawInputs(prev => ({ ...prev, [rk]: v })); }}
+                                onBlur={() => { const rk = `atv-${q.id}`; const raw = rawInputs[rk] || ''; const parsed = raw === '' || raw === '-' ? 0 : parseDollarInput(raw); updateSavedQuarterlyTarget('avgTransactionValue', q.id as 'q1' | 'q2' | 'q3' | 'q4', isNaN(parsed) ? '0' : String(parsed)); setRawInputs(prev => { const next = { ...prev }; delete next[rk]; return next; }); }}
                                 placeholder="$0"
                                 className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
                                   q.isPast

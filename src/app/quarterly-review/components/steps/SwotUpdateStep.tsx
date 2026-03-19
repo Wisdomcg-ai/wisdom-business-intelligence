@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview } from '../../types';
 import {
@@ -126,7 +127,17 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
   const autoSaveInProgressRef = useRef(false);
 
   const supabase = createClient();
+  const { activeBusiness } = useBusinessContext();
   const prevQuarter = getPreviousQuarter(review.quarter, review.year);
+
+  // SWOT business_id stores the business OWNER's user ID (not businesses.id).
+  // When a coach views a client, activeBusiness.ownerId is the client's user ID.
+  const getSwotBusinessId = useCallback((userId: string): string => {
+    if (activeBusiness?.ownerId && activeBusiness.ownerId !== userId) {
+      return activeBusiness.ownerId;
+    }
+    return userId;
+  }, [activeBusiness]);
 
   useEffect(() => {
     fetchSwotData();
@@ -156,11 +167,13 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
         return;
       }
 
+      const swotBusinessId = getSwotBusinessId(user.id);
+
       // Fetch current quarter's SWOT (if exists)
       const { data: currentData } = await supabase
         .from('swot_analyses')
         .select(`*, swot_items (id, category, title, description, status)`)
-        .eq('business_id', user.id)
+        .eq('business_id', swotBusinessId)
         .eq('quarter', review.quarter)
         .eq('year', review.year)
         .eq('type', 'quarterly')
@@ -170,7 +183,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
       const { data: previousData } = await supabase
         .from('swot_analyses')
         .select(`*, swot_items (id, category, title, description, status)`)
-        .eq('business_id', user.id)
+        .eq('business_id', swotBusinessId)
         .eq('quarter', prevQuarter.quarter)
         .eq('year', prevQuarter.year)
         .eq('type', 'quarterly')
@@ -228,13 +241,14 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      const swotBusinessId = getSwotBusinessId(user.id);
 
       let swotId: string | null = autoSavedSwotIdRef.current || (isEditing ? currentSwot?.id ?? null : null);
 
       if (!swotId) {
         // Create new SWOT analysis
         const { data, error } = await supabase.rpc('create_quarterly_swot', {
-          p_user_id: user.id,
+          p_user_id: swotBusinessId,
           p_quarter: review.quarter,
           p_year: review.year,
         });
@@ -268,7 +282,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
             impact_level: 3,
             priority_order: index,
             status: 'active',
-            created_by: user.id
+            created_by: swotBusinessId
           });
         });
       });
@@ -362,12 +376,13 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) return;
+          const swotBizId = getSwotBusinessId(user.id);
 
           let swotId: string | null = autoSavedSwotIdRef.current || (isEditingRef.current ? currentSwotRef.current?.id ?? null : null);
 
           if (!swotId) {
             const { data, error } = await supabase.rpc('create_quarterly_swot', {
-              p_user_id: user.id,
+              p_user_id: swotBizId,
               p_quarter: review.quarter,
               p_year: review.year,
             });
@@ -397,7 +412,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
                 impact_level: 3,
                 priority_order: index,
                 status: 'active',
-                created_by: user.id
+                created_by: swotBizId
               });
             });
           });
@@ -442,6 +457,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+      const swotBusinessId = getSwotBusinessId(user.id);
 
       // Reuse autosaved SWOT ID or existing SWOT, otherwise create new
       let swotId: string | null = autoSavedSwotIdRef.current || (isEditing ? currentSwot?.id ?? null : null);
@@ -449,7 +465,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
       if (!swotId) {
         const { data, error: createError } = await supabase
           .rpc('create_quarterly_swot', {
-            p_user_id: user.id,
+            p_user_id: swotBusinessId,
             p_quarter: review.quarter,
             p_year: review.year,
           });
@@ -481,7 +497,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
             impact_level: 3,
             priority_order: index,
             status: 'active',
-            created_by: user.id
+            created_by: swotBusinessId
           });
         });
       });

@@ -78,6 +78,11 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
 
   const [commentary, setCommentary] = useState(review.scorecard_commentary || '');
 
+  // Raw string overrides: when a key exists, the input shows the raw string.
+  // On blur the raw string is parsed to a number, the override is removed,
+  // and the formatted number is shown instead.  No focus tracking needed.
+  const [rawInputs, setRawInputs] = useState<Record<string, string>>({});
+
   const [coreMetrics, setCoreMetrics] = useState<CoreMetric[]>([
     { id: 'leadsPerMonth', label: 'Leads per Month', target: existingSnapshot.coreMetrics?.leadsPerMonth?.target || 0, actual: existingSnapshot.coreMetrics?.leadsPerMonth?.actual || 0, unit: '', format: 'number' },
     { id: 'conversionRate', label: 'Conversion Rate', target: existingSnapshot.coreMetrics?.conversionRate?.target || 0, actual: existingSnapshot.coreMetrics?.conversionRate?.actual || 0, unit: '%', format: 'percentage' },
@@ -230,11 +235,15 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
   };
 
   const formatCurrency = (value: number): string => {
-    if (!value) return '$0';
+    if (value === 0 || value === null || value === undefined) return '$0';
     return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
   };
 
-  const parseCurrencyInput = (value: string): number => parseInt(value.replace(/[$,]/g, '')) || 0;
+  const parseCurrencyInput = (value: string): number => {
+    const cleaned = value.replace(/[$,\s]/g, '');
+    if (cleaned === '' || cleaned === '-') return 0;
+    return parseInt(cleaned) || 0;
+  };
 
   const updateFinancialActual = (id: string, value: number) => {
     setFinancials(prev => prev.map(f => f.id === id ? { ...f, actual: value } : f));
@@ -253,7 +262,7 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
   };
 
   const formatCoreMetricValue = (metric: CoreMetric, value: number): string => {
-    if (!value) return '';
+    if (value === 0 || value === null || value === undefined) return '';
     switch (metric.format) {
       case 'currency': return formatCurrency(value);
       case 'percentage': return `${value}%`;
@@ -270,7 +279,7 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
   };
 
   const formatKpiValue = (value: number, unit: string): string => {
-    if (!value) return '-';
+    if (value === 0 || value === null || value === undefined) return '-';
     if (unit === 'currency' || unit === '$') return formatCurrency(value);
     if (unit === '%' || unit === 'percentage') return `${value}%`;
     return `${value}${unit ? ` ${unit}` : ''}`;
@@ -389,11 +398,21 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
                     {hasTargetsFromPlan && metric.target > 0 ? (
                       <div className="px-3 py-2 bg-gray-100 rounded-lg text-center text-sm font-medium text-gray-700">{formatCurrency(metric.target)}</div>
                     ) : (
-                      <input type="text" value={metric.target ? formatCurrency(metric.target) : ''} onChange={(e) => updateFinancialTarget(metric.id, parseCurrencyInput(e.target.value))} placeholder="$0" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500" />
+                      <input type="text"
+                        value={`fin-target-${metric.id}` in rawInputs ? rawInputs[`fin-target-${metric.id}`] : (metric.target !== 0 ? formatCurrency(metric.target) : '')}
+                        onFocus={() => { setRawInputs(prev => ({ ...prev, [`fin-target-${metric.id}`]: metric.target !== 0 ? String(metric.target) : '' })); }}
+                        onChange={(e) => { const v = e.target.value.replace(/[^0-9.-]/g, ''); setRawInputs(prev => ({ ...prev, [`fin-target-${metric.id}`]: v })); }}
+                        onBlur={() => { const raw = rawInputs[`fin-target-${metric.id}`] || ''; const parsed = raw === '' || raw === '-' ? 0 : parseInt(raw) || 0; updateFinancialTarget(metric.id, parsed); setRawInputs(prev => { const next = { ...prev }; delete next[`fin-target-${metric.id}`]; return next; }); }}
+                        placeholder="$0" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500" />
                     )}
                   </div>
                   <div className="col-span-3">
-                    <input type="text" value={metric.actual ? formatCurrency(metric.actual) : ''} onChange={(e) => updateFinancialActual(metric.id, parseCurrencyInput(e.target.value))} placeholder="$0" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 bg-white" />
+                    <input type="text"
+                      value={`fin-actual-${metric.id}` in rawInputs ? rawInputs[`fin-actual-${metric.id}`] : (metric.actual !== 0 ? formatCurrency(metric.actual) : '')}
+                      onFocus={() => { setRawInputs(prev => ({ ...prev, [`fin-actual-${metric.id}`]: metric.actual !== 0 ? String(metric.actual) : '' })); }}
+                      onChange={(e) => { const v = e.target.value.replace(/[^0-9.-]/g, ''); setRawInputs(prev => ({ ...prev, [`fin-actual-${metric.id}`]: v })); }}
+                      onBlur={() => { const raw = rawInputs[`fin-actual-${metric.id}`] || ''; const parsed = raw === '' || raw === '-' ? 0 : parseInt(raw) || 0; updateFinancialActual(metric.id, parsed); setRawInputs(prev => { const next = { ...prev }; delete next[`fin-actual-${metric.id}`]; return next; }); }}
+                      placeholder="$0" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 bg-white" />
                   </div>
                   <div className="col-span-3">
                     <div className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg ${getVarianceColor(variance)}`}>
@@ -459,7 +478,12 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
                     </span>
                   </div>
                   <div className="col-span-3">
-                    <input type="text" value={formatCoreMetricValue(metric, metric.actual)} onChange={(e) => updateCoreMetricActual(metric.id, parseCoreMetricInput(metric, e.target.value))} placeholder={metric.format === 'currency' ? '$0' : '0'} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 bg-white" />
+                    <input type="text"
+                      value={`core-${metric.id}` in rawInputs ? rawInputs[`core-${metric.id}`] : formatCoreMetricValue(metric, metric.actual)}
+                      onFocus={() => { setRawInputs(prev => ({ ...prev, [`core-${metric.id}`]: metric.actual !== 0 ? String(metric.actual) : '' })); }}
+                      onChange={(e) => { const v = e.target.value.replace(/[^0-9.%-]/g, ''); setRawInputs(prev => ({ ...prev, [`core-${metric.id}`]: v })); }}
+                      onBlur={() => { const raw = rawInputs[`core-${metric.id}`] || ''; const parsed = raw === '' || raw === '-' ? 0 : parseCoreMetricInput(metric, raw); updateCoreMetricActual(metric.id, parsed); setRawInputs(prev => { const next = { ...prev }; delete next[`core-${metric.id}`]; return next; }); }}
+                      placeholder={metric.format === 'currency' ? '$0' : '0'} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500 bg-white" />
                   </div>
                   <div className="col-span-3">
                     <div className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg ${getVarianceColor(displayVariance)}`}>
@@ -522,7 +546,12 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
                           <div className="col-span-2 text-center"><span className="text-sm text-gray-600 font-medium">{formatKpiValue(target, kpi.unit)}</span></div>
                           <div className="col-span-3">
                             <div className="flex items-center gap-1">
-                              <input type="text" value={kpi.unit === 'currency' || kpi.unit === '$' ? (actual ? formatCurrency(actual) : '') : (actual || '')} onChange={(e) => { const val = kpi.unit === 'currency' || kpi.unit === '$' ? parseCurrencyInput(e.target.value) : parseFloat(e.target.value) || 0; updateKpiActual(kpi.kpi_id, val); }} placeholder={kpi.unit === 'currency' || kpi.unit === '$' ? '$0' : '0'} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500" />
+                              <input type="text"
+                                value={`kpi-${kpi.kpi_id}` in rawInputs ? rawInputs[`kpi-${kpi.kpi_id}`] : (kpi.unit === 'currency' || kpi.unit === '$' ? (actual !== 0 ? formatCurrency(actual) : '') : (actual !== 0 ? String(actual) : ''))}
+                                onFocus={() => { setRawInputs(prev => ({ ...prev, [`kpi-${kpi.kpi_id}`]: actual !== 0 ? String(actual) : '' })); }}
+                                onChange={(e) => { const v = e.target.value.replace(/[^0-9.-]/g, ''); setRawInputs(prev => ({ ...prev, [`kpi-${kpi.kpi_id}`]: v })); }}
+                                onBlur={() => { const raw = rawInputs[`kpi-${kpi.kpi_id}`] || ''; const parsed = raw === '' || raw === '-' ? 0 : (kpi.unit === 'currency' || kpi.unit === '$' ? parseCurrencyInput(raw) : parseFloat(raw) || 0); updateKpiActual(kpi.kpi_id, parsed); setRawInputs(prev => { const next = { ...prev }; delete next[`kpi-${kpi.kpi_id}`]; return next; }); }}
+                                placeholder={kpi.unit === 'currency' || kpi.unit === '$' ? '$0' : '0'} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-center text-sm font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange-500" />
                               {getKpiDisplayUnit(kpi.unit) && <span className="text-xs text-gray-500 whitespace-nowrap">{getKpiDisplayUnit(kpi.unit)}</span>}
                             </div>
                           </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
@@ -43,7 +43,7 @@ interface StrategicInitiative {
 }
 
 function formatCurrency(value: number): string {
-  if (!value) return '$0';
+  if (value === 0 || value === null || value === undefined) return '$0';
   return new Intl.NumberFormat('en-AU', {
     style: 'currency',
     currency: 'AUD',
@@ -66,6 +66,9 @@ export function ConfidenceRealignmentStep({
   const [goals, setGoals] = useState<FinancialGoals | null>(null);
   const [initiatives, setInitiatives] = useState<StrategicInitiative[]>([]);
   const [ytdActuals, setYtdActuals] = useState({ revenue: 0, grossProfit: 0, netProfit: 0 });
+  // Raw string overrides for YTD inputs — when a key exists, the input shows the raw string.
+  // On blur the raw string is parsed, the override is removed, and the formatted value shows.
+  const [ytdRaw, setYtdRaw] = useState<Record<string, string | undefined>>({});
   const [yearType, setYearType] = useState<'FY' | 'CY'>('CY');
 
   // Confidence data (from review)
@@ -133,7 +136,16 @@ export function ConfidenceRealignmentStep({
         .lt('quarter', actualQ.quarter)
         .order('quarter', { ascending: true });
 
-      if (completedReviews && completedReviews.length > 0) {
+      // Priority 1: Use previously saved YTD values from this review
+      if (review.ytd_revenue_annual || review.ytd_gross_profit_annual || review.ytd_net_profit_annual) {
+        setYtdActuals({
+          revenue: review.ytd_revenue_annual || 0,
+          grossProfit: review.ytd_gross_profit_annual || 0,
+          netProfit: review.ytd_net_profit_annual || 0,
+        });
+      }
+      // Priority 2: Auto-calculate from completed prior-quarter reviews
+      else if (completedReviews && completedReviews.length > 0) {
         const ytd = { revenue: 0, grossProfit: 0, netProfit: 0 };
         for (const qr of completedReviews as Array<{ id: string; quarter: number; year: number; quarterly_targets: QuarterlyTargets | null }>) {
           if (qr.quarterly_targets) {
@@ -173,9 +185,9 @@ export function ConfidenceRealignmentStep({
     };
 
     const remaining = {
-      revenue: Math.max(annualTargets.revenue - ytdActuals.revenue, 0),
-      grossProfit: Math.max(annualTargets.grossProfit - ytdActuals.grossProfit, 0),
-      netProfit: Math.max(annualTargets.netProfit - ytdActuals.netProfit, 0),
+      revenue: annualTargets.revenue - ytdActuals.revenue,
+      grossProfit: annualTargets.grossProfit - ytdActuals.grossProfit,
+      netProfit: annualTargets.netProfit - ytdActuals.netProfit,
     };
 
     const divisor = remainingQuarters > 0 ? remainingQuarters : 1;
@@ -251,6 +263,33 @@ export function ConfidenceRealignmentStep({
       adjustedTargets: { ...current, [field]: parsed },
     });
   };
+
+  const handleYtdFocus = useCallback((field: 'revenue' | 'grossProfit' | 'netProfit') => {
+    const val = ytdActuals[field];
+    setYtdRaw(prev => ({ ...prev, [field]: val !== 0 ? String(val) : '' }));
+  }, [ytdActuals]);
+
+  const handleYtdRawChange = useCallback((field: 'revenue' | 'grossProfit' | 'netProfit', value: string) => {
+    const cleaned = value.replace(/[^0-9.-]/g, '');
+    setYtdRaw(prev => ({ ...prev, [field]: cleaned }));
+  }, []);
+
+  const handleYtdBlur = useCallback((field: 'revenue' | 'grossProfit' | 'netProfit') => {
+    const raw = ytdRaw[field] || '';
+    const parsed = raw === '' || raw === '-' ? 0 : parseFloat(raw) || 0;
+    // Remove the raw override so the formatted value shows
+    setYtdRaw(prev => ({ ...prev, [field]: undefined }));
+    const updated = { ...ytdActuals, [field]: parsed };
+    setYtdActuals(updated);
+    onUpdateConfidence({
+      confidence,
+      notes,
+      adjusted,
+      ytdRevenue: updated.revenue || null,
+      ytdGrossProfit: updated.grossProfit || null,
+      ytdNetProfit: updated.netProfit || null,
+    });
+  }, [ytdRaw, ytdActuals, confidence, notes, adjusted, onUpdateConfidence]);
 
   const getConfidenceColor = (value: number) => {
     if (value >= 8) return 'text-green-600';
@@ -338,7 +377,7 @@ export function ConfidenceRealignmentStep({
                   <tr className="border-b border-gray-200">
                     <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-5 w-[25%]">Metric</th>
                     <th className="text-right text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4">Annual Target</th>
-                    <th className="text-right text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4">YTD</th>
+                    <th className="text-right text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4">YTD Actual</th>
                     <th className="text-right text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4">Remaining</th>
                     <th className="text-right text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4">Run Rate / Qtr</th>
                     <th className="text-center text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4 w-[15%]">Progress</th>
@@ -352,9 +391,9 @@ export function ConfidenceRealignmentStep({
                   ]).map(({ key, label, targetKey, color, bg }) => {
                     const target = goals[targetKey];
                     const ytd = ytdActuals[key];
-                    const remaining = Math.max(target - ytd, 0);
+                    const remaining = target - ytd;
                     const runRate = remainingQuarters > 0 ? Math.round(remaining / remainingQuarters) : remaining;
-                    const pct = target > 0 ? Math.min(Math.round((ytd / target) * 100), 100) : 0;
+                    const pct = target > 0 ? Math.round((ytd / target) * 100) : 0;
                     const projection = getRunRateProjection(key);
 
                     return (
@@ -373,7 +412,20 @@ export function ConfidenceRealignmentStep({
                           )}
                         </td>
                         <td className="py-3 px-4 text-right text-sm font-semibold text-gray-900">{formatCurrency(target)}</td>
-                        <td className="py-3 px-4 text-right text-sm text-gray-700">{formatCurrency(ytd)}</td>
+                        <td className="py-2 px-3">
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                            <input
+                              type="text"
+                              value={ytdRaw[key] !== undefined ? ytdRaw[key] : (ytd !== 0 ? Math.round(ytd).toLocaleString('en-AU') : '')}
+                              onFocus={() => handleYtdFocus(key)}
+                              onChange={(e) => handleYtdRawChange(key, e.target.value)}
+                              onBlur={() => handleYtdBlur(key)}
+                              placeholder="Enter YTD"
+                              className="w-full pl-5 pr-2 py-1.5 text-sm text-right border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent bg-white"
+                            />
+                          </div>
+                        </td>
                         <td className="py-3 px-4 text-right text-sm text-gray-700">{formatCurrency(remaining)}</td>
                         <td className={`py-3 px-4 text-right text-sm font-bold ${color}`}>{formatCurrency(runRate)}</td>
                         <td className="py-3 px-4">

@@ -33,7 +33,7 @@ interface BusinessKpi {
 }
 
 function formatCurrency(value: number): string {
-  if (!value) return '$0';
+  if (value === 0 || value === null || value === undefined) return '$0';
   return new Intl.NumberFormat('en-AU', {
     style: 'currency',
     currency: 'AUD',
@@ -43,12 +43,17 @@ function formatCurrency(value: number): string {
 }
 
 function parseCurrencyInput(value: string): number {
-  return parseInt(value.replace(/[$,\s]/g, '')) || 0;
+  const cleaned = value.replace(/[$,\s]/g, '');
+  if (cleaned === '' || cleaned === '-') return 0;
+  return parseInt(cleaned) || 0;
 }
 
 export function QuarterlyTargetsStep({ review, onUpdateTargets }: QuarterlyTargetsStepProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [businessKpis, setBusinessKpis] = useState<BusinessKpi[]>([]);
+  // Raw string overrides: when a key exists, the input shows the raw string.
+  // On blur the raw string is parsed, the override is removed, and the formatted value shows.
+  const [rawInputs, setRawInputs] = useState<Record<string, string>>({});
 
   const supabase = createClient();
   const { activeBusiness } = useBusinessContext();
@@ -294,8 +299,10 @@ export function QuarterlyTargetsStep({ review, onUpdateTargets }: QuarterlyTarge
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
               <input
                 type="text"
-                value={targets.revenue ? targets.revenue.toLocaleString('en-AU') : ''}
-                onChange={(e) => updateTarget('revenue', parseCurrencyInput(e.target.value))}
+                value={'revenue' in rawInputs ? rawInputs['revenue'] : (targets.revenue ? targets.revenue.toLocaleString('en-AU') : '')}
+                onFocus={() => { setRawInputs(prev => ({ ...prev, revenue: targets.revenue ? String(targets.revenue) : '' })); }}
+                onChange={(e) => { const v = e.target.value.replace(/[^0-9.-]/g, ''); setRawInputs(prev => ({ ...prev, revenue: v })); }}
+                onBlur={() => { const raw = rawInputs['revenue'] || ''; const parsed = raw === '' || raw === '-' ? 0 : parseInt(raw) || 0; updateTarget('revenue', parsed); setRawInputs(prev => { const next = { ...prev }; delete next['revenue']; return next; }); }}
                 placeholder="0"
                 className="w-full pl-8 pr-4 py-3 text-lg font-semibold border border-brand-orange-300 rounded-xl focus:ring-2 focus:ring-brand-orange focus:border-transparent bg-white"
               />
@@ -337,8 +344,10 @@ export function QuarterlyTargetsStep({ review, onUpdateTargets }: QuarterlyTarge
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
               <input
                 type="text"
-                value={targets.grossProfit ? targets.grossProfit.toLocaleString('en-AU') : ''}
-                onChange={(e) => updateTarget('grossProfit', parseCurrencyInput(e.target.value))}
+                value={'grossProfit' in rawInputs ? rawInputs['grossProfit'] : (targets.grossProfit ? targets.grossProfit.toLocaleString('en-AU') : '')}
+                onFocus={() => { setRawInputs(prev => ({ ...prev, grossProfit: targets.grossProfit ? String(targets.grossProfit) : '' })); }}
+                onChange={(e) => { const v = e.target.value.replace(/[^0-9.-]/g, ''); setRawInputs(prev => ({ ...prev, grossProfit: v })); }}
+                onBlur={() => { const raw = rawInputs['grossProfit'] || ''; const parsed = raw === '' || raw === '-' ? 0 : parseInt(raw) || 0; updateTarget('grossProfit', parsed); setRawInputs(prev => { const next = { ...prev }; delete next['grossProfit']; return next; }); }}
                 placeholder="0"
                 className="w-full pl-8 pr-4 py-3 text-lg font-semibold border border-green-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
               />
@@ -375,8 +384,10 @@ export function QuarterlyTargetsStep({ review, onUpdateTargets }: QuarterlyTarge
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
               <input
                 type="text"
-                value={targets.netProfit ? targets.netProfit.toLocaleString('en-AU') : ''}
-                onChange={(e) => updateTarget('netProfit', parseCurrencyInput(e.target.value))}
+                value={'netProfit' in rawInputs ? rawInputs['netProfit'] : (targets.netProfit ? targets.netProfit.toLocaleString('en-AU') : '')}
+                onFocus={() => { setRawInputs(prev => ({ ...prev, netProfit: targets.netProfit ? String(targets.netProfit) : '' })); }}
+                onChange={(e) => { const v = e.target.value.replace(/[^0-9.-]/g, ''); setRawInputs(prev => ({ ...prev, netProfit: v })); }}
+                onBlur={() => { const raw = rawInputs['netProfit'] || ''; const parsed = raw === '' || raw === '-' ? 0 : parseInt(raw) || 0; updateTarget('netProfit', parsed); setRawInputs(prev => { const next = { ...prev }; delete next['netProfit']; return next; }); }}
                 placeholder="0"
                 className="w-full pl-8 pr-4 py-3 text-lg font-semibold border border-blue-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
               />
@@ -426,10 +437,13 @@ export function QuarterlyTargetsStep({ review, onUpdateTargets }: QuarterlyTarge
                   <div className="w-40">
                     <div className="flex items-center gap-2">
                       <input
-                        type="number"
-                        value={kpi.target || ''}
-                        onChange={(e) => updateKpiTarget(kpi.id, parseFloat(e.target.value) || 0)}
+                        type="text"
+                        value={`kpi-${kpi.id}` in rawInputs ? rawInputs[`kpi-${kpi.id}`] : (kpi.target ? String(kpi.target) : '')}
+                        onFocus={() => { setRawInputs(prev => ({ ...prev, [`kpi-${kpi.id}`]: kpi.target ? String(kpi.target) : '' })); }}
+                        onChange={(e) => { const v = e.target.value.replace(/[^0-9.-]/g, ''); setRawInputs(prev => ({ ...prev, [`kpi-${kpi.id}`]: v })); }}
+                        onBlur={() => { const raw = rawInputs[`kpi-${kpi.id}`] || ''; const parsed = raw === '' || raw === '-' ? 0 : parseFloat(raw) || 0; updateKpiTarget(kpi.id, parsed); setRawInputs(prev => { const next = { ...prev }; delete next[`kpi-${kpi.id}`]; return next; }); }}
                         placeholder="0"
+                        inputMode="decimal"
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-center focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                       />
                       {kpi.unit && (
