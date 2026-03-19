@@ -54,11 +54,18 @@ const getPageComponent = (path: string[]) => {
     'team/hiring-roadmap': () => import('@/app/team/hiring-roadmap/page'),
     'team/org-chart': () => import('@/app/team/org-chart/page'),
 
+    // BUSINESS ENGINES - Systems
+    'systems/processes': () => import('@/app/systems/processes/page'),
+
     // REVIEW
     'quarterly-review': () => import('@/app/quarterly-review/page'),
     'quarterly-review/workshop': () => import('@/app/quarterly-review/workshop/page'),
     'quarterly-review/history': () => import('@/app/quarterly-review/history/page'),
     'quarterly-review/summary': () => import('@/app/quarterly-review/summary/[id]/page'),
+
+    // COACHING
+    'messages': () => import('@/app/messages/page'),
+    'sessions': () => import('@/app/sessions/page'),
 
     // SETTINGS
     'settings': () => import('@/app/settings/page'),

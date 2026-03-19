@@ -129,16 +129,16 @@ function getPermissionsForRole(role: ViewerContext['role'], isOwner: boolean): V
   if (role === 'coach') {
     return {
       canViewSharedBoards: true,
-      canAddToSharedBoards: false,
-      canEditOwnItems: false,
-      canEditAllItems: false,
-      canDeleteOwnItems: false,
-      canDeleteAllItems: false,
+      canAddToSharedBoards: true,
+      canEditOwnItems: true,
+      canEditAllItems: true,
+      canDeleteOwnItems: true,
+      canDeleteAllItems: true,
       canViewOwnReviews: true,
       canViewAllReviews: true,
       canViewStrategicItems: true,
-      canEditStrategicItems: false,
-      canManageTeam: false,
+      canEditStrategicItems: true,
+      canManageTeam: true,
     }
   }
 

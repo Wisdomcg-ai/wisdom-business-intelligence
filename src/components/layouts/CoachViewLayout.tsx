@@ -2,26 +2,36 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import {
   ArrowLeft,
   Eye,
   Building2,
-  LayoutDashboard,
+  Gauge,
   ClipboardCheck,
   Target,
   FileText,
   TrendingUp,
   BarChart3,
+  Banknote,
   AlertCircle,
   Layers,
   CheckSquare,
   XCircle,
   Calendar,
+  CalendarCheck,
   LineChart,
   Users,
   Compass,
   Award,
+  Network,
+  HeartHandshake,
+  GitBranch,
+  Settings,
+  Briefcase,
+  Lightbulb,
+  MessageCircle,
   ChevronDown,
   ChevronUp
 } from 'lucide-react'
@@ -31,6 +41,7 @@ interface NavItem {
   href: string
   icon: React.ElementType
   disabled?: boolean
+  badge?: string
   children?: NavItem[]
 }
 
@@ -40,13 +51,13 @@ interface NavSection {
   defaultOpen?: boolean
 }
 
-// Same navigation as client sidebar - must match sidebar-layout.tsx exactly
+// Must match sidebar-layout.tsx exactly
 const getClientNavigation = (clientId: string): NavSection[] => [
   {
     title: 'HOME',
     defaultOpen: true,
     items: [
-      { label: 'Command Centre', href: `/coach/clients/${clientId}/view/dashboard`, icon: LayoutDashboard },
+      { label: 'Command Centre', href: `/coach/clients/${clientId}/view/dashboard`, icon: Gauge },
     ],
   },
   {
@@ -74,7 +85,7 @@ const getClientNavigation = (clientId: string): NavSection[] => [
     items: [
       { label: 'Financial Forecast', href: `/coach/clients/${clientId}/view/finances/forecast`, icon: TrendingUp },
       { label: 'Monthly Report', href: `/coach/clients/${clientId}/view/finances/monthly-report`, icon: BarChart3 },
-      { label: 'Cashflow Forecast', href: `/coach/clients/${clientId}/view/finances/cashflow`, icon: Target },
+      { label: 'Cashflow Forecast', href: `/coach/clients/${clientId}/view/finances/cashflow`, icon: Banknote },
     ],
   },
   {
@@ -83,27 +94,67 @@ const getClientNavigation = (clientId: string): NavSection[] => [
     items: [
       { label: 'KPI Dashboard', href: `/coach/clients/${clientId}/view/business-dashboard`, icon: BarChart3 },
       { label: 'Weekly Review', href: `/coach/clients/${clientId}/view/reviews/weekly`, icon: Calendar },
-      { label: 'Quarterly Review', href: `/coach/clients/${clientId}/view/quarterly-review`, icon: Calendar },
       { label: 'Issues List', href: `/coach/clients/${clientId}/view/issues-list`, icon: AlertCircle },
-      { label: 'Ideas Journal', href: `/coach/clients/${clientId}/view/ideas`, icon: Layers },
-    ],
-  },
-  {
-    title: 'PRODUCTIVITY',
-    defaultOpen: true,
-    items: [
-      { label: 'Open Loops', href: `/coach/clients/${clientId}/view/open-loops`, icon: Layers },
-      { label: 'To-Do', href: `/coach/clients/${clientId}/view/todo`, icon: CheckSquare },
-      { label: 'Stop Doing', href: `/coach/clients/${clientId}/view/stop-doing`, icon: XCircle },
+      { label: 'Ideas Journal', href: `/coach/clients/${clientId}/view/ideas`, icon: Lightbulb },
+      {
+        label: 'Productivity',
+        href: `/coach/clients/${clientId}/view/productivity`,
+        icon: Briefcase,
+        children: [
+          { label: 'Open Loops', href: `/coach/clients/${clientId}/view/open-loops`, icon: Layers },
+          { label: 'To-Do', href: `/coach/clients/${clientId}/view/todo`, icon: CheckSquare },
+          { label: 'Stop Doing', href: `/coach/clients/${clientId}/view/stop-doing`, icon: XCircle },
+        ],
+      },
     ],
   },
   {
     title: 'BUSINESS ENGINES',
     defaultOpen: false,
     items: [
-      { label: 'Marketing', href: `/coach/clients/${clientId}/view/marketing/value-prop`, icon: LineChart },
-      { label: 'Team', href: `/coach/clients/${clientId}/view/team/accountability`, icon: Users },
-      { label: 'Org Chart Builder', href: `/coach/clients/${clientId}/view/team/org-chart`, icon: Users },
+      {
+        label: 'Marketing',
+        href: `/coach/clients/${clientId}/view/engines/marketing`,
+        icon: LineChart,
+        children: [
+          { label: 'Value Proposition & USP', href: `/coach/clients/${clientId}/view/marketing/value-prop`, icon: Target },
+          { label: 'Marketing Channels', href: `/coach/clients/${clientId}/view/marketing/channels`, icon: LineChart, disabled: true, badge: 'Soon' },
+          { label: 'Content Planner', href: `/coach/clients/${clientId}/view/marketing/content`, icon: FileText, disabled: true, badge: 'Soon' },
+        ],
+      },
+      {
+        label: 'Team',
+        href: `/coach/clients/${clientId}/view/engines/team`,
+        icon: Users,
+        children: [
+          { label: 'Accountability Chart', href: `/coach/clients/${clientId}/view/team/accountability`, icon: Network },
+          { label: 'Org Chart Builder', href: `/coach/clients/${clientId}/view/team/org-chart`, icon: Network },
+          { label: 'Culture & Retention', href: `/coach/clients/${clientId}/view/team/hiring-roadmap`, icon: HeartHandshake },
+        ],
+      },
+      {
+        label: 'Systems',
+        href: `/coach/clients/${clientId}/view/engines/systems`,
+        icon: Settings,
+        children: [
+          { label: 'Workflow Builder', href: `/coach/clients/${clientId}/view/systems/processes`, icon: GitBranch },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'REVIEW',
+    defaultOpen: true,
+    items: [
+      { label: 'Quarterly Review', href: `/coach/clients/${clientId}/view/quarterly-review`, icon: CalendarCheck },
+    ],
+  },
+  {
+    title: 'COACHING',
+    defaultOpen: true,
+    items: [
+      { label: 'Messages', href: `/coach/clients/${clientId}/view/messages`, icon: MessageCircle },
+      { label: 'Session Notes', href: `/coach/clients/${clientId}/view/sessions`, icon: FileText },
     ],
   },
 ]
@@ -115,17 +166,17 @@ interface CoachViewLayoutProps {
 
 export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
   const { activeBusiness } = useBusinessContext()
+  const pathname = usePathname()
   const [expandedSections, setExpandedSections] = useState<string[]>([
-    'DASHBOARD',
-    'START HERE',
-    'ROADMAP',
+    'HOME',
+    'SETUP',
     'BUSINESS PLAN',
     'FINANCES',
     'EXECUTE',
-    'PRODUCTIVITY',
+    'REVIEW',
+    'COACHING',
   ])
-
-  // Active business is set by CoachViewPage — no duplicate call here
+  const [expandedSubItems, setExpandedSubItems] = useState<string[]>([])
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) =>
@@ -133,9 +184,14 @@ export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
     )
   }
 
+  const toggleSubItem = (itemLabel: string) => {
+    setExpandedSubItems((prev) =>
+      prev.includes(itemLabel) ? prev.filter((s) => s !== itemLabel) : [...prev, itemLabel]
+    )
+  }
+
   const navigation = getClientNavigation(clientId)
 
-  // Always render sidebar + banner — only the content area shows loading/error
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Coach View Banner */}
@@ -160,41 +216,90 @@ export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
       </div>
 
       <div className="flex">
-        {/* Client Sidebar — always visible */}
-        <aside className="hidden lg:block w-64 bg-white border-r border-gray-200 min-h-[calc(100svh-52px)] sm:min-h-[calc(100vh-52px)] sticky top-[52px] flex-shrink-0">
+        {/* Client Sidebar — matches client sidebar-layout.tsx */}
+        <aside className="hidden lg:block w-64 bg-brand-navy border-r border-brand-navy-700 min-h-[calc(100svh-52px)] sm:min-h-[calc(100vh-52px)] sticky top-[52px] flex-shrink-0">
           <nav className="py-4">
             {navigation.map((section) => (
-              <div key={section.title} className="border-b border-gray-100 last:border-b-0">
+              <div key={section.title} className="border-b border-brand-navy-700">
                 <button
                   onClick={() => toggleSection(section.title)}
-                  className="w-full px-4 py-2 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                  className="w-full px-4 py-2 flex items-center justify-between hover:bg-white/5 transition-colors"
                 >
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
                     {section.title}
                   </span>
                   {expandedSections.includes(section.title) ? (
-                    <ChevronUp className="h-3 w-3 text-gray-400" />
+                    <ChevronUp className="h-3 w-3 text-white/70" />
                   ) : (
-                    <ChevronDown className="h-3 w-3 text-gray-400" />
+                    <ChevronDown className="h-3 w-3 text-white/70" />
                   )}
                 </button>
 
                 {expandedSections.includes(section.title) && (
-                  <div className="pb-2">
+                  <div className="space-y-0.5 pb-2">
                     {section.items.map((item) => {
                       const Icon = item.icon
+                      const isActive = pathname === item.href
+                      const hasChildren = item.children && item.children.length > 0
+                      const isExpanded = expandedSubItems.includes(item.label)
+
                       return (
-                        <Link
-                          key={item.href}
-                          href={item.disabled ? '#' : item.href}
-                          className={`flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 ${
-                            item.disabled ? 'opacity-50 cursor-not-allowed' : ''
-                          }`}
-                          onClick={(e) => item.disabled && e.preventDefault()}
-                        >
-                          <Icon className="h-4 w-4 mr-3 flex-shrink-0 text-gray-400" />
-                          <span>{item.label}</span>
-                        </Link>
+                        <div key={item.href}>
+                          {hasChildren ? (
+                            <>
+                              <button
+                                onClick={() => toggleSubItem(item.label)}
+                                className={`w-full flex items-center px-4 py-2 text-sm ${isActive ? 'bg-white/15 text-white font-medium border-l-2 border-brand-orange ml-0.5' : 'text-white hover:bg-white/10'}`}
+                              >
+                                <Icon className="h-4 w-4 mr-3 flex-shrink-0" />
+                                <span className="flex-1 text-left">{item.label}</span>
+                                {isExpanded ? (
+                                  <ChevronUp className="h-3 w-3 text-white/70" />
+                                ) : (
+                                  <ChevronDown className="h-3 w-3 text-white/70" />
+                                )}
+                              </button>
+                              {isExpanded && (
+                                <div className="ml-4 border-l border-white/20 space-y-0.5">
+                                  {item.children!.map((child) => {
+                                    const ChildIcon = child.icon
+                                    const isChildActive = pathname === child.href
+                                    return (
+                                      <Link
+                                        key={child.href}
+                                        href={child.disabled ? '#' : child.href}
+                                        className={`flex items-center pl-6 pr-4 py-2 text-sm ${isChildActive ? 'bg-white/15 text-white font-medium border-l-2 border-brand-orange -ml-px' : 'text-white/90 hover:bg-white/10 hover:text-white'} ${child.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        onClick={(e) => child.disabled && e.preventDefault()}
+                                      >
+                                        <ChildIcon className="h-4 w-4 mr-3 flex-shrink-0" />
+                                        <span className="flex-1">{child.label}</span>
+                                        {child.badge && (
+                                          <span className="text-[10px] bg-white/20 text-white/70 px-1.5 py-0.5 rounded font-medium ml-2">
+                                            {child.badge}
+                                          </span>
+                                        )}
+                                      </Link>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <Link
+                              href={item.disabled ? '#' : item.href}
+                              className={`flex items-center px-4 py-2 text-sm ${isActive ? 'bg-white/15 text-white font-medium border-l-2 border-brand-orange ml-0.5' : 'text-white hover:bg-white/10'} ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              onClick={(e) => item.disabled && e.preventDefault()}
+                            >
+                              <Icon className="h-4 w-4 mr-3 flex-shrink-0" />
+                              <span className="flex-1">{item.label}</span>
+                              {item.badge && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${item.badge === 'Soon' ? 'bg-white/20 text-white/70' : 'bg-brand-orange/30 text-brand-orange-300'}`}>
+                                  {item.badge}
+                                </span>
+                              )}
+                            </Link>
+                          )}
+                        </div>
                       )
                     })}
                   </div>
