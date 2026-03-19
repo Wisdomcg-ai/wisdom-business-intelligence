@@ -7,7 +7,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { quarterlyReviewService } from '../../services/quarterly-review-service';
 import type { QuarterlyReview } from '../../types';
-import { getCurrentQuarter, type YearType } from '../../types';
+import type { YearType } from '../../types';
 import {
   STEP_LABELS,
   FEEDBACK_LOOP_AREA_LABELS,
@@ -137,21 +137,11 @@ export default function QuarterlySummaryPage() {
     );
   }
 
-  // Use yearType-aware quarter calculation so we display the correct quarter
-  // even if the review was created with a CY quarter for an FY business
-  const currentQ = getCurrentQuarter(resolvedYearType);
-  const getNextQuarter = () => {
-    // Use the yearType-resolved current quarter, not the review's stored quarter
-    // This corrects cases where the review was created with the wrong quarter
-    const q = currentQ.quarter;
-    const y = currentQ.year;
-    if (q === 4) {
-      return { quarter: 1, year: y + 1 };
-    }
-    return { quarter: q + 1, year: y };
-  };
-
-  const nextQ = getNextQuarter();
+  // Calculate "next quarter" relative to the REVIEW's quarter, not today's date.
+  // The quarterly targets and rocks saved during the review are for the quarter after the review.
+  const nextQ = review.quarter === 4
+    ? { quarter: 1, year: review.year + 1 }
+    : { quarter: review.quarter + 1, year: review.year };
   const targets = review.quarterly_targets;
   const commitments = review.personal_commitments;
   const actionReplay = review.action_replay;
@@ -283,9 +273,9 @@ export default function QuarterlySummaryPage() {
                           <div className="text-xs text-gray-500 mb-1">{f.label}</div>
                           <div className="text-lg font-bold text-gray-900">{formatCurrency(f.data?.actual || 0)}</div>
                           <div className="text-xs text-gray-500">Target: {formatCurrency(f.data?.target || 0)}</div>
-                          {f.data?.variance != null && (
-                            <div className={`text-xs font-medium mt-1 ${f.data.variance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {f.data.variance >= 0 ? '+' : ''}{formatCurrency(f.data.variance)}
+                          {f.data?.actual != null && f.data?.target != null && f.data.target > 0 && (
+                            <div className={`text-xs font-medium mt-1 ${(f.data.actual - f.data.target) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {(f.data.actual - f.data.target) >= 0 ? '+' : ''}{formatCurrency(f.data.actual - f.data.target)}
                             </div>
                           )}
                         </div>
