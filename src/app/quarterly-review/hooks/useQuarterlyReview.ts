@@ -165,6 +165,9 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get user and business on mount, also resolve yearType for correct quarter
+  // IMPORTANT: We must resolve yearType BEFORE setting businessId state, because
+  // setBusinessId triggers initReview. If we set businessId first, initReview fires
+  // with the stale CY quarter (e.g. Q1 for Jan-Mar) instead of the correct FY quarter (Q3).
   useEffect(() => {
     const getUserAndBusiness = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -173,7 +176,6 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
         setIsLoading(false);
         return;
       }
-      setUserId(user.id);
 
       let resolvedBusinessId: string | null = null;
       if (options.businessId) {
@@ -195,10 +197,12 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
           return;
         }
       }
-      setBusinessId(resolvedBusinessId);
 
-      // Look up yearType so we calculate the correct quarter for FY businesses
-      // Uses fallback chain matching Goals Wizard pattern to find the financial goals row
+      // Resolve yearType BEFORE setting businessId to avoid race condition
+      let finalQuarter: QuarterNumber = options.quarter || getCurrentQuarter().quarter;
+      let finalYear: number = options.year || getCurrentQuarter().year;
+      let resolvedProfileBusinessId: string | null = null;
+
       if (!options.quarter && resolvedBusinessId) {
         const targetUserId = activeBusiness?.ownerId || user.id;
         const { data: profile } = await supabase
@@ -207,7 +211,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
           .eq('user_id', targetUserId)
           .maybeSingle();
         const goalsBusinessId = profile?.id || resolvedBusinessId;
-        setProfileBusinessId(goalsBusinessId);
+        resolvedProfileBusinessId = goalsBusinessId;
 
         // Try multiple IDs to find the financial goals row (same pattern as plan assembler)
         let yearType: YearType = 'CY';
@@ -246,10 +250,18 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
 
         console.log(`[QuarterlyReview] Resolved yearType: ${yearType}, IDs tried:`, idsToTry);
         const correctQtr = getCurrentQuarter(yearType);
-        setResolvedQuarter(correctQtr.quarter);
-        setResolvedYear(correctQtr.year);
+        finalQuarter = correctQtr.quarter;
+        finalYear = correctQtr.year;
         console.log(`[QuarterlyReview] Resolved quarter: Q${correctQtr.quarter} ${correctQtr.year}`);
       }
+
+      // Set ALL state together at the end — this ensures initReview fires
+      // only once with the correct yearType-aware quarter
+      setUserId(user.id);
+      setResolvedQuarter(finalQuarter);
+      setResolvedYear(finalYear);
+      if (resolvedProfileBusinessId) setProfileBusinessId(resolvedProfileBusinessId);
+      setBusinessId(resolvedBusinessId);
     };
 
     getUserAndBusiness();

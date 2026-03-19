@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { quarterlyReviewService } from './services/quarterly-review-service';
-import { getCurrentQuarter, getQuarterLabel, isLastQuarterOfYear } from './types';
+import { getCurrentQuarter, getQuarterLabel, isLastQuarterOfYear, type YearType, type QuarterNumber } from './types';
 import {
   Calendar,
   Clock,
@@ -29,8 +29,8 @@ export default function QuarterlyReviewPage() {
   const [reviews, setReviews] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [businessId, setBusinessId] = useState<string | null>(null);
-
-  const { quarter, year } = getCurrentQuarter();
+  const [quarter, setQuarter] = useState<QuarterNumber>(() => getCurrentQuarter().quarter);
+  const [year, setYear] = useState<number>(() => getCurrentQuarter().year);
   const isQ4 = isLastQuarterOfYear(quarter);
 
   useEffect(() => {
@@ -65,6 +65,22 @@ export default function QuarterlyReviewPage() {
 
         if (bizId) {
           setBusinessId(bizId);
+
+          // Resolve yearType from business_financial_goals to get correct quarter
+          try {
+            const { data: goals } = await supabase
+              .from('business_financial_goals')
+              .select('year_type')
+              .eq('business_id', bizId)
+              .maybeSingle();
+            const yearType: YearType = (goals?.year_type as YearType) || 'FY';
+            const resolved = getCurrentQuarter(yearType);
+            setQuarter(resolved.quarter);
+            setYear(resolved.year);
+          } catch (ytError) {
+            console.error('Error fetching yearType:', ytError);
+          }
+
           try {
             const allReviews = await quarterlyReviewService.getAllReviews(bizId);
             setReviews(allReviews);
