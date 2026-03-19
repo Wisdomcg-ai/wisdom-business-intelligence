@@ -360,6 +360,17 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     return () => clearTimeout(timer);
   }, [hasUnsavedChanges, review, saveReview]);
 
+  // Warn user about unsaved changes when closing/refreshing browser
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   // Two-way sync: ONLY on step 4.3 (rocks), NOT on 4.2 (initiatives)
   // Step 4.2 reads from strategic_initiatives but saves decisions to quarterly_reviews JSON
   // This prevents the sync service from accidentally deleting Goals Wizard data
@@ -425,6 +436,16 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   const goToStep = useCallback(async (step: WorkshopStep) => {
     if (!review || !canNavigateToStep(step)) return;
 
+    // Flush pending changes before navigating to prevent data loss
+    if (hasUnsavedChanges) {
+      try {
+        await quarterlyReviewService.updateReview(review.id, review);
+        setHasUnsavedChanges(false);
+      } catch (err) {
+        console.error('[goToStep] Save flush failed:', err);
+      }
+    }
+
     setReview(prev => prev ? { ...prev, current_step: step } : null);
 
     // When editing a completed review, only update current_step locally — don't call
@@ -432,10 +453,20 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     if (review.status !== 'completed') {
       await quarterlyReviewService.updateProgress(review.id, step, review.steps_completed);
     }
-  }, [review, canNavigateToStep]);
+  }, [review, canNavigateToStep, hasUnsavedChanges]);
 
   const completeCurrentStep = useCallback(async () => {
     if (!review) return;
+
+    // Flush pending changes before completing step to prevent data loss
+    if (hasUnsavedChanges) {
+      try {
+        await quarterlyReviewService.updateReview(review.id, review);
+        setHasUnsavedChanges(false);
+      } catch (err) {
+        console.error('[completeCurrentStep] Save flush failed:', err);
+      }
+    }
 
     const currentIndex = workshopSteps.indexOf(review.current_step);
     const nextStep = workshopSteps[currentIndex + 1] || 'complete';
@@ -453,7 +484,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
       nextStep
     );
     setReview(updated);
-  }, [review, workshopSteps]);
+  }, [review, workshopSteps, hasUnsavedChanges]);
 
   const startWorkshop = useCallback(async () => {
     if (!review) return;

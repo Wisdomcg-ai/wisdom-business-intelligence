@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview } from '../../types';
 import {
   Shield, AlertTriangle, Target, Lightbulb,
-  Loader2, Plus, CheckCircle, Eye, ArrowRight, GitCompare, RefreshCw
+  Loader2, Plus, CheckCircle, Eye, ArrowRight, GitCompare, RefreshCw, Pencil
 } from 'lucide-react';
 
 interface SwotUpdateStepProps {
@@ -119,6 +119,11 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
   // View states
   const [showComparison, setShowComparison] = useState(false);
   const [isRedoing, setIsRedoing] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Track autosaved SWOT ID so we update instead of creating duplicates
+  const autoSavedSwotIdRef = useRef<string | null>(null);
+  const autoSaveInProgressRef = useRef(false);
 
   const supabase = createClient();
   const prevQuarter = getPreviousQuarter(review.quarter, review.year);
@@ -212,45 +217,37 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
            localItems.opportunities.length + localItems.threats.length;
   };
 
-  const handleStartFresh = async () => {
-    // If there's an existing SWOT, archive it first
-    if (currentSwot) {
-      try {
-        await supabase
-          .from('swot_analyses')
-          .update({ status: 'archived' })
-          .eq('id', currentSwot.id);
-      } catch (error) {
-        console.error('Error archiving old SWOT:', error);
-      }
-    }
+  // Auto-save SWOT items to database (create if needed, update if exists)
+  const autoSaveSwot = useCallback(async () => {
+    const total = localItems.strengths.length + localItems.weaknesses.length +
+                  localItems.opportunities.length + localItems.threats.length;
+    if (total === 0) return;
+    if (autoSaveInProgressRef.current) return;
 
-    // Reset state for fresh start
-    setCurrentSwot(null);
-    setLocalItems({ strengths: [], weaknesses: [], opportunities: [], threats: [] });
-    setIsRedoing(true);
-    setShowComparison(false);
-  };
-
-  const handleSaveSwot = async () => {
-    if (getTotalItems() === 0) return;
-
-    setIsSaving(true);
+    autoSaveInProgressRef.current = true;
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user) return;
 
-      // Create new SWOT analysis using RPC
-      const { data: swotId, error: createError } = await supabase
-        .rpc('create_quarterly_swot', {
+      let swotId: string | null = autoSavedSwotIdRef.current || (isEditing ? currentSwot?.id ?? null : null);
+
+      if (!swotId) {
+        // Create new SWOT analysis
+        const { data, error } = await supabase.rpc('create_quarterly_swot', {
           p_user_id: user.id,
           p_quarter: review.quarter,
           p_year: review.year,
         });
+        if (error) throw error;
+        if (!data) throw new Error('No SWOT ID returned');
+        swotId = data as string;
+        autoSavedSwotIdRef.current = swotId;
+        onUpdate(swotId);
+      }
 
-      if (createError) throw createError;
+      // Delete existing items and re-insert current state
+      await supabase.from('swot_items').delete().eq('swot_analysis_id', swotId);
 
-      // Insert all items
       const allItems: Array<{
         swot_analysis_id: string;
         category: string;
@@ -265,7 +262,220 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
         const config = CATEGORY_CONFIG[category];
         localItems[config.key].forEach((title, index) => {
           allItems.push({
-            swot_analysis_id: swotId,
+            swot_analysis_id: swotId!,
+            category,
+            title,
+            impact_level: 3,
+            priority_order: index,
+            status: 'active',
+            created_by: user.id
+          });
+        });
+      });
+
+      if (allItems.length > 0) {
+        await supabase.from('swot_items').insert(allItems);
+      }
+    } catch (error) {
+      console.error('[SWOT autosave] Error:', error);
+    } finally {
+      autoSaveInProgressRef.current = false;
+    }
+  }, [localItems, currentSwot?.id, isEditing, review.quarter, review.year, supabase, onUpdate]);
+
+  // Debounced autosave — fires 2 seconds after last item change
+  useEffect(() => {
+    const total = localItems.strengths.length + localItems.weaknesses.length +
+                  localItems.opportunities.length + localItems.threats.length;
+    if (total === 0) return;
+    // Only autosave when in builder mode or edit mode
+    if (currentSwot && !isEditing && !isRedoing) return;
+
+    const timer = setTimeout(() => {
+      autoSaveSwot();
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [localItems, currentSwot, isEditing, isRedoing, autoSaveSwot]);
+
+  // Enter edit mode — populate localItems from existing SWOT
+  const handleStartEditing = () => {
+    if (!currentSwot?.swot_items) return;
+    const organized: LocalSwotItems = {
+      strengths: [], weaknesses: [], opportunities: [], threats: []
+    };
+    currentSwot.swot_items
+      .filter(item => !item.status || item.status === 'active' || item.status === 'carried-forward')
+      .forEach(item => {
+        const config = CATEGORY_CONFIG[item.category];
+        if (config) {
+          organized[config.key].push(item.title);
+        }
+      });
+    setLocalItems(organized);
+    autoSavedSwotIdRef.current = currentSwot.id;
+    setIsEditing(true);
+  };
+
+  // Exit edit mode — refresh from DB and show completed view
+  const handleDoneEditing = async () => {
+    // Final save
+    await autoSaveSwot();
+    // Refresh from DB
+    const swotId = autoSavedSwotIdRef.current || currentSwot?.id;
+    if (swotId) {
+      const { data: refreshed } = await supabase
+        .from('swot_analyses')
+        .select(`*, swot_items (id, category, title, description, status)`)
+        .eq('id', swotId)
+        .maybeSingle();
+      if (refreshed) {
+        setCurrentSwot(refreshed);
+        onUpdate(refreshed.id);
+      }
+    }
+    setIsEditing(false);
+    setLocalItems({ strengths: [], weaknesses: [], opportunities: [], threats: [] });
+  };
+
+  // Save SWOT items when component unmounts (user navigates away via sidebar, back, etc.)
+  const localItemsRef = useRef(localItems);
+  const isEditingRef = useRef(isEditing);
+  const isRedoingRef = useRef(isRedoing);
+  const currentSwotRef = useRef(currentSwot);
+  localItemsRef.current = localItems;
+  isEditingRef.current = isEditing;
+  isRedoingRef.current = isRedoing;
+  currentSwotRef.current = currentSwot;
+
+  useEffect(() => {
+    return () => {
+      // On unmount: save any pending SWOT items
+      const items = localItemsRef.current;
+      const total = items.strengths.length + items.weaknesses.length +
+                    items.opportunities.length + items.threats.length;
+      if (total === 0) return;
+      if (currentSwotRef.current && !isEditingRef.current && !isRedoingRef.current) return;
+
+      // Fire and forget — we're unmounting so can't await
+      const saveOnUnmount = async () => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+
+          let swotId: string | null = autoSavedSwotIdRef.current || (isEditingRef.current ? currentSwotRef.current?.id ?? null : null);
+
+          if (!swotId) {
+            const { data, error } = await supabase.rpc('create_quarterly_swot', {
+              p_user_id: user.id,
+              p_quarter: review.quarter,
+              p_year: review.year,
+            });
+            if (error || !data) return;
+            swotId = data as string;
+          }
+
+          await supabase.from('swot_items').delete().eq('swot_analysis_id', swotId);
+
+          const allItems: Array<{
+            swot_analysis_id: string;
+            category: string;
+            title: string;
+            impact_level: number;
+            priority_order: number;
+            status: string;
+            created_by: string;
+          }> = [];
+
+          CATEGORIES.forEach(category => {
+            const config = CATEGORY_CONFIG[category];
+            items[config.key].forEach((title, index) => {
+              allItems.push({
+                swot_analysis_id: swotId!,
+                category,
+                title,
+                impact_level: 3,
+                priority_order: index,
+                status: 'active',
+                created_by: user.id
+              });
+            });
+          });
+
+          if (allItems.length > 0) {
+            await supabase.from('swot_items').insert(allItems);
+          }
+        } catch (err) {
+          console.error('[SWOT unmount save] Error:', err);
+        }
+      };
+      saveOnUnmount();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleStartFresh = async () => {
+    // If there's an existing SWOT, archive it first
+    if (currentSwot) {
+      try {
+        await supabase
+          .from('swot_analyses')
+          .update({ status: 'archived' })
+          .eq('id', currentSwot.id);
+      } catch (error) {
+        console.error('Error archiving old SWOT:', error);
+      }
+    }
+
+    // Reset state and ref for fresh start
+    autoSavedSwotIdRef.current = null;
+    setCurrentSwot(null);
+    setLocalItems({ strengths: [], weaknesses: [], opportunities: [], threats: [] });
+    setIsRedoing(true);
+    setIsEditing(false);
+    setShowComparison(false);
+  };
+
+  const handleSaveSwot = async () => {
+    if (getTotalItems() === 0) return;
+
+    setIsSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Reuse autosaved SWOT ID or existing SWOT, otherwise create new
+      let swotId: string | null = autoSavedSwotIdRef.current || (isEditing ? currentSwot?.id ?? null : null);
+
+      if (!swotId) {
+        const { data, error: createError } = await supabase
+          .rpc('create_quarterly_swot', {
+            p_user_id: user.id,
+            p_quarter: review.quarter,
+            p_year: review.year,
+          });
+        if (createError) throw createError;
+        if (!data) throw new Error('No SWOT ID returned');
+        swotId = data as string;
+      }
+
+      // Clear existing items and re-insert
+      await supabase.from('swot_items').delete().eq('swot_analysis_id', swotId);
+
+      const allItems: Array<{
+        swot_analysis_id: string;
+        category: string;
+        title: string;
+        impact_level: number;
+        priority_order: number;
+        status: string;
+        created_by: string;
+      }> = [];
+
+      CATEGORIES.forEach(category => {
+        const config = CATEGORY_CONFIG[category];
+        localItems[config.key].forEach((title, index) => {
+          allItems.push({
+            swot_analysis_id: swotId!,
             category,
             title,
             impact_level: 3,
@@ -284,7 +494,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
         if (itemsError) throw itemsError;
       }
 
-      // Fetch the created SWOT
+      // Fetch the saved SWOT
       const { data: newSwot } = await supabase
         .from('swot_analyses')
         .select(`*, swot_items (id, category, title, description, status)`)
@@ -293,8 +503,11 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
 
       if (newSwot) {
         setCurrentSwot(newSwot);
+        autoSavedSwotIdRef.current = null;
         onUpdate(newSwot.id);
       }
+      setIsEditing(false);
+      setIsRedoing(false);
     } catch (error) {
       console.error('Error saving SWOT:', error);
     } finally {
@@ -652,7 +865,45 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
     );
   }
 
-  // VIEW 2: Completed SWOT (with Compare button)
+  // VIEW 2a: Editing existing SWOT
+  if (isEditing && currentSwot) {
+    return (
+      <div>
+        <StepHeader
+          step="3.2"
+          subtitle="Edit your SWOT analysis"
+          estimatedTime={15}
+          tip="Changes are saved automatically"
+        />
+
+        {/* Edit mode header */}
+        <div className="bg-blue-50 rounded-lg p-4 mb-6 border-2 border-blue-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Pencil className="w-5 h-5 text-blue-600" />
+              <p className="font-medium text-blue-900">Editing Q{review.quarter} {review.year} SWOT — changes auto-save</p>
+            </div>
+            <button
+              onClick={handleDoneEditing}
+              className="inline-flex items-center gap-2 bg-brand-orange text-white px-5 py-2.5 rounded-lg font-medium hover:bg-brand-orange-600 transition-colors"
+            >
+              <CheckCircle className="w-5 h-5" />
+              Done Editing
+            </button>
+          </div>
+        </div>
+
+        {/* Editable SWOT Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+          {CATEGORIES.map(category =>
+            renderCategoryCard(category, [], true)
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // VIEW 2: Completed SWOT (with Compare and Edit buttons)
   if (currentSwot) {
     const currentItems = getCurrentItems();
     const totalItems = currentItems.strengths.length + currentItems.weaknesses.length +
@@ -677,6 +928,13 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <button
+                onClick={handleStartEditing}
+                className="inline-flex items-center gap-2 text-brand-orange hover:text-brand-orange-700 px-3 py-2 rounded-lg font-medium hover:bg-brand-orange-50 transition-colors text-sm"
+              >
+                <Pencil className="w-4 h-4" />
+                Edit
+              </button>
               <button
                 onClick={handleStartFresh}
                 className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-800 px-3 py-2 rounded-lg font-medium hover:bg-white/50 transition-colors text-sm"
@@ -714,7 +972,7 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
         step="3.2"
         subtitle="Create a fresh SWOT analysis for this quarter"
         estimatedTime={20}
-        tip="Start with a blank slate - be honest about where you are today"
+        tip="Start with a blank slate — items save automatically as you work"
       />
 
       {/* Instructions */}
