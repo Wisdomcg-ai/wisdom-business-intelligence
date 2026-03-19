@@ -25,6 +25,7 @@ export interface ClientTableData {
   programType?: string
   unreadMessages?: number
   pendingActions?: number
+  lastLogin?: string
 }
 
 type SortField = 'businessName' | 'status' | 'healthScore' | 'lastSessionDate'

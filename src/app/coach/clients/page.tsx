@@ -46,7 +46,7 @@ function ClientsListContent() {
   const supabase = createClient()
 
   const [loading, setLoading] = useState(true)
-  const [clients, setClients] = useState<ClientCardData[]>([])
+  const [clients, setClients] = useState<(ClientCardData & { healthScore?: number })[]>([])
   const [unassignedClients, setUnassignedClients] = useState<UnassignedClient[]>([])
   const [pendingInvitations, setPendingInvitations] = useState<PendingInvitationClient[]>([])
   const [claimingId, setClaimingId] = useState<string | null>(null)
@@ -101,17 +101,251 @@ function ClientsListContent() {
 
       console.log('[ClientsPage] Businesses result:', { count: businesses?.length, error: error?.message, isSuperAdmin })
 
-      // Process clients
-      const processedClients: ClientCardData[] = (businesses || []).map(b => ({
-        id: b.id,
-        businessName: b.name || b.business_name || 'Unnamed Business',
-        industry: b.industry || undefined,
-        status: (b.status as ClientCardData['status']) || 'active',
-        lastSessionDate: b.last_session_date || undefined,
-        programType: b.program_type || undefined,
-        unreadMessages: 0,
-        pendingActions: 0
-      }))
+      const businessList = businesses || []
+      const businessIds = businessList.map(b => b.id)
+      const ownerIds = businessList.map(b => b.owner_id).filter(Boolean) as string[]
+
+      // Fetch all supplementary data in parallel
+      const [
+        userLoginsResult,
+        openLoopsResult,
+        issuesResult,
+        messagesResult,
+        assessmentsResult,
+        weeklyReviewsResult,
+        completedActionsResult,
+        activitySummaryResult,
+        sessionsResult
+      ] = await Promise.all([
+        // 1. Login data - last login per owner
+        ownerIds.length > 0
+          ? supabase
+              .from('user_logins')
+              .select('user_id, login_at')
+              .in('user_id', ownerIds)
+          : Promise.resolve({ data: [], error: null }),
+
+        // 2a. Open loops (pending actions) per owner
+        ownerIds.length > 0
+          ? supabase
+              .from('open_loops')
+              .select('user_id')
+              .in('user_id', ownerIds)
+              .eq('archived', false)
+          : Promise.resolve({ data: [], error: null }),
+
+        // 2b. Open issues (pending actions) per owner
+        ownerIds.length > 0
+          ? supabase
+              .from('issues_list')
+              .select('user_id')
+              .in('user_id', ownerIds)
+              .neq('status', 'solved')
+              .eq('archived', false)
+          : Promise.resolve({ data: [], error: null }),
+
+        // 3. Unread messages per business (not sent by coach)
+        businessIds.length > 0
+          ? supabase
+              .from('messages')
+              .select('business_id')
+              .in('business_id', businessIds)
+              .eq('read', false)
+              .neq('sender_id', user.id)
+          : Promise.resolve({ data: [], error: null }),
+
+        // 4. Latest assessment per owner (for health score)
+        ownerIds.length > 0
+          ? supabase
+              .from('assessments')
+              .select('user_id, percentage, total_score, total_max')
+              .in('user_id', ownerIds)
+              .eq('status', 'completed')
+              .order('created_at', { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
+
+        // 5a. Latest completed weekly review per business
+        businessIds.length > 0
+          ? supabase
+              .from('weekly_reviews')
+              .select('business_id, completed_at')
+              .in('business_id', businessIds)
+              .eq('is_completed', true)
+              .order('completed_at', { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
+
+        // 5b. Latest completed session action per business
+        businessIds.length > 0
+          ? supabase
+              .from('session_actions')
+              .select('business_id, completed_at')
+              .in('business_id', businessIds)
+              .eq('status', 'completed')
+              .not('completed_at', 'is', null)
+              .order('completed_at', { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
+
+        // 6. Activity summary (last change + page) from the view
+        businessIds.length > 0
+          ? supabase
+              .from('client_activity_summary')
+              .select('business_id, last_change_at, last_change_page')
+              .in('business_id', businessIds)
+          : Promise.resolve({ data: [], error: null }),
+
+        // 7. Coaching sessions per business (for last/next session + frequency)
+        businessIds.length > 0
+          ? supabase
+              .from('coaching_sessions')
+              .select('business_id, scheduled_at, status')
+              .in('business_id', businessIds)
+              .order('scheduled_at', { ascending: false })
+          : Promise.resolve({ data: [], error: null })
+      ])
+
+      // Build lookup maps
+
+      // Last login per user
+      const lastLoginByUser = new Map<string, string>()
+      userLoginsResult.data?.forEach((u: { user_id: string; login_at: string }) => {
+        if (u.login_at) {
+          const existing = lastLoginByUser.get(u.user_id)
+          if (!existing || new Date(u.login_at) > new Date(existing)) {
+            lastLoginByUser.set(u.user_id, u.login_at)
+          }
+        }
+      })
+
+      // Open loops count per user
+      const openLoopsByUser = new Map<string, number>()
+      openLoopsResult.data?.forEach((ol: { user_id: string }) => {
+        openLoopsByUser.set(ol.user_id, (openLoopsByUser.get(ol.user_id) || 0) + 1)
+      })
+
+      // Issues count per user
+      const issuesByUser = new Map<string, number>()
+      issuesResult.data?.forEach((issue: { user_id: string }) => {
+        issuesByUser.set(issue.user_id, (issuesByUser.get(issue.user_id) || 0) + 1)
+      })
+
+      // Unread messages count per business
+      const unreadByBusiness = new Map<string, number>()
+      messagesResult.data?.forEach((m: { business_id: string }) => {
+        unreadByBusiness.set(m.business_id, (unreadByBusiness.get(m.business_id) || 0) + 1)
+      })
+
+      // Latest assessment percentage per user (first entry is most recent due to order)
+      const assessmentByUser = new Map<string, number>()
+      assessmentsResult.data?.forEach((a: { user_id: string; percentage: number; total_score: number; total_max: number }) => {
+        if (!assessmentByUser.has(a.user_id)) {
+          const pct = a.percentage ?? Math.round((a.total_score / (a.total_max || 300)) * 100)
+          assessmentByUser.set(a.user_id, pct)
+        }
+      })
+
+      // Latest completed weekly review per business
+      const weeklyReviewByBusiness = new Map<string, string>()
+      weeklyReviewsResult.data?.forEach((wr: { business_id: string; completed_at: string }) => {
+        if (!weeklyReviewByBusiness.has(wr.business_id)) {
+          weeklyReviewByBusiness.set(wr.business_id, wr.completed_at)
+        }
+      })
+
+      // Latest completed session action per business
+      const completedActionByBusiness = new Map<string, string>()
+      completedActionsResult.data?.forEach((ca: { business_id: string; completed_at: string }) => {
+        if (!completedActionByBusiness.has(ca.business_id) && ca.completed_at) {
+          completedActionByBusiness.set(ca.business_id, ca.completed_at)
+        }
+      })
+
+      // Activity summary (last change + page) per business
+      const activityByBusiness = new Map<string, { lastChangeAt: string | null; lastChangePage: string | null }>()
+      activitySummaryResult.data?.forEach((a: { business_id: string; last_change_at: string | null; last_change_page: string | null }) => {
+        activityByBusiness.set(a.business_id, {
+          lastChangeAt: a.last_change_at,
+          lastChangePage: a.last_change_page
+        })
+      })
+
+      // Last and next coaching session per business
+      const lastSessionByBusiness = new Map<string, string>()
+      const nextSessionByBusiness = new Map<string, string>()
+      const now = new Date()
+      sessionsResult.data?.forEach((s: { business_id: string; scheduled_at: string; status: string }) => {
+        const sessionDate = new Date(s.scheduled_at)
+        if ((s.status === 'completed' || sessionDate < now) && !lastSessionByBusiness.has(s.business_id)) {
+          lastSessionByBusiness.set(s.business_id, s.scheduled_at)
+        }
+        if (s.status === 'scheduled' && sessionDate > now) {
+          const existing = nextSessionByBusiness.get(s.business_id)
+          if (!existing || sessionDate < new Date(existing)) {
+            nextSessionByBusiness.set(s.business_id, s.scheduled_at)
+          }
+        }
+      })
+
+      // Auto-calculate status based on activity
+      const calculateStatus = (businessId: string, ownerId: string | undefined, manualStatus: string | null): ClientCardData['status'] => {
+        // Respect manual 'inactive' status
+        if (manualStatus === 'inactive') return 'inactive'
+
+        const lastLogin = ownerId ? lastLoginByUser.get(ownerId) : null
+        const lastWeeklyReview = weeklyReviewByBusiness.get(businessId)
+        const lastAction = completedActionByBusiness.get(businessId)
+
+        // If never logged in, they're pending
+        if (!lastLogin) return 'pending'
+
+        // Find most recent activity
+        const activityDates = [lastLogin, lastWeeklyReview, lastAction].filter(Boolean) as string[]
+        const mostRecent = activityDates.length > 0
+          ? new Date(activityDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0])
+          : null
+
+        if (!mostRecent) return 'pending'
+
+        const daysSince = Math.floor((now.getTime() - mostRecent.getTime()) / (1000 * 60 * 60 * 24))
+        if (daysSince > 14) return 'at-risk'
+        return 'active'
+      }
+
+      // Helper: get most recent activity date for a business/owner
+      const getMostRecentActivity = (businessId: string, ownerId: string | undefined): string | null => {
+        const dates = [
+          ownerId ? lastLoginByUser.get(ownerId) : null,
+          weeklyReviewByBusiness.get(businessId),
+          completedActionByBusiness.get(businessId)
+        ].filter(Boolean) as string[]
+
+        if (dates.length === 0) return null
+        return dates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0]
+      }
+
+      // Process clients with all data populated
+      // Use intersection type so healthScore flows through to ClientTableData in table view
+      const processedClients = businessList.map(b => {
+        const ownerId = b.owner_id as string | undefined
+        const loops = ownerId ? (openLoopsByUser.get(ownerId) || 0) : 0
+        const issues = ownerId ? (issuesByUser.get(ownerId) || 0) : 0
+        const activity = activityByBusiness.get(b.id)
+
+        return {
+          id: b.id,
+          businessName: b.name || b.business_name || 'Unnamed Business',
+          industry: b.industry || undefined,
+          status: calculateStatus(b.id, ownerId, b.status),
+          lastSessionDate: lastSessionByBusiness.get(b.id) || b.last_session_date || undefined,
+          nextSessionDate: nextSessionByBusiness.get(b.id) || undefined,
+          programType: b.program_type || undefined,
+          unreadMessages: unreadByBusiness.get(b.id) || 0,
+          pendingActions: loops + issues,
+          lastLogin: ownerId ? lastLoginByUser.get(ownerId) || undefined : undefined,
+          lastChange: activity?.lastChangeAt || undefined,
+          lastChangePage: activity?.lastChangePage || undefined,
+          healthScore: ownerId ? assessmentByUser.get(ownerId) : undefined
+        }
+      }) as (ClientCardData & { healthScore?: number })[]
 
       setClients(processedClients)
 

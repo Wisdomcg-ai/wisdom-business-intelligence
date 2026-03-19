@@ -40,6 +40,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // Fire-and-forget: also update users.last_login_at to keep both tables in sync
+    supabase
+      .from('users')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', user.id)
+      .then(({ error: syncError }) => {
+        if (syncError) {
+          console.warn('[Login Track] Failed to sync users.last_login_at:', syncError.message)
+        }
+      })
+
     return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('[Login Track] Error:', error)

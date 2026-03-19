@@ -286,27 +286,36 @@ export function OverviewTab({
             <h3 className="font-semibold text-gray-900">Quick Actions</h3>
           </div>
           <div className="p-5 space-y-3">
-            <button className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+            <Link
+              href="/coach/schedule"
+              className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+            >
               <div className="flex items-center gap-3">
                 <Calendar className="w-5 h-5 text-brand-orange" />
                 <span className="font-medium text-gray-900">Schedule Session</span>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-400" />
-            </button>
-            <button className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+            </Link>
+            <Link
+              href={`/coach/clients/${clientId}/view/open-loops`}
+              className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+            >
               <div className="flex items-center gap-3">
                 <ListChecks className="w-5 h-5 text-brand-orange" />
                 <span className="font-medium text-gray-900">Create Action Item</span>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-400" />
-            </button>
-            <button className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+            </Link>
+            <Link
+              href={`/coach/clients/${clientId}/view/messages`}
+              className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+            >
               <div className="flex items-center gap-3">
                 <MessageSquare className="w-5 h-5 text-brand-orange" />
                 <span className="font-medium text-gray-900">Send Message</span>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-400" />
-            </button>
+            </Link>
           </div>
         </div>
       </div>

@@ -281,8 +281,42 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
   }
 
   async function resendInvite(invite: PendingInvite) {
-    // TODO: Implement email resend
-    setSuccess(`Invite resent to ${invite.email}`)
+    try {
+      setSuccess(null)
+      const response = await fetch('/api/team/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessId: clientId,
+          firstName: invite.first_name,
+          lastName: invite.last_name || '',
+          email: invite.email,
+          phone: invite.phone || '',
+          position: invite.position || '',
+          role: invite.role,
+          createAccount: true
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        // "already a team member" means the invite was already accepted
+        if (result.error?.includes('already a team member')) {
+          setSuccess(`${invite.first_name} has already accepted the invite`)
+          setPendingInvites(prev => prev.filter(i => i.id !== invite.id))
+        } else {
+          console.error('[Resend Invite] Error:', result.error)
+          setSuccess(`Failed to resend invite: ${result.error}`)
+        }
+        return
+      }
+
+      setSuccess(`Invite resent to ${invite.email}`)
+    } catch (error) {
+      console.error('[Resend Invite] Error:', error)
+      setSuccess('Failed to resend invite. Please try again.')
+    }
   }
 
   async function updateMemberRole(memberId: string, newRole: string) {

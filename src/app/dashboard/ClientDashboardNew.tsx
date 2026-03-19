@@ -188,10 +188,10 @@ export default function ClientDashboardNew() {
           senderName: m.sender_type === 'coach' ? (coach?.name || 'Your Coach') : userName,
           senderType: m.sender_type,
           timestamp: m.created_at,
-          isRead: m.is_read || false
+          isRead: m.read || false
         })))
 
-        setUnreadCount(messages.filter(m => !m.is_read && m.sender_type === 'coach').length)
+        setUnreadCount(messages.filter(m => !m.read && m.sender_type === 'coach').length)
       }
 
     } catch (error) {

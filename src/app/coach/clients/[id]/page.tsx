@@ -374,8 +374,39 @@ export default function ClientFilePage() {
         console.log('[ClientPage] No effectiveUserId, skipping user queries')
       }
 
-      // Get pending/overdue actions (uses clientId, not effectiveUserId)
-      // Note: action_items table may not exist yet
+      // Get pending/overdue actions from open_loops + issues_list for the business owner's user IDs
+      if (possibleUserIds.length > 0) {
+        try {
+          const { data: openLoopsData } = await supabase
+            .from('open_loops')
+            .select('id')
+            .in('user_id', possibleUserIds)
+            .eq('archived', false)
+
+          if (openLoopsData) {
+            pendingActions += openLoopsData.length
+          }
+        } catch (e) {
+          // Table may not exist - ignore
+        }
+
+        try {
+          const { data: issuesData } = await supabase
+            .from('issues_list')
+            .select('id')
+            .in('user_id', possibleUserIds)
+            .neq('status', 'solved')
+            .eq('archived', false)
+
+          if (issuesData) {
+            pendingActions += issuesData.length
+          }
+        } catch (e) {
+          // Table may not exist - ignore
+        }
+      }
+
+      // Also try action_items table if it exists
       try {
         const { data: actionsData, error: actionsError } = await supabase
           .from('action_items')
@@ -385,7 +416,7 @@ export default function ClientFilePage() {
 
         if (!actionsError && actionsData) {
           const now = new Date()
-          pendingActions = actionsData.length
+          pendingActions += actionsData.length
           overdueActions = actionsData.filter((a: any) =>
             a.due_date && new Date(a.due_date) < now
           ).length
@@ -394,18 +425,21 @@ export default function ClientFilePage() {
         // Table may not exist - ignore
       }
 
-      // Messages table doesn't exist yet - skip query to avoid 400 errors
-      // TODO: Uncomment when messages table is created
-      // try {
-      //   const { data: messagesData, error: messagesError } = await supabase
-      //     .from('messages')
-      //     .select('id')
-      //     .eq('business_id', clientId)
-      //     .eq('is_read', false)
-      //   if (!messagesError && messagesData) {
-      //     unreadMessages = messagesData.length
-      //   }
-      // } catch (e) { }
+      // Get unread messages for this business
+      try {
+        const { count: messagesCount, error: messagesError } = await supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('business_id', clientId)
+          .eq('read', false)
+          .neq('sender_id', user.id)
+
+        if (!messagesError && messagesCount) {
+          unreadMessages = messagesCount
+        }
+      } catch (e) {
+        // Messages table may not exist yet - ignore
+      }
 
       const totalGoals = activeGoals + completedGoals
       const goalsProgress = totalGoals > 0 ? Math.round((completedGoals / totalGoals) * 100) : 0
@@ -587,7 +621,7 @@ export default function ClientFilePage() {
           const { data: ideas } = await supabase
             .from('ideas')
             .select('id, title, status, created_at, updated_at')
-            .eq('user_id', effectiveUserId)
+            .in('user_id', possibleUserIds)
             .eq('archived', false)
 
           if (ideas && ideas.length > 0) {
@@ -985,10 +1019,16 @@ export default function ClientFilePage() {
           </button>
           <div className="border-t border-gray-100 my-2" />
           <button
-            onClick={() => {
+            onClick={async () => {
               setShowMenu(false)
-              // TODO: Archive client
-              console.log('Archive client')
+              if (!confirm('Are you sure you want to archive this client? They will be moved to inactive status.')) return
+              const { error: archiveError } = await supabase.from('businesses').update({ status: 'inactive' }).eq('id', clientId)
+              if (!archiveError) {
+                router.push('/coach/clients')
+              } else {
+                console.error('Error archiving client:', archiveError)
+                alert('Failed to archive client. Please try again.')
+              }
             }}
             className="w-full flex items-center gap-3 px-4 py-2 text-sm text-yellow-700 hover:bg-yellow-50"
           >
@@ -996,10 +1036,17 @@ export default function ClientFilePage() {
             Archive Client
           </button>
           <button
-            onClick={() => {
+            onClick={async () => {
               setShowMenu(false)
-              // TODO: Delete client with confirmation
-              console.log('Delete client')
+              if (!confirm('Are you sure you want to delete this client? This action cannot be undone.')) return
+              // Soft-delete: archive instead of hard delete for safety
+              const { error: deleteError } = await supabase.from('businesses').update({ status: 'inactive' }).eq('id', clientId)
+              if (!deleteError) {
+                router.push('/coach/clients')
+              } else {
+                console.error('Error deleting client:', deleteError)
+                alert('Failed to delete client. Please try again.')
+              }
             }}
             className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
           >

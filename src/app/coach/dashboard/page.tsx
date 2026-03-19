@@ -115,7 +115,9 @@ export default function CoachDashboardPage() {
         issuesResult,
         completedActionsResult,
         assessmentActivityResult,
-        userLoginsResult
+        userLoginsResult,
+        sessionsThisWeekResult,
+        unreadMessagesResult
       ] = await Promise.all([
         // Latest completed weekly review per business (actual client completion)
         businessIds.length > 0
@@ -180,10 +182,61 @@ export default function CoachDashboardPage() {
         // User last login times
         ownerIds.length > 0
           ? supabase
-              .from('users')
-              .select('id, last_login_at')
-              .in('id', ownerIds)
-          : Promise.resolve({ data: [], error: null })
+              .from('user_logins')
+              .select('user_id, login_at')
+              .in('user_id', ownerIds)
+          : Promise.resolve({ data: [], error: null }),
+
+        // Coaching sessions this week
+        (async () => {
+          try {
+            const now = new Date()
+            const day = now.getDay()
+            const monday = new Date(now)
+            monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1))
+            monday.setHours(0, 0, 0, 0)
+            const sunday = new Date(monday)
+            sunday.setDate(monday.getDate() + 6)
+            sunday.setHours(23, 59, 59, 999)
+
+            const { count, error } = await supabase
+              .from('coaching_sessions')
+              .select('id', { count: 'exact', head: true })
+              .eq('coach_id', user.id)
+              .gte('scheduled_date', monday.toISOString())
+              .lte('scheduled_date', sunday.toISOString())
+
+            if (error) {
+              console.warn('[Dashboard] coaching_sessions query failed:', error.message)
+              return { data: null, count: 0, error: null }
+            }
+            return { data: null, count: count ?? 0, error: null }
+          } catch {
+            return { data: null, count: 0, error: null }
+          }
+        })(),
+
+        // Unread messages across all client businesses
+        (async () => {
+          try {
+            if (businessIds.length === 0) return { data: null, count: 0, error: null }
+
+            const { count, error } = await supabase
+              .from('messages')
+              .select('id', { count: 'exact', head: true })
+              .in('business_id', businessIds)
+              .eq('read', false)
+              .neq('sender_id', user.id)
+
+            if (error) {
+              console.warn('[Dashboard] messages query failed:', error.message)
+              return { data: null, count: 0, error: null }
+            }
+            return { data: null, count: count ?? 0, error: null }
+          } catch {
+            return { data: null, count: 0, error: null }
+          }
+        })()
       ])
 
       // Build lookup maps for efficient access
@@ -237,9 +290,13 @@ export default function CoachDashboardPage() {
 
       // Build user login map
       const lastLoginByUser = new Map<string, string>()
-      userLoginsResult.data?.forEach(u => {
-        if (u.last_login_at) {
-          lastLoginByUser.set(u.id, u.last_login_at)
+      userLoginsResult.data?.forEach((u: { user_id: string; login_at: string }) => {
+        if (u.login_at) {
+          // Keep only the most recent login per user
+          const existing = lastLoginByUser.get(u.user_id)
+          if (!existing || new Date(u.login_at) > new Date(existing)) {
+            lastLoginByUser.set(u.user_id, u.login_at)
+          }
         }
       })
 
@@ -336,9 +393,9 @@ export default function CoachDashboardPage() {
       setClientMetrics(metrics)
       setStats({
         activeClients: metrics.filter(c => c.status === 'active').length,
-        sessionsThisWeek: 0,
+        sessionsThisWeek: (sessionsThisWeekResult as { count: number }).count ?? 0,
         pendingActions: metrics.reduce((sum, c) => sum + c.openLoopsCount + c.openIssuesCount, 0),
-        unreadMessages: 0
+        unreadMessages: (unreadMessagesResult as { count: number }).count ?? 0
       })
       setActivities(processedActivities)
       setClientsNeedingAttention(attention)
