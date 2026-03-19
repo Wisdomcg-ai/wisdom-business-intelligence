@@ -109,6 +109,18 @@ export function ForecastWizardV4({
 
       if (hasRestoredData) {
         console.log('[ForecastWizardV4] State restored from localStorage, skipping full API initialization');
+        console.log('[ForecastWizardV4] Cached state check:', {
+          priorYear: state.priorYear ? {
+            revenueTotal: state.priorYear.revenue?.total,
+            revenueLines: state.priorYear.revenue?.byLine?.length,
+            cogsTotal: state.priorYear.cogs?.total,
+            cogsLines: state.priorYear.cogs?.byLine?.length,
+            opexTotal: state.priorYear.opex?.total,
+          } : null,
+          opexLines: state.opexLines?.length,
+          revenueLines: state.revenueLines?.length,
+          teamMembers: state.teamMembers?.length,
+        });
 
         // Always refresh goals, business profile, and team (if missing) so they stay in sync
         try {
@@ -218,7 +230,8 @@ export function ForecastWizardV4({
         }
 
         // Still need to load the forecast ID so generate targets the correct forecast
-        if (!forecastId) {
+        let resolvedId = forecastId || existingForecastId || null;
+        if (!resolvedId) {
           try {
             // Look up existing forecasts for this business/fiscal year
             const res = await fetch(`/api/forecasts/versions?business_id=${businessId}&fiscal_year=${fiscalYear}`);
@@ -226,6 +239,7 @@ export function ForecastWizardV4({
               const data = await res.json();
               const activeForecast = (data.versions || []).find((v: { is_active?: boolean }) => v.is_active) || (data.versions || [])[0];
               if (activeForecast?.id) {
+                resolvedId = activeForecast.id;
                 setForecastId(activeForecast.id);
                 console.log('[ForecastWizardV4] Loaded forecast ID from versions API:', activeForecast.id);
               }
@@ -234,6 +248,91 @@ export function ForecastWizardV4({
             console.warn('[ForecastWizardV4] Could not load forecast ID:', err);
           }
         }
+
+        // If prior year data is missing or empty from localStorage cache, load from saved forecast assumptions
+        const priorYearMissing = !state.priorYear ||
+          (!state.priorYear.revenue?.total && !state.priorYear.revenue?.byLine?.length);
+        console.log('[ForecastWizardV4] Prior year check:', { priorYearMissing, resolvedId, hasPriorYear: !!state.priorYear });
+        if (priorYearMissing && resolvedId) {
+          try {
+            console.log('[ForecastWizardV4] Prior year missing from cache, loading from saved forecast:', resolvedId);
+            const forecastRes = await fetch(`/api/forecast/${resolvedId}`);
+            if (forecastRes.ok) {
+              const forecastData = await forecastRes.json();
+              const savedAssumptions = forecastData?.forecast?.assumptions || null;
+              if (savedAssumptions) {
+                // Reconstruct prior year data from saved assumptions
+                const revenueByLine = (savedAssumptions.revenue?.lines || []).map((line: {
+                  accountId: string; accountName: string; priorYearTotal: number;
+                }, idx: number) => ({
+                  id: line.accountId || `revenue-${idx}`,
+                  name: line.accountName,
+                  total: Math.round(line.priorYearTotal || 0),
+                  byMonth: {},
+                }));
+
+                const cogsByLine = (savedAssumptions.cogs?.lines || []).map((line: {
+                  accountId: string; accountName: string; priorYearTotal: number; percentOfRevenue?: number;
+                }, idx: number) => ({
+                  id: line.accountId || `cogs-${idx}`,
+                  name: line.accountName,
+                  total: Math.round(line.priorYearTotal || 0),
+                  byMonth: {},
+                  percentOfRevenue: line.percentOfRevenue || 0,
+                }));
+
+                const opexByLine = (savedAssumptions.opex?.lines || []).map((line: {
+                  accountId: string; accountName: string; priorYearTotal: number; monthlyAmount?: number;
+                }, idx: number) => ({
+                  id: line.accountId || `opex-${idx}`,
+                  name: line.accountName,
+                  total: Math.round(line.priorYearTotal || 0),
+                  monthlyAvg: Math.round(line.monthlyAmount || (line.priorYearTotal || 0) / 12),
+                  isOneOff: false,
+                }));
+
+                const totalRevenue = (savedAssumptions.revenue?.lines || []).reduce(
+                  (sum: number, l: { priorYearTotal?: number }) => sum + (l.priorYearTotal || 0), 0);
+                const totalCogs = (savedAssumptions.cogs?.lines || []).reduce(
+                  (sum: number, l: { priorYearTotal?: number }) => sum + (l.priorYearTotal || 0), 0);
+                const totalOpex = (savedAssumptions.opex?.lines || []).reduce(
+                  (sum: number, l: { priorYearTotal?: number }) => sum + (l.priorYearTotal || 0), 0);
+
+                const priorYear: PriorYearData = {
+                  revenue: { total: Math.round(totalRevenue), byMonth: {}, byLine: revenueByLine },
+                  cogs: {
+                    total: Math.round(totalCogs),
+                    percentOfRevenue: totalRevenue ? Math.round((totalCogs / totalRevenue) * 1000) / 10 : 0,
+                    byMonth: {},
+                    byLine: cogsByLine,
+                  },
+                  grossProfit: {
+                    total: Math.round(totalRevenue - totalCogs),
+                    percent: totalRevenue ? Math.round(((totalRevenue - totalCogs) / totalRevenue) * 1000) / 10 : 0,
+                    byMonth: {},
+                  },
+                  opex: { total: Math.round(totalOpex), byMonth: {}, byLine: opexByLine },
+                  seasonalityPattern: savedAssumptions.revenue?.seasonalityPattern?.length === 12
+                    ? savedAssumptions.revenue.seasonalityPattern
+                    : Array(12).fill(8.33),
+                };
+
+                actionsRef.current.setPriorYear(priorYear);
+                console.log('[ForecastWizardV4] Loaded prior year from saved assumptions:', {
+                  revenueTotal: priorYear.revenue.total,
+                  revenueLines: revenueByLine.length,
+                  cogsTotal: priorYear.cogs.total,
+                  cogsLines: cogsByLine.length,
+                  opexTotal: priorYear.opex.total,
+                  opexLines: opexByLine.length,
+                });
+              }
+            }
+          } catch (err) {
+            console.warn('[ForecastWizardV4] Could not load prior year data:', err);
+          }
+        }
+
         setIsLoading(false);
         return;
       }
@@ -250,9 +349,26 @@ export function ForecastWizardV4({
           fetch(`/api/business-profile?business_id=${businessId}`),
         ];
 
-        // If editing an existing forecast, also fetch its saved assumptions
-        if (existingForecastId) {
-          fetchPromises.push(fetch(`/api/forecast/${existingForecastId}`));
+        // If editing an existing forecast, fetch its saved assumptions
+        // If no forecast ID provided, try to find the active forecast for this FY
+        let resolvedForecastId = existingForecastId || null;
+        if (!resolvedForecastId) {
+          try {
+            const versionsRes = await fetch(`/api/forecasts/versions?business_id=${businessId}&fiscal_year=${fiscalYear}`);
+            if (versionsRes.ok) {
+              const versionsData = await versionsRes.json();
+              const active = (versionsData.versions || []).find((v: { is_active?: boolean }) => v.is_active) || (versionsData.versions || [])[0];
+              if (active?.id) {
+                resolvedForecastId = active.id;
+                setForecastId(active.id);
+                console.log('[ForecastWizardV4] Auto-discovered active forecast:', active.id);
+              }
+            }
+          } catch { /* ignore */ }
+        }
+
+        if (resolvedForecastId) {
+          fetchPromises.push(fetch(`/api/forecast/${resolvedForecastId}`));
         }
 
         const responses = await Promise.all(fetchPromises);
@@ -265,8 +381,8 @@ export function ForecastWizardV4({
           profileRes.ok ? profileRes.json() : Promise.resolve({ profile: null }),
         ];
 
-        // Add existing forecast data if we're editing
-        if (existingForecastId && forecastRes?.ok) {
+        // Add existing forecast data if we're editing or auto-discovered
+        if (resolvedForecastId && forecastRes?.ok) {
           dataPromises.push(forecastRes.json());
         } else {
           dataPromises.push(Promise.resolve({ forecast: null }));

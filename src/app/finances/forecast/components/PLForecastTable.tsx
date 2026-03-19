@@ -101,7 +101,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
     isBaseline?: boolean
   }>>([])
   const [lastActualIndex, setLastActualIndex] = useState<number>(-1) // Track index of last BASELINE month (where we insert FY25 summary cols)
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['Revenue']))
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['Revenue', 'Cost of Sales', 'Operating Expenses', 'Other Income', 'Other Expenses']))
   const [editingCell, setEditingCell] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState<string>('')
   const [historicalDataLocked, setHistoricalDataLocked] = useState<boolean>(true)

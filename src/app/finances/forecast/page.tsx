@@ -281,7 +281,7 @@ export default function FinancialForecastPage() {
   // Parse assumptions from forecast record for assumption cards
   const parsedAssumptions = useMemo(() => {
     if (!forecast?.assumptions) {
-      console.log('[Forecast Page] No assumptions on forecast record')
+      // No assumptions saved yet - wizard hasn't been completed
       return null
     }
     try {
@@ -597,6 +597,8 @@ export default function FinancialForecastPage() {
             assumptions={parsedAssumptions}
             onEditStep={(step) => {
               setWizardStartStep(step)
+              setSelectedForecastId(forecast.id || null)
+              setSelectedForecastName(forecast.name || null)
               setShowForecastSelector(false)
               setShowWizardV4(true)
             }}

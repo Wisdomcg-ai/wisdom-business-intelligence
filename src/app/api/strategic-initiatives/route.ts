@@ -3,6 +3,23 @@ import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
+// Columns that always exist
+const CORE_COLUMNS = 'id, title, description, priority, step_type, category, timeline, notes'
+// Extended columns that may not exist on older schemas
+const EXTENDED_COLUMNS = CORE_COLUMNS + ', estimated_cost, is_monthly_cost'
+
+function mapInitiative(d: any, hasExtendedCols: boolean) {
+  return {
+    id: d.id,
+    title: d.title,
+    description: d.description,
+    priority: d.priority,
+    step_type: d.step_type,
+    estimated_cost: hasExtendedCols ? (d.estimated_cost ?? undefined) : undefined,
+    is_monthly_cost: hasExtendedCols ? (d.is_monthly_cost ?? undefined) : undefined,
+  }
+}
+
 export async function GET(request: Request) {
   const supabase = await createRouteHandlerClient()
 
@@ -49,58 +66,52 @@ export async function GET(request: Request) {
       userIdsToTry.push(profile.user_id)
     }
 
-    // Use only core columns that definitely exist on the table.
-    // Some columns (estimated_cost, selected_for_annual_plan, is_monthly_cost)
-    // may not exist if migrations haven't been applied to production.
-    const baseColumns = 'id, title, description, priority, step_type, category, timeline, notes'
+    // Detect if extended columns exist by trying once
+    let columns = EXTENDED_COLUMNS
+    let hasExtendedCols = true
+    {
+      const { error: testErr } = await supabase
+        .from('strategic_initiatives')
+        .select(EXTENDED_COLUMNS)
+        .limit(0)
+      if (testErr) {
+        columns = CORE_COLUMNS
+        hasExtendedCols = false
+        console.log('[API /strategic-initiatives] Extended columns NOT available:', testErr.message)
+      } else {
+        console.log('[API /strategic-initiatives] Extended columns available (estimated_cost, is_monthly_cost)')
+      }
+    }
 
     // Try by user_id first
     for (const userId of userIdsToTry) {
       let query = supabase
         .from('strategic_initiatives')
-        .select(baseColumns)
+        .select(columns)
         .eq('user_id', userId)
 
       if (annualPlanOnly) {
-        // Filter to annual plan items: step_type = 'twelve_month' or timeline = 'year1'
         query = query.or('step_type.eq.twelve_month,timeline.eq.year1')
       }
 
       const { data, error } = await query.order('created_at', { ascending: false })
 
       if (!error && data && data.length > 0) {
-        // Map to the shape Step6CapEx expects
-        const initiatives = data.map(d => ({
-          id: d.id,
-          title: d.title,
-          description: d.description,
-          priority: d.priority,
-          step_type: d.step_type,
-          estimated_cost: undefined,
-          is_monthly_cost: undefined,
-        }))
-        return NextResponse.json({ initiatives })
+        const mapped = data.map(d => mapInitiative(d, hasExtendedCols))
+        console.log('[API /strategic-initiatives] Returning', mapped.length, 'initiatives. Sample costs:', mapped.slice(0, 3).map(m => ({ title: m.title, estimated_cost: m.estimated_cost, is_monthly_cost: m.is_monthly_cost })))
+        return NextResponse.json({ initiatives: mapped })
       }
 
       // If the filtered query returned nothing, try without the annual plan filter
       if (annualPlanOnly) {
         const { data: allData, error: allErr } = await supabase
           .from('strategic_initiatives')
-          .select(baseColumns)
+          .select(columns)
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
 
         if (!allErr && allData && allData.length > 0) {
-          const initiatives = allData.map(d => ({
-            id: d.id,
-            title: d.title,
-            description: d.description,
-            priority: d.priority,
-            step_type: d.step_type,
-            estimated_cost: undefined,
-            is_monthly_cost: undefined,
-          }))
-          return NextResponse.json({ initiatives })
+          return NextResponse.json({ initiatives: allData.map(d => mapInitiative(d, hasExtendedCols)) })
         }
       }
     }
@@ -109,21 +120,12 @@ export async function GET(request: Request) {
     for (const bizId of businessIdsToTry) {
       const { data, error } = await supabase
         .from('strategic_initiatives')
-        .select(baseColumns)
+        .select(columns)
         .eq('business_id', bizId)
         .order('created_at', { ascending: false })
 
       if (!error && data && data.length > 0) {
-        const initiatives = data.map(d => ({
-          id: d.id,
-          title: d.title,
-          description: d.description,
-          priority: d.priority,
-          step_type: d.step_type,
-          estimated_cost: undefined,
-          is_monthly_cost: undefined,
-        }))
-        return NextResponse.json({ initiatives })
+        return NextResponse.json({ initiatives: data.map(d => mapInitiative(d, hasExtendedCols)) })
       }
     }
 

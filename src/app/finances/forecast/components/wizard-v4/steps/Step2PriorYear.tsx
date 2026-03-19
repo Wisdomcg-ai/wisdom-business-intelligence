@@ -186,69 +186,11 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
     if (!priorYear) return;
 
     setIsLoadingInsights(true);
-    const currentHash = generateDataHash(priorYear);
 
-    try {
-      // First, try to load saved insights
-      const loadResponse = await fetch(
-        `/api/ai/forecast-insights?business_id=${businessId}&fiscal_year=${fiscalYear}`
-      );
-
-      if (loadResponse.ok) {
-        const savedData = await loadResponse.json();
-
-        // Check if we have saved insights and data hasn't changed
-        if (savedData.insights && savedData.insights.length > 0 && savedData.dataHash === currentHash) {
-          setInsights(savedData.insights.slice(0, 4)); // Limit to 4 for 2x2 grid
-          setDataHash(currentHash);
-          setInsightsLoaded(true);
-          setIsLoadingInsights(false);
-          return;
-        }
-      }
-
-      // No saved insights or data changed - generate new ones
-      await generateAndSaveInsights(currentHash);
-    } catch (error) {
-      console.error('Failed to load insights:', error);
-      // Fall back to placeholder insights
-      setInsights(generatePlaceholderInsights());
-      setInsightsLoaded(true);
-    } finally {
-      setIsLoadingInsights(false);
-    }
-  };
-
-  const generateAndSaveInsights = async (hash: string) => {
-    try {
-      const response = await fetch('/api/ai/forecast-insights', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          business_id: businessId,
-          fiscal_year: fiscalYear,
-          prior_year: priorYear,
-          current_ytd: currentYTD,
-          save: true, // Tell API to save the insights
-          dataHash: hash,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const newInsights = (data.insights || generatePlaceholderInsights()).slice(0, 4);
-        setInsights(newInsights);
-        setDataHash(hash);
-      } else {
-        // Generate placeholder insights if API fails
-        setInsights(generatePlaceholderInsights().slice(0, 4));
-      }
-    } catch (error) {
-      console.error('Failed to generate AI insights:', error);
-      setInsights(generatePlaceholderInsights().slice(0, 4));
-    } finally {
-      setInsightsLoaded(true);
-    }
+    // Use locally-generated insights (AI endpoint not yet available)
+    setInsights(generatePlaceholderInsights());
+    setInsightsLoaded(true);
+    setIsLoadingInsights(false);
   };
 
   const generatePlaceholderInsights = (): AIInsight[] => {
@@ -427,13 +369,19 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
     const fyStartYear = fiscalYear - 2; // For FY25, prior year starts Jul 2023
     const comparison: MonthlyComparison[] = [];
 
+    // Check if we have actual monthly data or need to derive from seasonality
+    const hasMonthlyData = Object.keys(priorYear.revenue.byMonth || {}).length > 0;
+
     for (let i = 0; i < 12; i++) {
       const month = ((6 + i) % 12) + 1; // Jul=7, Aug=8, ..., Jun=6
       const year = month >= 7 ? fyStartYear : fyStartYear + 1;
       const monthKey = `${year}-${String(month).padStart(2, '0')}`;
       const currentYearKey = `${year + 1}-${String(month).padStart(2, '0')}`;
 
-      const priorRevenue = priorYear.revenue.byMonth[monthKey] || 0;
+      // Use actual monthly data if available, otherwise derive from seasonality pattern
+      const priorRevenue = hasMonthlyData
+        ? (priorYear.revenue.byMonth[monthKey] || 0)
+        : Math.round(priorYear.revenue.total * (priorYear.seasonalityPattern[i] || 8.33) / 100);
       const currentRevenue = currentYTD?.revenue_by_month?.[currentYearKey] ?? null;
 
       // Calculate GP and NP for prior year (simplified - would need more detailed data)

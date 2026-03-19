@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Search, CreditCard, AlertCircle, CheckCircle, Loader2, RefreshCw,
-  ChevronDown, ChevronRight, Save, DollarSign, Calendar, TrendingUp
+  ChevronDown, ChevronRight, Save, DollarSign, Calendar, TrendingUp,
+  Plus, Trash2, PenLine
 } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency } from '../types';
 
@@ -100,6 +101,31 @@ const FREQUENCY_COLORS: Record<string, string> = {
   'ad-hoc': 'bg-gray-100 text-gray-600 border-gray-200',
 };
 
+function createManualVendor(name: string, frequency: VendorBudget['frequency'], monthlyBudget: number): VendorBudget {
+  return {
+    vendorName: name,
+    vendorKey: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    suggestedFrequency: frequency,
+    frequency,
+    confidence: 'medium',
+    totalAmount: 0,
+    avgAmount: monthlyBudget,
+    transactionCount: 0,
+    priorFYAmount: 0,
+    priorFYCount: 0,
+    currentFYAmount: 0,
+    currentFYCount: 0,
+    firstTransaction: '',
+    lastTransaction: '',
+    monthsSpan: 0,
+    suggestedMonthlyBudget: monthlyBudget,
+    monthlyBudget,
+    transactions: [],
+    isExpanded: false,
+    isActive: true,
+  };
+}
+
 export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: Step6SubscriptionsProps) {
   const [phase, setPhase] = useState<Phase>('select-accounts');
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
@@ -110,6 +136,13 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isManualMode, setIsManualMode] = useState(false);
+  const [showAddVendor, setShowAddVendor] = useState(false);
+  const [newVendor, setNewVendor] = useState({
+    name: '',
+    frequency: 'monthly' as VendorBudget['frequency'],
+    monthlyBudget: 0,
+  });
 
   // Calculate current FY context
   const today = new Date();
@@ -156,7 +189,12 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
 
       if (!response.ok) {
         if (response.status === 404) {
-          setError('No active Xero connection. Connect Xero in Settings to load subscription accounts.');
+          // No Xero connection — switch to manual entry mode
+          setIsManualMode(true);
+          setPhase('review');
+          // Try loading any existing manual budgets from DB
+          await loadExistingBudgets();
+          return;
         } else if (response.status === 401) {
           setError('Your Xero connection has expired. Please reconnect Xero in Settings.');
         } else {
@@ -189,9 +227,48 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
       }
     } catch (err) {
       console.error('Error loading accounts:', err);
-      setError('Unable to connect to Xero. Check your internet connection and try again.');
+      // Network error — also fall back to manual mode
+      setIsManualMode(true);
+      setPhase('review');
+      await loadExistingBudgets();
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadExistingBudgets = async () => {
+    try {
+      const response = await fetch(`/api/subscription-budgets?business_id=${businessId}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.budgets && data.budgets.length > 0) {
+          const existingVendors: VendorBudget[] = data.budgets.map((b: any) => ({
+            vendorName: b.vendor_name,
+            vendorKey: b.vendor_key,
+            suggestedFrequency: b.frequency || 'monthly',
+            frequency: b.frequency || 'monthly',
+            confidence: 'medium',
+            totalAmount: b.last_12_months_spend || 0,
+            avgAmount: b.avg_transaction_amount || b.monthly_budget || 0,
+            transactionCount: b.transaction_count || 0,
+            priorFYAmount: 0,
+            priorFYCount: 0,
+            currentFYAmount: 0,
+            currentFYCount: 0,
+            firstTransaction: '',
+            lastTransaction: b.last_transaction_date || '',
+            monthsSpan: 0,
+            suggestedMonthlyBudget: b.monthly_budget,
+            monthlyBudget: b.monthly_budget,
+            transactions: [],
+            isExpanded: false,
+            isActive: b.is_active !== false,
+          }));
+          setVendors(existingVendors);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading existing budgets:', err);
     }
   };
 
@@ -290,6 +367,10 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
     ));
   };
 
+  const removeVendor = (vendorKey: string) => {
+    setVendors(prev => prev.filter(v => v.vendorKey !== vendorKey));
+  };
+
   const handleFrequencyChange = (vendorKey: string, newFrequency: VendorBudget['frequency']) => {
     setVendors(prev => prev.map(v => {
       if (v.vendorKey !== vendorKey) return v;
@@ -311,6 +392,23 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
   const handleMonthlyBudgetChange = (vendorKey: string, value: string) => {
     const numValue = parseFloat(value) || 0;
     updateVendor(vendorKey, { monthlyBudget: numValue });
+  };
+
+  const addManualVendor = () => {
+    if (!newVendor.name.trim() || newVendor.monthlyBudget <= 0) return;
+
+    // Check for duplicate vendor key
+    const vendorKey = newVendor.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    if (vendors.some(v => v.vendorKey === vendorKey)) {
+      setError(`"${newVendor.name}" already exists. Edit the existing entry instead.`);
+      return;
+    }
+
+    const vendor = createManualVendor(newVendor.name.trim(), newVendor.frequency, newVendor.monthlyBudget);
+    setVendors(prev => [...prev, vendor]);
+    setNewVendor({ name: '', frequency: 'monthly', monthlyBudget: 0 });
+    setShowAddVendor(false);
+    setError(null);
   };
 
   const saveSubscriptionBudgets = useCallback(async (vendorsToSave?: VendorBudget[]) => {
@@ -335,7 +433,7 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
             last12MonthsSpend: v.totalAmount,
             transactionCount: v.transactionCount,
             avgTransactionAmount: v.avgAmount,
-            lastTransactionDate: v.lastTransaction,
+            lastTransactionDate: v.lastTransaction || null,
             accountCodes: summary?.accountsAnalyzed || [],
             isActive: true,
           })),
@@ -361,11 +459,13 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
   useEffect(() => {
     if (phase !== 'review' || vendors.length === 0) return;
 
-    // Skip the initial render — analyzeSubscriptions handles that save
-    if (!hasAutoSavedInitial.current) {
+    // Skip the initial render — analyzeSubscriptions handles that save (Xero mode)
+    // In manual mode, we still want to save after the first change
+    if (!hasAutoSavedInitial.current && !isManualMode) {
       hasAutoSavedInitial.current = true;
       return;
     }
+    hasAutoSavedInitial.current = true;
 
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
@@ -375,7 +475,7 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-  }, [vendors, phase, saveSubscriptionBudgets]);
+  }, [vendors, phase, saveSubscriptionBudgets, isManualMode]);
 
   const selectedAccountCount = accounts.filter(acc => acc.isSelected).length;
 
@@ -383,50 +483,69 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-8 h-8 animate-spin text-brand-navy" />
-        <span className="ml-3 text-gray-600">Loading expense accounts from Xero...</span>
+        <span className="ml-3 text-gray-600">Loading subscriptions...</span>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Phase Indicator */}
-      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-4 shadow-lg">
-        <div className="flex items-center justify-between">
-          {[
-            { step: 1, label: 'Select Accounts', phase: 'select-accounts' },
-            { step: 2, label: 'Analyze', phase: 'analyzing' },
-            { step: 3, label: 'Review & Budget', phase: 'review' },
-          ].map((item, idx) => {
-            const isActive = phase === item.phase;
-            const isPast = (phase === 'analyzing' && item.step === 1) ||
-                          (phase === 'review' && item.step <= 2);
-            return (
-              <div key={item.step} className="flex items-center">
-                <div className={`flex items-center gap-2 ${idx > 0 ? 'ml-2' : ''}`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
-                    isActive
-                      ? 'bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30'
-                      : isPast
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-white/10 text-slate-400'
-                  }`}>
-                    {isPast && !isActive ? '✓' : item.step}
+      {/* Phase Indicator — Xero mode only */}
+      {!isManualMode && (
+        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-4 shadow-lg">
+          <div className="flex items-center justify-between">
+            {[
+              { step: 1, label: 'Select Accounts', phase: 'select-accounts' },
+              { step: 2, label: 'Analyze', phase: 'analyzing' },
+              { step: 3, label: 'Review & Budget', phase: 'review' },
+            ].map((item, idx) => {
+              const isActive = phase === item.phase;
+              const isPast = (phase === 'analyzing' && item.step === 1) ||
+                            (phase === 'review' && item.step <= 2);
+              return (
+                <div key={item.step} className="flex items-center">
+                  <div className={`flex items-center gap-2 ${idx > 0 ? 'ml-2' : ''}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
+                      isActive
+                        ? 'bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30'
+                        : isPast
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-white/10 text-slate-400'
+                    }`}>
+                      {isPast && !isActive ? '✓' : item.step}
+                    </div>
+                    <span className={`text-sm font-medium ${
+                      isActive ? 'text-white' : isPast ? 'text-slate-300' : 'text-slate-500'
+                    }`}>
+                      {item.label}
+                    </span>
                   </div>
-                  <span className={`text-sm font-medium ${
-                    isActive ? 'text-white' : isPast ? 'text-slate-300' : 'text-slate-500'
-                  }`}>
-                    {item.label}
-                  </span>
+                  {idx < 2 && (
+                    <div className={`w-16 h-0.5 mx-3 ${isPast || isActive ? 'bg-emerald-500' : 'bg-white/10'}`} />
+                  )}
                 </div>
-                {idx < 2 && (
-                  <div className={`w-16 h-0.5 mx-3 ${isPast || isActive ? 'bg-emerald-500' : 'bg-white/10'}`} />
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Manual Mode Header */}
+      {isManualMode && (
+        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-5 shadow-lg">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg flex-shrink-0">
+              <PenLine className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-white">Manual Subscription Entry</h3>
+              <p className="text-sm text-slate-400 mt-0.5">
+                Add your recurring software and service subscriptions below. Connect Xero later for automatic analysis.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm flex items-start gap-2">
@@ -442,8 +561,8 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
         </div>
       )}
 
-      {/* Phase 1: Account Selection */}
-      {phase === 'select-accounts' && (
+      {/* Phase 1: Account Selection — Xero mode only */}
+      {phase === 'select-accounts' && !isManualMode && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900">Select Accounts to Analyze</h3>
@@ -510,8 +629,8 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
         </div>
       )}
 
-      {/* Phase 2: Analyzing */}
-      {phase === 'analyzing' && (
+      {/* Phase 2: Analyzing — Xero mode only */}
+      {phase === 'analyzing' && !isManualMode && (
         <div className="flex flex-col items-center justify-center py-12">
           <Loader2 className="w-12 h-12 animate-spin text-brand-navy mb-4" />
           <p className="text-gray-600 font-medium">Analyzing transactions from Xero...</p>
@@ -519,28 +638,32 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
         </div>
       )}
 
-      {/* Phase 3: Review & Budget */}
+      {/* Phase 3: Review & Budget (Xero mode) OR Manual entry mode */}
       {phase === 'review' && (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-5 gap-4">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-4 border border-slate-700">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-5 h-5 text-slate-400" />
-                <p className="text-xs text-slate-400 uppercase tracking-wide">Prior FY (Full)</p>
-              </div>
-              <p className="text-2xl font-bold text-white tabular-nums">{formatCurrency(totals.priorFY)}</p>
-              <p className="text-sm text-slate-400">{summary?.dateRange?.priorFY ? `${summary.dateRange.priorFY.from} - ${summary.dateRange.priorFY.to}` : 'Jul-Jun'}</p>
-            </div>
+          <div className={`grid ${isManualMode ? 'grid-cols-3' : 'grid-cols-5'} gap-4`}>
+            {!isManualMode && (
+              <>
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-4 border border-slate-700">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="w-5 h-5 text-slate-400" />
+                    <p className="text-xs text-slate-400 uppercase tracking-wide">Prior FY (Full)</p>
+                  </div>
+                  <p className="text-2xl font-bold text-white tabular-nums">{formatCurrency(totals.priorFY)}</p>
+                  <p className="text-sm text-slate-400">{summary?.dateRange?.priorFY ? `${summary.dateRange.priorFY.from} - ${summary.dateRange.priorFY.to}` : 'Jul-Jun'}</p>
+                </div>
 
-            <div className="bg-gradient-to-br from-indigo-700 to-indigo-800 rounded-xl p-4 shadow-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-5 h-5 text-indigo-200" />
-                <p className="text-xs text-indigo-200 uppercase tracking-wide">Current FY YTD</p>
-              </div>
-              <p className="text-2xl font-bold text-white tabular-nums">{formatCurrency(totals.currentFY)}</p>
-              <p className="text-sm text-indigo-100">{monthsElapsed} months elapsed</p>
-            </div>
+                <div className="bg-gradient-to-br from-indigo-700 to-indigo-800 rounded-xl p-4 shadow-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="w-5 h-5 text-indigo-200" />
+                    <p className="text-xs text-indigo-200 uppercase tracking-wide">Current FY YTD</p>
+                  </div>
+                  <p className="text-2xl font-bold text-white tabular-nums">{formatCurrency(totals.currentFY)}</p>
+                  <p className="text-sm text-indigo-100">{monthsElapsed} months elapsed</p>
+                </div>
+              </>
+            )}
 
             <div className="bg-gradient-to-br from-cyan-600 to-blue-700 rounded-xl p-4 shadow-lg">
               <div className="flex items-center gap-2 mb-2">
@@ -548,7 +671,7 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
                 <p className="text-xs text-cyan-200 uppercase tracking-wide">Monthly Budget</p>
               </div>
               <p className="text-2xl font-bold text-white tabular-nums">{formatCurrency(totals.monthlyBudget)}</p>
-              <p className="text-sm text-cyan-100">{totals.vendorCount} active vendors</p>
+              <p className="text-sm text-cyan-100">{totals.vendorCount} active vendor{totals.vendorCount !== 1 ? 's' : ''}</p>
             </div>
 
             <div className="bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-xl p-4 shadow-lg">
@@ -570,8 +693,8 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
             </div>
           </div>
 
-          {/* P&L Reconciliation Check */}
-          {summary?.reconciliation && (
+          {/* P&L Reconciliation Check — Xero mode only */}
+          {!isManualMode && summary?.reconciliation && (
             <div className={`rounded-xl p-4 border ${
               summary.reconciliation.priorFY.isReconciled && summary.reconciliation.currentFY.isReconciled
                 ? 'bg-green-50 border-green-200'
@@ -692,16 +815,29 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Subscription Budgets</h3>
                 <p className="text-sm text-gray-500">
-                  Review and adjust monthly budgets for each vendor
+                  {isManualMode
+                    ? 'Add and manage your recurring subscriptions and services'
+                    : 'Review and adjust monthly budgets for each vendor'}
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setPhase('select-accounts')}
-                  className="text-sm text-gray-600 hover:text-gray-900"
-                >
-                  Re-analyze
-                </button>
+                {isManualMode && (
+                  <button
+                    onClick={() => setShowAddVendor(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-brand-navy rounded-lg hover:bg-brand-navy-800 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Subscription
+                  </button>
+                )}
+                {!isManualMode && (
+                  <button
+                    onClick={() => setPhase('select-accounts')}
+                    className="text-sm text-gray-600 hover:text-gray-900"
+                  >
+                    Re-analyze
+                  </button>
+                )}
                 {isSaving ? (
                   <span className="flex items-center gap-2 text-sm text-gray-500">
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -712,27 +848,90 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
                     <CheckCircle className="w-4 h-4" />
                     Saved
                   </span>
-                ) : (
+                ) : vendors.length > 0 ? (
                   <span className="flex items-center gap-2 text-sm text-gray-400">
                     <Save className="w-4 h-4" />
                     Auto-saved
                   </span>
-                )}
+                ) : null}
               </div>
             </div>
+
+            {/* Add Vendor Form — Manual mode */}
+            {showAddVendor && (
+              <div className="px-6 py-4 bg-blue-50 border-b border-blue-100">
+                <div className="grid grid-cols-12 gap-3">
+                  <input
+                    type="text"
+                    value={newVendor.name}
+                    onChange={(e) => setNewVendor({ ...newVendor, name: e.target.value })}
+                    placeholder="Vendor name (e.g., Microsoft 365)"
+                    className="col-span-5 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy"
+                    autoFocus
+                    onKeyDown={(e) => e.key === 'Enter' && addManualVendor()}
+                  />
+                  <select
+                    value={newVendor.frequency}
+                    onChange={(e) => setNewVendor({ ...newVendor, frequency: e.target.value as VendorBudget['frequency'] })}
+                    className="col-span-3 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy"
+                  >
+                    {FREQUENCY_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <div className="col-span-2 relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                    <input
+                      type="number"
+                      value={newVendor.monthlyBudget || ''}
+                      onChange={(e) => setNewVendor({ ...newVendor, monthlyBudget: parseFloat(e.target.value) || 0 })}
+                      placeholder="Monthly"
+                      className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand-navy"
+                      onKeyDown={(e) => e.key === 'Enter' && addManualVendor()}
+                    />
+                  </div>
+                  <div className="col-span-2 flex gap-2">
+                    <button
+                      onClick={addManualVendor}
+                      disabled={!newVendor.name.trim() || newVendor.monthlyBudget <= 0}
+                      className="flex-1 px-3 py-2 bg-brand-navy text-white text-sm font-medium rounded-lg hover:bg-brand-navy-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Add
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowAddVendor(false);
+                        setNewVendor({ name: '', frequency: 'monthly', monthlyBudget: 0 });
+                      }}
+                      className="px-3 py-2 text-gray-600 text-sm rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-8"></th>
+                    {!isManualMode && (
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-8"></th>
+                    )}
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vendor</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Frequency</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Prior FY</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">FY YTD</th>
+                    {!isManualMode && (
+                      <>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Prior FY</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">FY YTD</th>
+                      </>
+                    )}
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase w-36">Monthly Budget</th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Annual Budget</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase w-20">Include</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase w-20">
+                      {isManualMode ? '' : 'Include'}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -741,26 +940,30 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
                       <tr
                         className={`hover:bg-gray-50 ${!vendor.isActive ? 'opacity-50' : ''}`}
                       >
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => toggleVendorExpanded(vendor.vendorKey)}
-                            className="p-1 hover:bg-gray-200 rounded"
-                          >
-                            {vendor.isExpanded ? (
-                              <ChevronDown className="w-4 h-4 text-gray-400" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4 text-gray-400" />
-                            )}
-                          </button>
-                        </td>
+                        {!isManualMode && (
+                          <td className="px-4 py-3">
+                            <button
+                              onClick={() => toggleVendorExpanded(vendor.vendorKey)}
+                              className="p-1 hover:bg-gray-200 rounded"
+                            >
+                              {vendor.isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-gray-400" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-gray-400" />
+                              )}
+                            </button>
+                          </td>
+                        )}
                         <td className="px-4 py-3">
                           <div className="font-medium text-gray-900">{vendor.vendorName}</div>
-                          <div className="text-xs text-gray-500">
-                            {vendor.transactionCount} payment{vendor.transactionCount !== 1 ? 's' : ''}
-                            {vendor.confidence === 'high' && (
-                              <span className="ml-2 text-green-600">High confidence</span>
-                            )}
-                          </div>
+                          {!isManualMode && (
+                            <div className="text-xs text-gray-500">
+                              {vendor.transactionCount} payment{vendor.transactionCount !== 1 ? 's' : ''}
+                              {vendor.confidence === 'high' && (
+                                <span className="ml-2 text-green-600">High confidence</span>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <select
@@ -774,18 +977,22 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
                             ))}
                           </select>
                         </td>
-                        <td className="px-4 py-3 text-right text-sm text-gray-600 tabular-nums">
-                          {formatCurrency(vendor.priorFYAmount)}
-                          {vendor.priorFYCount > 0 && (
-                            <span className="text-xs text-gray-400 ml-1">({vendor.priorFYCount})</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm text-gray-600 tabular-nums">
-                          {formatCurrency(vendor.currentFYAmount)}
-                          {vendor.currentFYCount > 0 && (
-                            <span className="text-xs text-gray-400 ml-1">({vendor.currentFYCount})</span>
-                          )}
-                        </td>
+                        {!isManualMode && (
+                          <>
+                            <td className="px-4 py-3 text-right text-sm text-gray-600 tabular-nums">
+                              {formatCurrency(vendor.priorFYAmount)}
+                              {vendor.priorFYCount > 0 && (
+                                <span className="text-xs text-gray-400 ml-1">({vendor.priorFYCount})</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right text-sm text-gray-600 tabular-nums">
+                              {formatCurrency(vendor.currentFYAmount)}
+                              {vendor.currentFYCount > 0 && (
+                                <span className="text-xs text-gray-400 ml-1">({vendor.currentFYCount})</span>
+                              )}
+                            </td>
+                          </>
+                        )}
                         <td className="px-4 py-3 text-right">
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
@@ -804,17 +1011,27 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
                           {formatCurrency(vendor.monthlyBudget * 12)}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={vendor.isActive}
-                            onChange={() => toggleVendorActive(vendor.vendorKey)}
-                            className="w-4 h-4 text-brand-navy rounded focus:ring-brand-navy cursor-pointer"
-                          />
+                          {isManualMode ? (
+                            <button
+                              onClick={() => removeVendor(vendor.vendorKey)}
+                              className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                              title="Remove"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <input
+                              type="checkbox"
+                              checked={vendor.isActive}
+                              onChange={() => toggleVendorActive(vendor.vendorKey)}
+                              className="w-4 h-4 text-brand-navy rounded focus:ring-brand-navy cursor-pointer"
+                            />
+                          )}
                         </td>
                       </tr>
 
-                      {/* Expanded Transaction Details */}
-                      {vendor.isExpanded && (
+                      {/* Expanded Transaction Details — Xero mode only */}
+                      {!isManualMode && vendor.isExpanded && (
                         <tr className="bg-gray-50">
                           <td colSpan={8} className="px-4 py-3">
                             <div className="ml-8 space-y-4">
@@ -908,8 +1125,22 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
 
                   {vendors.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
-                        No vendors found in the selected accounts.
+                      <td colSpan={isManualMode ? 5 : 8} className="px-4 py-8 text-center">
+                        {isManualMode ? (
+                          <div className="space-y-3">
+                            <CreditCard className="w-10 h-10 text-gray-300 mx-auto" />
+                            <p className="text-sm text-gray-500">No subscriptions added yet.</p>
+                            <button
+                              onClick={() => setShowAddVendor(true)}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-brand-navy bg-brand-navy/5 rounded-lg hover:bg-brand-navy/10 transition-colors"
+                            >
+                              <Plus className="w-4 h-4" />
+                              Add your first subscription
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">No vendors found in the selected accounts.</p>
+                        )}
                       </td>
                     </tr>
                   )}
@@ -919,7 +1150,7 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
                 {vendors.length > 0 && (
                   <tfoot className="bg-gray-100 border-t-2 border-gray-300">
                     <tr>
-                      <td colSpan={3} className="px-4 py-3 text-sm font-semibold text-gray-900">
+                      <td colSpan={isManualMode ? 2 : 3} className="px-4 py-3 text-sm font-semibold text-gray-900">
                         TOTAL ({totals.vendorCount} vendor{totals.vendorCount !== 1 ? 's' : ''})
                         {totals.excludedCount > 0 && (
                           <span className="font-normal text-gray-500 ml-2">
@@ -927,12 +1158,16 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900 tabular-nums">
-                        {formatCurrency(totals.priorFY)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900 tabular-nums">
-                        {formatCurrency(totals.currentFY)}
-                      </td>
+                      {!isManualMode && (
+                        <>
+                          <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900 tabular-nums">
+                            {formatCurrency(totals.priorFY)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900 tabular-nums">
+                            {formatCurrency(totals.currentFY)}
+                          </td>
+                        </>
+                      )}
                       <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900 tabular-nums">
                         {formatCurrency(totals.monthlyBudget)}
                       </td>
@@ -945,6 +1180,19 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
                 )}
               </table>
             </div>
+
+            {/* Quick Add Inline — Manual mode, when vendors already exist */}
+            {isManualMode && vendors.length > 0 && !showAddVendor && (
+              <div className="px-6 py-3 border-t border-gray-200 bg-gray-50">
+                <button
+                  onClick={() => setShowAddVendor(true)}
+                  className="flex items-center gap-1.5 text-sm text-brand-navy hover:text-brand-navy-800 font-medium transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add another subscription
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}

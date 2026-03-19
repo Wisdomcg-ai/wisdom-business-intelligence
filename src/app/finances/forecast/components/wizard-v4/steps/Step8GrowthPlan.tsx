@@ -70,6 +70,22 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
   const y2 = summary.year2 || emptySummary;
   const y3 = summary.year3 || emptySummary;
 
+  console.log('[Step8GrowthPlan] Summary:', {
+    forecastDuration,
+    y1: { revenue: y1.revenue, cogs: y1.cogs, grossProfit: y1.grossProfit, teamCosts: y1.teamCosts, opex: y1.opex, netProfit: y1.netProfit },
+    y2: { revenue: y2.revenue, grossProfit: y2.grossProfit, netProfit: y2.netProfit },
+    hasYear2: !!summary.year2,
+    hasYear3: !!summary.year3,
+    revenueLineCount: revenueLines.length,
+    opexLineCount: opexLines.length,
+    goalsYear1Revenue: goals.year1?.revenue,
+    revenueLinesSample: revenueLines.slice(0, 2).map(l => ({
+      name: l.name,
+      y1MonthlyKeys: Object.keys(l.year1Monthly).length,
+      y1Total: Object.values(l.year1Monthly).reduce((a: number, b: number) => a + b, 0),
+    })),
+  });
+
   // Expand/collapse state
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const toggleRow = (key: string) => {
