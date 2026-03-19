@@ -57,7 +57,7 @@ LOOP
     SELECT bfg.year_type INTO v_year_type
     FROM business_financial_goals bfg
     INNER JOIN business_profiles bp ON bfg.business_id = bp.id::text
-    WHERE bp.business_id = v_business_id::text
+    WHERE bp.business_id = v_business_id
     LIMIT 1;
   END IF;
 
