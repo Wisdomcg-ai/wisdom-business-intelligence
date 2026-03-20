@@ -260,7 +260,11 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
       }
 
       // Delete existing items and re-insert current state
-      await supabase.from('swot_items').delete().eq('swot_analysis_id', swotId);
+      const { error: deleteError } = await supabase.from('swot_items').delete().eq('swot_analysis_id', swotId);
+      if (deleteError) {
+        console.error('[SWOT autosave] Delete failed (RLS?):', deleteError);
+        throw deleteError;
+      }
 
       const allItems: Array<{
         swot_analysis_id: string;
@@ -288,7 +292,11 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
       });
 
       if (allItems.length > 0) {
-        await supabase.from('swot_items').insert(allItems);
+        const { error: insertError } = await supabase.from('swot_items').insert(allItems);
+        if (insertError) {
+          console.error('[SWOT autosave] Insert failed:', insertError);
+          throw insertError;
+        }
       }
     } catch (error) {
       console.error('[SWOT autosave] Error:', error);
@@ -372,7 +380,12 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
       if (currentSwotRef.current && !isEditingRef.current && !isRedoingRef.current) return;
 
       // Fire and forget — we're unmounting so can't await
+      // Skip if an autoSave is already in progress to prevent race condition (double insert = duplicates)
+      if (autoSaveInProgressRef.current) return;
+
       const saveOnUnmount = async () => {
+        if (autoSaveInProgressRef.current) return; // Double-check after async gap
+        autoSaveInProgressRef.current = true;
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) return;
@@ -390,7 +403,11 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
             swotId = data as string;
           }
 
-          await supabase.from('swot_items').delete().eq('swot_analysis_id', swotId);
+          const { error: deleteError } = await supabase.from('swot_items').delete().eq('swot_analysis_id', swotId);
+          if (deleteError) {
+            console.error('[SWOT unmount save] Delete failed (RLS?):', deleteError);
+            return;
+          }
 
           const allItems: Array<{
             swot_analysis_id: string;
@@ -422,6 +439,8 @@ export function SwotUpdateStep({ review, onUpdate }: SwotUpdateStepProps) {
           }
         } catch (err) {
           console.error('[SWOT unmount save] Error:', err);
+        } finally {
+          autoSaveInProgressRef.current = false;
         }
       };
       saveOnUnmount();
