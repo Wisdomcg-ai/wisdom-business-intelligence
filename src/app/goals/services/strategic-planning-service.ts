@@ -25,14 +25,19 @@ interface KeyAction {
 /**
  * Safe JSON parse helper - returns default value if parsing fails
  */
-function safeJsonParse<T>(jsonString: string | null | undefined, defaultValue: T): T {
-  if (!jsonString) return defaultValue
-  try {
-    return JSON.parse(jsonString)
-  } catch (e) {
-    console.warn('[Strategic Planning] ⚠️ Failed to parse JSON, using default:', e)
-    return defaultValue
+function safeJsonParse<T>(value: unknown, defaultValue: T): T {
+  if (value === null || value === undefined || value === '') return defaultValue
+  // Supabase returns JSONB as already-parsed objects — no need to JSON.parse
+  if (typeof value === 'object') return value as T
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value)
+    } catch (e) {
+      console.warn('[Strategic Planning] ⚠️ Failed to parse JSON, using default:', e)
+      return defaultValue
+    }
   }
+  return defaultValue
 }
 
 export class StrategicPlanningService {
