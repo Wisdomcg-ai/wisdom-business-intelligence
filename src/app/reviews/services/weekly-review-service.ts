@@ -150,7 +150,11 @@ export class WeeklyReviewService {
     const day = d.getDay()
     const diff = d.getDate() - day + (day === 0 ? -6 : 1) // Adjust for Sunday
     d.setDate(diff)
-    return d.toISOString().split('T')[0]
+    // Format in local timezone to avoid UTC conversion issues
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const dayOfMonth = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${dayOfMonth}`
   }
 
   /**
@@ -165,7 +169,11 @@ export class WeeklyReviewService {
     // If Tuesday (2), add 5 days, etc.
     const daysToAdd = day === 0 ? 0 : 7 - day
     d.setDate(d.getDate() + daysToAdd)
-    return d.toISOString().split('T')[0]
+    // Format in local timezone to avoid UTC conversion issues
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const dayOfMonth = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${dayOfMonth}`
   }
 
   /**
@@ -198,9 +206,9 @@ export class WeeklyReviewService {
       const weekEndDate = this.getWeekEnd(new Date(weekStartDate))
 
       // Try to get previous week's review to carry forward incomplete items
-      const prevWeekStart = new Date(weekStartDate)
+      const prevWeekStart = new Date(weekStartDate + 'T12:00:00') // noon to avoid DST issues
       prevWeekStart.setDate(prevWeekStart.getDate() - 7)
-      const prevWeekStartStr = prevWeekStart.toISOString().split('T')[0]
+      const prevWeekStartStr = `${prevWeekStart.getFullYear()}-${String(prevWeekStart.getMonth() + 1).padStart(2, '0')}-${String(prevWeekStart.getDate()).padStart(2, '0')}`
 
       const { data: prevWeekReview } = await this.supabase
         .from('weekly_reviews')
