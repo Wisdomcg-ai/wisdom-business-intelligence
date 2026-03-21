@@ -275,6 +275,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   const isAuthRoute = pathname?.startsWith('/auth') || pathname?.startsWith('/login')
   const isHomePage = pathname === '/'
   const isLegalPage = pathname === '/privacy' || pathname === '/terms'
+  const isStandalonePage = pathname?.startsWith('/bali-retreat')
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -407,7 +408,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   }
 
   // For coach/admin/auth routes, home page, and legal pages, just render children without the client sidebar
-  if (isCoachRoute || isAdminRoute || isAuthRoute || isHomePage || isLegalPage) {
+  if (isCoachRoute || isAdminRoute || isAuthRoute || isHomePage || isLegalPage || isStandalonePage) {
     return <>{children}</>
   }
 
