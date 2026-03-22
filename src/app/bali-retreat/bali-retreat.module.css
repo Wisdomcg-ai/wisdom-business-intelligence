@@ -1343,13 +1343,17 @@
   .heroIllustration { display: none; }
   .main { padding: 0 24px 32px; }
 
+  .sectionHeader { flex-direction: column; gap: 4px; }
+  .sectionNum { font-size: 28px; min-width: auto; }
   .section h2 { font-size: 24px; }
-  .sectionIntro { font-size: 22px; }
-  .sectionNum { font-size: 40px; min-width: 48px; }
+  .sectionIntro { font-size: 17px; }
 
-  .layer { grid-template-columns: 40px 1fr; gap: 14px; }
-  .layerNum { width: 40px; height: 40px; font-size: 17px; }
-  .layer:not(:last-child)::before { left: 19px; top: 40px; }
+  .layer { grid-template-columns: 36px 1fr; gap: 12px; }
+  .layerNum { width: 36px; height: 36px; font-size: 15px; }
+  .layer:not(:last-child)::before { left: 17px; top: 36px; }
+  .layerName { font-size: 17px; }
+  .layerDesc { font-size: 16px; }
+  .exBad, .exGood, .exPrompt, .costFrames { font-size: 15px; }
 
   .stressGrid { grid-template-columns: 1fr; }
   .toolGrid { grid-template-columns: 1fr; }
@@ -1374,10 +1378,11 @@
   .stickyNav a { padding: 12px 14px; font-size: 15px; }
 
   .main { padding: 0 16px 24px; }
-  .section { padding-top: 48px; }
-  .section h2 { font-size: 26px; }
-  .sectionHeader { gap: 12px; }
-  .sectionNum { font-size: 32px; min-width: 40px; }
+  .section { padding-top: 40px; }
+  .sectionHeader { flex-direction: column; gap: 2px; }
+  .sectionNum { font-size: 24px; min-width: auto; }
+  .section h2 { font-size: 22px; }
+  .sectionIntro { font-size: 16px; }
 
   .exampleBox { padding: 12px 14px; }
   .promptBlock { padding: 16px; }
