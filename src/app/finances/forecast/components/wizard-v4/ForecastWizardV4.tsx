@@ -511,7 +511,9 @@ export function ForecastWizardV4({
 
           if (hasXeroPLLines) {
             // Use fresh Xero data - we have actual P&L lines
-            const sourceRevenueLines = ytdRevenueLines.length > 0 ? ytdRevenueLines : priorRevenueLines;
+            // IMPORTANT: Always prefer prior FY lines for Step 2 (full year view)
+            // Only fall back to YTD if no prior FY data exists
+            const sourceRevenueLines = priorRevenueLines.length > 0 ? priorRevenueLines : ytdRevenueLines;
 
             revenueByLine = sourceRevenueLines.map((line: {
               account_name: string;
@@ -533,7 +535,7 @@ export function ForecastWizardV4({
 
             const ytdCogsLines = currentYTDData?.cogs_lines || [];
             const priorCogsLines = priorFY?.cogs_lines || [];
-            const sourceCogsLines = ytdCogsLines.length > 0 ? ytdCogsLines : priorCogsLines;
+            const sourceCogsLines = priorCogsLines.length > 0 ? priorCogsLines : ytdCogsLines;
 
             cogsByLine = sourceCogsLines.map((line: {
               account_name: string;
@@ -593,11 +595,12 @@ export function ForecastWizardV4({
           });
 
           // Calculate totals - prefer Xero data, fall back to saved assumptions
-          const totalRevenue = priorFY?.total_revenue ||
+          // Use ?? (not ||) so that 0 is treated as a valid value, not falsy
+          const totalRevenue = priorFY?.total_revenue ??
             (savedAssumptions?.revenue?.lines || []).reduce((sum: number, l: { priorYearTotal?: number }) => sum + (l.priorYearTotal || 0), 0);
-          const totalCogs = priorFY?.total_cogs ||
+          const totalCogs = priorFY?.total_cogs ??
             (savedAssumptions?.cogs?.lines || []).reduce((sum: number, l: { priorYearTotal?: number }) => sum + (l.priorYearTotal || 0), 0);
-          const totalOpex = priorFY?.operating_expenses ||
+          const totalOpex = priorFY?.operating_expenses ??
             (savedAssumptions?.opex?.lines || []).reduce((sum: number, l: { priorYearTotal?: number }) => sum + (l.priorYearTotal || 0), 0);
 
           // Build opex lines - prefer fresh data, fall back to saved
@@ -1188,7 +1191,7 @@ export function ForecastWizardV4({
             const currentYTDData = plData.summary?.current_ytd;
             const ytdRevenueLines = currentYTDData?.revenue_lines || [];
             const priorRevenueLines = priorFY?.revenue_lines || [];
-            const sourceRevenueLines = ytdRevenueLines.length > 0 ? ytdRevenueLines : priorRevenueLines;
+            const sourceRevenueLines = priorRevenueLines.length > 0 ? priorRevenueLines : ytdRevenueLines;
 
             const revenueByLine = sourceRevenueLines.map((line: any, idx: number) => {
               const roundedByMonth: Record<string, number> = {};
@@ -1205,7 +1208,7 @@ export function ForecastWizardV4({
 
             const ytdCogsLines = currentYTDData?.cogs_lines || [];
             const priorCogsLines = priorFY?.cogs_lines || [];
-            const sourceCogsLines = ytdCogsLines.length > 0 ? ytdCogsLines : priorCogsLines;
+            const sourceCogsLines = priorCogsLines.length > 0 ? priorCogsLines : ytdCogsLines;
 
             const cogsByLine = sourceCogsLines.map((line: any, idx: number) => {
               const roundedByMonth: Record<string, number> = {};
