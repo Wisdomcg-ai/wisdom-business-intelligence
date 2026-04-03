@@ -229,6 +229,93 @@ export function ForecastWizardV4({
           console.warn('[ForecastWizardV4] Could not refresh goals/profile/team:', err);
         }
 
+        // Always refresh Xero P&L data — cached priorYear may be stale or computed from buggy logic
+        try {
+          const plRes = await fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`);
+          if (plRes.ok) {
+            const plData = await plRes.json();
+            const freshPriorFY = plData.summary?.prior_fy;
+            if (freshPriorFY && freshPriorFY.total_revenue != null) {
+              const cachedRevenue = state.priorYear?.revenue?.total || 0;
+              const freshRevenue = Math.round(freshPriorFY.total_revenue);
+              // Update if the data has changed (or if cache seems wrong)
+              if (Math.abs(cachedRevenue - freshRevenue) > 1 || !state.priorYear) {
+                console.log('[ForecastWizardV4] Refreshing priorYear from Xero (cached:', cachedRevenue, 'fresh:', freshRevenue, ')');
+                const freshRevenueLines = freshPriorFY.revenue_lines || [];
+                const freshCogsLines = freshPriorFY.cogs_lines || [];
+                const totalRevenue = freshPriorFY.total_revenue;
+                const totalCogs = freshPriorFY.total_cogs;
+                const totalOpex = freshPriorFY.operating_expenses;
+
+                const rawRevenueByMonth = freshPriorFY.revenue_by_month || {};
+                const roundedRevenueByMonth: Record<string, number> = {};
+                Object.entries(rawRevenueByMonth).forEach(([key, val]) => {
+                  roundedRevenueByMonth[key] = Math.round(val as number);
+                });
+
+                const revenueByLine = freshRevenueLines.map((line: any, idx: number) => {
+                  const roundedByMonth: Record<string, number> = {};
+                  Object.entries(line.by_month || {}).forEach(([key, val]) => {
+                    roundedByMonth[key] = Math.round(val as number);
+                  });
+                  return { id: `revenue-${idx}`, name: line.account_name, total: Math.round(line.total), byMonth: roundedByMonth };
+                });
+
+                const cogsByLine = freshCogsLines.map((line: any, idx: number) => {
+                  const roundedByMonth: Record<string, number> = {};
+                  Object.entries(line.by_month || {}).forEach(([key, val]) => {
+                    roundedByMonth[key] = Math.round(val as number);
+                  });
+                  return {
+                    id: `cogs-${idx}`, name: line.account_name, total: Math.round(line.total),
+                    byMonth: roundedByMonth, percentOfRevenue: Math.round((line.percent_of_revenue || 0) * 10) / 10,
+                  };
+                });
+
+                const opexByLine = (freshPriorFY.operating_expenses_by_category || []).map((cat: any, idx: number) => ({
+                  id: `opex-${idx}`, name: cat.account_name || cat.category,
+                  total: Math.round(cat.total), monthlyAvg: Math.round(cat.monthly_average || cat.total / 12), isOneOff: false,
+                }));
+
+                const freshPriorYear: PriorYearData = {
+                  revenue: { total: Math.round(totalRevenue), byMonth: roundedRevenueByMonth, byLine: revenueByLine },
+                  cogs: {
+                    total: Math.round(totalCogs),
+                    percentOfRevenue: totalRevenue ? Math.round((totalCogs / totalRevenue) * 1000) / 10 : 0,
+                    byMonth: {}, byLine: cogsByLine,
+                  },
+                  grossProfit: {
+                    total: Math.round(freshPriorFY.gross_profit || (totalRevenue - totalCogs)),
+                    percent: Math.round((freshPriorFY.gross_margin_percent || 0) * 10) / 10 ||
+                      (totalRevenue ? Math.round(((totalRevenue - totalCogs) / totalRevenue) * 1000) / 10 : 0),
+                    byMonth: {},
+                  },
+                  opex: { total: Math.round(totalOpex), byMonth: {}, byLine: opexByLine },
+                  seasonalityPattern: freshPriorFY.seasonality_pattern?.length === 12
+                    ? freshPriorFY.seasonality_pattern : Array(12).fill(8.33),
+                };
+
+                actionsRef.current.setPriorYear(freshPriorYear);
+                // Re-initialize revenue/COGS lines from fresh data
+                const currentYTDData = plData.summary?.current_ytd;
+                actionsRef.current.initializeFromXero({
+                  priorYear: freshPriorYear,
+                  team: state.teamMembers || [],
+                  currentYTD: currentYTDData ? {
+                    revenue_by_month: currentYTDData.revenue_by_month,
+                    total_revenue: currentYTDData.total_revenue,
+                    months_count: currentYTDData.months_count,
+                  } : undefined,
+                });
+              } else {
+                console.log('[ForecastWizardV4] Cached priorYear matches fresh data, no refresh needed');
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[ForecastWizardV4] Could not refresh P&L data:', err);
+        }
+
         // Still need to load the forecast ID so generate targets the correct forecast
         let resolvedId = forecastId || existingForecastId || null;
         if (!resolvedId) {
