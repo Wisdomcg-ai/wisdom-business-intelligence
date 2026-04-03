@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
 
     // Fetch P&L data for BOTH baseline and actual periods
     // Baseline = prior FY for comparison/patterns (e.g., FY25: Jul 2024 - Jun 2025)
-    // Actual = current FY YTD for performance tracking (e.g., FY26 YTD: Jul-Oct 2025)
+    // Actual = current FY YTD for performance tracking (e.g., FY26 YTD: Jul 2025 - Mar 2026)
 
     const periods = [];
 
@@ -96,11 +96,17 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Fetch actual period (current FY YTD)
+    // Fetch actual period (current FY YTD) — always use current date for end month
+    // so we pick up recent months even if forecast dates are stale
+    const now = new Date();
+    const lastCompleteMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const currentActualEnd = `${lastCompleteMonth.getFullYear()}-${String(lastCompleteMonth.getMonth() + 1).padStart(2, '0')}`;
+    const actualEnd = forecast.actual_end_month > currentActualEnd ? forecast.actual_end_month : currentActualEnd;
+
     periods.push({
       name: 'actual',
       start: forecast.actual_start_month,
-      end: forecast.actual_end_month
+      end: actualEnd
     });
 
     console.log(`[Sync] Fetching data for periods:`, periods);
@@ -320,11 +326,12 @@ export async function POST(request: NextRequest) {
       .update({ last_synced_at: new Date().toISOString() })
       .eq('id', connection.id);
 
-    // Update the forecast's last sync timestamp
+    // Update the forecast's last sync timestamp and actual period end date
     await supabase
       .from('financial_forecasts')
       .update({
-        last_xero_sync_at: new Date().toISOString()
+        last_xero_sync_at: new Date().toISOString(),
+        actual_end_month: actualEnd,
       })
       .eq('id', forecast_id);
 
