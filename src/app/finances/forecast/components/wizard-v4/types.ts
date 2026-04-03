@@ -406,12 +406,13 @@ export function generateMonthKeys(fiscalYearStart: number): string[] {
 
 // Helper to format currency
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-AU', {
+  const formatted = new Intl.NumberFormat('en-AU', {
     style: 'currency',
     currency: 'AUD',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(Math.abs(amount));
+  return amount < 0 ? `(${formatted})` : formatted;
 }
 
 // Helper to format percentage

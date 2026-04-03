@@ -802,13 +802,13 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-40">Metric</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style={{ minWidth: '140px' }}>Metric</th>
                 {MONTHS.map((month) => (
-                  <th key={month} className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase w-20">
+                  <th key={month} className="px-2 py-3 text-right text-xs font-medium text-gray-500 uppercase" style={{ minWidth: '80px' }}>
                     {month}
                   </th>
                 ))}
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" style={{ minWidth: '100px' }}>Total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
