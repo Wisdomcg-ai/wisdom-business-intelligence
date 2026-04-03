@@ -310,6 +310,96 @@ export function ForecastWizardV4({
               } else {
                 console.log('[ForecastWizardV4] Cached priorYear matches fresh data, no refresh needed');
               }
+
+              // Detect stale database categories: revenue lines exist but COGS = 0
+              // This means forecast_pl_lines needs a re-sync with standardLayout=true
+              const freshCogsLines = freshPriorFY.cogs_lines || [];
+              const freshRevenueLines2 = freshPriorFY.revenue_lines || [];
+              if (freshRevenueLines2.length > 0 && freshCogsLines.length === 0 && (freshPriorFY.total_cogs === 0 || freshPriorFY.total_cogs == null)) {
+                console.log('[ForecastWizardV4] COGS=0 detected — database categories are stale, triggering re-sync...');
+                // Find forecast ID for sync
+                let syncForecastId = forecastId || existingForecastId || null;
+                if (!syncForecastId) {
+                  try {
+                    const vRes = await fetch(`/api/forecasts/versions?business_id=${businessId}&fiscal_year=${fiscalYear}`);
+                    if (vRes.ok) {
+                      const vData = await vRes.json();
+                      const active = (vData.versions || []).find((v: { is_active?: boolean }) => v.is_active) || (vData.versions || [])[0];
+                      if (active?.id) syncForecastId = active.id;
+                    }
+                  } catch { /* ignore */ }
+                }
+                if (syncForecastId) {
+                  try {
+                    const syncRes = await fetch('/api/Xero/sync-forecast', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ business_id: businessId, forecast_id: syncForecastId }),
+                    });
+                    if (syncRes.ok) {
+                      console.log('[ForecastWizardV4] Re-sync complete, re-fetching pl-summary...');
+                      const rePlRes = await fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`);
+                      if (rePlRes.ok) {
+                        const rePlData = await rePlRes.json();
+                        const rePriorFY = rePlData.summary?.prior_fy;
+                        if (rePriorFY) {
+                          console.log('[ForecastWizardV4] After re-sync: revenue_lines=', rePriorFY.revenue_lines?.length, 'cogs_lines=', rePriorFY.cogs_lines?.length);
+                          // Rebuild priorYear from re-synced data
+                          const reRevenueByMonth: Record<string, number> = {};
+                          Object.entries(rePriorFY.revenue_by_month || {}).forEach(([k, v]) => { reRevenueByMonth[k] = Math.round(v as number); });
+
+                          const rePriorYear: PriorYearData = {
+                            revenue: {
+                              total: Math.round(rePriorFY.total_revenue),
+                              byMonth: reRevenueByMonth,
+                              byLine: (rePriorFY.revenue_lines || []).map((l: any, i: number) => {
+                                const bm: Record<string, number> = {};
+                                Object.entries(l.by_month || {}).forEach(([k, v]) => { bm[k] = Math.round(v as number); });
+                                return { id: `revenue-${i}`, name: l.account_name, total: Math.round(l.total), byMonth: bm };
+                              }),
+                            },
+                            cogs: {
+                              total: Math.round(rePriorFY.total_cogs),
+                              percentOfRevenue: rePriorFY.total_revenue ? Math.round((rePriorFY.total_cogs / rePriorFY.total_revenue) * 1000) / 10 : 0,
+                              byMonth: {},
+                              byLine: (rePriorFY.cogs_lines || []).map((l: any, i: number) => {
+                                const bm: Record<string, number> = {};
+                                Object.entries(l.by_month || {}).forEach(([k, v]) => { bm[k] = Math.round(v as number); });
+                                return { id: `cogs-${i}`, name: l.account_name, total: Math.round(l.total), byMonth: bm, percentOfRevenue: Math.round((l.percent_of_revenue || 0) * 10) / 10 };
+                              }),
+                            },
+                            grossProfit: {
+                              total: Math.round(rePriorFY.gross_profit || (rePriorFY.total_revenue - rePriorFY.total_cogs)),
+                              percent: Math.round((rePriorFY.gross_margin_percent || 0) * 10) / 10 ||
+                                (rePriorFY.total_revenue ? Math.round(((rePriorFY.total_revenue - rePriorFY.total_cogs) / rePriorFY.total_revenue) * 1000) / 10 : 0),
+                              byMonth: {},
+                            },
+                            opex: {
+                              total: Math.round(rePriorFY.operating_expenses),
+                              byMonth: {},
+                              byLine: (rePriorFY.operating_expenses_by_category || []).map((c: any, i: number) => ({
+                                id: `opex-${i}`, name: c.account_name || c.category, total: Math.round(c.total),
+                                monthlyAvg: Math.round(c.monthly_average || c.total / 12), isOneOff: false,
+                              })),
+                            },
+                            seasonalityPattern: rePriorFY.seasonality_pattern?.length === 12 ? rePriorFY.seasonality_pattern : Array(12).fill(8.33),
+                          };
+
+                          actionsRef.current.setPriorYear(rePriorYear);
+                          const reYTD = rePlData.summary?.current_ytd;
+                          actionsRef.current.initializeFromXero({
+                            priorYear: rePriorYear,
+                            team: state.teamMembers || [],
+                            currentYTD: reYTD ? { revenue_by_month: reYTD.revenue_by_month, total_revenue: reYTD.total_revenue, months_count: reYTD.months_count } : undefined,
+                          });
+                        }
+                      }
+                    }
+                  } catch (syncErr) {
+                    console.warn('[ForecastWizardV4] Re-sync failed:', syncErr);
+                  }
+                }
+              }
             }
           }
         } catch (err) {
