@@ -357,26 +357,26 @@ function calculatePeriodSummary(
     let lineTotal = 0;
     const category = (line.category || '').toLowerCase();
 
-    // Determine if this is "Other Income" (NOT counted as main revenue)
+    // Determine category flags — order matters: check COGS before revenue
+    // because "cost of sales" contains "sales" which would false-match revenue
     const isOtherIncome = category.includes('other income');
 
-    // Determine if this is a revenue line (match various Xero category names)
-    // IMPORTANT: Exclude "other income" from revenue calculation
-    const isRevenue = !isOtherIncome && (
-                      category.includes('revenue') ||
-                      category.includes('income') ||
-                      category.includes('sales') ||
-                      category.includes('trading income'));
-
-    // Determine if this is COGS
     const isCogs = category.includes('cost of sales') ||
                    category.includes('cogs') ||
                    category.includes('direct cost') ||
                    category.includes('cost of goods');
 
+    // IMPORTANT: Exclude "other income" AND COGS from revenue calculation
+    // "cost of sales" contains "sales" which would otherwise match
+    const isRevenue = !isOtherIncome && !isCogs && (
+                      category.includes('revenue') ||
+                      category.includes('income') ||
+                      category.includes('sales') ||
+                      category.includes('trading income'));
+
     // Determine if this is OpEx (also exclude "other expense")
     const isOtherExpense = category.includes('other expense');
-    const isOpex = !isOtherExpense && (
+    const isOpex = !isOtherExpense && !isCogs && (
                    category.includes('operating') ||
                    category.includes('expense') ||
                    category.includes('overhead') ||
@@ -436,7 +436,8 @@ function calculatePeriodSummary(
   const revenueLines = plLines.filter(l => {
     const cat = (l.category || '').toLowerCase();
     const isOtherIncome = cat.includes('other income');
-    return !isOtherIncome && (cat.includes('revenue') || cat.includes('income') || cat.includes('sales') || cat.includes('trading income'));
+    const isCogs = cat.includes('cost of sales') || cat.includes('cogs') || cat.includes('direct cost') || cat.includes('cost of goods');
+    return !isOtherIncome && !isCogs && (cat.includes('revenue') || cat.includes('income') || cat.includes('sales') || cat.includes('trading income'));
   });
   const cogsLines = plLines.filter(l => {
     const cat = (l.category || '').toLowerCase();
