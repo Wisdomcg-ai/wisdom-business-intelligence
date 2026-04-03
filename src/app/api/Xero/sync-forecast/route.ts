@@ -153,19 +153,19 @@ export async function POST(request: NextRequest) {
       if (monthData?.Reports?.[0]?.Rows) {
         monthData.Reports[0].Rows.forEach((section: any) => {
           if (section.RowType === 'Section' && section.Rows) {
-            // Determine category
+            // Determine category — check order matters!
+            // COGS must be checked BEFORE Revenue because "LESS COST OF SALES" contains "SALES"
             let category = 'Operating Expenses';
             const sectionTitle = section.Title?.toUpperCase() || '';
 
-            // Check for "Other Income" FIRST since it also contains "INCOME"
-            if (sectionTitle.includes('OTHER INCOME')) {
-              category = 'Other Income';
-            } else if (sectionTitle.includes('INCOME') || sectionTitle.includes('REVENUE') || sectionTitle.includes('SALES') || sectionTitle.includes('TRADING INCOME')) {
-              category = 'Revenue';
-            } else if (sectionTitle.includes('COST OF SALES') || sectionTitle.includes('DIRECT COSTS') || sectionTitle.includes('COST OF GOODS')) {
+            if (sectionTitle.includes('COST OF SALES') || sectionTitle.includes('DIRECT COSTS') || sectionTitle.includes('COST OF GOODS')) {
               category = 'Cost of Sales';
+            } else if (sectionTitle.includes('OTHER INCOME')) {
+              category = 'Other Income';
             } else if (sectionTitle.includes('OTHER EXPENSE')) {
               category = 'Other Expenses';
+            } else if (sectionTitle.includes('INCOME') || sectionTitle.includes('REVENUE') || sectionTitle.includes('SALES') || sectionTitle.includes('TRADING INCOME')) {
+              category = 'Revenue';
             }
 
             // Process rows

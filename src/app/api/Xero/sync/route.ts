@@ -151,19 +151,21 @@ async function syncXeroData(business_id: string) {
       if (plData?.Reports?.[0]?.Rows) {
         plData.Reports[0].Rows.forEach((row: any) => {
           if (row.RowType === 'Section') {
-            if (row.Title === 'Income' || row.Title === 'Revenue') {
-              row.Rows?.forEach((subRow: any) => {
-                if (subRow.Cells?.[1]?.Value) {
-                  monthlyMetrics.revenue_month += parseFloat(subRow.Cells[1].Value) || 0;
-                }
-              });
-            } else if (row.Title === 'Cost of Sales') {
+            const title = (row.Title || '').toUpperCase();
+            // Check COGS first — "LESS COST OF SALES" contains "SALES"
+            if (title.includes('COST OF SALES') || title.includes('DIRECT COSTS') || title.includes('COST OF GOODS')) {
               row.Rows?.forEach((subRow: any) => {
                 if (subRow.Cells?.[1]?.Value) {
                   monthlyMetrics.cogs_month += parseFloat(subRow.Cells[1].Value) || 0;
                 }
               });
-            } else if (row.Title === 'Operating Expenses' || row.Title === 'Expenses') {
+            } else if (title.includes('INCOME') || title.includes('REVENUE') || title.includes('SALES') || title.includes('TRADING INCOME')) {
+              row.Rows?.forEach((subRow: any) => {
+                if (subRow.Cells?.[1]?.Value) {
+                  monthlyMetrics.revenue_month += parseFloat(subRow.Cells[1].Value) || 0;
+                }
+              });
+            } else if (title.includes('EXPENSE') || title.includes('OPERATING')) {
               row.Rows?.forEach((subRow: any) => {
                 if (subRow.Cells?.[1]?.Value) {
                   monthlyMetrics.expenses_month += parseFloat(subRow.Cells[1].Value) || 0;

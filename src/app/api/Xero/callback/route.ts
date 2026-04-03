@@ -78,19 +78,22 @@ async function triggerInitialSync(businessId: string, accessToken: string, tenan
       if (plData?.Reports?.[0]?.Rows) {
         plData.Reports[0].Rows.forEach((row: { RowType?: string; Title?: string; Rows?: { Cells?: { Value?: string }[] }[] }) => {
           if (row.RowType === 'Section') {
-            if (row.Title === 'Income' || row.Title === 'Revenue') {
-              row.Rows?.forEach((subRow) => {
-                if (subRow.Cells?.[1]?.Value) {
-                  monthlyMetrics.revenue_month += parseFloat(subRow.Cells[1].Value) || 0;
-                }
-              });
-            } else if (row.Title === 'Cost of Sales') {
+            const title = (row.Title || '').toUpperCase();
+            // Check COGS first — "LESS COST OF SALES" contains "SALES"
+            if (title.includes('COST OF SALES') || title.includes('DIRECT COSTS') || title.includes('COST OF GOODS')) {
               row.Rows?.forEach((subRow) => {
                 if (subRow.Cells?.[1]?.Value) {
                   monthlyMetrics.cogs_month += parseFloat(subRow.Cells[1].Value) || 0;
                 }
               });
-            } else if (row.Title === 'Operating Expenses' || row.Title === 'Expenses') {
+            } else if (title.includes('INCOME') || title.includes('REVENUE') || title.includes('SALES') || title.includes('TRADING INCOME')) {
+              // Excludes "OTHER INCOME" for main revenue (could add separate tracking)
+              row.Rows?.forEach((subRow) => {
+                if (subRow.Cells?.[1]?.Value) {
+                  monthlyMetrics.revenue_month += parseFloat(subRow.Cells[1].Value) || 0;
+                }
+              });
+            } else if (title.includes('EXPENSE') || title.includes('OPERATING')) {
               row.Rows?.forEach((subRow) => {
                 if (subRow.Cells?.[1]?.Value) {
                   monthlyMetrics.expenses_month += parseFloat(subRow.Cells[1].Value) || 0;
