@@ -15,7 +15,8 @@ interface CashflowAssumptionsPanelProps {
 }
 
 function fmt$(value: number): string {
-  return value.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  const formatted = Math.abs(value).toLocaleString('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  return value < 0 ? `(${formatted})` : formatted
 }
 
 export default function CashflowAssumptionsPanel({

@@ -192,10 +192,11 @@ export function isValidMoneyAmount(amount: number): boolean {
  * Format currency value
  */
 export function formatCurrency(amount: number, currency = 'USD'): string {
-  return new Intl.NumberFormat('en-US', {
+  const formatted = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency
-  }).format(amount)
+  }).format(Math.abs(amount))
+  return amount < 0 ? `(${formatted})` : formatted
 }
 
 /**

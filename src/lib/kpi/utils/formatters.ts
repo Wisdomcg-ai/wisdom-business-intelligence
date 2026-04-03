@@ -18,15 +18,17 @@ export function formatCurrency(
   }
 
   try {
-    return new Intl.NumberFormat(locale, {
+    const formatted = new Intl.NumberFormat(locale, {
       style: 'currency',
       currency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
-    }).format(value)
+    }).format(Math.abs(value))
+    return value < 0 ? `(${formatted})` : formatted
   } catch (error) {
     // Fallback for invalid currency codes
-    return `$${value.toLocaleString(locale, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+    const formatted = `$${Math.abs(value).toLocaleString(locale, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+    return value < 0 ? `(${formatted})` : formatted
   }
 }
 

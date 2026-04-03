@@ -33,12 +33,13 @@ export default function GoalsPanel({
   })
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
+    const formatted = new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(value)
+    }).format(Math.abs(value))
+    return value < 0 ? `(${formatted})` : formatted
   }
 
   const formatPercent = (value: number) => {

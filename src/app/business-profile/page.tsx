@@ -234,7 +234,8 @@ export default function EnhancedBusinessProfile() {
   // Format number with commas
   const formatCurrency = (value: number | undefined | null): string => {
     if (!value && value !== 0) return ''
-    return value.toLocaleString('en-US', { maximumFractionDigits: 0 })
+    const formatted = Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: 0 })
+    return value < 0 ? `(${formatted})` : formatted
   }
 
   const loadBusiness = async () => {

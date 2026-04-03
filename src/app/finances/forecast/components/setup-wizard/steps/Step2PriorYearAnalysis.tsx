@@ -52,12 +52,13 @@ export default function Step2PriorYearAnalysis({
   const industryConfig = getIndustryConfig(data.industryId)
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-AU', {
+    const formatted = new Intl.NumberFormat('en-AU', {
       style: 'currency',
       currency: 'AUD',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(value)
+    }).format(Math.abs(value))
+    return value < 0 ? `(${formatted})` : formatted
   }
 
   // Generate CFO insights from the analysis

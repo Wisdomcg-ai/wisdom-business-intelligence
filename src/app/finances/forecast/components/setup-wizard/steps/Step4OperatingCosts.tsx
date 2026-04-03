@@ -34,12 +34,13 @@ export default function Step4OperatingCosts({
   const [editValue, setEditValue] = useState<number>(0)
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-AU', {
+    const formatted = new Intl.NumberFormat('en-AU', {
       style: 'currency',
       currency: 'AUD',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(value)
+    }).format(Math.abs(value))
+    return value < 0 ? `(${formatted})` : formatted
   }
 
   // Initialize categories from prior year with +5% inflation

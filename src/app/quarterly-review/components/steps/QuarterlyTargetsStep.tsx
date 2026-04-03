@@ -34,12 +34,13 @@ interface BusinessKpi {
 
 function formatCurrency(value: number): string {
   if (value === 0 || value === null || value === undefined) return '$0';
-  return new Intl.NumberFormat('en-AU', {
+  const formatted = new Intl.NumberFormat('en-AU', {
     style: 'currency',
     currency: 'AUD',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(value);
+  }).format(Math.abs(value));
+  return value < 0 ? `(${formatted})` : formatted;
 }
 
 function parseCurrencyInput(value: string): number {

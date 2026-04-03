@@ -418,7 +418,8 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
   // Format functions
   const formatCurrency = useCallback((value: number | undefined | null) => {
     if (!value && value !== 0) return ''
-    return `$${value.toLocaleString()}`
+    const formatted = `$${Math.abs(value).toLocaleString()}`
+    return value < 0 ? `(${formatted})` : formatted
   }, [])
 
   const formatNumber = useCallback((value: number | undefined | null) => {

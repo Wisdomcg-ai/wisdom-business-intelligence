@@ -782,9 +782,12 @@ function QuarterlyTargetsSidebar({
 
   const formatCurrencyCompact = (value: number): string => {
     if (!value || isNaN(value)) return '$0'
-    if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`
-    if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`
-    return `$${Math.round(value).toLocaleString()}`
+    const abs = Math.abs(value)
+    let formatted: string
+    if (abs >= 1000000) formatted = `$${(abs / 1000000).toFixed(1)}M`
+    else if (abs >= 1000) formatted = `$${(abs / 1000).toFixed(0)}K`
+    else formatted = `$${Math.round(abs).toLocaleString()}`
+    return value < 0 ? `(${formatted})` : formatted
   }
 
   // Financial targets from Annual Plan
@@ -974,7 +977,8 @@ function MonthlyGoalsTab({
   const formatCurrencyValue = (value: number | string): string => {
     const num = typeof value === 'string' ? parseFloat(value) : value
     if (!num || isNaN(num)) return '$0'
-    return `$${Math.round(num).toLocaleString()}`
+    const formatted = `$${Math.round(Math.abs(num)).toLocaleString()}`
+    return num < 0 ? `(${formatted})` : formatted
   }
 
   const parseCurrencyInput = (value: string): string => {

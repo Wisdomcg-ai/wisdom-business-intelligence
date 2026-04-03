@@ -21,17 +21,24 @@ export function formatCurrency(
 
   if (amount === null || amount === undefined || isNaN(amount)) return placeholder
 
+  const isNegative = amount < 0
+  const abs = Math.abs(amount)
+
   if (compact) {
-    if (Math.abs(amount) >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`
-    if (Math.abs(amount) >= 1_000) return `$${(amount / 1_000).toFixed(0)}K`
+    let compactStr: string
+    if (abs >= 1_000_000) compactStr = `$${(abs / 1_000_000).toFixed(1)}M`
+    else if (abs >= 1_000) compactStr = `$${(abs / 1_000).toFixed(0)}K`
+    else compactStr = `$${Math.round(abs)}`
+    return isNegative ? `(${compactStr})` : compactStr
   }
 
-  return new Intl.NumberFormat('en-AU', {
+  const formatted = new Intl.NumberFormat('en-AU', {
     style: 'currency',
     currency: 'AUD',
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  }).format(amount)
+  }).format(abs)
+  return isNegative ? `(${formatted})` : formatted
 }
 
 /**

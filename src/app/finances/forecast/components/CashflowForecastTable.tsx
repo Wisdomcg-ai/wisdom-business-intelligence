@@ -10,8 +10,9 @@ interface CashflowForecastTableProps {
 
 function fmtCash(value: number): string {
   if (Math.abs(value) < 0.01) return '-'
-  const abs = Math.abs(value)
-  const formatted = abs.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  const formatted = new Intl.NumberFormat('en-AU', {
+    style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0
+  }).format(Math.abs(value))
   return value < 0 ? `(${formatted})` : formatted
 }
 

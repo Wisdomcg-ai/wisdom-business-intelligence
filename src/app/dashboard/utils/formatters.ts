@@ -2,9 +2,12 @@
  * Format currency values with K/M suffixes for large numbers
  */
 export function formatCurrency(amount: number): string {
-  if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`
-  if (amount >= 1000) return `$${(amount / 1000).toFixed(0)}K`
-  return `$${amount.toLocaleString()}`
+  const abs = Math.abs(amount)
+  let str: string
+  if (abs >= 1000000) str = `$${(abs / 1000000).toFixed(1)}M`
+  else if (abs >= 1000) str = `$${(abs / 1000).toFixed(0)}K`
+  else str = `$${abs.toLocaleString()}`
+  return amount < 0 ? `(${str})` : str
 }
 
 /**

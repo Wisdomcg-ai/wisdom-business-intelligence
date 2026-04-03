@@ -513,12 +513,13 @@ export function formatDate(date: string): string {
   });
 }
 
-// Format currency helper
+// Format currency helper — accounting convention: negatives as ($X)
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-AU', {
+  const formatted = new Intl.NumberFormat('en-AU', {
     style: 'currency',
     currency: 'AUD',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
-  }).format(amount);
+  }).format(Math.abs(amount));
+  return amount < 0 ? `(${formatted})` : formatted;
 }

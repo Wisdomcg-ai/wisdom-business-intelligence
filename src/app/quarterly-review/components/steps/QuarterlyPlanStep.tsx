@@ -102,10 +102,11 @@ const MAX_PER_PERSON = 3;
 function formatCurrency(value: number): string {
   if (value === 0 || value === null || value === undefined) return '$0';
   const abs = Math.abs(value);
-  const sign = value < 0 ? '-' : '';
-  if (abs >= 1000000) return `${sign}$${(abs / 1000000).toFixed(1)}M`;
-  if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(0)}k`;
-  return `${sign}$${abs.toLocaleString('en-AU')}`;
+  let formatted: string;
+  if (abs >= 1000000) formatted = `$${(abs / 1000000).toFixed(1)}M`;
+  else if (abs >= 1000) formatted = `$${(abs / 1000).toFixed(0)}k`;
+  else formatted = `$${abs.toLocaleString('en-AU')}`;
+  return value < 0 ? `(${formatted})` : formatted;
 }
 
 function parseCurrencyInput(value: string): number {

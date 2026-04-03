@@ -214,9 +214,12 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
   };
 
   const formatCurrency = (amount: number) => {
-    if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`;
-    if (amount >= 1000) return `$${(amount / 1000).toFixed(0)}K`;
-    return `$${amount}`;
+    const abs = Math.abs(amount);
+    let formatted: string;
+    if (abs >= 1000000) formatted = `$${(abs / 1000000).toFixed(1)}M`;
+    else if (abs >= 1000) formatted = `$${(abs / 1000).toFixed(0)}K`;
+    else formatted = `$${abs}`;
+    return amount < 0 ? `(${formatted})` : formatted;
   };
 
   // If auth page or not mounted, show children without dashboard wrapper

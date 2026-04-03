@@ -236,7 +236,8 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
 
   const formatCurrency = (value: number): string => {
     if (value === 0 || value === null || value === undefined) return '$0';
-    return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+    const formatted = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.abs(value));
+    return value < 0 ? `(${formatted})` : formatted;
   };
 
   const parseCurrencyInput = (value: string): number => {

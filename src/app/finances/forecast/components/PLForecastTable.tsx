@@ -577,12 +577,13 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
 
   const formatCurrency = (value: number) => {
     if (value === 0) return '-'
-    return new Intl.NumberFormat('en-AU', {
+    const formatted = new Intl.NumberFormat('en-AU', {
       style: 'currency',
       currency: 'AUD',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(value)
+    }).format(Math.abs(value))
+    return value < 0 ? `(${formatted})` : formatted
   }
 
   const formatInputValue = (value: number) => {

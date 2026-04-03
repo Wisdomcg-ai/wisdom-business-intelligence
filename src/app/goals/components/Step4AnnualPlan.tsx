@@ -558,12 +558,16 @@ export default function Step4AnnualPlan({
 
   // Format currency for display
   const formatCurrency = (value: number) => {
-    if (value >= 1000000) {
-      return `$${(value / 1000000).toFixed(1)}M`
-    } else if (value >= 1000) {
-      return `$${(value / 1000).toFixed(0)}k`
+    const abs = Math.abs(value)
+    let formatted: string
+    if (abs >= 1000000) {
+      formatted = `$${(abs / 1000000).toFixed(1)}M`
+    } else if (abs >= 1000) {
+      formatted = `$${(abs / 1000).toFixed(0)}k`
+    } else {
+      formatted = `$${abs.toLocaleString()}`
     }
-    return `$${value.toLocaleString()}`
+    return value < 0 ? `(${formatted})` : formatted
   }
 
   // Calculate quarterly total and validation

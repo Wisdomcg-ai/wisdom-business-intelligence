@@ -81,14 +81,16 @@ export function formatCurrency(
     notation: compact ? 'compact' : 'standard'
   })
 
-  let formatted = formatter.format(rounded)
+  const isNegative = rounded < 0
+  let formatted = formatter.format(Math.abs(rounded))
 
   // Add currency code if requested
   if (showCode && !showSymbol) {
     formatted = `${formatted} ${config.code}`
   }
 
-  return formatted
+  // Accounting convention: show negatives in parentheses
+  return isNegative ? `(${formatted})` : formatted
 }
 
 /**

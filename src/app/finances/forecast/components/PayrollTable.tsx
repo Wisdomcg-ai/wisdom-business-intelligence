@@ -161,12 +161,13 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
 
   const formatCurrency = (value: number) => {
     if (value === 0) return '-'
-    return new Intl.NumberFormat('en-AU', {
+    const formatted = new Intl.NumberFormat('en-AU', {
       style: 'currency',
       currency: 'AUD',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(value)
+    }).format(Math.abs(value))
+    return value < 0 ? `(${formatted})` : formatted
   }
 
   const formatNumber = (value: number | undefined, decimals: number = 2) => {

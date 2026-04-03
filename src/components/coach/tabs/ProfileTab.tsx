@@ -134,7 +134,8 @@ export function ProfileTab({
 
   const formatCurrency = (value?: number) => {
     if (value === undefined || value === null) return '--'
-    return `$${value.toLocaleString()}`
+    const formatted = `$${Math.abs(value).toLocaleString()}`
+    return value < 0 ? `(${formatted})` : formatted
   }
 
   return (

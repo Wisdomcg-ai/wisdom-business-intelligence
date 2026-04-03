@@ -9,13 +9,16 @@ interface ForecastMultiYearSummaryProps {
 }
 
 function formatCurrency(value: number): string {
-  if (Math.abs(value) >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(1)}M`
+  const abs = Math.abs(value)
+  let str: string
+  if (abs >= 1_000_000) {
+    str = `$${(abs / 1_000_000).toFixed(1)}M`
+  } else if (abs >= 1_000) {
+    str = `$${Math.round(abs / 1_000)}k`
+  } else {
+    str = `$${Math.round(abs)}`
   }
-  if (Math.abs(value) >= 1_000) {
-    return `$${Math.round(value / 1_000)}k`
-  }
-  return `$${Math.round(value)}`
+  return value < 0 ? `(${str})` : str
 }
 
 interface YearData {

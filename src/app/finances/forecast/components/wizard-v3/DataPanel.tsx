@@ -80,13 +80,16 @@ function CollapsibleSection({
 }
 
 function formatCurrency(value: number): string {
-  if (value >= 1000000) {
-    return `$${(value / 1000000).toFixed(1)}M`;
+  const abs = Math.abs(value);
+  let formatted: string;
+  if (abs >= 1000000) {
+    formatted = `$${(abs / 1000000).toFixed(1)}M`;
+  } else if (abs >= 1000) {
+    formatted = `$${(abs / 1000).toFixed(0)}K`;
+  } else {
+    formatted = `$${abs.toLocaleString()}`;
   }
-  if (value >= 1000) {
-    return `$${(value / 1000).toFixed(0)}K`;
-  }
-  return `$${value.toLocaleString()}`;
+  return value < 0 ? `(${formatted})` : formatted;
 }
 
 function TrendIndicator({ value }: { value: number }) {

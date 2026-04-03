@@ -6,7 +6,8 @@ export const formatDollar = (value: number): string => {
 }
 
 export const formatCurrency = (value: number): string => {
-  return '$' + value.toLocaleString('en-AU')
+  const formatted = '$' + Math.abs(value).toLocaleString('en-AU')
+  return value < 0 ? `(${formatted})` : formatted
 }
 
 export const formatNumber = (value: number): string => {

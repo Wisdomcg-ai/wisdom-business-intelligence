@@ -243,11 +243,12 @@ export default function QuarterlyForecastPage() {
   }
 
   function formatCurrency(amount: number) {
-    return new Intl.NumberFormat('en-US', {
+    const formatted = new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       maximumFractionDigits: 0
-    }).format(amount);
+    }).format(Math.abs(amount));
+    return amount < 0 ? `(${formatted})` : formatted;
   }
 
   return (

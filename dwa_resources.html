@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deep Work with AI — Bali Retreat 2026</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --navy:       #1B2B3B;
+      --navy-mid:   #243447;
+      --navy-lt:    #2E4058;
+      --orange:     #F97316;
+      --orange-lt:  #FFF0E6;
+      --orange-dk:  #C85E0C;
+      --teal:       #0891B2;
+      --teal-lt:    #E0F5FA;
+      --green:      #059669;
+      --green-lt:   #ECFDF5;
+      --red:        #DC2626;
+      --red-lt:     #FEF2F2;
+      --white:      #FFFFFF;
+      --bg:         #F5F6F8;
+      --border:     #E5E7EB;
+      --border-dk:  #D1D5DB;
+      --text:       #111827;
+      --text-mid:   #374151;
+      --text-muted: #6B7280;
+      --text-light: #9CA3AF;
+      --radius:     10px;
+      --radius-lg:  14px;
+      --shadow:     0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+      --shadow-md:  0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── HEADER ───────────────────────────────────── */
+    header {
+      background: var(--navy);
+      padding: 0;
+    }
+
+    .header-top {
+      display: flex;
+      align-items: center;
+      padding: 16px 32px;
+      border-bottom: 1px solid var(--navy-lt);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .logo-mark {
+      width: 36px;
+      height: 36px;
+      background: var(--orange);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: white;
+      letter-spacing: -.5px;
+    }
+
+    .logo-text {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--white);
+      letter-spacing: -.2px;
+    }
+
+    .logo-text span { color: var(--orange); }
+
+    .header-badge {
+      margin-left: auto;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-light);
+      background: var(--navy-lt);
+      padding: 5px 12px;
+      border-radius: 20px;
+    }
+
+    .header-hero {
+      padding: 40px 32px 44px;
+    }
+
+    .hero-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 10px;
+    }
+
+    .header-hero h1 {
+      font-size: clamp(24px, 4vw, 36px);
+      font-weight: 700;
+      color: var(--white);
+      line-height: 1.2;
+      margin-bottom: 10px;
+    }
+
+    .header-hero p {
+      font-size: 15px;
+      color: #8BA8C4;
+      max-width: 560px;
+    }
+
+    /* ── STICKY NAV ───────────────────────────────── */
+    nav {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    nav::-webkit-scrollbar { display: none; }
+
+    nav ul {
+      display: flex;
+      list-style: none;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 24px;
+      white-space: nowrap;
+    }
+
+    nav a {
+      display: block;
+      padding: 13px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      transition: color .15s, border-color .15s;
+    }
+
+    nav a:hover { color: var(--text); }
+    nav a.active { color: var(--navy); border-bottom-color: var(--orange); font-weight: 600; }
+
+    /* ── MAIN ─────────────────────────────────────── */
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    section {
+      margin-bottom: 56px;
+      scroll-margin-top: 60px;
+    }
+
+    .section-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 6px;
+    }
+
+    section > h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    .section-intro {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      max-width: 640px;
+      line-height: 1.65;
+    }
+
+    /* ── CARDS ────────────────────────────────────── */
+    .card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      box-shadow: var(--shadow);
+    }
+
+    /* ── UNPACKING LAYERS ─────────────────────────── */
+    .layers { display: flex; flex-direction: column; gap: 0; }
+
+    .layer {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 16px;
+      position: relative;
+    }
+
+    .layer:not(:last-child)::before {
+      content: '';
+      position: absolute;
+      left: 21px;
+      top: 44px;
+      bottom: 0;
+      width: 2px;
+      background: var(--border);
+      z-index: 0;
+    }
+
+    .layer-num {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--navy);
+      color: var(--orange);
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    .layer-body {
+      padding-top: 8px;
+      padding-bottom: 24px;
+    }
+
+    .layer-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--navy);
+      margin-bottom: 2px;
+    }
+
+    .layer-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      line-height: 1.55;
+    }
+
+    .example-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+
+    .ex-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-light);
+      margin-bottom: 6px;
+    }
+
+    .ex-bad {
+      font-size: 13px;
+      color: var(--red);
+      margin-bottom: 3px;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+
+    .ex-arrow {
+      font-size: 12px;
+      color: var(--text-light);
+      margin: 3px 0;
+      padding-left: 20px;
+    }
+
+    .ex-good {
+      font-size: 13px;
+      color: var(--green);
+      font-weight: 500;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+
+    /* ── POSSIBILITIES TABLE ──────────────────────── */
+    .poss-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--white);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+
+    .poss-table thead th {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-light);
+      padding: 12px 18px;
+      text-align: left;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .poss-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background .12s;
+    }
+
+    .poss-table tbody tr:last-child { border-bottom: none; }
+    .poss-table tbody tr:hover { background: #FAFBFF; }
+
+    .poss-table tbody td {
+      padding: 14px 18px;
+      vertical-align: top;
+      font-size: 13px;
+    }
+
+    .want-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--navy);
+      margin-bottom: 2px;
+    }
+
+    .want-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .pill {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 20px;
+      margin: 2px 3px 2px 0;
+      text-decoration: none;
+      transition: opacity .15s;
+    }
+
+    .pill:hover { opacity: .8; }
+    .pill-navy  { background: #EEF2F8; color: var(--navy); }
+    .pill-orange{ background: var(--orange-lt); color: var(--orange-dk); }
+    .pill-teal  { background: var(--teal-lt); color: #0C6A84; }
+    .pill-green { background: var(--green-lt); color: #065F46; }
+    .pill-red   { background: var(--red-lt); color: #991B1B; }
+
+    .level-dots {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border-dk);
+    }
+
+    .dot.on { background: var(--orange); }
+
+    .level-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-left: 5px;
+    }
+
+    /* ── PROMPT BLOCKS ────────────────────────────── */
+    .prompt-stage { margin-bottom: 20px; }
+
+    .prompt-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .p-num {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--orange);
+      color: var(--white);
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .p-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--navy);
+    }
+
+    .p-time {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+
+    .prompt-block {
+      background: var(--navy);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      position: relative;
+    }
+
+    .prompt-block-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 8px;
+    }
+
+    .prompt-block pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      color: #A8C4DF;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.7;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: var(--navy-lt);
+      border: 1px solid #3A5270;
+      color: #8BA8C4;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      transition: background .15s, color .15s;
+    }
+
+    .copy-btn:hover { background: #3A5270; color: var(--white); }
+    .copy-btn.copied { background: var(--green); color: var(--white); border-color: var(--green); }
+
+    /* ── TOOL GRID ────────────────────────────────── */
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 14px;
+    }
+
+    .tool-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+      box-shadow: var(--shadow);
+      transition: border-color .15s, box-shadow .15s, transform .15s;
+    }
+
+    .tool-card:hover {
+      border-color: var(--orange);
+      box-shadow: var(--shadow-md);
+      transform: translateY(-2px);
+    }
+
+    .tool-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .tool-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--navy);
+    }
+
+    .tool-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+
+    .badge-free   { background: var(--green-lt); color: #065F46; }
+    .badge-paid   { background: var(--orange-lt); color: var(--orange-dk); }
+    .badge-open   { background: #EEF2F8; color: var(--navy); }
+
+    .tool-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.55;
+      margin-bottom: 10px;
+    }
+
+    .tool-meta {
+      font-size: 11px;
+      color: var(--text-light);
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .tool-link-icon {
+      font-size: 11px;
+      color: var(--orange);
+      font-weight: 600;
+    }
+
+    /* ── AGENT CARDS ──────────────────────────────── */
+    .agent-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      margin-bottom: 20px;
+    }
+
+    .agent-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    .agent-head h3 {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--navy);
+    }
+
+    .agent-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .agent-body { padding: 20px 22px; }
+
+    .agent-lead {
+      font-size: 14px;
+      color: var(--text-mid);
+      line-height: 1.65;
+      margin-bottom: 16px;
+    }
+
+    .agent-cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 560px) { .agent-cols { grid-template-columns: 1fr; } }
+
+    .agent-col-head {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-light);
+      margin-bottom: 8px;
+    }
+
+    .agent-col ul { list-style: none; }
+
+    .agent-col ul li {
+      font-size: 13px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      margin-bottom: 5px;
+      line-height: 1.5;
+    }
+
+    .agent-col.pros li::before { content: '✓'; color: var(--green); font-weight: 700; flex-shrink: 0; }
+    .agent-col.cons li::before { content: '✗'; color: var(--red); font-weight: 700; flex-shrink: 0; }
+
+    .agent-verdict {
+      background: var(--orange-lt);
+      border-left: 3px solid var(--orange);
+      border-radius: 0 8px 8px 0;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--text-mid);
+      line-height: 1.6;
+    }
+
+    .agent-verdict strong { color: var(--navy); font-weight: 600; }
+
+    /* ── DIVIDER ──────────────────────────────────── */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 0 0 56px;
+    }
+
+    /* ── FOOTER ───────────────────────────────────── */
+    footer {
+      background: var(--navy);
+      padding: 28px 32px;
+      text-align: center;
+    }
+
+    footer p { font-size: 13px; color: #5A7A99; }
+    footer a { color: var(--orange); text-decoration: none; }
+
+    /* ── RESPONSIVE ───────────────────────────────── */
+    @media (max-width: 640px) {
+      .header-top { padding: 14px 20px; }
+      .header-hero { padding: 28px 20px 32px; }
+      main { padding: 28px 16px 60px; }
+      .poss-table { font-size: 12px; }
+      .poss-table thead th,
+      .poss-table tbody td { padding: 10px 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="header-top">
+    <a href="https://www.wisdombi.ai" class="logo">
+      <div class="logo-mark">W/Bi</div>
+      <span class="logo-text">Wisdom<span>Bi</span></span>
+    </a>
+    <span class="header-badge">Bali Retreat 2026</span>
+  </div>
+  <div class="header-hero">
+    <div class="hero-label">Deep Work with AI</div>
+    <h1>Your build resources.<br>Everything in one place.</h1>
+    <p>The frameworks, prompts, tool guides and references from today's session. Bookmark this page — it's yours to keep.</p>
+  </div>
+</header>
+
+<!-- NAV -->
+<nav>
+  <ul>
+    <li><a href="#unpack" class="active">Unpack Your Problem</a></li>
+    <li><a href="#possibilities">What's Possible</a></li>
+    <li><a href="#prompts">Build Prompts</a></li>
+    <li><a href="#tools">Tool Links</a></li>
+    <li><a href="#agents">Manus &amp; OpenClaw</a></li>
+  </ul>
+</nav>
+
+<!-- MAIN -->
+<main>
+
+  <!-- ── SECTION 1: UNPACKING ─────────────────────── -->
+  <section id="unpack">
+    <div class="section-eyebrow">Stage 1 — Surface</div>
+    <h2>The 5-Layer Problem Unpacking Model</h2>
+    <p class="section-intro">Most people describe the symptom and stop. The breakthrough always happens at Layer 3 — the constraint. Work through these layers before you open Claude, or use them to guide your conversation.</p>
+
+    <div class="layers">
+
+      <div class="layer">
+        <div class="layer-num">1</div>
+        <div class="layer-body">
+          <div class="layer-name">The Symptom — what you notice</div>
+          <div class="layer-desc">The thing that annoys you or shows up as a problem. It's real, but it's not the problem — it's the signal that a problem exists underneath.</div>
+          <div class="example-box">
+            <div class="ex-label">Examples</div>
+            <div class="ex-bad">✗ "We're always chasing invoices"</div>
+            <div class="ex-bad">✗ "The team never updates the job tracker"</div>
+            <div class="ex-bad">✗ "I spend all my time in the business, not on it"</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-num">2</div>
+        <div class="layer-body">
+          <div class="layer-name">The Process — what's actually happening</div>
+          <div class="layer-desc">Map out the steps. Who does what, when, using which tools. You're looking for where manual effort, handoffs, or gaps exist. Write it as a sequence, not a description.</div>
+          <div class="example-box">
+            <div class="ex-label">Prompt to use</div>
+            <div style="font-size:13px; color:#374151; font-style:italic;">"Walk me through exactly what happens, step by step, from the moment [trigger] until [outcome]. Who does each step and what tool do they use?"</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-num" style="background: var(--orange); color: white;">3</div>
+        <div class="layer-body">
+          <div class="layer-name" style="color: var(--orange);">The Constraint — where it breaks ⭐ This is the one</div>
+          <div class="layer-desc">The specific point in the process where it fails, slows down, or depends on one person. This is what you're actually solving. If you can name this precisely, the solution designs itself.</div>
+          <div class="example-box">
+            <div class="ex-label">Bad → Good</div>
+            <div class="ex-bad">✗ "Our invoicing is slow"</div>
+            <div class="ex-arrow">↓ dig deeper</div>
+            <div class="ex-good">✓ "Invoices only get sent when I personally approve them — there's no trigger for the admin to send without my sign-off, so they pile up when I'm on site"</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-num">4</div>
+        <div class="layer-body">
+          <div class="layer-name">The Cost — what not solving it actually costs</div>
+          <div class="layer-desc">Be specific. Vague cost = low urgency = no action. Quantify in time, money, or risk. If you can't put a number on it, the problem probably isn't ready to solve yet.</div>
+          <div class="example-box">
+            <div class="ex-label">Frames that work</div>
+            <div style="font-size:13px; color:#374151; line-height:1.7;">
+              ⏱ "This costs us <strong>X hours per week</strong>"<br>
+              💰 "This creates roughly <strong>$X in lost cash flow</strong> per month"<br>
+              ⚠️ "If we don't fix this, we risk <strong>[specific consequence]</strong>"<br>
+              🔓 "Solving this unlocks <strong>[specific opportunity]</strong> we can't pursue now"
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-num">5</div>
+        <div class="layer-body">
+          <div class="layer-name">The Owner — why it hasn't been solved</div>
+          <div class="layer-desc">Who owns this problem and why does it persist? Usually: no clear owner, the owner is too busy, or the solution requires technical skill nobody has. Understanding this shapes what solution will actually stick.</div>
+          <div class="example-box">
+            <div class="ex-label">Questions to answer</div>
+            <div style="font-size:13px; color:#374151; line-height:1.8;">
+              → Whose job is it to fix this?<br>
+              → What's stopped them?<br>
+              → What does the solution need to look like to actually get used?
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /layers -->
+
+    <div style="margin-top: 24px; padding: 16px 20px; background: #EEF2F8; border-radius: var(--radius); border-left: 3px solid var(--navy);">
+      <div style="font-size: 13px; font-weight: 600; color: var(--navy); margin-bottom: 4px;">The full Claude prompt for Stage 1</div>
+      <div style="font-size: 13px; color: var(--text-mid); font-style: italic; line-height: 1.65;">"I want to describe a problem in my business. I'm not looking for solutions yet — I want you to help me understand the problem more clearly. Ask me questions one at a time until you can restate the problem back to me in 2 sentences that I'd agree are exactly right."</div>
+    </div>
+
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ── SECTION 2: POSSIBILITIES MAP ─────────────── -->
+  <section id="possibilities">
+    <div class="section-eyebrow">Stage 2 — Design</div>
+    <h2>What's Possible — The Build Map</h2>
+    <p class="section-intro">Most people self-limit because they don't know what's achievable. This map shows what you can build and what it takes. Start with what you want, not with the tool.</p>
+
+    <table class="poss-table">
+      <thead>
+        <tr>
+          <th style="width:28%">What you want to build</th>
+          <th style="width:30%">Tools you need</th>
+          <th style="width:20%">Complexity</th>
+          <th style="width:22%">First step</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div class="want-label">A document, process or system</div>
+            <div class="want-sub">SOP, checklist, onboarding guide, policy</div>
+          </td>
+          <td>
+            <span class="pill pill-navy">Claude</span>
+          </td>
+          <td>
+            <div class="level-dots">
+              <div class="dot on"></div><div class="dot"></div><div class="dot"></div>
+              <span class="level-label">Easy — today</span>
+            </div>
+          </td>
+          <td style="font-size:12px; color:var(--text-muted);">Describe the process to Claude and ask it to structure it</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="want-label">A persistent AI team member</div>
+            <div class="want-sub">AI that knows your business and handles recurring tasks</div>
+          </td>
+          <td>
+            <span class="pill pill-navy">Claude Projects</span>
+          </td>
+          <td>
+            <div class="level-dots">
+              <div class="dot on"></div><div class="dot"></div><div class="dot"></div>
+              <span class="level-label">Easy — today</span>
+            </div>
+          </td>
+          <td style="font-size:12px; color:var(--text-muted);">Create a Project, paste in your architecture as instructions</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="want-label">Automated workflows</div>
+            <div class="want-sub">When X happens, do Y automatically</div>
+          </td>
+          <td>
+            <span class="pill pill-orange">Zapier</span>
+            <span class="pill pill-orange">Make</span>
+            <span class="pill pill-navy">Claude Projects</span>
+          </td>
+          <td>
+            <div class="level-dots">
+              <div class="dot on"></div><div class="dot on"></div><div class="dot"></div>
+              <span class="level-label">Medium</span>
+            </div>
+          </td>
+          <td style="font-size:12px; color:var(--text-muted);">Ask Claude to write a Zap specification, then build it</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="want-label">A working web tool</div>
+            <div class="want-sub">Calculator, tracker, dashboard, internal app</div>
+          </td>
+          <td>
+            <span class="pill pill-teal">Claude Code</span>
+            <span class="pill pill-navy">GitHub</span>
+            <span class="pill pill-green">Vercel</span>
+          </td>
+          <td>
+            <div class="level-dots">
+              <div class="dot on"></div><div class="dot on"></div><div class="dot"></div>
+              <span class="level-label">Medium</span>
+            </div>
+          </td>
+          <td style="font-size:12px; color:var(--text-muted);">Ask Claude to write a technical spec, then open Claude Code</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="want-label">A tool with a real database</div>
+            <div class="want-sub">Stores data, user accounts, persistent records</div>
+          </td>
+          <td>
+            <span class="pill pill-teal">Claude Code</span>
+            <span class="pill pill-navy">GitHub</span>
+            <span class="pill pill-green">Supabase</span>
+            <span class="pill pill-green">Vercel</span>
+          </td>
+          <td>
+            <div class="level-dots">
+              <div class="dot on"></div><div class="dot on"></div><div class="dot on"></div>
+              <span class="level-label">Advanced</span>
+            </div>
+          </td>
+          <td style="font-size:12px; color:var(--text-muted);">Set up Supabase project first, then build with Claude Code</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="want-label">An AI agent that works while you sleep</div>
+            <div class="want-sub">Autonomous, multi-step, runs on a schedule</div>
+          </td>
+          <td>
+            <span class="pill pill-red">Manus</span>
+            <span class="pill pill-red">OpenClaw</span>
+          </td>
+          <td>
+            <div class="level-dots">
+              <div class="dot on"></div><div class="dot on"></div><div class="dot on"></div>
+              <span class="level-label">Advanced</span>
+            </div>
+          </td>
+          <td style="font-size:12px; color:var(--text-muted);">Start with Manus (no setup). OpenClaw for full control.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ── SECTION 3: PROMPTS ────────────────────────── -->
+  <section id="prompts">
+    <div class="section-eyebrow">All 4 Stages</div>
+    <h2>Build Prompts — Copy and Paste</h2>
+    <p class="section-intro">Use these exactly as written, then adapt with your own details in the square brackets. Each one is designed to move you to the next stage.</p>
+
+    <div class="prompt-stage">
+      <div class="prompt-header">
+        <div class="p-num">1</div>
+        <div class="p-title">Surface — Get the real problem out</div>
+        <div class="p-time">15 min</div>
+      </div>
+      <div class="prompt-block">
+        <div class="prompt-block-label">Stage 1 Prompt</div>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+        <pre>I want to describe a problem in my business. I'm not looking for solutions yet — I want you to help me understand the problem more clearly.
+
+Ask me questions one at a time until you can restate my problem back to me in 2 sentences that I'd agree are exactly right.
+
+Start with: what is the problem, and who experiences it most directly?</pre>
+      </div>
+    </div>
+
+    <div class="prompt-stage">
+      <div class="prompt-header">
+        <div class="p-num">2</div>
+        <div class="p-title">Design — Build the solution architecture</div>
+        <div class="p-time">20 min</div>
+      </div>
+      <div class="prompt-block">
+        <div class="prompt-block-label">Stage 2 Prompt</div>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+        <pre>Based on everything we've discussed, design a solution architecture for this problem.
+
+Give me:
+1. The core components — what are the distinct parts?
+2. What to build first and why — sequence matters
+3. What success looks like in 90 days — specific and measurable
+4. The biggest risks I should know about — be honest
+
+Then I want to stress-test it. After you give me the architecture, I'll ask: what are you assuming about my business that might not be true?</pre>
+      </div>
+    </div>
+
+    <div class="prompt-stage">
+      <div class="prompt-header">
+        <div class="p-num">3</div>
+        <div class="p-title">Build — Make the first component real</div>
+        <div class="p-time">40 min</div>
+      </div>
+      <div class="prompt-block">
+        <div class="prompt-block-label">Stage 3 Prompt</div>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+        <pre>Take the first component we identified. Build it completely — give me the working version, not a description of what it would do.
+
+If it's a document or process: write it fully, formatted and ready to use.
+If it's a tool or app: write the complete code I can run or deploy.
+If it's a Claude Project: write the full system prompt and instructions.
+If it's a spec: write the complete technical brief a developer could build from.
+
+Don't summarise. Build it.</pre>
+      </div>
+    </div>
+
+    <div class="prompt-stage">
+      <div class="prompt-header">
+        <div class="p-num">4</div>
+        <div class="p-title">Capture — Lock in the outcome</div>
+        <div class="p-time">15 min</div>
+      </div>
+      <div class="prompt-block">
+        <div class="prompt-block-label">Stage 4 Prompt</div>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+        <pre>Summarise what we built in this conversation in 3 sentences.
+
+Then give me:
+- The one thing I need to do in the next 7 days to move this forward
+- The one dependency that could block me
+- One question I should ask myself before I start</pre>
+      </div>
+    </div>
+
+    <!-- Stress test prompts -->
+    <div style="margin-top: 28px;">
+      <div style="font-size: 13px; font-weight: 600; color: var(--navy); margin-bottom: 12px;">Stress-test prompts — use these any time in Stage 2 or 3</div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
+        <div class="card" style="padding: 14px 16px;">
+          <div style="font-size: 13px; font-style: italic; color: var(--text-mid); line-height: 1.6;">"What are you assuming about my business that might not be true?"</div>
+        </div>
+        <div class="card" style="padding: 14px 16px;">
+          <div style="font-size: 13px; font-style: italic; color: var(--text-mid); line-height: 1.6;">"If I could only build one component first — which one and why?"</div>
+        </div>
+        <div class="card" style="padding: 14px 16px;">
+          <div style="font-size: 13px; font-style: italic; color: var(--text-mid); line-height: 1.6;">"What would make this architecture fail?"</div>
+        </div>
+        <div class="card" style="padding: 14px 16px;">
+          <div style="font-size: 13px; font-style: italic; color: var(--text-mid); line-height: 1.6;">"What have I not asked you that I should have?"</div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ── SECTION 4: TOOLS ──────────────────────────── -->
+  <section id="tools">
+    <div class="section-eyebrow">Your Build Stack</div>
+    <h2>Key Tools — Links and First Steps</h2>
+    <p class="section-intro">You don't need all of these. You need the ones that fit your architecture. Start with the first step listed — most of these are free to begin.</p>
+
+    <div class="tool-grid">
+
+      <a href="https://claude.ai" target="_blank" class="tool-card">
+        <div class="tool-top">
+          <div class="tool-name">Claude</div>
+          <span class="tool-badge badge-paid">$20/mo Pro</span>
+        </div>
+        <div class="tool-desc">Your AI thinking partner for everything in this session. Use Projects to build persistent AI team members that remember your business context.</div>
+        <div class="tool-meta">
+          <span>claude.ai</span>
+          <span class="tool-link-icon">↗</span>
+        </div>
+      </a>
+
+      <a href="https://claude.ai/code" target="_blank" class="tool-card">
+        <div class="tool-top">
+          <div class="tool-name">Claude Code</div>
+          <span class="tool-badge badge-paid">Included in Pro</span>
+        </div>
+        <div class="tool-desc">Claude's coding agent. Describe what you want to build, and it writes, tests, and iterates on the code. No coding knowledge required to direct it.</div>
+        <div class="tool-meta">
+          <span>claude.ai/code</span>
+          <span class="tool-link-icon">↗</span>
+        </div>
+      </a>
+
+      <a href="https://github.com" target="_blank" class="tool-card">
+        <div class="tool-top">
+          <div class="tool-name">GitHub</div>
+          <span class="tool-badge badge-free">Free</span>
+        </div>
+        <div class="tool-desc">Version control for everything you build with Claude Code. Stores your code, tracks changes, and means you can always go back. Essential if you're building anything custom.</div>
+        <div class="tool-meta">
+          <span>github.com — First step: create a free account, create a repo named after your project</span>
+          <span class="tool-link-icon">↗</span>
+        </div>
+      </a>
+
+      <a href="https://supabase.com" target="_blank" class="tool-card">
+        <div class="tool-top">
+          <div class="tool-name">Supabase</div>
+          <span class="tool-badge badge-free">Free tier</span>
+        </div>
+        <div class="tool-desc">A real database for your custom tools. If your solution needs to store data — client records, job tracking, certificate expiries — Supabase handles the backend. Claude Code integrates with it directly.</div>
+        <div class="tool-meta">
+          <span>supabase.com — First step: create a project, Claude Code does the rest</span>
+          <span class="tool-link-icon">↗</span>
+        </div>
+      </a>
+
+      <a href="https://vercel.com" target="_blank" class="tool-card">
+        <div class="tool-top">
+          <div class="tool-name">Vercel</div>
+          <span class="tool-badge badge-free">Free tier</span>
+        </div>
+        <div class="tool-desc">Deploys your web tools to a live URL in minutes. Connect your GitHub repo, push your code, and Vercel publishes it automatically. No server management.</div>
+        <div class="tool-meta">
+          <span>vercel.com — First step: connect your GitHub account</span>
+          <span class="tool-link-icon">↗</span>
+        </div>
+      </a>
+
+      <a href="https://zapier.com" target="_blank" class="tool-card">
+        <div class="tool-top">
+          <div class="tool-name">Zapier</div>
+          <span class="tool-badge badge-free">Free tier</span>
+        </div>
+        <div class="tool-desc">Connects your existing tools automatically. When something happens in one app, Zapier triggers an action in another. Best for automations between tools you already use.</div>
+        <div class="tool-meta">
+          <span>zapier.com — Free: 5 Zaps, 100 tasks/month</span>
+          <span class="tool-link-icon">↗</span>
+        </div>
+      </a>
+
+      <a href="https://make.com" target="_blank" class="tool-card">
+        <div class="tool-top">
+          <div class="tool-name">Make</div>
+          <span class="tool-badge badge-free">Free tier</span>
+        </div>
+        <div class="tool-desc">More powerful than Zapier for complex multi-step automations. Visual workflow builder. Better for building things that need logic, branching, and error handling.</div>
+        <div class="tool-meta">
+          <span>make.com — Free: 1,000 operations/month</span>
+          <span class="tool-link-icon">↗</span>
+        </div>
+      </a>
+
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- ── SECTION 5: AGENTS ─────────────────────────── -->
+  <section id="agents">
+    <div class="section-eyebrow">What's Coming</div>
+    <h2>Autonomous Agents — Manus &amp; OpenClaw</h2>
+    <p class="section-intro">These tools represent the next level — AI that works autonomously while you sleep. They're powerful, but have real caveats. Here's an honest read on both so you know what you're getting into.</p>
+
+    <!-- MANUS -->
+    <div class="agent-card">
+      <div class="agent-head">
+        <h3>Manus</h3>
+        <div class="agent-tags">
+          <span class="pill pill-orange">Cloud-hosted</span>
+          <span class="pill pill-navy">No setup required</span>
+          <span class="pill pill-green">Free tier available</span>
+        </div>
+      </div>
+      <div class="agent-body">
+        <p class="agent-lead">Manus is a cloud-based autonomous agent. You give it a high-level goal — "research my top 5 competitors and build me a comparison report" — and it plans the steps, browses the web, writes code if needed, and delivers a finished file. You don't watch it work; you come back to results. Think of it as a digital contractor you brief once.</p>
+
+        <div class="agent-cols">
+          <div class="agent-col pros">
+            <div class="agent-col-head">What it's good at</div>
+            <ul>
+              <li>Research tasks — it browses the web and synthesises</li>
+              <li>One-off projects — competitive analysis, market research</li>
+              <li>Generating presentations, reports, and structured docs</li>
+              <li>No installation — works in a browser, runs in the cloud</li>
+              <li>Free tier to test before committing</li>
+            </ul>
+          </div>
+          <div class="agent-col cons">
+            <div class="agent-col-head">Honest caveats</div>
+            <ul>
+              <li>Credit-based pricing — costs are unpredictable per task</li>
+              <li>Output quality is variable — impressive when it works, rough when it doesn't</li>
+              <li>Not for ongoing, recurring workflows — use Claude Projects for that</li>
+              <li>You can't fully control how it works — it's a black box</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="agent-verdict">
+          <strong>Is this for you?</strong> Yes, if you want to try autonomous AI with zero setup. Start with a research task — "analyse my industry's top 5 competitors" — and see what comes back. Pricing: free tier, Pro from ~$20/month. Visit <a href="https://manus.im" target="_blank" style="color: var(--orange-dk); font-weight:600;">manus.im</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPENCLAW -->
+    <div class="agent-card">
+      <div class="agent-head">
+        <h3>OpenClaw</h3>
+        <div class="agent-tags">
+          <span class="pill pill-navy">Self-hosted</span>
+          <span class="pill pill-teal">Open source</span>
+          <span class="pill pill-red">Technical setup required</span>
+        </div>
+      </div>
+      <div class="agent-body">
+        <p class="agent-lead">OpenClaw is a self-hosted AI agent that runs on your own machine and lives inside your chat apps — WhatsApp, Telegram, Slack, or Discord. You text it a command and it executes: managing your calendar, triaging emails, running scripts, browsing the web. Unlike Manus, it's always on, remembers everything across sessions, and you control it completely. One developer used it to negotiate $4,200 off a car purchase while he slept.</p>
+
+        <div class="agent-cols">
+          <div class="agent-col pros">
+            <div class="agent-col-head">What makes it special</div>
+            <ul>
+              <li>Runs persistently in the background — always working</li>
+              <li>Lives in apps you already use (WhatsApp, Slack etc.)</li>
+              <li>Persistent memory — it knows your context from yesterday</li>
+              <li>Your data stays on your hardware — not a vendor's cloud</li>
+              <li>Free — you only pay for the AI model API calls</li>
+              <li>700+ community-built skills (Gmail, GitHub, calendars etc.)</li>
+            </ul>
+          </div>
+          <div class="agent-col cons">
+            <div class="agent-col-head">Honest caveats</div>
+            <ul>
+              <li>Requires technical setup — command line, Node.js</li>
+              <li>Needs a always-on machine (Mac Mini works well)</li>
+              <li>Requires root-level system access — real security risk if misconfigured</li>
+              <li>One maintainer has warned: "if you can't run a command line, this is too dangerous to use safely"</li>
+              <li>Still maturing — community project, not enterprise software</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="agent-verdict">
+          <strong>Is this for you?</strong> Only if you're comfortable with technical setup or have a developer who can help. This is the frontier. The payoff is significant — a persistent AI that lives in your phone and works autonomously. The risk is real if you don't know what you're doing. Visit <a href="https://openclaw.ai" target="_blank" style="color: var(--orange-dk); font-weight:600;">openclaw.ai</a> and read the security docs before installing.
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+</main>
+
+<footer>
+  <p>Deep Work with AI · Bali Retreat 2026 · Built on <a href="https://www.wisdombi.ai">WisdomBi</a></p>
+</footer>
+
+<script>
+  // ── COPY BUTTONS ───────────────────────────────────
+  function copyPrompt(btn) {
+    const pre = btn.closest('.prompt-block').querySelector('pre');
+    navigator.clipboard.writeText(pre.textContent.trim()).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  }
+
+  // ── ACTIVE NAV ON SCROLL ───────────────────────────
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('nav a');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navLinks.forEach(a => a.classList.remove('active'));
+        const active = document.querySelector(`nav a[href="#${entry.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>

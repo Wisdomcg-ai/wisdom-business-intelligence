@@ -103,10 +103,14 @@ export default function FinancialProgressChart({ data }: FinancialProgressChartP
 }
 
 function formatCurrency(value: number) {
-  if (value >= 1000000) {
-    return `$${(value / 1000000).toFixed(1)}M`
-  } else if (value >= 1000) {
-    return `$${(value / 1000).toFixed(0)}K`
+  const abs = Math.abs(value)
+  let str: string
+  if (abs >= 1000000) {
+    str = `$${(abs / 1000000).toFixed(1)}M`
+  } else if (abs >= 1000) {
+    str = `$${(abs / 1000).toFixed(0)}K`
+  } else {
+    str = `$${abs.toFixed(0)}`
   }
-  return `$${value.toFixed(0)}`
+  return value < 0 ? `(${str})` : str
 }

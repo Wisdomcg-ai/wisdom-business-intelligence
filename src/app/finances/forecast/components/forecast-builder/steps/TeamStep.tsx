@@ -8,11 +8,12 @@ interface TeamStepProps {
 }
 
 function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-AU', {
+  const formatted = new Intl.NumberFormat('en-AU', {
     style: 'currency',
     currency: 'AUD',
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(Math.abs(amount));
+  return amount < 0 ? `(${formatted})` : formatted;
 }
 
 export function TeamStep({ builder }: TeamStepProps) {

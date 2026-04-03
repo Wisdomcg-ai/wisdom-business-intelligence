@@ -111,7 +111,7 @@ function PLWaterfallChart({ data }: { data: YearlySummary }) {
       <div className="bg-white px-3 py-2 rounded-lg shadow-lg border border-gray-200 text-sm">
         <p className="font-medium text-gray-900">{item.name}</p>
         <p className={item.value >= 0 ? 'text-green-600' : 'text-red-600'}>
-          {item.value >= 0 ? '' : '-'}{formatCurrency(Math.abs(item.value))}
+          {formatCurrency(item.value)}
         </p>
       </div>
     );
@@ -231,7 +231,7 @@ function PLRow({
           </div>
         </td>
         <td className={`px-4 py-3 text-sm text-right ${isBold ? 'font-semibold' : ''}`}>
-          {isExpense && amount !== 0 ? `(${formatCurrency(Math.abs(amount))})` : formatCurrency(amount)}
+          {isExpense && amount !== 0 ? formatCurrency(-Math.abs(amount)) : formatCurrency(amount)}
         </td>
         <td className="px-4 py-3 text-sm text-right text-gray-400">
           {goal ? (

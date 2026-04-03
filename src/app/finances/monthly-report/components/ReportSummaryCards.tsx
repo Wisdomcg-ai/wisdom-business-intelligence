@@ -10,9 +10,11 @@ interface ReportSummaryCardsProps {
 
 function formatCurrency(value: number): string {
   const abs = Math.abs(value)
-  if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`
-  if (abs >= 1_000) return `$${(value / 1_000).toFixed(1)}k`
-  return `$${value.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+  let str: string
+  if (abs >= 1_000_000) str = `$${(abs / 1_000_000).toFixed(1)}M`
+  else if (abs >= 1_000) str = `$${(abs / 1_000).toFixed(1)}k`
+  else str = `$${abs.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+  return value < 0 ? `(${str})` : str
 }
 
 function VarianceBadge({ value, percent, isRevenue }: { value: number; percent: number; isRevenue?: boolean }) {

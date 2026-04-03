@@ -90,11 +90,14 @@ function calculateOrgDepth(people: OrgChartPerson[]): number {
 }
 
 export function formatCurrency(amount: number): string {
-  if (amount >= 1_000_000) {
-    return `$${(amount / 1_000_000).toFixed(1)}M`
+  const abs = Math.abs(amount)
+  let formatted: string
+  if (abs >= 1_000_000) {
+    formatted = `$${(abs / 1_000_000).toFixed(1)}M`
+  } else if (abs >= 1_000) {
+    formatted = `$${(abs / 1_000).toFixed(0)}k`
+  } else {
+    formatted = `$${abs.toLocaleString()}`
   }
-  if (amount >= 1_000) {
-    return `$${(amount / 1_000).toFixed(0)}k`
-  }
-  return `$${amount.toLocaleString()}`
+  return amount < 0 ? `(${formatted})` : formatted
 }
