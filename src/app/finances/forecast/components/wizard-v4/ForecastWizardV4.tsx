@@ -290,7 +290,10 @@ export function ForecastWizardV4({
                       (totalRevenue ? Math.round(((totalRevenue - totalCogs) / totalRevenue) * 1000) / 10 : 0),
                     byMonth: {},
                   },
-                  opex: { total: Math.round(totalOpex), byMonth: {}, byLine: opexByLine },
+                  opex: {
+                    total: Math.round(totalOpex), byLine: opexByLine,
+                    byMonth: Object.fromEntries(Object.entries(freshPriorFY.opex_by_month || {}).map(([k, v]) => [k, Math.round(v as number)])),
+                  },
                   seasonalityPattern: freshPriorFY.seasonality_pattern?.length === 12
                     ? freshPriorFY.seasonality_pattern : Array(12).fill(8.33),
                 };
@@ -376,7 +379,7 @@ export function ForecastWizardV4({
                             },
                             opex: {
                               total: Math.round(rePriorFY.operating_expenses),
-                              byMonth: {},
+                              byMonth: Object.fromEntries(Object.entries(rePriorFY.opex_by_month || {}).map(([k, v]) => [k, Math.round(v as number)])),
                               byLine: (rePriorFY.operating_expenses_by_category || []).map((c: any, i: number) => ({
                                 id: `opex-${i}`, name: c.account_name || c.category, total: Math.round(c.total),
                                 monthlyAvg: Math.round(c.monthly_average || c.total / 12), isOneOff: false,
@@ -780,6 +783,13 @@ export function ForecastWizardV4({
             roundedPriorCogsByMonth[key] = Math.round(val as number);
           });
 
+          // Round prior FY OpEx by month
+          const rawPriorOpexByMonth = priorFY?.opex_by_month || {};
+          const roundedPriorOpexByMonth: Record<string, number> = {};
+          Object.entries(rawPriorOpexByMonth).forEach(([key, val]) => {
+            roundedPriorOpexByMonth[key] = Math.round(val as number);
+          });
+
           // Calculate totals - prefer Xero data, fall back to saved assumptions
           // Use ?? (not ||) so that 0 is treated as a valid value, not falsy
           const totalRevenue = priorFY?.total_revenue ??
@@ -840,7 +850,7 @@ export function ForecastWizardV4({
             },
             opex: {
               total: Math.round(totalOpex),
-              byMonth: {},
+              byMonth: roundedPriorOpexByMonth,
               byLine: opexByLine,
             },
             seasonalityPattern: priorFY?.seasonality_pattern?.length === 12
@@ -1437,7 +1447,7 @@ export function ForecastWizardV4({
               },
               opex: {
                 total: Math.round(priorFY?.operating_expenses || 0),
-                byMonth: {},
+                byMonth: Object.fromEntries(Object.entries(priorFY?.opex_by_month || {}).map(([k, v]) => [k, Math.round(v as number)])),
                 byLine: (priorFY?.operating_expenses_by_category || []).map((cat: any, idx: number) => ({
                   id: `opex-${idx}`,
                   name: cat.account_name || cat.category,

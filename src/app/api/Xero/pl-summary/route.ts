@@ -330,12 +330,14 @@ function calculatePeriodSummary(
   let totalOpex = 0;
   const opexByCategory: Record<string, { total: number; account_name: string }> = {};
 
-  // Track revenue and COGS by month for seasonality and margin analysis
+  // Track revenue, COGS, and OpEx by month for P&L analysis
   const revenueByMonth: Record<string, number> = {};
   const cogsByMonth: Record<string, number> = {};
+  const opexByMonth: Record<string, number> = {};
   for (const monthKey of monthKeys) {
     revenueByMonth[monthKey] = 0;
     cogsByMonth[monthKey] = 0;
+    opexByMonth[monthKey] = 0;
   }
 
   // Log unique categories for debugging
@@ -389,11 +391,13 @@ function calculatePeriodSummary(
       const monthValue = actuals[monthKey] || 0;
       lineTotal += monthValue;
 
-      // Track revenue and COGS by month
+      // Track revenue, COGS, and OpEx by month
       if (isRevenue) {
         revenueByMonth[monthKey] = (revenueByMonth[monthKey] || 0) + monthValue;
       } else if (isCogs) {
         cogsByMonth[monthKey] = (cogsByMonth[monthKey] || 0) + monthValue;
+      } else if (isOpex) {
+        opexByMonth[monthKey] = (opexByMonth[monthKey] || 0) + monthValue;
       }
     }
 
@@ -547,6 +551,7 @@ function calculatePeriodSummary(
     net_margin_percent: netMargin,
     revenue_by_month: revenueByMonth,
     cogs_by_month: cogsByMonth,
+    opex_by_month: opexByMonth,
     seasonality_pattern: seasonalityPattern.slice(0, 12),
     revenue_lines: revenueLineItems,
     cogs_lines: cogsLineItems,

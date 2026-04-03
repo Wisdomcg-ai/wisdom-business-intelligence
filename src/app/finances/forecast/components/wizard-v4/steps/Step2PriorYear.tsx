@@ -135,21 +135,28 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
 
   // State for analysis view
   const [showDetailedView, setShowDetailedView] = useState(false);
+  const [performanceTab, setPerformanceTab] = useState<'prior' | 'current'>('prior');
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
   const [insights, setInsights] = useState<AIInsight[]>([]);
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
   const [insightsLoaded, setInsightsLoaded] = useState(false);
   const [dataHash, setDataHash] = useState<string | null>(null);
 
-  // Current YTD data (would come from API in real implementation)
+  // Current YTD data from pl-summary API
   const [currentYTD, setCurrentYTD] = useState<{
     revenue_by_month: Record<string, number>;
     cogs_by_month?: Record<string, number>;
+    opex_by_month?: Record<string, number>;
     total_revenue: number;
     total_cogs?: number;
+    operating_expenses?: number;
+    net_profit?: number;
     gross_margin_percent: number;
     net_margin_percent: number;
     months_count: number;
+    run_rate_revenue?: number;
+    run_rate_opex?: number;
+    run_rate_net_profit?: number;
   } | null>(null);
 
   // Load current YTD data
@@ -763,25 +770,40 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
         </div>
       </div>
 
-      {/* Monthly Comparison Table */}
+      {/* Monthly P&L Performance — Tabbed View */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">Monthly Performance</h3>
-          <button
-            onClick={() => setShowDetailedView(!showDetailedView)}
-            className="flex items-center gap-1 text-sm text-brand-navy hover:underline"
-          >
-            {showDetailedView ? 'Show Summary' : 'Show Details'}
-            {showDetailedView ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Monthly Performance</h3>
+          <div className="flex border-b border-gray-200">
+            <button
+              onClick={() => setPerformanceTab('prior')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                performanceTab === 'prior'
+                  ? 'border-brand-orange text-brand-orange'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Prior Year (FY{priorFY})
+            </button>
+            <button
+              onClick={() => setPerformanceTab('current')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                performanceTab === 'current'
+                  ? 'border-brand-orange text-brand-orange'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Current Year (FY{fiscalYear} YTD)
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Metric</th>
-                {MONTHS.map((month, idx) => (
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-40">Metric</th>
+                {MONTHS.map((month) => (
                   <th key={month} className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase w-20">
                     {month}
                   </th>
@@ -790,104 +812,183 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {/* Prior Year Revenue */}
-              <tr className="bg-gray-50">
-                <td className="px-4 py-2 text-sm font-medium text-gray-700">FY{priorFY} Revenue</td>
-                {monthlyData.map((m, idx) => (
-                  <td key={idx} className="px-3 py-2 text-sm text-gray-900 text-right">
-                    {m.priorRevenue > 0 ? formatCurrency(m.priorRevenue) : '-'}
-                  </td>
-                ))}
-                <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
-                  {formatCurrency(priorYear.revenue.total)}
-                </td>
-              </tr>
-
-              {/* Current YTD Revenue */}
-              {currentYTD && (
-                <tr>
-                  <td className="px-4 py-2 text-sm font-medium text-gray-700">FY{fiscalYear} YTD</td>
-                  {monthlyData.map((m, idx) => (
-                    <td key={idx} className="px-3 py-2 text-sm text-right">
-                      {m.currentRevenue !== null ? (
-                        <span className="text-gray-900">{formatCurrency(m.currentRevenue)}</span>
-                      ) : (
-                        <span className="text-gray-300">-</span>
-                      )}
+              {performanceTab === 'prior' ? (
+                <>
+                  {/* Prior Year Revenue */}
+                  <tr>
+                    <td className="px-4 py-2 text-sm font-medium text-gray-700">Revenue</td>
+                    {monthlyData.map((m, idx) => (
+                      <td key={idx} className="px-3 py-2 text-sm text-gray-900 text-right">
+                        {m.priorRevenue > 0 ? formatCurrency(m.priorRevenue) : '-'}
+                      </td>
+                    ))}
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
+                      {formatCurrency(priorYear.revenue.total)}
                     </td>
-                  ))}
-                  <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
-                    {formatCurrency(currentYTD.total_revenue)}
-                  </td>
-                </tr>
-              )}
-
-              {/* Prior Year COGS */}
-              <tr>
-                <td className="px-4 py-2 text-sm font-medium text-gray-700">FY{priorFY} Cost of Sales</td>
-                {monthlyData.map((m, idx) => (
-                  <td key={idx} className="px-3 py-2 text-sm text-gray-900 text-right">
-                    {m.priorCogs > 0 ? formatCurrency(m.priorCogs) : '-'}
-                  </td>
-                ))}
-                <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
-                  {formatCurrency(priorYear.cogs.total)}
-                </td>
-              </tr>
-
-              {/* Current YTD COGS */}
-              {currentYTD && (
-                <tr className="bg-gray-50">
-                  <td className="px-4 py-2 text-sm font-medium text-gray-700">FY{fiscalYear} YTD COGS</td>
-                  {monthlyData.map((m, idx) => (
-                    <td key={idx} className="px-3 py-2 text-sm text-right">
-                      {m.currentCogs !== null ? (
-                        <span className="text-gray-900">{formatCurrency(m.currentCogs)}</span>
-                      ) : (
-                        <span className="text-gray-300">-</span>
-                      )}
+                  </tr>
+                  {/* Prior Year COGS */}
+                  <tr className="bg-gray-50">
+                    <td className="px-4 py-2 text-sm font-medium text-gray-700">Cost of Sales</td>
+                    {monthlyData.map((m, idx) => (
+                      <td key={idx} className="px-3 py-2 text-sm text-gray-900 text-right">
+                        {m.priorCogs > 0 ? formatCurrency(m.priorCogs) : '-'}
+                      </td>
+                    ))}
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
+                      {formatCurrency(priorYear.cogs.total)}
                     </td>
-                  ))}
-                  <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
-                    {currentYTD.total_cogs != null ? formatCurrency(currentYTD.total_cogs) : '-'}
-                  </td>
-                </tr>
-              )}
-
-              {/* Revenue Variance Row */}
-              {currentYTD && (
-                <tr className="bg-gray-50">
-                  <td className="px-4 py-2 text-sm font-medium text-gray-700">Revenue YoY Variance</td>
-                  {monthlyData.map((m, idx) => (
-                    <td key={idx} className="px-3 py-2 text-sm text-right">
-                      {m.revenueVariance !== null ? (
-                        <span className={m.revenueVariance >= 0 ? 'text-green-600' : 'text-red-600'}>
-                          {m.revenueVariance >= 0 ? '+' : ''}{m.revenueVariance.toFixed(0)}%
-                        </span>
-                      ) : (
-                        <span className="text-gray-300">-</span>
-                      )}
+                  </tr>
+                  {/* Prior Year Gross Profit */}
+                  <tr className="border-t-2 border-gray-300">
+                    <td className="px-4 py-2 text-sm font-semibold text-green-700">Gross Profit</td>
+                    {monthlyData.map((m, idx) => {
+                      const gp = m.priorRevenue - m.priorCogs;
+                      return (
+                        <td key={idx} className="px-3 py-2 text-sm font-medium text-green-700 text-right">
+                          {gp !== 0 ? formatCurrency(gp) : '-'}
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-2 text-sm font-bold text-green-700 text-right">
+                      {formatCurrency(priorYear.grossProfit.total)} <span className="font-normal text-gray-500 text-xs">({formatPercent(priorYear.grossProfit.percent)})</span>
                     </td>
-                  ))}
-                  <td className="px-4 py-2 text-sm font-semibold text-right">
-                    {/* Calculate total variance */}
-                  </td>
-                </tr>
-              )}
-
-              {/* GP% Row */}
-              {showDetailedView && (
-                <tr>
-                  <td className="px-4 py-2 text-sm font-medium text-gray-700">Gross Profit %</td>
-                  {monthlyData.map((m, idx) => (
-                    <td key={idx} className="px-3 py-2 text-sm text-gray-600 text-right">
-                      {formatPercent(m.priorGP)}
+                  </tr>
+                  {/* Prior Year OpEx */}
+                  <tr className="bg-gray-50">
+                    <td className="px-4 py-2 text-sm font-medium text-gray-700">Operating Expenses</td>
+                    {monthlyData.map((m, idx) => {
+                      const opex = (priorYear.opex.byMonth[m.month] || 0);
+                      return (
+                        <td key={idx} className="px-3 py-2 text-sm text-gray-900 text-right">
+                          {opex > 0 ? formatCurrency(opex) : '-'}
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
+                      {formatCurrency(priorYear.opex.total)}
                     </td>
-                  ))}
-                  <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
-                    {formatPercent(priorYear.grossProfit.percent)}
-                  </td>
-                </tr>
+                  </tr>
+                  {/* Prior Year Net Profit */}
+                  <tr className="border-t-2 border-gray-300">
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900">Net Profit</td>
+                    {monthlyData.map((m, idx) => {
+                      const gp = m.priorRevenue - m.priorCogs;
+                      const opex = (priorYear.opex.byMonth[m.month] || 0);
+                      const np = gp - opex;
+                      return (
+                        <td key={idx} className={`px-3 py-2 text-sm font-medium text-right ${np >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                          {(m.priorRevenue > 0 || np !== 0) ? formatCurrency(np) : '-'}
+                        </td>
+                      );
+                    })}
+                    <td className={`px-4 py-2 text-sm font-bold text-right ${netProfit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                      {formatCurrency(netProfit)} <span className="font-normal text-gray-500 text-xs">({formatPercent(netProfitPct)})</span>
+                    </td>
+                  </tr>
+                </>
+              ) : (
+                <>
+                  {/* Current Year Revenue */}
+                  <tr>
+                    <td className="px-4 py-2 text-sm font-medium text-gray-700">Revenue</td>
+                    {monthlyData.map((m, idx) => {
+                      const val = currentYTD?.revenue_by_month?.[m.month.replace(/^\d{4}/, String(fiscalYear - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)))] ?? null;
+                      return (
+                        <td key={idx} className="px-3 py-2 text-sm text-right">
+                          {val !== null ? <span className="text-gray-900">{formatCurrency(val)}</span> : <span className="text-gray-300">&mdash;</span>}
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
+                      {currentYTD ? formatCurrency(currentYTD.total_revenue) : '-'}
+                    </td>
+                  </tr>
+                  {/* Current Year COGS */}
+                  <tr className="bg-gray-50">
+                    <td className="px-4 py-2 text-sm font-medium text-gray-700">Cost of Sales</td>
+                    {monthlyData.map((m, idx) => {
+                      const currentMonthKey = m.month.replace(/^\d{4}/, String(fiscalYear - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)));
+                      const val = currentYTD?.cogs_by_month?.[currentMonthKey] ?? null;
+                      return (
+                        <td key={idx} className="px-3 py-2 text-sm text-right">
+                          {val !== null ? <span className="text-gray-900">{formatCurrency(val)}</span> : <span className="text-gray-300">&mdash;</span>}
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
+                      {currentYTD?.total_cogs != null ? formatCurrency(currentYTD.total_cogs) : '-'}
+                    </td>
+                  </tr>
+                  {/* Current Year Gross Profit */}
+                  <tr className="border-t-2 border-gray-300">
+                    <td className="px-4 py-2 text-sm font-semibold text-green-700">Gross Profit</td>
+                    {monthlyData.map((m, idx) => {
+                      const currentMonthKey = m.month.replace(/^\d{4}/, String(fiscalYear - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)));
+                      const rev = currentYTD?.revenue_by_month?.[currentMonthKey] ?? null;
+                      const cogs = currentYTD?.cogs_by_month?.[currentMonthKey] ?? null;
+                      const gp = rev !== null && cogs !== null ? rev - cogs : null;
+                      return (
+                        <td key={idx} className="px-3 py-2 text-sm font-medium text-right">
+                          {gp !== null ? <span className="text-green-700">{formatCurrency(gp)}</span> : <span className="text-gray-300">&mdash;</span>}
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-2 text-sm font-bold text-green-700 text-right">
+                      {currentYTD ? (
+                        <>{formatCurrency((currentYTD.total_revenue || 0) - (currentYTD.total_cogs || 0))} <span className="font-normal text-gray-500 text-xs">({formatPercent(currentYTD.gross_margin_percent || 0)})</span></>
+                      ) : '-'}
+                    </td>
+                  </tr>
+                  {/* Current Year OpEx */}
+                  <tr className="bg-gray-50">
+                    <td className="px-4 py-2 text-sm font-medium text-gray-700">Operating Expenses</td>
+                    {monthlyData.map((m, idx) => {
+                      const currentMonthKey = m.month.replace(/^\d{4}/, String(fiscalYear - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)));
+                      const val = (currentYTD as any)?.opex_by_month?.[currentMonthKey] ?? null;
+                      return (
+                        <td key={idx} className="px-3 py-2 text-sm text-right">
+                          {val !== null ? <span className="text-gray-900">{formatCurrency(val)}</span> : <span className="text-gray-300">&mdash;</span>}
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
+                      {(currentYTD as any)?.operating_expenses != null ? formatCurrency((currentYTD as any).operating_expenses) : '-'}
+                    </td>
+                  </tr>
+                  {/* Current Year Net Profit */}
+                  <tr className="border-t-2 border-gray-300">
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900">Net Profit</td>
+                    {monthlyData.map((m, idx) => {
+                      const currentMonthKey = m.month.replace(/^\d{4}/, String(fiscalYear - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)));
+                      const rev = currentYTD?.revenue_by_month?.[currentMonthKey] ?? null;
+                      const cogs = currentYTD?.cogs_by_month?.[currentMonthKey] ?? null;
+                      const opex = (currentYTD as any)?.opex_by_month?.[currentMonthKey] ?? null;
+                      const np = rev !== null ? (rev - (cogs || 0) - (opex || 0)) : null;
+                      return (
+                        <td key={idx} className={`px-3 py-2 text-sm font-medium text-right`}>
+                          {np !== null ? <span className={np >= 0 ? 'text-green-700' : 'text-red-600'}>{formatCurrency(np)}</span> : <span className="text-gray-300">&mdash;</span>}
+                        </td>
+                      );
+                    })}
+                    <td className={`px-4 py-2 text-sm font-bold text-right ${(currentYTD?.net_margin_percent || 0) >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                      {currentYTD ? (
+                        <>{formatCurrency((currentYTD as any)?.net_profit || ((currentYTD.total_revenue || 0) - (currentYTD.total_cogs || 0) - ((currentYTD as any)?.operating_expenses || 0)))} <span className="font-normal text-gray-500 text-xs">({formatPercent(currentYTD.net_margin_percent || 0)})</span></>
+                      ) : '-'}
+                    </td>
+                  </tr>
+                  {/* Run Rate */}
+                  {currentYTD && currentYTD.months_count > 0 && (
+                    <tr className="bg-blue-50 border-t-2 border-blue-200">
+                      <td className="px-4 py-2 text-sm font-semibold text-blue-700">Annualised Run Rate</td>
+                      <td colSpan={12} className="px-3 py-2 text-sm text-blue-700 text-center">
+                        Based on {currentYTD.months_count} months of actuals
+                      </td>
+                      <td className="px-4 py-2 text-sm font-bold text-blue-700 text-right">
+                        {formatCurrency((currentYTD as any)?.run_rate_revenue || (currentYTD.total_revenue / currentYTD.months_count * 12))}
+                      </td>
+                    </tr>
+                  )}
+                </>
               )}
             </tbody>
           </table>
