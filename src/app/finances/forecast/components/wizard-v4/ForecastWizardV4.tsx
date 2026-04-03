@@ -773,6 +773,13 @@ export function ForecastWizardV4({
             roundedPriorRevenueByMonth[key] = Math.round(val as number);
           });
 
+          // Round prior FY COGS by month
+          const rawPriorCogsByMonth = priorFY?.cogs_by_month || {};
+          const roundedPriorCogsByMonth: Record<string, number> = {};
+          Object.entries(rawPriorCogsByMonth).forEach(([key, val]) => {
+            roundedPriorCogsByMonth[key] = Math.round(val as number);
+          });
+
           // Calculate totals - prefer Xero data, fall back to saved assumptions
           // Use ?? (not ||) so that 0 is treated as a valid value, not falsy
           const totalRevenue = priorFY?.total_revenue ??
@@ -822,7 +829,7 @@ export function ForecastWizardV4({
             cogs: {
               total: Math.round(totalCogs),
               percentOfRevenue: totalRevenue ? Math.round((totalCogs / totalRevenue) * 1000) / 10 : 0,
-              byMonth: {},
+              byMonth: roundedPriorCogsByMonth,
               byLine: cogsByLine,
             },
             grossProfit: {

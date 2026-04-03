@@ -35,6 +35,8 @@ interface MonthlyComparison {
   monthLabel: string;
   priorRevenue: number;
   currentRevenue: number | null;
+  priorCogs: number;
+  currentCogs: number | null;
   priorGP: number;
   currentGP: number | null;
   priorNP: number;
@@ -142,7 +144,9 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
   // Current YTD data (would come from API in real implementation)
   const [currentYTD, setCurrentYTD] = useState<{
     revenue_by_month: Record<string, number>;
+    cogs_by_month?: Record<string, number>;
     total_revenue: number;
+    total_cogs?: number;
     gross_margin_percent: number;
     net_margin_percent: number;
     months_count: number;
@@ -387,6 +391,13 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
         : Math.round(priorYear.revenue.total * (priorYear.seasonalityPattern[i] || 8.33) / 100);
       const currentRevenue = currentYTD?.revenue_by_month?.[currentYearKey] ?? null;
 
+      // COGS by month
+      const hasCogsMonthlyData = Object.keys(priorYear.cogs.byMonth || {}).length > 0;
+      const priorCogs = hasCogsMonthlyData
+        ? (priorYear.cogs.byMonth[monthKey] || 0)
+        : (priorYear.revenue.total > 0 ? Math.round(priorRevenue * (priorYear.cogs.percentOfRevenue / 100)) : 0);
+      const currentCogs = currentYTD?.cogs_by_month?.[currentYearKey] ?? null;
+
       // Calculate GP and NP for prior year (simplified - would need more detailed data)
       const priorGP = priorYear.grossProfit.percent;
       const priorNP = priorYear.revenue.total > 0
@@ -401,6 +412,8 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
         monthLabel: MONTHS[i],
         priorRevenue,
         currentRevenue,
+        priorCogs,
+        currentCogs,
         priorGP,
         currentGP,
         priorNP,
@@ -703,13 +716,26 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-sm text-gray-500 mb-1">Revenue</p>
           <p className="text-2xl font-bold text-gray-900">{formatCurrency(priorYear.revenue.total)}</p>
           {currentYTD && (
             <p className="text-xs text-gray-500 mt-1">
               YTD: {formatCurrency(currentYTD.total_revenue)}
+            </p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-sm text-gray-500 mb-1">Cost of Sales</p>
+          <p className="text-2xl font-bold text-gray-900">{formatCurrency(priorYear.cogs.total)}</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {formatPercent(priorYear.cogs.percentOfRevenue)} of revenue
+          </p>
+          {currentYTD?.total_cogs != null && (
+            <p className="text-xs text-gray-500">
+              YTD: {formatCurrency(currentYTD.total_cogs)}
             </p>
           )}
         </div>
@@ -796,10 +822,42 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
                 </tr>
               )}
 
-              {/* Variance Row */}
+              {/* Prior Year COGS */}
+              <tr>
+                <td className="px-4 py-2 text-sm font-medium text-gray-700">FY{priorFY} Cost of Sales</td>
+                {monthlyData.map((m, idx) => (
+                  <td key={idx} className="px-3 py-2 text-sm text-gray-900 text-right">
+                    {m.priorCogs > 0 ? formatCurrency(m.priorCogs) : '-'}
+                  </td>
+                ))}
+                <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
+                  {formatCurrency(priorYear.cogs.total)}
+                </td>
+              </tr>
+
+              {/* Current YTD COGS */}
               {currentYTD && (
                 <tr className="bg-gray-50">
-                  <td className="px-4 py-2 text-sm font-medium text-gray-700">YoY Variance</td>
+                  <td className="px-4 py-2 text-sm font-medium text-gray-700">FY{fiscalYear} YTD COGS</td>
+                  {monthlyData.map((m, idx) => (
+                    <td key={idx} className="px-3 py-2 text-sm text-right">
+                      {m.currentCogs !== null ? (
+                        <span className="text-gray-900">{formatCurrency(m.currentCogs)}</span>
+                      ) : (
+                        <span className="text-gray-300">-</span>
+                      )}
+                    </td>
+                  ))}
+                  <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
+                    {currentYTD.total_cogs != null ? formatCurrency(currentYTD.total_cogs) : '-'}
+                  </td>
+                </tr>
+              )}
+
+              {/* Revenue Variance Row */}
+              {currentYTD && (
+                <tr className="bg-gray-50">
+                  <td className="px-4 py-2 text-sm font-medium text-gray-700">Revenue YoY Variance</td>
                   {monthlyData.map((m, idx) => (
                     <td key={idx} className="px-3 py-2 text-sm text-right">
                       {m.revenueVariance !== null ? (

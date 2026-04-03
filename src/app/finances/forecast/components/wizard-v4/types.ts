@@ -190,7 +190,7 @@ export interface PriorYearData {
     total: number;
     percentOfRevenue: number;
     byMonth: MonthlyData;
-    byLine: { id: string; name: string; total: number; percentOfRevenue: number }[];
+    byLine: { id: string; name: string; total: number; percentOfRevenue: number; byMonth?: MonthlyData }[];
   };
   grossProfit: {
     total: number;

@@ -523,6 +523,7 @@ export interface PeriodSummary {
   net_margin_percent: number
   // Monthly breakdown for seasonality
   revenue_by_month?: Record<string, number>
+  cogs_by_month?: Record<string, number>
   seasonality_pattern?: number[] // 12 percentages for FY months (Jul-Jun)
   // Individual line items
   revenue_lines?: PLLineItem[]
