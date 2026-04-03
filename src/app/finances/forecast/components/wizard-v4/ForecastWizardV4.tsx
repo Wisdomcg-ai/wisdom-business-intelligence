@@ -514,10 +514,12 @@ export function ForecastWizardV4({
           } : null,
         });
 
-        // Auto-sync Xero if no cached P&L data but connection exists
-        // This ensures fresh data is available after cache clear
-        if (!hasXeroData && !priorFY?.revenue_lines?.length) {
-          console.log('[ForecastWizardV4] No cached P&L data, attempting auto-sync...');
+        // Auto-sync Xero if no cached P&L data, or if data looks stale/wrong
+        // (e.g., COGS = 0 with revenue lines present indicates bad category mapping)
+        const needsResync = (!hasXeroData && !priorFY?.revenue_lines?.length) ||
+          (hasXeroData && priorFY?.revenue_lines?.length > 0 && (!priorFY?.cogs_lines || priorFY.cogs_lines.length === 0) && priorFY.total_cogs === 0);
+        if (needsResync) {
+          console.log('[ForecastWizardV4] Data missing or stale (COGS=0), triggering Xero re-sync...');
           try {
             // First, get or create a forecast to sync to
             let targetForecastId: string | null = existingForecastId || null;
