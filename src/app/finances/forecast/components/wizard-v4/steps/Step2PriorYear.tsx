@@ -175,12 +175,15 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
     return btoa(key).slice(0, 16);
   };
 
-  // Load saved insights or generate new ones
+  // Load saved insights or generate new ones — regenerate when key data changes
+  const priorYearHash = priorYear
+    ? `${priorYear.revenue.total}-${priorYear.grossProfit.total}-${priorYear.opex.total}`
+    : '';
   useEffect(() => {
-    if (priorYear && priorYear.revenue.total > 0 && !insightsLoaded) {
+    if (priorYear && priorYear.revenue.total > 0) {
       loadOrGenerateInsights();
     }
-  }, [priorYear, insightsLoaded]);
+  }, [priorYearHash]);
 
   const loadOrGenerateInsights = async () => {
     if (!priorYear) return;
