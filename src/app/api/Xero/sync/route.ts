@@ -128,7 +128,7 @@ async function syncXeroData(business_id: string) {
     const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
     
     const plResponse = await fetch(
-      `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${startOfMonth.toISOString().split('T')[0]}&toDate=${endOfMonth.toISOString().split('T')[0]}`,
+      `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${startOfMonth.toISOString().split('T')[0]}&toDate=${endOfMonth.toISOString().split('T')[0]}&standardLayout=true&paymentsOnly=false`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,

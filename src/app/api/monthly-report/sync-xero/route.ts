@@ -64,7 +64,7 @@ async function fetchSingleMonthPL(
   fromDate: string,
   toDate: string,
 ): Promise<{ success: boolean; report?: any; error?: string; status?: number }> {
-  const url = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${fromDate}&toDate=${toDate}`;
+  const url = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${fromDate}&toDate=${toDate}&standardLayout=true&paymentsOnly=false`;
 
   const response = await fetch(url, {
     headers: {

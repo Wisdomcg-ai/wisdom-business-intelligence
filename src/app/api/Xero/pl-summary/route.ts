@@ -472,7 +472,7 @@ function calculatePeriodSummary(
       total: lineTotal,
       by_month: monthlyValues,
     };
-  }).filter(l => l.total > 0);
+  }).filter(l => l.total !== 0);
 
   // Build COGS lines with totals
   const cogsLineItems = cogsLines.map(l => {
@@ -490,7 +490,7 @@ function calculatePeriodSummary(
       by_month: monthlyValues,
       percent_of_revenue: totalRevenue > 0 ? (lineTotal / totalRevenue) * 100 : 0,
     };
-  }).filter(l => l.total > 0);
+  }).filter(l => l.total !== 0);
 
   // Calculate seasonality pattern (percentage of annual revenue per month)
   // Order months in FY order: Jul, Aug, Sep, Oct, Nov, Dec, Jan, Feb, Mar, Apr, May, Jun

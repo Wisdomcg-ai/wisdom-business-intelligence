@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
 
       // Fetch P&L for this single month
       const monthResponse = await fetch(
-        `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${fromDate}&toDate=${toDate}`,
+        `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${fromDate}&toDate=${toDate}&standardLayout=true&paymentsOnly=false`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
