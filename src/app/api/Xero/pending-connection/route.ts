@@ -86,6 +86,7 @@ export async function GET(request: NextRequest) {
       pending_id: pending.id,
       business_id: pending.business_id,
       tenants: pending.tenants,
+      return_to: pending.return_to || '/integrations',
     });
   } catch (error) {
     console.error('[Xero Pending] Error:', error);

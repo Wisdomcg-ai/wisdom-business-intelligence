@@ -18,6 +18,7 @@ export default function SelectOrgPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string>('');
+  const [returnTo, setReturnTo] = useState<string>('/integrations');
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +44,7 @@ export default function SelectOrgPage() {
 
         const data = await res.json();
         setTenants(data.tenants || []);
+        if (data.return_to) setReturnTo(data.return_to);
 
         // Fetch business name for display
         if (businessId) {
@@ -116,7 +118,7 @@ export default function SelectOrgPage() {
           <h2 className="text-lg font-semibold text-gray-900 mb-2">Connection Expired</h2>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
-            onClick={() => router.push('/integrations')}
+            onClick={() => router.push(returnTo)}
             className="px-6 py-2 bg-brand-navy text-white rounded-lg hover:bg-brand-navy/90 transition-colors"
           >
             Back to Integrations
@@ -187,7 +189,7 @@ export default function SelectOrgPage() {
         {/* Footer */}
         <div className="px-8 py-4 border-t border-gray-200 flex items-center justify-between">
           <button
-            onClick={() => router.push('/integrations')}
+            onClick={() => router.push(returnTo)}
             className="text-sm text-gray-500 hover:text-gray-700"
           >
             Cancel
