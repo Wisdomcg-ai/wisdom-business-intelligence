@@ -74,19 +74,80 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get the Xero connection (resolves businesses.id vs business_profiles.id)
-    const { connectionBusinessId, connection } = await resolveXeroBusinessId(supabase, business_id);
+    // Get the Xero connection — try all ID formats directly
+    let connection: any = null;
 
-    console.log('[Xero Employees] Connection lookup:', { business_id, connectionBusinessId, found: !!connection });
+    // Try 1: direct match
+    const { data: conn1 } = await supabase
+      .from('xero_connections')
+      .select('*')
+      .eq('business_id', business_id)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (conn1) connection = conn1;
+
+    // Try 2: resolve businesses.id → business_profiles.id
+    if (!connection) {
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('business_id', business_id)
+        .maybeSingle();
+      if (profile?.id) {
+        const { data: conn2 } = await supabase
+          .from('xero_connections')
+          .select('*')
+          .eq('business_id', profile.id)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (conn2) connection = conn2;
+      }
+    }
+
+    // Try 3: resolve business_profiles.id → businesses.id
+    if (!connection) {
+      const { data: bp } = await supabase
+        .from('business_profiles')
+        .select('business_id')
+        .eq('id', business_id)
+        .maybeSingle();
+      if (bp?.business_id) {
+        const { data: conn3 } = await supabase
+          .from('xero_connections')
+          .select('*')
+          .eq('business_id', bp.business_id)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (conn3) connection = conn3;
+      }
+    }
+
+    // Try 4: just find ANY active connection for this business by scanning
+    if (!connection) {
+      const { data: allActive } = await supabase
+        .from('xero_connections')
+        .select('*')
+        .eq('is_active', true);
+      // Check if any connection's business_id resolves to our business
+      if (allActive) {
+        for (const conn of allActive) {
+          if (conn.business_id === business_id) { connection = conn; break; }
+          // Check if conn.business_id is a profile ID for our business
+          const { data: p } = await supabase
+            .from('business_profiles')
+            .select('business_id')
+            .eq('id', conn.business_id)
+            .maybeSingle();
+          if (p?.business_id === business_id) { connection = conn; break; }
+        }
+      }
+    }
+
+    console.log('[Xero Employees] Connection lookup:', { business_id, found: !!connection, connBizId: connection?.business_id });
 
     if (!connection) {
-      // Return debug info to help diagnose
-      const { data: allConns } = await supabase
-        .from('xero_connections')
-        .select('id, business_id, tenant_name, is_active')
-        .limit(10);
       return NextResponse.json(
-        { error: 'No active Xero connection found', connected: false, debug: { business_id_passed: business_id, resolved_to: connectionBusinessId, connections: allConns } },
+        { error: 'No active Xero connection found', connected: false },
         { status: 404 }
       );
     }
