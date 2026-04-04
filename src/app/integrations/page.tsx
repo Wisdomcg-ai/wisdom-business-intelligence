@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Link2, CheckCircle, XCircle, RefreshCw, Trash2, ExternalLink, Plus, Settings } from 'lucide-react'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
@@ -18,6 +19,7 @@ interface Integration {
 
 export default function IntegrationsPage() {
   const supabase = createClient()
+  const pathname = usePathname()
   const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
   const [loading, setLoading] = useState(true)
   const [xeroConnected, setXeroConnected] = useState(false)
@@ -84,8 +86,8 @@ export default function IntegrationsPage() {
       return
     }
 
-    // Redirect to Xero OAuth
-    window.location.href = `/api/Xero/auth?business_id=${businessId}`
+    // Redirect to Xero OAuth — use current pathname so coach view context is preserved
+    window.location.href = `/api/Xero/auth?business_id=${businessId}&return_to=${encodeURIComponent(pathname)}`
   }
 
   async function handleDisconnectXero() {

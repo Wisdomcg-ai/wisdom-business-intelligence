@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { usePathname } from 'next/navigation'
 import { toast } from 'sonner'
 import type { FinancialForecast } from '../types'
 
@@ -25,6 +26,9 @@ export function useVersionManager({
   forecast,
   businessId
 }: UseVersionManagerOptions): UseVersionManagerReturn {
+  const pathname = usePathname()
+  // Get base path without query params for version navigation
+  const basePath = pathname.split('?')[0]
   const [versions, setVersions] = useState<FinancialForecast[]>([])
   const [showSaveVersionModal, setShowSaveVersionModal] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
@@ -45,7 +49,7 @@ export function useVersionManager({
 
   const handleSelectVersion = useCallback((version: FinancialForecast) => {
     if (version.id === forecast?.id) return // Already on this version
-    window.location.href = `/finances/forecast?id=${version.id}`
+    window.location.href = `${basePath}?id=${version.id}`
   }, [forecast?.id])
 
   const handleSaveAsNewVersion = useCallback(async (versionName: string) => {

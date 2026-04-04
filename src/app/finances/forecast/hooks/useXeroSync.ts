@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { usePathname } from 'next/navigation'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
@@ -33,6 +34,7 @@ export function useXeroSync({
   onForecastClear
 }: UseXeroSyncOptions): UseXeroSyncReturn {
   const supabase = createClient()
+  const pathname = usePathname()
   const [isSyncing, setIsSyncing] = useState(false)
   const [isConnectionExpired, setIsConnectionExpired] = useState(false)
 
@@ -43,9 +45,9 @@ export function useXeroSync({
     }
     // Reset expired state since we're reconnecting
     setIsConnectionExpired(false)
-    // Directly start OAuth flow instead of redirecting to integrations
-    window.location.href = `/api/Xero/auth?business_id=${businessId}&return_to=/finances/forecast`
-  }, [businessId])
+    // Use current pathname as return_to so coach view context is preserved
+    window.location.href = `/api/Xero/auth?business_id=${businessId}&return_to=${encodeURIComponent(pathname)}`
+  }, [businessId, pathname])
 
   const handleDisconnectXero = useCallback(() => {
     window.location.href = '/integrations'

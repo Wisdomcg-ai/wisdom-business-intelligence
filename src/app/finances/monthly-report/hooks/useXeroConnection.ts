@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
 
 interface XeroConnectionData {
@@ -20,6 +20,7 @@ interface XeroStatusResponse {
 
 export function useXeroConnection(businessId: string) {
   const router = useRouter()
+  const pathname = usePathname()
   const [xeroConnection, setXeroConnection] = useState<XeroConnectionData | null>(null)
   const [isExpired, setIsExpired] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -61,8 +62,8 @@ export function useXeroConnection(businessId: string) {
 
   const handleConnect = useCallback(() => {
     if (!businessId) return
-    window.location.href = `/api/Xero/auth?business_id=${businessId}&return_to=/finances/monthly-report`
-  }, [businessId])
+    window.location.href = `/api/Xero/auth?business_id=${businessId}&return_to=${encodeURIComponent(pathname)}`
+  }, [businessId, pathname])
 
   const handleSync = useCallback(async () => {
     if (!businessId) return
