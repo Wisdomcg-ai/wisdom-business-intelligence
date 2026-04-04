@@ -24,6 +24,55 @@ const XERO_TOKEN_URL = 'https://identity.xero.com/connect/token';
 const XERO_CONNECTIONS_URL = 'https://api.xero.com/connections';
 
 /**
+ * Save a Xero connection to the database.
+ * Shared by single-tenant auto-connect and multi-tenant selection confirm.
+ */
+async function saveXeroConnection(
+  params: {
+    businessId: string;
+    userId: string;
+    tenant: { tenantId: string; tenantName: string };
+    tokens: { access_token: string; refresh_token: string };
+    expiresAt: Date;
+  }
+): Promise<{ success: boolean; error?: string; connectionId?: string }> {
+  const { businessId, userId, tenant, tokens, expiresAt } = params;
+
+  // Delete any OTHER connections for this business (different tenant)
+  await supabase
+    .from('xero_connections')
+    .delete()
+    .eq('business_id', businessId)
+    .neq('tenant_id', tenant.tenantId);
+
+  // Upsert the connection
+  const { data: insertedData, error: upsertError } = await supabase
+    .from('xero_connections')
+    .upsert({
+      business_id: businessId,
+      user_id: userId,
+      tenant_id: tenant.tenantId,
+      tenant_name: tenant.tenantName,
+      access_token: encrypt(tokens.access_token),
+      refresh_token: encrypt(tokens.refresh_token),
+      expires_at: expiresAt.toISOString(),
+      is_active: true
+    }, {
+      onConflict: 'business_id'
+    })
+    .select();
+
+  if (upsertError || !insertedData || insertedData.length === 0) {
+    console.error('[Xero] Connection upsert failed:', upsertError);
+    return { success: false, error: 'database_error' };
+  }
+
+  const id = (insertedData[0] as any).id;
+  console.log('[Xero] Connection saved:', id, 'tenant:', tenant.tenantName);
+  return { success: true, connectionId: id };
+}
+
+/**
  * Trigger an initial sync after successful OAuth connection.
  * Syncs bank summary and current month P&L to financial_metrics.
  */
@@ -261,15 +310,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Use the first organization (tenant)
-    const tenant = connections[0];
-    console.log('Using tenant:', tenant.tenantName);
-
-    // Step 3: Calculate token expiry
+    // Calculate token expiry
     const expiresAt = new Date();
     expiresAt.setSeconds(expiresAt.getSeconds() + tokens.expires_in);
 
-    // Step 4: Get owner_id from business
+    // Get owner_id from business
     const { data: businessData } = await supabase
       .from('businesses')
       .select('owner_id')
@@ -284,66 +329,77 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Step 5: Save to database using upsert (avoids delete-then-insert race condition)
-    console.log('[Xero Callback] Saving connection for business:', businessId, 'tenant:', tenant.tenantId);
+    // =====================================================
+    // MULTI-TENANT HANDLING
+    // If user has access to multiple Xero orgs, redirect to
+    // a selection page instead of blindly picking the first.
+    // =====================================================
+    if (connections.length > 1) {
+      console.log(`[Xero Callback] Multiple tenants (${connections.length}), redirecting to selection`);
 
-    // First delete any OTHER connections for this business (different tenant)
-    await supabase
-      .from('xero_connections')
-      .delete()
-      .eq('business_id', businessId)
-      .neq('tenant_id', tenant.tenantId);
+      // Clean up any stale pending records for this business
+      await supabase
+        .from('pending_xero_connections')
+        .delete()
+        .eq('business_id', businessId);
 
-    // Upsert the connection (insert or update based on business_id)
-    const { data: insertedData, error: upsertError } = await supabase
-      .from('xero_connections')
-      .upsert({
-        business_id: businessId,
-        user_id: userId,
-        tenant_id: tenant.tenantId,
-        tenant_name: tenant.tenantName,
-        access_token: encrypt(tokens.access_token),
-        refresh_token: encrypt(tokens.refresh_token),
-        expires_at: expiresAt.toISOString(),
-        is_active: true
-      }, {
-        onConflict: 'business_id'
-      })
-      .select();
+      // Store tokens + tenant list temporarily (encrypted, 10-minute TTL)
+      const { data: pending, error: pendingError } = await supabase
+        .from('pending_xero_connections')
+        .insert({
+          business_id: businessId,
+          user_id: userId,
+          encrypted_access_token: encrypt(tokens.access_token),
+          encrypted_refresh_token: encrypt(tokens.refresh_token),
+          token_expires_at: expiresAt.toISOString(),
+          tenants: connections.map((c: { tenantId: string; tenantName: string }) => ({
+            tenantId: c.tenantId,
+            tenantName: c.tenantName,
+          })),
+          return_to: returnTo,
+        })
+        .select('id')
+        .single();
 
-    console.log('[Xero Callback] Upsert result:', { data: insertedData, error: upsertError });
+      if (pendingError || !pending) {
+        console.error('[Xero Callback] Failed to store pending connection:', pendingError);
+        return NextResponse.redirect(
+          new URL('/integrations?error=database_error', request.url)
+        );
+      }
 
-    if (upsertError || !insertedData || insertedData.length === 0) {
-      console.error('[Xero Callback] Upsert failed:', upsertError);
       return NextResponse.redirect(
-        new URL('/integrations?error=database_error', request.url)
+        new URL(`/xero-connect/select-org?pending_id=${pending.id}&business_id=${businessId}`, request.url)
       );
     }
 
-    // Verify by reading back
-    const { data: verifyData } = await supabase
-      .from('xero_connections')
-      .select('id, business_id, is_active')
-      .eq('business_id', businessId);
+    // =====================================================
+    // SINGLE TENANT — auto-connect (existing behaviour)
+    // =====================================================
+    const tenant = connections[0];
+    console.log('[Xero Callback] Single tenant, auto-connecting:', tenant.tenantName);
 
-    console.log('[Xero Callback] Verification:', verifyData);
+    // Save connection
+    const saveResult = await saveXeroConnection({
+      businessId,
+      userId,
+      tenant,
+      tokens,
+      expiresAt,
+    });
 
-    if (!verifyData || verifyData.length === 0) {
-      console.error('[Xero Callback] CRITICAL: Connection not found after insert!');
+    if (!saveResult.success) {
       return NextResponse.redirect(
-        new URL('/integrations?error=verification_failed', request.url)
+        new URL(`/integrations?error=${saveResult.error}`, request.url)
       );
     }
-
-    console.log('[Xero Callback] Success! Connection ID:', insertedData[0].id);
 
     // Trigger an initial sync in the background
-    // Don't await - let it run async so user isn't blocked
     triggerInitialSync(businessId, tokens.access_token, tenant.tenantId).catch(err => {
       console.error('[Xero Callback] Initial sync failed:', err);
     });
 
-    // Redirect back to the page that initiated the connection with sync flag
+    // Redirect back with success
     return NextResponse.redirect(
       new URL(`${returnTo}?success=connected&syncing=true`, request.url)
     );
