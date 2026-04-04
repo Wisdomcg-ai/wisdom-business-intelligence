@@ -61,12 +61,39 @@ export default function IntegrationsPage() {
     if (bizId) {
       setBusinessId(bizId)
 
-      // Check Xero connection
-      const { data: xeroIntegration, error: xeroError } = await supabase
+      // Check Xero connection — try multiple ID formats since the connection
+      // might be stored under businesses.id or business_profiles.id
+      let xeroIntegration: any = null;
+      let xeroError: any = null;
+
+      // Try direct match first
+      const { data: directXero, error: directErr } = await supabase
         .from('xero_connections')
         .select('*')
         .eq('business_id', bizId)
+        .eq('is_active', true)
         .maybeSingle()
+
+      if (directXero) {
+        xeroIntegration = directXero;
+      } else {
+        // Try resolving through business_profiles
+        const { data: profile } = await supabase
+          .from('business_profiles')
+          .select('id')
+          .eq('business_id', bizId)
+          .maybeSingle()
+        if (profile?.id) {
+          const { data: profileXero } = await supabase
+            .from('xero_connections')
+            .select('*')
+            .eq('business_id', profile.id)
+            .eq('is_active', true)
+            .maybeSingle()
+          if (profileXero) xeroIntegration = profileXero;
+        }
+        xeroError = directErr;
+      }
 
       console.log('[Integrations] Xero data:', xeroIntegration)
       console.log('[Integrations] Xero error:', xeroError)

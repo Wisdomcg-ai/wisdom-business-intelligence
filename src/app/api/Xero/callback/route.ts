@@ -53,6 +53,7 @@ async function saveXeroConnection(
   }
 
   // Insert the connection
+  console.log('[Xero] Inserting connection with business_id:', businessId, 'tenant:', tenant.tenantId);
   const { data: insertedData, error: upsertError } = await supabase
     .from('xero_connections')
     .insert({
@@ -68,7 +69,7 @@ async function saveXeroConnection(
     .select();
 
   if (upsertError || !insertedData || insertedData.length === 0) {
-    console.error('[Xero] Connection upsert failed:', upsertError);
+    console.error('[Xero] Connection insert failed:', upsertError, { businessId, userId, tenantId: tenant.tenantId });
     return { success: false, error: 'database_error' };
   }
 
