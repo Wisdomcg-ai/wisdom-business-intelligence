@@ -39,21 +39,24 @@ async function saveXeroConnection(
 ): Promise<{ success: boolean; error?: string; connectionId?: string }> {
   const { businessId, userId, tenant, tokens, expiresAt } = params;
 
-  // Resolve business_id to the correct format for xero_connections FK
-  const { connectionBusinessId } = await resolveXeroBusinessId(supabase, businessId);
+  // Use businesses.id directly — FK constraint has been dropped
+  // Delete all existing connections for this business under any ID format
+  await supabase.from('xero_connections').delete().eq('business_id', businessId);
+  const { data: profile } = await supabase
+    .from('business_profiles')
+    .select('id, business_id')
+    .or(`id.eq.${businessId},business_id.eq.${businessId}`)
+    .maybeSingle();
+  if (profile) {
+    if (profile.id !== businessId) await supabase.from('xero_connections').delete().eq('business_id', profile.id);
+    if (profile.business_id && profile.business_id !== businessId) await supabase.from('xero_connections').delete().eq('business_id', profile.business_id);
+  }
 
-  // Delete any OTHER connections for this business (different tenant)
-  await supabase
-    .from('xero_connections')
-    .delete()
-    .eq('business_id', connectionBusinessId)
-    .neq('tenant_id', tenant.tenantId);
-
-  // Upsert the connection
+  // Insert the connection
   const { data: insertedData, error: upsertError } = await supabase
     .from('xero_connections')
-    .upsert({
-      business_id: connectionBusinessId,
+    .insert({
+      business_id: businessId,
       user_id: userId,
       tenant_id: tenant.tenantId,
       tenant_name: tenant.tenantName,
@@ -61,8 +64,6 @@ async function saveXeroConnection(
       refresh_token: encrypt(tokens.refresh_token),
       expires_at: expiresAt.toISOString(),
       is_active: true
-    }, {
-      onConflict: 'business_id'
     })
     .select();
 

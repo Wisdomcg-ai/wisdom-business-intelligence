@@ -104,29 +104,34 @@ export async function POST(request: NextRequest) {
     const accessToken = decrypt(pending.encrypted_access_token);
     const refreshToken = decrypt(pending.encrypted_refresh_token);
 
-    // Resolve business_id to the correct format for xero_connections FK
-    const { connectionBusinessId } = await resolveXeroBusinessId(supabaseAdmin, pending.business_id);
-    console.log('[Xero Complete] Resolved business_id:', { input: pending.business_id, resolved: connectionBusinessId });
+    // Use pending.business_id directly — the callback already resolved it.
+    // Delete ALL existing connections for this business under any ID format.
+    const bizId = pending.business_id;
+    console.log('[Xero Complete] Using business_id:', bizId);
 
-    // Delete ALL existing connections for this business (try both ID formats)
-    await supabaseAdmin.from('xero_connections').delete().eq('business_id', pending.business_id);
-    if (connectionBusinessId !== pending.business_id) {
-      await supabaseAdmin.from('xero_connections').delete().eq('business_id', connectionBusinessId);
-    }
-    // Also try the original businesses.id if we can resolve it
-    const { data: origBiz } = await supabaseAdmin
+    // Clean up: delete by the pending business_id
+    await supabaseAdmin.from('xero_connections').delete().eq('business_id', bizId);
+
+    // Also clean up by any resolved IDs (handles the dual-ID system)
+    const { data: profile } = await supabaseAdmin
       .from('business_profiles')
-      .select('business_id')
-      .eq('id', connectionBusinessId)
+      .select('id, business_id')
+      .or(`id.eq.${bizId},business_id.eq.${bizId}`)
       .maybeSingle();
-    if (origBiz?.business_id && origBiz.business_id !== connectionBusinessId && origBiz.business_id !== pending.business_id) {
-      await supabaseAdmin.from('xero_connections').delete().eq('business_id', origBiz.business_id);
+    if (profile) {
+      // Delete under both the profile.id and the businesses.id
+      if (profile.id !== bizId) {
+        await supabaseAdmin.from('xero_connections').delete().eq('business_id', profile.id);
+      }
+      if (profile.business_id && profile.business_id !== bizId) {
+        await supabaseAdmin.from('xero_connections').delete().eq('business_id', profile.business_id);
+      }
     }
 
     const { data: connection, error: insertError } = await supabaseAdmin
       .from('xero_connections')
       .insert({
-        business_id: connectionBusinessId,
+        business_id: bizId,
         user_id: pending.user_id,
         tenant_id: selectedTenant.tenantId,
         tenant_name: selectedTenant.tenantName,
@@ -139,7 +144,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (insertError || !connection) {
-      console.error('[Xero Complete] Insert failed:', insertError, { connectionBusinessId });
+      console.error('[Xero Complete] Insert failed:', insertError, { bizId });
       return NextResponse.json(
         { error: 'Failed to save connection' },
         { status: 500 }
