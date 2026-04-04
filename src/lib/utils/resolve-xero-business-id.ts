@@ -47,14 +47,15 @@ export async function resolveXeroBusinessId(
     return { connectionBusinessId: profile.id, connection: null };
   }
 
-  // Try 3: businessId is business_profiles.id → resolve to businesses.id
+  // Try 3: businessId is business_profiles.id → check if connection exists under businesses.id
   const { data: bizProfile } = await supabase
     .from('business_profiles')
-    .select('business_id')
+    .select('id, business_id')
     .eq('id', businessId)
     .maybeSingle();
 
-  if (bizProfile?.business_id) {
+  if (bizProfile) {
+    // Check if connection exists under businesses.id
     const { data: bizConn } = await supabase
       .from('xero_connections')
       .select('*')
@@ -65,6 +66,9 @@ export async function resolveXeroBusinessId(
     if (bizConn) {
       return { connectionBusinessId: bizProfile.business_id, connection: bizConn };
     }
+
+    // No connection exists — return business_profiles.id (FK-compatible) for new connections
+    return { connectionBusinessId: bizProfile.id, connection: null };
   }
 
   // Fallback: return the original ID, no connection found
