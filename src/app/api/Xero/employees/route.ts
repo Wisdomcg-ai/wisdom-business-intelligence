@@ -33,6 +33,15 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
+// Map Xero employment types to wizard-compatible format
+const EMPLOYMENT_TYPE_MAP: Record<string, string> = {
+  'FULLTIME': 'full-time',
+  'PARTTIME': 'part-time',
+  'CASUAL': 'casual',
+  'CONTRACTOR': 'contractor',
+  'LABOURHIRE': 'contractor',
+};
+
 interface XeroEmployee {
   employee_id: string;
   first_name: string;
@@ -43,7 +52,8 @@ interface XeroEmployee {
   termination_date?: string;
   annual_salary?: number;
   hourly_rate?: number;
-  employment_type?: 'FULLTIME' | 'PARTTIME' | 'CASUAL' | 'CONTRACTOR';
+  hours_per_week?: number;
+  employment_type?: string;
   is_active: boolean;
   email?: string;
   from_xero: boolean;
@@ -192,7 +202,8 @@ export async function GET(request: NextRequest) {
         // Get salary information - need to fetch individual employee details
         let annualSalary: number | undefined;
         let hourlyRate: number | undefined;
-        let employmentType: XeroEmployee['employment_type'];
+        let hoursPerWeek: number | undefined;
+        let employmentType: string | undefined;
 
         // Fetch detailed employee info including pay template
         try {
@@ -212,9 +223,15 @@ export async function GET(request: NextRequest) {
             const employeeDetail = detailData?.Employees?.[0];
 
             if (employeeDetail) {
-              // Parse employment type
+              // Map employment type to wizard format
               if (employeeDetail.EmploymentType) {
-                employmentType = employeeDetail.EmploymentType.toUpperCase() as XeroEmployee['employment_type'];
+                employmentType = EMPLOYMENT_TYPE_MAP[employeeDetail.EmploymentType.toUpperCase()] || 'full-time';
+              }
+
+              // Extract hours per week
+              if (employeeDetail.OrdinaryHoursPerWeek) {
+                hoursPerWeek = parseFloat(employeeDetail.OrdinaryHoursPerWeek);
+                if (isNaN(hoursPerWeek)) hoursPerWeek = undefined;
               }
 
               // Get salary from pay template
@@ -245,6 +262,7 @@ export async function GET(request: NextRequest) {
           termination_date: parseXeroDate(emp.TerminationDate),
           annual_salary: annualSalary,
           hourly_rate: hourlyRate,
+          hours_per_week: hoursPerWeek,
           employment_type: employmentType,
           is_active: !isTerminated,
           email: emp.Email || undefined,

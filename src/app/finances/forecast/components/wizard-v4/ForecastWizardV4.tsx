@@ -187,16 +187,18 @@ export function ForecastWizardV4({
               if (teamData.employees?.length > 0) {
                 console.log('[ForecastWizardV4] Refreshing team from Xero:', teamData.employees.length, 'employees');
                 for (const emp of teamData.employees) {
+                  const empType = (emp.employment_type || 'full-time') as 'full-time' | 'part-time' | 'casual' | 'contractor';
                   let salary = emp.annual_salary || 0;
                   if (!salary && emp.hourly_rate) {
-                    salary = emp.hourly_rate * (emp.hours_per_week || 38) * 52;
+                    const defaultHours = empType === 'casual' ? 20 : 38;
+                    salary = emp.hourly_rate * (emp.hours_per_week || defaultHours) * 52;
                   }
                   if (!salary) salary = 80000;
                   actionsRef.current.addTeamMember({
                     name: emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown',
                     role: emp.job_title || 'Team Member',
-                    type: (emp.employment_type as 'full-time' | 'part-time' | 'casual' | 'contractor') || 'full-time',
-                    hoursPerWeek: emp.hours_per_week || 38,
+                    type: empType,
+                    hoursPerWeek: emp.hours_per_week || (empType === 'casual' ? 20 : 38),
                     currentSalary: salary,
                     increasePct: 3,
                     isFromXero: emp.from_xero ?? true,
@@ -885,9 +887,11 @@ export function ForecastWizardV4({
                 hours_per_week?: number;
                 from_xero?: boolean;
               }) => {
+                const empType = (emp.employment_type || 'full-time') as 'full-time' | 'part-time' | 'casual' | 'contractor';
                 let salary = emp.annual_salary || 0;
                 if (!salary && emp.hourly_rate) {
-                  salary = emp.hourly_rate * (emp.hours_per_week || 38) * 52;
+                  const defaultHours = empType === 'casual' ? 20 : 38;
+                  salary = emp.hourly_rate * (emp.hours_per_week || defaultHours) * 52;
                 }
                 if (!salary) salary = 80000;
 
@@ -898,8 +902,8 @@ export function ForecastWizardV4({
                     `${emp.first_name || ''} ${emp.last_name || ''}`.trim() ||
                     'Unknown',
                   role: emp.job_title || 'Team Member',
-                  type: (emp.employment_type as 'full-time' | 'part-time' | 'casual' | 'contractor') || 'full-time',
-                  hoursPerWeek: emp.hours_per_week || 38,
+                  type: empType,
+                  hoursPerWeek: emp.hours_per_week || (empType === 'casual' ? 20 : 38),
                   currentSalary: salary,
                   increasePct: 3,
                   newSalary: 0,
