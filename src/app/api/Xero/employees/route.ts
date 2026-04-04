@@ -84,10 +84,9 @@ export async function GET(request: NextRequest) {
       const { data: allConns } = await supabase
         .from('xero_connections')
         .select('id, business_id, tenant_name, is_active')
-        .limit(5);
-      console.log('[Xero Employees] All connections:', allConns);
+        .limit(10);
       return NextResponse.json(
-        { error: 'No active Xero connection found', connected: false, debug: { business_id, connectionBusinessId, connections_in_db: allConns?.length || 0 } },
+        { error: 'No active Xero connection found', connected: false, debug: { business_id_passed: business_id, resolved_to: connectionBusinessId, connections: allConns } },
         { status: 404 }
       );
     }
