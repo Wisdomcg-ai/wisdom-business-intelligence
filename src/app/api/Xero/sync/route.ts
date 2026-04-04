@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
-import { encrypt, decrypt } from '@/lib/utils/encryption';
+import { getValidAccessToken } from '@/lib/xero/token-manager';
 
 export const dynamic = 'force-dynamic'
 
@@ -47,61 +47,67 @@ async function verifyUserAccess(userId: string, businessId: string): Promise<boo
 
 async function syncXeroData(business_id: string) {
   try {
-    // Get the Xero connection
-    const { data: connection, error: connError } = await supabaseAdmin
+    // Get the Xero connection — try direct match, then resolve via business_profiles
+    let connection: any = null;
+    const { data: directConn } = await supabaseAdmin
       .from('xero_connections')
       .select('*')
       .eq('business_id', business_id)
-      .single();
+      .eq('is_active', true)
+      .maybeSingle();
 
-    if (connError || !connection) {
+    if (directConn) {
+      connection = directConn;
+    } else {
+      // Fallback: resolve through business_profiles
+      const { data: profile } = await supabaseAdmin
+        .from('business_profiles')
+        .select('business_id')
+        .eq('id', business_id)
+        .maybeSingle();
+      if (profile?.business_id) {
+        const { data: profileConn } = await supabaseAdmin
+          .from('xero_connections')
+          .select('*')
+          .eq('business_id', profile.business_id)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (profileConn) connection = profileConn;
+      }
+      // Also try reverse: businesses.id → business_profiles.id
+      if (!connection) {
+        const { data: bizProfile } = await supabaseAdmin
+          .from('business_profiles')
+          .select('id')
+          .eq('business_id', business_id)
+          .maybeSingle();
+        if (bizProfile?.id) {
+          const { data: bizConn } = await supabaseAdmin
+            .from('xero_connections')
+            .select('*')
+            .eq('business_id', bizProfile.id)
+            .eq('is_active', true)
+            .maybeSingle();
+          if (bizConn) connection = bizConn;
+        }
+      }
+    }
+
+    if (!connection) {
       return NextResponse.json({ error: 'No Xero connection found' }, { status: 404 });
     }
 
-    // Decrypt tokens from database
-    const decryptedAccessToken = decrypt(connection.access_token);
-    const decryptedRefreshToken = decrypt(connection.refresh_token);
-
-    // Check if token needs refresh
-    const now = new Date();
-    const expiry = new Date(connection.expires_at);
-
-    let accessToken = decryptedAccessToken;
-
-    if (expiry <= now) {
-      // Refresh the token
-      const refreshResponse = await fetch('https://identity.xero.com/connect/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': `Basic ${Buffer.from(`${process.env.XERO_CLIENT_ID}:${process.env.XERO_CLIENT_SECRET}`).toString('base64')}`
-        },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: decryptedRefreshToken
-        })
-      });
-
-      if (!refreshResponse.ok) {
-        return NextResponse.json({ error: 'Failed to refresh token' }, { status: 401 });
-      }
-
-      const tokens = await refreshResponse.json();
-      accessToken = tokens.access_token;
-
-      // Update tokens in database (encrypted)
-      const newExpiry = new Date();
-      newExpiry.setSeconds(newExpiry.getSeconds() + tokens.expires_in);
-
-      await supabaseAdmin
-        .from('xero_connections')
-        .update({
-          access_token: encrypt(tokens.access_token),
-          refresh_token: encrypt(tokens.refresh_token),
-          expires_at: newExpiry.toISOString()
-        })
-        .eq('id', connection.id);
+    // Use the robust token manager for refresh handling
+    const tokenResult = await getValidAccessToken(connection, supabaseAdmin);
+    if (!tokenResult.success) {
+      console.error('[Xero Sync] Token refresh failed:', tokenResult.error);
+      return NextResponse.json(
+        { error: tokenResult.message || 'Xero connection expired', needsReconnect: tokenResult.shouldDeactivate },
+        { status: 401 }
+      );
     }
+
+    const accessToken = tokenResult.accessToken!;
 
     // Get bank accounts
     const bankResponse = await fetch(`https://api.xero.com/api.xro/2.0/BankSummary`, {
