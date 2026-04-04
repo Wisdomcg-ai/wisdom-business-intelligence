@@ -63,15 +63,37 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get the Xero connection
-    const { data: connection, error: connError } = await supabase
+    // Get the Xero connection — try business_id directly, then via business_profiles
+    let connection: any = null;
+    const { data: directConn } = await supabase
       .from('xero_connections')
       .select('*')
       .eq('business_id', business_id)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
 
-    if (connError || !connection) {
+    if (directConn) {
+      connection = directConn;
+    } else {
+      // Fallback: business_id might be business_profiles.id, resolve to businesses.id
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('business_id')
+        .eq('id', business_id)
+        .maybeSingle();
+      if (profile?.business_id) {
+        const { data: profileConn } = await supabase
+          .from('xero_connections')
+          .select('*')
+          .eq('business_id', profile.business_id)
+          .eq('is_active', true)
+          .maybeSingle();
+        connection = profileConn;
+      }
+      console.log('[Xero Employees] Connection lookup:', { business_id, resolvedTo: profile?.business_id, found: !!connection });
+    }
+
+    if (!connection) {
       return NextResponse.json(
         { error: 'No active Xero connection found', connected: false },
         { status: 404 }
