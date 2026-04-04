@@ -133,7 +133,7 @@ export default function SelectOrgPage() {
         <div className="px-8 py-6 border-b border-gray-200">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 bg-[#13B5EA]/10 rounded-full flex items-center justify-center">
-              <img src="/logos/xero.svg" alt="Xero" className="w-6 h-6" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              <Building2 className="w-5 h-5 text-[#13B5EA]" />
             </div>
             <h1 className="text-xl font-semibold text-gray-900">Select Xero Organisation</h1>
           </div>

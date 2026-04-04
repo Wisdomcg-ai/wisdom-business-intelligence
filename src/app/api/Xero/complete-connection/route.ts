@@ -86,10 +86,15 @@ export async function POST(request: NextRequest) {
       .eq('business_id', pending.business_id)
       .neq('tenant_id', tenant_id);
 
-    // Upsert the real connection
-    const { data: connection, error: upsertError } = await supabaseAdmin
+    // Delete existing connection for this business, then insert fresh
+    await supabaseAdmin
       .from('xero_connections')
-      .upsert({
+      .delete()
+      .eq('business_id', pending.business_id);
+
+    const { data: connection, error: insertError } = await supabaseAdmin
+      .from('xero_connections')
+      .insert({
         business_id: pending.business_id,
         user_id: pending.user_id,
         tenant_id: selectedTenant.tenantId,
@@ -98,14 +103,12 @@ export async function POST(request: NextRequest) {
         refresh_token: encrypt(refreshToken),
         expires_at: pending.token_expires_at,
         is_active: true,
-      }, {
-        onConflict: 'business_id'
       })
       .select()
-      .single();
+      .maybeSingle();
 
-    if (upsertError || !connection) {
-      console.error('[Xero Complete] Upsert failed:', upsertError);
+    if (insertError || !connection) {
+      console.error('[Xero Complete] Insert failed:', insertError);
       return NextResponse.json(
         { error: 'Failed to save connection' },
         { status: 500 }
