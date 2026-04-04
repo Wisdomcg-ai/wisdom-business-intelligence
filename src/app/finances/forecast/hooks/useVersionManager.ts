@@ -50,7 +50,7 @@ export function useVersionManager({
   const handleSelectVersion = useCallback((version: FinancialForecast) => {
     if (version.id === forecast?.id) return // Already on this version
     window.location.href = `${basePath}?id=${version.id}`
-  }, [forecast?.id])
+  }, [forecast?.id, basePath])
 
   const handleSaveAsNewVersion = useCallback(async (versionName: string) => {
     if (!forecast?.id || !businessId) {
@@ -77,8 +77,8 @@ export function useVersionManager({
       // Reload versions list
       await loadVersions(businessId, forecast.fiscal_year)
 
-      // Navigate to the new version
-      window.location.href = `/finances/forecast?id=${newForecast.id}`
+      // Navigate to the new version — use current path to preserve coach context
+      window.location.href = `${basePath}?id=${newForecast.id}`
     } catch (error) {
       console.error('Error creating new version:', error)
       throw error
