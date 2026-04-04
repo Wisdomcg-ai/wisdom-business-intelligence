@@ -75,13 +75,19 @@ export async function GET(request: NextRequest) {
     }
 
     // Get the Xero connection (resolves businesses.id vs business_profiles.id)
-    const { connection } = await resolveXeroBusinessId(supabase, business_id);
+    const { connectionBusinessId, connection } = await resolveXeroBusinessId(supabase, business_id);
 
-    console.log('[Xero Employees] Connection lookup:', { business_id, found: !!connection });
+    console.log('[Xero Employees] Connection lookup:', { business_id, connectionBusinessId, found: !!connection });
 
     if (!connection) {
+      // Return debug info to help diagnose
+      const { data: allConns } = await supabase
+        .from('xero_connections')
+        .select('id, business_id, tenant_name, is_active')
+        .limit(5);
+      console.log('[Xero Employees] All connections:', allConns);
       return NextResponse.json(
-        { error: 'No active Xero connection found', connected: false },
+        { error: 'No active Xero connection found', connected: false, debug: { business_id, connectionBusinessId, connections_in_db: allConns?.length || 0 } },
         { status: 404 }
       );
     }
