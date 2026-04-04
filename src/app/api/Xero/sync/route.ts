@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
+import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
 
 export const dynamic = 'force-dynamic'
 
@@ -47,51 +48,8 @@ async function verifyUserAccess(userId: string, businessId: string): Promise<boo
 
 async function syncXeroData(business_id: string) {
   try {
-    // Get the Xero connection — try direct match, then resolve via business_profiles
-    let connection: any = null;
-    const { data: directConn } = await supabaseAdmin
-      .from('xero_connections')
-      .select('*')
-      .eq('business_id', business_id)
-      .eq('is_active', true)
-      .maybeSingle();
-
-    if (directConn) {
-      connection = directConn;
-    } else {
-      // Fallback: resolve through business_profiles
-      const { data: profile } = await supabaseAdmin
-        .from('business_profiles')
-        .select('business_id')
-        .eq('id', business_id)
-        .maybeSingle();
-      if (profile?.business_id) {
-        const { data: profileConn } = await supabaseAdmin
-          .from('xero_connections')
-          .select('*')
-          .eq('business_id', profile.business_id)
-          .eq('is_active', true)
-          .maybeSingle();
-        if (profileConn) connection = profileConn;
-      }
-      // Also try reverse: businesses.id → business_profiles.id
-      if (!connection) {
-        const { data: bizProfile } = await supabaseAdmin
-          .from('business_profiles')
-          .select('id')
-          .eq('business_id', business_id)
-          .maybeSingle();
-        if (bizProfile?.id) {
-          const { data: bizConn } = await supabaseAdmin
-            .from('xero_connections')
-            .select('*')
-            .eq('business_id', bizProfile.id)
-            .eq('is_active', true)
-            .maybeSingle();
-          if (bizConn) connection = bizConn;
-        }
-      }
-    }
+    // Get the Xero connection (resolves businesses.id vs business_profiles.id)
+    const { connection } = await resolveXeroBusinessId(supabaseAdmin, business_id);
 
     if (!connection) {
       return NextResponse.json({ error: 'No Xero connection found' }, { status: 404 });

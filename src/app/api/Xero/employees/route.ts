@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
+import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,56 +74,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get the Xero connection — try all ID patterns
-    let connection: any = null;
+    // Get the Xero connection (resolves businesses.id vs business_profiles.id)
+    const { connection } = await resolveXeroBusinessId(supabase, business_id);
 
-    // Try 1: direct match on business_id
-    const { data: directConn } = await supabase
-      .from('xero_connections')
-      .select('*')
-      .eq('business_id', business_id)
-      .eq('is_active', true)
-      .maybeSingle();
-
-    if (directConn) {
-      connection = directConn;
-    } else {
-      // Try 2: business_id is business_profiles.id → resolve to businesses.id
-      const { data: profile } = await supabase
-        .from('business_profiles')
-        .select('business_id')
-        .eq('id', business_id)
-        .maybeSingle();
-      if (profile?.business_id) {
-        const { data: profileConn } = await supabase
-          .from('xero_connections')
-          .select('*')
-          .eq('business_id', profile.business_id)
-          .eq('is_active', true)
-          .maybeSingle();
-        if (profileConn) connection = profileConn;
-      }
-
-      // Try 3: business_id is businesses.id → resolve to business_profiles.id
-      if (!connection) {
-        const { data: bizProfile } = await supabase
-          .from('business_profiles')
-          .select('id')
-          .eq('business_id', business_id)
-          .maybeSingle();
-        if (bizProfile?.id) {
-          const { data: bizConn } = await supabase
-            .from('xero_connections')
-            .select('*')
-            .eq('business_id', bizProfile.id)
-            .eq('is_active', true)
-            .maybeSingle();
-          if (bizConn) connection = bizConn;
-        }
-      }
-
-      console.log('[Xero Employees] Connection lookup:', { business_id, found: !!connection });
-    }
+    console.log('[Xero Employees] Connection lookup:', { business_id, found: !!connection });
 
     if (!connection) {
       return NextResponse.json(

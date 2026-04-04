@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { encrypt, verifySignedOAuthState } from '@/lib/utils/encryption';
+import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
 
 export const dynamic = 'force-dynamic'
 
@@ -38,18 +39,21 @@ async function saveXeroConnection(
 ): Promise<{ success: boolean; error?: string; connectionId?: string }> {
   const { businessId, userId, tenant, tokens, expiresAt } = params;
 
+  // Resolve business_id to the correct format for xero_connections FK
+  const { connectionBusinessId } = await resolveXeroBusinessId(supabase, businessId);
+
   // Delete any OTHER connections for this business (different tenant)
   await supabase
     .from('xero_connections')
     .delete()
-    .eq('business_id', businessId)
+    .eq('business_id', connectionBusinessId)
     .neq('tenant_id', tenant.tenantId);
 
   // Upsert the connection
   const { data: insertedData, error: upsertError } = await supabase
     .from('xero_connections')
     .upsert({
-      business_id: businessId,
+      business_id: connectionBusinessId,
       user_id: userId,
       tenant_id: tenant.tenantId,
       tenant_name: tenant.tenantName,
@@ -337,17 +341,20 @@ export async function GET(request: NextRequest) {
     if (connections.length > 1) {
       console.log(`[Xero Callback] Multiple tenants (${connections.length}), redirecting to selection`);
 
+      // Resolve business_id to the correct format for xero_connections FK
+      const { connectionBusinessId: resolvedBizId } = await resolveXeroBusinessId(supabase, businessId);
+
       // Clean up any stale pending records for this business
       await supabase
         .from('pending_xero_connections')
         .delete()
-        .eq('business_id', businessId);
+        .eq('business_id', resolvedBizId);
 
       // Store tokens + tenant list temporarily (encrypted, 10-minute TTL)
       const { data: pending, error: pendingError } = await supabase
         .from('pending_xero_connections')
         .insert({
-          business_id: businessId,
+          business_id: resolvedBizId,
           user_id: userId,
           encrypted_access_token: encrypt(tokens.access_token),
           encrypted_refresh_token: encrypt(tokens.refresh_token),

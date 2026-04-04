@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken, checkConnectionHealth } from '@/lib/xero/token-manager';
+import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,28 +45,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Get Xero connection using admin client (bypasses RLS)
-    // First check if ANY connection exists for debugging
-    const { data: allConnections } = await supabaseAdmin
-      .from('xero_connections')
-      .select('id, tenant_name, is_active, business_id')
-      .eq('business_id', businessId);
+    // Get Xero connection using admin client (resolves businesses.id vs business_profiles.id)
+    const { connection, connectionBusinessId } = await resolveXeroBusinessId(supabaseAdmin, businessId);
 
-    console.log('[Xero Status] All connections for business:', businessId, allConnections);
-
-    const { data: connection, error: connError } = await supabaseAdmin
-      .from('xero_connections')
-      .select('id, business_id, tenant_id, tenant_name, is_active, last_synced_at, expires_at, created_at, access_token, refresh_token')
-      .eq('business_id', businessId)
-      .eq('is_active', true)
-      .maybeSingle();
-
-    console.log('[Xero Status] Active connection:', connection?.id, 'Error:', connError);
-
-    if (connError) {
-      console.error('[Xero Status] Error:', connError);
-      return NextResponse.json({ error: 'Failed to check connection' }, { status: 500 });
-    }
+    console.log('[Xero Status] Connection for business:', businessId, 'resolved:', connectionBusinessId, 'found:', !!connection);
 
     if (!connection) {
       return NextResponse.json({

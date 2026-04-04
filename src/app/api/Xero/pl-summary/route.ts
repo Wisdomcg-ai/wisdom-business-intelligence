@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids';
+import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
 import type { HistoricalPLSummary, PeriodSummary, OpExCategory } from '@/app/finances/forecast/types';
 
 // Helper to get fiscal year boundaries (Australian FY: Jul-Jun)
@@ -113,15 +114,10 @@ export async function GET(request: NextRequest) {
     const fiscalYear = fiscalYearParam ? parseInt(fiscalYearParam) : new Date().getFullYear() + 1;
     console.log('[Xero P&L Summary] Fetching for business:', businessId, 'fiscal_year:', fiscalYear);
 
-    // Check Xero connection
-    const { data: xeroConnection, error: xeroError } = await supabase
-      .from('xero_connections')
-      .select('id, is_active')
-      .eq('business_id', businessId)
-      .eq('is_active', true)
-      .maybeSingle();
+    // Check Xero connection (resolves businesses.id vs business_profiles.id)
+    const { connection: xeroConnection } = await resolveXeroBusinessId(supabase, businessId);
 
-    console.log('[Xero P&L Summary] Xero connection:', xeroConnection ? 'found' : 'not found', xeroError?.message || '');
+    console.log('[Xero P&L Summary] Xero connection:', xeroConnection ? 'found' : 'not found');
 
     if (!xeroConnection) {
       console.log('[Xero P&L Summary] No active Xero connection');

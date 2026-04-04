@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { decrypt, encrypt } from '@/lib/utils/encryption';
+import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,11 +49,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
+    // Resolve business_id to the correct format for xero_connections FK
+    const { connectionBusinessId } = await resolveXeroBusinessId(supabaseAdmin, business_id);
+
     // Get ANY connection for this business (including inactive ones)
     const { data: connection, error: connError } = await supabaseAdmin
       .from('xero_connections')
       .select('*')
-      .eq('business_id', business_id)
+      .eq('business_id', connectionBusinessId)
       .order('updated_at', { ascending: false })
       .limit(1)
       .single();

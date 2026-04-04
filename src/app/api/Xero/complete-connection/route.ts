@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { encrypt, decrypt } from '@/lib/utils/encryption';
+import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,23 +80,26 @@ export async function POST(request: NextRequest) {
     const accessToken = decrypt(pending.encrypted_access_token);
     const refreshToken = decrypt(pending.encrypted_refresh_token);
 
+    // Resolve business_id to the correct format for xero_connections FK
+    const { connectionBusinessId } = await resolveXeroBusinessId(supabaseAdmin, pending.business_id);
+
     // Delete any OTHER connections for this business (different tenant)
     await supabaseAdmin
       .from('xero_connections')
       .delete()
-      .eq('business_id', pending.business_id)
+      .eq('business_id', connectionBusinessId)
       .neq('tenant_id', tenant_id);
 
     // Delete existing connection for this business, then insert fresh
     await supabaseAdmin
       .from('xero_connections')
       .delete()
-      .eq('business_id', pending.business_id);
+      .eq('business_id', connectionBusinessId);
 
     const { data: connection, error: insertError } = await supabaseAdmin
       .from('xero_connections')
       .insert({
-        business_id: pending.business_id,
+        business_id: connectionBusinessId,
         user_id: pending.user_id,
         tenant_id: selectedTenant.tenantId,
         tenant_name: selectedTenant.tenantName,

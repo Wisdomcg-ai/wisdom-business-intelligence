@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
+import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
 
 export const dynamic = 'force-dynamic'
 
@@ -34,15 +35,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the Xero connection
-    const { data: connection, error: connError } = await supabase
-      .from('xero_connections')
-      .select('*')
-      .eq('business_id', business_id)
-      .eq('is_active', true)
-      .maybeSingle();
+    // Get the Xero connection (resolves businesses.id vs business_profiles.id)
+    const { connection } = await resolveXeroBusinessId(supabase, business_id);
 
-    if (connError || !connection) {
+    if (!connection) {
       return NextResponse.json(
         { error: 'No active Xero connection found' },
         { status: 404 }
