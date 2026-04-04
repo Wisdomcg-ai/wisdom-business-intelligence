@@ -83,15 +83,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
     }
 
-    // Get the Xero connection
-    const { data: connection, error: connError } = await supabase
-      .from('xero_connections')
-      .select('*')
-      .eq('business_id', businessId)
-      .eq('is_active', true)
-      .maybeSingle();
+    // Get Xero connection — try all ID formats
+    let connection: any = null;
+    const { data: c1 } = await supabase.from('xero_connections').select('*').eq('business_id', businessId).eq('is_active', true).maybeSingle();
+    if (c1) connection = c1;
+    if (!connection) {
+      const { data: p } = await supabase.from('business_profiles').select('id').eq('business_id', businessId).maybeSingle();
+      if (p?.id) { const { data: c2 } = await supabase.from('xero_connections').select('*').eq('business_id', p.id).eq('is_active', true).maybeSingle(); if (c2) connection = c2; }
+    }
+    if (!connection) {
+      const { data: bp } = await supabase.from('business_profiles').select('business_id').eq('id', businessId).maybeSingle();
+      if (bp?.business_id) { const { data: c3 } = await supabase.from('xero_connections').select('*').eq('business_id', bp.business_id).eq('is_active', true).maybeSingle(); if (c3) connection = c3; }
+    }
 
-    if (connError || !connection) {
+    if (!connection) {
       return NextResponse.json({ error: 'No active Xero connection' }, { status: 404 });
     }
 

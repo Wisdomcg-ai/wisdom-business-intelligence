@@ -352,16 +352,43 @@ export async function POST(request: NextRequest) {
     console.log('[Subscription Txns] Starting analysis for business:', business_id);
     console.log('[Subscription Txns] Account codes:', validAccountCodes);
 
-    // Get the Xero connection
-    const { data: connection, error: connError } = await supabase
-      .from('xero_connections')
-      .select('*')
-      .eq('business_id', business_id)
-      .eq('is_active', true)
-      .maybeSingle();
+    // Get the Xero connection — try all ID formats
+    let connection: any = null;
 
-    if (connError || !connection) {
-      console.error('[Subscription Txns] No active Xero connection');
+    // Try direct match
+    const { data: conn1 } = await supabase
+      .from('xero_connections').select('*')
+      .eq('business_id', business_id).eq('is_active', true).maybeSingle();
+    if (conn1) connection = conn1;
+
+    // Try businesses.id → business_profiles.id
+    if (!connection) {
+      const { data: profile } = await supabase
+        .from('business_profiles').select('id')
+        .eq('business_id', business_id).maybeSingle();
+      if (profile?.id) {
+        const { data: conn2 } = await supabase
+          .from('xero_connections').select('*')
+          .eq('business_id', profile.id).eq('is_active', true).maybeSingle();
+        if (conn2) connection = conn2;
+      }
+    }
+
+    // Try business_profiles.id → businesses.id
+    if (!connection) {
+      const { data: bp } = await supabase
+        .from('business_profiles').select('business_id')
+        .eq('id', business_id).maybeSingle();
+      if (bp?.business_id) {
+        const { data: conn3 } = await supabase
+          .from('xero_connections').select('*')
+          .eq('business_id', bp.business_id).eq('is_active', true).maybeSingle();
+        if (conn3) connection = conn3;
+      }
+    }
+
+    if (!connection) {
+      console.error('[Subscription Txns] No active Xero connection for', business_id);
       return NextResponse.json({ error: 'No active Xero connection found' }, { status: 404 });
     }
 
