@@ -73,8 +73,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get the Xero connection — try business_id directly, then via business_profiles
+    // Get the Xero connection — try all ID patterns
     let connection: any = null;
+
+    // Try 1: direct match on business_id
     const { data: directConn } = await supabase
       .from('xero_connections')
       .select('*')
@@ -85,7 +87,7 @@ export async function GET(request: NextRequest) {
     if (directConn) {
       connection = directConn;
     } else {
-      // Fallback: business_id might be business_profiles.id, resolve to businesses.id
+      // Try 2: business_id is business_profiles.id → resolve to businesses.id
       const { data: profile } = await supabase
         .from('business_profiles')
         .select('business_id')
@@ -98,9 +100,28 @@ export async function GET(request: NextRequest) {
           .eq('business_id', profile.business_id)
           .eq('is_active', true)
           .maybeSingle();
-        connection = profileConn;
+        if (profileConn) connection = profileConn;
       }
-      console.log('[Xero Employees] Connection lookup:', { business_id, resolvedTo: profile?.business_id, found: !!connection });
+
+      // Try 3: business_id is businesses.id → resolve to business_profiles.id
+      if (!connection) {
+        const { data: bizProfile } = await supabase
+          .from('business_profiles')
+          .select('id')
+          .eq('business_id', business_id)
+          .maybeSingle();
+        if (bizProfile?.id) {
+          const { data: bizConn } = await supabase
+            .from('xero_connections')
+            .select('*')
+            .eq('business_id', bizProfile.id)
+            .eq('is_active', true)
+            .maybeSingle();
+          if (bizConn) connection = bizConn;
+        }
+      }
+
+      console.log('[Xero Employees] Connection lookup:', { business_id, found: !!connection });
     }
 
     if (!connection) {
