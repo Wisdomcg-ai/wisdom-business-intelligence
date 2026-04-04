@@ -2,6 +2,7 @@
 
 import { AlertTriangle, RefreshCw, ExternalLink, Link as LinkIcon, Loader2 } from 'lucide-react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 interface XeroConnectionData {
   id: string
@@ -30,6 +31,11 @@ export default function XeroConnectionBanner({
   onSync,
   onManage,
 }: XeroConnectionBannerProps) {
+  const pathname = usePathname()
+  const integrationsHref = pathname.includes('/coach/clients/')
+    ? pathname.replace(/\/view\/.*$/, '/view/integrations')
+    : '/integrations'
+
   if (isLoading) {
     return (
       <div className="mb-4 px-4 py-3 bg-gray-50 rounded-lg border border-gray-200">
@@ -86,7 +92,7 @@ export default function XeroConnectionBanner({
           </div>
           <div className="flex items-center space-x-2">
             <Link
-              href="/integrations"
+              href={integrationsHref}
               className="flex items-center space-x-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <ExternalLink className="w-3.5 h-3.5" />

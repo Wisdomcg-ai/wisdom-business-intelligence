@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { X, Loader2, ChevronLeft, ChevronRight, Check, RefreshCw, Cloud, CloudOff, CheckCircle2, AlertCircle, Copy, Pencil, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { useForecastWizard } from './useForecastWizard';
@@ -64,6 +65,10 @@ export function ForecastWizardV4({
   onClose,
 }: ForecastWizardV4Props) {
   const { state, actions, summary, wasRestoredFromStorage, clearLocalStorage } = useForecastWizard(fiscalYear - 1, businessId);
+  const wizardPathname = usePathname();
+  const integrationsHref = wizardPathname.includes('/coach/clients/')
+    ? wizardPathname.replace(/\/view\/.*$/, '/view/integrations')
+    : '/integrations';
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -1512,7 +1517,7 @@ export function ForecastWizardV4({
         toast.error(
           <div>
             <p className="font-medium">Xero connection expired</p>
-            <p className="text-sm mt-1">Please reconnect from the <a href="/integrations" className="underline font-medium">Integrations page</a></p>
+            <p className="text-sm mt-1">Please reconnect from the <a href={integrationsHref} className="underline font-medium">Integrations page</a></p>
           </div>,
           { duration: 10000 }
         );
@@ -1536,7 +1541,7 @@ export function ForecastWizardV4({
             toast.error(
               <div>
                 <p className="font-medium">No active Xero connection</p>
-                <p className="text-sm mt-1">Please connect Xero from the <a href="/integrations" className="underline font-medium">Integrations page</a></p>
+                <p className="text-sm mt-1">Please connect Xero from the <a href={integrationsHref} className="underline font-medium">Integrations page</a></p>
               </div>,
               { duration: 10000 }
             );
@@ -1546,7 +1551,7 @@ export function ForecastWizardV4({
           toast.error(
             <div>
               <p className="font-medium">No active Xero connection</p>
-              <p className="text-sm mt-1">Please connect Xero from the <a href="/integrations" className="underline font-medium">Integrations page</a></p>
+              <p className="text-sm mt-1">Please connect Xero from the <a href={integrationsHref} className="underline font-medium">Integrations page</a></p>
             </div>,
             { duration: 10000 }
           );

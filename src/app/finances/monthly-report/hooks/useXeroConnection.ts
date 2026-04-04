@@ -108,8 +108,11 @@ export function useXeroConnection(businessId: string) {
   }, [businessId])
 
   const handleManage = useCallback(() => {
-    router.push('/integrations')
-  }, [router])
+    const integrationsPath = pathname.includes('/coach/clients/')
+      ? pathname.replace(/\/view\/.*$/, '/view/integrations')
+      : '/integrations'
+    router.push(integrationsPath)
+  }, [router, pathname])
 
   return {
     xeroConnection,

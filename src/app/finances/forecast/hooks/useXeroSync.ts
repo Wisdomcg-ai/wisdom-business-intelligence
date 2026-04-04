@@ -50,8 +50,12 @@ export function useXeroSync({
   }, [businessId, pathname])
 
   const handleDisconnectXero = useCallback(() => {
-    window.location.href = '/integrations'
-  }, [])
+    // Use coach-aware path if we're in coach view
+    const integrationsPath = pathname.includes('/coach/clients/')
+      ? pathname.replace(/\/view\/.*$/, '/view/integrations')
+      : '/integrations'
+    window.location.href = integrationsPath
+  }, [pathname])
 
   const handleSyncFromXero = useCallback(async () => {
     if (!forecastId) return

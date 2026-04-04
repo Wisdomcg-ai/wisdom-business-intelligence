@@ -2,6 +2,7 @@
 
 import { Settings, Upload, Download, Link as LinkIcon, AlertTriangle, RefreshCw, ExternalLink, Unlink } from 'lucide-react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import type { XeroConnection } from '../types'
 
 interface XeroConnectionPanelProps {
@@ -25,6 +26,10 @@ export default function XeroConnectionPanel({
   onClearAndResync,
   onOpenCSVImport
 }: XeroConnectionPanelProps) {
+  const pathname = usePathname()
+  const integrationsHref = pathname.includes('/coach/clients/')
+    ? pathname.replace(/\/view\/.*$/, '/view/integrations')
+    : '/integrations'
   // Check if token is expired
   const tokenExpired = isExpired || (xeroConnection?.expires_at && new Date(xeroConnection.expires_at) <= new Date())
 
@@ -77,7 +82,7 @@ export default function XeroConnectionPanel({
         </div>
         <div className="flex items-center space-x-2">
           <Link
-            href="/integrations"
+            href={integrationsHref}
             className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
           >
             <ExternalLink className="w-4 h-4" />
