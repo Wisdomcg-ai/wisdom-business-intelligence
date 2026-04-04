@@ -106,19 +106,22 @@ export async function POST(request: NextRequest) {
 
     // Resolve business_id to the correct format for xero_connections FK
     const { connectionBusinessId } = await resolveXeroBusinessId(supabaseAdmin, pending.business_id);
+    console.log('[Xero Complete] Resolved business_id:', { input: pending.business_id, resolved: connectionBusinessId });
 
-    // Delete any OTHER connections for this business (different tenant)
-    await supabaseAdmin
-      .from('xero_connections')
-      .delete()
-      .eq('business_id', connectionBusinessId)
-      .neq('tenant_id', tenant_id);
-
-    // Delete existing connection for this business, then insert fresh
-    await supabaseAdmin
-      .from('xero_connections')
-      .delete()
-      .eq('business_id', connectionBusinessId);
+    // Delete ALL existing connections for this business (try both ID formats)
+    await supabaseAdmin.from('xero_connections').delete().eq('business_id', pending.business_id);
+    if (connectionBusinessId !== pending.business_id) {
+      await supabaseAdmin.from('xero_connections').delete().eq('business_id', connectionBusinessId);
+    }
+    // Also try the original businesses.id if we can resolve it
+    const { data: origBiz } = await supabaseAdmin
+      .from('business_profiles')
+      .select('business_id')
+      .eq('id', connectionBusinessId)
+      .maybeSingle();
+    if (origBiz?.business_id && origBiz.business_id !== connectionBusinessId && origBiz.business_id !== pending.business_id) {
+      await supabaseAdmin.from('xero_connections').delete().eq('business_id', origBiz.business_id);
+    }
 
     const { data: connection, error: insertError } = await supabaseAdmin
       .from('xero_connections')
@@ -136,7 +139,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (insertError || !connection) {
-      console.error('[Xero Complete] Insert failed:', insertError);
+      console.error('[Xero Complete] Insert failed:', insertError, { connectionBusinessId });
       return NextResponse.json(
         { error: 'Failed to save connection' },
         { status: 500 }

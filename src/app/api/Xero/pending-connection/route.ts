@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     // Fetch the pending connection
     const { data: pending, error } = await supabaseAdmin
       .from('pending_xero_connections')
-      .select('id, business_id, tenants, created_at')
+      .select('id, business_id, tenants, return_to, created_at')
       .eq('id', pendingId)
       .maybeSingle();
 
