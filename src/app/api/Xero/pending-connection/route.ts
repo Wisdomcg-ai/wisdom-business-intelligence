@@ -46,13 +46,38 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify user has access to this business
+    // pending.business_id may be business_profiles.id, so check both tables
+    let hasAccess = false;
     const { data: business } = await supabaseAdmin
       .from('businesses')
       .select('id, owner_id, assigned_coach_id')
       .eq('id', pending.business_id)
       .maybeSingle();
 
-    if (!business || (business.owner_id !== user.id && business.assigned_coach_id !== user.id)) {
+    if (business && (business.owner_id === user.id || business.assigned_coach_id === user.id)) {
+      hasAccess = true;
+    }
+
+    if (!hasAccess) {
+      // Try resolving through business_profiles
+      const { data: profile } = await supabaseAdmin
+        .from('business_profiles')
+        .select('business_id')
+        .eq('id', pending.business_id)
+        .maybeSingle();
+      if (profile?.business_id) {
+        const { data: biz } = await supabaseAdmin
+          .from('businesses')
+          .select('id, owner_id, assigned_coach_id')
+          .eq('id', profile.business_id)
+          .maybeSingle();
+        if (biz && (biz.owner_id === user.id || biz.assigned_coach_id === user.id)) {
+          hasAccess = true;
+        }
+      }
+    }
+
+    if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
