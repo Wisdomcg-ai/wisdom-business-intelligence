@@ -989,7 +989,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         if (line.isOneTime && line.oneTimeYear && line.oneTimeYear !== yearNum) return sum;
         // Skip expenses that haven't started yet
         if (line.startYear && line.startYear > yearNum) return sum;
-        if (isTeamCost(line.name)) return sum;
+        if (line.isTeamCostOverride !== undefined ? line.isTeamCostOverride : isTeamCost(line.name)) return sum;
 
         let lineAmount = 0;
         switch (line.costBehavior) {

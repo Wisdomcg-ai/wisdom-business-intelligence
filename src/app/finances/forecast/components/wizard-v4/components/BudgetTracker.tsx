@@ -108,7 +108,7 @@ export function BudgetTracker({ state, currentStep, subscriptionSavings = 0 }: B
       const opexAllocated = opexLines.reduce((sum, line) => {
         if (line.startYear && line.startYear > yearNum) return sum;
         if (line.isOneTime && line.oneTimeYear && line.oneTimeYear !== yearNum) return sum;
-        if (isTeamCost(line.name)) return sum;
+        if (line.isTeamCostOverride !== undefined ? line.isTeamCostOverride : isTeamCost(line.name)) return sum;
 
         let lineAmount = 0;
         switch (line.costBehavior) {

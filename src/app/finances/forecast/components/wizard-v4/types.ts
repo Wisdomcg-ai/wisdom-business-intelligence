@@ -151,6 +151,8 @@ export interface OpExLine {
   // Year 2/3 percent overrides (for variable costs - override the % of revenue)
   y2PercentOverride?: number; // Override % of revenue for Year 2
   y3PercentOverride?: number; // Override % of revenue for Year 3
+  // Team cost override — user-controlled toggle (overrides isTeamCost() auto-detection)
+  isTeamCostOverride?: boolean; // true = excluded from OpEx totals, undefined = auto-detect
 }
 
 export interface CapExItem {

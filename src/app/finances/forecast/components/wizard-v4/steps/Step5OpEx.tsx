@@ -624,26 +624,26 @@ function VariablePercentInput({
 export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExProps) {
   const { opexLines, priorYear, goals, teamMembers, newHires, departures, forecastDuration, revenueLines, cogsLines, defaultOpExIncreasePct, activeYear } = state;
 
+  // Check if a line should be treated as a team cost
+  // Priority: user override > auto-detection by name
+  const isLineTeamCost = useCallback((line: OpExLine): boolean => {
+    if (line.isTeamCostOverride !== undefined) return line.isTeamCostOverride;
+    return isTeamCost(line.name);
+  }, []);
+
   // Split lines once: active lines for calculations, all lines for rendering
   const { activeOpexLines, excludedTeamLines } = useMemo(() => {
     const active: OpExLine[] = [];
     const excluded: OpExLine[] = [];
     for (const line of opexLines) {
-      if (isTeamCost(line.name)) {
+      if (isLineTeamCost(line)) {
         excluded.push(line);
       } else {
         active.push(line);
       }
     }
-    console.log('[Step5OpEx] Team cost filter:', {
-      total: active.length + excluded.length,
-      excluded: excluded.map(l => ({ name: l.name, prior: l.priorYearAnnual })),
-      active: active.map(l => ({ name: l.name, prior: l.priorYearAnnual })),
-      excludedTotal: excluded.reduce((s, l) => s + l.priorYearAnnual, 0),
-      activeTotal: active.reduce((s, l) => s + l.priorYearAnnual, 0),
-    });
     return { activeOpexLines: active, excludedTeamLines: excluded };
-  }, [opexLines]);
+  }, [opexLines, isLineTeamCost]);
 
   // Use wizard's activeYear via actions.setActiveYear
   const setActiveYear = actions.setActiveYear;
@@ -1194,17 +1194,27 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
             </thead>
             <tbody className="divide-y divide-gray-100">
               {opexLines.map((line) => {
-                if (isTeamCost(line.name)) {
+                const excluded = isLineTeamCost(line);
+                if (excluded) {
                   return (
                     <tr key={line.id} className="opacity-50 bg-gray-50/80">
                       <td className="px-4 py-2 text-sm text-gray-400 italic">{line.name}</td>
                       <td className="px-3 py-2 text-right text-sm text-gray-400 tabular-nums whitespace-nowrap">
                         {formatCurrency(line.priorYearAnnual)}
                       </td>
-                      <td colSpan={activeYear > 1 ? 5 : 4} className="px-3 py-2">
+                      <td colSpan={activeYear > 1 ? 4 : 3} className="px-3 py-2">
                         <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">
                           Counted in Team Costs
                         </span>
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        <button
+                          onClick={() => actions.updateOpExLine(line.id, { isTeamCostOverride: false })}
+                          className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors"
+                          title="Remove from Team Costs — include in OpEx"
+                        >
+                          Team ✕
+                        </button>
                       </td>
                       <td className="w-10" />
                     </tr>
@@ -1452,14 +1462,23 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
                       })()}
                     </td>
 
-                    {/* Delete */}
-                    <td className="w-10 py-2 text-center">
-                      <button
-                        onClick={() => actions.removeOpExLine(line.id)}
-                        className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition-all opacity-0 group-hover:opacity-100"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    {/* Team toggle + Delete */}
+                    <td className="w-20 py-2 text-center">
+                      <div className="flex items-center gap-1 justify-center opacity-0 group-hover:opacity-100 transition-all">
+                        <button
+                          onClick={() => actions.updateOpExLine(line.id, { isTeamCostOverride: true })}
+                          className="text-[10px] px-1.5 py-0.5 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          title="Mark as Team Cost — exclude from OpEx"
+                        >
+                          Team
+                        </button>
+                        <button
+                          onClick={() => actions.removeOpExLine(line.id)}
+                          className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
