@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, Trash2, DollarSign, Percent, Info, Lock } from 'lucide-react';
+import { Plus, Trash2, DollarSign, Percent, Info, Lock, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Settings2 } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, generateMonthKeys, CostBehavior } from '../types';
 
 interface Step3RevenueCOGSProps {
@@ -23,6 +23,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const [showAddCOGS, setShowAddCOGS] = useState(false);
   const [newRevenueName, setNewRevenueName] = useState('');
   const [newCOGSName, setNewCOGSName] = useState('');
+  const [revenueDetailMode, setRevenueDetailMode] = useState(false);
+  const [expandedRevLines, setExpandedRevLines] = useState<Set<string>>(new Set());
 
   // Quarterly percentage state for Year 2 and Year 3
   const [year2Pcts, setYear2Pcts] = useState<QuarterlyPcts>({ q1: 25, q2: 25, q3: 25, q4: 25 });
@@ -413,6 +415,62 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     });
   };
 
+  // Get prior year total for a revenue line
+  const getLinePriorYear = (lineId: string): number => {
+    const priorLine = priorYear?.revenue.byLine.find(l => l.id === lineId);
+    return priorLine?.total || 0;
+  };
+
+  // Handle growth % change — recalculate forecast from prior year × growth
+  const handleGrowthChange = (lineId: string, growthPct: number) => {
+    const priorTotal = getLinePriorYear(lineId);
+    if (priorTotal <= 0) return;
+
+    const newTarget = Math.round(priorTotal * (1 + growthPct / 100));
+    const line = revenueLines.find(l => l.id === lineId);
+    if (!line) return;
+
+    // Calculate actuals total (locked months)
+    let actualsTotal = 0;
+    monthKeys.forEach((key) => {
+      if (isActualMonth(key)) {
+        actualsTotal += line.year1Monthly[key] || 0;
+      }
+    });
+
+    const remainingTarget = Math.max(0, newTarget - actualsTotal);
+    const seasonality = priorYear?.seasonalityPattern || Array(12).fill(8.33);
+    let totalRemainingSeasonality = 0;
+    monthKeys.forEach((key, idx) => {
+      if (!isActualMonth(key)) {
+        totalRemainingSeasonality += seasonality[idx] || 8.33;
+      }
+    });
+
+    const newMonthly: { [key: string]: number } = {};
+    monthKeys.forEach((key, idx) => {
+      if (isActualMonth(key)) {
+        newMonthly[key] = line.year1Monthly[key] || 0;
+      } else if (totalRemainingSeasonality > 0 && remainingTarget > 0) {
+        const monthSeasonality = seasonality[idx] || 8.33;
+        newMonthly[key] = Math.round(remainingTarget * (monthSeasonality / totalRemainingSeasonality));
+      } else {
+        newMonthly[key] = 0;
+      }
+    });
+
+    actions.updateRevenueLine(lineId, { year1Monthly: newMonthly });
+  };
+
+  const toggleRevLineExpand = (lineId: string) => {
+    setExpandedRevLines(prev => {
+      const next = new Set(prev);
+      if (next.has(lineId)) next.delete(lineId);
+      else next.add(lineId);
+      return next;
+    });
+  };
+
   const handleAddRevenueLine = () => {
     if (!newRevenueName.trim()) return;
     actions.addRevenueLine({
@@ -542,42 +600,57 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         </div>
       )}
 
-      {/* Pattern Selection */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <h3 className="text-sm font-medium text-gray-900 mb-3">Revenue Distribution Pattern</h3>
-        <div className="flex gap-3">
-          {[
-            { value: 'seasonal', label: 'Seasonal', desc: 'Follow prior year pattern' },
-            { value: 'straight-line', label: 'Straight Line', desc: 'Equal monthly/quarterly' },
-            { value: 'manual', label: 'Manual', desc: 'Enter each cell' },
-          ].map((option) => (
-            <button
-              key={option.value}
-              onClick={() => handlePatternChange(option.value as 'seasonal' | 'straight-line' | 'manual')}
-              className={`flex-1 p-3 rounded-lg border-2 transition-all text-left ${
-                revenuePattern === option.value
-                  ? 'border-brand-navy bg-brand-navy/5'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <span className="block text-sm font-medium text-gray-900">{option.label}</span>
-              <span className="block text-xs text-gray-500">{option.desc}</span>
-            </button>
-          ))}
+      {/* Pattern Selection — only in detail mode */}
+      {revenueDetailMode && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <h3 className="text-sm font-medium text-gray-900 mb-3">Revenue Distribution Pattern</h3>
+          <div className="flex gap-3">
+            {[
+              { value: 'seasonal', label: 'Seasonal', desc: 'Follow prior year pattern' },
+              { value: 'straight-line', label: 'Straight Line', desc: 'Equal monthly/quarterly' },
+              { value: 'manual', label: 'Manual', desc: 'Enter each cell' },
+            ].map((option) => (
+              <button
+                key={option.value}
+                onClick={() => handlePatternChange(option.value as 'seasonal' | 'straight-line' | 'manual')}
+                className={`flex-1 p-3 rounded-lg border-2 transition-all text-left ${
+                  revenuePattern === option.value
+                    ? 'border-brand-navy bg-brand-navy/5'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <span className="block text-sm font-medium text-gray-900">{option.label}</span>
+                <span className="block text-xs text-gray-500">{option.desc}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Revenue Table */}
+      {/* Revenue Section */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-900">Revenue</h3>
-          <button
-            onClick={() => setShowAddRevenue(true)}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-navy hover:bg-brand-navy/5 rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Line
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setRevenueDetailMode(!revenueDetailMode)}
+              className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                revenueDetailMode
+                  ? 'bg-brand-navy text-white'
+                  : 'text-gray-500 hover:bg-gray-100'
+              }`}
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              {revenueDetailMode ? 'Simple View' : 'Monthly Detail'}
+            </button>
+            <button
+              onClick={() => setShowAddRevenue(true)}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-navy hover:bg-brand-navy/5 rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Line
+            </button>
+          </div>
         </div>
 
         {showAddRevenue && (
@@ -608,7 +681,116 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
           </div>
         )}
 
-        <div className="overflow-x-auto">
+        {/* Summary View (default) */}
+        {!revenueDetailMode && (
+          <div className="divide-y divide-gray-100">
+            {/* Summary header */}
+            <div className="grid grid-cols-12 gap-2 px-6 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase">
+              <div className="col-span-4">Line Item</div>
+              <div className="col-span-2 text-right">Prior Year</div>
+              <div className="col-span-2 text-right">Forecast Y{activeYear}</div>
+              <div className="col-span-2 text-right">Growth</div>
+              <div className="col-span-2 text-right">% Split</div>
+            </div>
+            {revenueLines.map((line) => {
+              const priorTotal = getLinePriorYear(line.id);
+              const forecastTotal = getLineTotal(line);
+              const growthPct = priorTotal > 0 ? ((forecastTotal - priorTotal) / priorTotal) * 100 : 0;
+              const isExpanded = expandedRevLines.has(line.id);
+              return (
+                <div key={line.id}>
+                  <div className="grid grid-cols-12 gap-2 px-6 py-3 items-center hover:bg-gray-50">
+                    <div className="col-span-4 flex items-center gap-2">
+                      <button onClick={() => toggleRevLineExpand(line.id)} className="text-gray-400 hover:text-gray-600">
+                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </button>
+                      <span className="text-sm font-medium text-gray-900">{line.name}</span>
+                    </div>
+                    <div className="col-span-2 text-right text-sm text-gray-500">
+                      {priorTotal > 0 ? formatCurrency(priorTotal) : '—'}
+                    </div>
+                    <div className="col-span-2 text-right text-sm font-semibold text-gray-900">
+                      {formatCurrency(forecastTotal)}
+                    </div>
+                    <div className="col-span-2 text-right">
+                      {priorTotal > 0 ? (
+                        <div className="inline-flex items-center gap-1">
+                          <input
+                            type="number"
+                            value={Math.round(growthPct)}
+                            onChange={(e) => handleGrowthChange(line.id, parseFloat(e.target.value) || 0)}
+                            className="w-16 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
+                          />
+                          <span className="text-xs text-gray-400">%</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </div>
+                    <div className="col-span-2 flex items-center justify-end gap-2">
+                      <span className="text-sm text-gray-500">{linePercentages[line.id] || 0}%</span>
+                      <button
+                        onClick={() => actions.removeRevenueLine(line.id)}
+                        className="p-1 text-gray-300 hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  {/* Expanded monthly detail for this line */}
+                  {isExpanded && isMonthly && (
+                    <div className="px-6 py-3 bg-gray-50 border-t border-gray-100">
+                      <div className="grid grid-cols-12 gap-1">
+                        {monthKeys.map((key, idx) => {
+                          const isActual = isActualMonth(key);
+                          return (
+                            <div key={key} className="text-center">
+                              <div className={`text-[10px] font-medium mb-1 ${isActual ? 'text-blue-600' : 'text-gray-400'}`}>
+                                {months[idx]}{isActual ? ' ✓' : ''}
+                              </div>
+                              {isActual ? (
+                                <div className="px-1 py-1 text-xs text-right bg-blue-100 border border-blue-200 rounded text-blue-900 font-medium">
+                                  {(line.year1Monthly[key] || 0).toLocaleString()}
+                                </div>
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={line.year1Monthly[key] ? line.year1Monthly[key].toLocaleString() : ''}
+                                  onChange={(e) => handleRevenueChange(line.id, key, e.target.value)}
+                                  placeholder="0"
+                                  className="w-full px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {/* Summary totals */}
+            <div className="grid grid-cols-12 gap-2 px-6 py-3 bg-gray-50 font-semibold">
+              <div className="col-span-4 text-sm text-gray-900">TOTAL REVENUE</div>
+              <div className="col-span-2 text-right text-sm text-gray-500">
+                {priorYear ? formatCurrency(priorYear.revenue.total) : '—'}
+              </div>
+              <div className="col-span-2 text-right text-sm text-gray-900">{formatCurrency(totalRevenue)}</div>
+              <div className="col-span-2 text-right text-sm">
+                {priorYear && priorYear.revenue.total > 0 ? (
+                  <span className={totalRevenue >= priorYear.revenue.total ? 'text-green-600' : 'text-red-600'}>
+                    {((totalRevenue - priorYear.revenue.total) / priorYear.revenue.total * 100).toFixed(0)}%
+                  </span>
+                ) : '—'}
+              </div>
+              <div className="col-span-2 text-right text-xs text-gray-500">{linePctTotal}%</div>
+            </div>
+          </div>
+        )}
+
+        {/* Detail View (monthly grid) */}
+        {revenueDetailMode && <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
               {/* Percentage row for Year 2/3 */}
@@ -801,7 +983,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
               </tr>
             </tbody>
           </table>
-        </div>
+        </div>}
       </div>
 
       {/* COGS Table */}
@@ -976,18 +1158,43 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
       </div>
 
       {/* Gross Profit Summary */}
-      <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-green-900">Gross Profit</h3>
-            <p className="text-sm text-green-700">Revenue minus COGS</p>
+      {(() => {
+        const gpTarget = activeYear === 1
+          ? goals.year1?.grossProfitPct
+          : activeYear === 2
+            ? goals.year2?.grossProfitPct
+            : goals.year3?.grossProfitPct;
+        const gpMet = gpTarget ? grossProfitPct >= gpTarget : true;
+        const gpGap = gpTarget ? grossProfitPct - gpTarget : 0;
+        return (
+          <div className={`border rounded-xl p-4 ${gpMet ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className={`text-lg font-semibold ${gpMet ? 'text-green-900' : 'text-amber-900'}`}>Gross Profit</h3>
+                <p className={`text-sm ${gpMet ? 'text-green-700' : 'text-amber-700'}`}>Revenue minus COGS</p>
+              </div>
+              <div className="text-right">
+                <p className={`text-2xl font-bold ${gpMet ? 'text-green-900' : 'text-amber-900'}`}>{formatCurrency(grossProfit)}</p>
+                <p className={`text-sm ${gpMet ? 'text-green-700' : 'text-amber-700'}`}>{grossProfitPct.toFixed(1)}% margin</p>
+              </div>
+            </div>
+            {gpTarget && totalRevenue > 0 && (
+              <div className={`mt-3 pt-3 border-t ${gpMet ? 'border-green-200' : 'border-amber-200'} flex items-center justify-between`}>
+                <span className={`text-sm ${gpMet ? 'text-green-700' : 'text-amber-700'}`}>
+                  Target: {gpTarget}% (Step 1)
+                </span>
+                <span className={`text-sm font-medium ${gpMet ? 'text-green-700' : 'text-red-600'}`}>
+                  {gpMet ? (
+                    <span className="flex items-center gap-1"><TrendingUp className="w-4 h-4" /> On track ({gpGap > 0 ? `+${gpGap.toFixed(1)}%` : 'exact'})</span>
+                  ) : (
+                    <span className="flex items-center gap-1"><TrendingDown className="w-4 h-4" /> {gpGap.toFixed(1)}% below target</span>
+                  )}
+                </span>
+              </div>
+            )}
           </div>
-          <div className="text-right">
-            <p className="text-2xl font-bold text-green-900">{formatCurrency(grossProfit)}</p>
-            <p className="text-sm text-green-700">{grossProfitPct.toFixed(1)}% margin</p>
-          </div>
-        </div>
-      </div>
+        );
+      })()}
     </div>
   );
 }
