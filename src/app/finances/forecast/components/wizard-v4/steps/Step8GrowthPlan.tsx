@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   ForecastWizardState, WizardActions, ForecastSummary, YearlySummary,
-  formatCurrency, formatPercent,
+  formatCurrency, formatPercent, getRevenueLineYearTotal, generateMonthKeys,
 } from '../types';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -102,8 +102,8 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
   const revenueData = useMemo(() => {
     return revenueLines.map((line) => {
       const y1Total = Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
-      const y2Total = line.year2Quarterly.q1 + line.year2Quarterly.q2 + line.year2Quarterly.q3 + line.year2Quarterly.q4;
-      const y3Total = line.year3Quarterly.q1 + line.year3Quarterly.q2 + line.year3Quarterly.q3 + line.year3Quarterly.q4;
+      const y2Total = getRevenueLineYearTotal(line, 2);
+      const y3Total = getRevenueLineYearTotal(line, 3);
 
       const y2GrowthPct = y1Total > 0 && y2Total > 0
         ? ((y2Total / y1Total) - 1) * 100
@@ -135,19 +135,27 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
 
     const baseTotal = yearNum === 2
       ? Object.values(line.year1Monthly).reduce((a, b) => a + b, 0)
-      : line.year2Quarterly.q1 + line.year2Quarterly.q2 + line.year2Quarterly.q3 + line.year2Quarterly.q4;
+      : getRevenueLineYearTotal(line, 2);
 
     if (baseTotal === 0) return;
 
     const newAnnual = Math.round(baseTotal * (1 + pct / 100));
-    const quarterly = distributeToQuarters(newAnnual, state.priorYear?.seasonalityPattern);
+    const seasonality = state.priorYear?.seasonalityPattern || Array(12).fill(8.33);
+    const totalSeasonality = seasonality.reduce((s, v) => s + v, 0);
+    const yearOffset = yearNum === 2 ? 1 : 2;
+    const monthKeys = generateMonthKeys(state.fiscalYearStart + yearOffset);
+    const monthly: { [key: string]: number } = {};
+    monthKeys.forEach((key, idx) => {
+      const factor = (seasonality[idx] || 8.33) / totalSeasonality;
+      monthly[key] = Math.round(newAnnual * factor);
+    });
 
     if (yearNum === 2) {
-      actions.updateRevenueLine(lineId, { year2Quarterly: quarterly });
+      actions.updateRevenueLine(lineId, { year2Monthly: monthly });
     } else {
-      actions.updateRevenueLine(lineId, { year3Quarterly: quarterly });
+      actions.updateRevenueLine(lineId, { year3Monthly: monthly });
     }
-  }, [revenueLines, state.priorYear?.seasonalityPattern, actions]);
+  }, [revenueLines, state.priorYear?.seasonalityPattern, state.fiscalYearStart, actions]);
 
   // ─── Team Per-Person Costs ──────────────────────────────────────────────
 

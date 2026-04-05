@@ -1,20 +1,13 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
-import { Plus, Trash2, DollarSign, Percent, Info, Lock, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Settings2 } from 'lucide-react';
-import { ForecastWizardState, WizardActions, formatCurrency, generateMonthKeys, CostBehavior } from '../types';
+import { useState, useMemo } from 'react';
+import { Plus, Trash2, Info, Lock, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Settings2 } from 'lucide-react';
+import { ForecastWizardState, WizardActions, formatCurrency, generateMonthKeys, getRevenueLineYearTotal, MonthlyData } from '../types';
 
 interface Step3RevenueCOGSProps {
   state: ForecastWizardState;
   actions: WizardActions;
   fiscalYear: number;
-}
-
-interface QuarterlyPcts {
-  q1: number;
-  q2: number;
-  q3: number;
-  q4: number;
 }
 
 export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOGSProps) {
@@ -26,43 +19,9 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const [revenueDetailMode, setRevenueDetailMode] = useState(false);
   const [expandedRevLines, setExpandedRevLines] = useState<Set<string>>(new Set());
 
-  // Quarterly percentage state for Year 2 and Year 3
-  const [year2Pcts, setYear2Pcts] = useState<QuarterlyPcts>({ q1: 25, q2: 25, q3: 25, q4: 25 });
-  const [year3Pcts, setYear3Pcts] = useState<QuarterlyPcts>({ q1: 25, q2: 25, q3: 25, q4: 25 });
-
-  // Initialize percentages from prior year seasonality
-  useEffect(() => {
-    const seasonality = priorYear?.seasonalityPattern || Array(12).fill(8.33);
-
-    // Aggregate monthly to quarterly
-    const q1Pct = (seasonality[0] || 8.33) + (seasonality[1] || 8.33) + (seasonality[2] || 8.33);
-    const q2Pct = (seasonality[3] || 8.33) + (seasonality[4] || 8.33) + (seasonality[5] || 8.33);
-    const q3Pct = (seasonality[6] || 8.33) + (seasonality[7] || 8.33) + (seasonality[8] || 8.33);
-    const q4Pct = (seasonality[9] || 8.33) + (seasonality[10] || 8.33) + (seasonality[11] || 8.33);
-
-    // Normalize to 100%
-    const total = q1Pct + q2Pct + q3Pct + q4Pct;
-    const normalized = {
-      q1: Math.round((q1Pct / total) * 100),
-      q2: Math.round((q2Pct / total) * 100),
-      q3: Math.round((q3Pct / total) * 100),
-      q4: Math.round((q4Pct / total) * 100),
-    };
-    // Adjust for rounding to ensure sum = 100
-    const sum = normalized.q1 + normalized.q2 + normalized.q3 + normalized.q4;
-    if (sum !== 100) {
-      normalized.q4 += (100 - sum);
-    }
-
-    setYear2Pcts(normalized);
-    setYear3Pcts(normalized);
-  }, [priorYear?.seasonalityPattern]);
-
   const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-  const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
-  const monthKeys = generateMonthKeys(fiscalYear - 1);
-
-  const isMonthly = activeYear === 1;
+  // Generate month keys for the active year (Y1 starts at fiscalYear-1, Y2 at fiscalYear, Y3 at fiscalYear+1)
+  const monthKeys = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
 
   // Determine which months are actuals (locked) vs projected (editable)
   const actualMonthKeys = useMemo(() => {
@@ -71,18 +30,6 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   }, [currentYTD]);
 
   const isActualMonth = (monthKey: string) => actualMonthKeys.has(monthKey);
-
-  // Get current percentages based on active year
-  const currentPcts = activeYear === 2 ? year2Pcts : year3Pcts;
-  const setCurrentPcts = activeYear === 2 ? setYear2Pcts : setYear3Pcts;
-  const pctTotal = currentPcts.q1 + currentPcts.q2 + currentPcts.q3 + currentPcts.q4;
-
-  // Handle percentage change for a quarter
-  const handlePctChange = (quarter: 'q1' | 'q2' | 'q3' | 'q4', value: string) => {
-    const numValue = Math.max(0, Math.min(100, parseInt(value) || 0));
-    const newPcts = { ...currentPcts, [quarter]: numValue };
-    setCurrentPcts(newPcts);
-  };
 
   // Calculate line percentages for all years
   const getLinePercentages = () => {
@@ -114,18 +61,14 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
       let hasYearValues = false;
       let yearTotalFromLines = 0;
       revenueLines.forEach((line) => {
-        const lineTotal = activeYear === 2
-          ? line.year2Quarterly.q1 + line.year2Quarterly.q2 + line.year2Quarterly.q3 + line.year2Quarterly.q4
-          : line.year3Quarterly.q1 + line.year3Quarterly.q2 + line.year3Quarterly.q3 + line.year3Quarterly.q4;
+        const lineTotal = getRevenueLineYearTotal(line, activeYear as 2 | 3);
         yearTotalFromLines += lineTotal;
         if (lineTotal > 0) hasYearValues = true;
       });
 
       if (hasYearValues && yearTotalFromLines > 0) {
         revenueLines.forEach((line) => {
-          const lineTotal = activeYear === 2
-            ? line.year2Quarterly.q1 + line.year2Quarterly.q2 + line.year2Quarterly.q3 + line.year2Quarterly.q4
-            : line.year3Quarterly.q1 + line.year3Quarterly.q2 + line.year3Quarterly.q3 + line.year3Quarterly.q4;
+          const lineTotal = getRevenueLineYearTotal(line, activeYear as 2 | 3);
           percentages[line.id] = Math.round((lineTotal / yearTotalFromLines) * 100);
         });
       } else {
@@ -210,57 +153,26 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
       actions.updateRevenueLine(lineId, { year1Monthly: newMonthly });
     } else {
-      // Year 2/3 - distribute across quarters
+      // Year 2/3 - distribute across months using seasonality
       const yearTarget = activeYear === 2 ? (goals.year2?.revenue || 0) : (goals.year3?.revenue || 0);
-      const qPcts = activeYear === 2 ? year2Pcts : year3Pcts;
-      const qTotal = qPcts.q1 + qPcts.q2 + qPcts.q3 + qPcts.q4;
+      const seasonality = priorYear?.seasonalityPattern || Array(12).fill(8.33);
+      const totalSeasonality = seasonality.reduce((a: number, b: number) => a + b, 0);
 
-      if (yearTarget > 0 && qTotal > 0) {
+      if (yearTarget > 0 && totalSeasonality > 0) {
         const lineTarget = yearTarget * (newPct / 100);
-        const quarterly = {
-          q1: Math.round(lineTarget * (qPcts.q1 / qTotal)),
-          q2: Math.round(lineTarget * (qPcts.q2 / qTotal)),
-          q3: Math.round(lineTarget * (qPcts.q3 / qTotal)),
-          q4: Math.round(lineTarget * (qPcts.q4 / qTotal)),
-        };
+        const yearMonthKeys = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
+        const monthly: MonthlyData = {};
+        yearMonthKeys.forEach((key, idx) => {
+          monthly[key] = Math.round(lineTarget * ((seasonality[idx] || 8.33) / totalSeasonality));
+        });
 
         if (activeYear === 2) {
-          actions.updateRevenueLine(lineId, { year2Quarterly: quarterly });
+          actions.updateRevenueLine(lineId, { year2Monthly: monthly });
         } else {
-          actions.updateRevenueLine(lineId, { year3Quarterly: quarterly });
+          actions.updateRevenueLine(lineId, { year3Monthly: monthly });
         }
       }
     }
-  };
-
-  // Apply percentages to redistribute revenue for Year 2 or 3
-  const applyPercentages = () => {
-    const yearTarget = activeYear === 2 ? (goals.year2?.revenue || 0) : (goals.year3?.revenue || 0);
-    const pcts = activeYear === 2 ? year2Pcts : year3Pcts;
-    const total = pcts.q1 + pcts.q2 + pcts.q3 + pcts.q4;
-
-    if (total === 0) return;
-
-    // Use current line percentages or default to equal split
-    const currentLinePcts = getLinePercentages();
-    const linePctSum = Object.values(currentLinePcts).reduce((a, b) => a + b, 0);
-
-    revenueLines.forEach((line) => {
-      const linePct = linePctSum > 0 ? (currentLinePcts[line.id] || 0) / linePctSum : 1 / revenueLines.length;
-      const lineTarget = yearTarget * linePct;
-      const quarterly = {
-        q1: Math.round(lineTarget * (pcts.q1 / total)),
-        q2: Math.round(lineTarget * (pcts.q2 / total)),
-        q3: Math.round(lineTarget * (pcts.q3 / total)),
-        q4: Math.round(lineTarget * (pcts.q4 / total)),
-      };
-
-      if (activeYear === 2) {
-        actions.updateRevenueLine(line.id, { year2Quarterly: quarterly });
-      } else {
-        actions.updateRevenueLine(line.id, { year3Quarterly: quarterly });
-      }
-    });
   };
 
   // Calculate totals for actuals vs projections
@@ -338,73 +250,55 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         updates.year1Monthly = monthly;
       }
 
-      // === YEAR 2 (Quarterly) ===
+      // === YEAR 2 (Monthly) ===
       if (year2Target > 0) {
-        // Use Year 1 proportions, fallback to equal split
         const lineYear1Pct = year1TotalFromLines > 0
           ? (year1LineTotals[line.id] || 0) / year1TotalFromLines
           : 1 / revenueLines.length;
         const lineYear2Target = year2Target * lineYear1Pct;
+        const y2MonthKeys = generateMonthKeys(fiscalYear);
+        const totalPct = seasonality.reduce((a: number, b: number) => a + b, 0);
 
-        if (pattern === 'seasonal') {
-          // Aggregate monthly seasonality into quarters
-          // Q1: Jul(0) + Aug(1) + Sep(2), Q2: Oct(3) + Nov(4) + Dec(5)
-          // Q3: Jan(6) + Feb(7) + Mar(8), Q4: Apr(9) + May(10) + Jun(11)
-          const q1Pct = (seasonality[0] || 8.33) + (seasonality[1] || 8.33) + (seasonality[2] || 8.33);
-          const q2Pct = (seasonality[3] || 8.33) + (seasonality[4] || 8.33) + (seasonality[5] || 8.33);
-          const q3Pct = (seasonality[6] || 8.33) + (seasonality[7] || 8.33) + (seasonality[8] || 8.33);
-          const q4Pct = (seasonality[9] || 8.33) + (seasonality[10] || 8.33) + (seasonality[11] || 8.33);
-          const totalPct = q1Pct + q2Pct + q3Pct + q4Pct;
-
-          updates.year2Quarterly = {
-            q1: Math.round(lineYear2Target * (q1Pct / totalPct)),
-            q2: Math.round(lineYear2Target * (q2Pct / totalPct)),
-            q3: Math.round(lineYear2Target * (q3Pct / totalPct)),
-            q4: Math.round(lineYear2Target * (q4Pct / totalPct)),
-          };
+        if (pattern === 'seasonal' && totalPct > 0) {
+          const monthly: MonthlyData = {};
+          y2MonthKeys.forEach((key, idx) => {
+            monthly[key] = Math.round(lineYear2Target * ((seasonality[idx] || 8.33) / totalPct));
+          });
+          updates.year2Monthly = monthly;
         } else {
-          // Straight-line: equal quarters
-          const quarterlyAmount = Math.round(lineYear2Target / 4);
-          updates.year2Quarterly = {
-            q1: quarterlyAmount,
-            q2: quarterlyAmount,
-            q3: quarterlyAmount,
-            q4: quarterlyAmount,
-          };
+          // Straight-line: equal months
+          const monthlyAmount = Math.round(lineYear2Target / 12);
+          const monthly: MonthlyData = {};
+          y2MonthKeys.forEach((key) => {
+            monthly[key] = monthlyAmount;
+          });
+          updates.year2Monthly = monthly;
         }
       }
 
-      // === YEAR 3 (Quarterly) ===
+      // === YEAR 3 (Monthly) ===
       if (year3Target > 0) {
-        // Use Year 1 proportions, fallback to equal split
         const lineYear1Pct = year1TotalFromLines > 0
           ? (year1LineTotals[line.id] || 0) / year1TotalFromLines
           : 1 / revenueLines.length;
         const lineYear3Target = year3Target * lineYear1Pct;
+        const y3MonthKeys = generateMonthKeys(fiscalYear + 1);
+        const totalPct = seasonality.reduce((a: number, b: number) => a + b, 0);
 
-        if (pattern === 'seasonal') {
-          // Apply same seasonality pattern to Year 3
-          const q1Pct = (seasonality[0] || 8.33) + (seasonality[1] || 8.33) + (seasonality[2] || 8.33);
-          const q2Pct = (seasonality[3] || 8.33) + (seasonality[4] || 8.33) + (seasonality[5] || 8.33);
-          const q3Pct = (seasonality[6] || 8.33) + (seasonality[7] || 8.33) + (seasonality[8] || 8.33);
-          const q4Pct = (seasonality[9] || 8.33) + (seasonality[10] || 8.33) + (seasonality[11] || 8.33);
-          const totalPct = q1Pct + q2Pct + q3Pct + q4Pct;
-
-          updates.year3Quarterly = {
-            q1: Math.round(lineYear3Target * (q1Pct / totalPct)),
-            q2: Math.round(lineYear3Target * (q2Pct / totalPct)),
-            q3: Math.round(lineYear3Target * (q3Pct / totalPct)),
-            q4: Math.round(lineYear3Target * (q4Pct / totalPct)),
-          };
+        if (pattern === 'seasonal' && totalPct > 0) {
+          const monthly: MonthlyData = {};
+          y3MonthKeys.forEach((key, idx) => {
+            monthly[key] = Math.round(lineYear3Target * ((seasonality[idx] || 8.33) / totalPct));
+          });
+          updates.year3Monthly = monthly;
         } else {
-          // Straight-line: equal quarters
-          const quarterlyAmount = Math.round(lineYear3Target / 4);
-          updates.year3Quarterly = {
-            q1: quarterlyAmount,
-            q2: quarterlyAmount,
-            q3: quarterlyAmount,
-            q4: quarterlyAmount,
-          };
+          // Straight-line: equal months
+          const monthlyAmount = Math.round(lineYear3Target / 12);
+          const monthly: MonthlyData = {};
+          y3MonthKeys.forEach((key) => {
+            monthly[key] = monthlyAmount;
+          });
+          updates.year3Monthly = monthly;
         }
       }
 
@@ -421,7 +315,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     return priorLine?.total || 0;
   };
 
-  // Handle growth % change — recalculate forecast from prior year × growth
+  // Handle growth % change — recalculate forecast from prior year x growth
   const handleGrowthChange = (lineId: string, growthPct: number) => {
     const priorTotal = getLinePriorYear(lineId);
     if (priorTotal <= 0) return;
@@ -430,36 +324,57 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     const line = revenueLines.find(l => l.id === lineId);
     if (!line) return;
 
-    // Calculate actuals total (locked months)
-    let actualsTotal = 0;
-    monthKeys.forEach((key) => {
-      if (isActualMonth(key)) {
-        actualsTotal += line.year1Monthly[key] || 0;
-      }
-    });
-
-    const remainingTarget = Math.max(0, newTarget - actualsTotal);
     const seasonality = priorYear?.seasonalityPattern || Array(12).fill(8.33);
-    let totalRemainingSeasonality = 0;
-    monthKeys.forEach((key, idx) => {
-      if (!isActualMonth(key)) {
-        totalRemainingSeasonality += seasonality[idx] || 8.33;
-      }
-    });
+    const totalSeasonality = seasonality.reduce((a: number, b: number) => a + b, 0);
 
-    const newMonthly: { [key: string]: number } = {};
-    monthKeys.forEach((key, idx) => {
-      if (isActualMonth(key)) {
-        newMonthly[key] = line.year1Monthly[key] || 0;
-      } else if (totalRemainingSeasonality > 0 && remainingTarget > 0) {
-        const monthSeasonality = seasonality[idx] || 8.33;
-        newMonthly[key] = Math.round(remainingTarget * (monthSeasonality / totalRemainingSeasonality));
+    if (activeYear === 1) {
+      // Calculate actuals total (locked months)
+      let actualsTotal = 0;
+      monthKeys.forEach((key) => {
+        if (isActualMonth(key)) {
+          actualsTotal += line.year1Monthly[key] || 0;
+        }
+      });
+
+      const remainingTarget = Math.max(0, newTarget - actualsTotal);
+      let totalRemainingSeasonality = 0;
+      monthKeys.forEach((key, idx) => {
+        if (!isActualMonth(key)) {
+          totalRemainingSeasonality += seasonality[idx] || 8.33;
+        }
+      });
+
+      const newMonthly: MonthlyData = {};
+      monthKeys.forEach((key, idx) => {
+        if (isActualMonth(key)) {
+          newMonthly[key] = line.year1Monthly[key] || 0;
+        } else if (totalRemainingSeasonality > 0 && remainingTarget > 0) {
+          const monthSeasonality = seasonality[idx] || 8.33;
+          newMonthly[key] = Math.round(remainingTarget * (monthSeasonality / totalRemainingSeasonality));
+        } else {
+          newMonthly[key] = 0;
+        }
+      });
+
+      actions.updateRevenueLine(lineId, { year1Monthly: newMonthly });
+    } else {
+      // Year 2/3 - distribute full target across months using seasonality
+      const yearMonthKeys = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
+      const monthly: MonthlyData = {};
+      yearMonthKeys.forEach((key, idx) => {
+        if (totalSeasonality > 0) {
+          monthly[key] = Math.round(newTarget * ((seasonality[idx] || 8.33) / totalSeasonality));
+        } else {
+          monthly[key] = Math.round(newTarget / 12);
+        }
+      });
+
+      if (activeYear === 2) {
+        actions.updateRevenueLine(lineId, { year2Monthly: monthly });
       } else {
-        newMonthly[key] = 0;
+        actions.updateRevenueLine(lineId, { year3Monthly: monthly });
       }
-    });
-
-    actions.updateRevenueLine(lineId, { year1Monthly: newMonthly });
+    }
   };
 
   const toggleRevLineExpand = (lineId: string) => {
@@ -476,8 +391,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     actions.addRevenueLine({
       name: newRevenueName.trim(),
       year1Monthly: {},
-      year2Quarterly: { q1: 0, q2: 0, q3: 0, q4: 0 },
-      year3Quarterly: { q1: 0, q2: 0, q3: 0, q4: 0 },
+      year2Monthly: {},
+      year3Monthly: {},
     });
     setNewRevenueName('');
     setShowAddRevenue(false);
@@ -512,28 +427,18 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         year1Monthly: { ...line.year1Monthly, [period]: numValue },
       });
     } else if (activeYear === 2) {
-      const quarterKey = period as 'q1' | 'q2' | 'q3' | 'q4';
       actions.updateRevenueLine(lineId, {
-        year2Quarterly: { ...line.year2Quarterly, [quarterKey]: numValue },
+        year2Monthly: { ...(line.year2Monthly || {}), [period]: numValue },
       });
     } else {
-      const quarterKey = period as 'q1' | 'q2' | 'q3' | 'q4';
       actions.updateRevenueLine(lineId, {
-        year3Quarterly: { ...line.year3Quarterly, [quarterKey]: numValue },
+        year3Monthly: { ...(line.year3Monthly || {}), [period]: numValue },
       });
     }
   };
 
   const getLineTotal = (line: typeof revenueLines[0]) => {
-    if (activeYear === 1) {
-      return Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
-    } else if (activeYear === 2) {
-      const q = line.year2Quarterly;
-      return q.q1 + q.q2 + q.q3 + q.q4;
-    } else {
-      const q = line.year3Quarterly;
-      return q.q1 + q.q2 + q.q3 + q.q4;
-    }
+    return getRevenueLineYearTotal(line, activeYear as 1 | 2 | 3);
   };
 
   const totalRevenue = revenueLines.reduce((sum, line) => sum + getLineTotal(line), 0);
@@ -738,11 +643,17 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                     </div>
                   </div>
                   {/* Expanded monthly detail for this line */}
-                  {isExpanded && isMonthly && (
+                  {isExpanded && (
                     <div className="px-6 py-3 bg-gray-50 border-t border-gray-100">
                       <div className="grid grid-cols-12 gap-1">
                         {monthKeys.map((key, idx) => {
-                          const isActual = isActualMonth(key);
+                          const isActual = activeYear === 1 && isActualMonth(key);
+                          const yearMonthly = activeYear === 1
+                            ? line.year1Monthly
+                            : activeYear === 2
+                              ? (line.year2Monthly || {})
+                              : (line.year3Monthly || {});
+                          const cellValue = yearMonthly[key] || 0;
                           return (
                             <div key={key} className="text-center">
                               <div className={`text-[10px] font-medium mb-1 ${isActual ? 'text-blue-600' : 'text-gray-400'}`}>
@@ -750,12 +661,12 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                               </div>
                               {isActual ? (
                                 <div className="px-1 py-1 text-xs text-right bg-blue-100 border border-blue-200 rounded text-blue-900 font-medium">
-                                  {(line.year1Monthly[key] || 0).toLocaleString()}
+                                  {cellValue.toLocaleString()}
                                 </div>
                               ) : (
                                 <input
                                   type="text"
-                                  value={line.year1Monthly[key] ? line.year1Monthly[key].toLocaleString() : ''}
+                                  value={cellValue ? cellValue.toLocaleString() : ''}
                                   onChange={(e) => handleRevenueChange(line.id, key, e.target.value)}
                                   placeholder="0"
                                   className="w-full px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
@@ -793,192 +704,129 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         {revenueDetailMode && <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
-              {/* Percentage row for Year 2/3 */}
-              {activeYear > 1 && (
-                <tr className="bg-blue-50 border-b border-blue-100">
-                  <th className="px-4 py-2 text-left sticky left-0 bg-blue-50 min-w-[200px]">
-                    <div className="flex items-center gap-2">
-                      <Percent className="w-3.5 h-3.5 text-blue-600" />
-                      <span className="text-xs font-medium text-blue-700">Quarterly %</span>
-                    </div>
-                  </th>
-                  {/* Empty cell for % Split column alignment */}
-                  <th className="px-2 py-2 w-20"></th>
-                  {(['q1', 'q2', 'q3', 'q4'] as const).map((q) => (
-                    <th key={q} className="px-2 py-2 w-32">
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={currentPcts[q]}
-                          onChange={(e) => handlePctChange(q, e.target.value)}
-                          min="0"
-                          max="100"
-                          className="w-full px-2 py-1.5 pr-6 text-sm border border-blue-200 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-right bg-white"
-                        />
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-blue-400 text-xs">%</span>
-                      </div>
-                    </th>
-                  ))}
-                  <th className="px-2 py-2 w-32">
-                    <div className="flex items-center justify-end gap-2">
-                      <span className={`text-xs font-bold whitespace-nowrap ${
-                        pctTotal === 100 ? 'text-green-600' : pctTotal < 100 ? 'text-amber-600' : 'text-red-600'
-                      }`}>
-                        {pctTotal}%{pctTotal !== 100 && (pctTotal < 100 ? ' under' : ' over')}
-                      </span>
-                      <button
-                        onClick={applyPercentages}
-                        disabled={pctTotal !== 100}
-                        className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                          pctTotal === 100
-                            ? 'bg-blue-600 text-white hover:bg-blue-700'
-                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        }`}
-                      >
-                        Apply
-                      </button>
-                    </div>
-                  </th>
-                  <th className="px-2 py-2 w-10"></th>
-                </tr>
-              )}
               <tr>
-                <th className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 ${!isMonthly ? 'min-w-[200px]' : ''}`}>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50">
                   Line Item
                 </th>
                 {/* Show % column for all years */}
                 <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase w-20">
                   % Split
                 </th>
-                {isMonthly
-                  ? months.map((m, idx) => {
-                      const monthKey = monthKeys[idx];
-                      const isActual = isActualMonth(monthKey);
-                      return (
-                        <th
-                          key={m}
-                          className={`px-3 py-3 text-right text-xs font-medium uppercase w-20 ${
-                            isActual ? 'bg-blue-50 text-blue-700' : 'text-gray-500'
-                          }`}
-                        >
-                          <div className="flex flex-col items-end">
-                            <span>{m}</span>
-                            {isActual && (
-                              <span className="text-[10px] font-normal text-blue-500">Actual</span>
-                            )}
-                          </div>
-                        </th>
-                      );
-                    })
-                  : quarters.map((q) => (
-                      <th key={q} className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase w-32">
-                        {q}
-                      </th>
-                    ))}
-                <th className={`px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase ${!isMonthly ? 'w-32' : ''}`}>Total</th>
+                {months.map((m, idx) => {
+                  const monthKey = monthKeys[idx];
+                  const isActual = activeYear === 1 && isActualMonth(monthKey);
+                  return (
+                    <th
+                      key={monthKey}
+                      className={`px-3 py-3 text-right text-xs font-medium uppercase w-20 ${
+                        isActual ? 'bg-blue-50 text-blue-700' : 'text-gray-500'
+                      }`}
+                    >
+                      <div className="flex flex-col items-end">
+                        <span>{m}</span>
+                        {isActual && (
+                          <span className="text-[10px] font-normal text-blue-500">Actual</span>
+                        )}
+                      </div>
+                    </th>
+                  );
+                })}
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
                 <th className="px-2 py-3 w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {revenueLines.map((line) => (
-                <tr key={line.id} className="hover:bg-gray-50">
-                  <td className={`px-4 py-2 text-sm font-medium text-gray-900 sticky left-0 bg-white ${!isMonthly ? 'min-w-[200px]' : ''}`}>
-                    {line.name}
-                  </td>
-                  {/* % Split column for all years */}
-                  <td className="px-2 py-2">
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={linePercentages[line.id] || 0}
-                        onChange={(e) => handleLinePctChange(line.id, e.target.value)}
-                        min="0"
-                        max="100"
-                        className="w-16 px-2 py-1.5 pr-6 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy text-right"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">%</span>
-                    </div>
-                  </td>
-                  {isMonthly
-                    ? monthKeys.map((key, idx) => {
-                        const isActual = isActualMonth(key);
-                        return (
-                          <td key={key} className={`px-1 py-1 ${isActual ? 'bg-blue-50' : ''}`}>
-                            {isActual ? (
-                              // Actual month - locked display
-                              <div className="w-full px-2 py-1 text-sm text-right bg-blue-100 border border-blue-200 rounded text-blue-900 font-medium flex items-center justify-end gap-1">
-                                <Lock className="w-3 h-3 text-blue-500" />
-                                <span>{line.year1Monthly[key] ? line.year1Monthly[key].toLocaleString() : '0'}</span>
-                              </div>
-                            ) : (
-                              // Projected month - editable
-                              <input
-                                type="text"
-                                value={line.year1Monthly[key] ? line.year1Monthly[key].toLocaleString() : ''}
-                                onChange={(e) => handleRevenueChange(line.id, key, e.target.value)}
-                                placeholder="0"
-                                className="w-full px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
-                              />
-                            )}
-                          </td>
-                        );
-                      })
-                    : ['q1', 'q2', 'q3', 'q4'].map((q) => {
-                        const qValue = activeYear === 2
-                          ? line.year2Quarterly[q as keyof typeof line.year2Quarterly]
-                          : line.year3Quarterly[q as keyof typeof line.year3Quarterly];
-                        return (
-                          <td key={q} className="px-2 py-2 text-right">
-                            <span className="text-sm text-gray-900">
-                              {formatCurrency(qValue || 0)}
-                            </span>
-                          </td>
-                        );
-                      })}
-                  <td className={`px-4 py-2 text-sm font-semibold text-gray-900 text-right ${!isMonthly ? 'w-32' : ''}`}>
-                    {formatCurrency(getLineTotal(line))}
-                  </td>
-                  <td className="px-2 py-2">
-                    <button
-                      onClick={() => actions.removeRevenueLine(line.id)}
-                      className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {revenueLines.map((line) => {
+                // Get the monthly data for the active year
+                const yearMonthly = activeYear === 1
+                  ? line.year1Monthly
+                  : activeYear === 2
+                    ? (line.year2Monthly || {})
+                    : (line.year3Monthly || {});
+
+                return (
+                  <tr key={line.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2 text-sm font-medium text-gray-900 sticky left-0 bg-white">
+                      {line.name}
+                    </td>
+                    {/* % Split column for all years */}
+                    <td className="px-2 py-2">
+                      <div className="relative">
+                        <input
+                          type="number"
+                          value={linePercentages[line.id] || 0}
+                          onChange={(e) => handleLinePctChange(line.id, e.target.value)}
+                          min="0"
+                          max="100"
+                          className="w-16 px-2 py-1.5 pr-6 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy text-right"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">%</span>
+                      </div>
+                    </td>
+                    {monthKeys.map((key) => {
+                      const isActual = activeYear === 1 && isActualMonth(key);
+                      const cellValue = yearMonthly[key] || 0;
+                      return (
+                        <td key={key} className={`px-1 py-1 ${isActual ? 'bg-blue-50' : ''}`}>
+                          {isActual ? (
+                            // Actual month - locked display
+                            <div className="w-full px-2 py-1 text-sm text-right bg-blue-100 border border-blue-200 rounded text-blue-900 font-medium flex items-center justify-end gap-1">
+                              <Lock className="w-3 h-3 text-blue-500" />
+                              <span>{cellValue ? cellValue.toLocaleString() : '0'}</span>
+                            </div>
+                          ) : (
+                            // Editable month
+                            <input
+                              type="text"
+                              value={cellValue ? cellValue.toLocaleString() : ''}
+                              onChange={(e) => handleRevenueChange(line.id, key, e.target.value)}
+                              placeholder="0"
+                              className="w-full px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
+                            />
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
+                      {formatCurrency(getLineTotal(line))}
+                    </td>
+                    <td className="px-2 py-2">
+                      <button
+                        onClick={() => actions.removeRevenueLine(line.id)}
+                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
               {/* Total Row */}
               <tr className="bg-gray-50 font-semibold">
-                <td className={`px-4 py-3 text-sm text-gray-900 sticky left-0 bg-gray-50 ${!isMonthly ? 'min-w-[200px]' : ''}`}>TOTAL REVENUE</td>
+                <td className="px-4 py-3 text-sm text-gray-900 sticky left-0 bg-gray-50">TOTAL REVENUE</td>
                 {/* % Total for all years */}
                 <td className="px-2 py-3 text-center">
                   <span className={`text-xs font-bold ${linePctTotal === 100 ? 'text-green-600' : 'text-amber-600'}`}>
                     {linePctTotal}%
                   </span>
                 </td>
-                {isMonthly
-                  ? monthKeys.map((key) => {
-                      const monthTotal = revenueLines.reduce((sum, line) => sum + (line.year1Monthly[key] || 0), 0);
-                      const isActual = isActualMonth(key);
-                      return (
-                        <td key={key} className={`px-3 py-3 text-sm text-right ${isActual ? 'bg-blue-100 text-blue-900' : 'text-gray-900'}`}>
-                          {monthTotal > 0 ? formatCurrency(monthTotal) : '-'}
-                        </td>
-                      );
-                    })
-                  : ['q1', 'q2', 'q3', 'q4'].map((q) => {
-                      const qTotal = revenueLines.reduce((sum, line) => {
-                        const quarterly = activeYear === 2 ? line.year2Quarterly : line.year3Quarterly;
-                        return sum + (quarterly[q as keyof typeof quarterly] || 0);
-                      }, 0);
-                      return (
-                        <td key={q} className="px-4 py-3 text-sm text-gray-900 text-right">
-                          {qTotal > 0 ? formatCurrency(qTotal) : '-'}
-                        </td>
-                      );
-                    })}
-                <td className={`px-4 py-3 text-sm text-gray-900 text-right ${!isMonthly ? 'w-32' : ''}`}>{formatCurrency(totalRevenue)}</td>
+                {monthKeys.map((key) => {
+                  const monthTotal = revenueLines.reduce((sum, line) => {
+                    const yearMonthly = activeYear === 1
+                      ? line.year1Monthly
+                      : activeYear === 2
+                        ? (line.year2Monthly || {})
+                        : (line.year3Monthly || {});
+                    return sum + (yearMonthly[key] || 0);
+                  }, 0);
+                  const isActual = activeYear === 1 && isActualMonth(key);
+                  return (
+                    <td key={key} className={`px-3 py-3 text-sm text-right ${isActual ? 'bg-blue-100 text-blue-900' : 'text-gray-900'}`}>
+                      {monthTotal > 0 ? formatCurrency(monthTotal) : '-'}
+                    </td>
+                  );
+                })}
+                <td className="px-4 py-3 text-sm text-gray-900 text-right">{formatCurrency(totalRevenue)}</td>
                 <td></td>
               </tr>
             </tbody>

@@ -47,8 +47,67 @@ export interface RevenueLine {
   id: string;
   name: string;
   year1Monthly: MonthlyData;
-  year2Quarterly: QuarterlyData;
-  year3Quarterly: QuarterlyData;
+  year2Monthly?: MonthlyData;     // Monthly data for Y2 (new — replaces quarterly)
+  year3Monthly?: MonthlyData;     // Monthly data for Y3 (new — replaces quarterly)
+  year2Quarterly?: QuarterlyData; // Legacy — kept for backward compat with old forecasts
+  year3Quarterly?: QuarterlyData; // Legacy — kept for backward compat with old forecasts
+}
+
+// Convert quarterly data to monthly using seasonality weights
+export function quarterlyToMonthly(
+  quarterly: QuarterlyData,
+  fiscalYearStart: number,
+  seasonality?: number[]
+): MonthlyData {
+  const monthKeys = generateMonthKeys(fiscalYearStart);
+  const pattern = seasonality || Array(12).fill(8.33);
+  const result: MonthlyData = {};
+
+  // Q1 = months 0-2 (Jul-Sep), Q2 = months 3-5 (Oct-Dec), Q3 = months 6-8 (Jan-Mar), Q4 = months 9-11 (Apr-Jun)
+  const quarters = [
+    { total: quarterly.q1, months: [0, 1, 2] },
+    { total: quarterly.q2, months: [3, 4, 5] },
+    { total: quarterly.q3, months: [6, 7, 8] },
+    { total: quarterly.q4, months: [9, 10, 11] },
+  ];
+
+  for (const q of quarters) {
+    const qSeasonality = q.months.reduce((s, i) => s + (pattern[i] || 8.33), 0);
+    for (const monthIdx of q.months) {
+      const weight = qSeasonality > 0 ? (pattern[monthIdx] || 8.33) / qSeasonality : 1 / 3;
+      result[monthKeys[monthIdx]] = Math.round(q.total * weight);
+    }
+  }
+
+  return result;
+}
+
+// Convert monthly data to quarterly (for legacy compatibility)
+export function monthlyToQuarterly(monthly?: MonthlyData): QuarterlyData {
+  if (!monthly) return { q1: 0, q2: 0, q3: 0, q4: 0 };
+  const values = Object.values(monthly);
+  if (values.length < 12) return { q1: 0, q2: 0, q3: 0, q4: 0 };
+  return {
+    q1: (values[0] || 0) + (values[1] || 0) + (values[2] || 0),
+    q2: (values[3] || 0) + (values[4] || 0) + (values[5] || 0),
+    q3: (values[6] || 0) + (values[7] || 0) + (values[8] || 0),
+    q4: (values[9] || 0) + (values[10] || 0) + (values[11] || 0),
+  };
+}
+
+// Get total from a RevenueLine for a given year (handles both monthly and legacy quarterly)
+export function getRevenueLineYearTotal(line: RevenueLine, year: 1 | 2 | 3): number {
+  if (year === 1) {
+    return Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
+  }
+  const monthly = year === 2 ? line.year2Monthly : line.year3Monthly;
+  if (monthly && Object.keys(monthly).length > 0) {
+    return Object.values(monthly).reduce((a, b) => a + b, 0);
+  }
+  // Fallback to quarterly for old data
+  const q = year === 2 ? line.year2Quarterly : line.year3Quarterly;
+  if (q) return q.q1 + q.q2 + q.q3 + q.q4;
+  return 0;
 }
 
 export interface COGSLine {

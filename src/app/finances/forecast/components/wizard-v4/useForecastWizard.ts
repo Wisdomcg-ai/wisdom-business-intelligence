@@ -25,6 +25,9 @@ import {
   calculateNewSalary,
   generateMonthKeys,
   SUPER_RATE,
+  quarterlyToMonthly,
+  monthlyToQuarterly,
+  getRevenueLineYearTotal,
 } from './types';
 import { isTeamCost } from './utils/opex-classifier';
 import type {
@@ -233,8 +236,8 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
           id: line.id,
           name: line.name,
           year1Monthly: { ...line.byMonth },
-          year2Quarterly: { q1: 0, q2: 0, q3: 0, q4: 0 },
-          year3Quarterly: { q1: 0, q2: 0, q3: 0, q4: 0 },
+          year2Monthly: {},
+          year3Monthly: {},
         }));
       } else if (data.revenue.total > 0) {
         // Create a default Sales Revenue line with monthly distribution
@@ -255,8 +258,8 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
           id: generateId(),
           name: 'Sales Revenue',
           year1Monthly,
-          year2Quarterly: { q1: 0, q2: 0, q3: 0, q4: 0 },
-          year3Quarterly: { q1: 0, q2: 0, q3: 0, q4: 0 },
+          year2Monthly: {},
+          year3Monthly: {},
         }];
       }
 
@@ -305,19 +308,26 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
           year1Total += Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
         });
 
-        const distributeGoalRevenue = (goalRevenue: number, yearKey: 'year2Quarterly' | 'year3Quarterly') => {
+        const seasonality = data.seasonalityPattern || Array(12).fill(8.33);
+        const distributeGoalRevenueMonthly = (goalRevenue: number, yearOffset: number, yearKey: 'year2Monthly' | 'year3Monthly') => {
           if (goalRevenue <= 0) return;
+          const monthKeys = generateMonthKeys(prev.fiscalYearStart + yearOffset);
+          const totalSeasonality = seasonality.reduce((s: number, v: number) => s + v, 0);
           revenueLines.forEach(line => {
             const lineY1 = Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
             const share = year1Total > 0 ? lineY1 / year1Total : 1 / revenueLines.length;
             const lineTarget = goalRevenue * share;
-            const perQ = Math.round(lineTarget / 4);
-            line[yearKey] = { q1: perQ, q2: perQ, q3: perQ, q4: Math.round(lineTarget - perQ * 3) };
+            const monthly: { [key: string]: number } = {};
+            monthKeys.forEach((key, idx) => {
+              const factor = (seasonality[idx] || 8.33) / totalSeasonality;
+              monthly[key] = Math.round(lineTarget * factor);
+            });
+            line[yearKey] = monthly;
           });
         };
 
-        if (prev.goals.year2?.revenue) distributeGoalRevenue(prev.goals.year2.revenue, 'year2Quarterly');
-        if (prev.goals.year3?.revenue) distributeGoalRevenue(prev.goals.year3.revenue, 'year3Quarterly');
+        if (prev.goals.year2?.revenue) distributeGoalRevenueMonthly(prev.goals.year2.revenue, 1, 'year2Monthly');
+        if (prev.goals.year3?.revenue) distributeGoalRevenueMonthly(prev.goals.year3.revenue, 2, 'year3Monthly');
       }
 
       return {
@@ -684,8 +694,8 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
             id: line.id,
             name: line.name,
             year1Monthly: { ...line.byMonth },
-            year2Quarterly: { q1: 0, q2: 0, q3: 0, q4: 0 },
-            year3Quarterly: { q1: 0, q2: 0, q3: 0, q4: 0 },
+            year2Monthly: {},
+            year3Monthly: {},
           }));
           console.log('[initializeFromXero] Created revenue lines from byLine:', revenueLines.map(l => ({
             id: l.id,
@@ -750,12 +760,12 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
             id: generateId(),
             name: 'Sales Revenue',
             year1Monthly,
-            year2Quarterly: { q1: 0, q2: 0, q3: 0, q4: 0 },
-            year3Quarterly: { q1: 0, q2: 0, q3: 0, q4: 0 },
+            year2Monthly: {},
+            year3Monthly: {},
           }];
         }
 
-        // Auto-populate Y2/Y3 quarterly revenue from goals
+        // Auto-populate Y2/Y3 monthly revenue from goals
         const goalsToUse = data.goals || prev.goals;
         if (revenueLines.length > 0) {
           let year1Total = 0;
@@ -763,19 +773,26 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
             year1Total += Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
           });
 
-          const distributeGoalRevenue = (goalRevenue: number, yearKey: 'year2Quarterly' | 'year3Quarterly') => {
+          const seasonality = data.priorYear?.seasonalityPattern || Array(12).fill(8.33);
+          const totalSeasonality = seasonality.reduce((s: number, v: number) => s + v, 0);
+          const distributeGoalRevenueMonthly = (goalRevenue: number, yearOffset: number, yearKey: 'year2Monthly' | 'year3Monthly') => {
             if (goalRevenue <= 0) return;
+            const monthKeys = generateMonthKeys(prev.fiscalYearStart + yearOffset);
             revenueLines.forEach(line => {
               const lineY1 = Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
               const share = year1Total > 0 ? lineY1 / year1Total : 1 / revenueLines.length;
               const lineTarget = goalRevenue * share;
-              const perQ = Math.round(lineTarget / 4);
-              line[yearKey] = { q1: perQ, q2: perQ, q3: perQ, q4: Math.round(lineTarget - perQ * 3) };
+              const monthly: { [key: string]: number } = {};
+              monthKeys.forEach((key, idx) => {
+                const factor = (seasonality[idx] || 8.33) / totalSeasonality;
+                monthly[key] = Math.round(lineTarget * factor);
+              });
+              line[yearKey] = monthly;
             });
           };
 
-          if (goalsToUse.year2?.revenue) distributeGoalRevenue(goalsToUse.year2.revenue, 'year2Quarterly');
-          if (goalsToUse.year3?.revenue) distributeGoalRevenue(goalsToUse.year3.revenue, 'year3Quarterly');
+          if (goalsToUse.year2?.revenue) distributeGoalRevenueMonthly(goalsToUse.year2.revenue, 1, 'year2Monthly');
+          if (goalsToUse.year3?.revenue) distributeGoalRevenueMonthly(goalsToUse.year3.revenue, 2, 'year3Monthly');
         }
 
         // Create COGS lines from prior year data - default to variable (% of revenue)
@@ -843,23 +860,10 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
   // Calculate summary for all 3 years (needed before buildAssumptions)
   const summary = useMemo((): ForecastSummary => {
     const calculateYearSummary = (yearNum: 1 | 2 | 3) => {
-      // Revenue
-      let revenue = 0;
-      if (yearNum === 1) {
-        revenue = state.revenueLines.reduce((sum, line) => {
-          return sum + Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
-        }, 0);
-      } else if (yearNum === 2) {
-        revenue = state.revenueLines.reduce((sum, line) => {
-          const q = line.year2Quarterly;
-          return sum + q.q1 + q.q2 + q.q3 + q.q4;
-        }, 0);
-      } else {
-        revenue = state.revenueLines.reduce((sum, line) => {
-          const q = line.year3Quarterly;
-          return sum + q.q1 + q.q2 + q.q3 + q.q4;
-        }, 0);
-      }
+      // Revenue — uses getRevenueLineYearTotal which handles both monthly and legacy quarterly
+      let revenue = state.revenueLines.reduce((sum, line) => {
+        return sum + getRevenueLineYearTotal(line, yearNum);
+      }, 0);
 
       // Goals fallback: if no revenue lines are filled in yet, use goals
       if (revenue === 0) {
@@ -969,16 +973,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       for (const commission of state.commissions) {
         const revLine = state.revenueLines.find(r => r.id === commission.revenueLineId);
         if (!revLine) continue;
-        let lineRevenue = 0;
-        if (yearNum === 1) {
-          lineRevenue = Object.values(revLine.year1Monthly).reduce((a, b) => a + b, 0);
-        } else if (yearNum === 2) {
-          const q = revLine.year2Quarterly;
-          lineRevenue = q.q1 + q.q2 + q.q3 + q.q4;
-        } else {
-          const q = revLine.year3Quarterly;
-          lineRevenue = q.q1 + q.q2 + q.q3 + q.q4;
-        }
+        const lineRevenue = getRevenueLineYearTotal(revLine, yearNum);
         teamCosts += lineRevenue * (commission.percentOfRevenue / 100);
       }
 
@@ -1103,8 +1098,11 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         growthPct: Math.round(growthPct * 10) / 10,
         // Store actual forecasted values for restoration
         year1Monthly: line.year1Monthly,
-        year2Quarterly: line.year2Quarterly,
-        year3Quarterly: line.year3Quarterly,
+        year2Monthly: line.year2Monthly,
+        year3Monthly: line.year3Monthly,
+        // Legacy compat
+        year2Quarterly: monthlyToQuarterly(line.year2Monthly),
+        year3Quarterly: monthlyToQuarterly(line.year3Monthly),
       };
     });
 

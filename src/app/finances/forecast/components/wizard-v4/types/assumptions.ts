@@ -39,8 +39,10 @@ export interface RevenueLineAssumption {
   notes?: string;
   // Actual forecasted values (stored for restoration)
   year1Monthly?: Record<string, number>; // e.g., { "2025-07": 50000, ... }
-  year2Quarterly?: { q1: number; q2: number; q3: number; q4: number };
-  year3Quarterly?: { q1: number; q2: number; q3: number; q4: number };
+  year2Monthly?: Record<string, number>; // Monthly data for Y2
+  year3Monthly?: Record<string, number>; // Monthly data for Y3
+  year2Quarterly?: { q1: number; q2: number; q3: number; q4: number }; // Legacy compat
+  year3Quarterly?: { q1: number; q2: number; q3: number; q4: number }; // Legacy compat
 }
 
 export interface RevenueAssumptions {
@@ -65,8 +67,10 @@ export interface COGSLineAssumption {
   notes?: string;
   // Actual forecasted values (stored for restoration)
   year1Monthly?: Record<string, number>;
-  year2Quarterly?: { q1: number; q2: number; q3: number; q4: number };
-  year3Quarterly?: { q1: number; q2: number; q3: number; q4: number };
+  year2Monthly?: Record<string, number>; // Monthly data for Y2
+  year3Monthly?: Record<string, number>; // Monthly data for Y3
+  year2Quarterly?: { q1: number; q2: number; q3: number; q4: number }; // Legacy compat
+  year3Quarterly?: { q1: number; q2: number; q3: number; q4: number }; // Legacy compat
 }
 
 export interface COGSAssumptions {
