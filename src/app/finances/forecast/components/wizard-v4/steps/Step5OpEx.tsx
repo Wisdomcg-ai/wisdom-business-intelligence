@@ -624,6 +624,27 @@ function VariablePercentInput({
 export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExProps) {
   const { opexLines, priorYear, goals, teamMembers, newHires, departures, forecastDuration, revenueLines, cogsLines, defaultOpExIncreasePct, activeYear } = state;
 
+  // Split lines once: active lines for calculations, all lines for rendering
+  const { activeOpexLines, excludedTeamLines } = useMemo(() => {
+    const active: OpExLine[] = [];
+    const excluded: OpExLine[] = [];
+    for (const line of opexLines) {
+      if (isTeamCost(line.name)) {
+        excluded.push(line);
+      } else {
+        active.push(line);
+      }
+    }
+    console.log('[Step5OpEx] Team cost filter:', {
+      total: active.length + excluded.length,
+      excluded: excluded.map(l => ({ name: l.name, prior: l.priorYearAnnual })),
+      active: active.map(l => ({ name: l.name, prior: l.priorYearAnnual })),
+      excludedTotal: excluded.reduce((s, l) => s + l.priorYearAnnual, 0),
+      activeTotal: active.reduce((s, l) => s + l.priorYearAnnual, 0),
+    });
+    return { activeOpexLines: active, excludedTeamLines: excluded };
+  }, [opexLines]);
+
   // Use wizard's activeYear via actions.setActiveYear
   const setActiveYear = actions.setActiveYear;
   const [showGuidance, setShowGuidance] = useState(true);
@@ -904,15 +925,15 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
     }
   }, [calculateY1Amount, revenueByYear, effectiveDefaultGrowth]);
 
-  // Total OpEx by year
+  // Total OpEx by year — uses activeOpexLines (team costs already excluded)
   const opexByYear = useMemo(() => ({
-    y1: opexLines.reduce((sum, line) => isTeamCost(line.name) ? sum : sum + calculateY1Amount(line), 0),
-    y2: opexLines.reduce((sum, line) => isTeamCost(line.name) ? sum : sum + calculateYearAmount(line, 2, effectiveDefaultGrowth), 0),
-    y3: opexLines.reduce((sum, line) => isTeamCost(line.name) ? sum : sum + calculateYearAmount(line, 3, effectiveDefaultGrowth), 0),
-  }), [opexLines, calculateY1Amount, calculateYearAmount, effectiveDefaultGrowth]);
+    y1: activeOpexLines.reduce((sum, line) => sum + calculateY1Amount(line), 0),
+    y2: activeOpexLines.reduce((sum, line) => sum + calculateYearAmount(line, 2, effectiveDefaultGrowth), 0),
+    y3: activeOpexLines.reduce((sum, line) => sum + calculateYearAmount(line, 3, effectiveDefaultGrowth), 0),
+  }), [activeOpexLines, calculateY1Amount, calculateYearAmount, effectiveDefaultGrowth]);
 
-  // Prior year total for comparison
-  const totalPriorYear = opexLines.reduce((sum, line) => isTeamCost(line.name) ? sum : sum + line.priorYearAnnual, 0);
+  // Prior year total for comparison — also uses activeOpexLines
+  const totalPriorYear = activeOpexLines.reduce((sum, line) => sum + line.priorYearAnnual, 0);
   const activeYearTotal = activeYear === 1 ? opexByYear.y1 : activeYear === 2 ? opexByYear.y2 : opexByYear.y3;
 
   // Handle adding a new line
@@ -1013,6 +1034,11 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
         <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <h3 className="text-lg font-semibold text-gray-900">Operating Expenses</h3>
+            {excludedTeamLines.length > 0 && (
+              <span className="text-xs text-gray-400 font-medium">
+                {excludedTeamLines.length} line{excludedTeamLines.length > 1 ? 's' : ''} in Team Costs
+              </span>
+            )}
 
             {/* Year Tabs */}
             {forecastDuration > 1 && (
