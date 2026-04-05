@@ -1014,14 +1014,16 @@ export function ForecastWizardV4({
                     accountId: string;
                     accountName: string;
                     year1Monthly?: Record<string, number>;
+                    year2Monthly?: Record<string, number>;
+                    year3Monthly?: Record<string, number>;
                     year2Quarterly?: { q1: number; q2: number; q3: number; q4: number };
                     year3Quarterly?: { q1: number; q2: number; q3: number; q4: number };
                   }) => ({
                     id: line.accountId,
                     name: line.accountName,
                     year1Monthly: line.year1Monthly || {},
-                    year2Quarterly: line.year2Quarterly || { q1: 0, q2: 0, q3: 0, q4: 0 },
-                    year3Quarterly: line.year3Quarterly || { q1: 0, q2: 0, q3: 0, q4: 0 },
+                    year2Monthly: line.year2Monthly || {},
+                    year3Monthly: line.year3Monthly || {},
                   }));
 
                 if (restoredRevenueLines.length > 0) {

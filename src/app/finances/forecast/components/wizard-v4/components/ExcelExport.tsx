@@ -25,10 +25,30 @@ export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
   const fy = (offset: number) => `FY${(fiscalYear + offset).toString().slice(-2)}`;
 
   // Get monthly revenue for a line in a given year
-  const getLineMonthlyRevenue = (line: typeof revenueLines[0], yearNum: 1 | 2 | 3): Record<string, number> => {
-    if (yearNum === 1) return line.year1Monthly;
-    if (yearNum === 2) return line.year2Monthly || {};
-    return line.year3Monthly || {};
+  // Handles key format mismatches by trying both stored keys and generated keys
+  const getLineMonthlyRevenue = (line: typeof revenueLines[0], yearNum: 1 | 2 | 3, monthKeys: string[]): number[] => {
+    const data = yearNum === 1 ? line.year1Monthly
+      : yearNum === 2 ? (line.year2Monthly || {})
+      : (line.year3Monthly || {});
+
+    // Try direct key match first
+    const directValues = monthKeys.map(key => data[key] || 0);
+    const directTotal = directValues.reduce((a, b) => a + b, 0);
+    if (directTotal > 0) return directValues;
+
+    // If no match, the data might have different year keys — extract by position
+    const sortedKeys = Object.keys(data).sort();
+    if (sortedKeys.length >= 12) {
+      return sortedKeys.slice(0, 12).map(key => data[key] || 0);
+    }
+    if (sortedKeys.length > 0) {
+      // Partial data — map what exists
+      const result = new Array(12).fill(0);
+      sortedKeys.forEach((key, i) => { if (i < 12) result[i] = data[key] || 0; });
+      return result;
+    }
+
+    return directValues;
   };
 
   // Calculate monthly team costs with actual hire/departure timing
@@ -111,12 +131,8 @@ export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
     rows.push(['REVENUE']);
     const monthlyRevenueTotals = new Array(12).fill(0);
     revenueLines.forEach(line => {
-      const monthly = getLineMonthlyRevenue(line, yearNum);
-      const values = monthKeys.map((key, i) => {
-        const val = monthly[key] || 0;
-        monthlyRevenueTotals[i] += val;
-        return val;
-      });
+      const values = getLineMonthlyRevenue(line, yearNum, monthKeys);
+      values.forEach((val, i) => { monthlyRevenueTotals[i] += val; });
       const total = values.reduce((a, b) => a + b, 0);
       rows.push([`  ${line.name}`, ...values, total]);
     });
