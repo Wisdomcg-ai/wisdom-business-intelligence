@@ -26,6 +26,7 @@ import {
   generateMonthKeys,
   SUPER_RATE,
 } from './types';
+import { isTeamCost } from './utils/opex-classifier';
 import type {
   ForecastAssumptions,
   RevenueLineAssumption,
@@ -988,6 +989,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         if (line.isOneTime && line.oneTimeYear && line.oneTimeYear !== yearNum) return sum;
         // Skip expenses that haven't started yet
         if (line.startYear && line.startYear > yearNum) return sum;
+        if (isTeamCost(line.name)) return sum;
 
         let lineAmount = 0;
         switch (line.costBehavior) {
