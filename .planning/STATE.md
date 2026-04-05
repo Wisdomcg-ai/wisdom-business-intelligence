@@ -21,6 +21,11 @@
 - coaching_sessions endpoint returns 400 (pre-existing)
 - Wizard version currently at 8
 
+## Key Decisions
+- Fix at calculation layer only (D-05) — no data migration, no schema change
+- isTeamCost() from opex-classifier.ts is single source of truth for team line detection
+- netProfit formula unchanged; only opex sum corrected
+
 ## Completed Work (This Session)
 - Xero P&L categorisation fix (COGS vs Revenue)
 - Multi-tenant org selection for Xero OAuth
@@ -31,12 +36,11 @@
 - COGS card added to Step 2
 - Tabbed P&L view (Prior Year / Current Year) on Step 2
 - opex_by_month tracking in pl-summary
-- Plan 01-01: useForecastWizard and BudgetTracker OpEx double-counting fix (calculation layer)
-- Plan 01-02: Step5OpEx UI fix — isTeamCost guards in reducers, greyed-out team cost rows (commit 5d35d44)
+- Plan 01-01: useForecastWizard and BudgetTracker OpEx double-counting fix (calculation layer) — COMPLETE (ed00a9d, 7d6e60f)
 
 ## Position
-- Current: Phase 01, Plan 02 — awaiting human verification (checkpoint:human-verify)
-- Stopped at: Task 2 of 01-02-PLAN.md — browser verification of OpEx fix
+- Current: Phase 01, Plan 01 — COMPLETE
+- Stopped at: Completed 01-01-PLAN.md
 
 ## Last Session
-- 2026-04-05T03:13:45Z — Completed Task 1 of 01-02, awaiting human verify
+- 2026-04-05T03:13:57Z — Completed 01-01 (OpEx double-counting calculation fix)
