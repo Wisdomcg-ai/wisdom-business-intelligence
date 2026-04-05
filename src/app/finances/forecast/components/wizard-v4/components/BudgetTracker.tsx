@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { AlertTriangle, CheckCircle2, TrendingDown, TrendingUp, Wallet, Target, DollarSign, PieChart, ArrowRight, Sparkles } from 'lucide-react';
 import { ForecastWizardState, formatCurrency, SUPER_RATE } from '../types';
+import { isTeamCost } from '../utils/opex-classifier';
 
 interface BudgetTrackerProps {
   state: ForecastWizardState;
@@ -107,6 +108,7 @@ export function BudgetTracker({ state, currentStep, subscriptionSavings = 0 }: B
       const opexAllocated = opexLines.reduce((sum, line) => {
         if (line.startYear && line.startYear > yearNum) return sum;
         if (line.isOneTime && line.oneTimeYear && line.oneTimeYear !== yearNum) return sum;
+        if (isTeamCost(line.name)) return sum;
 
         let lineAmount = 0;
         switch (line.costBehavior) {
