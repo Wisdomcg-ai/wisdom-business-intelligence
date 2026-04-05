@@ -16,8 +16,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const [showAddCOGS, setShowAddCOGS] = useState(false);
   const [newRevenueName, setNewRevenueName] = useState('');
   const [newCOGSName, setNewCOGSName] = useState('');
-  const [revenueTab, setRevenueTab] = useState<'summary' | 'monthly'>('summary');
-  const [cogsTab, setCogsTab] = useState<'summary' | 'monthly'>('summary');
+  const [viewMode, setViewMode] = useState<'summary' | 'monthly'>('summary');
   const [expandedRevLines, setExpandedRevLines] = useState<Set<string>>(new Set());
 
   const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
@@ -584,30 +583,38 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         </div>
       )}
 
+      {/* View Mode Toggle + Distribution Note */}
+      <div className="flex items-center justify-between">
+        <div className="flex border border-gray-200 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setViewMode('summary')}
+            className={`px-4 py-1.5 text-xs font-medium transition-colors ${
+              viewMode === 'summary' ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            Summary
+          </button>
+          <button
+            onClick={() => setViewMode('monthly')}
+            className={`px-4 py-1.5 text-xs font-medium transition-colors ${
+              viewMode === 'monthly' ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            Monthly Detail
+          </button>
+        </div>
+        {viewMode === 'monthly' && (
+          <p className="text-xs text-gray-400 italic">
+            <Info className="w-3 h-3 inline mr-1" />
+            {priorYear ? 'Monthly amounts distributed based on your prior year seasonal pattern' : 'Monthly amounts distributed evenly across the year'}
+          </p>
+        )}
+      </div>
+
       {/* Revenue Section */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h3 className="text-lg font-semibold text-gray-900">Revenue</h3>
-            <div className="flex border border-gray-200 rounded-lg overflow-hidden">
-              <button
-                onClick={() => setRevenueTab('summary')}
-                className={`px-3 py-1 text-xs font-medium transition-colors ${
-                  revenueTab === 'summary' ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                Summary
-              </button>
-              <button
-                onClick={() => setRevenueTab('monthly')}
-                className={`px-3 py-1 text-xs font-medium transition-colors ${
-                  revenueTab === 'monthly' ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                Monthly
-              </button>
-            </div>
-          </div>
+          <h3 className="text-lg font-semibold text-gray-900">Revenue</h3>
           <button onClick={() => setShowAddRevenue(true)} className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-navy hover:bg-brand-navy/5 rounded-lg transition-colors">
             <Plus className="w-4 h-4" /> Add Line
           </button>
@@ -641,20 +648,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
           </div>
         )}
 
-        {/* Pattern selector — only inside Monthly tab, compact */}
-        {revenueTab === 'monthly' && (
-          <div className="px-6 py-2 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
-            <span className="text-xs text-gray-500">Distribution:</span>
-            {(['seasonal', 'straight-line', 'manual'] as const).map(p => (
-              <button key={p} onClick={() => handlePatternChange(p)} className={`px-2 py-1 text-xs rounded ${revenuePattern === p ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 border border-gray-200'}`}>
-                {p === 'seasonal' ? 'Seasonal' : p === 'straight-line' ? 'Even' : 'Manual'}
-              </button>
-            ))}
-          </div>
-        )}
-
         {/* Summary View (default) — Revenue Mix */}
-        {revenueTab === 'summary' && (
+        {viewMode === 'summary' && (
           <div className="divide-y divide-gray-100">
             {/* Summary header */}
             <div className="grid grid-cols-12 gap-2 px-6 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase">
@@ -778,7 +773,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         )}
 
         {/* Detail View (monthly grid) */}
-        {revenueTab === 'monthly' && <div className="overflow-x-auto">
+        {viewMode === 'monthly' && <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
@@ -914,34 +909,14 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
       {/* COGS Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <h3 className="text-lg font-semibold text-gray-900">Cost of Goods Sold</h3>
-              <div className="group relative">
-                <Info className="w-4 h-4 text-gray-400 cursor-help" />
-                <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
-                  <p className="mb-1"><strong>Variable:</strong> Costs that change with revenue (e.g., materials, commissions)</p>
-                  <p><strong>Fixed:</strong> Costs that stay constant regardless of revenue (rare for COGS)</p>
-                </div>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-gray-900">Cost of Sales</h3>
+            <div className="group relative">
+              <Info className="w-4 h-4 text-gray-400 cursor-help" />
+              <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
+                <p className="mb-1"><strong>Variable:</strong> Costs that change with revenue (e.g., materials, commissions)</p>
+                <p><strong>Fixed:</strong> Costs that stay constant regardless of revenue (rare for COGS)</p>
               </div>
-            </div>
-            <div className="flex border border-gray-200 rounded-lg overflow-hidden">
-              <button
-                onClick={() => setCogsTab('summary')}
-                className={`px-3 py-1 text-xs font-medium transition-colors ${
-                  cogsTab === 'summary' ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                Summary
-              </button>
-              <button
-                onClick={() => setCogsTab('monthly')}
-                className={`px-3 py-1 text-xs font-medium transition-colors ${
-                  cogsTab === 'monthly' ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                Monthly
-              </button>
             </div>
           </div>
           <button onClick={() => setShowAddCOGS(true)} className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-navy hover:bg-brand-navy/5 rounded-lg transition-colors">
@@ -978,7 +953,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         )}
 
         {/* COGS Summary View — Mix % */}
-        {cogsTab === 'summary' && (
+        {viewMode === 'summary' && (
           <div className="divide-y divide-gray-100">
             <div className="grid grid-cols-12 gap-2 px-6 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase">
               <div className="col-span-3">Line Item</div>
@@ -1062,7 +1037,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         )}
 
         {/* COGS Monthly Detail View */}
-        {cogsTab === 'monthly' && (
+        {viewMode === 'monthly' && (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50">
