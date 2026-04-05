@@ -17,7 +17,6 @@
 - Full platform roadmap spans 10 phases across 3 milestones
 
 ## Known Issues
-- OpEx double-counts team costs when Xero wages are in OpEx lines
 - Some coach shell navigation still breaks context
 - coaching_sessions endpoint returns 400 (pre-existing)
 - Wizard version currently at 8
@@ -32,3 +31,12 @@
 - COGS card added to Step 2
 - Tabbed P&L view (Prior Year / Current Year) on Step 2
 - opex_by_month tracking in pl-summary
+- Plan 01-01: useForecastWizard and BudgetTracker OpEx double-counting fix (calculation layer)
+- Plan 01-02: Step5OpEx UI fix — isTeamCost guards in reducers, greyed-out team cost rows (commit 5d35d44)
+
+## Position
+- Current: Phase 01, Plan 02 — awaiting human verification (checkpoint:human-verify)
+- Stopped at: Task 2 of 01-02-PLAN.md — browser verification of OpEx fix
+
+## Last Session
+- 2026-04-05T03:13:45Z — Completed Task 1 of 01-02, awaiting human verify

@@ -5,11 +5,11 @@
 ### Phase 1: Fix OpEx double-counting [CRITICAL]
 **Goal:** Correct the forecast P&L calculations so budget tracker shows accurate numbers
 **Requirements:** R1.1
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 01-01-PLAN.md — Fix OpEx calculation layer in useForecastWizard.ts and BudgetTracker.tsx
-- [ ] 01-02-PLAN.md — Fix Step 5 OpEx UI totals and add greyed-out team cost rows
+- [x] 01-01-PLAN.md — Fix OpEx calculation layer in useForecastWizard.ts and BudgetTracker.tsx
+- [x] 01-02-PLAN.md — Fix Step 5 OpEx UI totals and add greyed-out team cost rows
 
 **Success:** CapEx shows normal %, Net Profit calculation accurate
 
