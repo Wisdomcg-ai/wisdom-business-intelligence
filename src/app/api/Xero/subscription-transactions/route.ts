@@ -6,7 +6,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
 import { VENDOR_MAPPINGS, extractVendorName, createVendorKey } from '@/lib/utils/vendor-normalization';
 
 export const dynamic = 'force-dynamic';
@@ -329,6 +331,13 @@ function extractAccountBalance(plReport: any, accountCodes: string[]): number | 
 
 export async function POST(request: NextRequest) {
   try {
+    // Auth check
+    const authClient = await createRouteHandlerClient();
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { business_id, account_codes } = body;
 
@@ -339,8 +348,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Verify user has access to this business
+    const hasAccess = await verifyBusinessAccess(user.id, business_id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
     // Filter out empty account codes
-    const validAccountCodes = account_codes.filter(code => code && code.trim());
+    const validAccountCodes = account_codes.filter((code: string) => code && code.trim());
 
     if (validAccountCodes.length === 0) {
       return NextResponse.json(

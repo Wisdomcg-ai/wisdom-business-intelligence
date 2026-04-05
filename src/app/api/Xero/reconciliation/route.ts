@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,12 +17,25 @@ const supabase = createClient(
  */
 export async function GET(request: NextRequest) {
   try {
+    // Auth check
+    const authClient = await createRouteHandlerClient();
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url)
     const businessId = searchParams.get('business_id')
     const month = searchParams.get('month')
 
     if (!businessId) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 })
+    }
+
+    // Verify user has access to this business
+    const hasAccess = await verifyBusinessAccess(user.id, businessId);
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     // Get Xero connection — try all ID formats

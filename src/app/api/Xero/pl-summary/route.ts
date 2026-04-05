@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
 import type { HistoricalPLSummary, PeriodSummary, OpExCategory } from '@/app/finances/forecast/types';
 
 // Helper to get fiscal year boundaries (Australian FY: Jul-Jun)
@@ -109,6 +110,12 @@ export async function GET(request: NextRequest) {
 
     if (!businessId) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
+    }
+
+    // Verify user has access to this business
+    const hasAccess = await verifyBusinessAccess(user.id, businessId);
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     const fiscalYear = fiscalYearParam ? parseInt(fiscalYearParam) : new Date().getFullYear() + 1;

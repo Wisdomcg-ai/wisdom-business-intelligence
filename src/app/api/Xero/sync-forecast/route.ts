@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +28,13 @@ const ACCOUNT_TYPE_MAPPING: { [key: string]: string } = {
 
 export async function POST(request: NextRequest) {
   try {
+    // Auth check
+    const authClient = await createRouteHandlerClient();
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { business_id, forecast_id } = await request.json();
 
     if (!business_id || !forecast_id) {
@@ -33,6 +42,12 @@ export async function POST(request: NextRequest) {
         { error: 'business_id and forecast_id are required' },
         { status: 400 }
       );
+    }
+
+    // Verify user has access to this business
+    const hasAccess = await verifyBusinessAccess(user.id, business_id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     // Get the Xero connection (resolves businesses.id vs business_profiles.id)
