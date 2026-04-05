@@ -140,13 +140,25 @@ export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
     rows.push(['TOTAL REVENUE', ...monthlyRevenueTotals, totalRevenue]);
     rows.push([]);
 
-    // COGS lines
+    // COGS lines — use per-month data if available, otherwise formula
     rows.push(['COST OF SALES']);
     const monthlyCogsTotals = new Array(12).fill(0);
     cogsLines.forEach(line => {
-      const values = monthKeys.map((_, i) => {
+      const yearMonthly = yearNum === 1 ? line.year1Monthly
+        : yearNum === 2 ? line.year2Monthly
+        : line.year3Monthly;
+      const hasMonthly = yearMonthly && Object.keys(yearMonthly).length > 0;
+
+      const values = monthKeys.map((key, i) => {
         let val = 0;
-        if (line.costBehavior === 'variable') {
+        if (hasMonthly) {
+          val = yearMonthly![key] || 0;
+          // Fallback to sorted position if key mismatch
+          if (val === 0 && Object.values(yearMonthly!).some(v => v > 0)) {
+            const sorted = Object.keys(yearMonthly!).sort();
+            if (sorted[i]) val = yearMonthly![sorted[i]] || 0;
+          }
+        } else if (line.costBehavior === 'variable') {
           val = Math.round(monthlyRevenueTotals[i] * (line.percentOfRevenue || 0) / 100);
         } else {
           val = line.monthlyAmount || 0;

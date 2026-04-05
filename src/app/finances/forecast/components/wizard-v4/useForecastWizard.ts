@@ -898,8 +898,15 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         }
       }
 
-      // COGS - from detailed Step 3 data only, no goals fallback
+      // COGS - use per-month data if available, otherwise calculate from formula
       const cogs = state.cogsLines.reduce((sum, line) => {
+        const monthly = yearNum === 1 ? line.year1Monthly
+          : yearNum === 2 ? line.year2Monthly
+          : line.year3Monthly;
+        if (monthly && Object.keys(monthly).length > 0) {
+          return sum + Object.values(monthly).reduce((a, b) => a + b, 0);
+        }
+        // Fallback to formula
         if (line.costBehavior === 'fixed') {
           return sum + (line.monthlyAmount || 0) * 12;
         }

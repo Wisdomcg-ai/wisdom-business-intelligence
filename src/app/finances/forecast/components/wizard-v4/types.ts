@@ -122,6 +122,10 @@ export interface COGSLine {
   monthlyAmount?: number;
   linkedRevenueLineId?: string;
   notes?: string;
+  // Per-month data (overrides formula when present)
+  year1Monthly?: MonthlyData;
+  year2Monthly?: MonthlyData;
+  year3Monthly?: MonthlyData;
 }
 
 export interface TeamMember {

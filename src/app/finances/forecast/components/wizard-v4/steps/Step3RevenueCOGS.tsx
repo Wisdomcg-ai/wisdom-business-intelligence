@@ -964,125 +964,261 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
           </div>
         )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Line Item</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase w-32">Cost Type</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase w-36">Value</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Estimated Annual</th>
-                <th className="px-4 py-3 w-10"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {cogsLines.map((line) => (
-                <tr key={line.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <div className="text-sm font-medium text-gray-900">{line.name}</div>
-                    {line.priorYearTotal && (
-                      <div className="text-xs text-gray-500">
-                        Prior year: {formatCurrency(line.priorYearTotal)}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex gap-1 justify-center">
-                      <button
-                        onClick={() => actions.updateCOGSLine(line.id, { costBehavior: 'variable' })}
-                        className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                          line.costBehavior === 'variable'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                        }`}
-                        title="Variable - scales with revenue"
-                      >
-                        Variable
-                      </button>
-                      <button
-                        onClick={() => actions.updateCOGSLine(line.id, { costBehavior: 'fixed' })}
-                        className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                          line.costBehavior === 'fixed'
-                            ? 'bg-purple-100 text-purple-700'
-                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                        }`}
-                        title="Fixed - constant monthly amount"
-                      >
-                        Fixed
-                      </button>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2">
-                    {line.costBehavior === 'variable' ? (
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={line.percentOfRevenue || ''}
-                          onChange={(e) =>
-                            actions.updateCOGSLine(line.id, {
-                              percentOfRevenue: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)),
-                            })
-                          }
-                          placeholder="0"
-                          min="0"
-                          max="100"
-                          step="0.1"
-                          className="w-full px-3 py-1.5 pr-8 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
-                      </div>
-                    ) : (
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                        <input
-                          type="number"
-                          value={line.monthlyAmount || ''}
-                          onChange={(e) =>
-                            actions.updateCOGSLine(line.id, {
-                              monthlyAmount: parseFloat(e.target.value) || 0,
-                            })
-                          }
-                          placeholder="0"
-                          min="0"
-                          className="w-full px-3 py-1.5 pl-7 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">/mo</span>
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                    {formatCurrency(calculateCOGSAmount(line))}
-                  </td>
-                  <td className="px-2 py-3">
-                    <button
-                      onClick={() => actions.removeCOGSLine(line.id)}
-                      className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {cogsLines.length === 0 && (
+        {/* COGS Summary View (default) */}
+        {!revenueDetailMode && (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
-                    No COGS lines added. Click "Add Line" to add cost of goods sold items.
-                  </td>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Line Item</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase w-32">Cost Type</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase w-36">Value</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Estimated Annual</th>
+                  <th className="px-4 py-3 w-10"></th>
                 </tr>
-              )}
-              {/* Total Row */}
-              <tr className="bg-gray-50 font-semibold">
-                <td className="px-4 py-3 text-sm text-gray-900">TOTAL COGS</td>
-                <td className="px-4 py-3"></td>
-                <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                  {totalRevenue > 0 ? `${((totalCOGS / totalRevenue) * 100).toFixed(1)}%` : '-'}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-900 text-right">{formatCurrency(totalCOGS)}</td>
-                <td></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {cogsLines.map((line) => (
+                  <tr key={line.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <div className="text-sm font-medium text-gray-900">{line.name}</div>
+                      {line.priorYearTotal != null && line.priorYearTotal > 0 && (
+                        <div className="text-xs text-gray-500">
+                          Prior year: {formatCurrency(line.priorYearTotal)}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      <div className="flex gap-1 justify-center">
+                        <button
+                          onClick={() => actions.updateCOGSLine(line.id, { costBehavior: 'variable' })}
+                          className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+                            line.costBehavior === 'variable'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                        >
+                          Variable
+                        </button>
+                        <button
+                          onClick={() => actions.updateCOGSLine(line.id, { costBehavior: 'fixed' })}
+                          className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+                            line.costBehavior === 'fixed'
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                        >
+                          Fixed
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2">
+                      {line.costBehavior === 'variable' ? (
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={line.percentOfRevenue || ''}
+                            onChange={(e) =>
+                              actions.updateCOGSLine(line.id, {
+                                percentOfRevenue: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)),
+                              })
+                            }
+                            placeholder="0"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            className="w-full px-3 py-1.5 pr-8 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                          <input
+                            type="number"
+                            value={line.monthlyAmount || ''}
+                            onChange={(e) =>
+                              actions.updateCOGSLine(line.id, {
+                                monthlyAmount: parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            placeholder="0"
+                            min="0"
+                            className="w-full px-3 py-1.5 pl-7 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">/mo</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                      {formatCurrency(calculateCOGSAmount(line))}
+                    </td>
+                    <td className="px-2 py-3">
+                      <button
+                        onClick={() => actions.removeCOGSLine(line.id)}
+                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {cogsLines.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                      No COGS lines added. Click &quot;Add Line&quot; to add cost of goods sold items.
+                    </td>
+                  </tr>
+                )}
+                <tr className="bg-gray-50 font-semibold">
+                  <td className="px-4 py-3 text-sm text-gray-900">TOTAL COGS</td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                    {totalRevenue > 0 ? `${((totalCOGS / totalRevenue) * 100).toFixed(1)}%` : '-'}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900 text-right">{formatCurrency(totalCOGS)}</td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* COGS Monthly Detail View */}
+        {revenueDetailMode && (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50">Line Item</th>
+                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase w-20">Type</th>
+                  {months.map((m, idx) => {
+                    const mk = monthKeys[idx];
+                    const isActual = activeYear === 1 && isActualMonth(mk);
+                    return (
+                      <th key={mk} className={`px-2 py-3 text-right text-xs font-medium uppercase w-20 ${isActual ? 'bg-blue-50 text-blue-700' : 'text-gray-500'}`}>
+                        {m}
+                      </th>
+                    );
+                  })}
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                  <th className="px-2 py-3 w-10"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {cogsLines.map((line) => {
+                  // Get or generate monthly COGS values
+                  const yearKey = activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
+                  const existingMonthly = line[yearKey] || {};
+                  const hasMonthlyData = Object.keys(existingMonthly).length > 0;
+
+                  // Get monthly revenue totals for variable COGS calculation
+                  const monthlyRevForLine = monthKeys.map(key =>
+                    revenueLines.reduce((sum, rl) => {
+                      const rm = activeYear === 1 ? rl.year1Monthly : activeYear === 2 ? (rl.year2Monthly || {}) : (rl.year3Monthly || {});
+                      return sum + (rm[key] || 0);
+                    }, 0)
+                  );
+
+                  const getMonthValue = (key: string, idx: number): number => {
+                    if (hasMonthlyData) return existingMonthly[key] || 0;
+                    if (line.costBehavior === 'variable') return Math.round(monthlyRevForLine[idx] * (line.percentOfRevenue || 0) / 100);
+                    return line.monthlyAmount || 0;
+                  };
+
+                  const monthValues = monthKeys.map((key, idx) => getMonthValue(key, idx));
+                  const lineTotal = monthValues.reduce((a, b) => a + b, 0);
+
+                  const handleCOGSMonthChange = (key: string, value: string) => {
+                    const numValue = parseFloat(value.replace(/[^0-9.]/g, '')) || 0;
+                    const updated = { ...existingMonthly };
+                    // Pre-fill all months from formula if first edit
+                    if (!hasMonthlyData) {
+                      monthKeys.forEach((k, i) => { updated[k] = getMonthValue(k, i); });
+                    }
+                    updated[key] = numValue;
+                    actions.updateCOGSLine(line.id, { [yearKey]: updated });
+                  };
+
+                  return (
+                    <tr key={line.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 sticky left-0 bg-white">
+                        <div className="text-sm font-medium text-gray-900">{line.name}</div>
+                        <div className="text-xs text-gray-400">
+                          {line.costBehavior === 'variable' ? `${line.percentOfRevenue || 0}% of rev` : `$${(line.monthlyAmount || 0).toLocaleString()}/mo`}
+                          {hasMonthlyData && <span className="ml-1 text-amber-500">(edited)</span>}
+                        </div>
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                          line.costBehavior === 'variable' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                        }`}>
+                          {line.costBehavior === 'variable' ? 'Var' : 'Fix'}
+                        </span>
+                      </td>
+                      {monthKeys.map((key, idx) => {
+                        const isActual = activeYear === 1 && isActualMonth(key);
+                        const val = monthValues[idx];
+                        return (
+                          <td key={key} className={`px-1 py-1 ${isActual ? 'bg-blue-50' : ''}`}>
+                            <input
+                              type="text"
+                              value={val ? val.toLocaleString() : ''}
+                              onChange={(e) => handleCOGSMonthChange(key, e.target.value)}
+                              placeholder="0"
+                              className={`w-full px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy ${
+                                !hasMonthlyData ? 'text-gray-400' : 'text-gray-900'
+                              }`}
+                            />
+                          </td>
+                        );
+                      })}
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
+                        {formatCurrency(lineTotal)}
+                      </td>
+                      <td className="px-2 py-2">
+                        <button
+                          onClick={() => actions.removeCOGSLine(line.id)}
+                          className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {cogsLines.length === 0 && (
+                  <tr>
+                    <td colSpan={16} className="px-4 py-8 text-center text-sm text-gray-500">
+                      No COGS lines added. Click &quot;Add Line&quot; to add cost of goods sold items.
+                    </td>
+                  </tr>
+                )}
+                <tr className="bg-gray-50 font-semibold">
+                  <td className="px-4 py-3 text-sm text-gray-900 sticky left-0 bg-gray-50">TOTAL COGS</td>
+                  <td className="px-2 py-3"></td>
+                  {monthKeys.map((key, idx) => {
+                    const monthCogs = cogsLines.reduce((sum, line) => {
+                      const ym = line[activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly'] || {};
+                      if (Object.keys(ym).length > 0) return sum + (ym[key] || 0);
+                      const monthRev = revenueLines.reduce((s, rl) => {
+                        const rm = activeYear === 1 ? rl.year1Monthly : activeYear === 2 ? (rl.year2Monthly || {}) : (rl.year3Monthly || {});
+                        return s + (rm[key] || 0);
+                      }, 0);
+                      if (line.costBehavior === 'variable') return sum + Math.round(monthRev * (line.percentOfRevenue || 0) / 100);
+                      return sum + (line.monthlyAmount || 0);
+                    }, 0);
+                    return (
+                      <td key={key} className="px-2 py-3 text-xs text-gray-900 text-right">{formatCurrency(monthCogs)}</td>
+                    );
+                  })}
+                  <td className="px-4 py-3 text-sm text-gray-900 text-right">{formatCurrency(totalCOGS)}</td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Gross Profit Summary */}
