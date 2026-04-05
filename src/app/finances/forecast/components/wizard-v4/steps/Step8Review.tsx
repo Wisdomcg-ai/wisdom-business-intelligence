@@ -588,6 +588,45 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
         )}
       </div>
 
+      {/* ── Goals vs Forecast Callout ── */}
+      {(() => {
+        const yearGoals = activeYear === 1 ? goals.year1 : activeYear === 2 ? goals.year2 : goals.year3;
+        const npTarget = yearGoals?.netProfitPct;
+        const npActual = adjustedData.netProfitPct;
+        const gpTarget = yearGoals?.grossProfitPct;
+        const gpActual = adjustedData.grossProfitPct;
+        if (!npTarget || !gpTarget || adjustedData.revenue === 0) return null;
+        const npGap = npActual - npTarget;
+        const gpGap = gpActual - gpTarget;
+        const npMet = npGap >= -0.5;
+        const gpMet = gpGap >= -0.5;
+        return (
+          <div className={`rounded-xl border p-4 flex items-center justify-between ${
+            npMet && gpMet ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
+          }`}>
+            <div className="flex items-center gap-6">
+              <div className="text-sm">
+                <span className="text-gray-600">GP% Target: </span>
+                <span className="font-semibold">{gpTarget}%</span>
+                <span className={`ml-1 ${gpMet ? 'text-green-600' : 'text-red-600'}`}>
+                  → {gpActual.toFixed(1)}%
+                </span>
+              </div>
+              <div className="text-sm">
+                <span className="text-gray-600">NP% Target: </span>
+                <span className="font-semibold">{npTarget}%</span>
+                <span className={`ml-1 ${npMet ? 'text-green-600' : 'text-red-600'}`}>
+                  → {npActual.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+            <span className={`text-sm font-medium ${npMet && gpMet ? 'text-green-700' : 'text-amber-700'}`}>
+              {npMet && gpMet ? '✓ On track' : `${formatCurrency(Math.abs(adjustedData.netProfit - (adjustedData.revenue * npTarget / 100)))} gap to target`}
+            </span>
+          </div>
+        );
+      })()}
+
       {/* ── Layer 2: Waterfall Chart ── */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">

@@ -426,6 +426,21 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
         </div>
       )}
 
+      {/* Key Assumptions Summary */}
+      <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
+        <h4 className="text-sm font-semibold text-gray-700 mb-2">This forecast assumes:</h4>
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
+          {summary.year1.revenue > 0 && summary.year2 && summary.year2.revenue > 0 && (
+            <span>Revenue grows {((summary.year2.revenue / summary.year1.revenue - 1) * 100).toFixed(0)}% in Y2{summary.year3 && summary.year3.revenue > 0 && summary.year2.revenue > 0 ? `, ${((summary.year3.revenue / summary.year2.revenue - 1) * 100).toFixed(0)}% in Y3` : ''}</span>
+          )}
+          <span>Team: {state.teamMembers.length} people{state.newHires.length > 0 ? ` + ${state.newHires.length} hire${state.newHires.length > 1 ? 's' : ''}` : ''}{state.departures.length > 0 ? ` − ${state.departures.length} departure${state.departures.length > 1 ? 's' : ''}` : ''}</span>
+          <span>OpEx increase: {state.defaultOpExIncreasePct || 3}%/year</span>
+          {state.capexItems.length > 0 && (
+            <span>CapEx: {formatCurrency(state.capexItems.reduce((s, i) => s + i.cost, 0))} in Y1</span>
+          )}
+        </div>
+      </div>
+
       {/* Main P&L Spreadsheet Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
