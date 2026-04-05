@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Plus, Trash2, HelpCircle, ChevronDown, X, Info } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, CostBehavior, OpExLine, SUPER_RATE, calculateNewSalary, InputMode } from '../types';
-import { classifyExpense, getSuggestedValue } from '../utils/opex-classifier';
+import { classifyExpense, getSuggestedValue, isTeamCost } from '../utils/opex-classifier';
 
 interface Step5OpExProps {
   state: ForecastWizardState;
@@ -906,13 +906,13 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
 
   // Total OpEx by year
   const opexByYear = useMemo(() => ({
-    y1: opexLines.reduce((sum, line) => sum + calculateY1Amount(line), 0),
-    y2: opexLines.reduce((sum, line) => sum + calculateYearAmount(line, 2, effectiveDefaultGrowth), 0),
-    y3: opexLines.reduce((sum, line) => sum + calculateYearAmount(line, 3, effectiveDefaultGrowth), 0),
+    y1: opexLines.reduce((sum, line) => isTeamCost(line.name) ? sum : sum + calculateY1Amount(line), 0),
+    y2: opexLines.reduce((sum, line) => isTeamCost(line.name) ? sum : sum + calculateYearAmount(line, 2, effectiveDefaultGrowth), 0),
+    y3: opexLines.reduce((sum, line) => isTeamCost(line.name) ? sum : sum + calculateYearAmount(line, 3, effectiveDefaultGrowth), 0),
   }), [opexLines, calculateY1Amount, calculateYearAmount, effectiveDefaultGrowth]);
 
   // Prior year total for comparison
-  const totalPriorYear = opexLines.reduce((sum, line) => sum + line.priorYearAnnual, 0);
+  const totalPriorYear = opexLines.reduce((sum, line) => isTeamCost(line.name) ? sum : sum + line.priorYearAnnual, 0);
   const activeYearTotal = activeYear === 1 ? opexByYear.y1 : activeYear === 2 ? opexByYear.y2 : opexByYear.y3;
 
   // Handle adding a new line
@@ -1168,6 +1168,23 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
             </thead>
             <tbody className="divide-y divide-gray-100">
               {opexLines.map((line) => {
+                if (isTeamCost(line.name)) {
+                  return (
+                    <tr key={line.id} className="opacity-50 bg-gray-50/80">
+                      <td className="px-4 py-2 text-sm text-gray-400 italic">{line.name}</td>
+                      <td className="px-3 py-2 text-right text-sm text-gray-400 tabular-nums whitespace-nowrap">
+                        {formatCurrency(line.priorYearAnnual)}
+                      </td>
+                      <td colSpan={activeYear > 1 ? 5 : 4} className="px-3 py-2">
+                        <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">
+                          Counted in Team Costs
+                        </span>
+                      </td>
+                      <td className="w-10" />
+                    </tr>
+                  );
+                }
+
                 const forecastAmount = getActiveYearAmount(line);
                 const isY2Y3 = activeYear > 1;
                 const style = getBehaviorStyle(line.costBehavior);
