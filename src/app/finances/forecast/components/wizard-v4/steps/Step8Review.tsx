@@ -13,6 +13,7 @@ import {
   ForecastWizardState, WizardActions, ForecastSummary, YearlySummary,
   formatCurrency, formatPercent, WIZARD_STEPS
 } from '../types';
+import { ExcelExport } from '../components/ExcelExport';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -974,6 +975,7 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
           <p className="text-white/70 text-sm mb-4">
             Create your complete {durationLabel.toLowerCase()} P&L forecast. You can always come back and adjust later.
           </p>
+          <div className="flex items-center justify-center gap-3">
           {onGenerate && (
             <button
               onClick={onGenerate}
@@ -993,6 +995,8 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
               )}
             </button>
           )}
+          <ExcelExport state={state} summary={summary} fiscalYear={fiscalYear} />
+          </div>
           {!(completionSteps[0].hasData && (completionSteps[2].hasData || summary.year1.revenue > 0)) && (
             <p className="text-xs text-white/50 mt-3">
               Complete at least Goals and Revenue to generate your forecast.
