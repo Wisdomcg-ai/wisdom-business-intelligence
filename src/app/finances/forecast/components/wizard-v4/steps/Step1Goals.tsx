@@ -11,6 +11,35 @@ interface Step1GoalsProps {
   fiscalYear: number;
 }
 
+// Industry benchmarks for Australian SMEs (GP% and NP% ranges)
+const INDUSTRY_BENCHMARKS: Record<string, { gpLow: number; gpHigh: number; npLow: number; npHigh: number; gpDefault: number; npDefault: number }> = {
+  'Construction': { gpLow: 25, gpHigh: 35, npLow: 5, npHigh: 10, gpDefault: 30, npDefault: 8 },
+  'Trades': { gpLow: 35, gpHigh: 50, npLow: 10, npHigh: 20, gpDefault: 40, npDefault: 12 },
+  'Professional Services': { gpLow: 60, gpHigh: 75, npLow: 15, npHigh: 25, gpDefault: 65, npDefault: 18 },
+  'Hospitality': { gpLow: 60, gpHigh: 70, npLow: 5, npHigh: 10, gpDefault: 65, npDefault: 8 },
+  'Retail': { gpLow: 45, gpHigh: 55, npLow: 5, npHigh: 10, gpDefault: 50, npDefault: 8 },
+  'SaaS': { gpLow: 70, gpHigh: 85, npLow: 15, npHigh: 25, gpDefault: 75, npDefault: 20 },
+  'Healthcare': { gpLow: 55, gpHigh: 70, npLow: 10, npHigh: 20, gpDefault: 60, npDefault: 15 },
+  'Manufacturing': { gpLow: 30, gpHigh: 45, npLow: 8, npHigh: 15, gpDefault: 38, npDefault: 10 },
+  'Agriculture': { gpLow: 30, gpHigh: 50, npLow: 5, npHigh: 15, gpDefault: 40, npDefault: 10 },
+  'Logistics': { gpLow: 25, gpHigh: 40, npLow: 5, npHigh: 12, gpDefault: 30, npDefault: 8 },
+  'Education': { gpLow: 50, gpHigh: 70, npLow: 10, npHigh: 20, gpDefault: 60, npDefault: 15 },
+  'Fitness': { gpLow: 50, gpHigh: 65, npLow: 8, npHigh: 15, gpDefault: 55, npDefault: 12 },
+  'Beauty': { gpLow: 55, gpHigh: 70, npLow: 10, npHigh: 18, gpDefault: 60, npDefault: 12 },
+  'Franchise': { gpLow: 40, gpHigh: 60, npLow: 5, npHigh: 15, gpDefault: 50, npDefault: 10 },
+  'Technology': { gpLow: 60, gpHigh: 80, npLow: 12, npHigh: 25, gpDefault: 70, npDefault: 18 },
+};
+
+// Find best matching benchmark for an industry string
+function getIndustryBenchmark(industry?: string) {
+  if (!industry) return null;
+  const lower = industry.toLowerCase();
+  for (const [key, val] of Object.entries(INDUSTRY_BENCHMARKS)) {
+    if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) return { name: key, ...val };
+  }
+  return null;
+}
+
 const DURATION_OPTIONS: { value: ForecastDuration; label: string; description: string; recommended?: boolean }[] = [
   { value: 1, label: '1 Year', description: 'Monthly operational forecast' },
   { value: 2, label: '2 Years', description: 'Medium-term planning' },
@@ -20,6 +49,7 @@ const DURATION_OPTIONS: { value: ForecastDuration; label: string; description: s
 export function Step1Goals({ state, actions, fiscalYear }: Step1GoalsProps) {
   const { goals, forecastDuration, durationLocked, businessProfile } = state;
   const [editingField, setEditingField] = useState<string | null>(null);
+  const benchmark = getIndustryBenchmark(businessProfile?.industry);
 
   const handleChange = (
     year: 'year1' | 'year2' | 'year3',
@@ -97,13 +127,16 @@ export function Step1Goals({ state, actions, fiscalYear }: Step1GoalsProps) {
                 type="number"
                 value={yearGoals.grossProfitPct || ''}
                 onChange={(e) => handleChange(yearKey, 'grossProfitPct', e.target.value)}
-                placeholder={yearNum === 1 ? '55' : yearNum === 2 ? '58' : '60'}
+                placeholder={benchmark ? String(benchmark.gpDefault + (yearNum - 1) * 2) : yearNum === 1 ? '55' : yearNum === 2 ? '58' : '60'}
                 min="0"
                 max="100"
                 className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
             </div>
+            {benchmark && yearNum === 1 && (
+              <p className="text-xs text-gray-400 mt-1">Typical for {benchmark.name}: {benchmark.gpLow}-{benchmark.gpHigh}%</p>
+            )}
           </div>
 
           <div>
@@ -116,13 +149,16 @@ export function Step1Goals({ state, actions, fiscalYear }: Step1GoalsProps) {
                 type="number"
                 value={yearGoals.netProfitPct || ''}
                 onChange={(e) => handleChange(yearKey, 'netProfitPct', e.target.value)}
-                placeholder={yearNum === 1 ? '15' : yearNum === 2 ? '18' : '20'}
+                placeholder={benchmark ? String(benchmark.npDefault + (yearNum - 1) * 2) : yearNum === 1 ? '15' : yearNum === 2 ? '18' : '20'}
                 min="0"
                 max="100"
                 className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
             </div>
+            {benchmark && yearNum === 1 && (
+              <p className="text-xs text-gray-400 mt-1">Typical for {benchmark.name}: {benchmark.npLow}-{benchmark.npHigh}%</p>
+            )}
           </div>
 
           <div className="pt-3 border-t border-gray-100">
