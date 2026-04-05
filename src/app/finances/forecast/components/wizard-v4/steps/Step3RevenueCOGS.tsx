@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, Info, Lock, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Settings2 } from 'lucide-react';
+import { Plus, Trash2, Info, Lock, ChevronDown, ChevronRight } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, generateMonthKeys, getRevenueLineYearTotal, MonthlyData } from '../types';
 
 interface Step3RevenueCOGSProps {
@@ -16,7 +16,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const [showAddCOGS, setShowAddCOGS] = useState(false);
   const [newRevenueName, setNewRevenueName] = useState('');
   const [newCOGSName, setNewCOGSName] = useState('');
-  const [revenueDetailMode, setRevenueDetailMode] = useState(false);
+  const [revenueTab, setRevenueTab] = useState<'summary' | 'monthly'>('summary');
+  const [cogsTab, setCogsTab] = useState<'summary' | 'monthly'>('summary');
   const [expandedRevLines, setExpandedRevLines] = useState<Set<string>>(new Set());
 
   const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
@@ -564,83 +565,21 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
   return (
     <div className="space-y-6">
-      {/* YTD Actuals Summary - Only show for Year 1 when we have actuals */}
-      {activeYear === 1 && completedMonthsCount > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-blue-900">
-                  Year-to-Date Actuals ({completedMonthsCount} of 12 months complete)
-                </p>
-                <div className="text-right">
-                  <span className="text-lg font-bold text-blue-900">{formatCurrency(ytdActualTotal)}</span>
-                  <span className="text-sm text-blue-700 ml-2">YTD Actual</span>
-                </div>
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-4 text-sm">
-                <div>
-                  <span className="text-blue-600">Target:</span>
-                  <span className="ml-2 font-medium text-blue-900">{formatCurrency(goals.year1?.revenue || 0)}</span>
-                </div>
-                <div>
-                  <span className="text-blue-600">Remaining:</span>
-                  <span className="ml-2 font-medium text-blue-900">{formatCurrency(Math.max(0, (goals.year1?.revenue || 0) - ytdActualTotal))}</span>
-                </div>
-                <div>
-                  <span className="text-blue-600">Months left:</span>
-                  <span className="ml-2 font-medium text-blue-900">{remainingMonthsCount}</span>
-                </div>
-              </div>
-              <p className="text-xs text-blue-700 mt-3">
-                <Lock className="w-3 h-3 inline mr-1" />
-                Blue-highlighted months are locked actuals from Xero. Use Seasonal or Straight-line to distribute the remaining target across projected months.
-              </p>
-            </div>
+      {/* Compact context bar — replaces 3 separate banners */}
+      {(activeYear === 1 && completedMonthsCount > 0 || hasImportedData) && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-3 flex items-center justify-between text-sm">
+          <div className="flex items-center gap-4 text-gray-600">
+            {completedMonthsCount > 0 && activeYear === 1 && (
+              <span>{completedMonthsCount}/12 months actual &bull; {formatCurrency(ytdActualTotal)} YTD</span>
+            )}
+            {hasImportedData && (
+              <span className="text-gray-400">Lines from Xero</span>
+            )}
           </div>
-        </div>
-      )}
-
-      {/* Data Source Notice */}
-      {hasImportedData && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-start gap-3">
-          <Info className="w-5 h-5 text-gray-500 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-gray-700">
-              Lines imported from your chart of accounts
-            </p>
-            <p className="text-sm text-gray-500 mt-1">
-              Revenue and COGS lines have been pre-populated from your FY{fiscalYear - 1} data.
-              You can add, edit, or remove lines as needed.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Pattern Selection — only in detail mode */}
-      {revenueDetailMode && (
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <h3 className="text-sm font-medium text-gray-900 mb-3">Revenue Distribution Pattern</h3>
-          <div className="flex gap-3">
-            {[
-              { value: 'seasonal', label: 'Seasonal', desc: 'Follow prior year pattern' },
-              { value: 'straight-line', label: 'Straight Line', desc: 'Equal monthly/quarterly' },
-              { value: 'manual', label: 'Manual', desc: 'Enter each cell' },
-            ].map((option) => (
-              <button
-                key={option.value}
-                onClick={() => handlePatternChange(option.value as 'seasonal' | 'straight-line' | 'manual')}
-                className={`flex-1 p-3 rounded-lg border-2 transition-all text-left ${
-                  revenuePattern === option.value
-                    ? 'border-brand-navy bg-brand-navy/5'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <span className="block text-sm font-medium text-gray-900">{option.label}</span>
-                <span className="block text-xs text-gray-500">{option.desc}</span>
-              </button>
-            ))}
+          <div className="flex items-center gap-3">
+            {activeYear === 1 && completedMonthsCount > 0 && (
+              <span className="text-gray-500">Remaining: {formatCurrency(Math.max(0, (goals.year1?.revenue || 0) - ytdActualTotal))}</span>
+            )}
           </div>
         </div>
       )}
@@ -648,27 +587,30 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
       {/* Revenue Section */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">Revenue</h3>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setRevenueDetailMode(!revenueDetailMode)}
-              className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                revenueDetailMode
-                  ? 'bg-brand-navy text-white'
-                  : 'text-gray-500 hover:bg-gray-100'
-              }`}
-            >
-              <Settings2 className="w-3.5 h-3.5" />
-              {revenueDetailMode ? 'Simple View' : 'Monthly Detail'}
-            </button>
-            <button
-              onClick={() => setShowAddRevenue(true)}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-navy hover:bg-brand-navy/5 rounded-lg transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Add Line
-            </button>
+          <div className="flex items-center gap-4">
+            <h3 className="text-lg font-semibold text-gray-900">Revenue</h3>
+            <div className="flex border border-gray-200 rounded-lg overflow-hidden">
+              <button
+                onClick={() => setRevenueTab('summary')}
+                className={`px-3 py-1 text-xs font-medium transition-colors ${
+                  revenueTab === 'summary' ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Summary
+              </button>
+              <button
+                onClick={() => setRevenueTab('monthly')}
+                className={`px-3 py-1 text-xs font-medium transition-colors ${
+                  revenueTab === 'monthly' ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Monthly
+              </button>
+            </div>
           </div>
+          <button onClick={() => setShowAddRevenue(true)} className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-navy hover:bg-brand-navy/5 rounded-lg transition-colors">
+            <Plus className="w-4 h-4" /> Add Line
+          </button>
         </div>
 
         {showAddRevenue && (
@@ -699,17 +641,28 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
           </div>
         )}
 
+        {/* Pattern selector — only inside Monthly tab, compact */}
+        {revenueTab === 'monthly' && (
+          <div className="px-6 py-2 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+            <span className="text-xs text-gray-500">Distribution:</span>
+            {(['seasonal', 'straight-line', 'manual'] as const).map(p => (
+              <button key={p} onClick={() => handlePatternChange(p)} className={`px-2 py-1 text-xs rounded ${revenuePattern === p ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 border border-gray-200'}`}>
+                {p === 'seasonal' ? 'Seasonal' : p === 'straight-line' ? 'Even' : 'Manual'}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Summary View (default) — Revenue Mix */}
-        {!revenueDetailMode && (
+        {revenueTab === 'summary' && (
           <div className="divide-y divide-gray-100">
             {/* Summary header */}
             <div className="grid grid-cols-12 gap-2 px-6 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase">
               <div className="col-span-3">Line Item</div>
               <div className="col-span-2 text-right">Prior Year</div>
-              <div className="col-span-1 text-center">Prior %</div>
-              <div className="col-span-2 text-center">Target Mix</div>
-              <div className="col-span-2 text-right">Forecast {activeYear === 1 ? `Y1` : `Y${activeYear}`}</div>
-              <div className="col-span-2 text-right">Growth</div>
+              <div className="col-span-2 text-center">% of Total</div>
+              <div className="col-span-3 text-right">Forecast {activeYear === 1 ? `Y1` : `Y${activeYear}`}</div>
+              <div className="col-span-2 text-right">vs Prior</div>
             </div>
             {revenueLines.map((line) => {
               const priorTotal = getLinePriorYear(line.id);
@@ -730,9 +683,6 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                     <div className="col-span-2 text-right text-sm text-gray-500">
                       {priorTotal > 0 ? formatCurrency(priorTotal) : '—'}
                     </div>
-                    <div className="col-span-1 text-center text-sm text-gray-400">
-                      {priorPct > 0 ? `${priorPct}%` : '—'}
-                    </div>
                     <div className="col-span-2 flex justify-center">
                       <div className="inline-flex items-center gap-1">
                         <input
@@ -746,7 +696,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                         <span className="text-xs text-gray-400">%</span>
                       </div>
                     </div>
-                    <div className="col-span-2 text-right text-sm font-semibold text-gray-900">
+                    <div className="col-span-3 text-right text-sm font-semibold text-gray-900">
                       {formatCurrency(forecastTotal)}
                     </div>
                     <div className="col-span-2 flex items-center justify-end gap-2">
@@ -810,13 +760,12 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
               <div className="col-span-2 text-right text-sm text-gray-500">
                 {priorYear ? formatCurrency(priorYear.revenue.total) : '—'}
               </div>
-              <div className="col-span-1 text-center text-xs text-gray-400">100%</div>
               <div className="col-span-2 text-center">
                 <span className={`text-xs font-bold ${linePctTotal === 100 ? 'text-green-600' : 'text-amber-600'}`}>
                   {linePctTotal}%{linePctTotal !== 100 && (linePctTotal < 100 ? ' under' : ' over')}
                 </span>
               </div>
-              <div className="col-span-2 text-right text-sm text-gray-900">{formatCurrency(totalRevenue)}</div>
+              <div className="col-span-3 text-right text-sm text-gray-900">{formatCurrency(totalRevenue)}</div>
               <div className="col-span-2 text-right text-sm">
                 {priorYear && priorYear.revenue.total > 0 ? (
                   <span className={totalRevenue >= priorYear.revenue.total ? 'text-green-600' : 'text-red-600'}>
@@ -829,7 +778,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         )}
 
         {/* Detail View (monthly grid) */}
-        {revenueDetailMode && <div className="overflow-x-auto">
+        {revenueTab === 'monthly' && <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
@@ -965,22 +914,38 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
       {/* COGS Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold text-gray-900">Cost of Goods Sold</h3>
-            <div className="group relative">
-              <Info className="w-4 h-4 text-gray-400 cursor-help" />
-              <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
-                <p className="mb-1"><strong>Variable:</strong> Costs that change with revenue (e.g., materials, commissions)</p>
-                <p><strong>Fixed:</strong> Costs that stay constant regardless of revenue (rare for COGS)</p>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold text-gray-900">Cost of Goods Sold</h3>
+              <div className="group relative">
+                <Info className="w-4 h-4 text-gray-400 cursor-help" />
+                <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
+                  <p className="mb-1"><strong>Variable:</strong> Costs that change with revenue (e.g., materials, commissions)</p>
+                  <p><strong>Fixed:</strong> Costs that stay constant regardless of revenue (rare for COGS)</p>
+                </div>
               </div>
             </div>
+            <div className="flex border border-gray-200 rounded-lg overflow-hidden">
+              <button
+                onClick={() => setCogsTab('summary')}
+                className={`px-3 py-1 text-xs font-medium transition-colors ${
+                  cogsTab === 'summary' ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Summary
+              </button>
+              <button
+                onClick={() => setCogsTab('monthly')}
+                className={`px-3 py-1 text-xs font-medium transition-colors ${
+                  cogsTab === 'monthly' ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Monthly
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => setShowAddCOGS(true)}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-navy hover:bg-brand-navy/5 rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Line
+          <button onClick={() => setShowAddCOGS(true)} className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-navy hover:bg-brand-navy/5 rounded-lg transition-colors">
+            <Plus className="w-4 h-4" /> Add Line
           </button>
         </div>
 
@@ -1013,7 +978,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         )}
 
         {/* COGS Summary View — Mix % */}
-        {!revenueDetailMode && (
+        {cogsTab === 'summary' && (
           <div className="divide-y divide-gray-100">
             <div className="grid grid-cols-12 gap-2 px-6 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase">
               <div className="col-span-3">Line Item</div>
@@ -1097,7 +1062,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         )}
 
         {/* COGS Monthly Detail View */}
-        {revenueDetailMode && (
+        {cogsTab === 'monthly' && (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50">
@@ -1231,46 +1196,38 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
             </table>
           </div>
         )}
-      </div>
 
-      {/* Gross Profit Summary */}
-      {(() => {
-        const gpTarget = activeYear === 1
-          ? goals.year1?.grossProfitPct
-          : activeYear === 2
-            ? goals.year2?.grossProfitPct
-            : goals.year3?.grossProfitPct;
-        const gpMet = gpTarget ? grossProfitPct >= gpTarget : true;
-        const gpGap = gpTarget ? grossProfitPct - gpTarget : 0;
-        return (
-          <div className={`border rounded-xl p-4 ${gpMet ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className={`text-lg font-semibold ${gpMet ? 'text-green-900' : 'text-amber-900'}`}>Gross Profit</h3>
-                <p className={`text-sm ${gpMet ? 'text-green-700' : 'text-amber-700'}`}>Revenue minus COGS</p>
+        {/* GP Summary — inside COGS card */}
+        {(() => {
+          const gpTarget = activeYear === 1
+            ? goals.year1?.grossProfitPct
+            : activeYear === 2
+              ? goals.year2?.grossProfitPct
+              : goals.year3?.grossProfitPct;
+          const gpMet = gpTarget ? grossProfitPct >= gpTarget : true;
+          const gpGap = gpTarget ? grossProfitPct - gpTarget : 0;
+          return (
+            <div className={`mx-5 mb-5 mt-3 rounded-lg p-4 ${gpMet ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-semibold">Gross Profit</span>
+                  <span className="text-sm text-gray-500 ml-2">Revenue minus COGS</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-lg font-bold">{formatCurrency(grossProfit)}</span>
+                  <span className="text-sm ml-2">{grossProfitPct.toFixed(1)}%</span>
+                </div>
               </div>
-              <div className="text-right">
-                <p className={`text-2xl font-bold ${gpMet ? 'text-green-900' : 'text-amber-900'}`}>{formatCurrency(grossProfit)}</p>
-                <p className={`text-sm ${gpMet ? 'text-green-700' : 'text-amber-700'}`}>{grossProfitPct.toFixed(1)}% margin</p>
-              </div>
+              {gpTarget && totalRevenue > 0 && (
+                <div className="mt-2 pt-2 border-t flex items-center justify-between text-sm">
+                  <span>Target: {gpTarget}%</span>
+                  <span>{gpMet ? '\u2713 On track' : `${gpGap.toFixed(1)}% below target`}</span>
+                </div>
+              )}
             </div>
-            {gpTarget && totalRevenue > 0 && (
-              <div className={`mt-3 pt-3 border-t ${gpMet ? 'border-green-200' : 'border-amber-200'} flex items-center justify-between`}>
-                <span className={`text-sm ${gpMet ? 'text-green-700' : 'text-amber-700'}`}>
-                  Target: {gpTarget}% (Step 1)
-                </span>
-                <span className={`text-sm font-medium ${gpMet ? 'text-green-700' : 'text-red-600'}`}>
-                  {gpMet ? (
-                    <span className="flex items-center gap-1"><TrendingUp className="w-4 h-4" /> On track ({gpGap > 0 ? `+${gpGap.toFixed(1)}%` : 'exact'})</span>
-                  ) : (
-                    <span className="flex items-center gap-1"><TrendingDown className="w-4 h-4" /> {gpGap.toFixed(1)}% below target</span>
-                  )}
-                </span>
-              </div>
-            )}
-          </div>
-        );
-      })()}
+          );
+        })()}
+      </div>
     </div>
   );
 }
