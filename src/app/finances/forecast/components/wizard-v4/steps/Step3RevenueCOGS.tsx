@@ -474,13 +474,30 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     setShowAddCOGS(false);
   };
 
-  // Calculate COGS amount for a line based on cost behavior
+  // Calculate COGS amount for a line — uses monthly data if available
   const calculateCOGSAmount = (line: typeof cogsLines[0]) => {
+    const yearKey = activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
+    const monthly = line[yearKey as keyof typeof line] as Record<string, number> | undefined;
+    if (monthly && Object.keys(monthly).length > 0) {
+      return Object.values(monthly).reduce((a, b) => a + b, 0);
+    }
     if (line.costBehavior === 'fixed') {
       return (line.monthlyAmount || 0) * 12;
     }
     return (totalRevenue * (line.percentOfRevenue || 0)) / 100;
   };
+
+  // Prior year COGS mix
+  const priorYearCogsMix = useMemo(() => {
+    const mix: Record<string, number> = {};
+    if (!priorYear) return mix;
+    const total = priorYear.cogs.total;
+    if (total <= 0) return mix;
+    priorYear.cogs.byLine.forEach(line => {
+      mix[line.id] = Math.round((line.total / total) * 100);
+    });
+    return mix;
+  }, [priorYear]);
 
   const handleRevenueChange = (lineId: string, period: string, value: string) => {
     const numValue = parseFloat(value.replace(/[^0-9.]/g, '')) || 0;
@@ -510,6 +527,37 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const totalCOGS = cogsLines.reduce((sum, line) => sum + calculateCOGSAmount(line), 0);
   const grossProfit = totalRevenue - totalCOGS;
   const grossProfitPct = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+
+  // Current COGS line percentages (of total COGS)
+  const cogsLinePercentages = useMemo(() => {
+    const pcts: Record<string, number> = {};
+    if (totalCOGS <= 0) {
+      cogsLines.forEach(line => { pcts[line.id] = Math.round(100 / (cogsLines.length || 1)); });
+      return pcts;
+    }
+    cogsLines.forEach(line => {
+      pcts[line.id] = Math.round((calculateCOGSAmount(line) / totalCOGS) * 100);
+    });
+    return pcts;
+  }, [cogsLines, totalCOGS, totalRevenue, activeYear]);
+
+  const cogsPctTotal = Object.values(cogsLinePercentages).reduce((a, b) => a + b, 0);
+
+  // Handle COGS mix % change — redistribute COGS total by mix using seasonality
+  const handleCogsMixChange = (lineId: string, newMixPct: number) => {
+    if (totalCOGS <= 0) return;
+    const lineTarget = Math.round(totalCOGS * (newMixPct / 100));
+    const yearMKeys = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
+    const seasonality = priorYear?.seasonalityPattern || Array(12).fill(8.33);
+    const totalSeason = seasonality.reduce((s, v) => s + v, 0);
+
+    const yearKey = activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
+    const monthly: Record<string, number> = {};
+    yearMKeys.forEach((key, idx) => {
+      monthly[key] = Math.round(lineTarget * ((seasonality[idx] || 8.33) / totalSeason));
+    });
+    actions.updateCOGSLine(lineId, { [yearKey]: monthly });
+  };
 
   // Check if lines came from Xero/CSV
   const hasImportedData = priorYear && (priorYear.revenue.byLine.length > 0 || priorYear.cogs.byLine.length > 0);
@@ -964,123 +1012,87 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
           </div>
         )}
 
-        {/* COGS Summary View (default) */}
+        {/* COGS Summary View — Mix % */}
         {!revenueDetailMode && (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Line Item</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase w-32">Cost Type</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase w-36">Value</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Estimated Annual</th>
-                  <th className="px-4 py-3 w-10"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {cogsLines.map((line) => (
-                  <tr key={line.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-gray-900">{line.name}</div>
-                      {line.priorYearTotal != null && line.priorYearTotal > 0 && (
-                        <div className="text-xs text-gray-500">
-                          Prior year: {formatCurrency(line.priorYearTotal)}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2">
-                      <div className="flex gap-1 justify-center">
-                        <button
-                          onClick={() => actions.updateCOGSLine(line.id, { costBehavior: 'variable' })}
-                          className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                            line.costBehavior === 'variable'
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          }`}
-                        >
-                          Variable
-                        </button>
-                        <button
-                          onClick={() => actions.updateCOGSLine(line.id, { costBehavior: 'fixed' })}
-                          className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                            line.costBehavior === 'fixed'
-                              ? 'bg-purple-100 text-purple-700'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          }`}
-                        >
-                          Fixed
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2">
-                      {line.costBehavior === 'variable' ? (
-                        <div className="relative">
-                          <input
-                            type="number"
-                            value={line.percentOfRevenue || ''}
-                            onChange={(e) =>
-                              actions.updateCOGSLine(line.id, {
-                                percentOfRevenue: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)),
-                              })
-                            }
-                            placeholder="0"
-                            min="0"
-                            max="100"
-                            step="0.1"
-                            className="w-full px-3 py-1.5 pr-8 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
-                          />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
-                        </div>
-                      ) : (
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                          <input
-                            type="number"
-                            value={line.monthlyAmount || ''}
-                            onChange={(e) =>
-                              actions.updateCOGSLine(line.id, {
-                                monthlyAmount: parseFloat(e.target.value) || 0,
-                              })
-                            }
-                            placeholder="0"
-                            min="0"
-                            className="w-full px-3 py-1.5 pl-7 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
-                          />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">/mo</span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                      {formatCurrency(calculateCOGSAmount(line))}
-                    </td>
-                    <td className="px-2 py-3">
-                      <button
-                        onClick={() => actions.removeCOGSLine(line.id)}
-                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {cogsLines.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
-                      No COGS lines added. Click &quot;Add Line&quot; to add cost of goods sold items.
-                    </td>
-                  </tr>
-                )}
-                <tr className="bg-gray-50 font-semibold">
-                  <td className="px-4 py-3 text-sm text-gray-900">TOTAL COGS</td>
-                  <td className="px-4 py-3"></td>
-                  <td className="px-4 py-3 text-sm text-gray-900 text-right">
-                    {totalRevenue > 0 ? `${((totalCOGS / totalRevenue) * 100).toFixed(1)}%` : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 text-right">{formatCurrency(totalCOGS)}</td>
-                  <td></td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="divide-y divide-gray-100">
+            <div className="grid grid-cols-12 gap-2 px-6 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase">
+              <div className="col-span-3">Line Item</div>
+              <div className="col-span-2 text-right">Prior Year</div>
+              <div className="col-span-1 text-center">Prior %</div>
+              <div className="col-span-2 text-center">Target %</div>
+              <div className="col-span-2 text-right">Forecast</div>
+              <div className="col-span-2 text-right">% of Rev</div>
+            </div>
+            {cogsLines.map((line) => {
+              const priorPct = priorYearCogsMix[line.id] || 0;
+              const currentPct = cogsLinePercentages[line.id] || 0;
+              const lineAmount = calculateCOGSAmount(line);
+              const pctOfRev = totalRevenue > 0 ? (lineAmount / totalRevenue * 100) : 0;
+              return (
+                <div key={line.id} className="grid grid-cols-12 gap-2 px-6 py-3 items-center hover:bg-gray-50">
+                  <div className="col-span-3 flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-900 truncate">{line.name}</span>
+                    <span className={`text-[10px] font-medium px-1 py-0.5 rounded ${
+                      line.costBehavior === 'variable' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'
+                    }`}>
+                      {line.costBehavior === 'variable' ? 'Var' : 'Fix'}
+                    </span>
+                  </div>
+                  <div className="col-span-2 text-right text-sm text-gray-500">
+                    {line.priorYearTotal != null && line.priorYearTotal > 0 ? formatCurrency(line.priorYearTotal) : '—'}
+                  </div>
+                  <div className="col-span-1 text-center text-sm text-gray-400">
+                    {priorPct > 0 ? `${priorPct}%` : '—'}
+                  </div>
+                  <div className="col-span-2 flex justify-center">
+                    <div className="inline-flex items-center gap-1">
+                      <input
+                        type="number"
+                        value={currentPct}
+                        onChange={(e) => handleCogsMixChange(line.id, Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                        min="0"
+                        max="100"
+                        className="w-14 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
+                      />
+                      <span className="text-xs text-gray-400">%</span>
+                    </div>
+                  </div>
+                  <div className="col-span-2 text-right text-sm font-semibold text-gray-900">
+                    {formatCurrency(lineAmount)}
+                  </div>
+                  <div className="col-span-2 flex items-center justify-end gap-2">
+                    <span className="text-sm text-gray-500">{pctOfRev.toFixed(1)}%</span>
+                    <button
+                      onClick={() => actions.removeCOGSLine(line.id)}
+                      className="p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 hover:opacity-100"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {cogsLines.length === 0 && (
+              <div className="px-6 py-8 text-center text-sm text-gray-500">
+                No COGS lines added. Click &quot;Add Line&quot; above.
+              </div>
+            )}
+            <div className="grid grid-cols-12 gap-2 px-6 py-3 bg-gray-50 font-semibold">
+              <div className="col-span-3 text-sm text-gray-900">TOTAL COGS</div>
+              <div className="col-span-2 text-right text-sm text-gray-500">
+                {priorYear ? formatCurrency(priorYear.cogs.total) : '—'}
+              </div>
+              <div className="col-span-1 text-center text-xs text-gray-400">100%</div>
+              <div className="col-span-2 text-center">
+                <span className={`text-xs font-bold ${cogsPctTotal >= 99 && cogsPctTotal <= 101 ? 'text-green-600' : 'text-amber-600'}`}>
+                  {cogsPctTotal}%
+                </span>
+              </div>
+              <div className="col-span-2 text-right text-sm text-gray-900">{formatCurrency(totalCOGS)}</div>
+              <div className="col-span-2 text-right text-sm text-gray-500">
+                {totalRevenue > 0 ? `${(totalCOGS / totalRevenue * 100).toFixed(1)}%` : '—'}
+              </div>
+            </div>
           </div>
         )}
 
