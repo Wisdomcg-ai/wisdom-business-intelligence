@@ -338,6 +338,30 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
         opexAdj: 0,
         otherAdj: 0,
       },
+      {
+        id: 'opex-cut',
+        label: 'What if we cut OpEx by 10%?',
+        description: `Save ${formatCurrency(Math.round(y.opex * 0.1))} in operating expenses`,
+        enabled: false,
+        impact: Math.round(y.opex * 0.1),
+        revenueAdj: 0,
+        cogsAdj: 0,
+        teamAdj: 0,
+        opexAdj: -Math.round(y.opex * 0.1),
+        otherAdj: 0,
+      },
+      {
+        id: 'price-up',
+        label: 'What if we increase prices 5%?',
+        description: `Revenue rises ${formatCurrency(Math.round(y.revenue * 0.05))} with no volume change`,
+        enabled: false,
+        impact: Math.round(y.revenue * 0.05) - Math.round(y.revenue * 0.05 * (y.cogs / y.revenue)),
+        revenueAdj: Math.round(y.revenue * 0.05),
+        cogsAdj: Math.round(y.revenue * 0.05 * (y.cogs / y.revenue)), // Variable COGS doesn't change on price increase
+        teamAdj: 0,
+        opexAdj: 0,
+        otherAdj: 0,
+      },
     ];
   }, [summary, state.newHires]);
 
@@ -831,14 +855,41 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
               </button>
             ))}
           </div>
-          {hasWhatIfActive && (
-            <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-              <p className="text-xs text-amber-700">
-                Scenarios are for exploration only — they won't change your saved forecast.
-              </p>
-            </div>
-          )}
+          {hasWhatIfActive && (() => {
+            const activeToggles = whatIfToggles.filter(t => t.enabled);
+            const totalImpact = activeToggles.reduce((s, t) => s + t.impact, 0);
+            const baseProfit = yearData.netProfit;
+            const adjustedProfit = baseProfit + totalImpact;
+            return (
+              <>
+                {/* Combined impact */}
+                {activeToggles.length > 0 && (
+                  <div className={`mt-4 p-4 rounded-lg border ${totalImpact >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium text-gray-900">
+                        Net effect of {activeToggles.length} scenario{activeToggles.length > 1 ? 's' : ''}
+                      </span>
+                      <span className={`text-lg font-bold ${totalImpact >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                        {totalImpact >= 0 ? '+' : ''}{formatCurrency(totalImpact)}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Net Profit goes from {formatCurrency(baseProfit)} to {formatCurrency(adjustedProfit)}
+                      {yearData.revenue > 0 && (
+                        <span> — that's {((adjustedProfit / yearData.revenue) * 100).toFixed(1)}% of revenue</span>
+                      )}
+                    </p>
+                  </div>
+                )}
+                <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                  <p className="text-xs text-amber-700">
+                    Scenarios are for exploration only — they won't change your saved forecast.
+                  </p>
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 
