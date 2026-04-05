@@ -507,19 +507,6 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   };
 
   const totalRevenue = revenueLines.reduce((sum, line) => sum + getLineTotal(line), 0);
-
-  // Debug: log key mismatch if revenue shows 0 but data exists
-  if (revenueLines.length > 0 && totalRevenue === 0) {
-    const sample = revenueLines[0];
-    const dataKeys = Object.keys(sample.year1Monthly).sort().slice(0, 3);
-    const gridKeys = monthKeys.slice(0, 3);
-    console.warn('[Step3] Revenue shows $0 but lines exist. Key mismatch?', {
-      dataKeys,
-      gridKeys,
-      dataTotal: Object.values(sample.year1Monthly).reduce((a, b) => a + b, 0),
-      lineName: sample.name,
-    });
-  }
   const totalCOGS = cogsLines.reduce((sum, line) => sum + calculateCOGSAmount(line), 0);
   const grossProfit = totalRevenue - totalCOGS;
   const grossProfitPct = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;

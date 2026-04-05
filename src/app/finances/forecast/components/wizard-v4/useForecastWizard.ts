@@ -43,6 +43,31 @@ import type {
 // Bump this to force all users to re-init from APIs (invalidates stale localStorage)
 const WIZARD_VERSION = 8; // Bumped to force fresh load with employees from Xero
 
+// Remap month keys from prior year to forecast year (same position, different year)
+// e.g., { "2024-07": 50000 } → { "2025-07": 50000 } when targetFYStart=2025
+function remapMonthKeysToForecastYear(
+  priorByMonth: Record<string, number>,
+  targetFYStart: number
+): Record<string, number> {
+  const targetKeys = generateMonthKeys(targetFYStart);
+  const priorKeys = Object.keys(priorByMonth).sort();
+  const result: Record<string, number> = {};
+
+  if (priorKeys.length === 0) return result;
+
+  // If keys already match the target year, return as-is
+  if (priorKeys[0] === targetKeys[0]) return { ...priorByMonth };
+
+  // Map by position: prior month 0 → target month 0, etc.
+  priorKeys.forEach((key, idx) => {
+    if (idx < 12 && targetKeys[idx]) {
+      result[targetKeys[idx]] = priorByMonth[key] || 0;
+    }
+  });
+
+  return result;
+}
+
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
@@ -235,7 +260,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         revenueLines = data.revenue.byLine.map((line) => ({
           id: line.id,
           name: line.name,
-          year1Monthly: { ...line.byMonth },
+          year1Monthly: remapMonthKeysToForecastYear(line.byMonth, prev.fiscalYearStart),
           year2Monthly: {},
           year3Monthly: {},
         }));
@@ -693,7 +718,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
           revenueLines = data.priorYear.revenue.byLine.map((line) => ({
             id: line.id,
             name: line.name,
-            year1Monthly: { ...line.byMonth },
+            year1Monthly: remapMonthKeysToForecastYear(line.byMonth, prev.fiscalYearStart),
             year2Monthly: {},
             year3Monthly: {},
           }));
