@@ -386,6 +386,71 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     });
   };
 
+  // Prior year mix percentages
+  const priorYearMix = useMemo(() => {
+    const mix: Record<string, number> = {};
+    if (!priorYear) return mix;
+    const total = priorYear.revenue.total;
+    if (total <= 0) return mix;
+    priorYear.revenue.byLine.forEach(line => {
+      mix[line.id] = Math.round((line.total / total) * 100);
+    });
+    return mix;
+  }, [priorYear]);
+
+  // Handle mix % change — recalculate forecast from target × mix × seasonality
+  const handleMixChange = (lineId: string, newMixPct: number) => {
+    const yearTarget = activeYear === 1 ? (goals.year1?.revenue || 0)
+      : activeYear === 2 ? (goals.year2?.revenue || 0)
+      : (goals.year3?.revenue || 0);
+    if (yearTarget <= 0) return;
+
+    const lineTarget = Math.round(yearTarget * (newMixPct / 100));
+    const yearMKeys = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
+    const seasonality = priorYear?.seasonalityPattern || Array(12).fill(8.33);
+
+    // For Y1, preserve actuals and distribute remaining across projected months
+    if (activeYear === 1) {
+      const line = revenueLines.find(l => l.id === lineId);
+      if (!line) return;
+
+      let actualsTotal = 0;
+      yearMKeys.forEach(key => {
+        if (isActualMonth(key)) actualsTotal += line.year1Monthly[key] || 0;
+      });
+
+      const remainingTarget = Math.max(0, lineTarget - actualsTotal);
+      let totalRemainingSeason = 0;
+      yearMKeys.forEach((key, idx) => {
+        if (!isActualMonth(key)) totalRemainingSeason += seasonality[idx] || 8.33;
+      });
+
+      const newMonthly: Record<string, number> = {};
+      yearMKeys.forEach((key, idx) => {
+        if (isActualMonth(key)) {
+          newMonthly[key] = line.year1Monthly[key] || 0;
+        } else if (totalRemainingSeason > 0 && remainingTarget > 0) {
+          newMonthly[key] = Math.round(remainingTarget * ((seasonality[idx] || 8.33) / totalRemainingSeason));
+        } else {
+          newMonthly[key] = 0;
+        }
+      });
+      actions.updateRevenueLine(lineId, { year1Monthly: newMonthly });
+    } else {
+      // Y2/Y3 — distribute fully using seasonality
+      const totalSeason = seasonality.reduce((s, v) => s + v, 0);
+      const monthly: Record<string, number> = {};
+      yearMKeys.forEach((key, idx) => {
+        monthly[key] = Math.round(lineTarget * ((seasonality[idx] || 8.33) / totalSeason));
+      });
+      if (activeYear === 2) {
+        actions.updateRevenueLine(lineId, { year2Monthly: monthly });
+      } else {
+        actions.updateRevenueLine(lineId, { year3Monthly: monthly });
+      }
+    }
+  };
+
   const handleAddRevenueLine = () => {
     if (!newRevenueName.trim()) return;
     actions.addRevenueLine({
@@ -599,57 +664,67 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
           </div>
         )}
 
-        {/* Summary View (default) */}
+        {/* Summary View (default) — Revenue Mix */}
         {!revenueDetailMode && (
           <div className="divide-y divide-gray-100">
             {/* Summary header */}
             <div className="grid grid-cols-12 gap-2 px-6 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase">
-              <div className="col-span-4">Line Item</div>
+              <div className="col-span-3">Line Item</div>
               <div className="col-span-2 text-right">Prior Year</div>
-              <div className="col-span-2 text-right">Forecast Y{activeYear}</div>
+              <div className="col-span-1 text-center">Prior %</div>
+              <div className="col-span-2 text-center">Target Mix</div>
+              <div className="col-span-2 text-right">Forecast {activeYear === 1 ? `Y1` : `Y${activeYear}`}</div>
               <div className="col-span-2 text-right">Growth</div>
-              <div className="col-span-2 text-right">% Split</div>
             </div>
             {revenueLines.map((line) => {
               const priorTotal = getLinePriorYear(line.id);
               const forecastTotal = getLineTotal(line);
+              const priorPct = priorYearMix[line.id] || 0;
+              const currentMixPct = linePercentages[line.id] || 0;
               const growthPct = priorTotal > 0 ? ((forecastTotal - priorTotal) / priorTotal) * 100 : 0;
               const isExpanded = expandedRevLines.has(line.id);
               return (
                 <div key={line.id}>
                   <div className="grid grid-cols-12 gap-2 px-6 py-3 items-center hover:bg-gray-50">
-                    <div className="col-span-4 flex items-center gap-2">
+                    <div className="col-span-3 flex items-center gap-2">
                       <button onClick={() => toggleRevLineExpand(line.id)} className="text-gray-400 hover:text-gray-600">
                         {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </button>
-                      <span className="text-sm font-medium text-gray-900">{line.name}</span>
+                      <span className="text-sm font-medium text-gray-900 truncate">{line.name}</span>
                     </div>
                     <div className="col-span-2 text-right text-sm text-gray-500">
                       {priorTotal > 0 ? formatCurrency(priorTotal) : '—'}
                     </div>
+                    <div className="col-span-1 text-center text-sm text-gray-400">
+                      {priorPct > 0 ? `${priorPct}%` : '—'}
+                    </div>
+                    <div className="col-span-2 flex justify-center">
+                      <div className="inline-flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={currentMixPct}
+                          onChange={(e) => handleMixChange(line.id, Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                          min="0"
+                          max="100"
+                          className="w-14 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
+                        />
+                        <span className="text-xs text-gray-400">%</span>
+                      </div>
+                    </div>
                     <div className="col-span-2 text-right text-sm font-semibold text-gray-900">
                       {formatCurrency(forecastTotal)}
                     </div>
-                    <div className="col-span-2 text-right">
+                    <div className="col-span-2 flex items-center justify-end gap-2">
                       {priorTotal > 0 ? (
-                        <div className="inline-flex items-center gap-1">
-                          <input
-                            type="number"
-                            value={Math.round(growthPct)}
-                            onChange={(e) => handleGrowthChange(line.id, parseFloat(e.target.value) || 0)}
-                            className="w-16 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
-                          />
-                          <span className="text-xs text-gray-400">%</span>
-                        </div>
+                        <span className={`text-sm ${growthPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {growthPct >= 0 ? '+' : ''}{Math.round(growthPct)}%
+                        </span>
                       ) : (
                         <span className="text-xs text-gray-400">—</span>
                       )}
-                    </div>
-                    <div className="col-span-2 flex items-center justify-end gap-2">
-                      <span className="text-sm text-gray-500">{linePercentages[line.id] || 0}%</span>
                       <button
                         onClick={() => actions.removeRevenueLine(line.id)}
-                        className="p-1 text-gray-300 hover:text-red-500 transition-colors"
+                        className="p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 hover:opacity-100"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -696,19 +771,24 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
             })}
             {/* Summary totals */}
             <div className="grid grid-cols-12 gap-2 px-6 py-3 bg-gray-50 font-semibold">
-              <div className="col-span-4 text-sm text-gray-900">TOTAL REVENUE</div>
+              <div className="col-span-3 text-sm text-gray-900">TOTAL REVENUE</div>
               <div className="col-span-2 text-right text-sm text-gray-500">
                 {priorYear ? formatCurrency(priorYear.revenue.total) : '—'}
+              </div>
+              <div className="col-span-1 text-center text-xs text-gray-400">100%</div>
+              <div className="col-span-2 text-center">
+                <span className={`text-xs font-bold ${linePctTotal === 100 ? 'text-green-600' : 'text-amber-600'}`}>
+                  {linePctTotal}%{linePctTotal !== 100 && (linePctTotal < 100 ? ' under' : ' over')}
+                </span>
               </div>
               <div className="col-span-2 text-right text-sm text-gray-900">{formatCurrency(totalRevenue)}</div>
               <div className="col-span-2 text-right text-sm">
                 {priorYear && priorYear.revenue.total > 0 ? (
                   <span className={totalRevenue >= priorYear.revenue.total ? 'text-green-600' : 'text-red-600'}>
-                    {((totalRevenue - priorYear.revenue.total) / priorYear.revenue.total * 100).toFixed(0)}%
+                    {totalRevenue >= priorYear.revenue.total ? '+' : ''}{((totalRevenue - priorYear.revenue.total) / priorYear.revenue.total * 100).toFixed(0)}%
                   </span>
                 ) : '—'}
               </div>
-              <div className="col-span-2 text-right text-xs text-gray-500">{linePctTotal}%</div>
             </div>
           </div>
         )}
