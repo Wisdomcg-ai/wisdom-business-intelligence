@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Info, Lock, ChevronDown, ChevronRight } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, generateMonthKeys, getRevenueLineYearTotal, MonthlyData } from '../types';
 
@@ -563,8 +563,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const hasImportedData = priorYear && (priorYear.revenue.byLine.length > 0 || priorYear.cogs.byLine.length > 0);
 
   return (
-    <div className="space-y-6">
-      {/* Compact context bar — replaces 3 separate banners */}
+    <div className="space-y-4">
+      {/* Compact context bar */}
       {(activeYear === 1 && completedMonthsCount > 0 || hasImportedData) && (
         <div className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-3 flex items-center justify-between text-sm">
           <div className="flex items-center gap-4 text-gray-600">
@@ -611,460 +611,459 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         )}
       </div>
 
-      {/* Revenue Section */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">Revenue</h3>
-          <button onClick={() => setShowAddRevenue(true)} className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-navy hover:bg-brand-navy/5 rounded-lg transition-colors">
-            <Plus className="w-4 h-4" /> Add Line
+      {/* Add Revenue Line form (above the table) */}
+      {showAddRevenue && (
+        <div className="flex gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+          <input
+            type="text"
+            value={newRevenueName}
+            onChange={(e) => setNewRevenueName(e.target.value)}
+            placeholder="Enter revenue line item name..."
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
+            autoFocus
+          />
+          <button
+            onClick={handleAddRevenueLine}
+            className="px-4 py-2 bg-brand-navy text-white text-sm font-medium rounded-lg hover:bg-brand-navy-800 transition-colors"
+          >
+            Add
+          </button>
+          <button
+            onClick={() => { setShowAddRevenue(false); setNewRevenueName(''); }}
+            className="px-4 py-2 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            Cancel
           </button>
         </div>
+      )}
 
-        {showAddRevenue && (
-          <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex gap-2">
-            <input
-              type="text"
-              value={newRevenueName}
-              onChange={(e) => setNewRevenueName(e.target.value)}
-              placeholder="Enter line item name..."
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
-              autoFocus
-            />
-            <button
-              onClick={handleAddRevenueLine}
-              className="px-4 py-2 bg-brand-navy text-white text-sm font-medium rounded-lg hover:bg-brand-navy-800 transition-colors"
-            >
-              Add
-            </button>
-            <button
-              onClick={() => {
-                setShowAddRevenue(false);
-                setNewRevenueName('');
-              }}
-              className="px-4 py-2 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
+      {/* Add COGS Line form (above the table) */}
+      {showAddCOGS && (
+        <div className="flex gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+          <input
+            type="text"
+            value={newCOGSName}
+            onChange={(e) => setNewCOGSName(e.target.value)}
+            placeholder="Enter COGS item name..."
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
+            autoFocus
+          />
+          <button
+            onClick={handleAddCOGSLine}
+            className="px-4 py-2 bg-brand-navy text-white text-sm font-medium rounded-lg hover:bg-brand-navy-800 transition-colors"
+          >
+            Add
+          </button>
+          <button
+            onClick={() => { setShowAddCOGS(false); setNewCOGSName(''); }}
+            className="px-4 py-2 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
-        {/* Summary View (default) — Revenue Mix */}
+      {/* Unified P&L Card */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+
+        {/* ======== SUMMARY VIEW ======== */}
         {viewMode === 'summary' && (
-          <div className="divide-y divide-gray-100">
-            {/* Summary header */}
-            <div className="grid grid-cols-12 gap-2 px-6 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase">
-              <div className="col-span-3">Line Item</div>
-              <div className="col-span-2 text-right">Prior Year</div>
-              <div className="col-span-2 text-center">% of Total</div>
-              <div className="col-span-3 text-right">Forecast {activeYear === 1 ? `Y1` : `Y${activeYear}`}</div>
-              <div className="col-span-2 text-right">vs Prior</div>
-            </div>
-            {revenueLines.map((line) => {
-              const priorTotal = getLinePriorYear(line.id);
-              const forecastTotal = getLineTotal(line);
-              const priorPct = priorYearMix[line.id] || 0;
-              const currentMixPct = linePercentages[line.id] || 0;
-              const growthPct = priorTotal > 0 ? ((forecastTotal - priorTotal) / priorTotal) * 100 : 0;
-              const isExpanded = expandedRevLines.has(line.id);
-              return (
-                <div key={line.id}>
-                  <div className="grid grid-cols-12 gap-2 px-6 py-3 items-center hover:bg-gray-50">
-                    <div className="col-span-3 flex items-center gap-2">
-                      <button onClick={() => toggleRevLineExpand(line.id)} className="text-gray-400 hover:text-gray-600">
-                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                      </button>
-                      <span className="text-sm font-medium text-gray-900 truncate">{line.name}</span>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '30%' }}>Line Item</th>
+                <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '18%' }}>Prior Year</th>
+                <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '14%' }}>% Split</th>
+                <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '20%' }}>Forecast {activeYear === 1 ? 'Y1' : `Y${activeYear}`}</th>
+                <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '18%' }}>vs Prior / % of Rev</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* REVENUE section header */}
+              <tr className="bg-gray-50">
+                <td colSpan={5} className="px-4 py-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Revenue</span>
+                    <button
+                      onClick={() => setShowAddRevenue(true)}
+                      className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
+                    >
+                      <Plus className="w-3 h-3" /> Add Line
+                    </button>
+                  </div>
+                </td>
+              </tr>
+
+              {/* Revenue lines */}
+              {revenueLines.map((line) => {
+                const priorTotal = getLinePriorYear(line.id);
+                const forecastTotal = getLineTotal(line);
+                const currentMixPct = linePercentages[line.id] || 0;
+                const growthPct = priorTotal > 0 ? ((forecastTotal - priorTotal) / priorTotal) * 100 : 0;
+                const isExpanded = expandedRevLines.has(line.id);
+                return (
+                  <React.Fragment key={line.id}>
+                    <tr className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => toggleRevLineExpand(line.id)} className="text-gray-400 hover:text-gray-600">
+                            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          </button>
+                          <span className="text-sm font-medium text-gray-900 truncate">{line.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-sm text-gray-500">
+                        {priorTotal > 0 ? formatCurrency(priorTotal) : '\u2014'}
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        <div className="inline-flex items-center gap-1 justify-center">
+                          <input
+                            type="number"
+                            value={currentMixPct}
+                            onChange={(e) => handleMixChange(line.id, Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                            min="0"
+                            max="100"
+                            className="w-14 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
+                          />
+                          <span className="text-xs text-gray-400">%</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-sm font-semibold text-gray-900">
+                        {formatCurrency(forecastTotal)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {priorTotal > 0 ? (
+                            <span className={`text-sm ${growthPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {growthPct >= 0 ? '+' : ''}{Math.round(growthPct)}%
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">\u2014</span>
+                          )}
+                          <button
+                            onClick={() => actions.removeRevenueLine(line.id)}
+                            className="p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 hover:opacity-100"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Expanded monthly detail row */}
+                    {isExpanded && (
+                      <tr className="bg-gray-50 border-b border-gray-100">
+                        <td colSpan={5} className="px-6 py-3">
+                          <div className="grid grid-cols-12 gap-1">
+                            {monthKeys.map((key, idx) => {
+                              const isActual = activeYear === 1 && isActualMonth(key);
+                              const yearMonthly = activeYear === 1
+                                ? line.year1Monthly
+                                : activeYear === 2
+                                  ? (line.year2Monthly || {})
+                                  : (line.year3Monthly || {});
+                              const cellValue = yearMonthly[key] || 0;
+                              return (
+                                <div key={key} className="text-center">
+                                  <div className={`text-[10px] font-medium mb-1 ${isActual ? 'text-blue-600' : 'text-gray-400'}`}>
+                                    {months[idx]}{isActual ? ' \u2713' : ''}
+                                  </div>
+                                  {isActual ? (
+                                    <div className="px-1 py-1 text-xs text-right bg-blue-100 border border-blue-200 rounded text-blue-900 font-medium">
+                                      {cellValue.toLocaleString()}
+                                    </div>
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      value={cellValue ? cellValue.toLocaleString() : ''}
+                                      onChange={(e) => handleRevenueChange(line.id, key, e.target.value)}
+                                      placeholder="0"
+                                      className="w-full px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+
+              {/* TOTAL REVENUE */}
+              <tr className="bg-gray-100 font-semibold border-t-2 border-gray-300">
+                <td className="px-4 py-2.5 text-sm text-gray-900">TOTAL REVENUE</td>
+                <td className="px-4 py-2.5 text-right text-sm text-gray-500">
+                  {priorYear ? formatCurrency(priorYear.revenue.total) : '\u2014'}
+                </td>
+                <td className="px-4 py-2.5 text-center">
+                  <span className={`text-xs font-bold ${linePctTotal === 100 ? 'text-green-600' : 'text-amber-600'}`}>
+                    {linePctTotal}%{linePctTotal !== 100 && (linePctTotal < 100 ? ' under' : ' over')}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5 text-right text-sm text-gray-900">{formatCurrency(totalRevenue)}</td>
+                <td className="px-4 py-2.5 text-right text-sm">
+                  {priorYear && priorYear.revenue.total > 0 ? (
+                    <span className={totalRevenue >= priorYear.revenue.total ? 'text-green-600' : 'text-red-600'}>
+                      {totalRevenue >= priorYear.revenue.total ? '+' : ''}{((totalRevenue - priorYear.revenue.total) / priorYear.revenue.total * 100).toFixed(0)}%
+                    </span>
+                  ) : '\u2014'}
+                </td>
+              </tr>
+
+              {/* Spacer */}
+              <tr><td colSpan={5} className="py-2"></td></tr>
+
+              {/* COST OF SALES section header */}
+              <tr className="bg-gray-50">
+                <td colSpan={5} className="px-4 py-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Cost of Sales</span>
+                      <div className="group relative">
+                        <Info className="w-3.5 h-3.5 text-gray-400 cursor-help" />
+                        <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
+                          <p className="mb-1"><strong>Variable:</strong> Costs that change with revenue (e.g., materials, commissions)</p>
+                          <p><strong>Fixed:</strong> Costs that stay constant regardless of revenue (rare for COGS)</p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="col-span-2 text-right text-sm text-gray-500">
-                      {priorTotal > 0 ? formatCurrency(priorTotal) : '—'}
-                    </div>
-                    <div className="col-span-2 flex justify-center">
-                      <div className="inline-flex items-center gap-1">
+                    <button
+                      onClick={() => setShowAddCOGS(true)}
+                      className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
+                    >
+                      <Plus className="w-3 h-3" /> Add Line
+                    </button>
+                  </div>
+                </td>
+              </tr>
+
+              {/* COGS lines */}
+              {cogsLines.map((line) => {
+                const priorPct = priorYearCogsMix[line.id] || 0;
+                const currentPct = cogsLinePercentages[line.id] || 0;
+                const lineAmount = calculateCOGSAmount(line);
+                const pctOfRev = totalRevenue > 0 ? (lineAmount / totalRevenue * 100) : 0;
+                return (
+                  <tr key={line.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900 truncate">{line.name}</span>
+                        <span className={`text-[10px] font-medium px-1 py-0.5 rounded ${
+                          line.costBehavior === 'variable' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'
+                        }`}>
+                          {line.costBehavior === 'variable' ? 'Var' : 'Fix'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-sm text-gray-500">
+                      {line.priorYearTotal != null && line.priorYearTotal > 0 ? formatCurrency(line.priorYearTotal) : '\u2014'}
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      <div className="inline-flex items-center gap-1 justify-center">
                         <input
                           type="number"
-                          value={currentMixPct}
-                          onChange={(e) => handleMixChange(line.id, Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                          value={currentPct}
+                          onChange={(e) => handleCogsMixChange(line.id, Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
                           min="0"
                           max="100"
                           className="w-14 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
                         />
                         <span className="text-xs text-gray-400">%</span>
                       </div>
-                    </div>
-                    <div className="col-span-3 text-right text-sm font-semibold text-gray-900">
-                      {formatCurrency(forecastTotal)}
-                    </div>
-                    <div className="col-span-2 flex items-center justify-end gap-2">
-                      {priorTotal > 0 ? (
-                        <span className={`text-sm ${growthPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {growthPct >= 0 ? '+' : ''}{Math.round(growthPct)}%
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                      <button
-                        onClick={() => actions.removeRevenueLine(line.id)}
-                        className="p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 hover:opacity-100"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                  {/* Expanded monthly detail for this line */}
-                  {isExpanded && (
-                    <div className="px-6 py-3 bg-gray-50 border-t border-gray-100">
-                      <div className="grid grid-cols-12 gap-1">
-                        {monthKeys.map((key, idx) => {
-                          const isActual = activeYear === 1 && isActualMonth(key);
-                          const yearMonthly = activeYear === 1
-                            ? line.year1Monthly
-                            : activeYear === 2
-                              ? (line.year2Monthly || {})
-                              : (line.year3Monthly || {});
-                          const cellValue = yearMonthly[key] || 0;
-                          return (
-                            <div key={key} className="text-center">
-                              <div className={`text-[10px] font-medium mb-1 ${isActual ? 'text-blue-600' : 'text-gray-400'}`}>
-                                {months[idx]}{isActual ? ' ✓' : ''}
-                              </div>
-                              {isActual ? (
-                                <div className="px-1 py-1 text-xs text-right bg-blue-100 border border-blue-200 rounded text-blue-900 font-medium">
-                                  {cellValue.toLocaleString()}
-                                </div>
-                              ) : (
-                                <input
-                                  type="text"
-                                  value={cellValue ? cellValue.toLocaleString() : ''}
-                                  onChange={(e) => handleRevenueChange(line.id, key, e.target.value)}
-                                  placeholder="0"
-                                  className="w-full px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
-                                />
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {/* Summary totals */}
-            <div className="grid grid-cols-12 gap-2 px-6 py-3 bg-gray-50 font-semibold">
-              <div className="col-span-3 text-sm text-gray-900">TOTAL REVENUE</div>
-              <div className="col-span-2 text-right text-sm text-gray-500">
-                {priorYear ? formatCurrency(priorYear.revenue.total) : '—'}
-              </div>
-              <div className="col-span-2 text-center">
-                <span className={`text-xs font-bold ${linePctTotal === 100 ? 'text-green-600' : 'text-amber-600'}`}>
-                  {linePctTotal}%{linePctTotal !== 100 && (linePctTotal < 100 ? ' under' : ' over')}
-                </span>
-              </div>
-              <div className="col-span-3 text-right text-sm text-gray-900">{formatCurrency(totalRevenue)}</div>
-              <div className="col-span-2 text-right text-sm">
-                {priorYear && priorYear.revenue.total > 0 ? (
-                  <span className={totalRevenue >= priorYear.revenue.total ? 'text-green-600' : 'text-red-600'}>
-                    {totalRevenue >= priorYear.revenue.total ? '+' : ''}{((totalRevenue - priorYear.revenue.total) / priorYear.revenue.total * 100).toFixed(0)}%
-                  </span>
-                ) : '—'}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Detail View (monthly grid) */}
-        {viewMode === 'monthly' && <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50">
-                  Line Item
-                </th>
-                {/* Show % column for all years */}
-                <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase w-20">
-                  % Split
-                </th>
-                {months.map((m, idx) => {
-                  const monthKey = monthKeys[idx];
-                  const isActual = activeYear === 1 && isActualMonth(monthKey);
-                  return (
-                    <th
-                      key={monthKey}
-                      className={`px-3 py-3 text-right text-xs font-medium uppercase w-20 ${
-                        isActual ? 'bg-blue-50 text-blue-700' : 'text-gray-500'
-                      }`}
-                    >
-                      <div className="flex flex-col items-end">
-                        <span>{m}</span>
-                        {isActual && (
-                          <span className="text-[10px] font-normal text-blue-500">Actual</span>
-                        )}
-                      </div>
-                    </th>
-                  );
-                })}
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
-                <th className="px-2 py-3 w-10"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {revenueLines.map((line) => {
-                // Get the monthly data for the active year
-                const yearMonthly = activeYear === 1
-                  ? line.year1Monthly
-                  : activeYear === 2
-                    ? (line.year2Monthly || {})
-                    : (line.year3Monthly || {});
-
-                return (
-                  <tr key={line.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 text-sm font-medium text-gray-900 sticky left-0 bg-white">
-                      {line.name}
                     </td>
-                    {/* % Split column for all years */}
-                    <td className="px-2 py-2">
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={linePercentages[line.id] || 0}
-                          onChange={(e) => handleLinePctChange(line.id, e.target.value)}
-                          min="0"
-                          max="100"
-                          className="w-16 px-2 py-1.5 pr-6 text-sm border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy text-right"
-                        />
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">%</span>
+                    <td className="px-4 py-2.5 text-right text-sm font-semibold text-gray-900">
+                      {formatCurrency(lineAmount)}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="text-sm text-gray-500">{pctOfRev.toFixed(1)}%</span>
+                        <button
+                          onClick={() => actions.removeCOGSLine(line.id)}
+                          className="p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 hover:opacity-100"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    </td>
-                    {monthKeys.map((key) => {
-                      const isActual = activeYear === 1 && isActualMonth(key);
-                      const cellValue = yearMonthly[key] || 0;
-                      return (
-                        <td key={key} className={`px-1 py-1 ${isActual ? 'bg-blue-50' : ''}`}>
-                          {isActual ? (
-                            // Actual month - locked display
-                            <div className="w-full px-2 py-1 text-sm text-right bg-blue-100 border border-blue-200 rounded text-blue-900 font-medium flex items-center justify-end gap-1">
-                              <Lock className="w-3 h-3 text-blue-500" />
-                              <span>{cellValue ? cellValue.toLocaleString() : '0'}</span>
-                            </div>
-                          ) : (
-                            // Editable month
-                            <input
-                              type="text"
-                              value={cellValue ? cellValue.toLocaleString() : ''}
-                              onChange={(e) => handleRevenueChange(line.id, key, e.target.value)}
-                              placeholder="0"
-                              className="w-full px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
-                            />
-                          )}
-                        </td>
-                      );
-                    })}
-                    <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
-                      {formatCurrency(getLineTotal(line))}
-                    </td>
-                    <td className="px-2 py-2">
-                      <button
-                        onClick={() => actions.removeRevenueLine(line.id)}
-                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </td>
                   </tr>
                 );
               })}
-              {/* Total Row */}
-              <tr className="bg-gray-50 font-semibold">
-                <td className="px-4 py-3 text-sm text-gray-900 sticky left-0 bg-gray-50">TOTAL REVENUE</td>
-                {/* % Total for all years */}
-                <td className="px-2 py-3 text-center">
-                  <span className={`text-xs font-bold ${linePctTotal === 100 ? 'text-green-600' : 'text-amber-600'}`}>
-                    {linePctTotal}%
+
+              {cogsLines.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                    No COGS lines added. Click &quot;Add Line&quot; above.
+                  </td>
+                </tr>
+              )}
+
+              {/* TOTAL COST OF SALES */}
+              <tr className="bg-gray-100 font-semibold border-t-2 border-gray-300">
+                <td className="px-4 py-2.5 text-sm text-gray-900">TOTAL COST OF SALES</td>
+                <td className="px-4 py-2.5 text-right text-sm text-gray-500">
+                  {priorYear ? formatCurrency(priorYear.cogs.total) : '\u2014'}
+                </td>
+                <td className="px-4 py-2.5 text-center">
+                  <span className={`text-xs font-bold ${cogsPctTotal >= 99 && cogsPctTotal <= 101 ? 'text-green-600' : 'text-amber-600'}`}>
+                    {cogsPctTotal}%
                   </span>
                 </td>
-                {monthKeys.map((key) => {
-                  const monthTotal = revenueLines.reduce((sum, line) => {
-                    const yearMonthly = activeYear === 1
-                      ? line.year1Monthly
-                      : activeYear === 2
-                        ? (line.year2Monthly || {})
-                        : (line.year3Monthly || {});
-                    return sum + (yearMonthly[key] || 0);
-                  }, 0);
-                  const isActual = activeYear === 1 && isActualMonth(key);
-                  return (
-                    <td key={key} className={`px-3 py-3 text-sm text-right ${isActual ? 'bg-blue-100 text-blue-900' : 'text-gray-900'}`}>
-                      {monthTotal > 0 ? formatCurrency(monthTotal) : '-'}
-                    </td>
-                  );
-                })}
-                <td className="px-4 py-3 text-sm text-gray-900 text-right">{formatCurrency(totalRevenue)}</td>
-                <td></td>
+                <td className="px-4 py-2.5 text-right text-sm text-gray-900">{formatCurrency(totalCOGS)}</td>
+                <td className="px-4 py-2.5 text-right text-sm text-gray-500">
+                  {totalRevenue > 0 ? `${(totalCOGS / totalRevenue * 100).toFixed(1)}%` : '\u2014'}
+                </td>
               </tr>
             </tbody>
           </table>
-        </div>}
-      </div>
-
-      {/* COGS Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold text-gray-900">Cost of Sales</h3>
-            <div className="group relative">
-              <Info className="w-4 h-4 text-gray-400 cursor-help" />
-              <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
-                <p className="mb-1"><strong>Variable:</strong> Costs that change with revenue (e.g., materials, commissions)</p>
-                <p><strong>Fixed:</strong> Costs that stay constant regardless of revenue (rare for COGS)</p>
-              </div>
-            </div>
-          </div>
-          <button onClick={() => setShowAddCOGS(true)} className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-navy hover:bg-brand-navy/5 rounded-lg transition-colors">
-            <Plus className="w-4 h-4" /> Add Line
-          </button>
-        </div>
-
-        {showAddCOGS && (
-          <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex gap-2">
-            <input
-              type="text"
-              value={newCOGSName}
-              onChange={(e) => setNewCOGSName(e.target.value)}
-              placeholder="Enter COGS item name..."
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-navy/20 focus:border-brand-navy"
-              autoFocus
-            />
-            <button
-              onClick={handleAddCOGSLine}
-              className="px-4 py-2 bg-brand-navy text-white text-sm font-medium rounded-lg hover:bg-brand-navy-800 transition-colors"
-            >
-              Add
-            </button>
-            <button
-              onClick={() => {
-                setShowAddCOGS(false);
-                setNewCOGSName('');
-              }}
-              className="px-4 py-2 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
         )}
 
-        {/* COGS Summary View — Mix % */}
-        {viewMode === 'summary' && (
-          <div className="divide-y divide-gray-100">
-            <div className="grid grid-cols-12 gap-2 px-6 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase">
-              <div className="col-span-3">Line Item</div>
-              <div className="col-span-2 text-right">Prior Year</div>
-              <div className="col-span-1 text-center">Prior %</div>
-              <div className="col-span-2 text-center">Target %</div>
-              <div className="col-span-2 text-right">Forecast</div>
-              <div className="col-span-2 text-right">% of Rev</div>
-            </div>
-            {cogsLines.map((line) => {
-              const priorPct = priorYearCogsMix[line.id] || 0;
-              const currentPct = cogsLinePercentages[line.id] || 0;
-              const lineAmount = calculateCOGSAmount(line);
-              const pctOfRev = totalRevenue > 0 ? (lineAmount / totalRevenue * 100) : 0;
-              return (
-                <div key={line.id} className="grid grid-cols-12 gap-2 px-6 py-3 items-center hover:bg-gray-50">
-                  <div className="col-span-3 flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-900 truncate">{line.name}</span>
-                    <span className={`text-[10px] font-medium px-1 py-0.5 rounded ${
-                      line.costBehavior === 'variable' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'
-                    }`}>
-                      {line.costBehavior === 'variable' ? 'Var' : 'Fix'}
-                    </span>
-                  </div>
-                  <div className="col-span-2 text-right text-sm text-gray-500">
-                    {line.priorYearTotal != null && line.priorYearTotal > 0 ? formatCurrency(line.priorYearTotal) : '—'}
-                  </div>
-                  <div className="col-span-1 text-center text-sm text-gray-400">
-                    {priorPct > 0 ? `${priorPct}%` : '—'}
-                  </div>
-                  <div className="col-span-2 flex justify-center">
-                    <div className="inline-flex items-center gap-1">
-                      <input
-                        type="number"
-                        value={currentPct}
-                        onChange={(e) => handleCogsMixChange(line.id, Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
-                        min="0"
-                        max="100"
-                        className="w-14 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
-                      />
-                      <span className="text-xs text-gray-400">%</span>
-                    </div>
-                  </div>
-                  <div className="col-span-2 text-right text-sm font-semibold text-gray-900">
-                    {formatCurrency(lineAmount)}
-                  </div>
-                  <div className="col-span-2 flex items-center justify-end gap-2">
-                    <span className="text-sm text-gray-500">{pctOfRev.toFixed(1)}%</span>
-                    <button
-                      onClick={() => actions.removeCOGSLine(line.id)}
-                      className="p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 hover:opacity-100"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-            {cogsLines.length === 0 && (
-              <div className="px-6 py-8 text-center text-sm text-gray-500">
-                No COGS lines added. Click &quot;Add Line&quot; above.
-              </div>
-            )}
-            <div className="grid grid-cols-12 gap-2 px-6 py-3 bg-gray-50 font-semibold">
-              <div className="col-span-3 text-sm text-gray-900">TOTAL COGS</div>
-              <div className="col-span-2 text-right text-sm text-gray-500">
-                {priorYear ? formatCurrency(priorYear.cogs.total) : '—'}
-              </div>
-              <div className="col-span-1 text-center text-xs text-gray-400">100%</div>
-              <div className="col-span-2 text-center">
-                <span className={`text-xs font-bold ${cogsPctTotal >= 99 && cogsPctTotal <= 101 ? 'text-green-600' : 'text-amber-600'}`}>
-                  {cogsPctTotal}%
-                </span>
-              </div>
-              <div className="col-span-2 text-right text-sm text-gray-900">{formatCurrency(totalCOGS)}</div>
-              <div className="col-span-2 text-right text-sm text-gray-500">
-                {totalRevenue > 0 ? `${(totalCOGS / totalRevenue * 100).toFixed(1)}%` : '—'}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* COGS Monthly Detail View */}
+        {/* ======== MONTHLY VIEW ======== */}
         {viewMode === 'monthly' && (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50">Line Item</th>
-                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase w-20">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 min-w-[180px]">
+                    Line Item
+                  </th>
                   {months.map((m, idx) => {
-                    const mk = monthKeys[idx];
-                    const isActual = activeYear === 1 && isActualMonth(mk);
+                    const monthKey = monthKeys[idx];
+                    const isActual = activeYear === 1 && isActualMonth(monthKey);
                     return (
-                      <th key={mk} className={`px-2 py-3 text-right text-xs font-medium uppercase w-20 ${isActual ? 'bg-blue-50 text-blue-700' : 'text-gray-500'}`}>
-                        {m}
+                      <th
+                        key={monthKey}
+                        className={`px-2 py-3 text-right text-xs font-medium uppercase w-[72px] ${
+                          isActual ? 'bg-blue-50 text-blue-700' : 'text-gray-500'
+                        }`}
+                      >
+                        <div className="flex flex-col items-end">
+                          <span>{m}</span>
+                          {isActual && (
+                            <span className="text-[10px] font-normal text-blue-500">Actual</span>
+                          )}
+                        </div>
                       </th>
                     );
                   })}
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase w-[100px]">Total</th>
                   <th className="px-2 py-3 w-10"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody>
+                {/* REVENUE header */}
+                <tr className="bg-gray-50">
+                  <td colSpan={15} className="px-4 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Revenue</span>
+                      <button
+                        onClick={() => setShowAddRevenue(true)}
+                        className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
+                      >
+                        <Plus className="w-3 h-3" /> Add Line
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+
+                {/* Revenue lines */}
+                {revenueLines.map((line) => {
+                  const yearMonthly = activeYear === 1
+                    ? line.year1Monthly
+                    : activeYear === 2
+                      ? (line.year2Monthly || {})
+                      : (line.year3Monthly || {});
+
+                  return (
+                    <tr key={line.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900 sticky left-0 bg-white min-w-[180px]">
+                        {line.name}
+                      </td>
+                      {monthKeys.map((key) => {
+                        const isActual = activeYear === 1 && isActualMonth(key);
+                        const cellValue = yearMonthly[key] || 0;
+                        return (
+                          <td key={key} className={`px-1 py-1 ${isActual ? 'bg-blue-50' : ''}`}>
+                            {isActual ? (
+                              <div className="w-full px-2 py-1 text-sm text-right bg-blue-100 border border-blue-200 rounded text-blue-900 font-medium flex items-center justify-end gap-1">
+                                <Lock className="w-3 h-3 text-blue-500" />
+                                <span>{cellValue ? cellValue.toLocaleString() : '0'}</span>
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                value={cellValue ? cellValue.toLocaleString() : ''}
+                                onChange={(e) => handleRevenueChange(line.id, key, e.target.value)}
+                                placeholder="0"
+                                className="w-full px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
+                              />
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
+                        {formatCurrency(getLineTotal(line))}
+                      </td>
+                      <td className="px-2 py-2">
+                        <button
+                          onClick={() => actions.removeRevenueLine(line.id)}
+                          className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {/* TOTAL REVENUE */}
+                <tr className="bg-gray-100 font-semibold border-t-2 border-gray-300">
+                  <td className="px-4 py-3 text-sm text-gray-900 sticky left-0 bg-gray-100">TOTAL REVENUE</td>
+                  {monthKeys.map((key) => {
+                    const monthTotal = revenueLines.reduce((sum, line) => {
+                      const yearMonthly = activeYear === 1
+                        ? line.year1Monthly
+                        : activeYear === 2
+                          ? (line.year2Monthly || {})
+                          : (line.year3Monthly || {});
+                      return sum + (yearMonthly[key] || 0);
+                    }, 0);
+                    const isActual = activeYear === 1 && isActualMonth(key);
+                    return (
+                      <td key={key} className={`px-2 py-3 text-sm text-right ${isActual ? 'bg-blue-100 text-blue-900' : 'text-gray-900'}`}>
+                        {monthTotal > 0 ? formatCurrency(monthTotal) : '-'}
+                      </td>
+                    );
+                  })}
+                  <td className="px-4 py-3 text-sm text-gray-900 text-right">{formatCurrency(totalRevenue)}</td>
+                  <td></td>
+                </tr>
+
+                {/* Spacer */}
+                <tr><td colSpan={15} className="py-2"></td></tr>
+
+                {/* COST OF SALES header */}
+                <tr className="bg-gray-50">
+                  <td colSpan={15} className="px-4 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Cost of Sales</span>
+                      <button
+                        onClick={() => setShowAddCOGS(true)}
+                        className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
+                      >
+                        <Plus className="w-3 h-3" /> Add Line
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+
+                {/* COGS lines */}
                 {cogsLines.map((line) => {
-                  // Get or generate monthly COGS values
                   const yearKey = activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
                   const existingMonthly = line[yearKey] || {};
                   const hasMonthlyData = Object.keys(existingMonthly).length > 0;
 
-                  // Get monthly revenue totals for variable COGS calculation
                   const monthlyRevForLine = monthKeys.map(key =>
                     revenueLines.reduce((sum, rl) => {
                       const rm = activeYear === 1 ? rl.year1Monthly : activeYear === 2 ? (rl.year2Monthly || {}) : (rl.year3Monthly || {});
@@ -1084,7 +1083,6 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                   const handleCOGSMonthChange = (key: string, value: string) => {
                     const numValue = parseFloat(value.replace(/[^0-9.]/g, '')) || 0;
                     const updated = { ...existingMonthly };
-                    // Pre-fill all months from formula if first edit
                     if (!hasMonthlyData) {
                       monthKeys.forEach((k, i) => { updated[k] = getMonthValue(k, i); });
                     }
@@ -1093,20 +1091,13 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                   };
 
                   return (
-                    <tr key={line.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 sticky left-0 bg-white">
+                    <tr key={line.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="px-4 py-2 sticky left-0 bg-white min-w-[180px]">
                         <div className="text-sm font-medium text-gray-900">{line.name}</div>
                         <div className="text-xs text-gray-400">
                           {line.costBehavior === 'variable' ? `${line.percentOfRevenue || 0}% of rev` : `$${(line.monthlyAmount || 0).toLocaleString()}/mo`}
                           {hasMonthlyData && <span className="ml-1 text-amber-500">(edited)</span>}
                         </div>
-                      </td>
-                      <td className="px-2 py-2 text-center">
-                        <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
-                          line.costBehavior === 'variable' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                        }`}>
-                          {line.costBehavior === 'variable' ? 'Var' : 'Fix'}
-                        </span>
                       </td>
                       {monthKeys.map((key, idx) => {
                         const isActual = activeYear === 1 && isActualMonth(key);
@@ -1139,17 +1130,19 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                     </tr>
                   );
                 })}
+
                 {cogsLines.length === 0 && (
                   <tr>
-                    <td colSpan={16} className="px-4 py-8 text-center text-sm text-gray-500">
+                    <td colSpan={15} className="px-4 py-8 text-center text-sm text-gray-500">
                       No COGS lines added. Click &quot;Add Line&quot; to add cost of goods sold items.
                     </td>
                   </tr>
                 )}
-                <tr className="bg-gray-50 font-semibold">
-                  <td className="px-4 py-3 text-sm text-gray-900 sticky left-0 bg-gray-50">TOTAL COGS</td>
-                  <td className="px-2 py-3"></td>
-                  {monthKeys.map((key, idx) => {
+
+                {/* TOTAL COST OF SALES */}
+                <tr className="bg-gray-100 font-semibold border-t-2 border-gray-300">
+                  <td className="px-4 py-3 text-sm text-gray-900 sticky left-0 bg-gray-100">TOTAL COST OF SALES</td>
+                  {monthKeys.map((key) => {
                     const monthCogs = cogsLines.reduce((sum, line) => {
                       const ym = line[activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly'] || {};
                       if (Object.keys(ym).length > 0) return sum + (ym[key] || 0);
@@ -1161,10 +1154,78 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                       return sum + (line.monthlyAmount || 0);
                     }, 0);
                     return (
-                      <td key={key} className="px-2 py-3 text-xs text-gray-900 text-right">{formatCurrency(monthCogs)}</td>
+                      <td key={key} className="px-2 py-3 text-sm text-gray-900 text-right">{formatCurrency(monthCogs)}</td>
                     );
                   })}
                   <td className="px-4 py-3 text-sm text-gray-900 text-right">{formatCurrency(totalCOGS)}</td>
+                  <td></td>
+                </tr>
+
+                {/* GROSS PROFIT */}
+                <tr className="bg-green-50 font-semibold border-t-2 border-green-300">
+                  <td className="px-4 py-3 text-sm text-green-900 sticky left-0 bg-green-50">GROSS PROFIT</td>
+                  {monthKeys.map((key) => {
+                    const monthRev = revenueLines.reduce((sum, line) => {
+                      const yearMonthly = activeYear === 1
+                        ? line.year1Monthly
+                        : activeYear === 2
+                          ? (line.year2Monthly || {})
+                          : (line.year3Monthly || {});
+                      return sum + (yearMonthly[key] || 0);
+                    }, 0);
+                    const monthCogs = cogsLines.reduce((sum, line) => {
+                      const ym = line[activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly'] || {};
+                      if (Object.keys(ym).length > 0) return sum + (ym[key] || 0);
+                      const mRev = revenueLines.reduce((s, rl) => {
+                        const rm = activeYear === 1 ? rl.year1Monthly : activeYear === 2 ? (rl.year2Monthly || {}) : (rl.year3Monthly || {});
+                        return s + (rm[key] || 0);
+                      }, 0);
+                      if (line.costBehavior === 'variable') return sum + Math.round(mRev * (line.percentOfRevenue || 0) / 100);
+                      return sum + (line.monthlyAmount || 0);
+                    }, 0);
+                    const monthGP = monthRev - monthCogs;
+                    return (
+                      <td key={key} className="px-2 py-3 text-sm text-green-900 text-right">
+                        {monthRev > 0 ? formatCurrency(monthGP) : '-'}
+                      </td>
+                    );
+                  })}
+                  <td className="px-4 py-3 text-sm text-green-900 text-right">{formatCurrency(grossProfit)}</td>
+                  <td></td>
+                </tr>
+
+                {/* Gross Margin % */}
+                <tr className="bg-green-50">
+                  <td className="px-4 py-2 text-xs text-green-700 sticky left-0 bg-green-50">Gross Margin %</td>
+                  {monthKeys.map((key) => {
+                    const monthRev = revenueLines.reduce((sum, line) => {
+                      const yearMonthly = activeYear === 1
+                        ? line.year1Monthly
+                        : activeYear === 2
+                          ? (line.year2Monthly || {})
+                          : (line.year3Monthly || {});
+                      return sum + (yearMonthly[key] || 0);
+                    }, 0);
+                    const monthCogs = cogsLines.reduce((sum, line) => {
+                      const ym = line[activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly'] || {};
+                      if (Object.keys(ym).length > 0) return sum + (ym[key] || 0);
+                      const mRev = revenueLines.reduce((s, rl) => {
+                        const rm = activeYear === 1 ? rl.year1Monthly : activeYear === 2 ? (rl.year2Monthly || {}) : (rl.year3Monthly || {});
+                        return s + (rm[key] || 0);
+                      }, 0);
+                      if (line.costBehavior === 'variable') return sum + Math.round(mRev * (line.percentOfRevenue || 0) / 100);
+                      return sum + (line.monthlyAmount || 0);
+                    }, 0);
+                    const monthGM = monthRev > 0 ? ((monthRev - monthCogs) / monthRev * 100) : 0;
+                    return (
+                      <td key={key} className="px-2 py-2 text-xs text-green-700 text-right">
+                        {monthRev > 0 ? `${monthGM.toFixed(1)}%` : '-'}
+                      </td>
+                    );
+                  })}
+                  <td className="px-4 py-2 text-xs text-green-700 text-right font-semibold">
+                    {grossProfitPct.toFixed(1)}%
+                  </td>
                   <td></td>
                 </tr>
               </tbody>
@@ -1172,7 +1233,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
           </div>
         )}
 
-        {/* GP Summary — inside COGS card */}
+        {/* GP summary callout inside the card */}
         {(() => {
           const gpTarget = activeYear === 1
             ? goals.year1?.grossProfitPct
