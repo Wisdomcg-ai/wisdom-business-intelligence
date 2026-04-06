@@ -247,6 +247,9 @@ export interface ForecastAssumptions {
   opex: OpExAssumptions;
   capex: CapExAssumptions;
 
+  // Planned Spending (new unified model — replaces capex items when present)
+  plannedSpends?: import('../types').PlannedSpend[];
+
   // Subscription audit (populated after Step 6)
   subscriptions?: SubscriptionAuditSummary;
 }

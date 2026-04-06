@@ -18,12 +18,16 @@ import {
   CapExItem,
   Investment,
   OtherExpense,
+  PlannedSpend,
   ForecastSummary,
   YearlySummary,
   BusinessProfile,
   calculateSuper,
   calculateNewSalary,
+  calculateLoanPayment,
+  calculateTotalInterest,
   generateMonthKeys,
+  getPlannedSpendPLImpact,
   SUPER_RATE,
   quarterlyToMonthly,
   monthlyToQuarterly,
@@ -101,6 +105,7 @@ const createInitialState = (fiscalYearStart: number, businessId: string): Foreca
   opexLines: [],
   capexItems: [],
   investments: [],
+  plannedSpends: [],
   otherExpenses: [],
 });
 
@@ -121,6 +126,31 @@ const loadStateFromStorage = (businessId: string, fiscalYear: number): ForecastW
         if (parsed.wizardVersion !== WIZARD_VERSION) {
           console.log('[ForecastWizard] Version mismatch (stored:', parsed.wizardVersion, 'current:', WIZARD_VERSION, ') — forcing re-init');
           return null;
+        }
+        // Backward compat: convert legacy capexItems/investments to plannedSpends
+        if ((!parsed.plannedSpends || parsed.plannedSpends.length === 0) &&
+            (parsed.capexItems?.length > 0 || parsed.investments?.length > 0)) {
+          parsed.plannedSpends = [
+            ...(parsed.capexItems || []).map((item: CapExItem) => ({
+              id: item.id,
+              description: item.description,
+              amount: item.cost,
+              month: item.month,
+              spendType: 'asset' as const,
+              usefulLifeYears: item.usefulLifeYears,
+              annualDepreciation: item.annualDepreciation,
+              paymentMethod: 'outright' as const,
+            })),
+            ...(parsed.investments || []).map((inv: Investment) => ({
+              id: inv.id,
+              description: inv.description,
+              amount: inv.totalBudget,
+              month: 1,
+              spendType: 'one-off' as const,
+              paymentMethod: 'outright' as const,
+              initiativeId: inv.initiativeId,
+            })),
+          ];
         }
         console.log('[ForecastWizard] Restored state from localStorage');
         return parsed as ForecastWizardState;
@@ -654,6 +684,41 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
     }));
   }, []);
 
+  // Step 6: Planned Spending (new unified model)
+  const addPlannedSpend = useCallback((item: Omit<PlannedSpend, 'id'>) => {
+    const annualDepreciation = item.spendType === 'asset' && item.usefulLifeYears
+      ? Math.round(item.amount / item.usefulLifeYears) : 0;
+    setState(prev => ({
+      ...prev,
+      plannedSpends: [...prev.plannedSpends, { ...item, id: generateId(), annualDepreciation }],
+    }));
+  }, []);
+
+  const updatePlannedSpend = useCallback((id: string, updates: Partial<PlannedSpend>) => {
+    setState(prev => ({
+      ...prev,
+      plannedSpends: prev.plannedSpends.map(item => {
+        if (item.id !== id) return item;
+        const updated = { ...item, ...updates };
+        if (updated.spendType === 'asset' && updated.usefulLifeYears) {
+          updated.annualDepreciation = Math.round(updated.amount / updated.usefulLifeYears);
+        }
+        if (updated.paymentMethod === 'finance' && updated.financeRate && updated.financeTerm) {
+          updated.financeMonthlyPayment = calculateLoanPayment(updated.amount, updated.financeRate, updated.financeTerm);
+          updated.financeTotalInterest = calculateTotalInterest(updated.amount, updated.financeMonthlyPayment, updated.financeTerm);
+        }
+        return updated;
+      }),
+    }));
+  }, []);
+
+  const removePlannedSpend = useCallback((id: string) => {
+    setState(prev => ({
+      ...prev,
+      plannedSpends: prev.plannedSpends.filter(item => item.id !== id),
+    }));
+  }, []);
+
   // Step 7: Other Expenses
   const addOtherExpense = useCallback((expense: Omit<OtherExpense, 'id'>) => {
     setState((prev) => ({
@@ -1076,8 +1141,41 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         ? state.investments.reduce((sum, inv) => sum + inv.totalBudget, 0)
         : 0;
 
+      // Planned Spending — new unified model (overrides legacy capex/investments if present)
+      let plannedSpendDepreciation = 0;
+      let plannedSpendExpenses = 0;
+      if (state.plannedSpends && state.plannedSpends.length > 0) {
+        for (const item of state.plannedSpends) {
+          if (item.spendType === 'asset' && item.paymentMethod !== 'lease') {
+            plannedSpendDepreciation += item.usefulLifeYears
+              ? Math.round((item.amount / item.usefulLifeYears) * (yearNum === 1 ? (13 - item.month) / 12 : 1))
+              : 0;
+          }
+          // Interest expense for financed items
+          if (item.paymentMethod === 'finance' && item.financeTotalInterest && item.financeTerm) {
+            plannedSpendExpenses += Math.round(item.financeTotalInterest / (item.financeTerm / 12));
+          }
+          // Lease payments go to expenses
+          if (item.paymentMethod === 'lease' && item.leaseMonthlyPayment) {
+            plannedSpendExpenses += item.leaseMonthlyPayment * 12;
+          }
+          // One-off expenses only in Year 1
+          if (item.spendType === 'one-off' && yearNum === 1) {
+            plannedSpendExpenses += item.amount;
+          }
+          // Monthly recurring expenses
+          if (item.spendType === 'monthly') {
+            plannedSpendExpenses += item.amount * 12;
+          }
+        }
+      }
+
+      // Use planned spends if available, otherwise fall back to legacy
+      const finalDepreciation = state.plannedSpends?.length > 0 ? plannedSpendDepreciation : depreciation;
+      const finalInvestments = state.plannedSpends?.length > 0 ? plannedSpendExpenses : investments;
+
       // Net Profit
-      const netProfit = grossProfit - teamCosts - opex - depreciation - otherExpenses - investments;
+      const netProfit = grossProfit - teamCosts - opex - finalDepreciation - otherExpenses - finalInvestments;
       const netProfitPct = revenue > 0 ? (netProfit / revenue) * 100 : 0;
 
       return {
@@ -1087,8 +1185,8 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         grossProfitPct: Math.round(grossProfitPct * 10) / 10,
         teamCosts: Math.round(teamCosts),
         opex: Math.round(opex),
-        depreciation: Math.round(depreciation),
-        investments: Math.round(investments),
+        depreciation: Math.round(finalDepreciation),
+        investments: Math.round(finalInvestments),
         otherExpenses: Math.round(otherExpenses),
         netProfit: Math.round(netProfit),
         netProfitPct: Math.round(netProfitPct * 10) / 10,
@@ -1258,6 +1356,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       capex: {
         items: capexItems,
       },
+      plannedSpends: state.plannedSpends,
     };
   }, [state]);
 
@@ -1388,6 +1487,9 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
     addInvestment,
     updateInvestment,
     removeInvestment,
+    addPlannedSpend,
+    updatePlannedSpend,
+    removePlannedSpend,
     addOtherExpense,
     updateOtherExpense,
     removeOtherExpense,

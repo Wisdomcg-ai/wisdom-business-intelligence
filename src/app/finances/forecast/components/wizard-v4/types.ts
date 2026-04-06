@@ -245,6 +245,81 @@ export interface OtherExpense {
   notes?: string;
 }
 
+// Unified planned spending — replaces CapExItem + Investment
+export type SpendType = 'asset' | 'one-off' | 'monthly';
+export type PaymentMethod = 'outright' | 'finance' | 'lease';
+
+export interface PlannedSpend {
+  id: string;
+  description: string;
+  amount: number;
+  month: number; // 1-12 fiscal month
+
+  spendType: SpendType;
+  usefulLifeYears?: number;          // For assets
+  annualDepreciation?: number;       // Calculated: amount / usefulLifeYears
+
+  paymentMethod: PaymentMethod;
+
+  // Finance (loan)
+  financeTerm?: number;              // Months
+  financeRate?: number;              // Annual %
+  financeMonthlyPayment?: number;    // Auto-calculated
+  financeTotalInterest?: number;     // Auto-calculated
+
+  // Lease
+  leaseTerm?: number;                // Months
+  leaseMonthlyPayment?: number;      // User input
+
+  initiativeId?: string;
+  notes?: string;
+}
+
+// Loan repayment: PMT = P × [r(1+r)^n] / [(1+r)^n - 1]
+export function calculateLoanPayment(principal: number, annualRate: number, termMonths: number): number {
+  if (annualRate <= 0 || termMonths <= 0) return Math.round(principal / termMonths);
+  const r = annualRate / 100 / 12;
+  const n = termMonths;
+  const payment = principal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+  return Math.round(payment);
+}
+
+export function calculateTotalInterest(principal: number, monthlyPayment: number, termMonths: number): number {
+  return Math.round(monthlyPayment * termMonths - principal);
+}
+
+// Calculate P&L impact for a PlannedSpend item (annual)
+export function getPlannedSpendPLImpact(item: PlannedSpend, yearNum: 1 | 2 | 3): number {
+  let impact = 0;
+
+  if (item.spendType === 'asset' && item.usefulLifeYears) {
+    const annualDep = item.amount / item.usefulLifeYears;
+    impact += yearNum === 1 ? annualDep * (13 - item.month) / 12 : annualDep;
+  } else if (item.spendType === 'one-off') {
+    impact += yearNum === 1 ? item.amount : 0;
+  } else if (item.spendType === 'monthly') {
+    impact += item.amount * 12;
+  }
+
+  // Interest expense for financed items
+  if (item.paymentMethod === 'finance' && item.financeTotalInterest && item.financeTerm) {
+    const yearsOfTerm = item.financeTerm / 12;
+    impact += item.financeTotalInterest / yearsOfTerm;
+  }
+
+  // Lease payments (instead of depreciation)
+  if (item.paymentMethod === 'lease' && item.leaseMonthlyPayment) {
+    // Lease replaces asset depreciation — clear the asset impact and use lease cost
+    if (item.spendType === 'asset') {
+      const annualDep = item.usefulLifeYears ? item.amount / item.usefulLifeYears : 0;
+      impact -= yearNum === 1 ? annualDep * (13 - item.month) / 12 : annualDep;
+    }
+    impact += item.leaseMonthlyPayment * 12;
+  }
+
+  return Math.round(impact);
+}
+
 export interface PriorYearData {
   revenue: {
     total: number;
@@ -319,9 +394,12 @@ export interface ForecastWizardState {
   defaultOpExIncreasePct: number;
   opexLines: OpExLine[];
 
-  // Step 6: CapEx & Investments
+  // Step 6: CapEx & Investments (legacy)
   capexItems: CapExItem[];
   investments: Investment[];
+
+  // Step 6: Planned Spending (new — replaces CapEx + Investments)
+  plannedSpends: PlannedSpend[];
 
   // Step 7: Other Expenses
   otherExpenses: OtherExpense[];
@@ -378,13 +456,18 @@ export interface WizardActions {
   addOpExLine: (line: Omit<OpExLine, 'id'>) => void;
   removeOpExLine: (lineId: string) => void;
 
-  // Step 6: CapEx & Investments
+  // Step 6: CapEx & Investments (legacy)
   addCapExItem: (item: Omit<CapExItem, 'id' | 'annualDepreciation'>) => void;
   updateCapExItem: (itemId: string, updates: Partial<CapExItem>) => void;
   removeCapExItem: (itemId: string) => void;
   addInvestment: (investment: Omit<Investment, 'id'>) => void;
   updateInvestment: (investmentId: string, updates: Partial<Investment>) => void;
   removeInvestment: (investmentId: string) => void;
+
+  // Step 6: Planned Spending (new — replaces CapEx + Investments)
+  addPlannedSpend: (item: Omit<PlannedSpend, 'id'>) => void;
+  updatePlannedSpend: (id: string, updates: Partial<PlannedSpend>) => void;
+  removePlannedSpend: (id: string) => void;
 
   // Step 7: Other Expenses
   addOtherExpense: (expense: Omit<OtherExpense, 'id'>) => void;
