@@ -928,6 +928,9 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 min-w-[180px]">
                     Line Item
                   </th>
+                  <th className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase w-[60px]">
+                    % Split
+                  </th>
                   {months.map((m, idx) => {
                     const monthKey = monthKeys[idx];
                     const isActual = activeYear === 1 && isActualMonth(monthKey);
@@ -954,7 +957,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
               <tbody>
                 {/* REVENUE header */}
                 <tr className="bg-gray-50">
-                  <td colSpan={15} className="px-4 py-2">
+                  <td colSpan={16} className="px-4 py-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Revenue</span>
                       <button
@@ -974,11 +977,25 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                     : activeYear === 2
                       ? (line.year2Monthly || {})
                       : (line.year3Monthly || {});
+                  const revMixPct = linePercentages[line.id] || 0;
 
                   return (
                     <tr key={line.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-4 py-2 text-sm font-medium text-gray-900 sticky left-0 bg-white min-w-[180px]">
                         {line.name}
+                      </td>
+                      <td className="px-1 py-1 text-center">
+                        <div className="inline-flex items-center gap-0.5">
+                          <input
+                            type="number"
+                            value={revMixPct}
+                            onChange={(e) => handleMixChange(line.id, Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                            min="0"
+                            max="100"
+                            className="w-12 px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
+                          />
+                          <span className="text-[10px] text-gray-400">%</span>
+                        </div>
                       </td>
                       {monthKeys.map((key) => {
                         const isActual = activeYear === 1 && isActualMonth(key);
@@ -1020,6 +1037,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                 {/* TOTAL REVENUE */}
                 <tr className="bg-gray-100 font-semibold border-t-2 border-gray-300">
                   <td className="px-4 py-3 text-sm text-gray-900 sticky left-0 bg-gray-100">TOTAL REVENUE</td>
+                  <td className="px-2 py-3 text-center">
+                    <span className={`text-[10px] font-bold ${linePctTotal === 100 ? 'text-green-600' : 'text-amber-600'}`}>
+                      {linePctTotal}%
+                    </span>
+                  </td>
                   {monthKeys.map((key) => {
                     const monthTotal = revenueLines.reduce((sum, line) => {
                       const yearMonthly = activeYear === 1
@@ -1041,11 +1063,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                 </tr>
 
                 {/* Spacer */}
-                <tr><td colSpan={15} className="py-2"></td></tr>
+                <tr><td colSpan={16} className="py-2"></td></tr>
 
                 {/* COST OF SALES header */}
                 <tr className="bg-gray-50">
-                  <td colSpan={15} className="px-4 py-2">
+                  <td colSpan={16} className="px-4 py-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Cost of Sales</span>
                       <button
@@ -1090,6 +1112,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                     actions.updateCOGSLine(line.id, { [yearKey]: updated });
                   };
 
+                  const cogsMixPct = cogsLinePercentages[line.id] || 0;
+
                   return (
                     <tr key={line.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-4 py-2 sticky left-0 bg-white min-w-[180px]">
@@ -1097,6 +1121,19 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                         <div className="text-xs text-gray-400">
                           {line.costBehavior === 'variable' ? `${line.percentOfRevenue || 0}% of rev` : `$${(line.monthlyAmount || 0).toLocaleString()}/mo`}
                           {hasMonthlyData && <span className="ml-1 text-amber-500">(edited)</span>}
+                        </div>
+                      </td>
+                      <td className="px-1 py-1 text-center">
+                        <div className="inline-flex items-center gap-0.5">
+                          <input
+                            type="number"
+                            value={cogsMixPct}
+                            onChange={(e) => handleCogsMixChange(line.id, Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                            min="0"
+                            max="100"
+                            className="w-12 px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
+                          />
+                          <span className="text-[10px] text-gray-400">%</span>
                         </div>
                       </td>
                       {monthKeys.map((key, idx) => {
@@ -1142,6 +1179,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                 {/* TOTAL COST OF SALES */}
                 <tr className="bg-gray-100 font-semibold border-t-2 border-gray-300">
                   <td className="px-4 py-3 text-sm text-gray-900 sticky left-0 bg-gray-100">TOTAL COST OF SALES</td>
+                  <td className="px-2 py-3 text-center">
+                    <span className={`text-[10px] font-bold ${cogsPctTotal >= 99 && cogsPctTotal <= 101 ? 'text-green-600' : 'text-amber-600'}`}>
+                      {cogsPctTotal}%
+                    </span>
+                  </td>
                   {monthKeys.map((key) => {
                     const monthCogs = cogsLines.reduce((sum, line) => {
                       const ym = line[activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly'] || {};
@@ -1164,6 +1206,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                 {/* GROSS PROFIT */}
                 <tr className="bg-green-50 font-semibold border-t-2 border-green-300">
                   <td className="px-4 py-3 text-sm text-green-900 sticky left-0 bg-green-50">GROSS PROFIT</td>
+                  <td></td>
                   {monthKeys.map((key) => {
                     const monthRev = revenueLines.reduce((sum, line) => {
                       const yearMonthly = activeYear === 1
@@ -1197,6 +1240,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                 {/* Gross Margin % */}
                 <tr className="bg-green-50">
                   <td className="px-4 py-2 text-xs text-green-700 sticky left-0 bg-green-50">Gross Margin %</td>
+                  <td></td>
                   {monthKeys.map((key) => {
                     const monthRev = revenueLines.reduce((sum, line) => {
                       const yearMonthly = activeYear === 1
