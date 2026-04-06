@@ -690,14 +690,14 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       ? Math.round(item.amount / item.usefulLifeYears) : 0;
     setState(prev => ({
       ...prev,
-      plannedSpends: [...prev.plannedSpends, { ...item, id: generateId(), annualDepreciation }],
+      plannedSpends: [...(prev.plannedSpends || []), { ...item, id: generateId(), annualDepreciation }],
     }));
   }, []);
 
   const updatePlannedSpend = useCallback((id: string, updates: Partial<PlannedSpend>) => {
     setState(prev => ({
       ...prev,
-      plannedSpends: prev.plannedSpends.map(item => {
+      plannedSpends: (prev.plannedSpends || []).map(item => {
         if (item.id !== id) return item;
         const updated = { ...item, ...updates };
         if (updated.spendType === 'asset' && updated.usefulLifeYears) {
@@ -715,7 +715,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
   const removePlannedSpend = useCallback((id: string) => {
     setState(prev => ({
       ...prev,
-      plannedSpends: prev.plannedSpends.filter(item => item.id !== id),
+      plannedSpends: (prev.plannedSpends || []).filter(item => item.id !== id),
     }));
   }, []);
 
