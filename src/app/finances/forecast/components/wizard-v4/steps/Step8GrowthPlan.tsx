@@ -470,19 +470,19 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
                   FY{fiscalYear}
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                  Growth
-                </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
                   FY{fiscalYear + 1}
                 </th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider w-20">
+                  vs FY{(fiscalYear).toString().slice(-2)}
+                </th>
                 {showY3 && (
                   <>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                      Growth
-                    </th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
                       FY{fiscalYear + 2}
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider w-20">
+                      vs FY{(fiscalYear + 1).toString().slice(-2)}
                     </th>
                   </>
                 )}
@@ -507,19 +507,19 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                 <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900">
                   {formatCurrency(y1.revenue)}
                 </td>
-                <td className="px-4 py-3 text-sm text-center">
-                  <GrowthBadge value={growthPct(y2.revenue, y1.revenue)} />
-                </td>
                 <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900">
                   {formatCurrency(y2.revenue)}
                 </td>
+                <td className="px-4 py-3 text-sm text-center">
+                  <GrowthBadge value={growthPct(y2.revenue, y1.revenue)} />
+                </td>
                 {showY3 && (
                   <>
-                    <td className="px-4 py-3 text-sm text-center">
-                      <GrowthBadge value={growthPct(y3.revenue, y2.revenue)} />
-                    </td>
                     <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900">
                       {formatCurrency(y3.revenue)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-center">
+                      <GrowthBadge value={growthPct(y3.revenue, y2.revenue)} />
                     </td>
                   </>
                 )}
@@ -536,6 +536,9 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                       <td className="px-4 py-2.5 text-sm text-right text-gray-600">
                         {formatCurrency(line.y1Total)}
                       </td>
+                      <td className="px-4 py-2.5 text-sm text-right text-gray-600">
+                        {formatCurrency(line.y2Total)}
+                      </td>
                       <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center">
                           <input
@@ -551,11 +554,11 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                           <span className="ml-0.5 text-xs text-gray-400">%</span>
                         </div>
                       </td>
-                      <td className="px-4 py-2.5 text-sm text-right text-gray-600">
-                        {formatCurrency(line.y2Total)}
-                      </td>
                       {showY3 && (
                         <>
+                          <td className="px-4 py-2.5 text-sm text-right text-gray-600">
+                            {formatCurrency(line.y3Total)}
+                          </td>
                           <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center">
                               <input
@@ -570,9 +573,6 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                               />
                               <span className="ml-0.5 text-xs text-gray-400">%</span>
                             </div>
-                          </td>
-                          <td className="px-4 py-2.5 text-sm text-right text-gray-600">
-                            {formatCurrency(line.y3Total)}
                           </td>
                         </>
                       )}
@@ -608,19 +608,19 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                 <td className="px-4 py-3 text-sm text-right text-gray-700">
                   ({formatCurrency(y1.cogs)})
                 </td>
-                <td className="px-4 py-3 text-sm text-center">
-                  <GrowthBadge value={growthPct(y2.cogs, y1.cogs)} />
-                </td>
                 <td className="px-4 py-3 text-sm text-right text-gray-700">
                   ({formatCurrency(y2.cogs)})
                 </td>
+                <td className="px-4 py-3 text-sm text-center">
+                  <GrowthBadge value={growthPct(y2.cogs, y1.cogs)} />
+                </td>
                 {showY3 && (
                   <>
-                    <td className="px-4 py-3 text-sm text-center">
-                      <GrowthBadge value={growthPct(y3.cogs, y2.cogs)} />
-                    </td>
                     <td className="px-4 py-3 text-sm text-right text-gray-700">
                       ({formatCurrency(y3.cogs)})
+                    </td>
+                    <td className="px-4 py-3 text-sm text-center">
+                      <GrowthBadge value={growthPct(y3.cogs, y2.cogs)} />
                     </td>
                   </>
                 )}
@@ -636,16 +636,16 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                     <td className="px-4 py-2.5 text-sm text-right text-gray-500">
                       {y1.revenue > 0 ? formatPercent((y1.cogs / y1.revenue) * 100) : '—'}
                     </td>
-                    <td className="px-4 py-2.5" />
                     <td className="px-4 py-2.5 text-sm text-right text-gray-500">
                       {y2.revenue > 0 ? formatPercent((y2.cogs / y2.revenue) * 100) : '—'}
                     </td>
+                    <td className="px-4 py-2.5" />
                     {showY3 && (
                       <>
-                        <td className="px-4 py-2.5" />
                         <td className="px-4 py-2.5 text-sm text-right text-gray-500">
                           {y3.revenue > 0 ? formatPercent((y3.cogs / y3.revenue) * 100) : '—'}
                         </td>
+                        <td className="px-4 py-2.5" />
                       </>
                     )}
                   </tr>
@@ -685,12 +685,12 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                   </div>
                 </td>
                 <td className="px-4 py-2 text-sm text-right font-bold text-green-900">{formatCurrency(y1.grossProfit)}</td>
-                <td className="px-4 py-2 text-sm text-center"><GrowthBadge value={growthPct(y2.grossProfit, y1.grossProfit)} /></td>
                 <td className="px-4 py-2 text-sm text-right font-bold text-green-900">{formatCurrency(y2.grossProfit)}</td>
+                <td className="px-4 py-2 text-sm text-center"><GrowthBadge value={growthPct(y2.grossProfit, y1.grossProfit)} /></td>
                 {showY3 && (
                   <>
-                    <td className="px-4 py-2 text-sm text-center"><GrowthBadge value={growthPct(y3.grossProfit, y2.grossProfit)} /></td>
                     <td className="px-4 py-2 text-sm text-right font-bold text-green-900">{formatCurrency(y3.grossProfit)}</td>
+                    <td className="px-4 py-2 text-sm text-center"><GrowthBadge value={growthPct(y3.grossProfit, y2.grossProfit)} /></td>
                   </>
                 )}
               </tr>
@@ -702,12 +702,12 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                   </div>
                 </td>
                 <td className="px-4 pb-2 pt-0 text-xs text-right text-green-700">{formatPercent(y1.grossProfitPct)}</td>
-                <td className="px-4 pb-2 pt-0"></td>
                 <td className="px-4 pb-2 pt-0 text-xs text-right text-green-700">{formatPercent(y2.grossProfitPct)}</td>
+                <td className="px-4 pb-2 pt-0"></td>
                 {showY3 && (
                   <>
-                    <td className="px-4 pb-2 pt-0"></td>
                     <td className="px-4 pb-2 pt-0 text-xs text-right text-green-700">{formatPercent(y3.grossProfitPct)}</td>
+                    <td className="px-4 pb-2 pt-0"></td>
                   </>
                 )}
               </tr>
@@ -729,19 +729,19 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                 <td className="px-4 py-3 text-sm text-right text-gray-700">
                   ({formatCurrency(y1.teamCosts)})
                 </td>
-                <td className="px-4 py-3 text-sm text-center">
-                  <GrowthBadge value={growthPct(y2.teamCosts, y1.teamCosts)} />
-                </td>
                 <td className="px-4 py-3 text-sm text-right text-gray-700">
                   ({formatCurrency(y2.teamCosts)})
                 </td>
+                <td className="px-4 py-3 text-sm text-center">
+                  <GrowthBadge value={growthPct(y2.teamCosts, y1.teamCosts)} />
+                </td>
                 {showY3 && (
                   <>
-                    <td className="px-4 py-3 text-sm text-center">
-                      <GrowthBadge value={growthPct(y3.teamCosts, y2.teamCosts)} />
-                    </td>
                     <td className="px-4 py-3 text-sm text-right text-gray-700">
                       ({formatCurrency(y3.teamCosts)})
+                    </td>
+                    <td className="px-4 py-3 text-sm text-center">
+                      <GrowthBadge value={growthPct(y3.teamCosts, y2.teamCosts)} />
                     </td>
                   </>
                 )}
@@ -763,6 +763,9 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                       <td className="px-4 py-2 text-sm text-right text-gray-600">
                         {person.y1 > 0 ? formatCurrency(person.y1) : '—'}
                       </td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-600">
+                        {person.y2 > 0 ? formatCurrency(person.y2) : '—'}
+                      </td>
                       <td className="px-4 py-2 text-sm text-center">
                         {person.y1 > 0 && person.y2 > 0
                           ? <GrowthBadge value={growthPct(person.y2, person.y1)} />
@@ -771,11 +774,11 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                             : <span className="text-xs text-gray-400">—</span>
                         }
                       </td>
-                      <td className="px-4 py-2 text-sm text-right text-gray-600">
-                        {person.y2 > 0 ? formatCurrency(person.y2) : '—'}
-                      </td>
                       {showY3 && (
                         <>
+                          <td className="px-4 py-2 text-sm text-right text-gray-600">
+                            {person.y3 > 0 ? formatCurrency(person.y3) : '—'}
+                          </td>
                           <td className="px-4 py-2 text-sm text-center">
                             {person.y2 > 0 && person.y3 > 0
                               ? <GrowthBadge value={growthPct(person.y3, person.y2)} />
@@ -783,9 +786,6 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                                 ? <span className="text-xs text-blue-600">New</span>
                                 : <span className="text-xs text-gray-400">—</span>
                             }
-                          </td>
-                          <td className="px-4 py-2 text-sm text-right text-gray-600">
-                            {person.y3 > 0 ? formatCurrency(person.y3) : '—'}
                           </td>
                         </>
                       )}
@@ -798,16 +798,16 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                       <td className="px-4 py-2 text-sm text-right text-gray-600">
                         {formatCurrency(state.bonuses.reduce((s, b) => s + b.amount, 0))}
                       </td>
-                      <td className="px-4 py-2" />
                       <td className="px-4 py-2 text-sm text-right text-gray-600">
                         {formatCurrency(state.bonuses.reduce((s, b) => s + b.amount, 0))}
                       </td>
+                      <td className="px-4 py-2" />
                       {showY3 && (
                         <>
-                          <td className="px-4 py-2" />
                           <td className="px-4 py-2 text-sm text-right text-gray-600">
                             {formatCurrency(state.bonuses.reduce((s, b) => s + b.amount, 0))}
                           </td>
+                          <td className="px-4 py-2" />
                         </>
                       )}
                     </tr>
@@ -850,19 +850,19 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                 <td className="px-4 py-3 text-sm text-right text-gray-700">
                   ({formatCurrency(y1.opex)})
                 </td>
-                <td className="px-4 py-3 text-sm text-center">
-                  <GrowthBadge value={growthPct(y2.opex, y1.opex)} />
-                </td>
                 <td className="px-4 py-3 text-sm text-right text-gray-700">
                   ({formatCurrency(y2.opex)})
                 </td>
+                <td className="px-4 py-3 text-sm text-center">
+                  <GrowthBadge value={growthPct(y2.opex, y1.opex)} />
+                </td>
                 {showY3 && (
                   <>
-                    <td className="px-4 py-3 text-sm text-center">
-                      <GrowthBadge value={growthPct(y3.opex, y2.opex)} />
-                    </td>
                     <td className="px-4 py-3 text-sm text-right text-gray-700">
                       ({formatCurrency(y3.opex)})
+                    </td>
+                    <td className="px-4 py-3 text-sm text-center">
+                      <GrowthBadge value={growthPct(y3.opex, y2.opex)} />
                     </td>
                   </>
                 )}
@@ -886,19 +886,19 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                         <td className="px-4 py-2 text-sm text-right text-gray-600">
                           {formatCurrency(line.y1)}
                         </td>
-                        <td className="px-4 py-2 text-sm text-center">
-                          <GrowthBadge value={growthPct(line.y2, line.y1)} />
-                        </td>
                         <td className="px-4 py-2 text-sm text-right text-gray-600">
                           {formatCurrency(line.y2)}
                         </td>
+                        <td className="px-4 py-2 text-sm text-center">
+                          <GrowthBadge value={growthPct(line.y2, line.y1)} />
+                        </td>
                         {showY3 && (
                           <>
-                            <td className="px-4 py-2 text-sm text-center">
-                              <GrowthBadge value={growthPct(line.y3, line.y2)} />
-                            </td>
                             <td className="px-4 py-2 text-sm text-right text-gray-600">
                               {formatCurrency(line.y3)}
+                            </td>
+                            <td className="px-4 py-2 text-sm text-center">
+                              <GrowthBadge value={growthPct(line.y3, line.y2)} />
                             </td>
                           </>
                         )}
@@ -937,19 +937,19 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                   <td className="px-4 py-3 text-sm text-right text-gray-700">
                     ({formatCurrency(y1.otherExpenses)})
                   </td>
-                  <td className="px-4 py-3 text-sm text-center">
-                    <GrowthBadge value={growthPct(y2.otherExpenses, y1.otherExpenses)} />
-                  </td>
                   <td className="px-4 py-3 text-sm text-right text-gray-700">
                     ({formatCurrency(y2.otherExpenses)})
                   </td>
+                  <td className="px-4 py-3 text-sm text-center">
+                    <GrowthBadge value={growthPct(y2.otherExpenses, y1.otherExpenses)} />
+                  </td>
                   {showY3 && (
                     <>
-                      <td className="px-4 py-3 text-sm text-center">
-                        <GrowthBadge value={growthPct(y3.otherExpenses, y2.otherExpenses)} />
-                      </td>
                       <td className="px-4 py-3 text-sm text-right text-gray-700">
                         ({formatCurrency(y3.otherExpenses)})
+                      </td>
+                      <td className="px-4 py-3 text-sm text-center">
+                        <GrowthBadge value={growthPct(y3.otherExpenses, y2.otherExpenses)} />
                       </td>
                     </>
                   )}
@@ -965,6 +965,7 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                   </div>
                 </td>
                 <td className="px-4 py-3 text-sm text-right font-bold">{formatCurrency(y1.netProfit)}</td>
+                <td className="px-4 py-3 text-sm text-right font-bold">{formatCurrency(y2.netProfit)}</td>
                 <td className="px-4 py-3 text-sm text-center">
                   {y1.netProfit !== 0 && y2.netProfit !== 0 ? (
                     <span className={`text-xs font-medium ${y2.netProfit >= y1.netProfit ? 'text-green-300' : 'text-red-300'}`}>
@@ -972,9 +973,9 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                     </span>
                   ) : <span className="text-white/40">—</span>}
                 </td>
-                <td className="px-4 py-3 text-sm text-right font-bold">{formatCurrency(y2.netProfit)}</td>
                 {showY3 && (
                   <>
+                    <td className="px-4 py-3 text-sm text-right font-bold">{formatCurrency(y3.netProfit)}</td>
                     <td className="px-4 py-3 text-sm text-center">
                       {y2.netProfit !== 0 && y3.netProfit !== 0 ? (
                         <span className={`text-xs font-medium ${y3.netProfit >= y2.netProfit ? 'text-green-300' : 'text-red-300'}`}>
@@ -982,7 +983,6 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                         </span>
                       ) : <span className="text-white/40">—</span>}
                     </td>
-                    <td className="px-4 py-3 text-sm text-right font-bold">{formatCurrency(y3.netProfit)}</td>
                   </>
                 )}
               </tr>
@@ -994,12 +994,12 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                   </div>
                 </td>
                 <td className="px-4 pb-3 pt-0 text-xs text-right">{formatPercent(y1.netProfitPct)}</td>
-                <td className="px-4 pb-3 pt-0"></td>
                 <td className="px-4 pb-3 pt-0 text-xs text-right">{formatPercent(y2.netProfitPct)}</td>
+                <td className="px-4 pb-3 pt-0"></td>
                 {showY3 && (
                   <>
-                    <td className="px-4 pb-3 pt-0"></td>
                     <td className="px-4 pb-3 pt-0 text-xs text-right">{formatPercent(y3.netProfitPct)}</td>
+                    <td className="px-4 pb-3 pt-0"></td>
                   </>
                 )}
               </tr>
