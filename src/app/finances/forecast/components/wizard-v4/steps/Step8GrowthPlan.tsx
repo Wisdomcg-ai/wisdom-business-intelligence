@@ -677,33 +677,37 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
               )}
 
               {/* ── Gross Profit Row ───────────────────────────────────── */}
-              <tr className="bg-green-50 border-y border-green-200">
-                <td className="px-4 py-3 text-sm font-bold text-gray-900">
+              <tr className="bg-green-50 border-t border-green-200">
+                <td className="px-4 py-2 text-sm font-bold text-green-900">
                   <div className="flex items-center gap-1.5">
                     <span className="w-4" />
                     Gross Profit
                   </div>
                 </td>
-                <td className="px-4 py-3 text-sm text-right">
-                  <span className="font-bold text-gray-900">{formatCurrency(y1.grossProfit)}</span>
-                  <span className="text-xs text-gray-500 ml-1">({formatPercent(y1.grossProfitPct)})</span>
-                </td>
-                <td className="px-4 py-3 text-sm text-center">
-                  <GrowthBadge value={growthPct(y2.grossProfit, y1.grossProfit)} />
-                </td>
-                <td className="px-4 py-3 text-sm text-right">
-                  <span className="font-bold text-gray-900">{formatCurrency(y2.grossProfit)}</span>
-                  <span className="text-xs text-gray-500 ml-1">({formatPercent(y2.grossProfitPct)})</span>
-                </td>
+                <td className="px-4 py-2 text-sm text-right font-bold text-green-900">{formatCurrency(y1.grossProfit)}</td>
+                <td className="px-4 py-2 text-sm text-center"><GrowthBadge value={growthPct(y2.grossProfit, y1.grossProfit)} /></td>
+                <td className="px-4 py-2 text-sm text-right font-bold text-green-900">{formatCurrency(y2.grossProfit)}</td>
                 {showY3 && (
                   <>
-                    <td className="px-4 py-3 text-sm text-center">
-                      <GrowthBadge value={growthPct(y3.grossProfit, y2.grossProfit)} />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-right">
-                      <span className="font-bold text-gray-900">{formatCurrency(y3.grossProfit)}</span>
-                      <span className="text-xs text-gray-500 ml-1">({formatPercent(y3.grossProfitPct)})</span>
-                    </td>
+                    <td className="px-4 py-2 text-sm text-center"><GrowthBadge value={growthPct(y3.grossProfit, y2.grossProfit)} /></td>
+                    <td className="px-4 py-2 text-sm text-right font-bold text-green-900">{formatCurrency(y3.grossProfit)}</td>
+                  </>
+                )}
+              </tr>
+              <tr className="bg-green-50 border-b border-green-200">
+                <td className="px-4 pb-2 pt-0 text-xs text-green-700">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4" />
+                    Gross Margin %
+                  </div>
+                </td>
+                <td className="px-4 pb-2 pt-0 text-xs text-right text-green-700">{formatPercent(y1.grossProfitPct)}</td>
+                <td className="px-4 pb-2 pt-0"></td>
+                <td className="px-4 pb-2 pt-0 text-xs text-right text-green-700">{formatPercent(y2.grossProfitPct)}</td>
+                {showY3 && (
+                  <>
+                    <td className="px-4 pb-2 pt-0"></td>
+                    <td className="px-4 pb-2 pt-0 text-xs text-right text-green-700">{formatPercent(y3.grossProfitPct)}</td>
                   </>
                 )}
               </tr>
@@ -954,48 +958,48 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
 
               {/* ── Net Profit Row ─────────────────────────────────────── */}
               <tr className="bg-brand-navy text-white">
-                <td className="px-4 py-4 text-sm font-bold">
+                <td className="px-4 py-3 text-sm font-bold">
                   <div className="flex items-center gap-1.5">
                     <span className="w-4" />
                     Net Profit
                   </div>
                 </td>
-                <td className="px-4 py-4 text-sm text-right">
-                  <span className="font-bold">{formatCurrency(y1.netProfit)}</span>
-                  <span className="text-xs text-white/60 ml-1">({formatPercent(y1.netProfitPct)})</span>
-                </td>
-                <td className="px-4 py-4 text-sm text-center">
+                <td className="px-4 py-3 text-sm text-right font-bold">{formatCurrency(y1.netProfit)}</td>
+                <td className="px-4 py-3 text-sm text-center">
                   {y1.netProfit !== 0 && y2.netProfit !== 0 ? (
-                    <span className={`text-xs font-medium ${
-                      y2.netProfit >= y1.netProfit ? 'text-green-300' : 'text-red-300'
-                    }`}>
+                    <span className={`text-xs font-medium ${y2.netProfit >= y1.netProfit ? 'text-green-300' : 'text-red-300'}`}>
                       {formatGrowth(growthPct(y2.netProfit, y1.netProfit))}
                     </span>
-                  ) : (
-                    <span className="text-white/40">—</span>
-                  )}
+                  ) : <span className="text-white/40">—</span>}
                 </td>
-                <td className="px-4 py-4 text-sm text-right">
-                  <span className="font-bold">{formatCurrency(y2.netProfit)}</span>
-                  <span className="text-xs text-white/60 ml-1">({formatPercent(y2.netProfitPct)})</span>
-                </td>
+                <td className="px-4 py-3 text-sm text-right font-bold">{formatCurrency(y2.netProfit)}</td>
                 {showY3 && (
                   <>
-                    <td className="px-4 py-4 text-sm text-center">
+                    <td className="px-4 py-3 text-sm text-center">
                       {y2.netProfit !== 0 && y3.netProfit !== 0 ? (
-                        <span className={`text-xs font-medium ${
-                          y3.netProfit >= y2.netProfit ? 'text-green-300' : 'text-red-300'
-                        }`}>
+                        <span className={`text-xs font-medium ${y3.netProfit >= y2.netProfit ? 'text-green-300' : 'text-red-300'}`}>
                           {formatGrowth(growthPct(y3.netProfit, y2.netProfit))}
                         </span>
-                      ) : (
-                        <span className="text-white/40">—</span>
-                      )}
+                      ) : <span className="text-white/40">—</span>}
                     </td>
-                    <td className="px-4 py-4 text-sm text-right">
-                      <span className="font-bold">{formatCurrency(y3.netProfit)}</span>
-                      <span className="text-xs text-white/60 ml-1">({formatPercent(y3.netProfitPct)})</span>
-                    </td>
+                    <td className="px-4 py-3 text-sm text-right font-bold">{formatCurrency(y3.netProfit)}</td>
+                  </>
+                )}
+              </tr>
+              <tr className="bg-brand-navy text-white/70">
+                <td className="px-4 pb-3 pt-0 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4" />
+                    Net Margin %
+                  </div>
+                </td>
+                <td className="px-4 pb-3 pt-0 text-xs text-right">{formatPercent(y1.netProfitPct)}</td>
+                <td className="px-4 pb-3 pt-0"></td>
+                <td className="px-4 pb-3 pt-0 text-xs text-right">{formatPercent(y2.netProfitPct)}</td>
+                {showY3 && (
+                  <>
+                    <td className="px-4 pb-3 pt-0"></td>
+                    <td className="px-4 pb-3 pt-0 text-xs text-right">{formatPercent(y3.netProfitPct)}</td>
                   </>
                 )}
               </tr>
