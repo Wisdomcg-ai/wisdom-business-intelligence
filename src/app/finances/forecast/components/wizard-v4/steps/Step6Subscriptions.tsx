@@ -225,6 +225,42 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
       if (accountList.length === 0) {
         setError('No expense accounts found in your Xero Chart of Accounts.');
       }
+
+      // Check for previously saved subscription budgets — if they exist, restore them
+      try {
+        const budgetRes = await fetch(`/api/subscription-budgets?business_id=${businessId}`);
+        if (budgetRes.ok) {
+          const budgetData = await budgetRes.json();
+          if (budgetData.budgets && budgetData.budgets.length > 0) {
+            const existingVendors: VendorBudget[] = budgetData.budgets.map((b: any) => ({
+              vendorName: b.vendor_name,
+              vendorKey: b.vendor_key,
+              suggestedFrequency: b.frequency || 'monthly',
+              frequency: b.frequency || 'monthly',
+              confidence: 'high' as const,
+              monthlyBudget: b.monthly_budget || 0,
+              priorFYAmount: b.last_12_months_spend || 0,
+              priorFYCount: b.transaction_count || 0,
+              currentFYAmount: 0,
+              currentFYCount: 0,
+              totalAmount: b.last_12_months_spend || 0,
+              transactionCount: b.transaction_count || 0,
+              avgAmount: b.avg_transaction_amount || 0,
+              firstTransaction: '',
+              lastTransaction: b.last_transaction_date || '',
+              transactions: [],
+              monthsSpan: 12,
+              accountCodes: b.account_codes || [],
+              isActive: b.is_active !== false,
+            }));
+            setVendors(existingVendors);
+            setPhase('review');
+            console.log('[Subscriptions] Restored', existingVendors.length, 'saved budgets');
+          }
+        }
+      } catch (budgetErr) {
+        console.warn('[Subscriptions] Could not load saved budgets:', budgetErr);
+      }
     } catch (err) {
       console.error('Error loading accounts:', err);
       // Network error — also fall back to manual mode
