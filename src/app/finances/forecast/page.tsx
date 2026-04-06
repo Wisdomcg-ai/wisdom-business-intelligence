@@ -384,99 +384,62 @@ export default function FinancialForecastPage() {
     return forecastMonths.length === 0 || forecastMonths.every(key => !line.forecast_months[key])
   })
 
-  // Show welcome screen for new forecasts
+  // Skip welcome screen — go straight to forecast selector/wizard
   if (isNewForecast && !showWizardV4 && !skipWelcome) {
     return (
       <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
-        <div className="max-w-2xl mx-auto pt-8 sm:pt-12">
-          <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8 text-center">
-            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-brand-navy-100 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
-              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-brand-navy" />
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2 sm:mb-3">
-              Build Your FY{forecast.fiscal_year} Forecast
-            </h1>
-            <p className="text-sm sm:text-base text-gray-600 mb-6 sm:mb-8 max-w-md mx-auto">
-              Your AI CFO will guide you through building a comprehensive financial forecast for your business.
-            </p>
+        {/* Auto-show forecast selector — no welcome/start screen */}
+        <ForecastSelector
+          businessId={businessId}
+          businessName={activeBusiness?.name}
+          fiscalYear={forecast.fiscal_year}
+          onSelectForecast={(id, name) => {
+            setSelectedForecastId(id)
+            setSelectedForecastName(name)
+            setWizardStartFresh(false)
+            setShowWizardV4(true)
+          }}
+          onCreateNew={() => {
+            setSelectedForecastId(null)
+            setSelectedForecastName(null)
+            setWizardStartFresh(true)
+            setShowWizardV4(true)
+          }}
+          onClose={() => setSkipWelcome(true)}
+        />
+      </div>
+    )
+  }
 
-            <div className="space-y-3 sm:space-y-4">
-              <button
-                onClick={() => setShowForecastSelector(true)}
-                className="w-full flex items-center justify-center gap-2 sm:gap-3 px-4 sm:px-6 py-3 sm:py-4 bg-brand-navy text-white rounded-xl hover:bg-brand-navy-800 transition-colors font-semibold text-base sm:text-lg"
-              >
-                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
-                Start Forecast Builder
-              </button>
-
-              <button
-                onClick={() => setSkipWelcome(true)}
-                className="w-full px-4 sm:px-6 py-2.5 sm:py-3 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors font-medium text-sm sm:text-base"
-              >
-                Build manually
-              </button>
-            </div>
-
-            <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-100">
-              <p className="text-xs sm:text-sm text-gray-500">
-                The AI CFO will help you set revenue goals, plan your team costs, review operating expenses, and generate a complete forecast.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Forecast Wizard V4 */}
-        {showWizardV4 && (
-          <ForecastWizardV4
-            businessId={businessId}
-            businessName={activeBusiness?.name}
-            fiscalYear={forecast.fiscal_year}
-            existingForecastId={selectedForecastId}
-            existingForecastName={selectedForecastName}
-            initialStep={wizardStartStep}
-            startFresh={wizardStartFresh}
-            onComplete={(forecastId) => {
-              setShowWizardV4(false)
-              setSelectedForecastId(null)
-              setSelectedForecastName(null)
-              setWizardStartStep(undefined)
-              setWizardStartFresh(false)
-              loadInitialData()
-              toast.success('Forecast generated successfully!')
-            }}
-            onClose={() => {
-              setShowWizardV4(false)
-              setSelectedForecastId(null)
-              setSelectedForecastName(null)
-              setWizardStartStep(undefined)
-              setWizardStartFresh(false)
-            }}
-          />
-        )}
-
-        {/* Forecast Selector Modal */}
-        {showForecastSelector && (
-          <ForecastSelector
-            businessId={businessId}
-            businessName={activeBusiness?.name}
-            fiscalYear={forecast.fiscal_year}
-            onSelectForecast={(id, name) => {
-              setSelectedForecastId(id)
-              setSelectedForecastName(name)
-              setWizardStartFresh(false)
-              setShowForecastSelector(false)
-              setShowWizardV4(true)
-            }}
-            onCreateNew={() => {
-              setSelectedForecastId(null)
-              setSelectedForecastName(null)
-              setWizardStartFresh(true)
-              setShowForecastSelector(false)
-              setShowWizardV4(true)
-            }}
-            onClose={() => setShowForecastSelector(false)}
-          />
-        )}
+  // Show wizard when selected from selector
+  if (isNewForecast && showWizardV4) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+        <ForecastWizardV4
+          businessId={businessId}
+          businessName={activeBusiness?.name}
+          fiscalYear={forecast.fiscal_year}
+          existingForecastId={selectedForecastId}
+          existingForecastName={selectedForecastName}
+          initialStep={wizardStartStep}
+          startFresh={wizardStartFresh}
+          onComplete={(forecastId) => {
+            setShowWizardV4(false)
+            setSelectedForecastId(null)
+            setSelectedForecastName(null)
+            setWizardStartStep(undefined)
+            setWizardStartFresh(false)
+            loadInitialData()
+            toast.success('Forecast generated successfully!')
+          }}
+          onClose={() => {
+            setShowWizardV4(false)
+            setSelectedForecastId(null)
+            setSelectedForecastName(null)
+            setWizardStartStep(undefined)
+            setWizardStartFresh(false)
+          }}
+        />
       </div>
     )
   }
