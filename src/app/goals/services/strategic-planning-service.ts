@@ -51,7 +51,7 @@ export class StrategicPlanningService {
     businessId: string,
     userId: string,
     initiatives: StrategicInitiative[],
-    stepType: 'strategic_ideas' | 'roadmap' | 'twelve_month' | 'q1' | 'q2' | 'q3' | 'q4' | 'sprint'
+    stepType: 'strategic_ideas' | 'roadmap' | 'twelve_month' | 'q1' | 'q2' | 'q3' | 'q4' | 'sprint' | 'current_remainder'
   ): Promise<{ success: boolean; error?: string; insertedIds?: string[] }> {
     // Track inserted IDs to return to caller for state update
     let insertedIds: string[] = []
@@ -214,7 +214,7 @@ export class StrategicPlanningService {
    */
   static async loadInitiatives(
     businessId: string,
-    stepType: 'strategic_ideas' | 'roadmap' | 'twelve_month' | 'q1' | 'q2' | 'q3' | 'q4' | 'sprint'
+    stepType: 'strategic_ideas' | 'roadmap' | 'twelve_month' | 'q1' | 'q2' | 'q3' | 'q4' | 'sprint' | 'current_remainder'
   ): Promise<StrategicInitiative[]> {
     try {
       if (!businessId) {

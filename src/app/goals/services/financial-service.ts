@@ -21,7 +21,8 @@ export class FinancialService {
     financialData: FinancialData,
     yearType: 'FY' | 'CY',
     coreMetrics?: CoreMetricsData,
-    quarterlyTargets?: Record<string, { q1: string; q2: string; q3: string; q4: string }>
+    quarterlyTargets?: Record<string, { q1: string; q2: string; q3: string; q4: string }>,
+    extendedPeriod?: { isExtendedPeriod: boolean; year1Months: number; currentYearRemainingMonths: number }
   ): Promise<{ success: boolean; error?: string }> {
     try {
       if (!businessId || !userId) {
@@ -105,6 +106,12 @@ export class FinancialService {
         quarterly_targets: quarterlyTargets || {},
 
         year_type: yearType,
+
+        // Extended period metadata
+        is_extended_period: extendedPeriod?.isExtendedPeriod ?? false,
+        year1_months: extendedPeriod?.year1Months ?? 12,
+        current_year_remaining_months: extendedPeriod?.currentYearRemainingMonths ?? 0,
+
         updated_at: new Date().toISOString()
       }
 
@@ -136,11 +143,12 @@ export class FinancialService {
     coreMetrics: CoreMetricsData | null
     yearType: 'FY' | 'CY'
     quarterlyTargets: Record<string, { q1: string; q2: string; q3: string; q4: string }>
+    extendedPeriod: { isExtendedPeriod: boolean; year1Months: number; currentYearRemainingMonths: number }
     error?: string
   }> {
     try {
       if (!businessId) {
-        return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, error: 'Business ID required' }
+        return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 }, error: 'Business ID required' }
       }
 
       console.log(`[Financial Service] 📥 Loading financial goals for business ${businessId}`)
@@ -155,15 +163,15 @@ export class FinancialService {
         // If no data found, return null (not an error)
         if (error.code === 'PGRST116') {
           console.log('[Financial Service] ℹ️ No financial goals found (first time user)')
-          return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {} }
+          return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 } }
         }
 
         console.error('[Financial Service] ❌ Error loading financial goals:', error)
-        return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, error: error.message }
+        return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 }, error: error.message }
       }
 
       if (!data) {
-        return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {} }
+        return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 } }
       }
 
       const financialData: FinancialData = {
@@ -246,11 +254,18 @@ export class FinancialService {
 
       console.log('[Financial Service] ✅ Successfully loaded financial goals')
 
+      const extendedPeriod = {
+        isExtendedPeriod: data.is_extended_period ?? false,
+        year1Months: data.year1_months ?? 12,
+        currentYearRemainingMonths: data.current_year_remaining_months ?? 0
+      }
+
       return {
         financialData,
         coreMetrics,
         yearType: (data.year_type as 'FY' | 'CY') || 'FY',
-        quarterlyTargets: (data.quarterly_targets as Record<string, { q1: string; q2: string; q3: string; q4: string }>) || {}
+        quarterlyTargets: (data.quarterly_targets as Record<string, { q1: string; q2: string; q3: string; q4: string }>) || {},
+        extendedPeriod
       }
     } catch (err) {
       console.error('[Financial Service] ❌ Error loading financial goals:', err)
@@ -259,6 +274,7 @@ export class FinancialService {
         coreMetrics: null,
         yearType: 'FY',
         quarterlyTargets: {},
+        extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 },
         error: err instanceof Error ? err.message : 'Unknown error'
       }
     }
