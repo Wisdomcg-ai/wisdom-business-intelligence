@@ -21,6 +21,7 @@ interface Step1Props {
   showKPIModal: boolean
   setShowKPIModal: (show: boolean) => void
   businessId?: string
+  extendedPeriodInfo?: { isExtendedPeriod: boolean; year1Months: number; currentYearRemainingMonths: number }
 }
 
 export default function Step1GoalsAndKPIs({
@@ -39,7 +40,8 @@ export default function Step1GoalsAndKPIs({
   industry,
   showKPIModal,
   setShowKPIModal,
-  businessId
+  businessId,
+  extendedPeriodInfo
 }: Step1Props) {
   return (
     <div className="space-y-6">
@@ -101,6 +103,7 @@ export default function Step1GoalsAndKPIs({
         industry={industry}
         coreMetrics={coreMetrics}
         updateCoreMetric={updateCoreMetric}
+        extendedPeriodInfo={extendedPeriodInfo}
       />
 
       {/* Optional Section Header */}

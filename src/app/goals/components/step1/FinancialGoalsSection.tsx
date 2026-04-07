@@ -16,6 +16,7 @@ interface FinancialGoalsSectionProps {
   industry: string
   coreMetrics: CoreMetricsData
   updateCoreMetric: (metric: keyof CoreMetricsData, period: 'current' | 'year1' | 'year2' | 'year3', value: number) => void
+  extendedPeriodInfo?: { isExtendedPeriod: boolean; year1Months: number; currentYearRemainingMonths: number }
 }
 
 export default function FinancialGoalsSection({
@@ -26,7 +27,8 @@ export default function FinancialGoalsSection({
   onToggle,
   industry,
   coreMetrics,
-  updateCoreMetric
+  updateCoreMetric,
+  extendedPeriodInfo
 }: FinancialGoalsSectionProps) {
   const currentYear = new Date().getFullYear()
   const [showCalculator, setShowCalculator] = useState(false)
@@ -101,7 +103,7 @@ export default function FinancialGoalsSection({
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     {(['current', 'year1', 'year2', 'year3'] as const).map((period, idx) => {
-                      const label = getYearLabel(idx, yearType, currentYear)
+                      const label = getYearLabel(idx, yearType, currentYear, extendedPeriodInfo)
                       return (
                         <div key={period}>
                           <label className="text-xs text-gray-500 block mb-1">
@@ -139,7 +141,7 @@ export default function FinancialGoalsSection({
                       Financial Metric
                     </th>
                     {[0, 1, 2, 3].map(idx => {
-                      const label = getYearLabel(idx, yearType, currentYear)
+                      const label = getYearLabel(idx, yearType, currentYear, extendedPeriodInfo)
                       return (
                         <th key={idx} className="text-center p-3 text-sm font-bold text-gray-700 w-[150px]">
                           <div>{label.main}</div>

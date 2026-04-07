@@ -246,6 +246,10 @@ function StrategicPlanningContent() {
     sprintKeyActions,
     operationalActivities,
     setOperationalActivities,
+    // Extended period (Phase 14)
+    isExtendedPeriod,
+    year1Months,
+    currentYearRemainingMonths,
     // Save
     saveAllData
   } = useStrategicPlanning(activeBusiness?.id)
@@ -962,6 +966,11 @@ function StrategicPlanningContent() {
                 showKPIModal={showKPIModal}
                 setShowKPIModal={setShowKPIModal}
                 businessId={businessId}
+                extendedPeriodInfo={{
+                  isExtendedPeriod,
+                  year1Months,
+                  currentYearRemainingMonths
+                }}
               />
             </div>
           )}
