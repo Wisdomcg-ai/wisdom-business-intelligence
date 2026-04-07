@@ -118,7 +118,9 @@ const ACCOUNTING_PACKAGES = [
   },
 ];
 
-const MONTHS = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+
+const MONTHS = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
 
 export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2PriorYearProps) {
   const { priorYear } = state;
@@ -201,7 +203,35 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
 
     setIsLoadingInsights(true);
 
-    // Use locally-generated insights (AI endpoint not yet available)
+    try {
+      const response = await fetch('/api/ai/forecast-insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'prior-year-insights',
+          data: {
+            priorYear,
+            currentYTD,
+            fiscalYear,
+            industry: state.businessProfile?.industry || null,
+          },
+        }),
+      });
+
+      if (response.ok) {
+        const { result } = await response.json();
+        if (result?.insights?.length > 0) {
+          setInsights(result.insights.slice(0, 4));
+          setInsightsLoaded(true);
+          setIsLoadingInsights(false);
+          return;
+        }
+      }
+    } catch (error) {
+      console.warn('[Step2] AI insights failed, using fallback:', error);
+    }
+
+    // Fallback to locally-generated insights
     setInsights(generatePlaceholderInsights());
     setInsightsLoaded(true);
     setIsLoadingInsights(false);
@@ -386,9 +416,10 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
     // Check if we have actual monthly data or need to derive from seasonality
     const hasMonthlyData = Object.keys(priorYear.revenue.byMonth || {}).length > 0;
 
+    const yearStartMonth = DEFAULT_YEAR_START_MONTH;
     for (let i = 0; i < 12; i++) {
-      const month = ((6 + i) % 12) + 1; // Jul=7, Aug=8, ..., Jun=6
-      const year = month >= 7 ? fyStartYear : fyStartYear + 1;
+      const month = ((yearStartMonth - 1 + i) % 12) + 1;
+      const year = month >= yearStartMonth ? fyStartYear : fyStartYear + 1;
       const monthKey = `${year}-${String(month).padStart(2, '0')}`;
       const currentYearKey = `${year + 1}-${String(month).padStart(2, '0')}`;
 

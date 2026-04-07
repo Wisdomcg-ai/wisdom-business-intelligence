@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Lightbulb,
   ChevronRight, ChevronDown, Users, Building2, Receipt, Wallet,
-  Target, ArrowRight, ToggleLeft, ToggleRight, Sparkles, FileCheck
+  Target, ArrowRight, ToggleLeft, ToggleRight, Sparkles, FileCheck, Loader2
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine
@@ -279,6 +279,58 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
   const [activeYear, setActiveYear] = useState<1 | 2 | 3>(1);
   const [whatIfToggles, setWhatIfToggles] = useState<WhatIfToggle[]>([]);
 
+  // ─── AI Narrative ─────────────────────────────────────────────────────────
+  const [aiNarrative, setAiNarrative] = useState<string | null>(null);
+  const [aiSentiment, setAiSentiment] = useState<string | null>(null);
+  const [isLoadingNarrative, setIsLoadingNarrative] = useState(false);
+  const [narrativeLoaded, setNarrativeLoaded] = useState(false);
+
+  // ─── AI Scenario ──────────────────────────────────────────────────────────
+  const [aiScenarioLoaded, setAiScenarioLoaded] = useState(false);
+
+  const loadAiNarrative = useCallback(async () => {
+    if (narrativeLoaded || summary.year1.revenue === 0) return;
+    setIsLoadingNarrative(true);
+    try {
+      const response = await fetch('/api/ai/forecast-insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'review-narrative',
+          data: {
+            summary,
+            goals: state.goals,
+            fiscalYear,
+            forecastDuration,
+            teamCount: state.teamMembers.length + state.newHires.length,
+            newHireCount: state.newHires.length,
+          },
+        }),
+      });
+      if (response.ok) {
+        const { result } = await response.json();
+        if (result?.narrative) {
+          setAiNarrative(result.narrative);
+          setAiSentiment(result.sentiment || null);
+        }
+      }
+    } catch (error) {
+      console.warn('[Step8] AI narrative failed:', error);
+    } finally {
+      setIsLoadingNarrative(false);
+      setNarrativeLoaded(true);
+    }
+  }, [summary, state.goals, fiscalYear, forecastDuration, state.teamMembers.length, state.newHires.length, narrativeLoaded]);
+
+  // Load narrative when summary has data (with cleanup on unmount)
+  useEffect(() => {
+    const controller = new AbortController();
+    if (summary.year1.revenue > 0 && !narrativeLoaded) {
+      loadAiNarrative();
+    }
+    return () => controller.abort();
+  }, [summary.year1.revenue, narrativeLoaded, loadAiNarrative]);
+
   // Get the active year's summary
   const getYearData = (yr: 1 | 2 | 3): YearlySummary => {
     if (yr === 1) return summary.year1;
@@ -368,6 +420,69 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
 
   // Initialize toggles from base
   useEffect(() => { setWhatIfToggles(baseToggles); }, [baseToggles]);
+
+  // Load AI-suggested scenario (with cleanup on unmount)
+  useEffect(() => {
+    if (aiScenarioLoaded || summary.year1.revenue === 0) return;
+    setAiScenarioLoaded(true);
+
+    const controller = new AbortController();
+
+    const revenueLines = state.revenueLines.map(l => {
+      const total = Object.values(l.year1Monthly).reduce((a: number, b: number) => a + b, 0);
+      return { name: l.name, total, pctOfTotal: summary.year1.revenue > 0 ? (total / summary.year1.revenue) * 100 : 0 };
+    });
+
+    const topExpenses = state.opexLines
+      .map(l => ({ name: l.name, total: l.monthlyAmount ? l.monthlyAmount * 12 : l.priorYearAnnual }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+
+    fetch('/api/ai/forecast-insights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        type: 'scenario-suggestion',
+        data: {
+          summary,
+          fiscalYear,
+          revenueLines,
+          topExpenses,
+          newHireCount: state.newHires.length,
+        },
+      }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (controller.signal.aborted) return;
+        if (data?.result?.scenario) {
+          const s = data.result.scenario;
+          const impact = (s.revenueAdj || 0) - (s.cogsAdj || 0) - (s.teamAdj || 0) - (s.opexAdj || 0);
+          const aiToggle: WhatIfToggle = {
+            id: 'ai-suggested',
+            label: s.label,
+            description: s.description,
+            enabled: false,
+            impact,
+            revenueAdj: s.revenueAdj || 0,
+            cogsAdj: s.cogsAdj || 0,
+            teamAdj: s.teamAdj || 0,
+            opexAdj: s.opexAdj || 0,
+            otherAdj: 0,
+          };
+          setWhatIfToggles(prev => {
+            if (prev.some(t => t.id === 'ai-suggested')) return prev;
+            return [aiToggle, ...prev];
+          });
+        }
+      })
+      .catch(err => {
+        if (err?.name !== 'AbortError') console.warn('[Step8] AI scenario failed:', err);
+      });
+
+    return () => controller.abort();
+  }, [summary.year1.revenue, aiScenarioLoaded]);
 
   const toggleWhatIf = (id: string) => {
     setWhatIfToggles(prev => prev.map(t =>
@@ -573,17 +688,26 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
             style={{ width: `${(completedCount / completionSteps.length) * 100}%` }}
           />
         </div>
-        {/* AI Verdict */}
+        {/* AI Narrative Summary */}
         {summary.year1.revenue > 0 && (
           <div className="flex items-start gap-3 bg-gray-50 rounded-lg p-4">
             <Sparkles className="w-5 h-5 text-brand-navy flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-gray-700">
-              {summary.year1.netProfitPct >= (yearGoals?.netProfitPct || 0) ? (
-                <>Your plan achieves <strong>{formatPercent(summary.year1.netProfitPct)}</strong> net margin on <strong>{formatCurrency(summary.year1.revenue)}</strong> revenue{forecastDuration >= 2 && summary.year2 ? <>, growing to <strong>{formatPercent(summary.year2.netProfitPct)}</strong> by FY{fiscalYear + 1}</> : ''}. Looking strong.</>
-              ) : (
-                <>Your plan shows <strong>{formatPercent(summary.year1.netProfitPct)}</strong> net margin on <strong>{formatCurrency(summary.year1.revenue)}</strong> revenue — <strong>{formatPercent((yearGoals?.netProfitPct || 0) - summary.year1.netProfitPct)}</strong> below your goal. Review the insights below to close the gap.</>
-              )}
-            </p>
+            {isLoadingNarrative ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Analysing your forecast...</span>
+              </div>
+            ) : aiNarrative ? (
+              <p className="text-sm text-gray-700 leading-relaxed">{aiNarrative}</p>
+            ) : (
+              <p className="text-sm text-gray-700">
+                {summary.year1.netProfitPct >= (yearGoals?.netProfitPct || 0) ? (
+                  <>Your plan achieves <strong>{formatPercent(summary.year1.netProfitPct)}</strong> net margin on <strong>{formatCurrency(summary.year1.revenue)}</strong> revenue{forecastDuration >= 2 && summary.year2 ? <>, growing to <strong>{formatPercent(summary.year2.netProfitPct)}</strong> by FY{fiscalYear + 1}</> : ''}. Looking strong.</>
+                ) : (
+                  <>Your plan shows <strong>{formatPercent(summary.year1.netProfitPct)}</strong> net margin on <strong>{formatCurrency(summary.year1.revenue)}</strong> revenue — <strong>{formatPercent((yearGoals?.netProfitPct || 0) - summary.year1.netProfitPct)}</strong> below your goal. Review the insights below to close the gap.</>
+                )}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -874,18 +998,27 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
                 key={toggle.id}
                 onClick={() => toggleWhatIf(toggle.id)}
                 className={`w-full flex items-center justify-between p-4 rounded-lg border transition-all text-left ${
-                  toggle.enabled
+                  toggle.id === 'ai-suggested' && !toggle.enabled
+                    ? 'border-purple-200 hover:border-purple-300 bg-purple-50/50'
+                    : toggle.enabled
                     ? 'border-brand-navy bg-brand-navy/5'
                     : 'border-gray-200 hover:border-gray-300 bg-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  {toggle.enabled
+                  {toggle.id === 'ai-suggested' && !toggle.enabled
+                    ? <Sparkles className="w-5 h-5 text-purple-500 flex-shrink-0" />
+                    : toggle.enabled
                     ? <ToggleRight className="w-6 h-6 text-brand-navy flex-shrink-0" />
                     : <ToggleLeft className="w-6 h-6 text-gray-300 flex-shrink-0" />
                   }
                   <div>
-                    <div className="text-sm font-medium text-gray-900">{toggle.label}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">{toggle.label}</span>
+                      {toggle.id === 'ai-suggested' && (
+                        <span className="text-[10px] font-medium uppercase tracking-wider text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded">AI</span>
+                      )}
+                    </div>
                     <div className="text-xs text-gray-500">{toggle.description}</div>
                   </div>
                 </div>

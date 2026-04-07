@@ -81,11 +81,11 @@
 - [ ] Cashflow tool integration — read PlannedSpend data (outright/finance/lease monthly commitments)
 - [ ] Change tracking — flag when client edits forecast between coaching sessions
 
-### Phase 12b: AI Enhancements
+### Phase 12b: AI Enhancements [COMPLETE]
 **Goal:** Better use of existing AI infrastructure (endpoints already working)
-- [ ] G1: Step 2 — Real AI insights replacing placeholder generator (API exists, UI exists, just needs the call)
-- [ ] G2: Step 9 — AI narrative summary at top of Review ("This forecast shows...")
-- [ ] G3: What-If — AI-suggested scenario based on forecast data ("I'd test: what if your biggest line drops 20%")
+- [x] G1: Step 2 — Real AI insights replacing placeholder generator (Claude Haiku via /api/ai/forecast-insights)
+- [x] G2: Step 9 — AI narrative summary at top of Review (replaces templated verdict, falls back gracefully)
+- [x] G3: What-If — AI-suggested scenario based on forecast data (purple "AI" badge, data-driven)
 
 ---
 
@@ -103,14 +103,14 @@
 
 ## Milestone 3: Annual Planning Cycle & Forecast Rollover
 
-### Phase 13: Year Type Foundation
+### Phase 13: Year Type Foundation [COMPLETE]
 **Goal:** Support both FY (Jul-Jun) and CY (Jan-Dec) businesses
-- [ ] Make year start month configurable per business (stored in business_profiles)
-- [ ] Refactor generateMonthKeys() to use business year type
-- [ ] Refactor getForecastFiscalYear() to use business year type
-- [ ] Refactor calculateForecastPeriods() to use business year type
-- [ ] Update month labels, seasonality mapping, quarter boundaries
-- [ ] Add fiscal_year column to strategic_initiatives table
+- [x] Central utility module (src/lib/utils/fiscal-year-utils.ts) — all date-boundary logic parameterized by yearStartMonth
+- [x] DB migration: fiscal_year_start on business_profiles, fiscal_year on strategic_initiatives
+- [x] Refactored generateMonthKeys(), getForecastFiscalYear(), calculateForecastPeriods() to use central utility
+- [x] Updated 15+ wizard components (Step2, Step4, Step5, Step8, BudgetTracker, useForecastWizard, parsePLFile, opex-classifier)
+- [x] Updated non-forecast files (dashboard, quarterly review, monthly report, live forecast hooks)
+- [x] Quarter logic via getQuarterDefs() / getQuarterForMonth() — fully configurable
 
 ### Phase 14: Goals Wizard — First-Time Extended Period
 **Goal:** New clients within 3 months of year end get 13-15 month first plan
