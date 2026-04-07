@@ -74,12 +74,11 @@
 ### Phase 11: Forecast Page Flow [COMPLETE]
 - [x] Skip welcome screen — go straight to forecast selector
 
-### Phase 12: Remaining Wizard Items
-**Status:** Planned
-- [ ] F1: Step 4 Team — Collapsible detail rows (deferred — 2890-line file, high-risk refactor)
-- [ ] COGS Y2/Y3 trend selector per line (Same / Improves / Increases)
-- [ ] Cashflow tool integration — read PlannedSpend data (outright/finance/lease monthly commitments)
-- [ ] Change tracking — flag when client edits forecast between coaching sessions
+### Phase 12: Remaining Wizard Items [COMPLETE]
+- [x] COGS Y2/Y3 trend selector per line (Same / Improves / Increases)
+- [x] Cashflow tool integration — PlannedSpend feeds cashflow engine (outright/finance/lease monthly commitments)
+- [x] Change tracking — "Modified since last review" badge + "Mark as reviewed" button
+- [x] Step 4 Team — Collapsible detail columns (show/hide rate, hours, bonus, commission)
 
 ### Phase 12b: AI Enhancements [COMPLETE]
 **Goal:** Better use of existing AI infrastructure (endpoints already working)

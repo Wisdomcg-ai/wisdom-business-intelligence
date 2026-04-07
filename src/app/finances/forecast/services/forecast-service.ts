@@ -152,7 +152,8 @@ export class ForecastService {
         actual_end_month: periods.actual_end_month,
         forecast_start_month: periods.forecast_start_month,
         forecast_end_month: periods.forecast_end_month,
-        is_completed: false
+        is_completed: false,
+        last_reviewed_at: new Date().toISOString(),
       }
 
       const { data: created, error: createError } = await this.supabase

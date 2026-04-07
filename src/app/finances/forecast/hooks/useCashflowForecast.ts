@@ -11,10 +11,27 @@ import type {
 } from '../types'
 import { generateCashflowForecast, getDefaultCashflowAssumptions } from '@/lib/cashflow/engine'
 
+interface PlannedSpendItem {
+  id: string
+  description: string
+  amount: number
+  month: number
+  spendType: 'asset' | 'one-off' | 'monthly'
+  paymentMethod: 'outright' | 'finance' | 'lease'
+  financeTerm?: number
+  financeRate?: number
+  financeMonthlyPayment?: number
+  leaseTerm?: number
+  leaseMonthlyPayment?: number
+  usefulLifeYears?: number
+  annualDepreciation?: number
+}
+
 interface UseCashflowForecastOptions {
   forecast: FinancialForecast | null
   plLines: PLLine[]
   businessId: string
+  plannedSpends?: PlannedSpendItem[]
 }
 
 interface UseCashflowForecastReturn {
@@ -32,6 +49,7 @@ export function useCashflowForecast({
   forecast,
   plLines,
   businessId,
+  plannedSpends = [],
 }: UseCashflowForecastOptions): UseCashflowForecastReturn {
   const [assumptions, setAssumptions] = useState<CashflowAssumptions>(getDefaultCashflowAssumptions())
   const [payrollSummary, setPayrollSummary] = useState<PayrollSummary | null>(null)
@@ -82,12 +100,12 @@ export function useCashflowForecast({
     if (!forecast || !loaded || plLines.length === 0) return null
 
     try {
-      return generateCashflowForecast(plLines, payrollSummary, assumptions, forecast)
+      return generateCashflowForecast(plLines, payrollSummary, assumptions, forecast, plannedSpends)
     } catch (err) {
       console.error('[useCashflowForecast] Engine error:', err)
       return null
     }
-  }, [plLines, payrollSummary, assumptions, forecast, loaded])
+  }, [plLines, payrollSummary, assumptions, forecast, loaded, plannedSpends])
 
   const updateAssumption = useCallback(<K extends keyof CashflowAssumptions>(key: K, value: CashflowAssumptions[K]) => {
     setAssumptions(prev => ({ ...prev, [key]: value }))

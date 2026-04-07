@@ -141,6 +141,7 @@ export interface FinancialForecast {
   xero_connection_id?: string
   created_at?: string
   updated_at?: string
+  last_reviewed_at?: string // When coach last reviewed — if updated_at > this, client has edited
   currency?: Currency // Default: AUD
 
   // Versioning fields

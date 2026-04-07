@@ -1314,6 +1314,15 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
   const [showAddContractor, setShowAddContractor] = useState(false);
   const [showAddHire, setShowAddHire] = useState(false);
   const [hireType, setHireType] = useState<'employee' | 'contractor'>('employee');
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const toggleRowExpand = useCallback((id: string) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
 
   const defaultStartMonth = useMemo(() => getDefaultStartMonth(fiscalYear), [fiscalYear]);
 
@@ -1724,6 +1733,8 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
   };
 
   // Table component
+  const [showDetailColumns, setShowDetailColumns] = useState(false);
+
   const TeamTable = ({
     rows,
     isContractor = false,
@@ -1734,6 +1745,15 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
     totals: { salary?: number; cost?: number; super?: number; bonus: number; commission?: number; total: number };
   }) => (
     <div className="overflow-x-auto">
+      <div className="flex justify-end mb-1">
+        <button
+          onClick={() => setShowDetailColumns(!showDetailColumns)}
+          className="text-xs text-brand-navy hover:underline flex items-center gap-1"
+        >
+          {showDetailColumns ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          {showDetailColumns ? 'Hide details' : 'Show details (rate, hours, bonus, commission)'}
+        </button>
+      </div>
       <table className="w-full text-sm">
         {/* Define column widths for consistent alignment */}
         <colgroup>
@@ -1742,12 +1762,12 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
           <col style={{ width: '85px' }} /> {/* Type */}
           <col style={{ width: '110px' }} /> {/* Status */}
           <col style={{ width: '95px' }} /> {/* Salary/Cost */}
-          <col style={{ width: '80px' }} /> {/* Rate */}
-          <col style={{ width: '60px' }} /> {/* Hours */}
-          {!isContractor && <col style={{ width: '80px' }} />} {/* Super - employees only */}
-          <col style={{ width: '70px' }} /> {/* Bonus */}
-          <col style={{ width: '55px' }} /> {/* Comm % / HC */}
-          {!isContractor && <col style={{ width: '70px' }} />} {/* Comm $ - employees only */}
+          {showDetailColumns && <col style={{ width: '80px' }} />} {/* Rate */}
+          {showDetailColumns && <col style={{ width: '60px' }} />} {/* Hours */}
+          {showDetailColumns && !isContractor && <col style={{ width: '80px' }} />} {/* Super */}
+          {showDetailColumns && <col style={{ width: '70px' }} />} {/* Bonus */}
+          {showDetailColumns && <col style={{ width: '55px' }} />} {/* Comm % / HC */}
+          {showDetailColumns && !isContractor && <col style={{ width: '70px' }} />} {/* Comm $ */}
           <col style={{ width: '90px' }} /> {/* Total */}
           <col style={{ width: '32px' }} /> {/* Delete */}
         </colgroup>
@@ -1764,29 +1784,37 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
               {isContractor ? 'Cost' : 'Salary'}
               <Tooltip text={isContractor ? 'Total annual cost' : 'Annual salary amount'} />
             </th>
-            <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
-              Rate
-              <Tooltip text={isContractor ? 'Hourly/daily rate (optional)' : 'Hourly rate (casual only)'} />
-            </th>
-            <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
-              Hrs
-              <Tooltip text="Hours per week" />
-            </th>
-            {!isContractor && (
+            {showDetailColumns && (
+              <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
+                Rate
+                <Tooltip text={isContractor ? 'Hourly/daily rate (optional)' : 'Hourly rate (casual only)'} />
+              </th>
+            )}
+            {showDetailColumns && (
+              <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
+                Hrs
+                <Tooltip text="Hours per week" />
+              </th>
+            )}
+            {showDetailColumns && !isContractor && (
               <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
                 Super
                 <Tooltip text="Superannuation Guarantee (12% for 2026)" />
               </th>
             )}
-            <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
-              Bonus
-              <Tooltip text="One-off bonus payment" />
-            </th>
-            <th className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
-              {isContractor ? 'HC' : 'Comm%'}
-              <Tooltip text={isContractor ? 'Include in team headcount' : 'Commission as % of revenue'} />
-            </th>
-            {!isContractor && (
+            {showDetailColumns && (
+              <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
+                Bonus
+                <Tooltip text="One-off bonus payment" />
+              </th>
+            )}
+            {showDetailColumns && (
+              <th className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
+                {isContractor ? 'HC' : 'Comm%'}
+                <Tooltip text={isContractor ? 'Include in team headcount' : 'Commission as % of revenue'} />
+              </th>
+            )}
+            {showDetailColumns && !isContractor && (
               <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
                 Comm$
                 <Tooltip text="Calculated commission amount" />
@@ -1950,7 +1978,8 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                 />
               </td>
 
-              {/* Rate */}
+              {/* Rate — detail column */}
+              {showDetailColumns && (
               <td className="px-2 py-1.5">
                 {isContractor || row.type === 'casual' ? (
                   <div className="flex items-center justify-end">
@@ -1984,8 +2013,10 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                   <span className="text-gray-400 text-right block">-</span>
                 )}
               </td>
+              )}
 
-              {/* Hours */}
+              {/* Hours — detail column */}
+              {showDetailColumns && (
               <td className="px-2 py-1.5 text-right">
                 {isContractor || row.type !== 'full-time' ? (
                   <input
@@ -2029,15 +2060,17 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                   <span className="text-gray-500 tabular-nums">38</span>
                 )}
               </td>
+              )}
 
-              {/* Super - only for employees */}
-              {!isContractor && (
+              {/* Super - detail column, employees only */}
+              {showDetailColumns && !isContractor && (
                 <td className="px-2 py-1.5 text-gray-500 text-right tabular-nums">
                   {formatCurrency(row.superAmount)}
                 </td>
               )}
 
-              {/* Bonus */}
+              {/* Bonus — detail column */}
+              {showDetailColumns && (
               <td className="px-2 py-1.5">
                 <input
                   type="number"
@@ -2047,8 +2080,10 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                   className="w-full px-1.5 py-1 text-right border border-gray-200 rounded focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
                 />
               </td>
+              )}
 
-              {/* Commission % / Headcount */}
+              {/* Commission % / Headcount — detail column */}
+              {showDetailColumns && (
               <td className="px-2 py-1.5 text-center">
                 {isContractor ? (
                   <input
@@ -2075,9 +2110,10 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                   />
                 )}
               </td>
+              )}
 
-              {/* Commission $ - only for employees */}
-              {!isContractor && (
+              {/* Commission $ — detail column, employees only */}
+              {showDetailColumns && !isContractor && (
                 <td className="px-2 py-1.5 text-gray-500 text-right tabular-nums">
                   {row.commissionAmount > 0 ? formatCurrency(row.commissionAmount) : '-'}
                 </td>
@@ -2102,7 +2138,7 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
 
           {rows.length === 0 && (
             <tr>
-              <td colSpan={isContractor ? 11 : 13} className="px-4 py-6 text-center text-gray-500">
+              <td colSpan={showDetailColumns ? (isContractor ? 11 : 13) : 7} className="px-4 py-6 text-center text-gray-500">
                 No {isContractor ? 'contractors' : 'team members'} added yet
               </td>
             </tr>
@@ -2119,18 +2155,20 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
               <td className="px-2 py-2 font-semibold text-right tabular-nums">
                 {formatCurrency(isContractor ? totals.cost || 0 : totals.salary || 0)}
               </td>
-              <td className="px-2 py-2"></td>
-              <td className="px-2 py-2"></td>
-              {!isContractor && (
+              {showDetailColumns && <td className="px-2 py-2"></td>}
+              {showDetailColumns && <td className="px-2 py-2"></td>}
+              {showDetailColumns && !isContractor && (
                 <td className="px-2 py-2 font-semibold text-right tabular-nums">
                   {formatCurrency(totals.super || 0)}
                 </td>
               )}
-              <td className="px-2 py-2 font-semibold text-right tabular-nums">
-                {formatCurrency(totals.bonus)}
-              </td>
-              <td className="px-2 py-2 text-center">-</td>
-              {!isContractor && (
+              {showDetailColumns && (
+                <td className="px-2 py-2 font-semibold text-right tabular-nums">
+                  {formatCurrency(totals.bonus)}
+                </td>
+              )}
+              {showDetailColumns && <td className="px-2 py-2 text-center">-</td>}
+              {showDetailColumns && !isContractor && (
                 <td className="px-2 py-2 font-semibold text-right tabular-nums">
                   {formatCurrency(totals.commission || 0)}
                 </td>

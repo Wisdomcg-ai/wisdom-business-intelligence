@@ -500,15 +500,43 @@ export default function FinancialForecastPage() {
             </div>
           )}
 
-        {/* Last Saved Indicator */}
+        {/* Last Saved + Change Tracking */}
         {!isSaving && forecast && forecast.updated_at && (
-          <div className="text-xs sm:text-sm text-gray-500 mb-4 text-right">
-            Last saved {new Date(forecast.updated_at).toLocaleString('en-AU', {
-              day: 'numeric',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
+          <div className="flex items-center justify-between mb-4 px-1">
+            <div>
+              {forecast.last_reviewed_at && forecast.updated_at > forecast.last_reviewed_at && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  Modified since last review
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs sm:text-sm text-gray-500">
+                Last saved {new Date(forecast.updated_at).toLocaleString('en-AU', {
+                  day: 'numeric',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </span>
+              {forecast.last_reviewed_at && forecast.updated_at > forecast.last_reviewed_at && (
+                <button
+                  onClick={async () => {
+                    if (!forecast?.id) return;
+                    const { createClient } = await import('@/lib/supabase/client');
+                    const supabase = createClient();
+                    await supabase.from('financial_forecasts')
+                      .update({ last_reviewed_at: new Date().toISOString() })
+                      .eq('id', forecast.id);
+                    window.location.reload();
+                  }}
+                  className="text-xs text-brand-navy hover:underline font-medium"
+                >
+                  Mark as reviewed
+                </button>
+              )}
+            </div>
           </div>
         )}
 

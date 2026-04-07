@@ -149,17 +149,122 @@ function formatMonthLabel(monthKey: string): string {
 }
 
 // ============================================================================
+// PlannedSpend Preprocessing
+// ============================================================================
+
+interface PlannedSpendCashItem { label: string; amount: number }
+
+/**
+ * Convert PlannedSpend items into month-keyed cash flow entries.
+ * - Outright asset purchases → single cash out in purchase month (asset line)
+ * - Financed items → monthly repayment over term (liability line)
+ * - Leased items → monthly payment over term (liability line)
+ * - One-off/monthly spends without asset → added to OpEx cash payments
+ */
+function preprocessPlannedSpends(
+  items: PlannedSpendItem[],
+  allMonths: string[],
+  forecast: FinancialForecast,
+): {
+  assets: Record<string, PlannedSpendCashItem[]>
+  liabilities: Record<string, PlannedSpendCashItem[]>
+} {
+  const assets: Record<string, PlannedSpendCashItem[]> = {}
+  const liabilities: Record<string, PlannedSpendCashItem[]> = {}
+
+  for (const mk of allMonths) {
+    assets[mk] = []
+    liabilities[mk] = []
+  }
+
+  if (items.length === 0) return { assets, liabilities }
+
+  // Determine the fiscal year start from the forecast period
+  const fyStartMonth = forecast.forecast_start_month || allMonths[0]
+
+  for (const item of items) {
+    // Convert fiscal month index (1-12) to a month key
+    const purchaseMonthKey = fiscalMonthToKey(item.month, fyStartMonth)
+    const purchaseIdx = allMonths.indexOf(purchaseMonthKey)
+    if (purchaseIdx < 0) continue // Outside forecast range
+
+    if (item.paymentMethod === 'outright') {
+      // Single cash outflow in purchase month
+      if (assets[purchaseMonthKey]) {
+        assets[purchaseMonthKey].push({ label: item.description, amount: item.amount })
+      }
+    } else if (item.paymentMethod === 'finance' && item.financeMonthlyPayment && item.financeTerm) {
+      // Monthly finance repayments starting from purchase month
+      for (let m = 0; m < item.financeTerm; m++) {
+        const targetIdx = purchaseIdx + m
+        if (targetIdx >= allMonths.length) break
+        const mk = allMonths[targetIdx]
+        if (liabilities[mk]) {
+          liabilities[mk].push({ label: `Finance: ${item.description}`, amount: item.financeMonthlyPayment })
+        }
+      }
+    } else if (item.paymentMethod === 'lease' && item.leaseMonthlyPayment && item.leaseTerm) {
+      // Monthly lease payments starting from purchase month
+      for (let m = 0; m < item.leaseTerm; m++) {
+        const targetIdx = purchaseIdx + m
+        if (targetIdx >= allMonths.length) break
+        const mk = allMonths[targetIdx]
+        if (liabilities[mk]) {
+          liabilities[mk].push({ label: `Lease: ${item.description}`, amount: item.leaseMonthlyPayment })
+        }
+      }
+    }
+  }
+
+  return { assets, liabilities }
+}
+
+/**
+ * Convert a fiscal month index (1-12) to a YYYY-MM key based on the forecast start.
+ */
+function fiscalMonthToKey(fiscalMonth: number, fyStartMonthKey: string): string {
+  const [startYear, startMonth] = fyStartMonthKey.split('-').map(Number)
+  // fiscalMonth 1 = first month of FY, fiscalMonth 12 = last month
+  const offset = fiscalMonth - 1
+  let calMonth = startMonth + offset
+  let calYear = startYear
+  while (calMonth > 12) { calMonth -= 12; calYear++ }
+  return `${calYear}-${String(calMonth).padStart(2, '0')}`
+}
+
+// ============================================================================
 // Main Engine
 // ============================================================================
+
+/** PlannedSpend item from the forecast wizard (Step 7) */
+interface PlannedSpendItem {
+  id: string
+  description: string
+  amount: number
+  month: number // 1-12 fiscal month index
+  spendType: 'asset' | 'one-off' | 'monthly'
+  paymentMethod: 'outright' | 'finance' | 'lease'
+  financeTerm?: number
+  financeRate?: number
+  financeMonthlyPayment?: number
+  leaseTerm?: number
+  leaseMonthlyPayment?: number
+  usefulLifeYears?: number
+  annualDepreciation?: number
+}
 
 export function generateCashflowForecast(
   plLines: PLLine[],
   payrollSummary: PayrollSummary | null,
   assumptions: CashflowAssumptions,
   forecast: FinancialForecast,
+  plannedSpends: PlannedSpendItem[] = [],
 ): CashflowForecastData {
   // Build ordered list of all months in the forecast
   const allMonths = buildMonthList(forecast)
+
+  // Pre-process PlannedSpend items into month-keyed cash flows
+  const plannedSpendByMonth = preprocessPlannedSpends(plannedSpends, allMonths, forecast)
 
   // Classify P&L lines
   const revenueLines = plLines.filter(l => l.category === 'Revenue')
@@ -456,6 +561,15 @@ export function generateCashflowForecast(
         monthGSTPaid += stockChange * gstRate
       }
     }
+
+    // PlannedSpend — asset purchases (outright payments)
+    const psAssets = plannedSpendByMonth.assets[mk] || []
+    for (const ps of psAssets) {
+      const gstInclusive = ps.amount * (1 + gstRate)
+      assetLines.push({ label: `Asset: ${ps.label}`, value: round2(-gstInclusive) })
+      if (gstRate > 0) monthGSTPaid += ps.amount * gstRate
+    }
+
     const movementInAssets = round2(assetLines.reduce((sum, l) => sum + l.value, 0))
 
     // ---- Balance Sheet — Liabilities ----
@@ -536,6 +650,12 @@ export function generateCashflowForecast(
       if (monthlyPayment > 0) {
         liabilityLines.push({ label: `Loan: ${loan.name}`, value: round2(-monthlyPayment) })
       }
+    }
+
+    // PlannedSpend — finance repayments and lease payments
+    const psLiabilities = plannedSpendByMonth.liabilities[mk] || []
+    for (const ps of psLiabilities) {
+      liabilityLines.push({ label: ps.label, value: round2(-ps.amount) })
     }
 
     const movementInLiabilities = round2(liabilityLines.reduce((sum, l) => sum + l.value, 0))
