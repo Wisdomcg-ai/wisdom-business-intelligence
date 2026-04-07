@@ -50,6 +50,8 @@ import { KPIService } from '../services/kpi-service'
 import { StrategicPlanningService } from '../services/strategic-planning-service'
 import { OperationalActivitiesService, OperationalActivity } from '../services/operational-activities-service'
 import { createClient } from '@/lib/supabase/client'
+import { isNearYearEnd, getMonthsUntilYearEnd, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
+import { ExtendedPeriodInfo } from '../types'
 
 interface KeyAction {
   id: string
@@ -112,6 +114,12 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
   const [kpis, setKpis] = useState<KPIData[]>([])
 
   const [yearType, setYearType] = useState<YearType>('FY')
+
+  // Extended period state (Phase 14)
+  const [isExtendedPeriod, setIsExtendedPeriod] = useState(false)
+  const [year1Months, setYear1Months] = useState(12)
+  const [currentYearRemainingMonths, setCurrentYearRemainingMonths] = useState(0)
+  const [fiscalYearStart, setFiscalYearStart] = useState(DEFAULT_YEAR_START_MONTH)
 
   // Step 2: Strategic Ideas
   const [strategicIdeas, setStrategicIdeas] = useState<StrategicInitiative[]>([])
@@ -298,13 +306,19 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
               financialData,
               coreMetrics,
               yearType,
-              quarterlyTargets
+              quarterlyTargets,
+              extendedPeriod: {
+                isExtendedPeriod,
+                year1Months,
+                currentYearRemainingMonths
+              }
             },
             kpis,
             initiatives: {
               strategicIdeas,
               roadmapSuggestions,
               twelveMonthInitiatives,
+              current_remainder: annualPlanByQuarter.current_remainder || [],
               q1: annualPlanByQuarter.q1 || [],
               q2: annualPlanByQuarter.q2 || [],
               q3: annualPlanByQuarter.q3 || [],
@@ -333,6 +347,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
   }, [
     businessId, businessesId, overrideBusinessId, ownerUserId,
     financialData, coreMetrics, yearType, quarterlyTargets,
+    isExtendedPeriod, year1Months, currentYearRemainingMonths,
     kpis, strategicIdeas, roadmapSuggestions, twelveMonthInitiatives,
     annualPlanByQuarter, sprintFocus, sprintKeyActions, operationalActivities
   ])
@@ -408,7 +423,8 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
 
       // Save financial data
       const financialResult = await FinancialService.saveFinancialGoals(
-        businessId, saveUserId, financialData, yearType, coreMetrics, quarterlyTargets
+        businessId, saveUserId, financialData, yearType, coreMetrics, quarterlyTargets,
+        { isExtendedPeriod, year1Months, currentYearRemainingMonths }
       )
       if (!financialResult.success) {
         console.error('[Strategic Planning] ❌ Financial save failed:', financialResult.error)
@@ -444,6 +460,12 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       if (!q3Result.success) saveErrors.push(`Q3: ${q3Result.error}`)
       const q4Result = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, annualPlanByQuarter.q4, 'q4')
       if (!q4Result.success) saveErrors.push(`Q4: ${q4Result.error}`)
+
+      // Save current_remainder (Step 4 - extended period)
+      if (annualPlanByQuarter.current_remainder) {
+        const crResult = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, annualPlanByQuarter.current_remainder, 'current_remainder')
+        if (!crResult.success) saveErrors.push(`Current remainder: ${crResult.error}`)
+      }
 
       // Save sprint focus (Step 6)
       const sprintResult = await StrategicPlanningService.saveInitiatives(businessId, saveUserId, sprintFocus, 'sprint')
@@ -497,6 +519,9 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
     coreMetrics,
     kpis,
     yearType,
+    isExtendedPeriod,
+    year1Months,
+    currentYearRemainingMonths,
     strategicIdeas,
     roadmapSuggestions,
     twelveMonthInitiatives,
@@ -539,6 +564,9 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         // If overrideBusinessId is provided (coach viewing client OR team member), use it
         let bizId: string
         let ownerUser: string = user.id
+        // Local copy of fiscal year start for extended period detection
+        // (useState setters are async so we track it synchronously here)
+        let localFiscalYearStart: number = DEFAULT_YEAR_START_MONTH
 
         if (overrideBusinessId) {
           // Coach view - overrideBusinessId is businesses.id
@@ -565,6 +593,10 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
               }
               if (resolved.ownerUserId) {
                 ownerUser = resolved.ownerUserId
+              }
+              if (resolved.fiscalYearStart) {
+                localFiscalYearStart = resolved.fiscalYearStart
+                setFiscalYearStart(resolved.fiscalYearStart)
               }
             } else {
               console.warn(`[Strategic Planning] ⚠️ API resolve failed (${resolveResponse.status}), falling back to client-side lookup`)
@@ -635,7 +667,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           // This is different from businesses.id - do not change this!
           const { data: profile, error: profileError } = await supabase
             .from('business_profiles')
-            .select('id, industry, business_id')
+            .select('id, industry, business_id, fiscal_year_start')
             .eq('user_id', user.id)
             .single()
 
@@ -657,6 +689,10 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
             setIndustry(profile.industry)
             console.log(`[Strategic Planning] ✅ Loaded industry: ${profile.industry}`)
           }
+          if (profile?.fiscal_year_start) {
+            localFiscalYearStart = profile.fiscal_year_start
+            setFiscalYearStart(profile.fiscal_year_start)
+          }
         }
 
         setBusinessId(bizId)
@@ -669,7 +705,8 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           financialData: loadedFinancialData,
           coreMetrics: loadedCoreMetrics,
           yearType: loadedYearType,
-          quarterlyTargets: loadedQuarterlyTargets
+          quarterlyTargets: loadedQuarterlyTargets,
+          extendedPeriod: loadedExtendedPeriod
         } = await FinancialService.loadFinancialGoals(bizId)
 
         // Load KPIs from Supabase
@@ -681,6 +718,35 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           console.log(`[Strategic Planning] 🔄 No KPIs found with businesses.id, trying business_profiles.id`)
           loadedKPIs = await KPIService.getUserKPIs(bizId)
         }
+
+        // ── Extended Period Detection (Phase 14) ────────────────────
+        // Use localFiscalYearStart (synchronously set above) rather than
+        // the useState value (which is async and may not have updated yet).
+        const effectiveYearStart = localFiscalYearStart
+
+        // Track detected state locally (useState is async)
+        let detectedExtended = false
+
+        if (loadedExtendedPeriod?.isExtendedPeriod) {
+          // Returning user — restore saved extended period state
+          console.log('[Strategic Planning] Restoring saved extended period:', loadedExtendedPeriod)
+          setIsExtendedPeriod(true)
+          setYear1Months(loadedExtendedPeriod.year1Months)
+          setCurrentYearRemainingMonths(loadedExtendedPeriod.currentYearRemainingMonths)
+          detectedExtended = true
+        } else if (!loadedFinancialData) {
+          // First-time user — check if near year end
+          const nearEnd = isNearYearEnd(new Date(), effectiveYearStart)
+          if (nearEnd) {
+            const monthsLeft = getMonthsUntilYearEnd(new Date(), effectiveYearStart)
+            console.log(`[Strategic Planning] First-time client near year end — ${monthsLeft} months remaining, activating extended period`)
+            setIsExtendedPeriod(true)
+            setCurrentYearRemainingMonths(monthsLeft)
+            setYear1Months(monthsLeft + 12)
+            detectedExtended = true
+          }
+        }
+        // ── End Extended Period Detection ────────────────────────────
 
         // Set loaded data or defaults
         if (loadedFinancialData) {
@@ -759,7 +825,14 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
 
         console.log('[Strategic Planning] 🔍 Q2 loaded from database:', loadedQ2.map(i => ({ id: i.id, title: i.title, assignedTo: i.assignedTo })))
 
+        // Load current_remainder initiatives (extended period)
+        let loadedCurrentRemainder = await StrategicPlanningService.loadInitiatives(bizId, 'current_remainder')
+        if (loadedCurrentRemainder.length === 0 && user.id !== bizId) {
+          loadedCurrentRemainder = await StrategicPlanningService.loadInitiatives(user.id, 'current_remainder')
+        }
+
         setAnnualPlanByQuarter({
+          ...(loadedCurrentRemainder.length > 0 || detectedExtended ? { current_remainder: loadedCurrentRemainder || [] } : {}),
           q1: loadedQ1 || [],
           q2: loadedQ2 || [],
           q3: loadedQ3 || [],
@@ -976,6 +1049,12 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
     // Operational Activities
     operationalActivities,
     setOperationalActivities: setOperationalActivitiesWithDirty,
+
+    // Extended period (Phase 14)
+    isExtendedPeriod,
+    year1Months,
+    currentYearRemainingMonths,
+    fiscalYearStart,
 
     // Save
     saveAllData,
