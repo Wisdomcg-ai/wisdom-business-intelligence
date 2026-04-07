@@ -38,14 +38,17 @@
 - opex_by_month tracking in pl-summary
 - Plan 01-01: useForecastWizard and BudgetTracker OpEx double-counting fix (calculation layer) — COMPLETE (ed00a9d, 7d6e60f)
 - Plan 14-01: DB migration + fiscal year proximity helpers + types + service layer for extended period — COMPLETE (2701620, 5886924)
+- Plan 14-02: API + hook extended period detection wired — COMPLETE (4b02938, 0573c19, b92094b)
 
 ## Position
-- Current: Phase 14, Plan 01 — COMPLETE
-- Stopped at: Completed 14-01-PLAN.md
+- Current: Phase 14, Plan 02 — COMPLETE
+- Stopped at: Completed 14-02-PLAN.md
 
 ## Phase 14 Decisions
 - CR maps to Q1 in getNextQuarter (current_remainder precedes Q1 in extended period flow)
 - extendedPeriod defaults to { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 } on all error/no-data paths
+- localFiscalYearStart local variable used in detection block to avoid async useState race
+- extendedPeriodInfo passed as optional prop for backwards compatibility
 
 ## Last Session
-- 2026-04-07T22:39:48Z — Completed 14-01 (Extended period foundation layer)
+- 2026-04-07T22:49:24Z — Completed 14-02 (Extended period detection + API wiring + Step 1 labels)
