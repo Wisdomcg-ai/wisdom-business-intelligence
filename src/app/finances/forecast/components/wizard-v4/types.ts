@@ -110,6 +110,8 @@ export function getRevenueLineYearTotal(line: RevenueLine, year: 1 | 2 | 3): num
   return 0;
 }
 
+export type COGSTrend = 'same' | 'improves' | 'increases';
+
 export interface COGSLine {
   id: string;
   name: string;
@@ -122,6 +124,8 @@ export interface COGSLine {
   monthlyAmount?: number;
   linkedRevenueLineId?: string;
   notes?: string;
+  // Y2/Y3 trend — adjusts COGS % for future years
+  y2y3Trend?: COGSTrend; // 'same' (default) | 'improves' (~2% better) | 'increases' (~2% worse)
   // Per-month data (overrides formula when present)
   year1Monthly?: MonthlyData;
   year2Monthly?: MonthlyData;

@@ -856,6 +856,17 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                           {line.costBehavior === 'variable' ? 'Var' : 'Fix'}
                         </span>
                       </div>
+                      {state.forecastDuration > 1 && (
+                        <select
+                          value={line.y2y3Trend || 'same'}
+                          onChange={(e) => actions.updateCOGSLine(line.id, { y2y3Trend: e.target.value as 'same' | 'improves' | 'increases' })}
+                          className="mt-1 text-[10px] text-gray-400 bg-transparent border-0 p-0 cursor-pointer hover:text-gray-600"
+                        >
+                          <option value="same">Y2/Y3: Same %</option>
+                          <option value="improves">Y2/Y3: Improves ~2%</option>
+                          <option value="increases">Y2/Y3: Increases ~2%</option>
+                        </select>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 text-right text-sm text-gray-500">
                       {line.priorYearTotal != null && line.priorYearTotal > 0 ? formatCurrency(line.priorYearTotal) : '\u2014'}

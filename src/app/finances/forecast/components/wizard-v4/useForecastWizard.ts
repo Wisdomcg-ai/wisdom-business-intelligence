@@ -971,11 +971,17 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         if (monthly && Object.keys(monthly).length > 0) {
           return sum + Object.values(monthly).reduce((a, b) => a + b, 0);
         }
-        // Fallback to formula
+        // Fallback to formula — apply Y2/Y3 trend adjustment
+        const trendAdj = yearNum === 1 ? 0
+          : line.y2y3Trend === 'improves' ? -2
+          : line.y2y3Trend === 'increases' ? 2
+          : 0;
         if (line.costBehavior === 'fixed') {
-          return sum + (line.monthlyAmount || 0) * 12;
+          const baseMonthly = (line.monthlyAmount || 0) * (1 + trendAdj / 100);
+          return sum + baseMonthly * 12;
         }
-        return sum + (revenue * (line.percentOfRevenue || 0)) / 100;
+        const adjustedPct = (line.percentOfRevenue || 0) + trendAdj;
+        return sum + (revenue * adjustedPct) / 100;
       }, 0);
 
       // Gross Profit
