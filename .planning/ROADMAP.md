@@ -113,6 +113,13 @@
 
 ### Phase 14: Goals Wizard — First-Time Extended Period
 **Goal:** New clients within 3 months of year end get 13-15 month first plan
+**Plans:** 3 plans
+
+Plans:
+- [ ] 14-01-PLAN.md — Foundation: DB migration, fiscal year proximity helpers, type + service updates
+- [ ] 14-02-PLAN.md — Data wiring: API extensions, hook detection logic, Step 1 Year labels
+- [ ] 14-03-PLAN.md — UI: Step 4 Current Year Remainder bucket, Step 5 sprint year-boundary bridging
+
 - [ ] Detect proximity to year end (within 3 months)
 - [ ] Extended Year 1: remainder of current year + full next year (13-15 months)
 - [ ] Year 2 + Year 3: standard 12 months each (always 3 years out)
