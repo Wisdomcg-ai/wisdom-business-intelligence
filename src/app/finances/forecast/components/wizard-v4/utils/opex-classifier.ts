@@ -13,6 +13,7 @@
  */
 
 import { CostBehavior } from '../types';
+import { getQuarterForMonth, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 
 // ============================================================================
 // TEAM COST DETECTION
@@ -512,12 +513,7 @@ function detectSeasonality(monthlyData: Record<string, number>): boolean {
 
   for (const [monthKey, value] of Object.entries(monthlyData)) {
     const month = parseInt(monthKey.split('-')[1]);
-    // Australian financial year quarters
-    let quarterIndex: number;
-    if (month >= 7 && month <= 9) quarterIndex = 0;
-    else if (month >= 10 && month <= 12) quarterIndex = 1;
-    else if (month >= 1 && month <= 3) quarterIndex = 2;
-    else quarterIndex = 3;
+    const quarterIndex = getQuarterForMonth(month, DEFAULT_YEAR_START_MONTH) - 1; // 0-based
 
     quarters[quarterIndex].push(value);
   }

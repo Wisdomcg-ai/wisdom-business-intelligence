@@ -7,6 +7,7 @@ import {
   getRevenueLineYearTotal, SUPER_RATE, calculateNewSalary,
 } from '../types';
 import { isTeamCost } from '../utils/opex-classifier';
+import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 import type { ForecastSummary } from '../types';
 
 interface ExcelExportProps {
@@ -21,7 +22,7 @@ export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
   const { goals, forecastDuration, revenueLines, cogsLines, teamMembers, newHires,
     departures, opexLines, capexItems, investments, priorYear } = state;
 
-  const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+  const months = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
   const fy = (offset: number) => `FY${(fiscalYear + offset).toString().slice(-2)}`;
 
   // Get monthly revenue for a line in a given year

@@ -11,6 +11,7 @@ import {
   formatCurrency,
   getPlannedSpendPLImpact,
 } from '../types';
+import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 
 interface Step6CapExProps {
   state: ForecastWizardState;
@@ -68,7 +69,7 @@ export function Step6CapEx({ state, actions, fiscalYear, businessId }: Step6CapE
     loadInitiatives();
   }, [businessId]);
 
-  const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+  const months = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
 
   // Calculate totals
   const totalCash = plannedSpends.reduce((s, item) => s + item.amount, 0);

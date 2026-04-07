@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { formatDollar, parseDollarInput } from '@/app/goals/utils/formatting';
 import { calculateQuarters } from '@/app/goals/utils/quarters';
+import { getCurrentFiscalYear, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils';
 import { getInitials, getColorForName, parseTeamFromProfile, type TeamMember } from '@/app/goals/utils/team';
 import { getCategoryStyle, getCardClasses } from '@/app/goals/utils/design-tokens';
 import type {
@@ -346,11 +347,7 @@ export function QuarterlyPlanStep({
       const resolvedYearType: YearType = goalsData?.year_type || 'CY';
       setYearType(resolvedYearType);
 
-      const resolvedPlanYear = (() => {
-        const now = new Date();
-        if (resolvedYearType === 'FY') return now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear();
-        return now.getFullYear();
-      })();
+      const resolvedPlanYear = getCurrentFiscalYear(startMonthFromYearType(resolvedYearType as 'FY' | 'CY'));
       setPlanYear(resolvedPlanYear);
 
       if (goalsData) {

@@ -1,3 +1,5 @@
+import { getQuarterForMonth, getCurrentFiscalYear, getFiscalYear, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils';
+
 export type SwotType = 'initial' | 'quarterly' | 'ad-hoc';
 export type SwotStatus = 'draft' | 'in-progress' | 'final' | 'archived';
 export type SwotCategory = 'strength' | 'weakness' | 'opportunity' | 'threat';
@@ -405,35 +407,11 @@ function getQuarterBoundaries(yearType: YearType, quarter: 1 | 2 | 3 | 4, displa
  */
 export function getCurrentQuarter(yearType: YearType = 'FY'): QuarterInfo {
   const now = new Date();
-  const month = now.getMonth(); // 0-11
-  const currentYear = now.getFullYear();
+  const calMonth = now.getMonth() + 1; // 1-12
+  const ysm = startMonthFromYearType(yearType);
 
-  let quarter: 1 | 2 | 3 | 4;
-  let displayYear: number;
-
-  if (yearType === 'FY') {
-    // Fiscal Year: Q1=Jul-Sep, Q2=Oct-Dec, Q3=Jan-Mar, Q4=Apr-Jun
-    if (month >= 6 && month <= 8) {
-      quarter = 1;
-      displayYear = currentYear + 1; // FY ends next June
-    } else if (month >= 9 && month <= 11) {
-      quarter = 2;
-      displayYear = currentYear + 1;
-    } else if (month >= 0 && month <= 2) {
-      quarter = 3;
-      displayYear = currentYear;
-    } else {
-      quarter = 4;
-      displayYear = currentYear;
-    }
-  } else {
-    // Calendar Year: Q1=Jan-Mar, Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec
-    if (month < 3) quarter = 1;
-    else if (month < 6) quarter = 2;
-    else if (month < 9) quarter = 3;
-    else quarter = 4;
-    displayYear = currentYear;
-  }
+  const quarter = getQuarterForMonth(calMonth, ysm) as 1 | 2 | 3 | 4;
+  const displayYear = getCurrentFiscalYear(ysm);
 
   const boundaries = getQuarterBoundaries(yearType, quarter, displayYear);
 
@@ -457,36 +435,12 @@ export function getCurrentQuarter(yearType: YearType = 'FY'): QuarterInfo {
  * @param yearType - 'FY' for Fiscal Year or 'CY' for Calendar Year
  */
 export function getQuarterFromDate(date: Date, yearType: YearType = 'FY'): QuarterInfo {
-  const month = date.getMonth(); // 0-11
-  const dateYear = date.getFullYear();
   const now = new Date();
+  const calMonth = date.getMonth() + 1; // 1-12
+  const ysm = startMonthFromYearType(yearType);
 
-  let quarter: 1 | 2 | 3 | 4;
-  let displayYear: number;
-
-  if (yearType === 'FY') {
-    // Fiscal Year: Q1=Jul-Sep, Q2=Oct-Dec, Q3=Jan-Mar, Q4=Apr-Jun
-    if (month >= 6 && month <= 8) {
-      quarter = 1;
-      displayYear = dateYear + 1;
-    } else if (month >= 9 && month <= 11) {
-      quarter = 2;
-      displayYear = dateYear + 1;
-    } else if (month >= 0 && month <= 2) {
-      quarter = 3;
-      displayYear = dateYear;
-    } else {
-      quarter = 4;
-      displayYear = dateYear;
-    }
-  } else {
-    // Calendar Year
-    if (month < 3) quarter = 1;
-    else if (month < 6) quarter = 2;
-    else if (month < 9) quarter = 3;
-    else quarter = 4;
-    displayYear = dateYear;
-  }
+  const quarter = getQuarterForMonth(calMonth, ysm) as 1 | 2 | 3 | 4;
+  const displayYear = getFiscalYear(date, ysm);
 
   const boundaries = getQuarterBoundaries(yearType, quarter, displayYear);
 

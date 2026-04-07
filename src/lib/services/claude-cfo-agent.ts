@@ -16,6 +16,7 @@ import {
   WizardContext,
   CFOMessage,
 } from '@/app/finances/forecast/types';
+import { getCurrentFiscalYear, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 
 // Dynamically import Anthropic to handle missing SDK gracefully
 let anthropicClient: any = null;
@@ -454,7 +455,7 @@ export async function getClaudeCFOResponse(request: ClaudeCFORequest): Promise<C
   const systemPrompt = `${CFO_PERSONALITY}
 
 TODAY'S DATE: ${getCurrentDateString()}
-Use this date for all time-based references. We are currently in FY${new Date().getMonth() >= 6 ? new Date().getFullYear() + 1 : new Date().getFullYear()} (Australian financial year runs July-June).
+Use this date for all time-based references. We are currently in FY${getCurrentFiscalYear(DEFAULT_YEAR_START_MONTH)}.
 
 === CURRENT STEP: ${step.toUpperCase()} ===
 ${STEP_PROMPTS[step]}

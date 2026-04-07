@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { formatDollar, parseDollarInput } from '@/app/goals/utils/formatting';
 import { calculateQuarters } from '@/app/goals/utils/quarters';
+import { getCurrentFiscalYear, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils';
 import { getCategoryStyle } from '@/app/goals/utils/design-tokens';
 import { getInitials, getColorForName, parseTeamFromProfile, type TeamMember } from '@/app/goals/utils/team';
 import { OperationalActivitiesService, type OperationalActivity } from '@/app/goals/services/operational-activities-service';
@@ -194,10 +195,7 @@ export function QuarterlyRocksStep({ review, onUpdateInitiativeDecisions }: Quar
         .maybeSingle();
 
       const yearType = goalsData?.year_type || 'CY';
-      const now = new Date();
-      const planYear = yearType === 'FY' && now.getMonth() >= 6
-        ? now.getFullYear() + 1
-        : now.getFullYear();
+      const planYear = getCurrentFiscalYear(startMonthFromYearType(yearType as 'FY' | 'CY'));
 
       const quarters = calculateQuarters(yearType, planYear);
       const currentQ = quarters.find((q) => q.isCurrent);

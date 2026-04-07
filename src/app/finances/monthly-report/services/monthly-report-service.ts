@@ -1,4 +1,5 @@
 import type { MonthlyReportSettings, DEFAULT_SECTIONS } from '../types'
+import { getCurrentFiscalYear as getCurrentFY, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 
 const DEFAULT_SETTINGS: MonthlyReportSettings = {
   business_id: '',
@@ -46,10 +47,7 @@ export async function loadSettings(businessId: string): Promise<MonthlyReportSet
 }
 
 export function getCurrentFiscalYear(): number {
-  const now = new Date()
-  const month = now.getMonth() + 1
-  // Australian FY: July-June. FY2026 = Jul 2025 to Jun 2026
-  return month >= 7 ? now.getFullYear() + 1 : now.getFullYear()
+  return getCurrentFY(DEFAULT_YEAR_START_MONTH)
 }
 
 export function getDefaultReportMonth(): string {

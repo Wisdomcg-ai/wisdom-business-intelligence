@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Plus, Trash2, HelpCircle, ChevronDown, X, Info } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, CostBehavior, OpExLine, SUPER_RATE, calculateNewSalary, InputMode } from '../types';
 import { classifyExpense, getSuggestedValue, isTeamCost } from '../utils/opex-classifier';
+import { getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 
 interface Step5OpExProps {
   state: ForecastWizardState;
@@ -772,7 +773,7 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
 
       if (departure) {
         const [, month] = departure.endMonth.split('-').map(Number);
-        const fyMonth = month >= 7 ? month - 6 : month + 6;
+        const fyMonth = getFiscalMonthIndex(month, DEFAULT_YEAR_START_MONTH) + 1;
         const monthsWorked = fyMonth;
         const proRataSalary = (newSalary * monthsWorked) / 12;
         const super_ = member.type !== 'contractor' ? proRataSalary * SUPER_RATE : 0;
@@ -785,7 +786,7 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
 
     for (const hire of newHires) {
       const [, month] = hire.startMonth.split('-').map(Number);
-      const fyMonth = month >= 7 ? month - 6 : month + 6;
+      const fyMonth = getFiscalMonthIndex(month, DEFAULT_YEAR_START_MONTH) + 1;
       const monthsWorked = 13 - fyMonth;
       const proRataSalary = (hire.salary * monthsWorked) / 12;
       const super_ = hire.type !== 'contractor' ? proRataSalary * SUPER_RATE : 0;

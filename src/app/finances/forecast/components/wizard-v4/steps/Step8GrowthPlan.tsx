@@ -5,6 +5,7 @@ import {
   ChevronRight, ChevronDown, ArrowRight, AlertTriangle, CheckCircle,
   TrendingUp, TrendingDown,
 } from 'lucide-react';
+import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 import {
   ForecastWizardState, WizardActions, ForecastSummary, YearlySummary,
   formatCurrency, formatPercent, getRevenueLineYearTotal, generateMonthKeys,
@@ -163,10 +164,12 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
     const fiscalYearStart = state.fiscalYearStart;
     const defaultIncrease = state.defaultOpExIncreasePct || 3;
 
+    const ysm = DEFAULT_YEAR_START_MONTH;
+
     const getFYFromMonth = (monthKey: string): number => {
-      const month = parseInt(monthKey.split('-')[1]);
-      const year = parseInt(monthKey.split('-')[0]);
-      return month >= 7 ? year + 1 : year;
+      const [yearStr, monthStr] = monthKey.split('-');
+      const date = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
+      return getFiscalYear(date, ysm);
     };
 
     const getMonthsInFY = (startMonth: string, fy: number): number => {
@@ -174,7 +177,7 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
       if (startFY > fy) return 0;
       if (startFY < fy) return 12;
       const month = parseInt(startMonth.split('-')[1]);
-      const fyMonth = month >= 7 ? month - 6 : month + 6;
+      const fyMonth = getFiscalMonthIndex(month, ysm) + 1;
       return 13 - fyMonth;
     };
 
@@ -183,7 +186,7 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
       if (endFY > fy) return 12;
       if (endFY < fy) return 0;
       const month = parseInt(endMonth.split('-')[1]);
-      const fyMonth = month >= 7 ? month - 6 : month + 6;
+      const fyMonth = getFiscalMonthIndex(month, ysm) + 1;
       return fyMonth;
     };
 
@@ -245,9 +248,9 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
   const teamNote = useMemo(() => {
     const fiscalYearStart = state.fiscalYearStart;
     const getFYFromMonth = (monthKey: string): number => {
-      const month = parseInt(monthKey.split('-')[1]);
-      const year = parseInt(monthKey.split('-')[0]);
-      return month >= 7 ? year + 1 : year;
+      const [yearStr, monthStr] = monthKey.split('-');
+      const date = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
+      return getFiscalYear(date, DEFAULT_YEAR_START_MONTH);
     };
 
     return ([1, 2, 3] as const).map(yearNum => {

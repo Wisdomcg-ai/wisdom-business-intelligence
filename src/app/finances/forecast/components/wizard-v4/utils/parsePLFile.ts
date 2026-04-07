@@ -6,6 +6,7 @@
 
 import * as XLSX from 'xlsx';
 import { PriorYearData, MonthlyData } from '../types';
+import { getFiscalMonthIndex, getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 
 export interface ParsedPLData {
   revenue: {
@@ -82,22 +83,21 @@ const OPEX_PATTERNS = [
   /^workers.*comp/i,
 ];
 
-// Months for Australian FY (Jul-Jun)
-const FY_MONTHS = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-const MONTH_ALIASES: Record<string, number> = {
-  'jan': 6, 'january': 6,
-  'feb': 7, 'february': 7,
-  'mar': 8, 'march': 8,
-  'apr': 9, 'april': 9,
-  'may': 10,
-  'jun': 11, 'june': 11,
-  'jul': 0, 'july': 0,
-  'aug': 1, 'august': 1,
-  'sep': 2, 'september': 2,
-  'oct': 3, 'october': 3,
-  'nov': 4, 'november': 4,
-  'dec': 5, 'december': 5,
-};
+const FY_MONTHS = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
+// Map month names to fiscal month index (0-based) using central utility
+const MONTH_ALIASES: Record<string, number> = Object.fromEntries(
+  ['jan', 'january', 'feb', 'february', 'mar', 'march', 'apr', 'april',
+   'may', 'jun', 'june', 'jul', 'july', 'aug', 'august', 'sep', 'september',
+   'oct', 'october', 'nov', 'november', 'dec', 'december'].map(name => {
+    const monthMap: Record<string, number> = {
+      jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+      apr: 4, april: 4, may: 5, jun: 6, june: 6,
+      jul: 7, july: 7, aug: 8, august: 8, sep: 9, september: 9,
+      oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+    };
+    return [name, getFiscalMonthIndex(monthMap[name], DEFAULT_YEAR_START_MONTH)];
+  })
+);
 
 function categorizeAccount(name: string): 'revenue' | 'cogs' | 'opex' | 'unknown' {
   const lowerName = name.toLowerCase().trim();
@@ -153,7 +153,7 @@ function detectMonthColumns(headers: string[]): Map<number, number> {
       const month = parseInt(dateMatch[2] || dateMatch[3], 10);
       if (month >= 1 && month <= 12) {
         // Convert calendar month to FY index
-        const fyIndex = month >= 7 ? month - 7 : month + 5;
+        const fyIndex = getFiscalMonthIndex(month, DEFAULT_YEAR_START_MONTH);
         monthMap.set(colIndex, fyIndex);
       }
     }

@@ -10,6 +10,7 @@ import {
   ContractorType,
   SUPER_RATE,
 } from '../types';
+import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 
 // AI Salary Suggestion type
 interface AISuggestion {
@@ -417,9 +418,8 @@ const contractorTypes: { value: ContractorType; label: string }[] = [
 function getForecastYear(monthKey: string, fiscalYear: number): 1 | 2 | 3 {
   if (!monthKey) return 1;
   const [yearStr, monthStr] = monthKey.split('-');
-  const year = parseInt(yearStr);
-  const month = parseInt(monthStr);
-  const fy = month >= 7 ? year + 1 : year;
+  const date = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
+  const fy = getFiscalYear(date, DEFAULT_YEAR_START_MONTH);
   const yearNum = fy - fiscalYear + 1;
   return Math.max(1, Math.min(3, yearNum)) as 1 | 2 | 3;
 }
@@ -449,33 +449,29 @@ function TeamTimelineSummary({
   goals,
   onAddHire,
 }: TeamTimelineSummaryProps) {
-  // Helper to get fiscal year from month key
+  const ysm = DEFAULT_YEAR_START_MONTH;
+
   const getFYFromMonth = (monthKey: string): number => {
     const [yearStr, monthStr] = monthKey.split('-');
-    const year = parseInt(yearStr);
-    const month = parseInt(monthStr);
-    return month >= 7 ? year + 1 : year;
+    const date = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
+    return getFiscalYear(date, ysm);
   };
 
-  // Helper to get months worked in a fiscal year
   const getMonthsInFY = (startMonth: string, fy: number): number => {
     const startFY = getFYFromMonth(startMonth);
     if (startFY > fy) return 0;
     if (startFY < fy) return 12;
-    const [, monthStr] = startMonth.split('-');
-    const month = parseInt(monthStr);
-    const fyMonth = month >= 7 ? month - 6 : month + 6;
+    const month = parseInt(startMonth.split('-')[1]);
+    const fyMonth = getFiscalMonthIndex(month, ysm) + 1;
     return 13 - fyMonth;
   };
 
-  // Helper to check if departed before end of fiscal year
   const getMonthsBeforeDeparture = (endMonth: string, fy: number): number => {
     const endFY = getFYFromMonth(endMonth);
     if (endFY > fy) return 12;
     if (endFY < fy) return 0;
-    const [, monthStr] = endMonth.split('-');
-    const month = parseInt(monthStr);
-    const fyMonth = month >= 7 ? month - 6 : month + 6;
+    const month = parseInt(endMonth.split('-')[1]);
+    const fyMonth = getFiscalMonthIndex(month, ysm) + 1;
     return fyMonth;
   };
 
@@ -1034,12 +1030,10 @@ function TeamPlanningOverview({
   fiscalYear,
   onUpdateHeadcountTarget,
 }: TeamPlanningOverviewProps) {
-  // Helper to get FY from month key
   const getFYFromMonth = (monthKey: string): number => {
     const [yearStr, monthStr] = monthKey.split('-');
-    const year = parseInt(yearStr);
-    const month = parseInt(monthStr);
-    return month >= 7 ? year + 1 : year;
+    const date = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
+    return getFiscalYear(date, DEFAULT_YEAR_START_MONTH);
   };
 
   // Calculate actual headcount per year

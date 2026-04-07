@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo, useRef } from 'react';
+import { getCurrentFiscalYear } from '@/lib/utils/fiscal-year-utils';
 
 // Types for the live forecast state
 export interface TeamMember {
@@ -110,7 +111,7 @@ export interface LiveForecastCalculations {
 const initialState: LiveForecastState = {
   revenueTarget: 0,
   profitTarget: 0,
-  fiscalYear: new Date().getFullYear() + (new Date().getMonth() >= 6 ? 1 : 0),
+  fiscalYear: getCurrentFiscalYear(),
   yearsSelected: [1],
 
   existingTeam: [],

@@ -6,6 +6,7 @@
  */
 
 import type { PLLine } from '../types'
+import { calendarMonthFromFiscalIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import type {
   ForecastAssumptions,
   RevenueLineAssumption,
@@ -51,47 +52,38 @@ export function generateMonthRange(start: string, end: string): string[] {
 
 /**
  * Expand quarterly values into monthly (each value ÷ 3).
- * Australian FY quarters: Q1=Jul/Aug/Sep, Q2=Oct/Nov/Dec, Q3=Jan/Feb/Mar, Q4=Apr/May/Jun
+ * Quarter months are derived from yearStartMonth (default 7 for AU FY).
  */
 export function expandQuarterlyToMonthly(
   quarterly: { q1: number; q2: number; q3: number; q4: number },
-  fyStartYear: number
+  fyStartYear: number,
+  yearStartMonth: number = DEFAULT_YEAR_START_MONTH
 ): Record<string, number> {
   const result: Record<string, number> = {}
+  const quarters = [quarterly.q1, quarterly.q2, quarterly.q3, quarterly.q4]
 
-  // Q1 = Jul, Aug, Sep of fyStartYear
-  const q1Months = [
-    `${fyStartYear}-07`, `${fyStartYear}-08`, `${fyStartYear}-09`,
-  ]
-  // Q2 = Oct, Nov, Dec of fyStartYear
-  const q2Months = [
-    `${fyStartYear}-10`, `${fyStartYear}-11`, `${fyStartYear}-12`,
-  ]
-  // Q3 = Jan, Feb, Mar of fyStartYear+1
-  const q3Months = [
-    `${fyStartYear + 1}-01`, `${fyStartYear + 1}-02`, `${fyStartYear + 1}-03`,
-  ]
-  // Q4 = Apr, May, Jun of fyStartYear+1
-  const q4Months = [
-    `${fyStartYear + 1}-04`, `${fyStartYear + 1}-05`, `${fyStartYear + 1}-06`,
-  ]
-
-  for (const mk of q1Months) result[mk] = round2(quarterly.q1 / 3)
-  for (const mk of q2Months) result[mk] = round2(quarterly.q2 / 3)
-  for (const mk of q3Months) result[mk] = round2(quarterly.q3 / 3)
-  for (const mk of q4Months) result[mk] = round2(quarterly.q4 / 3)
+  for (let q = 0; q < 4; q++) {
+    const qValue = quarters[q]
+    for (let m = 0; m < 3; m++) {
+      const fiscalIdx = q * 3 + m
+      const calMonth = calendarMonthFromFiscalIndex(fiscalIdx, yearStartMonth)
+      const year = calMonth >= yearStartMonth ? fyStartYear : fyStartYear + 1
+      const key = `${year}-${String(calMonth).padStart(2, '0')}`
+      result[key] = round2(qValue / 3)
+    }
+  }
 
   return result
 }
 
 /**
  * Determine which forecast year (1, 2, or 3) a month falls in.
- * Year 1 starts at fiscalYear-1 July, Year 2 at fiscalYear July, etc.
+ * Year 1 starts at (fiscalYear-1) + yearStartMonth.
  */
-export function getFYYear(monthKey: string, fiscalYear: number): number {
+export function getFYYear(monthKey: string, fiscalYear: number, yearStartMonth: number = DEFAULT_YEAR_START_MONTH): number {
   const [y, m] = monthKey.split('-').map(Number)
-  // Year 1 FY start = (fiscalYear - 1) July
-  const fy1Start = (fiscalYear - 1) * 12 + 7
+  const startYear = yearStartMonth === 1 ? fiscalYear : fiscalYear - 1
+  const fy1Start = startYear * 12 + yearStartMonth
   const monthNum = y * 12 + m
   const diff = monthNum - fy1Start
   if (diff < 12) return 1

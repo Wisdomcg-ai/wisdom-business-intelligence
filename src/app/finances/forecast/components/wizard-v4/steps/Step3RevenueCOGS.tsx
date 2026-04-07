@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Info, Lock, ChevronDown, ChevronRight } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, generateMonthKeys, getRevenueLineYearTotal, MonthlyData } from '../types';
+import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 
 interface Step3RevenueCOGSProps {
   state: ForecastWizardState;
@@ -19,7 +20,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const [viewMode, setViewMode] = useState<'summary' | 'monthly'>('summary');
   const [expandedRevLines, setExpandedRevLines] = useState<Set<string>>(new Set());
 
-  const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+  const months = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
   // Generate month keys for the active year (Y1 starts at fiscalYear-1, Y2 at fiscalYear, Y3 at fiscalYear+1)
   const monthKeys = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
 

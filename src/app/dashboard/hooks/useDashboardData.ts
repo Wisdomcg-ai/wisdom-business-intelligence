@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
+import { getCurrentFiscalYear, getQuarterForMonth, getFiscalYearStartDate, getFiscalYearEndDate, getQuarterDefs, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import type { FinancialGoals, Rock, DashboardData, DashboardError, DashboardInsight, SuggestedAction } from '../types'
 
 interface UseDashboardDataReturn {
@@ -16,16 +17,15 @@ interface UseDashboardDataReturn {
 
 type TeamMembersMap = Record<string, string>
 
+const ysm: number = DEFAULT_YEAR_START_MONTH
+
 /**
- * Calculate the current fiscal quarter based on Australian financial year (Jul-Jun)
+ * Calculate the current fiscal quarter
  */
 function getCurrentQuarter(): 'q1' | 'q2' | 'q3' | 'q4' {
   const now = new Date()
-  const month = now.getMonth()
-  if (month >= 6 && month <= 8) return 'q1'
-  if (month >= 9 && month <= 11) return 'q2'
-  if (month >= 0 && month <= 2) return 'q3'
-  return 'q4'
+  const q = getQuarterForMonth(now.getMonth() + 1, ysm)
+  return `q${q}` as 'q1' | 'q2' | 'q3' | 'q4'
 }
 
 /**
@@ -38,26 +38,27 @@ function getNextQuarter(current: 'q1' | 'q2' | 'q3' | 'q4'): 'q1' | 'q2' | 'q3' 
 }
 
 /**
- * Get the end date of the current quarter (Australian FY)
+ * Get the end date of the current quarter
  */
 function getQuarterEndDate(): Date {
   const now = new Date()
-  const month = now.getMonth()
-  const year = now.getFullYear()
-
-  if (month >= 6 && month <= 8) return new Date(year, 8, 30) // Sep 30
-  if (month >= 9 && month <= 11) return new Date(year, 11, 31) // Dec 31
-  if (month >= 0 && month <= 2) return new Date(year, 2, 31) // Mar 31
-  return new Date(year, 5, 30) // Jun 30
+  const q = getQuarterForMonth(now.getMonth() + 1, ysm)
+  const defs = getQuarterDefs(ysm)
+  const def = defs[q - 1]
+  const fy = getCurrentFiscalYear(ysm)
+  // Determine the calendar year for this quarter's end month
+  const endCalYear = def.endMonth >= ysm
+    ? (ysm === 1 ? fy : fy - 1)
+    : fy
+  return new Date(endCalYear, def.endMonth - 1 + 1, 0) // Last day of endMonth
 }
 
 /**
- * Get the end date of the financial year (June 30)
+ * Get the end date of the financial year
  */
 function getFYEndDate(): Date {
-  const now = new Date()
-  const year = now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear()
-  return new Date(year, 5, 30)
+  const fy = getCurrentFiscalYear(ysm)
+  return getFiscalYearEndDate(fy, ysm)
 }
 
 /**
@@ -448,9 +449,8 @@ export function useDashboardData(): UseDashboardDataReturn {
 
       // Calculate progress estimates (simplified - would need actual YTD data for real implementation)
       const now = new Date()
-      const fyStart = now.getMonth() >= 6
-        ? new Date(now.getFullYear(), 6, 1)
-        : new Date(now.getFullYear() - 1, 6, 1)
+      const fy = getCurrentFiscalYear(ysm)
+      const fyStart = getFiscalYearStartDate(fy, ysm)
       const totalFYDays = daysBetween(fyStart, getFYEndDate())
       const elapsedFYDays = daysBetween(fyStart, now)
       const annualProgress = Math.round((elapsedFYDays / totalFYDays) * 100)
@@ -503,16 +503,16 @@ export function useDashboardData(): UseDashboardDataReturn {
 }
 
 /**
- * Get the start date of a quarter (Australian FY)
+ * Get the start date of a quarter
  */
 function getQuarterStartDate(quarter: 'q1' | 'q2' | 'q3' | 'q4'): Date {
-  const now = new Date()
-  const year = now.getFullYear()
-
-  switch (quarter) {
-    case 'q1': return new Date(now.getMonth() >= 6 ? year : year - 1, 6, 1) // Jul 1
-    case 'q2': return new Date(now.getMonth() >= 9 ? year : year - 1, 9, 1) // Oct 1
-    case 'q3': return new Date(year, 0, 1) // Jan 1
-    case 'q4': return new Date(year, 3, 1) // Apr 1
-  }
+  const qNum = parseInt(quarter.charAt(1))
+  const defs = getQuarterDefs(ysm)
+  const def = defs[qNum - 1]
+  const fy = getCurrentFiscalYear(ysm)
+  // Determine the calendar year for this quarter's start month
+  const startCalYear = def.startMonth >= ysm
+    ? (ysm === 1 ? fy : fy - 1)
+    : fy
+  return new Date(startCalYear, def.startMonth - 1, 1)
 }

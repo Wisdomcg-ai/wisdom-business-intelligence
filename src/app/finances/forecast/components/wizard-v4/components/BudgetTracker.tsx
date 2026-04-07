@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { AlertTriangle, CheckCircle2, TrendingDown, TrendingUp, Wallet, Target, DollarSign, PieChart, ArrowRight, Sparkles } from 'lucide-react';
 import { ForecastWizardState, formatCurrency, SUPER_RATE } from '../types';
 import { isTeamCost } from '../utils/opex-classifier';
+import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 
 interface BudgetTrackerProps {
   state: ForecastWizardState;
@@ -52,20 +53,20 @@ export function BudgetTracker({ state, currentStep, subscriptionSavings = 0 }: B
       const targetFY = fiscalYearStart + yearNum;
       let teamCosts = 0;
 
+      const ysm = DEFAULT_YEAR_START_MONTH;
+
       const getFYFromMonth = (monthKey: string): number => {
         const [yearStr, monthStr] = monthKey.split('-');
-        const year = parseInt(yearStr);
-        const month = parseInt(monthStr);
-        return month >= 7 ? year + 1 : year;
+        const date = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
+        return getFiscalYear(date, ysm);
       };
 
       const getMonthsInFY = (startMonth: string, fy: number): number => {
         const startFY = getFYFromMonth(startMonth);
         if (startFY > fy) return 0;
         if (startFY < fy) return 12;
-        const [, monthStr] = startMonth.split('-');
-        const month = parseInt(monthStr);
-        const fyMonth = month >= 7 ? month - 6 : month + 6;
+        const month = parseInt(startMonth.split('-')[1]);
+        const fyMonth = getFiscalMonthIndex(month, ysm) + 1;
         return 13 - fyMonth;
       };
 
@@ -73,9 +74,8 @@ export function BudgetTracker({ state, currentStep, subscriptionSavings = 0 }: B
         const endFY = getFYFromMonth(endMonth);
         if (endFY > fy) return 12;
         if (endFY < fy) return 0;
-        const [, monthStr] = endMonth.split('-');
-        const month = parseInt(monthStr);
-        const fyMonth = month >= 7 ? month - 6 : month + 6;
+        const month = parseInt(endMonth.split('-')[1]);
+        const fyMonth = getFiscalMonthIndex(month, ysm) + 1;
         return fyMonth;
       };
 

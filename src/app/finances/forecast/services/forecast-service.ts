@@ -1,6 +1,10 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
+import {
+  calculateForecastPeriods as _calcPeriods,
+  DEFAULT_YEAR_START_MONTH,
+} from '@/lib/utils/fiscal-year-utils'
 import type {
   FinancialForecast,
   PLLine,
@@ -13,72 +17,15 @@ export class ForecastService {
   private static supabase = createClient()
 
   /**
-   * Calculate forecast periods based on current date and fiscal year
-   * Returns both baseline (prior FY for comparison) and current periods
-   * If we're in the fiscal year, split into YTD actuals + remaining forecast
-   * If we're before the fiscal year, entire period is forecast
+   * Calculate forecast periods based on current date and fiscal year.
+   * Delegates to the central fiscal-year-utils module.
+   * yearStartMonth defaults to 7 (AU FY) for backward compatibility.
    */
-  private static calculateForecastPeriods(fiscalYear: number): {
-    baseline_start_month: string
-    baseline_end_month: string
-    actual_start_month: string
-    actual_end_month: string
-    forecast_start_month: string
-    forecast_end_month: string
-    is_rolling: boolean
-  } {
-    const today = new Date()
-    const fyStart = new Date(fiscalYear - 1, 6, 1) // Jul 1 of previous year (e.g., Jul 1, 2025 for FY26)
-    const fyEnd = new Date(fiscalYear, 5, 30) // Jun 30 of fiscal year (e.g., Jun 30, 2026 for FY26)
-
-    // Baseline is always the prior fiscal year (for patterns and comparison)
-    const baselineStart = `${fiscalYear - 2}-07` // Jul 2024 (FY25 start)
-    const baselineEnd = `${fiscalYear - 1}-06`   // Jun 2025 (FY25 end)
-
-    // Check if we're currently IN the fiscal year being forecasted
-    if (today >= fyStart && today <= fyEnd) {
-      // We're in the fiscal year - this is a rolling forecast
-      // Round down to last complete month
-      const lastCompleteMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-      const lastCompleteMonthStr = `${lastCompleteMonth.getFullYear()}-${String(lastCompleteMonth.getMonth() + 1).padStart(2, '0')}`
-
-      // Forecast starts from current month (or next month if today is near month end)
-      const forecastStart = new Date(today.getFullYear(), today.getMonth(), 1)
-      const forecastStartStr = `${forecastStart.getFullYear()}-${String(forecastStart.getMonth() + 1).padStart(2, '0')}`
-
-      console.log('[Forecast] Rolling forecast detected:', {
-        today: today.toISOString().split('T')[0],
-        fyStart: fyStart.toISOString().split('T')[0],
-        fyEnd: fyEnd.toISOString().split('T')[0],
-        baseline: `${baselineStart} to ${baselineEnd}`,
-        actualYTD: `${fiscalYear - 1}-07 to ${lastCompleteMonthStr}`,
-        forecastRemaining: `${forecastStartStr} to ${fiscalYear}-06`
-      })
-
-      return {
-        baseline_start_month: baselineStart,
-        baseline_end_month: baselineEnd,
-        actual_start_month: `${fiscalYear - 1}-07`, // Start of current FY (Jul 2025)
-        actual_end_month: lastCompleteMonthStr, // Last complete month (Oct 2025)
-        forecast_start_month: forecastStartStr, // Current/next month (Nov 2025)
-        forecast_end_month: `${fiscalYear}-06`, // End of FY (Jun 2026)
-        is_rolling: true
-      }
-    } else {
-      // Not in fiscal year yet - standard annual forecast
-      // Baseline = prior FY for patterns
-      // Actual = none yet (FY hasn't started)
-      // Forecast = entire upcoming FY
-      return {
-        baseline_start_month: baselineStart,
-        baseline_end_month: baselineEnd,
-        actual_start_month: `${fiscalYear - 1}-07`, // Jul 2025 (will have data once FY starts)
-        actual_end_month: `${fiscalYear - 1}-06`, // Jun 2025 (placeholder, will update when rolling)
-        forecast_start_month: `${fiscalYear - 1}-07`, // Jul 2025 (start of FY26)
-        forecast_end_month: `${fiscalYear}-06`, // Jun 2026 (end of FY26)
-        is_rolling: false
-      }
-    }
+  private static calculateForecastPeriods(
+    fiscalYear: number,
+    yearStartMonth: number = DEFAULT_YEAR_START_MONTH
+  ) {
+    return _calcPeriods(fiscalYear, yearStartMonth)
   }
 
   /**

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Plus, Trash2, FileText } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, ExpenseFrequency } from '../types';
+import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 
 interface Step7OtherProps {
   state: ForecastWizardState;
@@ -22,7 +23,7 @@ export function Step7Other({ state, actions, fiscalYear }: Step7OtherProps) {
     notes: '',
   });
 
-  const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+  const months = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
   const frequencies: { value: ExpenseFrequency; label: string }[] = [
     { value: 'once', label: 'One-time' },
     { value: 'monthly', label: 'Monthly' },

@@ -9,6 +9,7 @@ import Step3PrioritizeInitiatives from './components/Step3PrioritizeInitiatives'
 import Step4AnnualPlan from './components/Step4AnnualPlan'
 import Step5SprintPlanning from './components/Step5SprintPlanning'
 import { Target, Calendar, Brain, Rocket, ChevronLeft, ChevronRight, CheckCircle, Loader2, TrendingUp, AlertCircle, HelpCircle, ChevronDown, Shield, AlertTriangle as AlertTriangleIcon, Lightbulb, Save, Cloud, CloudOff } from 'lucide-react'
+import { getQuarterForMonth, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils'
 // Note: Coach view is at /coach/clients/[id]/goals
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -41,28 +42,12 @@ interface SwotItem {
 // Helper to get the NEXT (planning) quarter label
 // We always plan for the NEXT quarter, not the current one
 function getPlanningQuarter(yearType: 'CY' | 'FY'): { quarter: string; label: string } {
-  const today = new Date()
-  const month = today.getMonth() // 0-11
+  const calMonth = new Date().getMonth() + 1 // 1-12
+  const ysm = startMonthFromYearType(yearType)
+  const currentQ = getQuarterForMonth(calMonth, ysm)
+  const nextQ = currentQ === 4 ? 1 : currentQ + 1
+  const nextQuarter = `Q${nextQ}`
 
-  let currentQuarter: string
-  let nextQuarter: string
-
-  if (yearType === 'CY') {
-    // Calendar Year: Q1=Jan-Mar, Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec
-    if (month < 3) { currentQuarter = 'Q1'; nextQuarter = 'Q2' }
-    else if (month < 6) { currentQuarter = 'Q2'; nextQuarter = 'Q3' }
-    else if (month < 9) { currentQuarter = 'Q3'; nextQuarter = 'Q4' }
-    else { currentQuarter = 'Q4'; nextQuarter = 'Q1' }
-  } else {
-    // Fiscal Year (Jul-Jun): Q1=Jul-Sep, Q2=Oct-Dec, Q3=Jan-Mar, Q4=Apr-Jun
-    if (month >= 6 && month < 9) { currentQuarter = 'Q1'; nextQuarter = 'Q2' }
-    else if (month >= 9 && month < 12) { currentQuarter = 'Q2'; nextQuarter = 'Q3' }
-    else if (month < 3) { currentQuarter = 'Q3'; nextQuarter = 'Q4' }
-    else { currentQuarter = 'Q4'; nextQuarter = 'Q1' }
-  }
-
-  // Always show the NEXT quarter for planning purposes
-  // Users should be planning ahead, not for the quarter they're already in
   return { quarter: nextQuarter, label: `${nextQuarter} Execution Plan` }
 }
 

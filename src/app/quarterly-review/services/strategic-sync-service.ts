@@ -6,6 +6,7 @@
 
 import { createClient } from '@/lib/supabase/client';
 import { StrategicPlanningService } from '@/app/goals/services/strategic-planning-service';
+import { getQuarterForMonth, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils';
 import type { StrategicInitiative } from '@/app/goals/types';
 import type { InitiativeDecision, Rock, QuarterlyTargets, RealignmentData } from '../types';
 
@@ -497,30 +498,15 @@ export class StrategicSyncService {
 
         if (data?.year_type) {
           const now = new Date();
-          const month = now.getMonth();
+          const calMonth = now.getMonth() + 1; // 1-12
           const yearType = data.year_type;
+          const ysm = startMonthFromYearType(yearType as 'FY' | 'CY');
+          const currentQ = getQuarterForMonth(calMonth, ysm);
+          const nextQ = currentQ === 4 ? 1 : currentQ + 1;
+          const nextQStr = `q${nextQ}`;
 
-          if (yearType === 'FY') {
-            // Australian FY: Q1=Jul-Sep, Q2=Oct-Dec, Q3=Jan-Mar, Q4=Apr-Jun
-            // Return NEXT quarter — quarterly review targets/rocks are for the upcoming quarter
-            let fyNextQ: string;
-            if (month >= 6 && month <= 8) fyNextQ = 'q2';       // Current Q1 → planning Q2
-            else if (month >= 9 && month <= 11) fyNextQ = 'q3';  // Current Q2 → planning Q3
-            else if (month >= 0 && month <= 2) fyNextQ = 'q4';   // Current Q3 → planning Q4
-            else fyNextQ = 'q1';                                   // Current Q4 → planning Q1
-
-            console.log(`[StrategicSync] Resolved yearType=FY, syncQuarter=${fyNextQ} (next quarter, was ${fallbackKey})`);
-            return fyNextQ;
-          }
-          // CY: return next quarter
-          let cyNextQ: string;
-          if (month >= 0 && month <= 2) cyNextQ = 'q2';         // Current Q1 → planning Q2
-          else if (month >= 3 && month <= 5) cyNextQ = 'q3';    // Current Q2 → planning Q3
-          else if (month >= 6 && month <= 8) cyNextQ = 'q4';    // Current Q3 → planning Q4
-          else cyNextQ = 'q1';                                    // Current Q4 → planning Q1
-
-          console.log(`[StrategicSync] yearType=CY, syncQuarter=${cyNextQ} (next quarter, was ${fallbackKey})`);
-          return cyNextQ;
+          console.log(`[StrategicSync] Resolved yearType=${yearType}, syncQuarter=${nextQStr} (next quarter, was ${fallbackKey})`);
+          return nextQStr;
         }
       }
 

@@ -1,93 +1,76 @@
 // Fiscal Year Utilities
-// Australian fiscal year runs July 1 - June 30
+// Delegates to central fiscal-year-utils for configurable year type support.
+// This file re-exports with backward-compatible signatures (default yearStartMonth=7).
+
+import {
+  getCurrentFiscalYear as _getCurrentFY,
+  getFiscalYearLabel as _getFYLabel,
+  getFiscalYearDateRange as _getFYDateRange,
+  getFiscalYearStartDate as _getFYStartDate,
+  getFiscalYearEndDate as _getFYEndDate,
+  DEFAULT_YEAR_START_MONTH,
+} from '@/lib/utils/fiscal-year-utils'
 
 /**
- * Get the current fiscal year based on today's date
- * Australian fiscal year: July 1 - June 30
- *
- * Examples:
- * - January 2026 -> FY2026 (ends June 30, 2026)
- * - July 2025 -> FY2026 (ends June 30, 2026)
- * - June 2026 -> FY2026 (ends June 30, 2026)
- * - July 2026 -> FY2027 (ends June 30, 2027)
+ * Get the current fiscal year based on today's date.
+ * Accepts optional yearStartMonth (1-12) — defaults to 7 (July, AU FY).
  */
-export function getCurrentFiscalYear(): number {
-  const today = new Date()
-  const month = today.getMonth() // 0-11 (Jan=0, Dec=11)
-  const year = today.getFullYear()
-
-  // If we're in July-December (months 6-11), we're in the fiscal year ending next year
-  // If we're in January-June (months 0-5), we're in the fiscal year ending this year
-  return month >= 6 ? year + 1 : year
+export function getCurrentFiscalYear(yearStartMonth: number = DEFAULT_YEAR_START_MONTH): number {
+  return _getCurrentFY(yearStartMonth)
 }
 
 /**
- * Get the fiscal year for forecasting
- * This is typically the current fiscal year, but if we're in the last quarter
- * of the fiscal year (April-June), we might want to start planning for next year
+ * Get the fiscal year for forecasting.
+ * Currently returns current FY — will be extended for planning-season detection.
  */
-export function getForecastFiscalYear(): number {
-  const today = new Date()
-  const month = today.getMonth()
-  const currentFY = getCurrentFiscalYear()
-
-  // If we're in April-June (Q4 of the fiscal year),
-  // the user might want to forecast for next year
-  // For now, we always forecast for current FY
-  // This can be extended to show a selector in the UI
-  return currentFY
+export function getForecastFiscalYear(yearStartMonth: number = DEFAULT_YEAR_START_MONTH): number {
+  return getCurrentFiscalYear(yearStartMonth)
 }
 
 /**
- * Get fiscal year label (e.g., "FY2026")
+ * Get fiscal year label (e.g., "FY2026" or "CY2026")
  */
-export function getFiscalYearLabel(fiscalYear: number): string {
-  return `FY${fiscalYear}`
+export function getFiscalYearLabel(fiscalYear: number, yearStartMonth: number = DEFAULT_YEAR_START_MONTH): string {
+  return _getFYLabel(fiscalYear, yearStartMonth)
 }
 
 /**
  * Get fiscal year date range as a human-readable string
- * e.g., "Jul 2025 - Jun 2026" for FY2026
  */
-export function getFiscalYearDateRange(fiscalYear: number): string {
-  const startYear = fiscalYear - 1
-  const endYear = fiscalYear
-  return `Jul ${startYear} - Jun ${endYear}`
+export function getFiscalYearDateRange(fiscalYear: number, yearStartMonth: number = DEFAULT_YEAR_START_MONTH): string {
+  return _getFYDateRange(fiscalYear, yearStartMonth)
 }
 
 /**
  * Get the start date of a fiscal year
- * FY2026 starts July 1, 2025
  */
-export function getFiscalYearStartDate(fiscalYear: number): Date {
-  return new Date(fiscalYear - 1, 6, 1) // July 1 of previous calendar year
+export function getFiscalYearStartDate(fiscalYear: number, yearStartMonth: number = DEFAULT_YEAR_START_MONTH): Date {
+  return _getFYStartDate(fiscalYear, yearStartMonth)
 }
 
 /**
  * Get the end date of a fiscal year
- * FY2026 ends June 30, 2026
  */
-export function getFiscalYearEndDate(fiscalYear: number): Date {
-  return new Date(fiscalYear, 5, 30) // June 30 of fiscal year
+export function getFiscalYearEndDate(fiscalYear: number, yearStartMonth: number = DEFAULT_YEAR_START_MONTH): Date {
+  return _getFYEndDate(fiscalYear, yearStartMonth)
 }
 
 /**
  * Check if a date falls within a fiscal year
  */
-export function isDateInFiscalYear(date: Date, fiscalYear: number): boolean {
-  const fyStart = getFiscalYearStartDate(fiscalYear)
-  const fyEnd = getFiscalYearEndDate(fiscalYear)
+export function isDateInFiscalYear(date: Date, fiscalYear: number, yearStartMonth: number = DEFAULT_YEAR_START_MONTH): boolean {
+  const fyStart = getFiscalYearStartDate(fiscalYear, yearStartMonth)
+  const fyEnd = getFiscalYearEndDate(fiscalYear, yearStartMonth)
   return date >= fyStart && date <= fyEnd
 }
 
 /**
  * Get available fiscal years for selection
- * Returns current FY and next FY
  */
-export function getAvailableFiscalYears(): { year: number; label: string; isCurrent: boolean }[] {
-  const currentFY = getCurrentFiscalYear()
+export function getAvailableFiscalYears(yearStartMonth: number = DEFAULT_YEAR_START_MONTH): { year: number; label: string; isCurrent: boolean }[] {
+  const currentFY = getCurrentFiscalYear(yearStartMonth)
   return [
-    { year: currentFY, label: getFiscalYearLabel(currentFY), isCurrent: true },
-    { year: currentFY + 1, label: getFiscalYearLabel(currentFY + 1), isCurrent: false }
+    { year: currentFY, label: getFiscalYearLabel(currentFY, yearStartMonth), isCurrent: true },
+    { year: currentFY + 1, label: getFiscalYearLabel(currentFY + 1, yearStartMonth), isCurrent: false },
   ]
 }

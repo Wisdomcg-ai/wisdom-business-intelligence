@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Edit2, Trash2, Check, X, Plus, UserPlus } from 'lucide-react';
 import type { UseForecastCFOReturn, TeamMember, PlannedHire } from './hooks/useForecastCFO';
+import { getFiscalMonthLabels, calendarMonthFromFiscalIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 
 interface TeamTableProps {
   cfo: UseForecastCFOReturn;
@@ -36,12 +37,13 @@ function EditRow({ name, position, salary, type, startMonth, onSave, onCancel, f
   // Generate month options for fiscal year
   const monthOptions = [];
   const startYear = fiscalYear - 1;
-  const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+  const months = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
+  const ysm = DEFAULT_YEAR_START_MONTH;
   for (let i = 0; i < 12; i++) {
-    const year = i < 6 ? startYear : fiscalYear;
-    const monthNum = i < 6 ? i + 7 : i - 5;
+    const calMonth = calendarMonthFromFiscalIndex(i, ysm);
+    const year = calMonth >= ysm ? startYear : fiscalYear;
     monthOptions.push({
-      value: `${year}-${String(monthNum).padStart(2, '0')}`,
+      value: `${year}-${String(calMonth).padStart(2, '0')}`,
       label: `${months[i]} ${year}`,
     });
   }

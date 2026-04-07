@@ -545,13 +545,20 @@ export function calculateNewSalary(currentSalary: number, increasePct: number): 
   return Math.round(currentSalary * (1 + increasePct / 100));
 }
 
-// Helper to generate month keys for a fiscal year
-export function generateMonthKeys(fiscalYearStart: number): string[] {
+/**
+ * Generate month keys for a fiscal year.
+ * @param fiscalYearStart The calendar year the FY begins (e.g. 2025 for FY2026).
+ * @param yearStartMonth 1-12 controlling which calendar month starts the year (default 7 = July).
+ * @deprecated Use generateFiscalMonthKeys(fiscalYear, yearStartMonth) from '@/lib/utils/fiscal-year-utils'
+ *             which takes the fiscal year number (e.g. 2026) instead of the calendar start year (2025).
+ */
+export function generateMonthKeys(fiscalYearStart: number, yearStartMonth: number = 7): string[] {
+  // Import inline to avoid circular dependency with types file
   const months: string[] = [];
   for (let i = 0; i < 12; i++) {
-    const month = ((6 + i) % 12) + 1; // Start from July (7)
-    const year = month >= 7 ? fiscalYearStart : fiscalYearStart + 1;
-    months.push(`${year}-${String(month).padStart(2, '0')}`);
+    const calMonth = ((yearStartMonth - 1 + i) % 12) + 1;
+    const year = calMonth >= yearStartMonth ? fiscalYearStart : fiscalYearStart + 1;
+    months.push(`${year}-${String(calMonth).padStart(2, '0')}`);
   }
   return months;
 }

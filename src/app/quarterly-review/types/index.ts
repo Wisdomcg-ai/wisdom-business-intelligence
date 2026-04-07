@@ -753,6 +753,8 @@ export const getDefaultAnnualInitiativePlan = (): AnnualInitiativePlan => ({
   initiatives: [],
 });
 
+import { getQuarterForMonth as _getQ, getCurrentFiscalYear as _getFY, startMonthFromYearType as _ysm } from '@/lib/utils/fiscal-year-utils';
+
 // Year type (aligned with Goals Wizard)
 export type YearType = 'FY' | 'CY';
 
@@ -767,24 +769,11 @@ export const getQuarterLabel = (quarter: QuarterNumber, year: number): string =>
  * - FY (Fiscal Year - Australian): Q1=Jul-Sep, Q2=Oct-Dec, Q3=Jan-Mar, Q4=Apr-Jun
  */
 export const getCurrentQuarter = (yearType: YearType = 'CY'): { quarter: QuarterNumber; year: number } => {
-  const now = new Date();
-  const month = now.getMonth(); // 0-11
-  const calendarYear = now.getFullYear();
-
-  if (yearType === 'FY') {
-    // Australian Financial Year: Jul 1 - Jun 30
-    // Q1: Jul-Sep (months 6-8), Q2: Oct-Dec (months 9-11), Q3: Jan-Mar (months 0-2), Q4: Apr-Jun (months 3-5)
-    if (month >= 6 && month <= 8) return { quarter: 1, year: calendarYear + 1 }; // FY starts in July
-    if (month >= 9 && month <= 11) return { quarter: 2, year: calendarYear + 1 };
-    if (month >= 0 && month <= 2) return { quarter: 3, year: calendarYear };
-    return { quarter: 4, year: calendarYear };
-  }
-
-  // Calendar Year: Standard Q1=Jan-Mar, etc.
-  if (month < 3) return { quarter: 1, year: calendarYear };
-  if (month < 6) return { quarter: 2, year: calendarYear };
-  if (month < 9) return { quarter: 3, year: calendarYear };
-  return { quarter: 4, year: calendarYear };
+  const calMonth = new Date().getMonth() + 1; // 1-12
+  const ysm = _ysm(yearType);
+  const quarter = _getQ(calMonth, ysm) as QuarterNumber;
+  const year = _getFY(ysm);
+  return { quarter, year };
 };
 
 export const getNextQuarter = (yearType: YearType = 'CY'): { quarter: QuarterNumber; year: number } => {

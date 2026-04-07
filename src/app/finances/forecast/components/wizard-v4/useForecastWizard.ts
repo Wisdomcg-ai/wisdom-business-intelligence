@@ -34,6 +34,7 @@ import {
   getRevenueLineYearTotal,
 } from './types';
 import { isTeamCost } from './utils/opex-classifier';
+import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 import type {
   ForecastAssumptions,
   RevenueLineAssumption,
@@ -992,36 +993,33 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       const fiscalYearStart = state.fiscalYearStart; // e.g., 2025 for FY2026
       const targetFY = fiscalYearStart + yearNum; // FY2026, FY2027, FY2028
 
+      const ysm = DEFAULT_YEAR_START_MONTH;
+
       // Helper to get fiscal year from month key (YYYY-MM)
       const getFYFromMonth = (monthKey: string): number => {
         const [yearStr, monthStr] = monthKey.split('-');
-        const year = parseInt(yearStr);
-        const month = parseInt(monthStr);
-        return month >= 7 ? year + 1 : year; // July+ = next FY
+        const date = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
+        return getFiscalYear(date, ysm);
       };
 
       // Helper to get months worked in a fiscal year
       const getMonthsInFY = (startMonth: string, fy: number): number => {
         const startFY = getFYFromMonth(startMonth);
-        if (startFY > fy) return 0; // Hasn't started yet
-        if (startFY < fy) return 12; // Full year
-        // Started this FY - calculate partial
-        const [, monthStr] = startMonth.split('-');
-        const month = parseInt(monthStr);
-        const fyMonth = month >= 7 ? month - 6 : month + 6; // Convert to FY month (1-12)
-        return 13 - fyMonth; // Months remaining
+        if (startFY > fy) return 0;
+        if (startFY < fy) return 12;
+        const month = parseInt(startMonth.split('-')[1]);
+        const fyMonth = getFiscalMonthIndex(month, ysm) + 1; // 1-based fiscal month
+        return 13 - fyMonth;
       };
 
       // Helper to check if departed before end of fiscal year
       const getDepartureMonthsInFY = (endMonth: string, fy: number): number => {
         const endFY = getFYFromMonth(endMonth);
-        if (endFY > fy) return 12; // Still employed full year
-        if (endFY < fy) return 0; // Already gone
-        // Departed this FY
-        const [, monthStr] = endMonth.split('-');
-        const month = parseInt(monthStr);
-        const fyMonth = month >= 7 ? month - 6 : month + 6;
-        return fyMonth; // Months worked before leaving
+        if (endFY > fy) return 12;
+        if (endFY < fy) return 0;
+        const month = parseInt(endMonth.split('-')[1]);
+        const fyMonth = getFiscalMonthIndex(month, ysm) + 1;
+        return fyMonth;
       };
 
       let teamCosts = 0;
