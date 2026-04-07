@@ -41,14 +41,19 @@
 - Plan 14-02: API + hook extended period detection wired — COMPLETE (4b02938, 0573c19, b92094b)
 
 ## Position
-- Current: Phase 14, Plan 02 — COMPLETE
-- Stopped at: Completed 14-02-PLAN.md
+- Current: Phase 14, Plan 03 — PAUSED at Task 3 (checkpoint:human-verify)
+- Stopped at: Completed 14-03-PLAN.md tasks 1 and 2, awaiting human verification (Task 3)
 
 ## Phase 14 Decisions
 - CR maps to Q1 in getNextQuarter (current_remainder precedes Q1 in extended period flow)
 - extendedPeriod defaults to { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 } on all error/no-data paths
 - localFiscalYearStart local variable used in detection block to avoid async useState race
 - extendedPeriodInfo passed as optional prop for backwards compatibility
+- allPeriods replaces QUARTERS.map only in initiative grid sections; financial/KPI tables keep q1-q4 typed columns
+- Sprint InitiativesTab receives sprintInitiatives as display prop when extended; writes still route to currentQuarterKey (q1)
+
+## Completed Work (This Session)
+- Plan 14-03 Tasks 1 & 2: Step 4 Current Year Remainder bucket + Step 5 Year End Bridge sprint (7f2c07e, 03299c8)
 
 ## Last Session
-- 2026-04-07T22:49:24Z — Completed 14-02 (Extended period detection + API wiring + Step 1 labels)
+- 2026-04-07T22:59:13Z — Completed 14-03 tasks 1 and 2 (Step 4/5 extended period UI), paused at human-verify checkpoint
