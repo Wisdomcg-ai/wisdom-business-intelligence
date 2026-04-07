@@ -271,7 +271,8 @@ export class SnapshotService {
       'Q1': 'Q2',
       'Q2': 'Q3',
       'Q3': 'Q4',
-      'Q4': null
+      'Q4': null,
+      'CR': 'Q1'
     }
 
     const nextQuarter = quarterMap[quarter]

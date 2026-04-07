@@ -102,7 +102,14 @@ export interface BusinessProfile {
 
 export type YearType = 'FY' | 'CY'
 
-export type QuarterType = 'Q1' | 'Q2' | 'Q3' | 'Q4'
+/** Extended period metadata for first-time clients near year end */
+export interface ExtendedPeriodInfo {
+  isExtendedPeriod: boolean
+  year1Months: number            // 12 (standard) or 13-15 (extended)
+  currentYearRemainingMonths: number  // 0 (standard) or 1-3 (extended)
+}
+
+export type QuarterType = 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'CR'
 
 export type PlanStatus = 'draft' | 'active' | 'completed' | 'archived'
 

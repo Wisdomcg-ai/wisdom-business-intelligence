@@ -248,3 +248,35 @@ export function yearTypeFromStartMonth(yearStartMonth: number): YearType {
 export function startMonthFromYearType(yearType: YearType): number {
   return yearType === 'CY' ? 1 : 7
 }
+
+// --- Extended Period Detection ---
+
+/** Threshold for "near year end" detection */
+export const YEAR_END_PROXIMITY_MONTHS = 3
+
+/**
+ * Get the number of complete months remaining until fiscal year end.
+ * Uses ceiling-based month diff from today to FY end date.
+ */
+export function getMonthsUntilYearEnd(
+  today: Date,
+  yearStartMonth: number = DEFAULT_YEAR_START_MONTH
+): number {
+  const currentFY = getFiscalYear(today, yearStartMonth)
+  const fyEnd = getFiscalYearEndDate(currentFY, yearStartMonth)
+  const months =
+    (fyEnd.getFullYear() - today.getFullYear()) * 12 +
+    (fyEnd.getMonth() - today.getMonth())
+  return Math.max(0, months)
+}
+
+/**
+ * Check if today is within `thresholdMonths` of the fiscal year end.
+ */
+export function isNearYearEnd(
+  today: Date,
+  yearStartMonth: number = DEFAULT_YEAR_START_MONTH,
+  thresholdMonths: number = YEAR_END_PROXIMITY_MONTHS
+): boolean {
+  return getMonthsUntilYearEnd(today, yearStartMonth) <= thresholdMonths
+}
