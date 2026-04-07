@@ -68,7 +68,7 @@ export async function GET(request: Request) {
     // Resolve business_profiles.id
     const { data: profile } = await admin
       .from('business_profiles')
-      .select('id, user_id, industry, business_id')
+      .select('id, user_id, industry, business_id, fiscal_year_start')
       .eq('business_id', businessId)
       .maybeSingle()
 
@@ -123,7 +123,8 @@ export async function GET(request: Request) {
       ownerUserId,
       industry: profileIndustry,
       businessName: business.name,
-      yearType
+      yearType,
+      fiscalYearStart: profile?.fiscal_year_start ?? 7
     })
   } catch (err) {
     console.error('[API /goals/resolve-business] Error:', err)
