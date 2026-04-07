@@ -1036,6 +1036,9 @@ function StrategicPlanningContent() {
                 planningQuarterLabel={planningQuarter?.label || 'Q3'}
                 planningQuarterInitiatives={planningQuarterInitiatives}
                 hasOperationalActivities={hasOperationalActivities}
+                isExtendedPeriod={isExtendedPeriod}
+                currentYearRemainingMonths={currentYearRemainingMonths}
+                fiscalYearStart={fiscalYearStart}
               />
             </div>
           )}

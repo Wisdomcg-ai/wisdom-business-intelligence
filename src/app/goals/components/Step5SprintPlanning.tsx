@@ -45,6 +45,10 @@ interface Step5Props {
   planningQuarterLabel?: string
   planningQuarterInitiatives?: number
   hasOperationalActivities?: boolean
+  // Extended period (Phase 14)
+  isExtendedPeriod?: boolean
+  currentYearRemainingMonths?: number
+  fiscalYearStart?: number
 }
 
 export default function Step5SprintPlanning({
@@ -62,7 +66,10 @@ export default function Step5SprintPlanning({
   setStrategicIdeas,
   planningQuarterLabel = 'Q3',
   planningQuarterInitiatives = 0,
-  hasOperationalActivities = false
+  hasOperationalActivities = false,
+  isExtendedPeriod,
+  currentYearRemainingMonths,
+  fiscalYearStart
 }: Step5Props) {
   const [activeTab, setActiveTab] = useState<'monthly' | 'initiatives' | 'operational'>('initiatives')
   const [showAdvancedMode, setShowAdvancedMode] = useState(false)
@@ -89,6 +96,21 @@ export default function Step5SprintPlanning({
   // Get the selected quarter object
   const currentQuarter = QUARTERS.find(q => q.id === selectedQuarterId) || QUARTERS[0]
   const currentQuarterKey = currentQuarter.id // 'q1', 'q2', 'q3', or 'q4'
+
+  // Extended period: sprint bridges current year remainder + Q1
+  const sprintInitiatives = useMemo(() => {
+    if (isExtendedPeriod) {
+      const crInitiatives = annualPlanByQuarter['current_remainder'] || []
+      const q1Initiatives = annualPlanByQuarter['q1'] || []
+      return [...crInitiatives, ...q1Initiatives]
+    }
+    return null // null means "use existing quarter-based logic"
+  }, [isExtendedPeriod, annualPlanByQuarter])
+
+  // Sprint label — extended period gets a special heading
+  const sprintLabel = isExtendedPeriod
+    ? 'Year End Bridge — Next 90 Days'
+    : `${planningQuarterLabel || currentQuarter.label} Sprint Planning`
 
   // Monthly Targets State - Initialize from quarterly targets
   const [monthlyTargets, setMonthlyTargets] = useState<MonthlyTargets>({
@@ -556,7 +578,10 @@ export default function Step5SprintPlanning({
           📋 <strong>YOUR TASK:</strong> Plan your next 90 days - review initiatives and define operational activities
         </p>
         <p className="text-sm text-brand-orange-100 mt-1">
-          {currentQuarter.label} • {currentQuarter.months} • {yearType} {planYear}
+          {isExtendedPeriod
+            ? sprintLabel
+            : `${currentQuarter.label} • ${currentQuarter.months} • ${yearType} ${planYear}`
+          }
         </p>
       </div>
 
@@ -725,15 +750,42 @@ export default function Step5SprintPlanning({
           )}
 
           {activeTab === 'initiatives' && (
-            <InitiativesTab
-              initiatives={initiatives}
-              setInitiatives={setInitiatives}
-              teamMembers={teamMembers}
-              setTeamMembers={setTeamMembers}
-              currentQuarterKey={currentQuarterKey}
-              annualPlanByQuarter={annualPlanByQuarter}
-              businessId={businessId}
-            />
+            <>
+              {isExtendedPeriod && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                  <p className="text-sm font-semibold text-amber-800">{sprintLabel}</p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Showing initiatives from your current year remainder and Q1 of next year.
+                    {(annualPlanByQuarter['current_remainder'] || []).length > 0 && (
+                      <span className="ml-1">({(annualPlanByQuarter['current_remainder'] || []).length} from current year, {(annualPlanByQuarter['q1'] || []).length} from Q1)</span>
+                    )}
+                  </p>
+                </div>
+              )}
+              <InitiativesTab
+                initiatives={sprintInitiatives
+                  ? sprintInitiatives.map(init => {
+                      const extendedInit = init as any
+                      return {
+                        ...init,
+                        why: extendedInit.why || '',
+                        outcome: extendedInit.outcome || '',
+                        startDate: extendedInit.startDate || '',
+                        endDate: extendedInit.endDate || '',
+                        milestones: extendedInit.milestones || [],
+                        tasks: extendedInit.tasks || [],
+                        totalHours: extendedInit.totalHours || 0
+                      }
+                    })
+                  : initiatives}
+                setInitiatives={setInitiatives}
+                teamMembers={teamMembers}
+                setTeamMembers={setTeamMembers}
+                currentQuarterKey={currentQuarterKey}
+                annualPlanByQuarter={annualPlanByQuarter}
+                businessId={businessId}
+              />
+            </>
           )}
 
           {activeTab === 'operational' && (
