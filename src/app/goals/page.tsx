@@ -250,6 +250,7 @@ function StrategicPlanningContent() {
     isExtendedPeriod,
     year1Months,
     currentYearRemainingMonths,
+    fiscalYearStart,
     // Save
     saveAllData
   } = useStrategicPlanning(activeBusiness?.id)
@@ -1010,6 +1011,9 @@ function StrategicPlanningContent() {
                 kpis={kpis}
                 yearType={yearType}
                 businessId={businessId}
+                isExtendedPeriod={isExtendedPeriod}
+                currentYearRemainingMonths={currentYearRemainingMonths}
+                fiscalYearStart={fiscalYearStart}
               />
             </div>
           )}

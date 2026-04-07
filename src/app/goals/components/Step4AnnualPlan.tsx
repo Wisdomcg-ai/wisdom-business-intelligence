@@ -5,8 +5,9 @@ import { ChevronDown, ChevronUp, AlertCircle, GripVertical, TrendingUp, X, UserP
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatDollar, parseDollarInput } from '../utils/formatting'
-import { calculateQuarters, determinePlanYear } from '../utils/quarters'
+import { calculateQuarters, determinePlanYear, QuarterInfo } from '../utils/quarters'
 import { TeamMember, getInitials, getColorForName } from '../utils/team'
+import { getFiscalYear, getFiscalYearEndDate } from '@/lib/utils/fiscal-year-utils'
 
 interface Step4Props {
   twelveMonthInitiatives: StrategicInitiative[]
@@ -20,6 +21,9 @@ interface Step4Props {
   kpis: KPIData[]
   yearType: YearType
   businessId: string
+  isExtendedPeriod?: boolean
+  currentYearRemainingMonths?: number
+  fiscalYearStart?: number
 }
 
 const MAX_PER_QUARTER = 5
@@ -36,15 +40,57 @@ export default function Step4AnnualPlan({
   coreMetrics,
   kpis,
   yearType,
-  businessId
+  businessId,
+  isExtendedPeriod,
+  currentYearRemainingMonths,
+  fiscalYearStart
 }: Step4Props) {
   // Calculate dynamic quarters based on year type
   const planYear = determinePlanYear(yearType)
   const QUARTERS = useMemo(() => calculateQuarters(yearType, planYear), [yearType, planYear])
   const yearLabel = `${yearType} ${planYear}`
 
+  // Extended period: create a "Current Year Remainder" pseudo-quarter
+  const currentRemainderInfo = useMemo(() => {
+    if (!isExtendedPeriod || !currentYearRemainingMonths) return null
+
+    const today = new Date()
+    const yearStart = fiscalYearStart ?? 7
+    const currentFY = getFiscalYear(today, yearStart)
+    const fyEnd = getFiscalYearEndDate(currentFY, yearStart)
+
+    const startMonth = today.getMonth() + 1 // current month
+    const endMonth = fyEnd.getMonth() + 1
+
+    const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const monthRange = currentYearRemainingMonths === 1
+      ? MONTH_NAMES[endMonth - 1]
+      : `${MONTH_NAMES[startMonth - 1]}-${MONTH_NAMES[endMonth - 1]}`
+
+    return {
+      id: 'current_remainder',
+      label: 'Now',
+      months: `${monthRange} ${fyEnd.getFullYear()}`,
+      title: `Remaining ${currentYearRemainingMonths}mo`,
+      isPast: false,
+      isCurrent: true,
+      isNextQuarter: false,
+      isLocked: false,
+      startMonth: startMonth,
+      endMonth: endMonth,
+      startDate: today,
+      endDate: fyEnd,
+    } as QuarterInfo
+  }, [isExtendedPeriod, currentYearRemainingMonths, fiscalYearStart])
+
+  // Combined column list for initiative sections: [current_remainder] + Q1-Q4
+  const allPeriods = useMemo(() => {
+    if (!currentRemainderInfo) return QUARTERS
+    return [currentRemainderInfo, ...QUARTERS]
+  }, [currentRemainderInfo, QUARTERS])
+
   const [expandedQuarters, setExpandedQuarters] = useState<Set<string>>(
-    new Set(['q1', 'q2', 'q3', 'q4'])
+    new Set(['current_remainder', 'q1', 'q2', 'q3', 'q4'])
   )
   const [draggedItem, setDraggedItem] = useState<{
     initiativeId: string
@@ -1334,7 +1380,7 @@ export default function Step4AnnualPlan({
               <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-slate-200">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Quarter Status Overview</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {QUARTERS.map((quarter) => {
+                  {allPeriods.map((quarter) => {
                     const items = annualPlanByQuarter[quarter.id] || []
                     const assignedCount = items.filter(i => i.assignedTo).length
                     const isComplete = items.length > 0 && assignedCount === items.length
@@ -1507,7 +1553,8 @@ export default function Step4AnnualPlan({
                 </div>
 
                 {/* Quarter Columns */}
-                {QUARTERS.map((quarter) => {
+                {allPeriods.map((quarter) => {
+                  const isRemainder = quarter.id === 'current_remainder'
                   const status = getQuarterStatus(quarter.id)
                   const items = annualPlanByQuarter[quarter.id] || []
                   const isExpanded = expandedQuarters.has(quarter.id)
@@ -1517,10 +1564,12 @@ export default function Step4AnnualPlan({
                   const isNextQuarter = quarter.isNextQuarter
 
                   return (
-                    <div key={quarter.id} className="lg:col-span-1">
+                    <div key={quarter.id} className={`lg:col-span-1 ${isRemainder ? 'border-l-4 border-l-amber-400' : ''}`}>
                       <div
                         className={`rounded-lg border-2 p-4 min-h-96 transition-all ${
-                          isLockedQuarter
+                          isRemainder
+                            ? 'bg-amber-50/30 border-amber-300'
+                            : isLockedQuarter
                             ? 'bg-gray-100 border-gray-300 opacity-60'
                             : isNextQuarter
                             ? 'bg-brand-orange-50 border-brand-orange-300 ring-2 ring-brand-orange-200'
@@ -1540,20 +1589,23 @@ export default function Step4AnnualPlan({
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <h4 className={`font-bold text-sm uppercase tracking-wider ${isLockedQuarter ? 'text-gray-500' : 'text-brand-navy'}`}>
-                                  {quarter.label}
+                                  {isRemainder ? 'Current Year' : quarter.label}
                                 </h4>
-                                {quarter.isPast && (
+                                {isRemainder && (
+                                  <span className="text-[10px] px-1.5 py-0.5 bg-amber-500 text-white rounded font-semibold">REMAINDER</span>
+                                )}
+                                {!isRemainder && quarter.isPast && (
                                   <span className="text-[10px] px-1.5 py-0.5 bg-gray-300 text-gray-600 rounded font-semibold">PAST</span>
                                 )}
-                                {isCurrentQuarter && !quarter.isPast && (
+                                {!isRemainder && isCurrentQuarter && !quarter.isPast && (
                                   <span className="text-[10px] px-1.5 py-0.5 bg-amber-500 text-white rounded font-semibold">NOW (LOCKED)</span>
                                 )}
-                                {isNextQuarter && (
+                                {!isRemainder && isNextQuarter && (
                                   <span className="text-[10px] px-1.5 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLANNING</span>
                                 )}
                               </div>
                               <p className={`text-xs mt-1 ${isLockedQuarter ? 'text-gray-500' : 'text-gray-600'}`}>
-                                {quarter.months} {quarter.startDate.getFullYear()}
+                                {quarter.months}
                               </p>
                               <p className={`text-xs mt-0.5 ${isLockedQuarter ? 'text-gray-400' : 'text-gray-500'}`}>
                                 {quarter.title}
