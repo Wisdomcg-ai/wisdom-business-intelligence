@@ -49,12 +49,12 @@ export class ForecastService {
         idsToTry.push(profile.id)
       }
 
-      // Try to find existing forecast for this business (any fiscal year)
-      // Prefer the most recently updated forecast
+      // Try to find existing forecast for this business matching the requested fiscal year
       const { data: existing, error: fetchError } = await this.supabase
         .from('financial_forecasts')
         .select('*')
         .in('business_id', idsToTry)
+        .eq('fiscal_year', fiscalYear)
         .order('updated_at', { ascending: false })
         .limit(10)
 
@@ -70,9 +70,8 @@ export class ForecastService {
         // Calculate correct periods based on current date (handles rolling forecasts)
         const periods = this.calculateForecastPeriods(fiscalYear)
 
-        // Check if forecast needs updating (fiscal year or dates changed)
+        // Check if forecast needs updating (dates changed — fiscal_year already matched by query)
         const needsUpdate =
-          forecast.fiscal_year !== fiscalYear ||
           forecast.baseline_start_month !== periods.baseline_start_month ||
           forecast.baseline_end_month !== periods.baseline_end_month ||
           forecast.actual_start_month !== periods.actual_start_month ||

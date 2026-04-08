@@ -9,6 +9,7 @@ import {
   getFiscalYearStartDate as _getFYStartDate,
   getFiscalYearEndDate as _getFYEndDate,
   DEFAULT_YEAR_START_MONTH,
+  isNearYearEnd,
 } from '@/lib/utils/fiscal-year-utils'
 
 /**
@@ -21,10 +22,24 @@ export function getCurrentFiscalYear(yearStartMonth: number = DEFAULT_YEAR_START
 
 /**
  * Get the fiscal year for forecasting.
- * Currently returns current FY — will be extended for planning-season detection.
+ * During planning season (within 3 months of year end), defaults to next FY
+ * so coaches preparing the next budget see the right forecast.
  */
 export function getForecastFiscalYear(yearStartMonth: number = DEFAULT_YEAR_START_MONTH): number {
-  return getCurrentFiscalYear(yearStartMonth)
+  const currentFY = getCurrentFiscalYear(yearStartMonth)
+  // During planning season (within 3 months of year end), default to next FY
+  if (isNearYearEnd(new Date(), yearStartMonth, 3)) {
+    return currentFY + 1
+  }
+  return currentFY
+}
+
+/**
+ * Check if we are currently in planning season (within 3 months of fiscal year end).
+ * Used to show planning season banners in the UI.
+ */
+export function isPlanningSeasonActive(yearStartMonth: number = DEFAULT_YEAR_START_MONTH): boolean {
+  return isNearYearEnd(new Date(), yearStartMonth, 3)
 }
 
 /**
