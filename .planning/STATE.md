@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 16
-last_updated: "2026-04-08T02:30:00.000Z"
+last_updated: "2026-04-08T02:27:42.947Z"
 progress:
   total_phases: 23
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 11
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -109,12 +109,21 @@ progress:
 - PlanningSeasonBanner dismiss stored in sessionStorage per nextFiscalYear key so it reappears on next session
 - selectedFiscalYear added to useEffect deps so FY tab change triggers loadInitialData automatically
 - FY selection preserved across reload cycles via if (!selectedFiscalYear) guard in loadInitialData
+- actuals-summary endpoint works for any forecast (locked or not) — wizard controls locked-only policy at call-site
+- Lock button only shown for is_completed=true forecasts to prevent premature locking
+- priorYearForecastData stored separately; effectivePriorYear selects between forecast data and Xero data
 
 ## Completed Work (This Session)
 
 - Plan 16-01: fiscal_year filter + planning-season getForecastFiscalYear + lock enforcement in ForecastSelector and ForecastWizardV4 — COMPLETE (3f3acc3, eeb38dd)
 - Plan 16-02: FYSelectorTabs + PlanningSeasonBanner components + wired into forecast page.tsx — COMPLETE (f150a37, e11096b)
+- Plan 16-03: actuals-summary API + wizard prior-year wiring + lock button on forecast page — COMPLETE (d0baa82, ef2187f)
+
+## Position
+
+- Current: Phase 16, Plan 03 — COMPLETE (Phase 16 fully complete)
+- Stopped at: Completed 16-03-PLAN.md
 
 ## Last Session
 
-- 2026-04-08T02:30:00Z — Completed 16-02-PLAN.md (FY selector tabs + planning season banner complete)
+- 2026-04-08T02:50:00Z — Completed 16-03-PLAN.md (Phase 16 fully complete)
