@@ -190,10 +190,10 @@ Plans:
 ### Phase 19: Monthly Reporting
 **Goal:** Close commentary persistence and FY hardcoding gaps in monthly P&L reports
 **Depends on:** Phase 5 (Y2/Y3 monthly storage — COMPLETE), Phase 13 (fiscal-year-utils — COMPLETE)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 19-01-PLAN.md — Commentary persistence + FY hardcoding fix in generate/full-year routes
+- [x] 19-01-PLAN.md — Commentary persistence + FY hardcoding fix in generate/full-year routes
 
 - [x] Monthly P&L reads forecast monthly data (from wizard Year 1 monthly storage) — already working
 - [x] Actual vs Forecast variance by line item — already working

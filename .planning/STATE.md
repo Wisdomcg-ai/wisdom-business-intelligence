@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to plan
-last_updated: "2026-04-08T03:10:16.655Z"
+status: Executing Phase 19
+last_updated: "2026-04-08T03:29:13.247Z"
 progress:
   total_phases: 23
-  completed_phases: 5
-  total_plans: 14
-  completed_plans: 14
+  completed_phases: 6
+  total_plans: 15
+  completed_plans: 15
 ---
 
 # Project State
@@ -141,11 +141,22 @@ progress:
 - Locked forecast guard returns 403 before any DB mutation attempt
 - forecastLoading separate from isLoading so variance card has its own skeleton state
 
+## Phase 19 Decisions
+
+- profile query moved outside if/else in generate/full-year routes — yearStartMonth available in all code paths
+- getFYStartMonth helper deleted from both routes — generateFiscalMonthKeys is single source of truth for FY range calculation
+- handleMonthChange made async to await loadSnapshot — safe because it fires only on explicit user click
+- existingCommentary merges only accounts present in both snapshot and fresh data — prevents ghost entries
+
+## Completed Work (This Session)
+
+- Plan 19-01: commentary persistence across month changes + FY fix in generate and full-year routes — COMPLETE (a41e00f, 94c24e2)
+
 ## Position
 
-- Current: Phase 17, Plan 02 — COMPLETE
-- Stopped at: Completed 17-02-PLAN.md
+- Current: Phase 19, Plan 01 — COMPLETE
+- Stopped at: Completed 19-01-PLAN.md
 
 ## Last Session
 
-- 2026-04-08T03:08:00Z — Completed 17-02-PLAN.md
+- 2026-04-08T03:26:47Z — Completed 19-01-PLAN.md
