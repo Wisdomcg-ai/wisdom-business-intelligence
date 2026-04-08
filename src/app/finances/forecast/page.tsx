@@ -30,7 +30,10 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useXeroSync } from './hooks/useXeroSync'
 import { useVersionManager } from './hooks/useVersionManager'
 import { useXeroKeepalive } from '@/hooks/useXeroKeepalive'
-import { getForecastFiscalYear } from './utils/fiscal-year'
+import { getForecastFiscalYear, isPlanningSeasonActive, getAvailableFiscalYears, getCurrentFiscalYear, getFiscalYearLabel } from './utils/fiscal-year'
+import { getMonthsUntilYearEnd } from '@/lib/utils/fiscal-year-utils'
+import { FYSelectorTabs } from './components/FYSelectorTabs'
+import { PlanningSeasonBanner } from './components/PlanningSeasonBanner'
 // Note: Coach view is at /coach/clients/[id]/forecast
 
 export default function FinancialForecastPage() {
@@ -69,6 +72,12 @@ export default function FinancialForecastPage() {
   const [skipWelcome, setSkipWelcome] = useState(false)
   const [wizardStartStep, setWizardStartStep] = useState<number | undefined>(undefined)
   const [wizardStartFresh, setWizardStartFresh] = useState(false)
+
+  // FY selector state
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState<number | null>(null)
+  const [fiscalYearStart, setFiscalYearStart] = useState<number>(7) // default AU FY
+  const [planningSeasonActive, setPlanningSeasonActive] = useState(false)
+  const [monthsRemaining, setMonthsRemaining] = useState(0)
 
   // Xero sync hook
   const {
@@ -133,7 +142,8 @@ export default function FinancialForecastPage() {
     if (!contextLoading) {
       loadInitialData()
     }
-  }, [contextLoading, activeBusiness?.id])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextLoading, activeBusiness?.id, selectedFiscalYear])
 
   // Auto-sync from Xero when returning from OAuth with syncing=true
   useEffect(() => {
@@ -215,10 +225,32 @@ export default function FinancialForecastPage() {
 
       console.log(`[Forecast] Loading data for business: ${bizId}`)
 
-      // Get or create forecast for current fiscal year
-      // Fiscal year runs Jul 1 - Jun 30
-      // Dynamically calculated based on current date
-      const fiscalYear = getForecastFiscalYear()
+      // Fetch business fiscal year start for planning season detection
+      let yearStart = 7 // default AU FY
+      try {
+        const { data: bizProfile } = await supabase
+          .from('business_profiles')
+          .select('fiscal_year_start')
+          .eq('business_id', bizId)
+          .maybeSingle()
+        if (bizProfile?.fiscal_year_start) {
+          yearStart = bizProfile.fiscal_year_start
+        }
+      } catch (e) {
+        console.warn('[Forecast] Could not load fiscal_year_start, using default 7')
+      }
+      setFiscalYearStart(yearStart)
+
+      // Compute planning season and months remaining
+      const isPlanning = isPlanningSeasonActive(yearStart)
+      setPlanningSeasonActive(isPlanning)
+      setMonthsRemaining(getMonthsUntilYearEnd(new Date(), yearStart))
+
+      // Use selectedFiscalYear if user has already chosen one, otherwise use default
+      const fiscalYear = selectedFiscalYear ?? getForecastFiscalYear(yearStart)
+      if (!selectedFiscalYear) {
+        setSelectedFiscalYear(fiscalYear)
+      }
 
       const { forecast: loadedForecast, error: forecastError } =
         await ForecastService.getOrCreateForecast(bizId, uid, fiscalYear)
@@ -392,7 +424,7 @@ export default function FinancialForecastPage() {
         <ForecastSelector
           businessId={businessId}
           businessName={activeBusiness?.name}
-          fiscalYear={forecast.fiscal_year}
+          fiscalYear={selectedFiscalYear || forecast.fiscal_year}
           onSelectForecast={(id, name) => {
             setSelectedForecastId(id)
             setSelectedForecastName(name)
@@ -418,7 +450,7 @@ export default function FinancialForecastPage() {
         <ForecastWizardV4
           businessId={businessId}
           businessName={activeBusiness?.name}
-          fiscalYear={forecast.fiscal_year}
+          fiscalYear={selectedFiscalYear || forecast.fiscal_year}
           existingForecastId={selectedForecastId}
           existingForecastName={selectedForecastName}
           initialStep={wizardStartStep}
@@ -451,7 +483,7 @@ export default function FinancialForecastPage() {
         <PageHeader
           variant="banner"
           title="Financial Forecast"
-          subtitle={forecast.name}
+          subtitle={`${getFiscalYearLabel(selectedFiscalYear || forecast.fiscal_year, fiscalYearStart)}${forecast.name ? ` — ${forecast.name}` : ''}`}
           icon={TrendingUp}
           actions={
             <>
@@ -486,6 +518,27 @@ export default function FinancialForecastPage() {
         />
 
         <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
+          {/* FY Selector Tabs */}
+          {selectedFiscalYear && (
+            <div className="mb-4">
+              <FYSelectorTabs
+                availableYears={getAvailableFiscalYears(fiscalYearStart)}
+                selectedYear={selectedFiscalYear}
+                onSelectYear={setSelectedFiscalYear}
+              />
+            </div>
+          )}
+
+          {/* Planning Season Banner */}
+          {planningSeasonActive && selectedFiscalYear === getCurrentFiscalYear(fiscalYearStart) && (
+            <PlanningSeasonBanner
+              nextFiscalYear={getCurrentFiscalYear(fiscalYearStart) + 1}
+              monthsRemaining={monthsRemaining}
+              yearStartMonth={fiscalYearStart}
+              onPlanNextYear={() => setSelectedFiscalYear(getCurrentFiscalYear(fiscalYearStart) + 1)}
+            />
+          )}
+
           {/* Error Banner */}
           {error && !isLoading && (
             <div className="mb-4 sm:mb-6">
@@ -565,7 +618,7 @@ export default function FinancialForecastPage() {
         {parsedAssumptions && (
           <ForecastMultiYearSummary
             assumptions={parsedAssumptions}
-            fiscalYear={forecast.fiscal_year}
+            fiscalYear={selectedFiscalYear || forecast.fiscal_year}
           />
         )}
 
@@ -593,7 +646,7 @@ export default function FinancialForecastPage() {
               setShowForecastSelector(false)
               setShowWizardV4(true)
             }}
-            fiscalYear={forecast.fiscal_year}
+            fiscalYear={selectedFiscalYear || forecast.fiscal_year}
           />
         )}
 
@@ -642,7 +695,7 @@ export default function FinancialForecastPage() {
         <ForecastWizardV4
           businessId={businessId}
           businessName={activeBusiness?.name}
-          fiscalYear={forecast.fiscal_year}
+          fiscalYear={selectedFiscalYear || forecast.fiscal_year}
           existingForecastId={selectedForecastId}
           existingForecastName={selectedForecastName}
           initialStep={wizardStartStep}
@@ -671,7 +724,7 @@ export default function FinancialForecastPage() {
         <ForecastSelector
           businessId={businessId}
           businessName={activeBusiness?.name}
-          fiscalYear={forecast.fiscal_year}
+          fiscalYear={selectedFiscalYear || forecast.fiscal_year}
           onSelectForecast={(id, name) => {
             setSelectedForecastId(id)
             setSelectedForecastName(name)
