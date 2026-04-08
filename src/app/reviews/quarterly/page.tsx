@@ -457,7 +457,9 @@ export default function QuarterlyReviewPage() {
                       in_progress: 'bg-brand-orange-100 text-brand-orange-700 border-brand-orange-300',
                       completed: 'bg-green-100 text-green-700 border-green-300',
                       cancelled: 'bg-red-100 text-red-700 border-red-300',
-                      on_hold: 'bg-amber-100 text-amber-700 border-amber-300'
+                      on_hold: 'bg-amber-100 text-amber-700 border-amber-300',
+                      deferred: 'bg-purple-100 text-purple-700 border-purple-300',
+                      planned: 'bg-blue-100 text-blue-700 border-blue-300'
                     }
 
                     return (
