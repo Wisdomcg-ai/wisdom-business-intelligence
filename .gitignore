@@ -42,3 +42,4 @@ next-env.d.ts
 .env.local
 .aws-sam/
 lambda/
+.claude/worktrees/
