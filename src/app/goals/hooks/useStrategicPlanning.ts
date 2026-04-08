@@ -50,7 +50,7 @@ import { KPIService } from '../services/kpi-service'
 import { StrategicPlanningService } from '../services/strategic-planning-service'
 import { OperationalActivitiesService, OperationalActivity } from '../services/operational-activities-service'
 import { createClient } from '@/lib/supabase/client'
-import { isNearYearEnd, getMonthsUntilYearEnd, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
+import { isNearYearEnd, getMonthsUntilYearEnd, DEFAULT_YEAR_START_MONTH, getCurrentFiscalYear, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils'
 import { ExtendedPeriodInfo } from '../types'
 
 interface KeyAction {
@@ -120,6 +120,10 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
   const [year1Months, setYear1Months] = useState(12)
   const [currentYearRemainingMonths, setCurrentYearRemainingMonths] = useState(0)
   const [fiscalYearStart, setFiscalYearStart] = useState(DEFAULT_YEAR_START_MONTH)
+
+  // Annual review detection (Phase 15)
+  const [hasNextYearAnnualPlan, setHasNextYearAnnualPlan] = useState(false)
+  const [annualReviewYear, setAnnualReviewYear] = useState<number | null>(null)
 
   // Step 2: Strategic Ideas
   const [strategicIdeas, setStrategicIdeas] = useState<StrategicInitiative[]>([])
@@ -944,6 +948,45 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isDirty, isLoadComplete])
 
+  // Detect if next year was already planned in Q4 annual review (Phase 15)
+  useEffect(() => {
+    const bizId = businessesId || businessId
+    if (!bizId) return
+
+    const detectAnnualPlan = async () => {
+      try {
+        const supabase = createClient()
+        const ysm = startMonthFromYearType(yearType || 'FY')
+        const currentFY = getCurrentFiscalYear(ysm)
+
+        // A completed annual review for the current FY means next year is planned
+        const { data: annualReview } = await supabase
+          .from('quarterly_reviews')
+          .select('id, year, annual_initiative_plan')
+          .eq('business_id', bizId)
+          .eq('review_type', 'annual')
+          .eq('status', 'completed')
+          .eq('year', currentFY)
+          .maybeSingle()
+
+        const hasAnnualPlan = Boolean(
+          annualReview?.annual_initiative_plan?.initiatives?.length > 0
+        )
+
+        setHasNextYearAnnualPlan(hasAnnualPlan)
+        if (hasAnnualPlan) {
+          setAnnualReviewYear(currentFY + 1)
+          console.log(`[StrategicPlanning] Detected annual review for FY${currentFY} — next year (FY${currentFY + 1}) already planned`)
+        }
+      } catch (err) {
+        console.error('[StrategicPlanning] Error detecting annual plan:', err)
+        // Non-fatal — just don't show banner
+      }
+    }
+
+    detectAnnualPlan()
+  }, [businessId, businessesId, yearType])
+
   // Wrapper functions for setters that also mark dirty
   const setStrategicIdeasWithDirty = useCallback((ideas: StrategicInitiative[] | ((prev: StrategicInitiative[]) => StrategicInitiative[])) => {
     setStrategicIdeas(ideas)
@@ -1055,6 +1098,10 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
     year1Months,
     currentYearRemainingMonths,
     fiscalYearStart,
+
+    // Annual review detection (Phase 15)
+    hasNextYearAnnualPlan,
+    annualReviewYear,
 
     // Save
     saveAllData,
