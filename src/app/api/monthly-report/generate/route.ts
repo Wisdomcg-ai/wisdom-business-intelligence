@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
+import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,11 +70,6 @@ function buildSubtotal(lines: ReportLine[], label: string): ReportLine {
     budget_annual_total: lines.reduce((s, l) => s + l.budget_annual_total, 0),
     prior_year: lines.some(l => l.prior_year !== null) ? lines.reduce((s, l) => s + (l.prior_year || 0), 0) : null,
   }
-}
-
-// Get the fiscal year start month (July = 07 for Australian FY)
-function getFYStartMonth(fiscalYear: number): string {
-  return `${fiscalYear - 1}-07`
 }
 
 // Get an array of month keys from start to end inclusive
@@ -197,6 +193,15 @@ export async function POST(request: NextRequest) {
     let budgetPLLines: any[] = []
     let budgetForecastName: string | undefined
 
+    // Always fetch fiscal_year_start for parameterized FY range calculation
+    const { data: profile } = await supabase
+      .from('business_profiles')
+      .select('id, fiscal_year_start')
+      .eq('business_id', business_id)
+      .maybeSingle()
+
+    const yearStartMonth: number = profile?.fiscal_year_start ?? DEFAULT_YEAR_START_MONTH
+
     if (settings.budget_forecast_id) {
       const { data: fc } = await supabase
         .from('financial_forecasts')
@@ -205,13 +210,6 @@ export async function POST(request: NextRequest) {
         .single()
       budgetForecast = fc
     } else {
-      // Look up the business_profiles.id for this businesses.id
-      const { data: profile } = await supabase
-        .from('business_profiles')
-        .select('id')
-        .eq('business_id', business_id)
-        .maybeSingle()
-
       // Try both profile ID and direct business_id to handle both FK patterns
       const idsToTry = profile?.id ? [profile.id, business_id] : [business_id]
 
@@ -284,6 +282,14 @@ export async function POST(request: NextRequest) {
     // Fuzzy lookup handles "Wages & Salaries" vs "Salaries & Wages" etc.
     const findBudgetByName = buildFuzzyLookup(budgetPLLines, (bl) => bl.account_name)
 
+    // FY range — parameterized by business fiscal_year_start
+    const allFYMonths = generateFiscalMonthKeys(fiscal_year, yearStartMonth)
+    const fyStart = allFYMonths[0]
+    const fyEnd = allFYMonths[allFYMonths.length - 1]
+    const ytdMonths = getMonthRange(fyStart, report_month)
+    const priorYearMonth = getPriorYearMonth(report_month)
+    const nextMonth = getNextMonth(report_month)
+
     console.log('[Report Generate] Data loaded:', {
       xeroLines: xeroLines?.length || 0,
       budgetPLLines: budgetPLLines.length,
@@ -291,20 +297,12 @@ export async function POST(request: NextRequest) {
       mappingsWithForecastLink: mappings.filter((m: any) => m.forecast_pl_line_id).length,
       report_month,
       fiscal_year,
-      fyStart: getFYStartMonth(fiscal_year),
+      yearStartMonth,
+      fyStart,
+      fyEnd,
       sampleXeroMonths: xeroLines?.[0]?.monthly_values ? Object.keys(xeroLines[0].monthly_values).slice(0, 5) : [],
       sampleBudgetMonths: budgetPLLines[0]?.forecast_months ? Object.keys(budgetPLLines[0].forecast_months).slice(0, 5) : [],
     })
-
-    // FY range
-    const fyStart = getFYStartMonth(fiscal_year)
-    const ytdMonths = getMonthRange(fyStart, report_month)
-    const priorYearMonth = getPriorYearMonth(report_month)
-    const nextMonth = getNextMonth(report_month)
-
-    // FY end for annual total
-    const fyEnd = `${fiscal_year}-06`
-    const allFYMonths = getMonthRange(fyStart, fyEnd)
 
     // Track which budget lines were matched (for budget-only section later)
     const matchedBudgetLineIds = new Set<string>()

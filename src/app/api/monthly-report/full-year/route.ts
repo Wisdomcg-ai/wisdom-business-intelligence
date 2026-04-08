@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
+import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,10 +11,6 @@ const supabase = createClient(
 )
 
 // ===== Helper functions (shared logic with generate route) =====
-
-function getFYStartMonth(fiscalYear: number): string {
-  return `${fiscalYear - 1}-07`
-}
 
 function getMonthRange(start: string, end: string): string[] {
   const months: string[] = []
@@ -97,10 +94,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // FY range: Jul (FY-1) to Jun (FY)
-    const fyStart = getFYStartMonth(fiscal_year)
-    const fyEnd = `${fiscal_year}-06`
-    const allFYMonths = getMonthRange(fyStart, fyEnd)
+    // Always fetch fiscal_year_start for parameterized FY range calculation
+    const { data: profile } = await supabase
+      .from('business_profiles')
+      .select('id, fiscal_year_start')
+      .eq('business_id', business_id)
+      .maybeSingle()
+
+    const yearStartMonth: number = profile?.fiscal_year_start ?? DEFAULT_YEAR_START_MONTH
+
+    // FY range — parameterized by business fiscal_year_start
+    const allFYMonths = generateFiscalMonthKeys(fiscal_year, yearStartMonth)
+    const fyStart = allFYMonths[0]
+    const fyEnd = allFYMonths[allFYMonths.length - 1]
 
     // Determine the last actual month (previous month — current month hasn't ended yet)
     const now = new Date()
@@ -141,13 +147,7 @@ export async function POST(request: NextRequest) {
         .single()
       budgetForecast = fc
     } else {
-      // Resolve business_profiles.id from businesses.id
-      const { data: profile } = await supabase
-        .from('business_profiles')
-        .select('id')
-        .eq('business_id', business_id)
-        .maybeSingle()
-
+      // Try both profile ID and direct business_id to handle both FK patterns
       const idsToTry = profile?.id ? [profile.id, business_id] : [business_id]
 
       for (const id of idsToTry) {
