@@ -318,7 +318,7 @@ export default function MonthlyReportPage() {
   }, [activeTab, cashflowForecast, cashflowLoading, businessId, userId, loadCashflowForecast])
 
   // Fetch commentary after report generation — expenses over budget only
-  const fetchCommentary = useCallback(async (reportData: GeneratedReport) => {
+  const fetchCommentary = useCallback(async (reportData: GeneratedReport, existingCommentary?: VarianceCommentary) => {
     if (!businessId) return
     setCommentaryLoading(true)
 
@@ -358,6 +358,15 @@ export default function MonthlyReportPage() {
 
       const data = await res.json()
       if (data.success && data.commentary && Object.keys(data.commentary).length > 0) {
+        // Merge persisted coach notes from existing commentary
+        if (existingCommentary) {
+          for (const [acctName, entry] of Object.entries(existingCommentary)) {
+            if (entry.coach_note && data.commentary[acctName]) {
+              data.commentary[acctName].coach_note = entry.coach_note
+              data.commentary[acctName].is_edited = true
+            }
+          }
+        }
         setCommentary(data.commentary)
       }
     } catch (err) {
@@ -379,17 +388,23 @@ export default function MonthlyReportPage() {
 
     if (result) {
       toast.success('Report generated')
-      // Fetch commentary asynchronously (non-blocking)
-      fetchCommentary(result)
+      // Load persisted commentary to merge with fresh vendor data
+      const snapshot = await loadSnapshot(selectedMonth)
+      const persistedCommentary = snapshot?.commentary || undefined
+      fetchCommentary(result, persistedCommentary)
     }
-  }, [selectedMonth, fiscalYear, reconciliation, generateReport, fetchCommentary])
+  }, [selectedMonth, fiscalYear, reconciliation, generateReport, fetchCommentary, loadSnapshot])
 
-  const handleMonthChange = (month: string) => {
+  const handleMonthChange = async (month: string) => {
     setSelectedMonth(month)
-    // Clear data when month changes
     setCommentary(undefined)
     clearSubscription()
     clearWages()
+    // Restore persisted commentary from snapshot if one exists
+    const snapshot = await loadSnapshot(month)
+    if (snapshot?.commentary) {
+      setCommentary(snapshot.commentary)
+    }
   }
 
   const handleCommentaryChange = (accountName: string, note: string) => {
