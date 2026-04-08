@@ -230,7 +230,7 @@ Plans:
 ### Phase 22: Quarterly Review Completion
 **Goal:** Workshop facilitation tools fully working
 **Depends on:** Phase 15 (initiative status field)
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 22-01-PLAN.md — Bug fixes: status mapping (deferred/planned), decision count display, dual-ID query
