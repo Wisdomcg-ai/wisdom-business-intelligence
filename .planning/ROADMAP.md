@@ -147,11 +147,11 @@ Plans:
 
 ### Phase 16: Forecast Rollover & Rolling Periods
 **Goal:** Coaches can build next year's forecast during planning season
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [x] 16-01-PLAN.md — Foundation: FY filter fix on getOrCreateForecast, planning-season getForecastFiscalYear, lock enforcement in selector + wizard
-- [ ] 16-02-PLAN.md — FY selector tabs + planning season banner on forecast page
+- [x] 16-02-PLAN.md — FY selector tabs + planning season banner on forecast page
 - [ ] 16-03-PLAN.md — Prior year from forecast actuals API + wizard wiring + lock button
 
 - [ ] Planning season detection (within 3 months of year end, based on business year type)
