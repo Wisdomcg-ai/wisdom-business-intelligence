@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to plan
-last_updated: "2026-04-08T03:57:38.040Z"
+status: Executing Phase 21
+last_updated: "2026-04-08T04:23:10.397Z"
 progress:
   total_phases: 23
   completed_phases: 7
-  total_plans: 17
-  completed_plans: 17
+  total_plans: 20
+  completed_plans: 19
 ---
 
 # Project State
@@ -168,11 +168,28 @@ progress:
 - Plan 20-01: schema migration (6 columns + 1 index) + 4 API route fixes for coaching_sessions 400 errors — COMPLETE (31f6f8b, 5beb176)
 - Plan 20-02: Rock linkage UI on session action items — extend interface, dual-ID rock load, linkRock() function, Target icon toggle + grouped select on current and previous actions — COMPLETE (3d015f2)
 
+## Phase 21 Decisions
+
+- useBusinessDashboard(clientId) is the correct coach override pattern — no separate data path needed
+- KPI tab in ClientFileTabs links to /coach/clients/[id]/kpi external route (same pattern as financials/goals tabs)
+- FinancialSummaryCharts (Plan 21-01) not yet available; inline QTD grid used as per plan fallback
+- Read-only enforced by omitting all write callbacks in the coach KPI page
+- Dual-ID resolution (resolveBusinessIds) used at dashboard-actuals API level — non-negotiable per project memory
+- generateFiscalMonthKeys drives month ordering — no hardcoded Jan-Dec
+- null returned for zero-actual months to avoid misleading flat baseline on Recharts AreaChart
+- hasData:false with 200 OK when no forecast exists — graceful empty state, not error
+- Forecast area rendered first in AreaChart so actual data visually overlays on top
+
+## Completed Work (This Session)
+
+- Plan 21-01: dashboard-actuals API + useXeroActuals hook + FinancialSummaryCharts component — COMPLETE (ee4efb5, df897e7)
+- Plan 21-02: Coach KPI dashboard page + KPI tab in client detail navigation — COMPLETE (9c93757)
+
 ## Position
 
-- Current: Phase 20, Plan 02 — COMPLETE
-- Stopped at: Completed 20-02-PLAN.md
+- Current: Phase 21, Plan 01 — COMPLETE
+- Stopped at: Completed 21-01-PLAN.md
 
 ## Last Session
 
-- 2026-04-08T04:00:00Z — Completed 20-02-PLAN.md
+- 2026-04-08T04:20:03Z — Completed 21-01-PLAN.md
