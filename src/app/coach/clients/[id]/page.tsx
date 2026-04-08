@@ -19,7 +19,8 @@ import {
   Edit,
   Archive,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  TrendingUp
 } from 'lucide-react'
 
 interface BusinessData {
@@ -1289,6 +1290,22 @@ export default function ClientFilePage() {
             >
               Go to Goals & Planning
             </Link>
+          </div>
+        )}
+
+        {activeTab === 'kpi' && (
+          <div className="bg-white rounded-xl border border-gray-200 p-6 sm:p-8 text-center">
+            <div className="flex flex-col items-center gap-3">
+              <TrendingUp className="w-10 h-10 text-brand-orange" />
+              <p className="text-sm sm:text-base text-gray-700 font-medium">KPI Dashboard</p>
+              <p className="text-sm text-gray-500">View the client&apos;s financial metrics and quarter progress in read-only mode.</p>
+              <Link
+                href={`/coach/clients/${clientId}/kpi`}
+                className="mt-2 inline-block text-sm sm:text-base text-brand-orange hover:text-brand-orange-700 font-medium"
+              >
+                Open KPI Dashboard
+              </Link>
+            </div>
           </div>
         )}
 

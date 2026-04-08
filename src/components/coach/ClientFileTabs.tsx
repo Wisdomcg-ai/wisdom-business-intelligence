@@ -14,7 +14,7 @@ import {
   History
 } from 'lucide-react'
 
-export type TabId = 'overview' | 'profile' | 'goals' | 'financials' | 'actions' | 'documents' | 'messages' | 'notes' | 'team' | 'weekly-reviews' | 'activity-log'
+export type TabId = 'overview' | 'profile' | 'goals' | 'financials' | 'actions' | 'documents' | 'messages' | 'notes' | 'team' | 'weekly-reviews' | 'activity-log' | 'kpi'
 
 interface Tab {
   id: TabId
@@ -51,6 +51,7 @@ export function ClientFileTabs({
     { id: 'weekly-reviews', label: 'Weekly Reviews', icon: CalendarCheck },
     { id: 'goals', label: 'Goals & Planning', icon: Target },
     { id: 'financials', label: 'Financials', icon: TrendingUp },
+    { id: 'kpi', label: 'KPI Dashboard', icon: TrendingUp },
     { id: 'actions', label: 'Actions', icon: ListChecks, badge: badges.actions },
     { id: 'documents', label: 'Documents', icon: FileText },
     { id: 'messages', label: 'Messages', icon: MessageSquare, badge: badges.messages },
