@@ -35,7 +35,7 @@ export class StrategicSyncService {
     // Map review decision to initiative status
     let status: InitiativeStatus = 'in_progress';
     if (decision.decision === 'kill') status = 'cancelled';
-    if (decision.decision === 'defer') status = 'on_hold';
+    if (decision.decision === 'defer') status = 'deferred';
     if (decision.currentStatus === 'not_started') status = 'not_started';
     if (decision.decision === 'keep' || decision.decision === 'accelerate') {
       status = decision.currentStatus === 'not_started' ? 'not_started' : 'in_progress';
@@ -81,7 +81,11 @@ export class StrategicSyncService {
         // Map decision to DB status
         let status: string = 'in_progress';
         if (decision.decision === 'kill') status = 'cancelled';
-        if (decision.decision === 'defer') status = 'on_hold';
+        if (decision.decision === 'defer') status = 'deferred';
+        // If keep/accelerate on a not_started initiative assigned to a future quarter, mark as planned
+        if ((decision.decision === 'keep' || decision.decision === 'accelerate') && decision.currentStatus === 'not_started' && decision.quarterAssigned) {
+          status = 'planned';
+        }
 
         // Update only — never delete
         await supabase

@@ -204,7 +204,7 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
           </div>
           <div className="grid grid-cols-4 gap-3">
             {['keep', 'accelerate', 'defer', 'kill'].map(action => {
-              const count = (review.initiative_decisions as any[]).filter((d: any) => d.action === action).length;
+              const count = (review.initiative_decisions as any[]).filter((d: any) => d.decision === action).length;
               const labels: Record<string, string> = { keep: 'Keep', accelerate: 'Accelerate', defer: 'Defer', kill: 'Kill' };
               const colors: Record<string, string> = { keep: 'text-blue-600', accelerate: 'text-green-600', defer: 'text-amber-600', kill: 'text-red-600' };
               return (

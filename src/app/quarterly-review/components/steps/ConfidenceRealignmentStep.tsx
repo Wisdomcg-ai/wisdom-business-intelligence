@@ -12,10 +12,7 @@ import {
   AlertTriangle,
   Loader2,
   Info,
-  TrendingUp,
-  Lock,
 } from 'lucide-react';
-import { toast } from 'sonner';
 
 interface ConfidenceRealignmentStepProps {
   review: QuarterlyReview;
@@ -43,6 +40,8 @@ interface StrategicInitiative {
   title: string;
   status: string;
   progress_percentage: number;
+  step_type?: string;
+  fiscal_year?: number;
 }
 
 function formatCurrency(value: number): string {
@@ -74,20 +73,6 @@ export function ConfidenceRealignmentStep({
   // On blur the raw string is parsed, the override is removed, and the formatted value shows.
   const [ytdRaw, setYtdRaw] = useState<Record<string, string | undefined>>({});
   const [yearType, setYearType] = useState<'FY' | 'CY'>('CY');
-
-  // Forecast variance state
-  const [forecastVariance, setForecastVariance] = useState<{
-    revenue: { forecast: number; actual: number; variance: number; variancePct: number };
-    grossProfit: { forecast: number; actual: number; variance: number; variancePct: number };
-    netProfit: { forecast: number; actual: number; variance: number; variancePct: number };
-    hasActuals: boolean;
-    forecastId: string;
-    isLocked: boolean;
-  } | null>(null);
-  const [forecastLoading, setForecastLoading] = useState(true);
-  const [adjustmentPct, setAdjustmentPct] = useState<number>(0);
-  const [applyingAdjustment, setApplyingAdjustment] = useState(false);
-  const [adjustmentApplied, setAdjustmentApplied] = useState(false);
 
   // Confidence data (from review)
   const confidence = review.annual_target_confidence || 5;
@@ -175,54 +160,20 @@ export function ConfidenceRealignmentStep({
         setYtdActuals(ytd);
       }
 
-      // Fetch strategic initiatives
+      // Fetch strategic initiatives — dual-ID pattern (businesses.id vs business_profiles.id)
       const { data: initiativesData } = await supabase
         .from('strategic_initiatives')
-        .select('id, title, status, progress_percentage')
-        .eq('business_id', businessId)
+        .select('id, title, status, progress_percentage, step_type, fiscal_year')
+        .in('business_id', [businessId, review.business_id])
         .order('created_at', { ascending: false });
 
       if (initiativesData) {
         setInitiatives(initiativesData);
       }
-
-      // Fetch forecast variance data
-      const ysm = goalsData?.year_type === 'FY' ? 7 : 1;
-      const profileId = profile?.id || review.business_id;
-      const { data: forecastRow } = await supabase
-        .from('financial_forecasts')
-        .select('id, is_locked, fiscal_year')
-        .in('business_id', [profileId, review.business_id])
-        .eq('fiscal_year', review.year)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (forecastRow) {
-        const qs = new URLSearchParams({
-          forecastId: forecastRow.id,
-          quarter: String(review.quarter),
-          fiscalYear: String(review.year),
-          yearStartMonth: String(ysm),
-        });
-        const res = await fetch(`/api/forecast/quarterly-summary?${qs}`);
-        if (res.ok) {
-          const data = await res.json();
-          setForecastVariance({
-            revenue: data.revenue,
-            grossProfit: data.grossProfit,
-            netProfit: data.netProfit,
-            hasActuals: data.hasActuals,
-            forecastId: forecastRow.id,
-            isLocked: forecastRow.is_locked || false,
-          });
-        }
-      }
     } catch (error) {
       console.error('Error fetching annual plan data:', error);
     } finally {
       setIsLoading(false);
-      setForecastLoading(false);
     }
   };
 
@@ -343,34 +294,6 @@ export function ConfidenceRealignmentStep({
     });
   }, [ytdRaw, ytdActuals, confidence, notes, adjusted, onUpdateConfidence]);
 
-  const handleApplyAdjustment = async () => {
-    if (!forecastVariance || adjustmentPct === 0) return;
-    setApplyingAdjustment(true);
-    try {
-      const res = await fetch(`/api/forecast/${forecastVariance.forecastId}/adjust-forward`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          adjustmentPct,
-          yearStartMonth: yearType === 'FY' ? 7 : 1,
-          fiscalYear: review.year,
-        }),
-      });
-      if (res.ok) {
-        setAdjustmentApplied(true);
-        toast.success('Forecast adjusted for remaining months');
-      } else {
-        const err = await res.json();
-        toast.error(err.error || 'Failed to apply adjustment');
-      }
-    } catch (error) {
-      console.error('[ConfidenceRealignment] Adjustment error:', error);
-      toast.error('Failed to apply adjustment');
-    } finally {
-      setApplyingAdjustment(false);
-    }
-  };
-
   const getConfidenceColor = (value: number) => {
     if (value >= 8) return 'text-green-600';
     if (value >= 5) return 'text-amber-600';
@@ -417,20 +340,6 @@ export function ConfidenceRealignmentStep({
     );
   }
 
-  const getVarianceColor = (variance: number) => {
-    if (variance > 0) return 'text-green-600';
-    if (variance < 0) return 'text-red-600';
-    return 'text-gray-500';
-  };
-
-  const formatVariance = (variance: number, variancePct: number) => {
-    const absFormatted = formatCurrency(Math.abs(variance));
-    const pctStr = `${Math.abs(variancePct)}%`;
-    if (variance > 0) return `+${absFormatted} +${pctStr}`;
-    if (variance < 0) return `(${absFormatted}) -${pctStr}`;
-    return '$0 0%';
-  };
-
   return (
     <div>
       <StepHeader
@@ -439,114 +348,6 @@ export function ConfidenceRealignmentStep({
         estimatedTime={15}
         tip="Be honest — it's better to adjust now than miss later"
       />
-
-      {/* ═══════════════════ FORECAST VS ACTUALS ═══════════════════ */}
-
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
-        <div className="bg-gray-50 px-5 py-3 border-b border-gray-200">
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-brand-orange" />
-            Forecast vs Actuals &mdash; Q{review.quarter}
-          </h3>
-        </div>
-        <div className="p-4">
-          {forecastLoading ? (
-            <div className="flex items-center justify-center py-6">
-              <Loader2 className="w-6 h-6 animate-spin text-brand-orange" />
-            </div>
-          ) : !forecastVariance ? (
-            <div className="flex items-center gap-2 text-sm text-gray-500 py-3">
-              <Info className="w-4 h-4 flex-shrink-0" />
-              <span>No forecast data available for {yearType}{review.year}</span>
-            </div>
-          ) : (
-            <>
-              {!forecastVariance.hasActuals && (
-                <div className="mb-3 inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium px-3 py-1.5 rounded-full">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  No actuals yet &mdash; quarter has not started or Xero not synced
-                </div>
-              )}
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left font-medium text-gray-500 py-2 pr-4 w-[25%]">Metric</th>
-                      <th className="text-right font-medium text-gray-500 py-2 px-3">Forecast</th>
-                      <th className="text-right font-medium text-gray-500 py-2 px-3">Actual</th>
-                      <th className="text-right font-medium text-gray-500 py-2 pl-3">Variance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {([
-                      { key: 'revenue' as const, label: 'Revenue' },
-                      { key: 'grossProfit' as const, label: 'Gross Profit' },
-                      { key: 'netProfit' as const, label: 'Net Profit' },
-                    ]).map(({ key, label }) => {
-                      const row = forecastVariance[key];
-                      return (
-                        <tr key={key} className="border-b border-gray-50 last:border-b-0">
-                          <td className="py-2.5 pr-4 font-medium text-gray-900">{label}</td>
-                          <td className="py-2.5 px-3 text-right text-gray-700">{formatCurrency(row.forecast)}</td>
-                          <td className="py-2.5 px-3 text-right text-gray-700">{formatCurrency(row.actual)}</td>
-                          <td className={`py-2.5 pl-3 text-right font-semibold ${getVarianceColor(row.variance)}`}>
-                            {formatVariance(row.variance, row.variancePct)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Apply to Forecast section */}
-              {forecastVariance.hasActuals && (
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  {forecastVariance.isLocked ? (
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                      <Lock className="w-4 h-4 flex-shrink-0" />
-                      <span>Forecast is locked &mdash; adjustments noted but not applied</span>
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Adjust remaining forecast months
-                      </label>
-                      <div className="flex items-center gap-3">
-                        <div className="relative w-32">
-                          <input
-                            type="number"
-                            value={adjustmentPct}
-                            onChange={(e) => setAdjustmentPct(Number(e.target.value))}
-                            min={-50}
-                            max={50}
-                            step={1}
-                            className="w-full pl-3 pr-7 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-                          />
-                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">%</span>
-                        </div>
-                        <button
-                          onClick={handleApplyAdjustment}
-                          disabled={adjustmentPct === 0 || applyingAdjustment}
-                          className="px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                        >
-                          {applyingAdjustment && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                          Apply to Forecast
-                        </button>
-                      </div>
-                      {adjustmentApplied && (
-                        <p className="mt-2 text-sm text-green-600 font-medium">
-                          Adjustment applied to remaining months
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
 
       {/* ═══════════════════ ANNUAL PLAN ═══════════════════ */}
 
