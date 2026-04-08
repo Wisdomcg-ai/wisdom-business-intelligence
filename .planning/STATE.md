@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 17
-last_updated: "2026-04-08T02:59:58.363Z"
+last_updated: "2026-04-08T02:56:59.401Z"
 progress:
   total_phases: 23
   completed_phases: 4
-  total_plans: 14
+  total_plans: 11
   completed_plans: 12
 ---
 
@@ -119,22 +119,23 @@ progress:
 - Plan 16-02: FYSelectorTabs + PlanningSeasonBanner components + wired into forecast page.tsx — COMPLETE (f150a37, e11096b)
 - Plan 16-03: actuals-summary API + wizard prior-year wiring + lock button on forecast page — COMPLETE (d0baa82, ef2187f)
 
-## Phase 17 Plan 03 Decisions
+## Phase 17 Decisions
 
-- displayYear/displayMetrics computed via IIFE in JSX — keeps toggle logic co-located with table
-- Toggle placed in Goals & Metrics section header only — year3 and quarter columns unchanged by toggle
-- year2 always present in OnePagePlanData shape (never conditional) — keeps snapshot data consistent
-- displayYearLabel sub-text (FY2025/FY2026) added to column header for clarity
+- getMonthKeysForQuarter uses generateFiscalMonthKeys slice — zero new calendar math, reuses proven function
+- sumMonthsForKeys handles null/undefined JSONB gracefully returning 0 — safe for lines without actuals
+- variancePct returns 0 when forecast is 0 to avoid divide-by-zero
+- quarterly-summary route copies isRevenue/isCOGS classification from actuals-summary for consistency
+- hasActuals true if ANY actual value is non-zero across all lines for the quarter
 
 ## Completed Work (This Session)
 
-- Plan 17-03: year2 type extension + assembler mapping + Current Year/Next Year toggle on One Page Plan — COMPLETE (4ef9fa6, 1de9077)
+- Plan 17-01: getMonthKeysForQuarter + sumMonthsForKeys helpers + GET /api/forecast/quarterly-summary endpoint — COMPLETE (c83bf4e, 4563dfe)
 
 ## Position
 
-- Current: Phase 17, Plan 03 — COMPLETE
-- Stopped at: Completed 17-03-PLAN.md
+- Current: Phase 17, Plan 01 — COMPLETE
+- Stopped at: Completed 17-01-PLAN.md
 
 ## Last Session
 
-- 2026-04-08T02:59:00Z — Completed 17-03-PLAN.md (One Page Plan year toggle)
+- 2026-04-08T02:56:06Z — Completed 17-01-PLAN.md
