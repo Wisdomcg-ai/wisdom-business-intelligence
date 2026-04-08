@@ -188,12 +188,18 @@ Plans:
 - [x] Lease: monthly payment as liability line over term
 
 ### Phase 19: Monthly Reporting
-**Goal:** Xero data flows into monthly P&L reports with forecast comparison
-**Depends on:** Phase 5 (Y2/Y3 monthly storage — COMPLETE)
-- [ ] Monthly P&L reads forecast monthly data (from wizard Year 1 monthly storage)
-- [ ] Actual vs Forecast variance by line item
-- [ ] Coach commentary per month
-- [ ] Branded monthly report output
+**Goal:** Close commentary persistence and FY hardcoding gaps in monthly P&L reports
+**Depends on:** Phase 5 (Y2/Y3 monthly storage — COMPLETE), Phase 13 (fiscal-year-utils — COMPLETE)
+**Plans:** 1 plan
+
+Plans:
+- [ ] 19-01-PLAN.md — Commentary persistence + FY hardcoding fix in generate/full-year routes
+
+- [x] Monthly P&L reads forecast monthly data (from wizard Year 1 monthly storage) — already working
+- [x] Actual vs Forecast variance by line item — already working
+- [ ] Coach commentary per month — persistence gap (notes lost on month change)
+- [x] Branded monthly report output — already working (jsPDF with layout editor)
+- [ ] FY start month parameterized in generate/full-year routes (uses fiscal-year-utils)
 
 ### Phase 20: Coaching Sessions
 **Goal:** Fix coaching_sessions 400 error, build session management
