@@ -59,7 +59,7 @@ export type InitiativePriority = 'high' | 'medium' | 'low'
 
 export type InitiativeEffort = 'small' | 'medium' | 'large'
 
-export type InitiativeStatus = 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold'
+export type InitiativeStatus = 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold' | 'deferred' | 'planned'
 
 // Type of idea: strategic (one-off projects) or operational (recurring activities)
 export type IdeaType = 'strategic' | 'operational'
@@ -68,7 +68,7 @@ export interface StrategicInitiative {
   id: string
   title: string
   description?: string
-  source: 'strategic_ideas' | 'roadmap'
+  source: 'strategic_ideas' | 'roadmap' | 'annual_review'
   category?: InitiativeCategory
   priority?: InitiativePriority
   estimatedEffort?: InitiativeEffort
