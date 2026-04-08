@@ -41,6 +41,7 @@ interface SessionAction {
   follow_up_notes: string | null
   reviewed_at: string | null
   carried_over_from_id: string | null
+  strategic_initiative_id: string | null
 }
 
 interface NewAction {
@@ -130,6 +131,10 @@ export default function SessionDetailPage() {
   ])
   const [showActionReview, setShowActionReview] = useState(false)
 
+  // Rock linkage
+  const [rocks, setRocks] = useState<Array<{ id: string; title: string; step_type: string }>>([])
+  const [rockLinkingActionId, setRockLinkingActionId] = useState<string | null>(null)
+
   const loadSession = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -169,6 +174,27 @@ export default function SessionDetailPage() {
 
       if (businessData) {
         setBusiness(businessData)
+      }
+
+      // Load rocks for rock linkage (strategic_initiatives uses business_profiles.id, not businesses.id)
+      const { data: profileData } = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('business_id', sessionData.business_id)
+        .maybeSingle()
+
+      if (profileData) {
+        const { data: rocksData } = await supabase
+          .from('strategic_initiatives')
+          .select('id, title, step_type')
+          .eq('business_id', profileData.id)
+          .in('step_type', ['q1', 'q2', 'q3', 'q4'])
+          .order('step_type')
+          .order('created_at', { ascending: true })
+
+        if (rocksData) {
+          setRocks(rocksData)
+        }
       }
 
       // Load attendees
@@ -422,6 +448,22 @@ export default function SessionDetailPage() {
     }
   }
 
+  async function linkRock(actionId: string, rockId: string | null) {
+    try {
+      const { error } = await supabase
+        .from('session_actions')
+        .update({ strategic_initiative_id: rockId })
+        .eq('id', actionId)
+
+      if (error) throw error
+      setRockLinkingActionId(null)
+      await loadSession()
+    } catch (error) {
+      console.error('Error linking rock:', error)
+      alert('Failed to link rock. Please try again.')
+    }
+  }
+
   async function saveNewActions() {
     const actionsToSave = newActions.filter(a => a.description.trim())
     if (actionsToSave.length === 0) return
@@ -627,54 +669,100 @@ export default function SessionDetailPage() {
             </div>
 
             <div className="space-y-3">
-              {previousActions.map((action) => (
-                <div
-                  key={action.id}
-                  className={`bg-white rounded-lg border p-4 ${
-                    isOverdue(action.due_date) ? 'border-red-300' : 'border-amber-200'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{action.description}</p>
-                      <div className="flex items-center gap-3 mt-1">
-                        {action.due_date && (
-                          <span className={`text-xs ${isOverdue(action.due_date) ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
-                            Due: {formatShortDate(action.due_date)}
-                            {isOverdue(action.due_date) && ' (Overdue)'}
-                          </span>
-                        )}
-                        {action.carried_over_from_id && (
-                          <span className="text-xs text-amber-600">Carried over</span>
-                        )}
+              {previousActions.map((action) => {
+                const linkedRock = action.strategic_initiative_id
+                  ? rocks.find(r => r.id === action.strategic_initiative_id)
+                  : null
+                return (
+                  <div
+                    key={action.id}
+                    className={`bg-white rounded-lg border p-4 ${
+                      isOverdue(action.due_date) ? 'border-red-300' : 'border-amber-200'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">{action.description}</p>
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          {action.due_date && (
+                            <span className={`text-xs ${isOverdue(action.due_date) ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+                              Due: {formatShortDate(action.due_date)}
+                              {isOverdue(action.due_date) && ' (Overdue)'}
+                            </span>
+                          )}
+                          {action.carried_over_from_id && (
+                            <span className="text-xs text-amber-600">Carried over</span>
+                          )}
+                          {linkedRock && (
+                            <span className="flex items-center gap-1 text-xs text-teal-700">
+                              <Target className="w-3 h-3" />
+                              {linkedRock.title}
+                            </span>
+                          )}
+                          {/* Rock link button for previous actions */}
+                          {rocks.length > 0 && (
+                            <span className="flex items-center gap-1">
+                              {rockLinkingActionId === action.id ? (
+                                <select
+                                  autoFocus
+                                  className="text-xs border border-gray-300 rounded px-1 py-0.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                  defaultValue={action.strategic_initiative_id || ''}
+                                  onChange={(e) => linkRock(action.id, e.target.value || null)}
+                                  onBlur={() => setRockLinkingActionId(null)}
+                                >
+                                  <option value="">None (unlink)</option>
+                                  {['q1', 'q2', 'q3', 'q4'].map(qt => {
+                                    const qtRocks = rocks.filter(r => r.step_type === qt)
+                                    if (qtRocks.length === 0) return null
+                                    return (
+                                      <optgroup key={qt} label={qt.toUpperCase()}>
+                                        {qtRocks.map(r => (
+                                          <option key={r.id} value={r.id}>{r.title}</option>
+                                        ))}
+                                      </optgroup>
+                                    )
+                                  })}
+                                </select>
+                              ) : (
+                                <button
+                                  onClick={() => setRockLinkingActionId(action.id)}
+                                  title={linkedRock ? `Linked: ${linkedRock.title}` : 'Link to Rock'}
+                                  className={`p-0.5 rounded transition-colors ${linkedRock ? 'text-teal-600 hover:text-teal-800' : 'text-gray-400 hover:text-teal-600'}`}
+                                >
+                                  <Target className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => updateActionStatus(action.id, 'completed')}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          Done
+                        </button>
+                        <button
+                          onClick={() => updateActionStatus(action.id, 'missed')}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          Missed
+                        </button>
+                        <button
+                          onClick={() => updateActionStatus(action.id, 'carried_over')}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors text-sm font-medium"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          Carry Over
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => updateActionStatus(action.id, 'completed')}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                        Done
-                      </button>
-                      <button
-                        onClick={() => updateActionStatus(action.id, 'missed')}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
-                      >
-                        <XCircle className="w-4 h-4" />
-                        Missed
-                      </button>
-                      <button
-                        onClick={() => updateActionStatus(action.id, 'carried_over')}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors text-sm font-medium"
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                        Carry Over
-                      </button>
-                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -698,37 +786,84 @@ export default function SessionDetailPage() {
               {sessionActions.length > 0 && (
                 <div className="mb-4 space-y-2">
                   <label className="block text-xs font-medium text-brand-orange-800 mb-2">Current Actions</label>
-                  {sessionActions.map((action) => (
-                    <div
-                      key={action.id}
-                      className="flex items-center gap-3 p-3 bg-white rounded-lg border border-brand-orange-200"
-                    >
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        action.status === 'completed' ? 'bg-green-100' :
-                        action.status === 'missed' ? 'bg-red-100' :
-                        'bg-brand-orange-100'
-                      }`}>
-                        <span className={`text-xs font-bold ${
-                          action.status === 'completed' ? 'text-green-600' :
-                          action.status === 'missed' ? 'text-red-600' :
-                          'text-brand-orange'
+                  {sessionActions.map((action) => {
+                    const linkedRock = action.strategic_initiative_id
+                      ? rocks.find(r => r.id === action.strategic_initiative_id)
+                      : null
+                    return (
+                      <div
+                        key={action.id}
+                        className="flex items-start gap-3 p-3 bg-white rounded-lg border border-brand-orange-200"
+                      >
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                          action.status === 'completed' ? 'bg-green-100' :
+                          action.status === 'missed' ? 'bg-red-100' :
+                          'bg-brand-orange-100'
                         }`}>
-                          {action.action_number}
-                        </span>
+                          <span className={`text-xs font-bold ${
+                            action.status === 'completed' ? 'text-green-600' :
+                            action.status === 'missed' ? 'text-red-600' :
+                            'text-brand-orange'
+                          }`}>
+                            {action.action_number}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm ${action.status === 'completed' ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
+                            {action.description}
+                          </p>
+                          {action.due_date && (
+                            <p className="text-xs text-gray-500">Due: {formatShortDate(action.due_date)}</p>
+                          )}
+                          {/* Rock linkage */}
+                          {linkedRock && rockLinkingActionId !== action.id && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <Target className="w-3 h-3 text-teal-600" />
+                              <span className="text-xs text-teal-700 font-medium truncate">{linkedRock.title}</span>
+                            </div>
+                          )}
+                          {rockLinkingActionId === action.id && (
+                            <div className="mt-2">
+                              <select
+                                autoFocus
+                                className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                defaultValue={action.strategic_initiative_id || ''}
+                                onChange={(e) => linkRock(action.id, e.target.value || null)}
+                                onBlur={() => setRockLinkingActionId(null)}
+                              >
+                                <option value="">None (unlink)</option>
+                                {['q1', 'q2', 'q3', 'q4'].map(qt => {
+                                  const qtRocks = rocks.filter(r => r.step_type === qt)
+                                  if (qtRocks.length === 0) return null
+                                  return (
+                                    <optgroup key={qt} label={qt.toUpperCase()}>
+                                      {qtRocks.map(r => (
+                                        <option key={r.id} value={r.id}>{r.title}</option>
+                                      ))}
+                                    </optgroup>
+                                  )
+                                })}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {rocks.length > 0 && (
+                            <button
+                              onClick={() => setRockLinkingActionId(rockLinkingActionId === action.id ? null : action.id)}
+                              title={linkedRock ? `Linked: ${linkedRock.title}` : 'Link to Rock'}
+                              className={`p-1 rounded transition-colors ${linkedRock ? 'text-teal-600 hover:text-teal-800' : 'text-gray-400 hover:text-teal-600'}`}
+                            >
+                              <Target className="w-4 h-4" />
+                            </button>
+                          )}
+                          {action.status === 'completed' && (
+                            <CheckCircle2 className="w-5 h-5 text-green-500" />
+                          )}
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <p className={`text-sm ${action.status === 'completed' ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
-                          {action.description}
-                        </p>
-                        {action.due_date && (
-                          <p className="text-xs text-gray-500">Due: {formatShortDate(action.due_date)}</p>
-                        )}
-                      </div>
-                      {action.status === 'completed' && (
-                        <CheckCircle2 className="w-5 h-5 text-green-500" />
-                      )}
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
