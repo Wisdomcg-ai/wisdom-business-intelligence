@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 21
-last_updated: "2026-04-08T04:23:10.397Z"
+last_updated: "2026-04-08T04:32:23.553Z"
 progress:
   total_phases: 23
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 20
-  completed_plans: 19
+  completed_plans: 20
 ---
 
 # Project State
@@ -184,12 +184,20 @@ progress:
 
 - Plan 21-01: dashboard-actuals API + useXeroActuals hook + FinancialSummaryCharts component — COMPLETE (ee4efb5, df897e7)
 - Plan 21-02: Coach KPI dashboard page + KPI tab in client detail navigation — COMPLETE (9c93757)
+- Plan 21-03: XeroSyncButton + refreshTrigger hook extension + weekly review KPI dashboard link — COMPLETE (badc4ef)
+
+## Phase 21 Plan 03 Decisions
+
+- refreshTrigger optional param on useXeroActuals — zero breaking change, existing callers unaffected
+- XeroSyncButton as named export (consistent with FinancialSummaryCharts pattern in same directory)
+- KPI link card placed above "Mark as Complete" — visible at end of review workflow regardless of completion state
+- BarChart2 icon for KPI link (TrendingUp already used in business-dashboard page header)
 
 ## Position
 
-- Current: Phase 21, Plan 01 — COMPLETE
-- Stopped at: Completed 21-01-PLAN.md
+- Current: Phase 21, Plan 03 — COMPLETE (Phase 21 fully complete)
+- Stopped at: Completed 21-03-PLAN.md
 
 ## Last Session
 
-- 2026-04-08T04:20:03Z — Completed 21-01-PLAN.md
+- 2026-04-08T04:31:09Z — Completed 21-03-PLAN.md (Phase 21 fully complete)

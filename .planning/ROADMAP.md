@@ -216,16 +216,16 @@ Plans:
 
 ### Phase 21: KPI Dashboards
 **Goal:** Business KPIs from Xero data with visual dashboards
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans executed — COMPLETE
 
 Plans:
 - [x] 21-01-PLAN.md — Financial chart API + Recharts panels on business dashboard
 - [x] 21-02-PLAN.md — Coach KPI view at /coach/clients/[id]/kpi
-- [ ] 21-03-PLAN.md — Weekly review bridge + Xero sync button
+- [x] 21-03-PLAN.md — Weekly review bridge + Xero sync button
 
-- [ ] KPI tracking from Xero actuals
-- [ ] Visual dashboards for coach and client views
-- [ ] Weekly review integration
+- [x] KPI tracking from Xero actuals
+- [x] Visual dashboards for coach and client views
+- [x] Weekly review integration
 
 ### Phase 22: Quarterly Review Completion
 **Goal:** Workshop facilitation tools fully working
