@@ -7,10 +7,10 @@
 import { createClient } from '@/lib/supabase/client';
 import { StrategicPlanningService } from '@/app/goals/services/strategic-planning-service';
 import { getQuarterForMonth, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils';
-import type { StrategicInitiative } from '@/app/goals/types';
+import type { StrategicInitiative, InitiativeStatus } from '@/app/goals/types';
 import type { InitiativeDecision, Rock, QuarterlyTargets, RealignmentData } from '../types';
 
-type StepType = 'q1' | 'q2' | 'q3' | 'q4' | 'sprint';
+type StepType = 'q1' | 'q2' | 'q3' | 'q4' | 'sprint' | 'current_remainder';
 
 export class StrategicSyncService {
   private getSupabase() {
@@ -33,7 +33,7 @@ export class StrategicSyncService {
    */
   private mapDecisionToInitiative(decision: InitiativeDecision): StrategicInitiative {
     // Map review decision to initiative status
-    let status: 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold' = 'in_progress';
+    let status: InitiativeStatus = 'in_progress';
     if (decision.decision === 'kill') status = 'cancelled';
     if (decision.decision === 'defer') status = 'on_hold';
     if (decision.currentStatus === 'not_started') status = 'not_started';

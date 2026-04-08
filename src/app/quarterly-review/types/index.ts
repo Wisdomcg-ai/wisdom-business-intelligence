@@ -810,7 +810,7 @@ export interface StrategicInitiativeRef {
   title: string;
   description?: string;
   category?: string;
-  status?: 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold';
+  status?: 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold' | 'deferred' | 'planned';
   progressPercentage?: number;
   quarterAssigned?: string;
 }
