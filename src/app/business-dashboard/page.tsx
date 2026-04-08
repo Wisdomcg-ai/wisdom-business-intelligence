@@ -6,6 +6,7 @@ import ManageMetricsModal from './components/ManageMetricsModal'
 import QuarterProgressCard from './components/QuarterProgressCard'
 import MetricRow from './components/MetricRow'
 import { useBusinessDashboard } from './hooks/useBusinessDashboard'
+import { FinancialSummaryCharts } from './components/FinancialSummaryCharts'
 import WeeklyMetricsService from './services/weekly-metrics-service'
 import { DashboardPreferencesService } from './services/dashboard-preferences-service'
 import type { WeeklyMetricsSnapshot } from './services/weekly-metrics-service'
@@ -193,6 +194,11 @@ export default function BusinessDashboardPage() {
             formatCurrency={formatCurrency}
           />
         )}
+
+        {/* Financial Summary Charts */}
+        <div className="mb-6">
+          <FinancialSummaryCharts businessId={businessId} />
+        </div>
 
         {/* Metrics Table */}
         <div className="rounded-xl shadow-sm border border-gray-200 bg-white overflow-hidden">
