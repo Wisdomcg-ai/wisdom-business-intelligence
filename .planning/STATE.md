@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to plan
-last_updated: "2026-04-08T03:31:03.272Z"
+status: Executing Phase 20
+last_updated: "2026-04-08T03:49:07.723Z"
 progress:
   total_phases: 23
   completed_phases: 6
-  total_plans: 15
-  completed_plans: 15
+  total_plans: 17
+  completed_plans: 16
 ---
 
 # Project State
@@ -152,11 +152,23 @@ progress:
 
 - Plan 19-01: commentary persistence across month changes + FY fix in generate and full-year routes — COMPLETE (a41e00f, 94c24e2)
 
+## Phase 20 Decisions
+
+- session_actions links via session_note_id to session_notes — no FK to coaching_sessions
+- actions/route.ts queries session_notes (not coaching_sessions) for access check and business_id
+- AI-extracted actions from analyze-transcript set session_note_id: null (no session_notes row exists at analysis time)
+- action_number computed via count query (existing rows + 1) before each insert
+- status enum: pending | completed | missed | carried_over — 'open' is invalid and removed
+
+## Completed Work (This Session)
+
+- Plan 20-01: schema migration (6 columns + 1 index) + 4 API route fixes for coaching_sessions 400 errors — COMPLETE (31f6f8b, 5beb176)
+
 ## Position
 
-- Current: Phase 19, Plan 01 — COMPLETE
-- Stopped at: Completed 19-01-PLAN.md
+- Current: Phase 20, Plan 01 — COMPLETE
+- Stopped at: Completed 20-01-PLAN.md
 
 ## Last Session
 
-- 2026-04-08T03:26:47Z — Completed 19-01-PLAN.md
+- 2026-04-07T00:15:00Z — Completed 20-01-PLAN.md

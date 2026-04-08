@@ -203,10 +203,10 @@ Plans:
 
 ### Phase 20: Coaching Sessions
 **Goal:** Fix coaching_sessions 400 error, reconcile session schema, add rock linkage
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
-- [ ] 20-01-PLAN.md — Schema migration + fix all 4 broken /api/sessions/ routes
+- [x] 20-01-PLAN.md — Schema migration + fix all 4 broken /api/sessions/ routes
 - [ ] 20-02-PLAN.md — Rock linkage UI on session action items
 
 - [ ] Fix coaching_sessions endpoint (schema migration + column reconciliation)
