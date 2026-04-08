@@ -129,10 +129,17 @@ Plans:
 
 ### Phase 15: Q4 Annual Review — Abridged Goals Wizard
 **Goal:** Returning clients set next year goals inside the Q4 annual review
-- [ ] Roll 3-year targets forward: Year 2→Year 1, Year 3→Year 2, set new Year 3
+**Plans:** 3 plans
+
+Plans:
+- [ ] 15-01-PLAN.md — Type foundation: extend InitiativeStatus, source types, StepType
+- [ ] 15-02-PLAN.md — Sync service: syncAnnualReview method + completeWorkshop wiring
+- [ ] 15-03-PLAN.md — Goals Wizard detection banner + carry-forward fiscal_year filter
+
+- [ ] Roll 3-year targets forward: Year 2->Year 1, Year 3->Year 2, set new Year 3
 - [ ] Carry forward incomplete initiatives (show completion status, coach decides carry/drop)
 - [ ] New ideas from refreshed SWOT (already done in Q4 review step 3.2)
-- [ ] Prioritise combined list (carried + new) → distribute across Q1-Q4
+- [ ] Prioritise combined list (carried + new) -> distribute across Q1-Q4
 - [ ] Q1 sprint rocks for the new year
 - [ ] On completion: auto-sync to business_financial_goals + strategic_initiatives for next FY
 - [ ] Add status field to strategic_initiatives (planned/in_progress/complete/deferred)
@@ -148,7 +155,7 @@ Plans:
 - [ ] Flexible month ranges (forecastStartMonth/endMonth instead of duration 1/2/3)
 - [ ] Lock completed fiscal year as read-only
 
-### Phase 17: Quarterly Review ↔ Forecast Integration
+### Phase 17: Quarterly Review <-> Forecast Integration
 **Goal:** Quarterly reviews reference forecast data for variance analysis
 - [ ] Q review shows: "Q3 forecast: $2.8M | Actual: $2.6M | Variance: -7%"
 - [ ] Confidence adjustment can optionally update remaining forecast months
@@ -164,8 +171,8 @@ Plans:
 **Depends on:** Phase 7 (PlannedSpend model — COMPLETE)
 - [ ] Cashflow engine reads PlannedSpend items from forecast assumptions
 - [ ] Outright purchases: cash out in purchase month
-- [ ] Financed items: monthly repayment × term starting from purchase month
-- [ ] Leased items: monthly payment × term starting from purchase month
+- [ ] Financed items: monthly repayment x term starting from purchase month
+- [ ] Leased items: monthly payment x term starting from purchase month
 - [ ] Display committed monthly outflows alongside operational cash flow
 
 ### Phase 19: Monthly Reporting
