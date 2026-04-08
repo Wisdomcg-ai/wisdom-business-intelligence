@@ -216,7 +216,7 @@ Plans:
 
 ### Phase 21: KPI Dashboards
 **Goal:** Business KPIs from Xero data with visual dashboards
-**Plans:** 3/3 plans executed — COMPLETE
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 21-01-PLAN.md — Financial chart API + Recharts panels on business dashboard
