@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { cn } from '@/lib/utils'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { Printer, Loader2, ExternalLink, CheckCircle2, Circle, Lightbulb, FileText, ChevronDown, History, ArrowLeft } from 'lucide-react'
 import type { QuarterInfo } from '@/app/goals/utils/quarters'
@@ -34,6 +35,9 @@ export default function OnePagePlan() {
   const [allQuarters, setAllQuarters] = useState<QuarterInfo[]>([])
   const [selectedQuarterId, setSelectedQuarterId] = useState<string | null>(null)
   const [showQuarterPicker, setShowQuarterPicker] = useState(false)
+
+  // Year view toggle: 'current' = year1, 'next' = year2
+  const [yearView, setYearView] = useState<'current' | 'next'>('current')
 
   // Version history state
   const [snapshots, setSnapshots] = useState<PlanSnapshot[]>([])
@@ -719,9 +723,41 @@ export default function OnePagePlan() {
 
           {/* Goals & Metrics Table */}
           <div className="border-b border-gray-300 overflow-x-auto">
-            <div className="bg-brand-orange-50 px-3 py-2 border-b border-gray-300">
+            <div className="bg-brand-orange-50 px-3 py-2 border-b border-gray-300 flex items-center justify-between">
               <h3 className="text-xs sm:text-sm font-bold text-brand-navy uppercase print:text-xs">Goals & Key Metrics</h3>
+              {/* Year view toggle — hidden when printing */}
+              <div className="flex items-center gap-1 print:hidden">
+                <button
+                  onClick={() => setYearView('current')}
+                  className={cn(
+                    'px-3 py-1 text-xs rounded-md transition-colors',
+                    yearView === 'current'
+                      ? 'bg-brand-navy text-white'
+                      : 'text-gray-500 hover:bg-gray-100'
+                  )}
+                >
+                  Current Year
+                </button>
+                <button
+                  onClick={() => setYearView('next')}
+                  className={cn(
+                    'px-3 py-1 text-xs rounded-md transition-colors',
+                    yearView === 'next'
+                      ? 'bg-brand-navy text-white'
+                      : 'text-gray-500 hover:bg-gray-100'
+                  )}
+                >
+                  Next Year
+                </button>
+              </div>
             </div>
+            {(() => {
+              const displayYear = yearView === 'next' ? data.financialGoals.year2 : data.financialGoals.year1
+              const displayMetrics = yearView === 'next' ? data.coreMetrics.year2 : data.coreMetrics.year1
+              const displayYearLabel = yearView === 'next'
+                ? `${data.yearType}${data.planYear + 1}`
+                : `${data.yearType}${data.planYear}`
+              return (
             <table className="w-full text-xs sm:text-sm print:text-xs">
               <colgroup>
                 <col className="w-[30%]" />
@@ -733,7 +769,10 @@ export default function OnePagePlan() {
                 <tr className="bg-gray-100 border-b border-gray-300">
                   <th className="text-left p-2 font-semibold text-gray-700">Metric</th>
                   <th className="text-center p-2 font-semibold text-gray-700">3-Year Goal</th>
-                  <th className="text-center p-2 font-semibold text-brand-orange-700">1-Year Goal</th>
+                  <th className="text-center p-2 font-semibold text-brand-orange-700">
+                    {yearView === 'next' ? 'Next Year' : '1-Year'} Goal
+                    <span className="block text-[10px] font-normal text-gray-500">{displayYearLabel}</span>
+                  </th>
                   <th className="text-center p-2 font-semibold text-green-700">{data.currentQuarterLabel} Target</th>
                 </tr>
               </thead>
@@ -745,7 +784,7 @@ export default function OnePagePlan() {
                 <tr className="border-b border-gray-200">
                   <td className="p-2 font-semibold pl-4">Revenue</td>
                   <td className="p-2 text-center">{formatCurrency(data.financialGoals.year3.revenue)}</td>
-                  <td className="p-2 text-center font-semibold text-brand-navy">{formatCurrency(data.financialGoals.year1.revenue)}</td>
+                  <td className="p-2 text-center font-semibold text-brand-navy">{formatCurrency(displayYear.revenue)}</td>
                   <td className="p-2 text-center font-semibold text-green-700">{formatCurrency(data.financialGoals.quarter.revenue)}</td>
                 </tr>
                 <tr className="border-b border-gray-200">
@@ -755,8 +794,8 @@ export default function OnePagePlan() {
                     <div className="text-xs text-gray-500">({calculateMargin(data.financialGoals.year3.grossProfit, data.financialGoals.year3.revenue)})</div>
                   </td>
                   <td className="p-2 text-center font-semibold text-brand-navy">
-                    <div>{formatCurrency(data.financialGoals.year1.grossProfit)}</div>
-                    <div className="text-xs text-brand-orange font-normal">({calculateMargin(data.financialGoals.year1.grossProfit, data.financialGoals.year1.revenue)})</div>
+                    <div>{formatCurrency(displayYear.grossProfit)}</div>
+                    <div className="text-xs text-brand-orange font-normal">({calculateMargin(displayYear.grossProfit, displayYear.revenue)})</div>
                   </td>
                   <td className="p-2 text-center font-semibold text-green-700">
                     <div>{formatCurrency(data.financialGoals.quarter.grossProfit)}</div>
@@ -770,8 +809,8 @@ export default function OnePagePlan() {
                     <div className="text-xs text-gray-500">({calculateMargin(data.financialGoals.year3.netProfit, data.financialGoals.year3.revenue)})</div>
                   </td>
                   <td className="p-2 text-center font-semibold text-brand-navy">
-                    <div>{formatCurrency(data.financialGoals.year1.netProfit)}</div>
-                    <div className="text-xs text-brand-orange font-normal">({calculateMargin(data.financialGoals.year1.netProfit, data.financialGoals.year1.revenue)})</div>
+                    <div>{formatCurrency(displayYear.netProfit)}</div>
+                    <div className="text-xs text-brand-orange font-normal">({calculateMargin(displayYear.netProfit, displayYear.revenue)})</div>
                   </td>
                   <td className="p-2 text-center font-semibold text-green-700">
                     <div>{formatCurrency(data.financialGoals.quarter.netProfit)}</div>
@@ -786,31 +825,31 @@ export default function OnePagePlan() {
                 <tr className="border-b border-gray-200">
                   <td className="p-2 font-semibold pl-4">Leads per Month</td>
                   <td className="p-2 text-center">{data.coreMetrics.year3.leadsPerMonth || 0}</td>
-                  <td className="p-2 text-center font-semibold text-brand-navy">{data.coreMetrics.year1.leadsPerMonth || 0}</td>
+                  <td className="p-2 text-center font-semibold text-brand-navy">{displayMetrics.leadsPerMonth || 0}</td>
                   <td className="p-2 text-center font-semibold text-green-700">{data.coreMetrics.quarter.leadsPerMonth || 0}</td>
                 </tr>
                 <tr className="border-b border-gray-200">
                   <td className="p-2 font-semibold pl-4">Conversion Rate (%)</td>
                   <td className="p-2 text-center">{data.coreMetrics.year3.conversionRate || 0}%</td>
-                  <td className="p-2 text-center font-semibold text-brand-navy">{data.coreMetrics.year1.conversionRate || 0}%</td>
+                  <td className="p-2 text-center font-semibold text-brand-navy">{displayMetrics.conversionRate || 0}%</td>
                   <td className="p-2 text-center font-semibold text-green-700">{data.coreMetrics.quarter.conversionRate || 0}%</td>
                 </tr>
                 <tr className="border-b border-gray-200">
                   <td className="p-2 font-semibold pl-4">Avg Transaction Value</td>
                   <td className="p-2 text-center">{formatCurrency(data.coreMetrics.year3.avgTransactionValue || 0)}</td>
-                  <td className="p-2 text-center font-semibold text-brand-navy">{formatCurrency(data.coreMetrics.year1.avgTransactionValue || 0)}</td>
+                  <td className="p-2 text-center font-semibold text-brand-navy">{formatCurrency(displayMetrics.avgTransactionValue || 0)}</td>
                   <td className="p-2 text-center font-semibold text-green-700">{formatCurrency(data.coreMetrics.quarter.avgTransactionValue || 0)}</td>
                 </tr>
                 <tr className="border-b border-gray-200">
                   <td className="p-2 font-semibold pl-4">Team Headcount (FTE)</td>
                   <td className="p-2 text-center">{data.coreMetrics.year3.teamHeadcount || 0}</td>
-                  <td className="p-2 text-center font-semibold text-brand-navy">{data.coreMetrics.year1.teamHeadcount || 0}</td>
+                  <td className="p-2 text-center font-semibold text-brand-navy">{displayMetrics.teamHeadcount || 0}</td>
                   <td className="p-2 text-center font-semibold text-green-700">{data.coreMetrics.quarter.teamHeadcount || 0}</td>
                 </tr>
                 <tr className="border-b border-gray-200">
                   <td className="p-2 font-semibold pl-4">Owner Hours per Week</td>
                   <td className="p-2 text-center">{data.coreMetrics.year3.ownerHoursPerWeek || 0}</td>
-                  <td className="p-2 text-center font-semibold text-brand-navy">{data.coreMetrics.year1.ownerHoursPerWeek || 0}</td>
+                  <td className="p-2 text-center font-semibold text-brand-navy">{displayMetrics.ownerHoursPerWeek || 0}</td>
                   <td className="p-2 text-center font-semibold text-green-700">{data.coreMetrics.quarter.ownerHoursPerWeek || 0}</td>
                 </tr>
 
@@ -828,6 +867,8 @@ export default function OnePagePlan() {
                 ))}
               </tbody>
             </table>
+              )
+            })()}
           </div>
 
           {/* Strategic Initiatives & Quarterly Rocks - Aligned with columns */}
