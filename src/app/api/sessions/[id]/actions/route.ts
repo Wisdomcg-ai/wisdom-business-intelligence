@@ -15,9 +15,10 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get session to verify access and get business_id
+    // Get session_note to verify access and get business_id
+    // This route is called with a session_notes ID (not coaching_sessions ID)
     const { data: session } = await supabase
-      .from('coaching_sessions')
+      .from('session_notes')
       .select('business_id, coach_id')
       .eq('id', sessionId)
       .single()
@@ -27,22 +28,31 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { action_text, assigned_to, due_date } = body
+    const { description, due_date } = body
 
-    if (!action_text) {
-      return NextResponse.json({ error: 'action_text is required' }, { status: 400 })
+    if (!description) {
+      return NextResponse.json({ error: 'description is required' }, { status: 400 })
     }
 
-    // Create action
+    // Compute next action_number for this session
+    const { count: existingCount } = await supabase
+      .from('session_actions')
+      .select('id', { count: 'exact', head: true })
+      .eq('session_note_id', sessionId)
+
+    const actionNumber = (existingCount ?? 0) + 1
+
+    // Create action with correct column names
     const { data: action, error: actionError } = await supabase
       .from('session_actions')
       .insert({
-        session_id: sessionId,
+        session_note_id: sessionId,
         business_id: session.business_id,
-        action_text,
-        assigned_to,
-        due_date,
-        status: 'open'
+        action_number: actionNumber,
+        description,
+        due_date: due_date || null,
+        status: 'pending',
+        created_by: user.id
       })
       .select()
       .single()

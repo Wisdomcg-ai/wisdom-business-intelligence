@@ -172,19 +172,21 @@ Return ONLY valid JSON in this exact format:
     // Create action items if any were extracted
     const createdActions = []
     if (analysis.action_items && analysis.action_items.length > 0) {
-      for (const item of analysis.action_items) {
+      for (let index = 0; index < analysis.action_items.length; index++) {
+        const item = analysis.action_items[index]
         const dueDate = new Date()
         dueDate.setDate(dueDate.getDate() + (item.due_in_days || 7))
 
         const { data: action, error: actionError } = await supabase
           .from('session_actions')
           .insert({
-            coaching_session_id: sessionId,
+            session_note_id: null,
             business_id: session.business_id,
-            action_text: item.action_text,
-            status: 'open',
-            priority: item.priority || 'medium',
-            due_date: dueDate.toISOString()
+            action_number: index + 1,
+            description: item.action_text,
+            due_date: dueDate.toISOString(),
+            status: 'pending',
+            created_by: user.id
           })
           .select()
           .single()

@@ -15,13 +15,10 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get session with actions
+    // Get session — actions are linked via session_notes, not coaching_sessions directly
     const { data: session, error: sessionError } = await supabase
       .from('coaching_sessions')
-      .select(`
-        *,
-        session_actions (*)
-      `)
+      .select('*')
       .eq('id', sessionId)
       .single()
 
