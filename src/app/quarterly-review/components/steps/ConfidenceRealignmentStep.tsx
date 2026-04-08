@@ -1,17 +1,22 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, AnnualPlanSnapshot, RealignmentData, QuarterlyTargets } from '../../types';
 import { getDefaultRealignmentData, getDefaultAnnualPlanSnapshot, getCurrentQuarter } from '../../types';
+import { getCurrentFiscalYear, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils';
 import {
   Target,
   DollarSign,
   AlertTriangle,
   Loader2,
   Info,
+  CheckCircle2,
+  Clock,
+  Pause,
+  XCircle,
 } from 'lucide-react';
 
 interface ConfidenceRealignmentStepProps {
@@ -322,6 +327,56 @@ export function ConfidenceRealignmentStep({
   };
 
   // ═══════════════════════════════════════════════════════════════
+  // Initiative Progress Stats
+  // ═══════════════════════════════════════════════════════════════
+
+  const initiativeProgress = useMemo(() => {
+    if (initiatives.length === 0) return null;
+
+    // Filter to current fiscal year (with NULL fallback for pre-Phase-13 data)
+    const currentFY = getCurrentFiscalYear(startMonthFromYearType(yearType));
+    const yearFiltered = initiatives.filter(
+      i => i.fiscal_year === currentFY || i.fiscal_year === null || i.fiscal_year === undefined
+    );
+
+    // Only include quarter-assigned initiatives (q1-q4 step_types)
+    const quarterTypes = ['q1', 'q2', 'q3', 'q4'];
+    const quarterInitiatives = yearFiltered.filter(i => quarterTypes.includes(i.step_type || ''));
+
+    if (quarterInitiatives.length === 0) return null;
+
+    // Group by quarter
+    const byQuarter: Record<string, typeof quarterInitiatives> = { q1: [], q2: [], q3: [], q4: [] };
+    for (const i of quarterInitiatives) {
+      const qt = i.step_type as string;
+      if (byQuarter[qt]) byQuarter[qt].push(i);
+    }
+
+    // Status categories
+    const countByStatus = (arr: typeof quarterInitiatives) => ({
+      total: arr.length,
+      completed: arr.filter(i => i.status === 'completed').length,
+      inProgress: arr.filter(i => i.status === 'in_progress').length,
+      planned: arr.filter(i => ['not_started', 'planned'].includes(i.status)).length,
+      deferred: arr.filter(i => ['deferred', 'on_hold', 'cancelled'].includes(i.status)).length,
+    });
+
+    const overall = countByStatus(quarterInitiatives);
+    const quarters = {
+      q1: countByStatus(byQuarter.q1),
+      q2: countByStatus(byQuarter.q2),
+      q3: countByStatus(byQuarter.q3),
+      q4: countByStatus(byQuarter.q4),
+    };
+
+    const completionPct = overall.total > 0
+      ? Math.round((overall.completed / overall.total) * 100)
+      : 0;
+
+    return { overall, quarters, completionPct };
+  }, [initiatives, yearType]);
+
+  // ═══════════════════════════════════════════════════════════════
   // Render
   // ═══════════════════════════════════════════════════════════════
 
@@ -475,6 +530,129 @@ export function ConfidenceRealignmentStep({
                 You haven&apos;t set annual targets in your Strategic Plan yet. The confidence check below
                 will still work, but consider setting targets for better tracking.
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ INITIATIVE PROGRESS ═══════════════════ */}
+
+      {initiativeProgress && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+          <div className="bg-gray-50 px-5 py-3 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <Target className="w-5 h-5 text-brand-orange" />
+                Annual Plan Progress
+              </h3>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-bold text-brand-orange">{initiativeProgress.completionPct}%</span>
+                <span className="text-sm text-gray-500">complete</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4">
+            {/* Overall progress bar */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between text-sm mb-1.5">
+                <span className="text-gray-600">
+                  {initiativeProgress.overall.completed} of {initiativeProgress.overall.total} initiatives complete
+                </span>
+              </div>
+              <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex">
+                {initiativeProgress.overall.completed > 0 && (
+                  <div
+                    className="bg-green-500 h-full"
+                    style={{ width: `${(initiativeProgress.overall.completed / initiativeProgress.overall.total) * 100}%` }}
+                  />
+                )}
+                {initiativeProgress.overall.inProgress > 0 && (
+                  <div
+                    className="bg-blue-500 h-full"
+                    style={{ width: `${(initiativeProgress.overall.inProgress / initiativeProgress.overall.total) * 100}%` }}
+                  />
+                )}
+                {initiativeProgress.overall.planned > 0 && (
+                  <div
+                    className="bg-gray-300 h-full"
+                    style={{ width: `${(initiativeProgress.overall.planned / initiativeProgress.overall.total) * 100}%` }}
+                  />
+                )}
+                {initiativeProgress.overall.deferred > 0 && (
+                  <div
+                    className="bg-amber-400 h-full"
+                    style={{ width: `${(initiativeProgress.overall.deferred / initiativeProgress.overall.total) * 100}%` }}
+                  />
+                )}
+              </div>
+              <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /> Complete ({initiativeProgress.overall.completed})</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" /> In Progress ({initiativeProgress.overall.inProgress})</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-gray-300 inline-block" /> Not Started ({initiativeProgress.overall.planned})</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" /> Deferred ({initiativeProgress.overall.deferred})</span>
+              </div>
+            </div>
+
+            {/* Per-quarter breakdown */}
+            <div className="grid grid-cols-4 gap-3">
+              {(['q1', 'q2', 'q3', 'q4'] as const).map((q, idx) => {
+                const qNum = idx + 1;
+                const stats = initiativeProgress.quarters[q];
+                const isPast = qNum < currentQuarter;
+                const isCurrent = qNum === currentQuarter;
+
+                return (
+                  <div
+                    key={q}
+                    className={`rounded-lg border p-3 ${
+                      isCurrent
+                        ? 'border-brand-orange-200 bg-brand-orange-50'
+                        : isPast
+                          ? 'border-gray-200 bg-gray-50'
+                          : 'border-gray-100 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`text-xs font-semibold uppercase ${isCurrent ? 'text-brand-orange' : 'text-gray-500'}`}>
+                        Q{qNum}
+                        {isCurrent && <span className="ml-1 text-[10px] font-normal">(now)</span>}
+                      </span>
+                      <span className="text-xs text-gray-400">{stats.total}</span>
+                    </div>
+                    {stats.total > 0 ? (
+                      <div className="space-y-1">
+                        {stats.completed > 0 && (
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <CheckCircle2 className="w-3 h-3 text-green-500" />
+                            <span className="text-gray-700">{stats.completed} done</span>
+                          </div>
+                        )}
+                        {stats.inProgress > 0 && (
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <Clock className="w-3 h-3 text-blue-500" />
+                            <span className="text-gray-700">{stats.inProgress} active</span>
+                          </div>
+                        )}
+                        {stats.planned > 0 && (
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <Pause className="w-3 h-3 text-gray-400" />
+                            <span className="text-gray-700">{stats.planned} pending</span>
+                          </div>
+                        )}
+                        {stats.deferred > 0 && (
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <XCircle className="w-3 h-3 text-amber-500" />
+                            <span className="text-gray-700">{stats.deferred} deferred</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400">No initiatives</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
