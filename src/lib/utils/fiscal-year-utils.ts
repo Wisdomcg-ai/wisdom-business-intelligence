@@ -280,3 +280,40 @@ export function isNearYearEnd(
 ): boolean {
   return getMonthsUntilYearEnd(today, yearStartMonth) <= thresholdMonths
 }
+
+// --- Quarterly Aggregation Helpers -----------------------------------------
+
+/**
+ * Get the 3 YYYY-MM month keys for a given fiscal quarter and year.
+ *
+ * Examples:
+ *   - FY2026 (yearStartMonth=7), Q3: ['2026-01', '2026-02', '2026-03']
+ *   - CY2026 (yearStartMonth=1), Q3: ['2026-07', '2026-08', '2026-09']
+ *
+ * @param quarter - Quarter number 1-4
+ * @param fiscalYear - The fiscal year (e.g. 2026)
+ * @param yearStartMonth - Fiscal year start month 1-12 (default 7 for AU FY)
+ */
+export function getMonthKeysForQuarter(
+  quarter: 1 | 2 | 3 | 4,
+  fiscalYear: number,
+  yearStartMonth: number = DEFAULT_YEAR_START_MONTH
+): string[] {
+  const allKeys = generateFiscalMonthKeys(fiscalYear, yearStartMonth)
+  const startIdx = (quarter - 1) * 3
+  return allKeys.slice(startIdx, startIdx + 3)
+}
+
+/**
+ * Sum forecast_months or actual_months JSONB values for a specific set of month keys.
+ * Returns 0 if monthsData is null or undefined, or if none of the keys are present.
+ *
+ * @param monthsData - JSONB object from forecast_pl_lines (e.g. { "2025-07": 50000, ... })
+ * @param keys - Array of YYYY-MM keys to sum (typically from getMonthKeysForQuarter)
+ */
+export function sumMonthsForKeys(
+  monthsData: Record<string, number> | null | undefined,
+  keys: string[]
+): number {
+  return keys.reduce((sum, key) => sum + (monthsData?.[key] || 0), 0)
+}
