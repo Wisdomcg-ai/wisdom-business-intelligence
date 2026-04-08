@@ -78,7 +78,7 @@
 - [x] COGS Y2/Y3 trend selector per line (Same / Improves / Increases)
 - [x] Cashflow tool integration — PlannedSpend feeds cashflow engine (outright/finance/lease monthly commitments)
 - [x] Change tracking — "Modified since last review" badge + "Mark as reviewed" button
-- [x] Step 4 Team — Collapsible detail columns (show/hide rate, hours, bonus, commission)
+- [x] Step 4 Team �� Collapsible detail columns (show/hide rate, hours, bonus, commission)
 
 ### Phase 12b: AI Enhancements [COMPLETE]
 **Goal:** Better use of existing AI infrastructure (endpoints already working)
@@ -104,7 +104,7 @@
 
 ### Phase 13: Year Type Foundation [COMPLETE]
 **Goal:** Support both FY (Jul-Jun) and CY (Jan-Dec) businesses
-- [x] Central utility module (src/lib/utils/fiscal-year-utils.ts) — all date-boundary logic parameterized by yearStartMonth
+- [x] Central utility module (src/lib/utils/fiscal-year-utils.ts) ��� all date-boundary logic parameterized by yearStartMonth
 - [x] DB migration: fiscal_year_start on business_profiles, fiscal_year on strategic_initiatives
 - [x] Refactored generateMonthKeys(), getForecastFiscalYear(), calculateForecastPeriods() to use central utility
 - [x] Updated 15+ wizard components (Step2, Step4, Step5, Step8, BudgetTracker, useForecastWizard, parsePLFile, opex-classifier)
@@ -169,7 +169,7 @@ Plans:
 Plans:
 - [ ] 17-01-PLAN.md — Quarter aggregation helpers + quarterly-summary API endpoint
 - [ ] 17-02-PLAN.md — Variance panel in ConfidenceRealignmentStep + adjust-forward write-back API
-- [x] 17-03-PLAN.md — One Page Plan next-year financial view with year toggle
+- [x] 17-03-PLAN.md �� One Page Plan next-year financial view with year toggle
 
 - [ ] Q review shows: "Q3 forecast: $2.8M | Actual: $2.6M | Variance: -7%"
 - [ ] Confidence adjustment can optionally update remaining forecast months
@@ -189,7 +189,7 @@ Plans:
 
 ### Phase 19: Monthly Reporting
 **Goal:** Close commentary persistence and FY hardcoding gaps in monthly P&L reports
-**Depends on:** Phase 5 (Y2/Y3 monthly storage — COMPLETE), Phase 13 (fiscal-year-utils �� COMPLETE)
+**Depends on:** Phase 5 (Y2/Y3 monthly storage — COMPLETE), Phase 13 (fiscal-year-utils — COMPLETE)
 **Plans:** 1/1 plans complete
 
 Plans:
@@ -230,6 +230,12 @@ Plans:
 ### Phase 22: Quarterly Review Completion
 **Goal:** Workshop facilitation tools fully working
 **Depends on:** Phase 15 (initiative status field)
+**Plans:** 2 plans
+
+Plans:
+- [ ] 22-01-PLAN.md — Bug fixes: status mapping (deferred/planned), decision count display, dual-ID query
+- [ ] 22-02-PLAN.md — Initiative progress panel in step 4.1
+
 - [ ] Progress tracking against annual plan
 - [ ] Strategic initiative status updates
 - [ ] Completion tracking linked to initiative status field (from Phase 15)
