@@ -570,6 +570,26 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
         console.error('[Sync] Final sync on complete failed:', err);
       }
 
+      // 2b. ANNUAL SYNC: roll forward targets + sync next-year initiatives
+      if (reviewType === 'annual' && review.next_year_targets && review.annual_initiative_plan) {
+        try {
+          const nextYear = review.next_year_targets.nextYear || (review.year + 1);
+          console.log('[Sync] Annual review detected — syncing annual planning data for FY', nextYear);
+          const annualResult = await strategicSyncService.syncAnnualReview(
+            syncBusinessId,
+            userId,
+            review.next_year_targets,
+            review.annual_initiative_plan,
+            nextYear
+          );
+          if (!annualResult.success) {
+            console.error('[Sync] Annual sync had errors:', annualResult.errors);
+          }
+        } catch (err) {
+          console.error('[Sync] Annual sync failed (non-blocking):', err);
+        }
+      }
+
       // 3. POST-SYNC SNAPSHOT
       try {
         const snapshotBusinessId = await getSnapshotBusinessId();
