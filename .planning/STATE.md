@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Executing Phase 15
-last_updated: "2026-04-08T00:26:31.000Z"
+status: Executing Phase 16
+last_updated: "2026-04-08T02:10:19.928Z"
 progress:
   total_phases: 23
-  completed_phases: 2
-  total_plans: 8
-  completed_plans: 7
+  completed_phases: 3
+  total_plans: 11
+  completed_plans: 9
 ---
 
 # Project State
@@ -61,8 +61,8 @@ progress:
 
 ## Position
 
-- Current: Phase 15, Plan 02 — COMPLETE (2 tasks done, TypeScript clean)
-- Stopped at: Completed 15-02-PLAN.md
+- Current: Phase 16, Plan 01 — COMPLETE (2 tasks done, TypeScript clean)
+- Stopped at: Completed 16-01-PLAN.md
 
 ## Phase 14 Decisions
 
@@ -98,6 +98,18 @@ progress:
 - UUID check distinguishes carry-forward (UPDATE) vs new (INSERT) initiatives
 - syncBusinessId already resolved as profileBusinessId — passed directly to syncAnnualReview
 
+## Phase 16 Decisions
+
+- fiscal_year filter added at DB level in getOrCreateForecast — prevents wrong-FY rows being returned when multiple FY forecasts exist
+- Removed needsUpdate fiscal_year check after DB filter guarantees the match
+- Planning season threshold 3 months — within 3 months of year end, getForecastFiscalYear returns currentFY+1
+- isReadOnly guarded in both handleComplete and performAutoSave to fully block writes on locked forecasts
+- Duplicate still available on locked forecasts so users can create editable copies
+
+## Completed Work (This Session)
+
+- Plan 16-01: fiscal_year filter + planning-season getForecastFiscalYear + lock enforcement in ForecastSelector and ForecastWizardV4 — COMPLETE (3f3acc3, eeb38dd)
+
 ## Last Session
 
-- 2026-04-08T00:26:31Z — Completed 15-02-PLAN.md (syncAnnualReview + completeWorkshop wiring complete)
+- 2026-04-08T02:09:00Z — Completed 16-01-PLAN.md (fiscal year filter + lock enforcement complete)
