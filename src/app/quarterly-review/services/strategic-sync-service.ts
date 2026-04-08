@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client';
 import { StrategicPlanningService } from '@/app/goals/services/strategic-planning-service';
 import { getQuarterForMonth, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils';
 import type { StrategicInitiative, InitiativeStatus } from '@/app/goals/types';
-import type { InitiativeDecision, Rock, QuarterlyTargets, RealignmentData } from '../types';
+import type { InitiativeDecision, Rock, QuarterlyTargets, RealignmentData, NextYearTargets, AnnualInitiativePlan } from '../types';
 
 type StepType = 'q1' | 'q2' | 'q3' | 'q4' | 'sprint' | 'current_remainder';
 
@@ -516,6 +516,171 @@ export class StrategicSyncService {
       console.warn('[StrategicSync] Error resolving quarter key, using fallback:', fallbackKey, err);
       return fallbackKey;
     }
+  }
+
+  /**
+   * Sync annual review completion data:
+   * Part A: Roll forward 3-year financial targets (Y1 = next-year targets, Y2 stays, Y3 = stretch or current)
+   * Part B: Sync next-year initiatives to strategic_initiatives with fiscal_year stamp
+   * Only fires for annual review_type.
+   */
+  async syncAnnualReview(
+    businessId: string, // Must be profileBusinessId (business_profiles.id)
+    userId: string,
+    nextYearTargets: NextYearTargets,
+    annualInitiativePlan: AnnualInitiativePlan,
+    nextYear: number
+  ): Promise<{ success: boolean; errors: string[] }> {
+    const errors: string[] = [];
+    const supabase = this.getSupabase();
+
+    console.log('[StrategicSync] syncAnnualReview called for FY', nextYear, 'businessId:', businessId);
+
+    // ── Part A: Roll forward 3-year financial targets ──────────────────────────
+    try {
+      // Load current goals row — try multiple IDs same as syncQuarterlyTargets
+      let goalsRow: any = null;
+
+      const { data: goalsData } = await supabase
+        .from('business_financial_goals')
+        .select('*')
+        .eq('business_id', businessId)
+        .maybeSingle();
+
+      if (goalsData) {
+        goalsRow = goalsData;
+        console.log('[StrategicSync] Annual sync: found goals with businessId:', businessId);
+      } else {
+        // Fallback: try user.id
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user && user.id !== businessId) {
+          const { data: fallbackData } = await supabase
+            .from('business_financial_goals')
+            .select('*')
+            .eq('business_id', user.id)
+            .maybeSingle();
+          if (fallbackData) {
+            goalsRow = fallbackData;
+            console.log('[StrategicSync] Annual sync: found goals with user.id fallback:', user.id);
+          }
+        }
+        // Fallback: try legacy business_profile_id column
+        if (!goalsRow) {
+          const { data: legacyData } = await supabase
+            .from('business_financial_goals')
+            .select('*')
+            .eq('business_profile_id', businessId)
+            .maybeSingle();
+          if (legacyData) {
+            goalsRow = legacyData;
+            console.log('[StrategicSync] Annual sync: found goals with legacy business_profile_id:', businessId);
+          }
+        }
+      }
+
+      if (!goalsRow) {
+        console.warn('[StrategicSync] Annual sync: no financial goals row found (non-fatal, may be new business)');
+      } else {
+        const current = goalsRow;
+
+        // Roll-forward: A4.3 targets → Year 1, current Y2 stays as Y2, stretch or current Y3
+        const payload = {
+          revenue_year1: nextYearTargets.revenue,
+          gross_profit_year1: nextYearTargets.grossProfit,
+          net_profit_year1: nextYearTargets.netProfit,
+          revenue_year2: current.revenue_year2 || 0,
+          gross_profit_year2: current.gross_profit_year2 || 0,
+          net_profit_year2: current.net_profit_year2 || 0,
+          revenue_year3: nextYearTargets.stretchRevenue || current.revenue_year3 || 0,
+          gross_profit_year3: nextYearTargets.stretchGrossProfit || current.gross_profit_year3 || 0,
+          net_profit_year3: nextYearTargets.stretchNetProfit || current.net_profit_year3 || 0,
+        };
+
+        const { error: updateError } = await supabase
+          .from('business_financial_goals')
+          .update(payload)
+          .eq('id', goalsRow.id);
+
+        if (updateError) {
+          console.error('[StrategicSync] Annual sync: failed to roll forward financial targets:', updateError.message);
+          errors.push(`Financial targets roll-forward failed: ${updateError.message}`);
+        } else {
+          console.log('[StrategicSync] Annual sync: financial targets rolled forward (Y1=next-year, Y2 retained, Y3=stretch)');
+        }
+      }
+    } catch (err) {
+      console.error('[StrategicSync] Annual sync: exception in Part A (financial targets):', err);
+      errors.push(`Financial targets exception: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+
+    // ── Part B: Sync next-year initiatives to strategic_initiatives ────────────
+    try {
+      const isValidUUID = (id: string): boolean =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+      const initiatives = annualInitiativePlan.initiatives || [];
+      let updatedCount = 0;
+      let insertedCount = 0;
+
+      for (const initiative of initiatives) {
+        // Resolve step_type from quarterAssigned (e.g. 'q1', 'q1-2027' → 'q1')
+        let stepType: StepType = 'q1';
+        if (initiative.quarterAssigned) {
+          const match = initiative.quarterAssigned.match(/^q(\d)/i);
+          if (match) {
+            const num = parseInt(match[1]);
+            if (num >= 1 && num <= 4) stepType = `q${num}` as StepType;
+          }
+        }
+
+        if (initiative.id && isValidUUID(initiative.id)) {
+          // UPDATE existing carry-forward initiative
+          const { error } = await supabase
+            .from('strategic_initiatives')
+            .update({
+              status: 'not_started',
+              notes: initiative.notes || null,
+              step_type: stepType,
+              quarter_assigned: initiative.quarterAssigned ? `Q${stepType.charAt(1)}` : null,
+              fiscal_year: nextYear,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', initiative.id)
+            .eq('business_id', businessId);
+
+          if (!error) updatedCount++;
+          else console.warn(`[StrategicSync] Annual sync: failed to update initiative ${initiative.id}:`, error.message);
+        } else {
+          // INSERT new initiative
+          const { error } = await supabase
+            .from('strategic_initiatives')
+            .insert({
+              business_id: businessId,
+              user_id: userId,
+              title: initiative.title,
+              category: (initiative.category || 'misc') as StrategicInitiative['category'],
+              step_type: stepType,
+              source: 'annual_review',
+              fiscal_year: nextYear,
+              status: 'not_started',
+              idea_type: 'strategic',
+              selected: true,
+              assigned_to: initiative.assignedTo || null,
+              notes: initiative.notes || null,
+            });
+
+          if (!error) insertedCount++;
+          else console.warn('[StrategicSync] Annual sync: failed to insert initiative:', error.message);
+        }
+      }
+
+      console.log(`[StrategicSync] Annual sync: initiatives synced for FY ${nextYear} — ${updatedCount} updated, ${insertedCount} inserted`);
+    } catch (err) {
+      console.error('[StrategicSync] Annual sync: exception in Part B (initiatives):', err);
+      errors.push(`Initiatives sync exception: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+
+    return { success: errors.length === 0, errors };
   }
 
   /**

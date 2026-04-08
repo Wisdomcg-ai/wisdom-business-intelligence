@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 15
-last_updated: "2026-04-08T00:28:13Z"
+last_updated: "2026-04-08T00:26:31.000Z"
 progress:
   total_phases: 23
   completed_phases: 2
@@ -61,8 +61,8 @@ progress:
 
 ## Position
 
-- Current: Phase 15, Plan 03 — COMPLETE (2 tasks done, TypeScript clean)
-- Stopped at: Completed 15-03-PLAN.md
+- Current: Phase 15, Plan 02 — COMPLETE (2 tasks done, TypeScript clean)
+- Stopped at: Completed 15-02-PLAN.md
 
 ## Phase 14 Decisions
 
@@ -88,15 +88,16 @@ progress:
 ## Completed Work (This Session)
 
 - Plan 15-01: Type foundation — InitiativeStatus + source + StrategicInitiativeRef + StepType extended — COMPLETE (4463e9b, caf71a0)
-- Plan 15-03: Detection banner + fiscal_year carry-forward filter — COMPLETE (84218be, 2aaaff4)
+- Plan 15-02: syncAnnualReview method + completeWorkshop wiring — COMPLETE (504e1b4, 98d0c5c)
 
-## Phase 15-03 Decisions
+## Phase 15 Plan 02 Decisions
 
-- Detection uses businessesId (businesses.id) as primary lookup; quarterly_reviews.business_id stores businesses.id
-- Banner placed at top of Step 1, above Step1GoalsAndKPIs component
-- fiscal_year carry-forward filter uses .neq() so null fiscal_year rows still load (only explicit nextFY rows excluded)
-- nextFY filter is conditional — only applied when nextFY is truthy
+- Targeted update on business_financial_goals (year1/year2/year3 only) — never overwrites current-year actuals
+- Y2 retained from current row as baseline (A4.3 Y1 target drives Year 1 only)
+- Annual sync non-blocking in completeWorkshop — errors logged, workshop completion unaffected
+- UUID check distinguishes carry-forward (UPDATE) vs new (INSERT) initiatives
+- syncBusinessId already resolved as profileBusinessId — passed directly to syncAnnualReview
 
 ## Last Session
 
-- 2026-04-08T00:28:13Z — Completed 15-03-PLAN.md (detection banner + carry-forward safety filter)
+- 2026-04-08T00:26:31Z — Completed 15-02-PLAN.md (syncAnnualReview + completeWorkshop wiring complete)
