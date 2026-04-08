@@ -7,6 +7,7 @@ import type { MonthlyChartPoint } from '../hooks/useXeroActuals'
 
 interface FinancialSummaryChartsProps {
   businessId: string | undefined
+  refreshTrigger?: number
 }
 
 function formatAxisTick(v: number): string {
@@ -99,8 +100,8 @@ function SkeletonCard() {
   )
 }
 
-export function FinancialSummaryCharts({ businessId }: FinancialSummaryChartsProps) {
-  const { chartData, lastSyncedAt, isLoading, hasData } = useXeroActuals(businessId)
+export function FinancialSummaryCharts({ businessId, refreshTrigger }: FinancialSummaryChartsProps) {
+  const { chartData, lastSyncedAt, isLoading, hasData } = useXeroActuals(businessId, refreshTrigger)
 
   if (isLoading) {
     return (

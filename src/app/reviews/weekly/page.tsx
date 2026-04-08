@@ -30,7 +30,8 @@ import {
   ChevronUp,
   User,
   RotateCcw,
-  CalendarCheck
+  CalendarCheck,
+  BarChart2
 } from 'lucide-react'
 import WeeklyReviewService, {
   WeeklyReview,
@@ -1672,6 +1673,25 @@ export default function WeeklyReviewPage() {
             </div>
           </div>
         </div>
+
+        {/* KPI Dashboard Link */}
+        <Link
+          href="/business-dashboard"
+          className="block bg-gradient-to-r from-brand-navy/5 to-brand-orange/5 rounded-xl p-4 border border-gray-200 hover:border-brand-orange/40 transition-colors mb-6"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-brand-orange/10 rounded-lg">
+                <BarChart2 className="w-4 h-4 sm:w-5 sm:h-5 text-brand-orange" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">View your KPI Dashboard</p>
+                <p className="text-xs text-gray-500">Track progress against your financial targets</p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-brand-orange flex-shrink-0" />
+          </div>
+        </Link>
 
         {/* Mark as Complete Button */}
         {!isViewingOther && (

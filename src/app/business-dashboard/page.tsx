@@ -1,10 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import { Loader2, Lock, Unlock, Settings, TrendingUp } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
 import ManageMetricsModal from './components/ManageMetricsModal'
 import QuarterProgressCard from './components/QuarterProgressCard'
 import MetricRow from './components/MetricRow'
+import { XeroSyncButton } from './components/XeroSyncButton'
 import { useBusinessDashboard } from './hooks/useBusinessDashboard'
 import { FinancialSummaryCharts } from './components/FinancialSummaryCharts'
 import WeeklyMetricsService from './services/weekly-metrics-service'
@@ -12,6 +14,8 @@ import { DashboardPreferencesService } from './services/dashboard-preferences-se
 import type { WeeklyMetricsSnapshot } from './services/weekly-metrics-service'
 
 export default function BusinessDashboardPage() {
+  const [refreshKey, setRefreshKey] = useState(0)
+
   const {
     mounted,
     isLoading,
@@ -151,6 +155,13 @@ export default function BusinessDashboardPage() {
         icon={TrendingUp}
         actions={
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {/* Sync Xero Button */}
+            {businessId && (
+              <XeroSyncButton
+                businessId={businessId}
+                onSyncComplete={() => setRefreshKey(k => k + 1)}
+              />
+            )}
             {/* Lock/Unlock Button */}
             <button
               onClick={() => setPastWeeksUnlocked(!pastWeeksUnlocked)}
@@ -197,7 +208,7 @@ export default function BusinessDashboardPage() {
 
         {/* Financial Summary Charts */}
         <div className="mb-6">
-          <FinancialSummaryCharts businessId={businessId} />
+          <FinancialSummaryCharts businessId={businessId} refreshTrigger={refreshKey} />
         </div>
 
         {/* Metrics Table */}

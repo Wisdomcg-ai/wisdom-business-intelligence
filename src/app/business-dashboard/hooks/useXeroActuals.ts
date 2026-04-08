@@ -23,9 +23,10 @@ interface UseXeroActualsResult {
 /**
  * Fetches monthly actual vs forecast chart data for the business dashboard.
  * Uses /api/forecast/dashboard-actuals endpoint.
- * Only fetches when businessId changes.
+ * Fetches when businessId or refreshTrigger changes.
+ * Pass a refreshTrigger counter that increments to force a refetch (e.g. after manual Xero sync).
  */
-export function useXeroActuals(businessId: string | undefined): UseXeroActualsResult {
+export function useXeroActuals(businessId: string | undefined, refreshTrigger?: number): UseXeroActualsResult {
   const [chartData, setChartData] = useState<MonthlyChartPoint[] | null>(null)
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -88,7 +89,7 @@ export function useXeroActuals(businessId: string | undefined): UseXeroActualsRe
     return () => {
       cancelled = true
     }
-  }, [businessId])
+  }, [businessId, refreshTrigger])
 
   return { chartData, lastSyncedAt, isLoading, hasData }
 }
