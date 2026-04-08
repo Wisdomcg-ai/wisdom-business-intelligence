@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
-import { Loader2, Save, Pencil, TrendingUp } from 'lucide-react'
+import { Loader2, Save, Pencil, TrendingUp, Lock } from 'lucide-react'
 import { toast } from 'sonner'
 import PageHeader from '@/components/ui/PageHeader'
 import ForecastService from './services/forecast-service'
@@ -360,6 +360,35 @@ export default function FinancialForecastPage() {
     }
   }
 
+  const handleLockForecast = async () => {
+    if (!forecast?.id || !userId) return
+
+    const confirmed = window.confirm(
+      `Lock FY${forecast.fiscal_year} forecast? This marks it as complete and read-only. You can still duplicate it to create new scenarios.`
+    )
+    if (!confirmed) return
+
+    try {
+      const { error } = await supabase
+        .from('financial_forecasts')
+        .update({
+          is_locked: true,
+          is_completed: true,
+          locked_at: new Date().toISOString(),
+          locked_by: userId,
+        })
+        .eq('id', forecast.id)
+
+      if (error) throw error
+
+      toast.success(`FY${forecast.fiscal_year} forecast locked successfully`)
+      loadInitialData()
+    } catch (err) {
+      console.error('[Forecast] Error locking forecast:', err)
+      toast.error('Failed to lock forecast')
+    }
+  }
+
   // Xero handlers are now provided by useXeroSync hook
 
   if (!mounted || isLoading) {
@@ -490,18 +519,31 @@ export default function FinancialForecastPage() {
               {/* Forecast Builder Button */}
               <button
                 onClick={() => setShowForecastSelector(true)}
-                className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm font-medium text-white bg-brand-navy hover:bg-brand-navy-800 rounded-lg transition-all shadow-sm"
+                disabled={!!forecast?.is_locked}
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm font-medium text-white bg-brand-navy hover:bg-brand-navy-800 rounded-lg transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Pencil className="w-4 h-4" />
                 <span className="hidden sm:inline">Forecast Builder</span>
                 <span className="sm:hidden">Build</span>
               </button>
 
+              {/* Lock Forecast Button — only for non-locked, completed forecasts */}
+              {forecast && !forecast.is_locked && forecast.is_completed && (
+                <button
+                  onClick={handleLockForecast}
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors"
+                  title={`Lock FY${forecast.fiscal_year} as read-only`}
+                >
+                  <Lock className="w-4 h-4" />
+                  <span className="hidden sm:inline">Lock FY</span>
+                </button>
+              )}
+
               {/* Save Button */}
               <button
                 onClick={() => handleSavePLLines(plLines)}
-                disabled={isSaving}
-                className={`flex items-center gap-2 px-3 sm:px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 ${
+                disabled={isSaving || !!forecast?.is_locked}
+                className={`flex items-center gap-2 px-3 sm:px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   hasUnsavedChanges
                     ? 'bg-brand-orange-600 hover:bg-brand-orange-600 animate-pulse'
                     : 'bg-brand-orange hover:bg-brand-orange-600'
@@ -516,6 +558,20 @@ export default function FinancialForecastPage() {
             </>
           }
         />
+
+        {/* Read-only locked banner */}
+        {forecast?.is_locked && (
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 mt-2">
+            <div className="bg-gray-100 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-600 flex items-center gap-2">
+              <Lock className="w-4 h-4 text-gray-500" />
+              <span>
+                <strong>Read-only</strong> — This FY{forecast.fiscal_year} forecast was locked
+                {forecast.locked_at && ` on ${new Date(forecast.locked_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`}.
+                Duplicate it to create an editable copy.
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
           {/* FY Selector Tabs */}
