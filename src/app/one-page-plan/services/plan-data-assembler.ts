@@ -590,6 +590,11 @@ export async function assemblePlanData(params: AssemblePlanDataParams): Promise<
         grossProfit: financialGoals?.gross_profit_year3 || 0,
         netProfit: financialGoals?.net_profit_year3 || 0,
       },
+      year2: {
+        revenue: financialGoals?.revenue_year2 || 0,
+        grossProfit: financialGoals?.gross_profit_year2 || 0,
+        netProfit: financialGoals?.net_profit_year2 || 0,
+      },
       year1: {
         revenue: financialGoals?.revenue_year1 || 0,
         grossProfit: financialGoals?.gross_profit_year1 || 0,
@@ -609,6 +614,13 @@ export async function assemblePlanData(params: AssemblePlanDataParams): Promise<
         avgTransactionValue: financialGoals?.avg_transaction_value_year3 || 0,
         teamHeadcount: financialGoals?.team_headcount_year3 || 0,
         ownerHoursPerWeek: financialGoals?.owner_hours_per_week_year3 || 0,
+      },
+      year2: {
+        leadsPerMonth: financialGoals?.leads_per_month_year2 || 0,
+        conversionRate: financialGoals?.conversion_rate_year2 || 0,
+        avgTransactionValue: financialGoals?.avg_transaction_value_year2 || 0,
+        teamHeadcount: financialGoals?.team_headcount_year2 || 0,
+        ownerHoursPerWeek: financialGoals?.owner_hours_per_week_year2 || 0,
       },
       year1: {
         leadsPerMonth: financialGoals?.leads_per_month_year1 || 0,

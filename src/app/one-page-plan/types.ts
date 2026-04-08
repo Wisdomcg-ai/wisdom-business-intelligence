@@ -15,12 +15,14 @@ export interface OnePagePlanData {
   // Financial & Metrics
   financialGoals: {
     year3: { revenue: number; grossProfit: number; netProfit: number }
+    year2: { revenue: number; grossProfit: number; netProfit: number }
     year1: { revenue: number; grossProfit: number; netProfit: number }
     quarter: { revenue: number; grossProfit: number; netProfit: number }
   }
 
   coreMetrics: {
     year3: { [key: string]: any }
+    year2: { [key: string]: any }
     year1: { [key: string]: any }
     quarter: { [key: string]: any }
   }
