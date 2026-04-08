@@ -121,12 +121,20 @@ export function AnnualInitiativePlanStep({ review, onUpdate }: AnnualInitiativeP
       }
 
       // Load carry-forward initiatives (incomplete from this year)
-      const { data: carryForward } = await supabase
+      // Exclude next-year rows already synced from a previous annual review
+      const nextFY = data.nextYear || review.year + 1;
+      let carryForwardQuery = supabase
         .from('strategic_initiatives')
-        .select('id, title, category, status')
+        .select('id, title, category, status, fiscal_year')
         .eq('business_id', businessId)
         .in('status', ['in_progress', 'not_started'])
         .in('step_type', ['q1', 'q2', 'q3', 'q4', 'twelve_month']);
+
+      if (nextFY) {
+        carryForwardQuery = carryForwardQuery.neq('fiscal_year', nextFY);
+      }
+
+      const { data: carryForward } = await carryForwardQuery;
 
       // If no initiatives in plan yet, pre-populate from carry-forward
       if (data.initiatives.length === 0 && carryForward && carryForward.length > 0) {

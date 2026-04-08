@@ -8,7 +8,7 @@ import Step2StrategicIdeas from './components/Step2StrategicIdeas'
 import Step3PrioritizeInitiatives from './components/Step3PrioritizeInitiatives'
 import Step4AnnualPlan from './components/Step4AnnualPlan'
 import Step5SprintPlanning from './components/Step5SprintPlanning'
-import { Target, Calendar, Brain, Rocket, ChevronLeft, ChevronRight, CheckCircle, Loader2, TrendingUp, AlertCircle, HelpCircle, ChevronDown, Shield, AlertTriangle as AlertTriangleIcon, Lightbulb, Save, Cloud, CloudOff } from 'lucide-react'
+import { Target, Calendar, Brain, Rocket, ChevronLeft, ChevronRight, CheckCircle, Loader2, TrendingUp, AlertCircle, HelpCircle, ChevronDown, Shield, AlertTriangle as AlertTriangleIcon, Lightbulb, Save, Cloud, CloudOff, CheckCircle2 } from 'lucide-react'
 import { getQuarterForMonth, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils'
 // Note: Coach view is at /coach/clients/[id]/goals
 import Link from 'next/link'
@@ -251,6 +251,9 @@ function StrategicPlanningContent() {
     year1Months,
     currentYearRemainingMonths,
     fiscalYearStart,
+    // Annual review detection (Phase 15)
+    hasNextYearAnnualPlan,
+    annualReviewYear,
     // Save
     saveAllData
   } = useStrategicPlanning(activeBusiness?.id)
@@ -950,6 +953,19 @@ function StrategicPlanningContent() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200">
           {currentStep === 1 && (
             <div className="p-4 sm:p-6">
+              {hasNextYearAnnualPlan && (
+                <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 mb-6 flex items-start gap-3">
+                  <CheckCircle2 className="h-5 w-5 text-teal-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-teal-800">
+                      Already planned in Q4 review
+                    </p>
+                    <p className="text-sm text-teal-700 mt-1">
+                      Your FY{annualReviewYear} goals and initiatives were set during the annual review. Changes here will override those targets.
+                    </p>
+                  </div>
+                </div>
+              )}
               <Step1GoalsAndKPIs
                 financialData={financialData}
                 updateFinancialValue={updateFinancialValue}
