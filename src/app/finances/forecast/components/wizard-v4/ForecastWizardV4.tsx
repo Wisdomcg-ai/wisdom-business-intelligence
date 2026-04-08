@@ -528,11 +528,69 @@ export function ForecastWizardV4({
       setIsLoading(true);
       setError(null);
 
+      // Try to load prior year from a locked prior-FY forecast (richer than Xero P&L)
+      let priorYearFromForecast = false;
+      let priorYearForecastData: PriorYearData | null = null;
+      try {
+        const priorFY = fiscalYear - 1;
+        const priorVersionsRes = await fetch(`/api/forecasts/versions?business_id=${businessId}&fiscal_year=${priorFY}`);
+        if (priorVersionsRes.ok) {
+          const priorVersionsData = await priorVersionsRes.json();
+          const lockedPriorForecast = (priorVersionsData.versions || []).find(
+            (v: { is_locked?: boolean }) => v.is_locked === true
+          );
+          if (lockedPriorForecast?.id) {
+            const summaryRes = await fetch(`/api/forecast/${lockedPriorForecast.id}/actuals-summary`);
+            if (summaryRes.ok) {
+              const actualsSummary = await summaryRes.json();
+              if (actualsSummary.revenue?.total != null) {
+                priorYearForecastData = {
+                  revenue: {
+                    total: actualsSummary.revenue.total,
+                    byMonth: actualsSummary.revenue.byMonth || {},
+                    byLine: actualsSummary.revenue.byLine || [],
+                  },
+                  cogs: {
+                    total: actualsSummary.cogs.total,
+                    percentOfRevenue: actualsSummary.cogs.percentOfRevenue,
+                    byMonth: actualsSummary.cogs.byMonth || {},
+                    byLine: actualsSummary.cogs.byLine || [],
+                  },
+                  grossProfit: {
+                    total: actualsSummary.grossProfit.total,
+                    percent: actualsSummary.grossProfit.percent,
+                    byMonth: actualsSummary.grossProfit.byMonth || {},
+                  },
+                  opex: {
+                    total: actualsSummary.opex.total,
+                    byMonth: actualsSummary.opex.byMonth || {},
+                    byLine: actualsSummary.opex.byLine || [],
+                  },
+                  seasonalityPattern: actualsSummary.seasonalityPattern || Array(12).fill(8.33),
+                };
+                priorYearFromForecast = true;
+                console.log('[ForecastWizardV4] Loaded prior year from locked forecast actuals:', {
+                  forecastId: lockedPriorForecast.id,
+                  revenueTotal: priorYearForecastData.revenue.total,
+                  cogsTotal: priorYearForecastData.cogs.total,
+                  opexTotal: priorYearForecastData.opex.total,
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[ForecastWizardV4] Could not load prior forecast actuals, will try Xero:', e);
+      }
+
       try {
         // Build fetch requests - include existing forecast if we're editing one
+        // Skip Xero P&L fetch if we already loaded prior year from a locked forecast
         const fetchPromises: Promise<Response>[] = [
           fetch(`/api/goals?business_id=${businessId}`),
-          fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`),
+          priorYearFromForecast
+            ? Promise.resolve(new Response(JSON.stringify({ summary: null }), { status: 200 }))
+            : fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`),
           fetch(`/api/Xero/employees?business_id=${businessId}`),
           fetch(`/api/business-profile?business_id=${businessId}`),
         ];
@@ -995,7 +1053,9 @@ export function ForecastWizardV4({
             priorYearMonthKeys: Object.keys(priorYear.revenue.byMonth),
           });
 
-          actionsRef.current.initializeFromXero({ priorYear, team, goals, currentYTD });
+          // When prior year was loaded from locked forecast actuals, use that instead of Xero-derived priorYear
+          const effectivePriorYear = priorYearFromForecast && priorYearForecastData ? priorYearForecastData : priorYear;
+          actionsRef.current.initializeFromXero({ priorYear: effectivePriorYear, team, goals, currentYTD });
 
           // If editing an existing forecast, restore saved user data (new hires, departures, etc.)
           if (savedAssumptions) {
