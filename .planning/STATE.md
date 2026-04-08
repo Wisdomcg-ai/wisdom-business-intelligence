@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 20
-last_updated: "2026-04-08T03:49:07.723Z"
+last_updated: "2026-04-08T03:56:32.189Z"
 progress:
   total_phases: 23
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 17
-  completed_plans: 16
+  completed_plans: 17
 ---
 
 # Project State
@@ -159,16 +159,20 @@ progress:
 - AI-extracted actions from analyze-transcript set session_note_id: null (no session_notes row exists at analysis time)
 - action_number computed via count query (existing rows + 1) before each insert
 - status enum: pending | completed | missed | carried_over — 'open' is invalid and removed
+- Rock linkage uses business_profiles.id for strategic_initiatives queries (dual-ID pattern) — NOT businesses.id
+- Rock selector uses autoFocus + onBlur dismiss — lightweight, no modal needed
+- Teal color used for rock badge/icon to distinguish from orange action UI
 
 ## Completed Work (This Session)
 
 - Plan 20-01: schema migration (6 columns + 1 index) + 4 API route fixes for coaching_sessions 400 errors — COMPLETE (31f6f8b, 5beb176)
+- Plan 20-02: Rock linkage UI on session action items — extend interface, dual-ID rock load, linkRock() function, Target icon toggle + grouped select on current and previous actions — COMPLETE (3d015f2)
 
 ## Position
 
-- Current: Phase 20, Plan 01 — COMPLETE
-- Stopped at: Completed 20-01-PLAN.md
+- Current: Phase 20, Plan 02 — COMPLETE
+- Stopped at: Completed 20-02-PLAN.md
 
 ## Last Session
 
-- 2026-04-07T00:15:00Z — Completed 20-01-PLAN.md
+- 2026-04-08T04:00:00Z — Completed 20-02-PLAN.md
