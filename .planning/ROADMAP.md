@@ -189,7 +189,7 @@ Plans:
 
 ### Phase 19: Monthly Reporting
 **Goal:** Close commentary persistence and FY hardcoding gaps in monthly P&L reports
-**Depends on:** Phase 5 (Y2/Y3 monthly storage — COMPLETE), Phase 13 (fiscal-year-utils — COMPLETE)
+**Depends on:** Phase 5 (Y2/Y3 monthly storage — COMPLETE), Phase 13 (fiscal-year-utils �� COMPLETE)
 **Plans:** 1/1 plans complete
 
 Plans:
@@ -216,6 +216,13 @@ Plans:
 
 ### Phase 21: KPI Dashboards
 **Goal:** Business KPIs from Xero data with visual dashboards
+**Plans:** 3 plans
+
+Plans:
+- [ ] 21-01-PLAN.md — Financial chart API + Recharts panels on business dashboard
+- [ ] 21-02-PLAN.md — Coach KPI view at /coach/clients/[id]/kpi
+- [ ] 21-03-PLAN.md — Weekly review bridge + Xero sync button
+
 - [ ] KPI tracking from Xero actuals
 - [ ] Visual dashboards for coach and client views
 - [ ] Weekly review integration
