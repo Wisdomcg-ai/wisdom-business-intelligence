@@ -202,10 +202,17 @@ Plans:
 - [ ] FY start month parameterized in generate/full-year routes (uses fiscal-year-utils)
 
 ### Phase 20: Coaching Sessions
-**Goal:** Fix coaching_sessions 400 error, build session management
-- [ ] Fix coaching_sessions endpoint
-- [ ] Session notes, action items, follow-ups
-- [ ] Link sessions to quarterly rocks
+**Goal:** Fix coaching_sessions 400 error, reconcile session schema, add rock linkage
+**Plans:** 2 plans
+
+Plans:
+- [ ] 20-01-PLAN.md — Schema migration + fix all 4 broken /api/sessions/ routes
+- [ ] 20-02-PLAN.md — Rock linkage UI on session action items
+
+- [ ] Fix coaching_sessions endpoint (schema migration + column reconciliation)
+- [ ] Fix session_actions API routes (wrong column names, invalid enum values, missing NOT NULL fields)
+- [ ] Fix analyze-transcript route (wrong FK column, missing required fields)
+- [ ] Link session actions to quarterly rocks (strategic_initiative_id on session_actions)
 
 ### Phase 21: KPI Dashboards
 **Goal:** Business KPIs from Xero data with visual dashboards
