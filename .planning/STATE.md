@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 15
-last_updated: "2026-04-08T00:17:29.369Z"
+last_updated: "2026-04-08T00:26:31.000Z"
 progress:
   total_phases: 23
   completed_phases: 2
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -61,8 +61,8 @@ progress:
 
 ## Position
 
-- Current: Phase 15, Plan 01 — COMPLETE (2 tasks done, TypeScript clean)
-- Stopped at: Completed 15-01-PLAN.md
+- Current: Phase 15, Plan 02 — COMPLETE (2 tasks done, TypeScript clean)
+- Stopped at: Completed 15-02-PLAN.md
 
 ## Phase 14 Decisions
 
@@ -88,7 +88,16 @@ progress:
 ## Completed Work (This Session)
 
 - Plan 15-01: Type foundation — InitiativeStatus + source + StrategicInitiativeRef + StepType extended — COMPLETE (4463e9b, caf71a0)
+- Plan 15-02: syncAnnualReview method + completeWorkshop wiring — COMPLETE (504e1b4, 98d0c5c)
+
+## Phase 15 Plan 02 Decisions
+
+- Targeted update on business_financial_goals (year1/year2/year3 only) — never overwrites current-year actuals
+- Y2 retained from current row as baseline (A4.3 Y1 target drives Year 1 only)
+- Annual sync non-blocking in completeWorkshop — errors logged, workshop completion unaffected
+- UUID check distinguishes carry-forward (UPDATE) vs new (INSERT) initiatives
+- syncBusinessId already resolved as profileBusinessId — passed directly to syncAnnualReview
 
 ## Last Session
 
-- 2026-04-08T00:16:26Z — Completed 15-01-PLAN.md (Phase 15 type foundation complete)
+- 2026-04-08T00:26:31Z — Completed 15-02-PLAN.md (syncAnnualReview + completeWorkshop wiring complete)

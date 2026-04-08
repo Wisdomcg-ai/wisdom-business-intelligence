@@ -129,11 +129,11 @@ Plans:
 
 ### Phase 15: Q4 Annual Review — Abridged Goals Wizard
 **Goal:** Returning clients set next year goals inside the Q4 annual review
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [x] 15-01-PLAN.md — Type foundation: extend InitiativeStatus, source types, StepType
-- [ ] 15-02-PLAN.md — Sync service: syncAnnualReview method + completeWorkshop wiring
+- [x] 15-02-PLAN.md — Sync service: syncAnnualReview method + completeWorkshop wiring
 - [ ] 15-03-PLAN.md — Goals Wizard detection banner + carry-forward fiscal_year filter
 
 - [ ] Roll 3-year targets forward: Year 2->Year 1, Year 3->Year 2, set new Year 3
