@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import { X, Loader2, ChevronLeft, ChevronRight, Check, RefreshCw, Cloud, CloudOff, CheckCircle2, AlertCircle, Copy, Pencil, Save } from 'lucide-react';
+import { X, Loader2, ChevronLeft, ChevronRight, Check, RefreshCw, Cloud, CloudOff, CheckCircle2, AlertCircle, Copy, Pencil, Save, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useForecastWizard } from './useForecastWizard';
 import { StepBar } from './components/StepBar';
@@ -79,6 +79,7 @@ export function ForecastWizardV4({
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const hasLoadedRef = useRef(false);
   const [forecastId, setForecastId] = useState<string | null>(existingForecastId || null);
+  const [isReadOnly, setIsReadOnly] = useState(false);
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
   const isInitialLoadRef = useRef(true);
@@ -579,6 +580,14 @@ export function ForecastWizardV4({
 
         // Extract saved assumptions from existing forecast
         const savedAssumptions = existingForecastData?.forecast?.assumptions || existingForecastData?.assumptions || null;
+
+        // Check lock status — prevent edits on locked forecasts
+        const loadedForecast = existingForecastData?.forecast || existingForecastData || null;
+        if (loadedForecast?.is_locked) {
+          setIsReadOnly(true);
+          console.log('[ForecastWizardV4] Forecast is locked — read-only mode activated');
+        }
+
         console.log('[ForecastWizardV4] Loaded existing forecast:', {
           hasExistingForecast: !!existingForecastId,
           hasSavedAssumptions: !!savedAssumptions,
@@ -1251,7 +1260,7 @@ export function ForecastWizardV4({
 
   // Autosave functionality - save draft after 3 seconds of no changes
   const performAutoSave = useCallback(async () => {
-    if (isLoading || isSaving || isAutoSaving) return;
+    if (isLoading || isSaving || isAutoSaving || isReadOnly) return;
 
     setIsAutoSaving(true);
     setSaveError(false);
@@ -1570,6 +1579,10 @@ export function ForecastWizardV4({
   };
 
   const handleComplete = async () => {
+    if (isReadOnly) {
+      toast.error('This forecast is locked and cannot be edited');
+      return;
+    }
     setIsSaving(true);
     try {
       // Pass the current forecastId and name to update the specific forecast
@@ -1828,6 +1841,16 @@ export function ForecastWizardV4({
         </div>
       )}
 
+      {/* Read-Only Lock Banner */}
+      {isReadOnly && (
+        <div className="flex-shrink-0 bg-gray-100 border-b border-gray-200 px-6 py-2">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <Lock className="w-4 h-4 flex-shrink-0" />
+            This forecast is locked (read-only). Duplicate it to make changes.
+          </div>
+        </div>
+      )}
+
       {/* Error Banner */}
       {error && (
         <div className="flex-shrink-0 px-6 py-3 bg-amber-50 border-b border-amber-100">
@@ -1877,7 +1900,8 @@ export function ForecastWizardV4({
             {isLastStep ? (
               <button
                 onClick={handleComplete}
-                disabled={isSaving}
+                disabled={isSaving || isReadOnly}
+                title={isReadOnly ? 'This forecast is locked and cannot be edited' : undefined}
                 className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-brand-navy rounded-lg hover:bg-brand-navy-800 transition-colors disabled:opacity-50"
               >
                 <Check className="w-4 h-4" />

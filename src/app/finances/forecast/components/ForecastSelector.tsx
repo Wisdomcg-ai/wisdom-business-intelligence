@@ -16,6 +16,8 @@ import {
   DollarSign,
   X,
   AlertCircle,
+  Lock,
+  Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
@@ -26,6 +28,7 @@ interface ForecastVersion {
   fiscal_year: number;
   is_active: boolean;
   is_completed: boolean;
+  is_locked?: boolean;
   status?: string;
   revenue_goal: number;
   net_profit_goal: number;
@@ -432,6 +435,12 @@ function ForecastCard({
             Draft
           </span>
         )}
+        {forecast.is_locked && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-full">
+            <Lock className="w-3 h-3" />
+            Locked
+          </span>
+        )}
       </div>
 
       {/* Main Content */}
@@ -458,9 +467,18 @@ function ForecastCard({
           <button
             onClick={onSelect}
             disabled={isDeleting || isDuplicating}
-            className="px-4 py-2 text-sm font-medium text-white bg-gray-900 hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm font-medium text-white bg-gray-900 hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
           >
-            {isActive ? 'Continue Editing' : 'Edit'}
+            {forecast.is_locked ? (
+              <>
+                <Eye className="w-3.5 h-3.5" />
+                View
+              </>
+            ) : isActive ? (
+              'Continue Editing'
+            ) : (
+              'Edit'
+            )}
           </button>
 
           <div className="relative">
@@ -491,7 +509,7 @@ function ForecastCard({
                     <Copy className="w-4 h-4" />
                     Duplicate
                   </button>
-                  {!isActive && (
+                  {!isActive && !forecast.is_locked && (
                     <button
                       onClick={onSetActive}
                       className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
@@ -500,7 +518,7 @@ function ForecastCard({
                       Set as Active
                     </button>
                   )}
-                  {!isActive && (
+                  {!isActive && !forecast.is_locked && (
                     <button
                       onClick={onDelete}
                       className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
