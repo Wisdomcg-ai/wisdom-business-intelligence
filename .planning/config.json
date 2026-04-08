@@ -4,5 +4,8 @@
   "granularity": "fine",
   "commit_docs": true,
   "yolo_mode": false,
-  "created_at": "2026-04-05"
+  "created_at": "2026-04-05",
+  "workflow": {
+    "_auto_chain_active": false
+  }
 }

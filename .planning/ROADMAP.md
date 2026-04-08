@@ -164,7 +164,7 @@ Plans:
 
 ### Phase 17: Quarterly Review <-> Forecast Integration
 **Goal:** Quarterly reviews reference forecast data for variance analysis
-**Plans:** 1/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 17-01-PLAN.md — Quarter aggregation helpers + quarterly-summary API endpoint
@@ -180,14 +180,12 @@ Plans:
 
 ## Milestone 4: Platform Features
 
-### Phase 18: Cashflow Integration
+### Phase 18: Cashflow Integration [COMPLETE — delivered in Phase 12]
 **Goal:** Planned spending data feeds the cashflow tool
-**Depends on:** Phase 7 (PlannedSpend model — COMPLETE)
-- [ ] Cashflow engine reads PlannedSpend items from forecast assumptions
-- [ ] Outright purchases: cash out in purchase month
-- [ ] Financed items: monthly repayment x term starting from purchase month
-- [ ] Leased items: monthly payment x term starting from purchase month
-- [ ] Display committed monthly outflows alongside operational cash flow
+- [x] Cashflow engine reads PlannedSpend items (outright/finance/lease)
+- [x] Outright: GST-inclusive cash out in purchase month
+- [x] Finance: monthly repayment as liability line over term
+- [x] Lease: monthly payment as liability line over term
 
 ### Phase 19: Monthly Reporting
 **Goal:** Xero data flows into monthly P&L reports with forecast comparison

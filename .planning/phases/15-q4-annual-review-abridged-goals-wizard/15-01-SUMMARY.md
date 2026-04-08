@@ -118,6 +118,16 @@ None - no external service configuration required.
 - Plan 02 can safely import `InitiativeStatus` from goals/types and reference `'annual_review'` as a source value
 - Plan 03 detection banner can reference `'deferred'` and `'planned'` statuses
 
+## Self-Check: PASSED
+
+- FOUND: src/app/goals/types.ts
+- FOUND: src/app/quarterly-review/types/index.ts
+- FOUND: src/app/quarterly-review/services/strategic-sync-service.ts
+- FOUND: .planning/phases/15-q4-annual-review-abridged-goals-wizard/15-01-SUMMARY.md
+- FOUND: commit 4463e9b (Task 1)
+- FOUND: commit caf71a0 (Task 2)
+- FOUND: commit 82dbed0 (docs metadata)
+
 ---
 *Phase: 15-q4-annual-review-abridged-goals-wizard*
 *Completed: 2026-04-08*
