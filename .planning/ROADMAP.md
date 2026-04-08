@@ -164,12 +164,12 @@ Plans:
 
 ### Phase 17: Quarterly Review <-> Forecast Integration
 **Goal:** Quarterly reviews reference forecast data for variance analysis
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 17-01-PLAN.md — Quarter aggregation helpers + quarterly-summary API endpoint
 - [ ] 17-02-PLAN.md — Variance panel in ConfidenceRealignmentStep + adjust-forward write-back API
-- [ ] 17-03-PLAN.md — One Page Plan next-year financial view with year toggle
+- [x] 17-03-PLAN.md — One Page Plan next-year financial view with year toggle
 
 - [ ] Q review shows: "Q3 forecast: $2.8M | Actual: $2.6M | Variance: -7%"
 - [ ] Confidence adjustment can optionally update remaining forecast months
