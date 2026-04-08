@@ -130,12 +130,22 @@ progress:
 ## Completed Work (This Session)
 
 - Plan 17-01: getMonthKeysForQuarter + sumMonthsForKeys helpers + GET /api/forecast/quarterly-summary endpoint — COMPLETE (c83bf4e, 4563dfe)
+- Plan 17-02: Forecast vs Actuals variance panel in ConfidenceRealignmentStep + PATCH /api/forecast/[id]/adjust-forward endpoint — COMPLETE (e23a888, 6d24ee0)
+
+## Phase 17 Plan 02 Decisions
+
+- Forecast lookup uses .in('business_id', [profileId, review.business_id]) to handle dual-ID system
+- Only revenue lines adjusted in adjust-forward — COGS and OpEx excluded (start simple per plan spec)
+- actual_months never read or written in adjust-forward — only forecast_months modified
+- Remaining months: YYYY-MM >= currentKey lexicographic comparison — zero extra date math
+- Locked forecast guard returns 403 before any DB mutation attempt
+- forecastLoading separate from isLoading so variance card has its own skeleton state
 
 ## Position
 
-- Current: Phase 17, Plan 01 — COMPLETE
-- Stopped at: Completed 17-01-PLAN.md
+- Current: Phase 17, Plan 02 — COMPLETE
+- Stopped at: Completed 17-02-PLAN.md
 
 ## Last Session
 
-- 2026-04-08T02:56:06Z — Completed 17-01-PLAN.md
+- 2026-04-08T03:08:00Z — Completed 17-02-PLAN.md
