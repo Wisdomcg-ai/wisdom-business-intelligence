@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 15
-last_updated: "2026-04-08T00:17:29.369Z"
+last_updated: "2026-04-08T00:28:13Z"
 progress:
   total_phases: 23
   completed_phases: 2
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -61,8 +61,8 @@ progress:
 
 ## Position
 
-- Current: Phase 15, Plan 01 — COMPLETE (2 tasks done, TypeScript clean)
-- Stopped at: Completed 15-01-PLAN.md
+- Current: Phase 15, Plan 03 — COMPLETE (2 tasks done, TypeScript clean)
+- Stopped at: Completed 15-03-PLAN.md
 
 ## Phase 14 Decisions
 
@@ -88,7 +88,15 @@ progress:
 ## Completed Work (This Session)
 
 - Plan 15-01: Type foundation — InitiativeStatus + source + StrategicInitiativeRef + StepType extended — COMPLETE (4463e9b, caf71a0)
+- Plan 15-03: Detection banner + fiscal_year carry-forward filter — COMPLETE (84218be, 2aaaff4)
+
+## Phase 15-03 Decisions
+
+- Detection uses businessesId (businesses.id) as primary lookup; quarterly_reviews.business_id stores businesses.id
+- Banner placed at top of Step 1, above Step1GoalsAndKPIs component
+- fiscal_year carry-forward filter uses .neq() so null fiscal_year rows still load (only explicit nextFY rows excluded)
+- nextFY filter is conditional — only applied when nextFY is truthy
 
 ## Last Session
 
-- 2026-04-08T00:16:26Z — Completed 15-01-PLAN.md (Phase 15 type foundation complete)
+- 2026-04-08T00:28:13Z — Completed 15-03-PLAN.md (detection banner + carry-forward safety filter)
