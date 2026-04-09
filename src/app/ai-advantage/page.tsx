@@ -248,16 +248,6 @@ export default function AIAdvantagePage() {
             </div>
           </div>
 
-          {/* DEEPER strip */}
-          <div className={styles.deeperStrip}>
-            <div className={styles.deeperItem}><span className={styles.deeperLetter} style={{ color: 'var(--orange)' }}>D</span><span className={styles.deeperWord}>iscover</span><span className={styles.deeperDesc}>Find the real problem</span></div>
-            <div className={styles.deeperItem}><span className={styles.deeperLetter} style={{ color: 'var(--teal-l)' }}>E</span><span className={styles.deeperWord}>xplore</span><span className={styles.deeperDesc}>Work with AI</span></div>
-            <div className={styles.deeperItem}><span className={styles.deeperLetter} style={{ color: 'var(--green)' }}>E</span><span className={styles.deeperWord}>valuate</span><span className={styles.deeperDesc}>Challenge the output</span></div>
-            <div className={styles.deeperItem}><span className={styles.deeperLetter} style={{ color: '#B08FD0' }}>P</span><span className={styles.deeperWord}>lan</span><span className={styles.deeperDesc}>Implementation steps</span></div>
-            <div className={styles.deeperItem}><span className={styles.deeperLetter} style={{ color: '#5BAFD0' }}>E</span><span className={styles.deeperWord}>xecute</span><span className={styles.deeperDesc}>Build it</span></div>
-            <div className={styles.deeperItem}><span className={styles.deeperLetter} style={{ color: 'var(--gold)' }}>R</span><span className={styles.deeperWord}>efine</span><span className={styles.deeperDesc}>Improve and repeat</span></div>
-          </div>
-
           {/* Key phrase */}
           <div className={styles.keyPhrase}>
             <div className={styles.keyPhraseLabel}>The one phrase to memorise</div>
@@ -265,10 +255,6 @@ export default function AIAdvantagePage() {
             <div className={styles.keyPhraseSub}>This shifts AI from answering to investigating. Use it at the start of every important conversation.</div>
           </div>
 
-          {/* Quote */}
-          <div className={styles.quoteStrip}>
-            <div className={styles.quoteText}>&ldquo;When you go DEEPER with AI &mdash; the results are 10x.&rdquo;</div>
-          </div>
         </section>
 
         {/* ── 02 PHASE 1: 5-LAYER MODEL ─────────────────── */}
@@ -763,102 +749,30 @@ Start with Layer 1 now.`}</div>
             </p>
           </div>
 
-          <div className={styles.deeperGrid}>
-            {/* D */}
-            <div className={styles.deeperCard}>
-              <div className={styles.deeperCardHead} style={{ background: 'var(--orange-lt)', borderBottomColor: 'rgba(245,130,31,0.2)' }}>
-                <span className={styles.deeperCardLetter} style={{ color: 'var(--orange)' }}>D</span>
-                <span className={styles.deeperCardWord}>iscover</span>
-              </div>
-              <div className={styles.deeperCardBody}>
-                <div className={styles.deeperCardTitle} style={{ color: 'var(--orange)' }}>Find the real problem</div>
-                <div className={styles.deeperCardDesc}>5-Layer Model. Surface what&apos;s actually going on before you ask for anything.</div>
-                <div className={styles.deeperCardSarah} style={{ borderColor: 'var(--orange)', background: 'rgba(245,130,31,0.07)' }}>
-                  <div className={styles.deeperCardSarahLabel} style={{ color: 'var(--orange)' }}>Sarah</div>
-                  <div className={styles.deeperCardSarahText}>Problem isn&apos;t the spreadsheet &mdash; it&apos;s ownership.</div>
+          <div className={styles.deeperTimeline}>
+            {[
+              { letter: 'D', word: 'iscover', color: 'var(--orange)', phase: 'Phase 1 — 5-Layer Model', desc: 'Surface what\u2019s actually going on before you ask for anything.', sarah: 'Problem isn\u2019t the spreadsheet \u2014 it\u2019s ownership.' },
+              { letter: 'E', word: 'xplore', color: 'var(--teal-l)', phase: 'Phase 2 — C\u00B9 + C\u00B2', desc: 'Load context. Let AI ask questions. Don\u2019t jump to answers.', sarah: 'AI asked 2 questions. Surfaced near-misses Sarah hadn\u2019t counted.' },
+              { letter: 'E', word: 'valuate', color: '#4ade80', phase: 'Phase 2 — C\u00B3', desc: 'Push back on the first answer. Agree the solution together.', sarah: 'Pushed back on Google Sheet. AI changed direction entirely.' },
+              { letter: 'P', word: 'lan', color: '#B08FD0', phase: 'Plan Prompt', desc: 'AI generates implementation steps from the agreed solution.', sarah: 'AI produced the plan. Sarah confirmed in two minutes.' },
+              { letter: 'E', word: 'xecute', color: '#5BAFD0', phase: 'Build', desc: 'One more AI session. Built Thursday. Running Monday.', sarah: 'Compliance embedded in site sign-in. Zero manual checks.' },
+              { letter: 'R', word: 'efine', color: 'var(--gold)', phase: 'Iterate', desc: 'What worked? What to improve? Go again \u2014 deeper each time.', sarah: 'Month 1: AI Project. Month 3: live web tool.' },
+            ].map((step, i) => (
+              <div key={i} className={styles.deeperRow}>
+                <div className={styles.deeperRowLeft}>
+                  <div className={styles.deeperRowLetter} style={{ color: step.color }}>{step.letter}</div>
+                  <div className={styles.deeperRowWord} style={{ color: step.color }}>{step.word}</div>
+                </div>
+                <div className={styles.deeperRowMiddle}>
+                  <div className={styles.deeperRowPhase}>{step.phase}</div>
+                  <div className={styles.deeperRowDesc}>{step.desc}</div>
+                </div>
+                <div className={styles.deeperRowSarah}>
+                  <div className={styles.deeperRowSarahLabel}>Sarah</div>
+                  <div className={styles.deeperRowSarahText}>{step.sarah}</div>
                 </div>
               </div>
-            </div>
-
-            {/* E - Explore */}
-            <div className={styles.deeperCard}>
-              <div className={styles.deeperCardHead} style={{ background: 'var(--teal-lt)', borderBottomColor: 'rgba(26,122,158,0.2)' }}>
-                <span className={styles.deeperCardLetter} style={{ color: 'var(--teal-l)' }}>E</span>
-                <span className={styles.deeperCardWord}>xplore</span>
-              </div>
-              <div className={styles.deeperCardBody}>
-                <div className={styles.deeperCardTitle} style={{ color: 'var(--teal-l)' }}>Work with AI</div>
-                <div className={styles.deeperCardDesc}>C&#185; + C&#178;. Load context. Let AI ask questions. Don&apos;t jump to answers.</div>
-                <div className={styles.deeperCardSarah} style={{ borderColor: 'var(--teal)', background: 'rgba(26,122,158,0.07)' }}>
-                  <div className={styles.deeperCardSarahLabel} style={{ color: 'var(--teal-l)' }}>Sarah</div>
-                  <div className={styles.deeperCardSarahText}>AI asked 2 questions. Surfaced near-misses Sarah hadn&apos;t counted.</div>
-                </div>
-              </div>
-            </div>
-
-            {/* E - Evaluate */}
-            <div className={styles.deeperCard}>
-              <div className={styles.deeperCardHead} style={{ background: 'var(--green-lt)', borderBottomColor: 'rgba(26,122,94,0.2)' }}>
-                <span className={styles.deeperCardLetter} style={{ color: '#4ade80' }}>E</span>
-                <span className={styles.deeperCardWord}>valuate</span>
-              </div>
-              <div className={styles.deeperCardBody}>
-                <div className={styles.deeperCardTitle} style={{ color: '#4ade80' }}>Challenge the output</div>
-                <div className={styles.deeperCardDesc}>C&#179;. Push back on the first answer. Agree the solution together.</div>
-                <div className={styles.deeperCardSarah} style={{ borderColor: 'var(--green)', background: 'rgba(26,122,94,0.07)' }}>
-                  <div className={styles.deeperCardSarahLabel} style={{ color: '#4ade80' }}>Sarah</div>
-                  <div className={styles.deeperCardSarahText}>Pushed back on Google Sheet. AI changed direction entirely.</div>
-                </div>
-              </div>
-            </div>
-
-            {/* P */}
-            <div className={styles.deeperCard}>
-              <div className={styles.deeperCardHead} style={{ background: 'var(--purple-lt)', borderBottomColor: 'rgba(123,79,158,0.2)' }}>
-                <span className={styles.deeperCardLetter} style={{ color: '#B08FD0' }}>P</span>
-                <span className={styles.deeperCardWord}>lan</span>
-              </div>
-              <div className={styles.deeperCardBody}>
-                <div className={styles.deeperCardTitle} style={{ color: '#B08FD0' }}>Implementation steps</div>
-                <div className={styles.deeperCardDesc}>Plan prompt. AI generates steps from the agreed solution.</div>
-                <div className={styles.deeperCardSarah} style={{ borderColor: 'var(--purple)', background: 'rgba(123,79,158,0.07)' }}>
-                  <div className={styles.deeperCardSarahLabel} style={{ color: '#B08FD0' }}>Sarah</div>
-                  <div className={styles.deeperCardSarahText}>AI produced the plan. Sarah confirmed in two minutes.</div>
-                </div>
-              </div>
-            </div>
-
-            {/* E - Execute */}
-            <div className={styles.deeperCard}>
-              <div className={styles.deeperCardHead} style={{ background: '#E8F4FA', borderBottomColor: 'rgba(26,107,138,0.2)' }}>
-                <span className={styles.deeperCardLetter} style={{ color: '#5BAFD0' }}>E</span>
-                <span className={styles.deeperCardWord}>xecute</span>
-              </div>
-              <div className={styles.deeperCardBody}>
-                <div className={styles.deeperCardTitle} style={{ color: '#5BAFD0' }}>Build it</div>
-                <div className={styles.deeperCardDesc}>One more AI session. Built Thursday. Running Monday.</div>
-                <div className={styles.deeperCardSarah} style={{ borderColor: '#1A6B8A', background: 'rgba(26,107,138,0.07)' }}>
-                  <div className={styles.deeperCardSarahLabel} style={{ color: '#5BAFD0' }}>Sarah</div>
-                  <div className={styles.deeperCardSarahText}>Compliance embedded in site sign-in. Zero manual checks.</div>
-                </div>
-              </div>
-            </div>
-
-            {/* R */}
-            <div className={styles.deeperCard}>
-              <div className={styles.deeperCardHead} style={{ background: '#FEF9EC', borderBottomColor: 'rgba(139,105,20,0.2)' }}>
-                <span className={styles.deeperCardLetter} style={{ color: 'var(--gold)' }}>R</span>
-                <span className={styles.deeperCardWord}>efine</span>
-              </div>
-              <div className={styles.deeperCardBody}>
-                <div className={styles.deeperCardTitle} style={{ color: 'var(--gold)' }}>Improve and repeat</div>
-                <div className={styles.deeperCardDesc}>What worked? What to improve? Go again &mdash; deeper each time.</div>
-                <div className={styles.deeperCardSarah} style={{ borderColor: 'var(--gold)', background: 'rgba(139,105,20,0.07)' }}>
-                  <div className={styles.deeperCardSarahLabel} style={{ color: 'var(--gold)' }}>Sarah</div>
-                  <div className={styles.deeperCardSarahText}>Month 1: AI Project. Month 3: live web tool.</div>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
 
           <div className={styles.quoteStrip}>

@@ -389,43 +389,6 @@
   line-height: 1.55;
 }
 
-/* ── DEEPER STRIP ───────────────────────────────────────── */
-.deeperStrip {
-  background: #FFFFFF;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px 20px;
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 8px;
-  margin-bottom: 24px;
-  box-shadow: var(--shadow);
-}
-
-.deeperItem {
-  text-align: center;
-}
-
-.deeperLetter {
-  font-weight: 800;
-  font-size: 20px;
-  display: block;
-}
-
-.deeperWord {
-  font-size: 13px;
-  color: var(--text-muted);
-  display: block;
-}
-
-.deeperDesc {
-  font-size: 11px;
-  color: var(--text-light);
-  font-style: italic;
-  display: block;
-  margin-top: 2px;
-}
-
 /* ── KEY PHRASE ──────────────────────────────────────────── */
 .keyPhrase {
   background: #FFFFFF;
@@ -1068,74 +1031,102 @@
   line-height: 1.4;
 }
 
-/* ── DEEPER CARDS (6-column) ────────────────────────────── */
-.deeperGrid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 12px;
-  margin-bottom: 24px;
+/* ── DEEPER TIMELINE (vertical) ────────────────────────── */
+.deeperTimeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 32px;
 }
 
-.deeperCard {
+.deeperRow {
+  display: grid;
+  grid-template-columns: 100px 1fr 240px;
+  gap: 0;
+  align-items: stretch;
   background: #FFFFFF;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow);
+  border-bottom: none;
+  transition: background 0.15s;
 }
 
-.deeperCardHead {
-  padding: 10px 14px;
+.deeperRow:first-child {
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.deeperRow:last-child {
   border-bottom: 1px solid var(--border);
+  border-radius: 0 0 var(--radius) var(--radius);
 }
 
-.deeperCardLetter {
+.deeperRow:hover {
+  background: var(--bg);
+}
+
+.deeperRowLeft {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 18px 16px;
+  border-right: 1px solid var(--border);
+}
+
+.deeperRowLetter {
   font-weight: 800;
-  font-size: 28px;
-  display: block;
+  font-size: 32px;
   line-height: 1;
 }
 
-.deeperCardWord {
-  font-size: 13px;
-  color: var(--text-muted);
-  display: block;
-  margin-top: 2px;
+.deeperRowWord {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+  align-self: flex-end;
+  padding-bottom: 3px;
 }
 
-.deeperCardBody {
-  padding: 10px 14px;
+.deeperRowMiddle {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
 }
 
-.deeperCardTitle {
-  font-size: 14px;
+.deeperRowPhase {
+  font-size: 12px;
   font-weight: 600;
-  margin-bottom: 4px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-light);
 }
 
-.deeperCardDesc {
-  font-size: 14px;
-  color: var(--text-muted);
-  line-height: 1.45;
+.deeperRowDesc {
+  font-size: 16px;
+  color: var(--text-mid);
+  line-height: 1.5;
 }
 
-.deeperCardSarah {
-  margin-top: 10px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  border-left: 2px solid;
+.deeperRowSarah {
+  padding: 16px 18px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  background: var(--bg);
 }
 
-.deeperCardSarahLabel {
+.deeperRowSarahLabel {
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
-  margin-bottom: 2px;
+  color: var(--text-light);
 }
 
-.deeperCardSarahText {
-  font-size: 13px;
+.deeperRowSarahText {
+  font-size: 14px;
   font-style: italic;
   line-height: 1.45;
   color: var(--text-muted);
@@ -1596,7 +1587,7 @@
 @media (max-width: 900px) {
   .phaseGrid { grid-template-columns: 1fr; }
   .c3Grid { grid-template-columns: 1fr; }
-  .deeperGrid { grid-template-columns: repeat(3, 1fr); }
+  .deeperRow { grid-template-columns: 90px 1fr 200px; }
   .planGrid { grid-template-columns: 1fr; }
   .stressGrid { grid-template-columns: 1fr; }
   .toolGrid { grid-template-columns: repeat(2, 1fr); }
@@ -1620,8 +1611,9 @@
   .layerNum { width: 36px; height: 36px; font-size: 15px; }
   .layer:not(:last-child)::before { left: 17px; top: 36px; }
 
-  .deeperStrip { grid-template-columns: repeat(3, 1fr); }
-  .deeperGrid { grid-template-columns: repeat(2, 1fr); }
+  .deeperRow { grid-template-columns: 1fr; }
+  .deeperRowLeft { border-right: none; border-bottom: 1px solid var(--border); padding: 12px 16px; }
+  .deeperRowSarah { border-left: none; border-top: 1px solid var(--border); }
   .levelRow { grid-template-columns: 1fr; }
   .levelTools { align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
   .toolGrid { grid-template-columns: 1fr; }
@@ -1651,7 +1643,8 @@
   .sectionNum { font-size: 24px; min-width: auto; }
   .section h2 { font-size: 22px; }
 
-  .deeperGrid { grid-template-columns: 1fr 1fr; }
+  .deeperRowLetter { font-size: 26px; }
+  .deeperRowDesc { font-size: 14px; }
 
   .heroBtns { flex-direction: column; align-items: center; }
   .ctaBtns { flex-direction: column; align-items: center; }
