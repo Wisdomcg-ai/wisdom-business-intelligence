@@ -155,7 +155,7 @@ export default function AIAdvantagePage() {
             Bookmark this &mdash; it&apos;s yours to keep and use.
           </p>
           <div className={styles.heroBtns}>
-            <a href="/ai-advantage/AI_Advantage_Slides.pptx" download className={styles.btnPrimary}>
+            <a href="/ai-advantage/AI_Advantage_Slides.pdf" download className={styles.btnPrimary}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Download the slides
             </a>
@@ -180,7 +180,7 @@ export default function AIAdvantagePage() {
             <li><a href="#levels">Levels</a></li>
             <li><a href="#tools">Tools</a></li>
             <li>
-              <a href="/ai-advantage/AI_Advantage_Slides.pptx" download className={styles.navDownload}>
+              <a href="/ai-advantage/AI_Advantage_Slides.pdf" download className={styles.navDownload}>
                 &#8595; Slides
               </a>
             </li>
@@ -858,9 +858,9 @@ Start with Layer 1 now.`}</div>
               <h3>Download the full slide deck</h3>
               <p>35 slides covering the complete system &mdash; all frameworks, prompts, Sarah&apos;s story and the DEEPER framework. Ready to use in your own presentations.</p>
             </div>
-            <a href="/ai-advantage/AI_Advantage_Slides.pptx" download className={styles.downloadBtn}>
+            <a href="/ai-advantage/AI_Advantage_Slides.pdf" download className={styles.downloadBtn}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Download slides (.pptx)
+              Download slides (.pdf)
             </a>
           </div>
         </section>
@@ -982,7 +982,7 @@ Start with Layer 1 now.`}</div>
             <a href="https://claude.ai" target="_blank" rel="noopener noreferrer" className={styles.ctaButton}>
               Open Claude and start &#8599;
             </a>
-            <a href="/ai-advantage/AI_Advantage_Slides.pptx" download className={styles.ctaButtonAlt}>
+            <a href="/ai-advantage/AI_Advantage_Slides.pdf" download className={styles.ctaButtonAlt}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Download the slides
             </a>
