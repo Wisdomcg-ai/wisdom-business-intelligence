@@ -275,7 +275,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   const isAuthRoute = pathname?.startsWith('/auth') || pathname?.startsWith('/login')
   const isHomePage = pathname === '/'
   const isLegalPage = pathname === '/privacy' || pathname === '/terms'
-  const isStandalonePage = pathname?.startsWith('/bali-retreat')
+  const isStandalonePage = pathname?.startsWith('/bali-retreat') || pathname?.startsWith('/ai-advantage')
 
   useEffect(() => {
     const loadUserData = async () => {
