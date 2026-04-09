@@ -197,12 +197,12 @@ export async function middleware(request: NextRequest) {
   // Adjust as needed for your specific requirements
   const cspDirectives = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://vercel.live",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://vercel.live https://player.vimeo.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https: http:",
     "font-src 'self' https://fonts.gstatic.com",
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.xero.com https://identity.xero.com https://api.openai.com https://vercel.live wss://ws-us3.pusher.com",
-    "frame-src 'self' https://js.stripe.com https://login.xero.com",
+    "frame-src 'self' https://js.stripe.com https://login.xero.com https://player.vimeo.com",
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
