@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Image from 'next/image'
+import Script from 'next/script'
 import styles from './ai-advantage.module.css'
 
 export default function AIAdvantagePage() {
@@ -209,14 +210,16 @@ export default function AIAdvantagePage() {
           </div>
           <div className={styles.videoWrapper}>
             <iframe
-              src="https://player.vimeo.com/video/1181446316?badge=0&autopause=0&player_id=0&app_id=58479"
+              src="https://player.vimeo.com/video/1181446316?badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479"
               frameBorder="0"
               allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share"
               referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
               className={styles.videoIframe}
               title="The AI Advantage — Session Recording"
-            />
+            ></iframe>
           </div>
+          <Script src="https://player.vimeo.com/api/player.js" strategy="lazyOnload" />
         </section>
 
         {/* ── 01 THE COMPLETE SYSTEM ─────────────────────── */}
