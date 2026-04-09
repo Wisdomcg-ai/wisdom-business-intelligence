@@ -424,6 +424,27 @@
   font-style: italic;
 }
 
+/* ── VIDEO EMBED ───────────────────────────────────────── */
+.videoWrapper {
+  position: relative;
+  padding-bottom: 56.25%;
+  height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border);
+  background: #000;
+}
+
+.videoIframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
 /* Quote strip */
 .quoteStrip {
   background: #FFFFFF;

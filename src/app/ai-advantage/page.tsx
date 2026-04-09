@@ -171,6 +171,7 @@ export default function AIAdvantagePage() {
       <nav className={styles.stickyNav}>
         <div className={styles.navInner}>
           <ul>
+            <li><a href="#recording">Recording</a></li>
             <li><a href="#system" className={styles.navActive}>System</a></li>
             <li><a href="#phase1">Phase 1</a></li>
             <li><a href="#phase2">Phase 2</a></li>
@@ -191,6 +192,32 @@ export default function AIAdvantagePage() {
 
       {/* MAIN */}
       <main className={styles.main}>
+
+        {/* ── SESSION RECORDING ──────────────────────────── */}
+        <section id="recording" className={`${styles.section} ${styles.fadeTarget}`}>
+          <div className={styles.sectionHeader}>
+            <div className={styles.sectionNum}>&#9654;</div>
+            <div>
+              <div className={styles.sectionEyebrow}>Session Recording</div>
+              <h2>Watch the full session</h2>
+            </div>
+          </div>
+          <div className={styles.prose}>
+            <p className={styles.sectionIntro}>
+              Missed something? Want to revisit a section? Here&apos;s the complete recording.
+            </p>
+          </div>
+          <div className={styles.videoWrapper}>
+            <iframe
+              src="https://player.vimeo.com/video/1181446316?badge=0&autopause=0&player_id=0&app_id=58479"
+              frameBorder="0"
+              allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              className={styles.videoIframe}
+              title="The AI Advantage — Session Recording"
+            />
+          </div>
+        </section>
 
         {/* ── 01 THE COMPLETE SYSTEM ─────────────────────── */}
         <section id="system" className={`${styles.section} ${styles.fadeTarget}`}>
