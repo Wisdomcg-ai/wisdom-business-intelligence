@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The AI Advantage — Session Reference | Wisdom Consulting</title>
+<meta name="description" content="Every framework, prompt and model from The AI Advantage workshop. Includes the 5-Layer Model, C3 Method, DEEPER Framework, and downloadable slide deck.">
+<meta property="og:title" content="The AI Advantage — Session Reference">
+<meta property="og:description" content="Every framework, prompt and model from the session. Bookmark this — it's yours to keep.">
+<meta property="og:url" content="https://wisdombi.ai/ai-advantage">
+<link rel="canonical" href="https://wisdombi.ai/ai-advantage">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#0D1B2A;--navy2:#162436;--teal:#1A7A9E;--teal-l:#2196B8;--teal-p:#EFF8FC;--orange:#D4641A;--orange-p:#FEF3E8;--green:#1A7A5E;--green-p:#EEF8F4;--purple:#7B4F9E;--purple-p:#F5F0FA;--red:#C0392B;--gold:#E8A020;--off:#F4F1EC;--lgray:#E5E7EB;--gray:#6B7280;--text:#1C2B3A;--white:#FFFFFF}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'DM Sans',sans-serif;background:var(--navy);color:var(--white);line-height:1.6;font-size:16px}
+
+nav{position:sticky;top:0;z-index:100;background:rgba(13,27,42,.96);backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,.06);padding:0 2rem;display:flex;align-items:center;justify-content:space-between;height:58px}
+.nav-brand{font-family:'Syne',sans-serif;font-weight:800;font-size:.82rem;letter-spacing:.06em;color:var(--teal-l);text-decoration:none;text-transform:uppercase}
+.nav-links{display:flex;gap:.15rem;list-style:none}
+.nav-links a{font-size:.75rem;font-weight:500;color:rgba(255,255,255,.45);text-decoration:none;padding:.3rem .65rem;border-radius:4px;transition:all .15s;white-space:nowrap}
+.nav-links a:hover,.nav-links a.active{color:var(--white);background:rgba(255,255,255,.07)}
+.nav-dl{color:var(--teal-l)!important;border:1px solid rgba(26,122,158,.35)!important;border-radius:4px!important}
+@media(max-width:760px){.nav-links .hide-sm{display:none}}
+@media(max-width:480px){.nav-links{display:none}}
+
+.hero{padding:6rem 2rem 5rem;text-align:center;position:relative;overflow:hidden;background:var(--navy)}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 55% at 50% -5%,rgba(26,122,158,.22) 0%,transparent 65%),radial-gradient(ellipse 35% 25% at 80% 85%,rgba(26,122,94,.1) 0%,transparent 60%);pointer-events:none}
+.eyebrow{display:inline-block;font-family:'DM Mono',monospace;font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;background:rgba(26,122,158,.18);border:1px solid rgba(26,122,158,.38);color:var(--teal-l);padding:.28rem 1rem;border-radius:100px;margin-bottom:1.8rem}
+.hero h1{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(2.8rem,7vw,5rem);line-height:1.04;letter-spacing:-.025em;margin-bottom:1.25rem}
+.hero h1 .ac{color:var(--teal-l)}
+.hero-sub{font-size:clamp(.95rem,2vw,1.1rem);color:rgba(255,255,255,.58);max-width:520px;margin:0 auto 2.8rem;font-weight:300;line-height:1.7}
+.hero-btns{display:flex;gap:.85rem;justify-content:center;flex-wrap:wrap}
+.btn-p{display:inline-flex;align-items:center;gap:.5rem;background:var(--teal);color:var(--white);font-family:'Syne',sans-serif;font-weight:700;font-size:.88rem;letter-spacing:.02em;padding:.8rem 1.8rem;border-radius:8px;text-decoration:none;transition:background .2s,transform .15s;border:1px solid transparent}
+.btn-p:hover{background:var(--teal-l);transform:translateY(-1px)}
+.btn-s{display:inline-flex;align-items:center;gap:.5rem;background:transparent;color:rgba(255,255,255,.75);font-family:'Syne',sans-serif;font-weight:600;font-size:.88rem;padding:.8rem 1.8rem;border-radius:8px;text-decoration:none;border:1px solid rgba(255,255,255,.18);transition:all .2s}
+.btn-s:hover{border-color:rgba(255,255,255,.45);color:var(--white)}
+
+.sd{background:var(--navy);padding:5rem 2rem}
+.sd2{background:var(--navy2);padding:5rem 2rem}
+.sl{background:var(--off);color:var(--text);padding:5rem 2rem}
+.inn{max-width:880px;margin:0 auto}
+.snum{font-family:'DM Mono',monospace;font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;opacity:.38;margin-bottom:.5rem}
+h2.st{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(1.7rem,4vw,2.4rem);line-height:1.12;letter-spacing:-.015em;margin-bottom:.6rem}
+.si{font-size:.95rem;opacity:.58;margin-bottom:2.8rem;font-weight:300;max-width:580px}
+.dd{height:1px;background:rgba(255,255,255,.06)}
+.dl{height:1px;background:rgba(0,0,0,.08)}
+
+/* phases */
+.pg{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.75rem}
+@media(max-width:600px){.pg{grid-template-columns:1fr}}
+.pc{border-radius:12px;overflow:hidden;background:var(--navy2);border:1px solid rgba(255,255,255,.06)}
+.ph{padding:.75rem 1.1rem}
+.ps{font-family:'DM Mono',monospace;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;opacity:.65;margin-bottom:.1rem}
+.pn{font-family:'Syne',sans-serif;font-weight:800;font-size:.95rem;color:var(--white)}
+.pb{padding:1rem 1.1rem}
+.psub{font-weight:600;font-size:.82rem;margin-bottom:.38rem}
+.pdesc{font-size:.84rem;color:rgba(255,255,255,.55);line-height:1.55}
+
+/* deeper strip */
+.dstrip{background:rgba(15,45,69,.7);border:1px solid rgba(26,122,158,.2);border-radius:10px;padding:.9rem 1.2rem;display:grid;grid-template-columns:repeat(6,1fr);gap:.4rem;margin-bottom:1.75rem}
+@media(max-width:580px){.dstrip{grid-template-columns:repeat(3,1fr)}}
+.di{text-align:center}
+.dl2{font-family:'Syne',sans-serif;font-weight:800;font-size:1rem;display:block}
+.dw{font-size:.7rem;color:rgba(255,255,255,.48);display:block}
+.dd2{font-size:.62rem;color:rgba(255,255,255,.3);font-style:italic;display:block;margin-top:.1rem}
+
+/* key phrase */
+.kp{background:var(--navy2);border:1px solid rgba(255,255,255,.08);border-left:4px solid var(--teal);border-radius:10px;padding:1.4rem 1.8rem;text-align:center;margin-bottom:1.5rem}
+.kpl{font-family:'DM Mono',monospace;font-size:.65rem;letter-spacing:.14em;text-transform:uppercase;color:var(--teal-l);margin-bottom:.55rem}
+.kpt{font-family:'Syne',sans-serif;font-weight:700;font-size:clamp(1rem,2.5vw,1.35rem);color:var(--white);line-height:1.35}
+.kps{margin-top:.5rem;font-size:.8rem;color:rgba(255,255,255,.38);font-style:italic}
+
+/* layers */
+.ls{display:flex;flex-direction:column;gap:.55rem;margin-bottom:1.75rem}
+.lr{display:grid;grid-template-columns:2rem 1fr;gap:.9rem;align-items:start}
+.ln{width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:.9rem;flex-shrink:0;margin-top:.1rem}
+.lc{background:var(--white);border-radius:10px;padding:1rem 1.15rem;border:1px solid var(--lgray)}
+.lc.star{border-color:var(--gold);border-width:2px;background:#FFFBF0}
+.lh{font-family:'Syne',sans-serif;font-weight:700;font-size:.82rem;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.15rem}
+.ld{font-size:.84rem;color:var(--gray);margin-bottom:.65rem}
+.lst{font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.14rem}
+.la{border-left:3px solid;padding:.42rem .7rem;border-radius:0 6px 6px 0;font-size:.84rem;font-style:italic;margin-bottom:.65rem}
+.sb{display:inline-block;background:var(--gold);color:var(--white);font-size:.58rem;font-weight:700;padding:.1rem .38rem;border-radius:3px;text-transform:uppercase;letter-spacing:.06em;margin-left:.35rem;vertical-align:middle}
+.lpl{font-size:.73rem;font-weight:600;color:var(--gray);margin-bottom:.3rem}
+
+/* prompts */
+.pbox{background:var(--navy2);border:1px solid rgba(255,255,255,.1);border-radius:10px;overflow:hidden;margin-bottom:1.25rem}
+.pboxl{background:#F8F9FA;border:1px solid var(--lgray);border-radius:10px;overflow:hidden;margin-bottom:1.25rem}
+.phdr{display:flex;justify-content:space-between;align-items:center;padding:.55rem 1rem;border-bottom:1px solid rgba(255,255,255,.07)}
+.phdrl{display:flex;justify-content:space-between;align-items:center;padding:.55rem 1rem;border-bottom:1px solid var(--lgray)}
+.plbl{font-family:'DM Mono',monospace;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.35)}
+.plbld{font-family:'DM Mono',monospace;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--gray)}
+.cbtn{background:rgba(26,122,158,.18);border:1px solid rgba(26,122,158,.32);color:var(--teal-l);font-family:'DM Mono',monospace;font-size:.66rem;padding:.15rem .55rem;border-radius:4px;cursor:pointer;transition:all .15s;user-select:none}
+.cbtn:hover{background:rgba(26,122,158,.32)}
+.cbtn.ok{color:#4ade80;border-color:rgba(74,222,128,.38);background:rgba(74,222,128,.1)}
+.pbody{padding:1rem 1.1rem;font-family:'DM Mono',monospace;font-size:.82rem;line-height:1.8;color:rgba(255,255,255,.8);white-space:pre-wrap}
+.pbodyd{padding:1rem 1.1rem;font-family:'DM Mono',monospace;font-size:.82rem;line-height:1.8;color:var(--text);white-space:pre-wrap}
+.pt{color:var(--teal-l);font-weight:500}
+.po{color:#F0A060;font-weight:500}
+.pw{color:rgba(255,255,255,.45)}
+.pk{color:var(--white);font-weight:600}
+
+/* c3 */
+.c3g{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.75rem}
+@media(max-width:620px){.c3g{grid-template-columns:1fr}}
+.c3c{border-radius:10px;overflow:hidden;background:var(--navy2);border:1px solid rgba(255,255,255,.07)}
+.c3h{padding:.65rem 1rem;display:flex;align-items:baseline;gap:.45rem}
+.c3b{font-family:'DM Mono',monospace;font-size:.65rem;font-weight:500;opacity:.65}
+.c3t{font-family:'Syne',sans-serif;font-weight:800;font-size:.85rem;text-transform:uppercase;color:var(--white);letter-spacing:.04em}
+.c3s{font-size:.75rem;color:rgba(255,255,255,.4);padding:0 1rem .5rem;font-style:italic}
+.c3i{padding:.55rem .65rem;display:flex;flex-direction:column;gap:.35rem}
+.ci{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:.55rem .75rem;font-size:.82rem;color:rgba(255,255,255,.72);line-height:1.45;cursor:pointer;transition:all .15s;position:relative}
+.ci:hover{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.15)}
+.ci:hover::after{content:'copy';position:absolute;top:.35rem;right:.55rem;font-family:'DM Mono',monospace;font-size:.58rem;color:var(--teal-l)}
+.ci.star{border-color:var(--orange);border-width:1.5px;background:rgba(212,100,26,.08);color:var(--white)}
+.ci.star::before{content:'★ ';color:var(--orange);font-size:.75rem}
+
+/* sarah */
+.sprof{background:var(--navy);border-radius:12px;padding:1.6rem 1.8rem;margin-bottom:2rem;border:1px solid rgba(255,255,255,.05)}
+.sr{display:grid;grid-template-columns:105px 1fr;gap:.65rem;margin-bottom:.55rem;align-items:baseline}
+.sr:last-child{margin-bottom:0}
+.sl2{font-family:'DM Mono',monospace;font-size:.7rem;font-weight:500;color:var(--teal-l);letter-spacing:.04em}
+.sv{font-size:.9rem;color:rgba(255,255,255,.72)}
+
+/* chat */
+.conv{margin-bottom:1.5rem}
+.ch{display:flex;align-items:center;gap:.6rem;margin-bottom:.7rem}
+.cbdg{font-family:'Syne',sans-serif;font-weight:800;font-size:.68rem;letter-spacing:.05em;padding:.2rem .5rem;border-radius:4px;text-transform:uppercase;color:var(--white);flex-shrink:0}
+.ct2{font-family:'Syne',sans-serif;font-weight:700;font-size:.85rem;color:var(--text)}
+.cw{background:var(--off);border-radius:10px;overflow:hidden;border:1px solid rgba(0,0,0,.08)}
+.cb{background:#E5E7EB;padding:.42rem .9rem;font-size:.72rem;font-weight:600;color:var(--text);display:flex;align-items:center;gap:.35rem}
+.cd{width:8px;height:8px;border-radius:50%}
+.cbod{padding:.9rem;display:flex;flex-direction:column;gap:.65rem}
+.bu{align-self:flex-end;background:var(--teal);color:var(--white);border-radius:14px 14px 4px 14px;padding:.65rem .95rem;font-size:.86rem;max-width:85%;line-height:1.55}
+.ba{align-self:flex-start;background:var(--white);color:var(--text);border-radius:4px 14px 14px 14px;padding:.65rem .95rem;font-size:.86rem;max-width:90%;line-height:1.55;border:1px solid var(--lgray)}
+.ba.warn{border:2px solid var(--red);background:#FEF2F2}
+.ba.warn::before{content:'⚠  Most people stop here.';display:block;font-size:.68rem;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.38rem}
+.cn{margin-top:.5rem;font-size:.8rem;font-style:italic;padding-left:.65rem;border-left:2px solid;line-height:1.55}
+
+/* result */
+.rg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--navy);border-radius:12px;overflow:hidden;margin-bottom:1.5rem}
+.ri{padding:1rem 1.2rem;border-right:1px solid rgba(255,255,255,.07)}
+.ri:last-child{border-right:none}
+.rl{font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.3rem}
+.rb{font-size:.84rem;color:rgba(255,255,255,.65);line-height:1.5}
+.rbanner{background:var(--teal);border-radius:12px;padding:1.4rem 1.75rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;margin-bottom:2rem}
+.rbs{font-family:'Syne',sans-serif;font-weight:800;font-size:1.2rem;color:var(--white);margin-bottom:.15rem}
+.rbb{font-size:.84rem;color:rgba(255,255,255,.72)}
+.rbt{font-family:'Syne',sans-serif;font-weight:800;font-size:.88rem;color:rgba(255,255,255,.5);text-align:right;line-height:1.4}
+
+/* deeper cards */
+.dgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:.65rem;margin-bottom:1.75rem}
+@media(max-width:700px){.dgrid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:400px){.dgrid{grid-template-columns:repeat(2,1fr)}}
+.dc{border-radius:10px;overflow:hidden;background:var(--navy2);border:1px solid rgba(255,255,255,.07)}
+.dch{padding:.55rem .7rem}
+.dcl{font-family:'Syne',sans-serif;font-weight:800;font-size:1.5rem;display:block;line-height:1}
+.dcw{font-size:.72rem;color:rgba(255,255,255,.48);display:block;margin-top:.1rem}
+.dcb{padding:.55rem .7rem}
+.dct{font-size:.7rem;font-weight:600;margin-bottom:.28rem}
+.dcd{font-size:.76rem;color:rgba(255,255,255,.48);line-height:1.45}
+.dcs{margin-top:.55rem;padding:.4rem .55rem;border-radius:6px;border-left:2px solid}
+.dcsl{font-size:.58rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.12rem}
+.dcst{font-size:.74rem;font-style:italic;line-height:1.45;color:rgba(255,255,255,.52)}
+
+/* plan */
+.plang{display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:1.5rem}
+@media(max-width:560px){.plang{grid-template-columns:1fr}}
+.planc{border-radius:10px;overflow:hidden;background:var(--white);border:1px solid var(--lgray);box-shadow:0 2px 12px rgba(0,0,0,.06)}
+.planh{padding:.65rem 1rem;display:flex;align-items:center;gap:.6rem}
+.plann{width:1.5rem;height:1.5rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:.75rem;color:var(--white);flex-shrink:0;background:rgba(255,255,255,.25)}
+.planht{font-family:'Syne',sans-serif;font-weight:800;font-size:.82rem;text-transform:uppercase;letter-spacing:.04em;color:var(--white)}
+.planb{padding:.75rem 1rem 1rem}
+.plantg{font-size:.72rem;color:var(--gray);font-style:italic;margin-bottom:.5rem}
+.planct{font-size:.88rem;color:var(--text);line-height:1.6}
+
+/* levels */
+.levr{display:flex;flex-direction:column;gap:.75rem}
+.lerow{display:grid;grid-template-columns:115px 1fr auto;gap:1rem;align-items:center;background:var(--white);border-radius:10px;border:1px solid var(--lgray);overflow:hidden}
+@media(max-width:540px){.lerow{grid-template-columns:1fr}}
+.lel{padding:1rem;font-family:'Syne',sans-serif;font-weight:800;font-size:.78rem;letter-spacing:.04em;text-transform:uppercase;color:var(--white);display:flex;flex-direction:column;gap:.22rem;min-height:88px;justify-content:center}
+.lew{font-family:'DM Sans',sans-serif;font-weight:400;font-size:.68rem;letter-spacing:0;opacity:.75;text-transform:none;line-height:1.4}
+.lebody{padding:.85rem 0}
+.lenxt{font-size:.88rem;font-weight:600;color:var(--text);margin-bottom:.25rem;line-height:1.4}
+.leeg{font-size:.76rem;color:var(--gray)}
+.letl{padding:.85rem;display:flex;flex-direction:column;gap:.25rem;align-items:flex-end;flex-shrink:0;min-width:120px}
+.tc{display:inline-block;font-family:'DM Mono',monospace;font-size:.63rem;padding:.16rem .42rem;border-radius:3px;font-weight:500;white-space:nowrap}
+
+/* tools */
+.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:.75rem}
+.tcard{background:var(--white);border:1px solid var(--lgray);border-radius:10px;padding:1rem 1.15rem;text-decoration:none;color:var(--text);display:flex;flex-direction:column;gap:.3rem;transition:all .2s}
+.tcard:hover{box-shadow:0 4px 20px rgba(0,0,0,.1);transform:translateY(-2px)}
+.tn{font-family:'Syne',sans-serif;font-weight:700;font-size:.86rem;display:flex;justify-content:space-between;align-items:center}
+.tbdg{font-family:'DM Mono',monospace;font-size:.6rem;padding:.1rem .38rem;border-radius:3px;font-weight:500}
+.td{font-size:.78rem;color:var(--gray);line-height:1.5}
+.tl{font-size:.74rem;font-weight:600;color:var(--teal);margin-top:.2rem}
+
+/* download banner */
+.dban{background:linear-gradient(135deg,var(--navy2) 0%,#1A2E42 100%);border:1px solid rgba(26,122,158,.25);border-radius:14px;padding:2.4rem 2rem;display:flex;align-items:center;justify-content:space-between;gap:1.5rem;flex-wrap:wrap;position:relative;overflow:hidden}
+.dban::before{content:'';position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(26,122,158,.18) 0%,transparent 70%);pointer-events:none}
+.dban h3{font-family:'Syne',sans-serif;font-weight:800;font-size:1.2rem;margin-bottom:.35rem}
+.dban p{font-size:.88rem;color:rgba(255,255,255,.55);max-width:380px}
+.dbtn{display:inline-flex;align-items:center;gap:.6rem;background:var(--teal);color:var(--white);font-family:'Syne',sans-serif;font-weight:700;font-size:.9rem;padding:.9rem 2rem;border-radius:8px;text-decoration:none;transition:all .2s;white-space:nowrap;flex-shrink:0;border:1px solid rgba(255,255,255,.12)}
+.dbtn:hover{background:var(--teal-l);transform:translateY(-1px);box-shadow:0 8px 24px rgba(26,122,158,.35)}
+
+.cta{background:var(--teal);padding:5rem 2rem;text-align:center}
+.cta h2{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(1.5rem,4vw,2.2rem);margin-bottom:.75rem}
+.cta p{font-size:.95rem;color:rgba(255,255,255,.78);margin-bottom:2rem;max-width:480px;margin-left:auto;margin-right:auto;font-weight:300}
+footer{background:var(--navy);border-top:1px solid rgba(255,255,255,.06);padding:3rem 2rem;text-align:center}
+.fb{font-family:'Syne',sans-serif;font-weight:800;color:var(--teal-l);font-size:.85rem;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.4rem}
+.fs{font-size:.78rem;color:rgba(255,255,255,.28)}
+.fs a{color:var(--teal);text-decoration:none}
+.bktop{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--teal);color:var(--white);width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;text-decoration:none;box-shadow:0 4px 20px rgba(0,0,0,.35);transition:all .2s;font-size:1rem;z-index:50}
+.bktop:hover{background:var(--teal-l);transform:translateY(-2px)}
+#toast{position:fixed;bottom:2rem;left:50%;transform:translateX(-50%) translateY(80px);background:#1a2e1a;border:1px solid #2C5F2D;color:#4ade80;font-family:'DM Mono',monospace;font-size:.78rem;padding:.6rem 1.2rem;border-radius:6px;transition:transform .25s;z-index:200;pointer-events:none;white-space:nowrap}
+#toast.show{transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div id="toast">Copied to clipboard ✓</div>
+
+<nav>
+  <a class="nav-brand" href="#">The AI Advantage</a>
+  <ul class="nav-links">
+    <li><a href="#system" class="hide-sm">System</a></li>
+    <li><a href="#phase1">Phase 1</a></li>
+    <li><a href="#phase2">Phase 2</a></li>
+    <li><a href="#sarah" class="hide-sm">Sarah</a></li>
+    <li><a href="#deeper">DEEPER</a></li>
+    <li><a href="#plan" class="hide-sm">Plan</a></li>
+    <li><a href="#levels" class="hide-sm">Levels</a></li>
+    <li><a href="#tools" class="hide-sm">Tools</a></li>
+    <li><a href="/ai-advantage/AI_Advantage_Slides.pptx" download class="nav-dl">↓ Slides</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="eyebrow">Session Reference · Wisdom Consulting Group</div>
+  <h1>The AI<br><span class="ac">Advantage</span></h1>
+  <p class="hero-sub">Every framework, prompt and model from today's session. Bookmark this — it's yours to keep and use.</p>
+  <div class="hero-btns">
+    <a href="/ai-advantage/AI_Advantage_Slides.pptx" download class="btn-p">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download the slides
+    </a>
+    <a href="#system" class="btn-s">Explore the frameworks →</a>
+  </div>
+</div>
+<div class="dd"></div>
+
+<!-- 01 SYSTEM -->
+<div id="system" class="sd">
+<div class="inn">
+  <div class="snum">01 · The Complete System</div>
+  <h2 class="st">Three phases.<br>Used in order. Every time.</h2>
+  <p class="si">Each phase does a specific job. Skip one and the others don't work properly.</p>
+  <div class="pg">
+    <div class="pc"><div class="ph" style="background:var(--orange)"><div class="ps">Phase 1</div><div class="pn">Unpack the Problem</div></div><div class="pb"><div class="psub" style="color:var(--orange)">5-Layer Model</div><div class="pdesc">Map the real problem before you ask for anything. You can't solve what you haven't properly seen.</div></div></div>
+    <div class="pc"><div class="ph" style="background:var(--teal)"><div class="ps">Phase 2</div><div class="pn">Work With AI</div></div><div class="pb"><div class="psub" style="color:var(--teal-l)">The C³ Method</div><div class="pdesc">Clarity · Curiosity · Challenge. Three moves that produce results neither you nor AI reach alone.</div></div></div>
+    <div class="pc"><div class="ph" style="background:var(--green)"><div class="ps">Phase 3</div><div class="pn">Go DEEPER</div></div><div class="pb"><div class="psub" style="color:#4ade80">The DEEPER Framework</div><div class="pdesc"><b style="color:#4ade80">D</b>iscover · <b style="color:#4ade80">E</b>xplore · <b style="color:#4ade80">E</b>valuate · <b style="color:#4ade80">P</b>lan · <b style="color:#4ade80">E</b>xecute · <b style="color:#4ade80">R</b>efine</div></div></div>
+  </div>
+  <div class="dstrip">
+    <div class="di"><span class="dl2" style="color:var(--orange)">D</span><span class="dw">iscover</span><span class="dd2">Find the real problem</span></div>
+    <div class="di"><span class="dl2" style="color:var(--teal-l)">E</span><span class="dw">xplore</span><span class="dd2">Work with AI</span></div>
+    <div class="di"><span class="dl2" style="color:#4ade80">E</span><span class="dw">valuate</span><span class="dd2">Challenge the output</span></div>
+    <div class="di"><span class="dl2" style="color:#B08FD0">P</span><span class="dw">lan</span><span class="dd2">Implementation steps</span></div>
+    <div class="di"><span class="dl2" style="color:#5BAFD0">E</span><span class="dw">xecute</span><span class="dd2">Build it</span></div>
+    <div class="di"><span class="dl2" style="color:var(--gold)">R</span><span class="dw">efine</span><span class="dd2">Improve and repeat</span></div>
+  </div>
+  <div class="kp">
+    <div class="kpl">The one phrase to memorise</div>
+    <div class="kpt">"Before you suggest anything, ask me questions one at a time."</div>
+    <div class="kps">This shifts AI from answering to investigating. Use it at the start of every important conversation.</div>
+  </div>
+  <div style="background:var(--navy2);border-radius:10px;padding:1rem 1.4rem;text-align:center"><div style="font-size:.9rem;color:rgba(255,255,255,.58);font-style:italic">"When you go DEEPER with AI — the results are 10x."</div></div>
+</div>
+</div>
+<div class="dd"></div>
+
+<!-- 02 PHASE 1 -->
+<div id="phase1" class="sl">
+<div class="inn">
+  <div class="snum" style="opacity:.4">02 · Phase 1</div>
+  <h2 class="st" style="color:var(--navy)">The 5-Layer Model</h2>
+  <p class="si" style="color:var(--gray)">Map the problem before asking for solutions. The breakthrough always happens at Layer 3.</p>
+  <div class="ls">
+    <!-- L1 -->
+    <div class="lr"><div class="ln" style="background:#DBEAFE;color:var(--teal)">1</div><div class="lc"><div class="lh" style="color:var(--teal)">Symptom — What you notice</div><div class="ld">The thing that shows up as a problem. Real — but not the problem itself.</div><div class="lst" style="color:var(--teal)">Sarah's answer</div><div class="la" style="border-color:var(--teal);background:var(--teal-p);color:var(--text)">"Compliance paperwork is eating my Monday mornings."</div><div class="lpl">Prompt for this layer</div><div class="pboxl"><div class="phdrl"><span class="plbld">Layer 1</span><button class="cbtn" style="color:var(--teal);border-color:rgba(26,122,158,.3)" onclick="cp(this,'l1')">copy</button></div><div id="l1" class="pbodyd">"The biggest problem I keep running into is [describe it]. It affects [who] and happens [how often]. Don't solve it yet — ask me questions to understand it better."</div></div></div></div>
+    <!-- L2 -->
+    <div class="lr"><div class="ln" style="background:#DBEAFE;color:var(--teal)">2</div><div class="lc"><div class="lh" style="color:var(--teal)">Process — What's actually happening</div><div class="ld">Map the steps. Who does what, when, using which tools. Look for handoffs and gaps.</div><div class="lst" style="color:var(--teal)">Sarah's answer</div><div class="la" style="border-color:var(--teal);background:var(--teal-p);color:var(--text)">"Certificates tracked in a spreadsheet. Inductions logged manually. Expiries not flagged anywhere."</div><div class="lpl">Prompt for this layer</div><div class="pboxl"><div class="phdrl"><span class="plbld">Layer 2</span><button class="cbtn" style="color:var(--teal);border-color:rgba(26,122,158,.3)" onclick="cp(this,'l2')">copy</button></div><div id="l2" class="pbodyd">"I'm going to describe how [this process] works, step by step. After I'm done, map it back as a numbered sequence and flag where you see manual steps, handoffs, or gaps."</div></div></div></div>
+    <!-- L3 STAR -->
+    <div class="lr"><div class="ln" style="background:#FEF3C7;color:var(--gold)">3</div><div class="lc star"><div class="lh" style="color:var(--gold)">Constraint — Where it breaks down <span class="sb">Key Layer ★</span></div><div class="ld">The specific point where it fails. Name this precisely — the solution designs itself.</div><div class="lst" style="color:var(--gold)">Sarah's answer</div><div class="la" style="border-color:var(--gold);background:#FEF9EC;color:var(--text)">"No single owner. Whoever is around does it. Records live in three different places."</div><div class="lpl">Prompt for this layer</div><div class="pboxl"><div class="phdrl"><span class="plbld">Layer 3 ★</span><button class="cbtn" style="color:var(--gold);border-color:rgba(232,160,32,.4)" onclick="cp(this,'l3')">copy</button></div><div id="l3" class="pbodyd">"I think the real bottleneck is [your best guess]. Push back on that — is that really the root constraint? Restate it in one sentence I can act on."</div></div></div></div>
+    <!-- L4 -->
+    <div class="lr"><div class="ln" style="background:#FEE2E2;color:var(--red)">4</div><div class="lc"><div class="lh" style="color:var(--red)">Cost — What not solving it costs</div><div class="ld">Vague cost = low urgency = no action. Quantify in time, money or risk.</div><div class="lst" style="color:var(--red)">Sarah's answer</div><div class="la" style="border-color:var(--red);background:#FEF2F2;color:var(--text)">"2 hours every Monday. Two near-misses last year. If we get audited this month — we fail."</div><div class="lpl">Prompt for this layer</div><div class="pboxl"><div class="phdrl"><span class="plbld">Layer 4</span><button class="cbtn" style="color:var(--red);border-color:rgba(192,57,43,.3)" onclick="cp(this,'l4')">copy</button></div><div id="l4" class="pbodyd">"This costs me roughly [estimate] in [time/money/risk] per [week/month]. Help me be precise — ask about costs I might be missing, then summarise the total impact."</div></div></div></div>
+    <!-- L5 -->
+    <div class="lr"><div class="ln" style="background:var(--lgray);color:var(--text)">5</div><div class="lc"><div class="lh" style="color:var(--text)">Owner — Why it hasn't been solved</div><div class="ld">Who has the problem and why does it persist? This shapes what solution will actually stick.</div><div class="lst" style="color:var(--gray)">Sarah's answer</div><div class="la" style="border-color:var(--gray);background:#F8F9FA;color:var(--text)">"Technically me — but the solution needs to run without me chasing it every week."</div><div class="lpl">Prompt for this layer</div><div class="pboxl"><div class="phdrl"><span class="plbld">Layer 5</span><button class="cbtn" style="color:var(--gray);border-color:rgba(107,114,128,.3)" onclick="cp(this,'l5')">copy</button></div><div id="l5" class="pbodyd">"This problem has existed for [timeframe]. The reason it hasn't been solved is [honest assessment]. What does a solution need to look like to actually get used — not just built?"</div></div></div></div>
+  </div>
+  <div style="background:var(--orange-p);border:1px solid rgba(212,100,26,.2);border-radius:10px;padding:1rem 1.3rem;text-align:center;margin-bottom:2rem"><div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--orange);margin-bottom:.28rem">The test at every layer</div><div style="font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;color:var(--navy)">"If this was solved — what would actually change?"</div><div style="margin-top:.28rem;font-size:.8rem;color:var(--gray)">If the answer is vague, you're still at the symptom. Keep going.</div></div>
+  <h3 style="font-family:'Syne',sans-serif;font-weight:800;font-size:1rem;color:var(--navy);margin-bottom:.75rem">Phase 1 Master Prompt</h3>
+  <div class="pboxl"><div class="phdrl"><span class="plbld">Phase 1 Master Prompt — screenshot this</span><button class="cbtn" style="color:var(--teal);border-color:rgba(26,122,158,.3)" onclick="cp(this,'p1')">copy</button></div><div id="p1" class="pbodyd">I want to unpack a problem in my business. Don't suggest solutions yet.
+
+Work through these 5 layers with me, one at a time. Ask me ONE question per layer, wait for my answer, then move to the next. After all 5, restate the real problem in 2 sentences I would agree are exactly right.
+
+Layer 1 - SYMPTOM:    Ask me what problem I keep running into and who it affects.
+Layer 2 - PROCESS:    Ask me to describe what actually happens, step by step.
+Layer 3 - CONSTRAINT: Ask me where it breaks down and why it keeps happening.
+Layer 4 - COST:       Ask me what it costs in time, money or risk — be specific.
+Layer 5 - OWNER:      Ask me who should own this and why it hasn't been fixed yet.
+
+Start with Layer 1 now.</div></div>
+</div>
+</div>
+<div class="dl"></div>
+
+<!-- 03 PHASE 2 -->
+<div id="phase2" class="sd2">
+<div class="inn">
+  <div class="snum">03 · Phase 2</div>
+  <h2 class="st">The C³ Method</h2>
+  <p class="si">Three moves. Used together, they produce results neither you nor AI would reach alone.</p>
+  <div class="c3g">
+    <div class="c3c"><div class="c3h" style="background:var(--teal)"><span class="c3b">C¹</span><span class="c3t">Clarity</span></div><div class="c3s">Load the context</div><div class="c3i"><div class="ci" onclick="ct(this,`I'm a [role] at a [business]. Here's my problem...`)">"I'm a [role]. Here's my problem..."</div><div class="ci" onclick="ct(this,'Here\'s the current process step by step...')">"Here's the current process step by step..."</div><div class="ci" onclick="ct(this,'The bottleneck is...')">"The bottleneck is..."</div><div class="ci" onclick="ct(this,'The tools we already use are...')">"The tools we already use are..."</div></div></div>
+    <div class="c3c"><div class="c3h" style="background:var(--orange)"><span class="c3b">C²</span><span class="c3t">Curiosity</span></div><div class="c3s">Let AI investigate</div><div class="c3i"><div class="ci star" onclick="ct(this,'Before answering, ask me questions one at a time')">"Before answering, ask me questions one at a time"</div><div class="ci" onclick="ct(this,'What am I not thinking about?')">"What am I not thinking about?"</div><div class="ci" onclick="ct(this,'What would an expert do differently?')">"What would an expert do differently?"</div><div class="ci" onclick="ct(this,'Give me 3 options and explain the trade-offs')">"Give me 3 options and explain the trade-offs"</div></div></div>
+    <div class="c3c"><div class="c3h" style="background:var(--green)"><span class="c3b">C³</span><span class="c3t">Challenge</span></div><div class="c3s">Push back — don't settle</div><div class="c3i"><div class="ci" onclick="ct(this,'What are the risks or edge cases?')">"What are the risks or edge cases?"</div><div class="ci" onclick="ct(this,'Rate this out of 10. Explain why. Now make it a 10.')">"Rate this out of 10. Explain why. Now make it a 10."</div><div class="ci" onclick="ct(this,'What would you change if starting from scratch?')">"What would you change if starting from scratch?"</div><div class="ci" onclick="ct(this,'Poke holes in this. What\'s missing?')">"Poke holes in this. What's missing?"</div></div></div>
+  </div>
+  <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:.95rem;color:rgba(255,255,255,.88);margin-bottom:.7rem">Phase 2 Prompt — send immediately after Phase 1</h3>
+  <div class="pbox" style="margin-bottom:1.75rem"><div class="phdr"><span class="plbl">Phase 2 Prompt</span><button class="cbtn" onclick="cp(this,'p2')">copy</button></div><div id="p2" class="pbody"><span class="pk">Good. Before you suggest any solutions —</span>
+
+<span class="pw">Summarise back to me what you've understood about my problem so far.
+
+Then ask me anything you're still not sure about, one question at a time.
+
+Once you feel confident you understand it — restate the real problem in 2 sentences I'd agree are exactly right.
+
+</span><span class="pk">Only then ask me if you can start suggesting solutions.</span></div></div>
+  <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:.95rem;color:rgba(255,255,255,.88);margin-bottom:.7rem">Plan Prompt — send once the solution is agreed</h3>
+  <div class="pbox" style="margin-bottom:1.75rem"><div class="phdr"><span class="plbl">Plan Prompt</span><button class="cbtn" onclick="cp(this,'pplan')">copy</button></div><div id="pplan" class="pbody"><span class="pk">Good. We've agreed on the solution.</span>
+
+<span class="pw">Now help me build a step-by-step implementation plan.
+
+Give me:
+</span><span class="pt">1. </span><span class="pw">The agreed solution in one sentence.
+</span><span class="pt">2. </span><span class="pw">The steps to implement it — in order, with who does what.
+</span><span class="pt">3. </span><span class="pw">What done looks like — specific and measurable in 30 days.
+</span><span class="pt">4. </span><span class="pw">The first action I can take this week.
+
+</span><span class="pk">Keep it practical. I need to be able to hand this to someone on Monday.</span></div></div>
+  <h3 style="font-family:'Syne',sans-serif;font-weight:700;font-size:.95rem;color:rgba(255,255,255,.88);margin:.1rem 0 .65rem">Stress-test prompts</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:.55rem">
+    <div class="ci" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.07);border-radius:8px;padding:.75rem .9rem" onclick="ct(this,'Rate this solution out of 10. What would make it a 10?')">"Rate this out of 10. What would make it a 10?"</div>
+    <div class="ci" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.07);border-radius:8px;padding:.75rem .9rem" onclick="ct(this,'What are you assuming about my business that might not be true?')">"What are you assuming that might not be true?"</div>
+    <div class="ci" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.07);border-radius:8px;padding:.75rem .9rem" onclick="ct(this,'If I could only build one thing first — which one and why?')">"If I could only build one thing first — which and why?"</div>
+    <div class="ci" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.07);border-radius:8px;padding:.75rem .9rem" onclick="ct(this,'What would make this fail?')">"What would make this fail?"</div>
+    <div class="ci" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.07);border-radius:8px;padding:.75rem .9rem" onclick="ct(this,'What have I not asked you that I should have?')">"What have I not asked that I should have?"</div>
+    <div class="ci" style="background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.07);border-radius:8px;padding:.75rem .9rem" onclick="ct(this,'What\'s the simplest version of this that would still solve the problem?')">"What's the simplest version that still solves this?"</div>
+  </div>
+</div>
+</div>
+<div class="dd"></div>
+
+<!-- 04 SARAH -->
+<div id="sarah" class="sl">
+<div class="inn">
+  <div class="snum" style="opacity:.4">04 · The Example</div>
+  <h2 class="st" style="color:var(--navy)">Sarah's story.</h2>
+  <p class="si" style="color:var(--gray)">Every framework demonstrated through a real problem. Here's the full arc.</p>
+  <div class="sprof">
+    <div class="sr"><span class="sl2">Her role</span><span class="sv">Office manager. Trades business. 25 staff, subcontractors rotating in and out.</span></div>
+    <div class="sr"><span class="sl2">Her problem</span><span class="sv">Compliance. Certificates expiring. Inductions not logged. Spreadsheet nobody trusts.</span></div>
+    <div class="sr"><span class="sl2">Her week</span><span class="sv">Every Monday morning — two hours — before she'd started anything else. Three years.</span></div>
+    <div class="sr"><span class="sl2">Her attempts</span><span class="sv">Tried to fix it twice. Both times it collapsed. Back to the spreadsheet both times.</span></div>
+  </div>
+  <h3 style="font-family:'Syne',sans-serif;font-weight:800;font-size:1rem;color:var(--navy);margin-bottom:1.2rem">The C³ conversation</h3>
+  <!-- C1 -->
+  <div class="conv"><div class="ch"><span class="cbdg" style="background:var(--teal)">C¹ Clarity</span><span class="ct2">Sarah loads context before asking for anything</span></div><div class="cw"><div class="cb"><span class="cd" style="background:#EF4444"></span><span class="cd" style="background:#F59E0B"></span><span class="cd" style="background:#10B981"></span> AI</div><div class="cbod"><div class="bu">I'm an office manager at a trades business — 25 staff, subcontractors in and out.<br><br>Compliance is a constant headache. No single owner, records in three places, certificates expire without warning.<br><br><strong>Before you suggest anything, ask me questions one at a time until you understand what's actually going wrong.</strong></div></div></div><div class="cn" style="border-color:var(--teal);color:var(--teal)">Role + context loaded. Constraint named upfront. Sarah hands control to AI — not asking for a solution, asking AI to investigate.</div></div>
+  <!-- C2 -->
+  <div class="conv"><div class="ch"><span class="cbdg" style="background:var(--orange)">C² Curiosity</span><span class="ct2">AI leads. Sarah answers — doesn't jump to solutions.</span></div><div class="cw"><div class="cb"><span class="cd" style="background:#EF4444"></span><span class="cd" style="background:#F59E0B"></span><span class="cd" style="background:#10B981"></span> AI</div><div class="cbod"><div class="ba"><strong>Before I suggest anything</strong> — when a certificate lapses without anyone catching it, what actually happens? Does the worker stop? Does a supervisor step in? Or does it quietly slip through?</div><div class="bu">Honestly? It slips through. We've had two subcontractors on site with expired white cards in the last six months. We didn't know until an audit.</div><div class="ba"><strong>That's important. Second question:</strong> when someone is responsible for checking certificates, who is it — and do they have a reliable way to see expiry dates, or are they manually checking each person?</div></div></div><div class="cn" style="border-color:var(--orange);color:var(--orange)">AI is building a picture — not generating solutions. Each question goes one level deeper.</div></div>
+  <!-- TRAP -->
+  <div class="conv"><div class="ch"><span class="cbdg" style="background:var(--red)">⚠ The Trap</span><span class="ct2">AI gives an answer. Confident — but wrong. Most people stop here.</span></div><div class="cw"><div class="cb"><span class="cd" style="background:#EF4444"></span><span class="cd" style="background:#F59E0B"></span><span class="cd" style="background:#10B981"></span> AI</div><div class="cbod"><div class="ba warn"><strong>Based on what you've told me:</strong><br><br>1. Create a shared Google Sheet with all certificates and expiry dates, colour-coded by status.<br>2. Set up Google Calendar alerts 30 days before each expiry.<br>3. Assign one person as 'compliance owner.'</div></div></div><div class="cn" style="border-color:var(--red);color:var(--red)"><strong>Confident. Not correct.</strong> Sarah has tried the Google Sheet twice. It works for a month then collapses. Only she can spot this — which is exactly why Challenge matters.</div></div>
+  <!-- C3 -->
+  <div class="conv"><div class="ch"><span class="cbdg" style="background:var(--green)">C³ Challenge</span><span class="ct2">Sarah pushes back. AI changes direction entirely.</span></div><div class="cw"><div class="cb"><span class="cd" style="background:#EF4444"></span><span class="cd" style="background:#F59E0B"></span><span class="cd" style="background:#10B981"></span> AI</div><div class="cbod"><div class="bu">We've tried the Google Sheet twice. It works for a month then nobody maintains it. The problem isn't the tool — it's that compliance gets deprioritised the moment anyone is busy. <strong>What am I not thinking about?</strong></div><div class="ba"><strong>That's a critical distinction — thank you for pushing back.</strong><br><br>If manual maintenance always fails under pressure, the system can't rely on human remembering. Is there a point in your existing workflow — onboarding, site sign-in, invoicing — where compliance status is already checked? Because the answer is to embed it there, not add a separate process.</div></div></div><div class="cn" style="border-color:var(--green);color:var(--green)">One push back. AI changed direction entirely. The real solution is now reachable.</div></div>
+  <!-- RESTATE -->
+  <div style="background:var(--navy);border-radius:12px;overflow:hidden;margin-bottom:1.5rem"><div style="padding:1.2rem 1.5rem;border-bottom:1px solid rgba(255,255,255,.07)"><div style="font-family:'DM Mono',monospace;font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.28);margin-bottom:.5rem">AI restates — Sarah confirms</div><div style="font-size:.9rem;color:rgba(255,255,255,.78);line-height:1.65;font-style:italic">"The real problem is that compliance checking only happens when someone remembers — and under pressure, nobody does. A new tool won't fix that. The solution must be automatic and embedded in an existing workflow."</div><div style="margin-top:.6rem;font-size:.9rem;color:var(--teal-l);font-weight:600">"Yes. That's exactly it. That's what I've been trying to say for three years."</div></div><div class="rg"><div class="ri"><div class="rl" style="color:var(--red)">She asked for</div><div class="rb">A better checklist. Something to replace the spreadsheet.</div></div><div class="ri"><div class="rl" style="color:var(--orange)">She needed</div><div class="rb">A system that doesn't depend on anyone remembering.</div></div><div class="ri"><div class="rl" style="color:#4ade80">She got</div><div class="rb">Compliance embedded into site sign-in — automatic, no maintenance burden.</div></div></div></div>
+  <div class="rbanner"><div><div class="rbs">Monday mornings: 2 hours → 20 minutes.</div><div class="rbb">Three years. Same problem. Fixed in one session using the C³ method.</div></div><div class="rbt">Same method.<br>Any problem.</div></div>
+</div>
+</div>
+<div class="dl"></div>
+
+<!-- 05 DEEPER -->
+<div id="deeper" class="sd">
+<div class="inn">
+  <div class="snum">05 · Phase 3</div>
+  <h2 class="st">Go DEEPER.</h2>
+  <p class="si">Six steps. The framework that turns a conversation into a result — and compounds every time you use it.</p>
+  <div class="dgrid">
+    <div class="dc"><div class="dch" style="background:rgba(212,100,26,.15);border-bottom:1px solid rgba(212,100,26,.2)"><span class="dcl" style="color:var(--orange)">D</span><span class="dcw">iscover</span></div><div class="dcb"><div class="dct" style="color:var(--orange)">Find the real problem</div><div class="dcd">5-Layer Model. Surface what's actually going on before you ask for anything.</div><div class="dcs" style="border-color:var(--orange);background:rgba(212,100,26,.07)"><div class="dcsl" style="color:var(--orange)">Sarah</div><div class="dcst">Problem isn't the spreadsheet — it's ownership.</div></div></div></div>
+    <div class="dc"><div class="dch" style="background:rgba(26,122,158,.15);border-bottom:1px solid rgba(26,122,158,.2)"><span class="dcl" style="color:var(--teal-l)">E</span><span class="dcw">xplore</span></div><div class="dcb"><div class="dct" style="color:var(--teal-l)">Work with AI</div><div class="dcd">C¹ + C². Load context. Let AI ask questions. Don't jump to answers.</div><div class="dcs" style="border-color:var(--teal);background:rgba(26,122,158,.07)"><div class="dcsl" style="color:var(--teal-l)">Sarah</div><div class="dcst">AI asked 2 questions. Surfaced near-misses Sarah hadn't counted.</div></div></div></div>
+    <div class="dc"><div class="dch" style="background:rgba(26,122,94,.15);border-bottom:1px solid rgba(26,122,94,.2)"><span class="dcl" style="color:#4ade80">E</span><span class="dcw">valuate</span></div><div class="dcb"><div class="dct" style="color:#4ade80">Challenge the output</div><div class="dcd">C³. Push back on the first answer. Agree the solution together.</div><div class="dcs" style="border-color:var(--green);background:rgba(26,122,94,.07)"><div class="dcsl" style="color:#4ade80">Sarah</div><div class="dcst">Pushed back on Google Sheet. AI changed direction entirely.</div></div></div></div>
+    <div class="dc"><div class="dch" style="background:rgba(123,79,158,.15);border-bottom:1px solid rgba(123,79,158,.2)"><span class="dcl" style="color:#B08FD0">P</span><span class="dcw">lan</span></div><div class="dcb"><div class="dct" style="color:#B08FD0">Implementation steps</div><div class="dcd">Plan prompt. AI generates steps from the agreed solution.</div><div class="dcs" style="border-color:var(--purple);background:rgba(123,79,158,.07)"><div class="dcsl" style="color:#B08FD0">Sarah</div><div class="dcst">AI produced the plan. Sarah confirmed in two minutes.</div></div></div></div>
+    <div class="dc"><div class="dch" style="background:rgba(26,107,138,.15);border-bottom:1px solid rgba(26,107,138,.2)"><span class="dcl" style="color:#5BAFD0">E</span><span class="dcw">xecute</span></div><div class="dcb"><div class="dct" style="color:#5BAFD0">Build it</div><div class="dcd">One more AI session. Built Thursday. Running Monday.</div><div class="dcs" style="border-color:#1A6B8A;background:rgba(26,107,138,.07)"><div class="dcsl" style="color:#5BAFD0">Sarah</div><div class="dcst">Compliance embedded in site sign-in. Zero manual checks.</div></div></div></div>
+    <div class="dc"><div class="dch" style="background:rgba(139,105,20,.15);border-bottom:1px solid rgba(139,105,20,.2)"><span class="dcl" style="color:var(--gold)">R</span><span class="dcw">efine</span></div><div class="dcb"><div class="dct" style="color:var(--gold)">Improve and repeat</div><div class="dcd">What worked? What to improve? Go again — deeper each time.</div><div class="dcs" style="border-color:var(--gold);background:rgba(139,105,20,.07)"><div class="dcsl" style="color:var(--gold)">Sarah</div><div class="dcst">Month 1: AI Project. Month 3: live web tool.</div></div></div></div>
+  </div>
+  <div style="background:rgba(26,122,158,.1);border:1px solid rgba(26,122,158,.2);border-radius:10px;padding:1rem 1.4rem;text-align:center"><div style="font-family:'Syne',sans-serif;font-weight:800;font-size:1rem;color:var(--teal-l);font-style:italic">When you go DEEPER with AI — the results are 10x.</div></div>
+</div>
+</div>
+<div class="dd"></div>
+
+<!-- 06 PLAN -->
+<div id="plan" class="sl">
+<div class="inn">
+  <div class="snum" style="opacity:.4">06 · The Plan</div>
+  <h2 class="st" style="color:var(--navy)">Sarah's Implementation Plan.</h2>
+  <p class="si" style="color:var(--gray)">Generated by AI from the conversation. Confirmed by Sarah in two minutes. This is what the P in DEEPER produces.</p>
+  <div class="plang">
+    <div class="planc"><div class="planh" style="background:var(--purple)"><div class="plann">1</div><div class="planht">The Solution</div></div><div class="planb"><div class="plantg">Agreed solution — in one sentence</div><div class="planct">Compliance status checked automatically at site sign-in. If a certificate is expired or missing — the worker cannot complete sign-in. No manual checking required.</div></div></div>
+    <div class="planc"><div class="planh" style="background:var(--teal)"><div class="plann">2</div><div class="planht">The Steps</div></div><div class="planb"><div class="plantg">In order — with owners and timelines</div><div class="planct"><strong>Step 1:</strong> Map sign-in workflow with IT. Identify trigger point. <em style="color:var(--gray)">Owner: Sarah + IT. Week 1.</em><br><br><strong>Step 2:</strong> Connect certificate database to sign-in system. <em style="color:var(--gray)">Owner: IT. Weeks 2–3.</em><br><br><strong>Step 3:</strong> Pilot with 3 subcontractors before full rollout. <em style="color:var(--gray)">Owner: Sarah. Week 4.</em></div></div></div>
+    <div class="planc"><div class="planh" style="background:var(--orange)"><div class="plann">3</div><div class="planht">Done When</div></div><div class="planb"><div class="plantg">Specific and measurable — she can check this on any Monday</div><div class="planct">Zero manual certificate checks on Monday mornings. System flags expiries automatically. Zero near-misses on site.</div></div></div>
+    <div class="planc"><div class="planh" style="background:var(--green)"><div class="plann">4</div><div class="planht">First Action This Week</div></div><div class="planb"><div class="plantg">One action — this week — not 'look into it'</div><div class="planct">Book 30 minutes with IT lead. Share this plan. Get a start date.</div></div></div>
+  </div>
+  <div style="background:var(--purple-p);border:1px solid rgba(123,79,158,.2);border-radius:10px;padding:1rem 1.3rem;text-align:center"><div style="font-size:.82rem;font-weight:600;color:var(--purple);margin-bottom:.18rem">A plan isn't a project plan.</div><div style="font-size:.9rem;color:var(--text)">It's a commitment — to the solution, the first step, and the one thing that could stop you.</div></div>
+</div>
+</div>
+<div class="dl"></div>
+
+<!-- 07 DOWNLOAD -->
+<div class="sd2"><div class="inn">
+  <div class="dban">
+    <div><h3>Download the full slide deck</h3><p>35 slides covering the complete system — all frameworks, prompts, Sarah's story and the DEEPER framework. Ready to use in your own presentations.</p></div>
+    <a href="/ai-advantage/AI_Advantage_Slides.pptx" download class="dbtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download slides (.pptx)</a>
+  </div>
+</div></div>
+<div class="dd"></div>
+
+<!-- 08 LEVELS -->
+<div id="levels" class="sl">
+<div class="inn">
+  <div class="snum" style="opacity:.4">07 · Where You Go From Here</div>
+  <h2 class="st" style="color:var(--navy)">Three levels.<br>One method.</h2>
+  <p class="si" style="color:var(--gray)">Find your level. The row above it is your next 90 days.</p>
+  <div class="levr">
+    <div class="lerow"><div class="lel" style="background:var(--teal)">BEGINNER<span class="lew">Haven't started, or tried with mixed results</span></div><div class="lebody"><div class="lenxt">→ Use the Phase 2 prompt on one real problem this week.</div><div class="leeg">One good conversation · One problem solved · One process improved</div></div><div class="letl"><span class="tc" style="background:var(--teal);color:var(--white)">Claude.ai</span><span class="tc" style="background:#DBEAFE;color:var(--teal)">Phase 1 + 2 prompts</span></div></div>
+    <div class="lerow"><div class="lel" style="background:var(--orange)">INTERMEDIATE<span class="lew">Using AI regularly, want deeper results</span></div><div class="lebody"><div class="lenxt">→ Create a Project that knows your business, clients and voice.</div><div class="leeg">Proposal writer · Quoting tool · Compliance tracker · Zapier automations</div></div><div class="letl"><span class="tc" style="background:var(--orange);color:var(--white)">Claude Projects</span><span class="tc" style="background:#FEF3C7;color:var(--orange)">Claude Code</span><span class="tc" style="background:#FEF3C7;color:var(--orange)">Zapier</span></div></div>
+    <div class="lerow"><div class="lel" style="background:var(--green)">ADVANCED<span class="lew">AI is already working — ready to compound</span></div><div class="lebody"><div class="lenxt">→ Build AI that surfaces problems before you see them.</div><div class="leeg">Custom tools · Automated reporting · Workflows that run without you</div></div><div class="letl"><span class="tc" style="background:var(--green);color:var(--white)">Claude Projects</span><span class="tc" style="background:#DCFCE7;color:var(--green)">Claude Code</span><span class="tc" style="background:#DCFCE7;color:var(--green)">Supabase</span></div></div>
+  </div>
+  <div style="background:var(--navy);border-radius:10px;padding:1rem 1.3rem;text-align:center;margin-top:1.5rem"><div style="font-size:.88rem;color:rgba(255,255,255,.55);font-style:italic">Same method at every level. The R in DEEPER — Refine — is what makes the ceiling keep rising.</div></div>
+</div>
+</div>
+<div class="dl"></div>
+
+<!-- 09 TOOLS -->
+<div id="tools" class="sl">
+<div class="inn">
+  <div class="snum" style="opacity:.4">08 · Your Build Stack</div>
+  <h2 class="st" style="color:var(--navy)">Key tools —<br>links and first steps.</h2>
+  <p class="si" style="color:var(--gray)">You don't need all of these. Every path starts with Claude.</p>
+  <div class="tgrid">
+    <a href="https://claude.ai" target="_blank" rel="noopener" class="tcard"><div class="tn">Claude <span class="tbdg" style="background:#DBEAFE;color:var(--teal)">$20/mo</span></div><div class="td">Your AI thinking partner. Use Projects to build persistent AI that remembers your business. Start here.</div><div class="tl">claude.ai ↗</div></a>
+    <a href="https://claude.ai/code" target="_blank" rel="noopener" class="tcard"><div class="tn">Claude Code <span class="tbdg" style="background:#DBEAFE;color:var(--teal)">Included</span></div><div class="td">Describe what you want built — it writes, tests and iterates the code. No coding knowledge required.</div><div class="tl">claude.ai/code ↗</div></a>
+    <a href="https://github.com" target="_blank" rel="noopener" class="tcard"><div class="tn">GitHub <span class="tbdg" style="background:#F3F4F6;color:var(--gray)">Free</span></div><div class="td">Stores and versions everything you build. Required for deploying with Vercel.</div><div class="tl">github.com ↗</div></a>
+    <a href="https://supabase.com" target="_blank" rel="noopener" class="tcard"><div class="tn">Supabase <span class="tbdg" style="background:#DCFCE7;color:var(--green)">Free tier</span></div><div class="td">A real database for custom tools. If your solution needs to store data persistently, Supabase handles the backend.</div><div class="tl">supabase.com ↗</div></a>
+    <a href="https://vercel.com" target="_blank" rel="noopener" class="tcard"><div class="tn">Vercel <span class="tbdg" style="background:#DCFCE7;color:var(--green)">Free tier</span></div><div class="td">Deploys your web tools to a live URL in minutes. Connect GitHub, push code, it publishes automatically.</div><div class="tl">vercel.com ↗</div></a>
+    <a href="https://zapier.com" target="_blank" rel="noopener" class="tcard"><div class="tn">Zapier <span class="tbdg" style="background:#FEF3C7;color:var(--gold)">Free tier</span></div><div class="td">When something happens in one app, Zapier triggers an action in another. 5 Zaps free to start.</div><div class="tl">zapier.com ↗</div></a>
+    <a href="https://make.com" target="_blank" rel="noopener" class="tcard"><div class="tn">Make <span class="tbdg" style="background:#FEF3C7;color:var(--gold)">Free tier</span></div><div class="td">More powerful than Zapier for complex multi-step automations. Visual workflow builder. 1,000 ops/month free.</div><div class="tl">make.com ↗</div></a>
+    <a href="https://manus.im" target="_blank" rel="noopener" class="tcard"><div class="tn">Manus <span class="tbdg" style="background:#F3E8FF;color:#7C3AED">Agent</span></div><div class="td">Give it a goal and it browses, codes and delivers a finished result. Zero setup.</div><div class="tl">manus.im ↗</div></a>
+  </div>
+</div>
+</div>
+
+<!-- CTA -->
+<div class="cta">
+  <div style="max-width:540px;margin:0 auto">
+    <h2>Ready to find your version of Sarah's problem?</h2>
+    <p>Start with the Phase 1 Master Prompt. Paste it in. Answer honestly. Everything flows from there.</p>
+    <div style="display:flex;gap:.85rem;justify-content:center;flex-wrap:wrap">
+      <a href="https://claude.ai" target="_blank" rel="noopener" class="btn-p" style="background:var(--navy)">Open Claude and start ↗</a>
+      <a href="/ai-advantage/AI_Advantage_Slides.pptx" download class="btn-p" style="background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.3)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download the slides</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="fb">Wisdom Consulting Group · wisdombi.ai</div>
+  <div class="fs" style="margin-top:.4rem">The AI Advantage · Session Reference · <a href="mailto:matt@wisdombi.au">matt@wisdombi.au</a></div>
+</footer>
+
+<a href="#" class="bktop">↑</a>
+
+<script>
+function cp(btn,id){const el=document.getElementById(id);navigator.clipboard.writeText(el.innerText).then(()=>{btn.textContent='copied!';btn.classList.add('ok');showToast();setTimeout(()=>{btn.textContent='copy';btn.classList.remove('ok')},2200)})}
+function ct(el,text){navigator.clipboard.writeText(text).then(()=>{const o=el.style.background,b=el.style.borderColor;el.style.background='rgba(74,222,128,.15)';el.style.borderColor='#4ade80';showToast();setTimeout(()=>{el.style.background=o;el.style.borderColor=b},800)})}
+function showToast(){const t=document.getElementById('toast');t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),1800)}
+const obs=new IntersectionObserver(entries=>{entries.forEach(e=>{if(e.isIntersecting){document.querySelectorAll('.nav-links a[href^="#"]').forEach(a=>{a.classList.toggle('active',a.getAttribute('href')==='#'+e.target.id)})}})},{threshold:.3,rootMargin:'-10% 0px -60% 0px'});
+document.querySelectorAll('[id]').forEach(s=>obs.observe(s));
+</script>
+</body>
+</html>
