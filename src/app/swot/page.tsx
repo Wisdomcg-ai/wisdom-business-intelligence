@@ -748,7 +748,7 @@ export default function SwotPage() {
         />
 
       {/* Page Container - Wider layout with optional sidebar */}
-      <div className="max-w-[2200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="flex gap-6">
           {/* Main Content Area */}
           <div className="flex-1 min-w-0">

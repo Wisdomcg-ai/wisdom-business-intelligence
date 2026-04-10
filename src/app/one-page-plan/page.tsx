@@ -308,7 +308,7 @@ export default function OnePagePlan() {
 
       {/* Quarter Selector - Hidden when printing and when viewing snapshot */}
       {allQuarters.length > 0 && !isViewingSnapshot && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 mb-2 print:hidden">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 mt-4 mb-2 print:hidden">
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-gray-600">Viewing quarter:</span>
             <div className="relative">
@@ -359,7 +359,7 @@ export default function OnePagePlan() {
       )}
 
       {/* Version History + Snapshot Banner - Hidden when printing */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-2 mb-2 print:hidden">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 mt-2 mb-2 print:hidden">
         <div className="flex items-center justify-between gap-3">
           {/* Version Picker */}
           <div className="flex items-center gap-3">
@@ -445,7 +445,7 @@ export default function OnePagePlan() {
         const health = calculatePlanHealth(data)
         const insights = generateCoachingInsights(data)
         return (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6 print:hidden">
+          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 mb-6 print:hidden">
             <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6">
               <div className="flex flex-col lg:flex-row items-start gap-4 sm:gap-6">
                 {/* Health Score */}
@@ -565,7 +565,7 @@ export default function OnePagePlan() {
       })()}
 
       {/* One Page Plan - Printable */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white shadow-lg rounded-xl print:shadow-none print:rounded-none">
           {/* Header */}
           <div className="border-b-4 border-gray-900 p-4 sm:p-6 print:p-4">

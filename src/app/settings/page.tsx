@@ -160,7 +160,7 @@ function SettingsContent() {
         icon={Settings}
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
           {/* Left Sidebar Navigation */}
           <nav className="lg:w-64 flex-shrink-0">

@@ -743,7 +743,7 @@ export default function WeeklyReviewPage() {
   if (!mounted) {
     return (
       <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-[1800px] mx-auto">
           <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
             <div className="h-8 bg-gray-200 rounded w-1/3 mb-4 animate-pulse"></div>
             <div className="h-4 bg-gray-100 rounded w-2/3 animate-pulse"></div>
@@ -805,7 +805,7 @@ export default function WeeklyReviewPage() {
         }
       />
 
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+      <div className="max-w-[1800px] mx-auto p-4 sm:p-6 lg:p-8">
         {/* Week Navigation */}
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-6">
           <div className="flex items-center justify-between bg-brand-orange-50 border border-brand-orange-200 rounded-xl p-3 sm:p-4">

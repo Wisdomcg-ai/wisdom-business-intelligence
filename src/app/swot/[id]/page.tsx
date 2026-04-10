@@ -317,7 +317,7 @@ export default function SwotDetailPage() {
   if (error || !analysis) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="bg-red-50 border border-red-200 rounded-md p-8 text-center">
             <p className="text-red-800 mb-4">{error || 'SWOT analysis not found'}</p>
             <button
@@ -336,6 +336,7 @@ export default function SwotDetailPage() {
     <div className="min-h-screen bg-gray-50">
       <PageHeader
         variant="banner"
+        breadcrumbs={[{ label: 'SWOT Analysis', href: '/swot' }, { label: 'SWOT Details' }]}
         title={`SWOT Analysis - ${getQuarterLabel(analysis.quarter, analysis.year)}`}
         subtitle={`Created ${new Date(analysis.created_at).toLocaleDateString()} • Score: ${analysis.swot_score}%`}
         icon={Compass}
@@ -374,7 +375,7 @@ export default function SwotDetailPage() {
 
       {/* Error Alert */}
       {error && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 mt-6">
           <div className="bg-red-50 border border-red-200 rounded-md p-4">
             <p className="text-sm text-red-800">{error}</p>
           </div>
@@ -382,7 +383,7 @@ export default function SwotDetailPage() {
       )}
 
       {/* SWOT Grid */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 pb-12">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 mt-6 pb-12">
         <SwotGrid
           items={items}
           onAddItem={handleAddItem}

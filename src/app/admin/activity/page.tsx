@@ -195,7 +195,7 @@ export default function ActivityPage() {
 
   return (
     <AdminLayout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         {/* Page Header */}
         <PageHeader
           variant="banner"

@@ -351,9 +351,10 @@ export default function ClientSessionDetailPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <PageHeader
           variant="banner"
+          breadcrumbs={[{ label: 'Sessions', href: '/sessions' }, { label: 'Session Details' }]}
           title="Coaching Session"
           subtitle={`${formatDate(session.session_date)}${session.duration_minutes ? ` • ${session.duration_minutes} min` : ''}`}
           icon={MessageSquare}
@@ -384,7 +385,7 @@ export default function ClientSessionDetailPage() {
       </div>
 
       {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 pb-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Left Column - Coach's Notes (Read-only) */}
           <div className="lg:col-span-2 space-y-4 sm:space-y-6">
@@ -531,7 +532,7 @@ export default function ClientSessionDetailPage() {
                     value={newActionText}
                     onChange={(e) => setNewActionText(e.target.value)}
                     placeholder="What will you commit to?"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent text-sm"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newActionText.trim()) {
                         addAction()
@@ -543,12 +544,12 @@ export default function ClientSessionDetailPage() {
                       type="date"
                       value={newActionDueDate}
                       onChange={(e) => setNewActionDueDate(e.target.value)}
-                      className="flex-1 sm:w-36 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-transparent text-sm"
+                      className="flex-1 sm:w-36 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-transparent text-sm"
                     />
                     <button
                       onClick={addAction}
                       disabled={!newActionText.trim() || addingAction}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                      className="flex items-center gap-1.5 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                     >
                       {addingAction ? (
                         <Loader2 className="w-4 h-4 animate-spin" />

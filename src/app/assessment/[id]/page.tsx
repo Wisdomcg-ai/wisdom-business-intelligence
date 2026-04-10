@@ -187,7 +187,7 @@ export default function AssessmentResultsPage() {
       />
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Time Since Assessment Banner */}
         {timeSince.shouldRetake && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-6 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

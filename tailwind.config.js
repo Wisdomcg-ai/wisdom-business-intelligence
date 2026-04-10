@@ -61,6 +61,12 @@ module.exports = {
         'xl': ['1.5rem', { lineHeight: '2rem' }],          // 24px (was 22px)
         '2xl': ['1.75rem', { lineHeight: '2.25rem' }],     // 28px (was 26px)
         '3xl': ['2.125rem', { lineHeight: '2.5rem' }],     // 34px (was 32px)
+        // Semantic typography tokens — use these for consistency across pages
+        'page-title': ['1.75rem', { lineHeight: '2.25rem', fontWeight: '700' }],       // 28px bold — main page headings
+        'section-title': ['1.25rem', { lineHeight: '1.875rem', fontWeight: '600' }],   // 20px semibold — section headings
+        'card-title': ['1.125rem', { lineHeight: '1.75rem', fontWeight: '600' }],      // 18px semibold — card/panel headings
+        'body': ['1rem', { lineHeight: '1.5rem' }],                                    // 16px — standard body text
+        'caption': ['0.875rem', { lineHeight: '1.25rem' }],                            // 14px — labels, meta, small text
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',

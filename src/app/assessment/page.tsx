@@ -771,7 +771,7 @@ function AssessmentContent() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white/90 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Business Assessment</h1>
@@ -822,7 +822,7 @@ function AssessmentContent() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="bg-brand-orange px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
             <div className="flex items-center justify-between mb-2">

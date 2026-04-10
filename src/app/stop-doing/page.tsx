@@ -186,7 +186,7 @@ export default function StopDoingPage() {
         }}
       />
 
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Step Navigation */}
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6 gap-4 overflow-x-auto">

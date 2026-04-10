@@ -351,7 +351,7 @@ export default function TodoPage() {
       />
 
       {/* PAGE CONTAINER */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
         {/* Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
           <div className="p-4 sm:p-6 rounded-xl border-2 border-gray-200 bg-white">

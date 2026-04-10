@@ -219,7 +219,7 @@ export default function SwotComparePage() {
 
       {/* Error Alert */}
       {error && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 mt-6">
           <div className="bg-red-50 border border-red-200 rounded-md p-4">
             <div className="flex">
               <AlertCircle className="h-5 w-5 text-red-400" />
@@ -231,7 +231,7 @@ export default function SwotComparePage() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {availableAnalyses.length < 2 ? (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
             <AlertCircle className="h-16 w-16 text-gray-400 mx-auto mb-4" />

@@ -68,7 +68,7 @@ export default function IntegrationsPage() {
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-8 max-w-[1800px] mx-auto">
       <h1 className="text-3xl font-bold mb-8">Xero Integration</h1>
 
       <div className="bg-white rounded-lg shadow-md p-6 mb-8">

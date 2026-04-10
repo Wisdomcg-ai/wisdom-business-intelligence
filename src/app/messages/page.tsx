@@ -288,7 +288,7 @@ export default function MessagesPage() {
         icon={MessageSquare}
       />
 
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         <div className="max-w-4xl mx-auto">
           <div className="flex flex-col h-[calc(100svh-16rem)] sm:h-[calc(100vh-16rem)]">
             {/* Chat Header */}

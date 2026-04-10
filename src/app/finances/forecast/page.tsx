@@ -561,7 +561,7 @@ export default function FinancialForecastPage() {
 
         {/* Read-only locked banner */}
         {forecast?.is_locked && (
-          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 mt-2">
+          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 mt-2">
             <div className="bg-gray-100 border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-600 flex items-center gap-2">
               <Lock className="w-4 h-4 text-gray-500" />
               <span>
@@ -573,7 +573,7 @@ export default function FinancialForecastPage() {
           </div>
         )}
 
-        <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
+        <div className="max-w-[1800px] mx-auto p-4 sm:p-6 lg:p-8">
           {/* FY Selector Tabs */}
           {selectedFiscalYear && (
             <div className="mb-4">

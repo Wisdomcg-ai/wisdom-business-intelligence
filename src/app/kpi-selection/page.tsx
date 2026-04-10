@@ -257,7 +257,7 @@ export default function KPISelectionPage() {
 
       {/* Business Context Bar */}
       <div className="bg-brand-orange-50 border-b border-brand-orange-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-6 text-sm">
               <span className="text-gray-600">
@@ -298,7 +298,7 @@ export default function KPISelectionPage() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Action Bar */}
         <div className="mb-8 flex justify-between items-center">
           <div>

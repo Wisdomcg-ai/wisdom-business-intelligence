@@ -126,7 +126,7 @@ export default function AssessmentHistory() {
         }
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {assessments.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm p-12 text-center">
             <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />

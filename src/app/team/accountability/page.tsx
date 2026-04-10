@@ -201,7 +201,7 @@ export default function AccountabilityChartPage() {
         }
       />
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-[1800px] mx-auto px-4 py-8">
 
         <div className="space-y-6">
           {/* Functional Accountability Chart */}

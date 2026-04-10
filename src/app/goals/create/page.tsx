@@ -145,7 +145,7 @@ function CreateGoalContent() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <PageHeader
           variant="banner"
           title={`Create ${goalType === 'annual' ? 'Annual Goal' : '90-Day Rock'}`}
@@ -158,7 +158,7 @@ function CreateGoalContent() {
       </div>
 
       {/* Form */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 pb-8">
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Goal Type Selector */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">

@@ -1065,6 +1065,7 @@ export default function ClientFilePage() {
         {/* Header */}
         <PageHeader
           variant="banner"
+          breadcrumbs={[{ label: 'Clients', href: '/coach/clients' }, { label: 'Client Dashboard' }]}
           title={business.business_name}
           subtitle={subtitleParts.join(' • ')}
           icon={Building2}

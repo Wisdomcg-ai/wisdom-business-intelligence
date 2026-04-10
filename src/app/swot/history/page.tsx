@@ -129,7 +129,7 @@ export default function SwotHistoryPage() {
 
       {/* Error Alert */}
       {error && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 mt-6">
           <div className="bg-red-50 border border-red-200 rounded-md p-4">
             <p className="text-sm text-red-800">{error}</p>
           </div>
@@ -138,7 +138,7 @@ export default function SwotHistoryPage() {
 
       {/* Strategic Insights */}
       {analyses.length >= 2 && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 mt-6">
           <div className="bg-gradient-to-r from-brand-orange-50 to-brand-orange-50 border-2 border-brand-orange-200 rounded-lg p-6">
             <div className="flex items-center gap-2 mb-4">
               <TrendingUp className="h-6 w-6 text-brand-orange" />
@@ -212,7 +212,7 @@ export default function SwotHistoryPage() {
       )}
 
       {/* History List */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {analyses.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
             <Calendar className="h-16 w-16 text-gray-400 mx-auto mb-4" />

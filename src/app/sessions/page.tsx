@@ -251,7 +251,7 @@ export default function ClientSessionsPage() {
           }
         />
 
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Sessions List */}
         {sessions.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-8 sm:p-12 text-center">

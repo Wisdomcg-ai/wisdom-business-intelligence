@@ -456,7 +456,7 @@ export default function EnhancedBusinessProfile() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-brand-navy-50 p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
           {/* Header Skeleton */}
           <div className="mb-8">
             <div className="h-4 w-32 bg-brand-navy-100 rounded animate-pulse mb-6" />
@@ -536,7 +536,7 @@ export default function EnhancedBusinessProfile() {
         saveIndicator={{ status: saveStatus, lastSaved }}
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 p-4 sm:p-6 lg:p-8">
         {/* Progress Steps */}
         <div className="bg-white rounded-xl border border-brand-navy-100 shadow-sm p-4 sm:p-6 mb-6">
           {/* Mobile: Show current step indicator */}

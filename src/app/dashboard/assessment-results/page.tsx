@@ -763,7 +763,7 @@ function AssessmentResultsContent() {
         }
       />
 
-      <div className="max-w-[1600px] mx-auto px-6 py-8">
+      <div className="max-w-[1800px] mx-auto px-6 py-8">
         {/* Top Stats Row */}
         <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 ${showContent ? 'animate-slide-up' : 'opacity-0'}`}>
           {/* Overall Score Card */}

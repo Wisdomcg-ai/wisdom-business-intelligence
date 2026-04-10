@@ -662,7 +662,7 @@ export default function WisdomRoadmapTable() {
                   {/* Header Row - Engine Names */}
                   <thead>
                     <tr className="border-b-2 border-gray-300">
-                      <th className="sticky left-0 z-20 bg-gray-100 text-left p-3 font-bold text-gray-700 min-w-[140px] border-r-2 border-gray-300 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                      <th className="sticky left-0 z-20 bg-gray-100 text-left p-2 sm:p-3 font-bold text-gray-700 min-w-[100px] sm:min-w-[140px] border-r-2 border-gray-300 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                         STAGE
                       </th>
                       {ENGINES.map((engine) => {
@@ -670,17 +670,17 @@ export default function WisdomRoadmapTable() {
                         return (
                           <th
                             key={engine.id}
-                            className="bg-gray-50 p-3 min-w-[180px] border-r border-gray-200"
+                            className="bg-gray-50 p-2 sm:p-3 border-r border-gray-200"
                           >
                             <EngineTooltip engine={engine}>
                               <div className="text-center">
                                 {IconComponent && (
-                                  <IconComponent className={`h-8 w-8 mx-auto mb-2 ${engine.color}`} />
+                                  <IconComponent className={`h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1 sm:mb-2 ${engine.color}`} />
                                 )}
-                                <div className="font-bold text-gray-900 text-sm uppercase tracking-wide">
+                                <div className="font-bold text-gray-900 text-xs sm:text-sm uppercase tracking-wide">
                                   {engine.name}
                                 </div>
-                                <div className="text-xs text-gray-600 mt-1 normal-case">
+                                <div className="text-xs text-gray-600 mt-0.5 sm:mt-1 normal-case hidden sm:block">
                                   {engine.subtitle}
                                 </div>
                               </div>
@@ -710,7 +710,7 @@ export default function WisdomRoadmapTable() {
                           }`}
                         >
                           {/* Stage Name Column */}
-                          <td className={`sticky left-0 z-10 p-3 border-r-2 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] ${
+                          <td className={`sticky left-0 z-10 p-2 sm:p-3 border-r-2 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] ${
                             isCurrentStage
                               ? 'bg-brand-orange-50 border-l-4 border-l-brand-orange border-r-gray-300'
                               : isRelevant

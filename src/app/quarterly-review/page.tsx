@@ -146,7 +146,7 @@ export default function QuarterlyReviewPage() {
         }
       />
 
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Current Quarter Card */}
       <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8">
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">

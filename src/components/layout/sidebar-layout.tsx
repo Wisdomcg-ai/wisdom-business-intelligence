@@ -120,13 +120,13 @@ const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
         { label: 'Weekly Review', href: '/reviews/weekly', icon: Calendar },
         { label: 'Issues List', href: '/issues-list', icon: AlertCircle },
         { label: 'Ideas Journal', href: '/ideas', icon: Lightbulb },
+        { label: 'To-Do', href: '/todo', icon: CheckSquare },
         {
           label: 'Productivity',
           href: '/productivity',
           icon: Briefcase,
           children: [
             { label: 'Open Loops', href: '/open-loops', icon: Layers },
-            { label: 'To-Do', href: '/todo', icon: CheckSquare },
             { label: 'Stop Doing', href: '/stop-doing', icon: XCircle },
           ],
         },

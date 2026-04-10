@@ -553,7 +553,7 @@ export default function OpenLoopsPage() {
       />
 
       {/* Main Content Container */}
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
           <button
