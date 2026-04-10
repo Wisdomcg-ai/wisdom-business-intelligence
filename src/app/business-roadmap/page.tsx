@@ -128,7 +128,7 @@ export default function WisdomRoadmapTable() {
       {/* Stage Change Celebration */}
       {stageChange?.changed && (
         <div className="bg-gradient-to-r from-brand-orange-500 to-brand-orange text-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Sparkles className="h-6 w-6" />
@@ -153,7 +153,7 @@ export default function WisdomRoadmapTable() {
       {/* First-Time User Intro */}
       {!hasSeenIntro && !isRoadmapComplete && (
         <div className="bg-gradient-to-br from-brand-orange-50 via-white to-brand-orange-50 border-b-2 border-brand-orange-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8">
+          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8">
             <div className="max-w-5xl mx-auto">
               {/* Hero Section */}
               <div className="text-center mb-6 sm:mb-8">
@@ -256,7 +256,7 @@ export default function WisdomRoadmapTable() {
 
       {/* Progress Bar & Controls */}
       <div className="bg-white border-b sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
           <div className="flex items-center justify-between gap-4 mb-3">
             <div className="flex items-center gap-2 sm:gap-3">
               {isSaving && (
@@ -325,7 +325,7 @@ export default function WisdomRoadmapTable() {
 
       {/* FOCUS MODE VIEW */}
       {viewMode === 'focus' && !isRoadmapComplete && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
           {/* Current Stage Card */}
           <div className="bg-gradient-to-r from-brand-navy to-brand-navy-700 rounded-xl shadow-sm border-l-4 border-brand-orange p-4 sm:p-6 mb-4 sm:mb-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
@@ -517,7 +517,7 @@ export default function WisdomRoadmapTable() {
       {(viewMode === 'full' || isRoadmapComplete) && (
         <>
           {/* Focus Section */}
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 pt-6">
             {isRoadmapComplete ? (
               /* Celebration Section */
               <div className="bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50 rounded-xl shadow-sm border border-amber-200 p-4 sm:p-6">

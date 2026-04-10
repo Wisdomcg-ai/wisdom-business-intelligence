@@ -86,7 +86,7 @@ export default function BusinessDashboardPage() {
   if (!mounted) {
     return (
       <div className="p-4 sm:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-[1800px] mx-auto">
           <div className="h-8 bg-gray-200 rounded"></div>
         </div>
       </div>

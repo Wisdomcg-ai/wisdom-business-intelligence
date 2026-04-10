@@ -940,7 +940,7 @@ export default function ClientFilePage() {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="min-h-[400px] flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-4" />
@@ -953,7 +953,7 @@ export default function ClientFilePage() {
 
   if (error || !business) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="min-h-[400px] flex items-center justify-center">
           <div className="text-center">
             <AlertTriangle className="w-10 h-10 sm:w-12 sm:h-12 text-red-500 mx-auto mb-4" />
@@ -1061,7 +1061,7 @@ export default function ClientFilePage() {
 
   return (
     <div className="bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
         {/* Header */}
         <PageHeader
           variant="banner"
@@ -1112,7 +1112,7 @@ export default function ClientFilePage() {
       </div>
 
       {/* Tab Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
         {activeTab === 'overview' && (
           <div className="space-y-4 sm:space-y-6">
             {/* Business Summary Card - using data from businesses table */}

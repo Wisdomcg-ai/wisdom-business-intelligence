@@ -1096,7 +1096,7 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
                                         <select
                                           value={line.forecast_method?.method || ''}
                                           onChange={(e) => updateForecastMethod(globalIdx, e.target.value as ForecastMethod)}
-                                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-slate-500 focus:border-slate-500"
+                                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-brand-orange focus:border-brand-orange"
                                         >
                                           <option value="">Use Average</option>
                                           <option value="straight_line">Straight-line</option>

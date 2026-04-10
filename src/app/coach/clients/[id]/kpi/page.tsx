@@ -73,7 +73,7 @@ export default function CoachClientKPIPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Back link */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 pt-4">
         <Link
           href={`/coach/clients/${id}`}
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-brand-orange transition-colors"
@@ -91,7 +91,7 @@ export default function CoachClientKPIPage() {
         icon={TrendingUp}
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Read-only notice */}
         <div className="mb-4 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
           Read-only view — client data cannot be edited from this screen.
