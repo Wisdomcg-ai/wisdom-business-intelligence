@@ -44,7 +44,7 @@ const quickActions = [
 
 export default function QuickActionsGrid() {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="p-4">
         <div className="flex flex-wrap gap-2">
           {quickActions.map((action) => {

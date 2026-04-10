@@ -37,6 +37,20 @@ module.exports = {
           900: '#134e4a',
           950: '#042f2e',
         },
+        // Secondary UI color — used in forms, borders, muted text
+        'brand-secondary': {
+          DEFAULT: '#4C5D75',
+          50: '#f5f7f9',
+          100: '#ebeef3',
+          200: '#d3d9e3',
+          300: '#adb8ca',
+          400: '#8193ac',
+          500: '#4C5D75',
+          600: '#3f4e63',
+          700: '#344152',
+          800: '#2b3644',
+          900: '#232c38',
+        },
         'brand-orange': {
           DEFAULT: '#F5821F',
           50: '#fff8f1',

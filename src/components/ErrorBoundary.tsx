@@ -58,7 +58,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="flex gap-3 justify-center">
               <button
                 onClick={this.handleRetry}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-[#1a1f36] text-white rounded-lg hover:bg-[#2a2f46] transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-800 transition-colors"
               >
                 <RefreshCw className="h-4 w-4" />
                 Try Again
@@ -109,7 +109,7 @@ export function PageErrorBoundary({ children }: { children: ReactNode }) {
             </p>
             <button
               onClick={() => window.location.reload()}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-[#1a1f36] text-white rounded-lg hover:bg-[#2a2f46] transition-colors"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-800 transition-colors"
             >
               <RefreshCw className="h-5 w-5" />
               Refresh Page

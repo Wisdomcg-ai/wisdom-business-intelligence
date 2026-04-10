@@ -159,7 +159,7 @@ export default function KPISection({
 
   return (
     <>
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div
           onClick={onToggle}
           className="cursor-pointer p-5 flex items-center justify-between hover:bg-green-50 transition-colors"

@@ -2018,7 +2018,7 @@ function InitiativesTab({
 
         <div className="p-4 bg-gray-50 border-2 border-slate-200 rounded-lg">
           <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-[#4C5D75]" />
+            <Users className="w-5 h-5 text-brand-secondary" />
             <div>
               <div className="font-semibold text-sm text-gray-900">
                 {allTeamMembers.length} Team Members
@@ -2260,7 +2260,7 @@ function InitiativeCard({
                 onChange={(e) => onUpdate({ why: e.target.value })}
                 placeholder="Explain the strategic reason for this initiative..."
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4C5D75]"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-secondary"
               />
             </div>
             <div>
@@ -2272,7 +2272,7 @@ function InitiativeCard({
                 onChange={(e) => onUpdate({ outcome: e.target.value })}
                 placeholder="Define the expected result or success criteria..."
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4C5D75]"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-secondary"
               />
             </div>
           </div>
@@ -2286,7 +2286,7 @@ function InitiativeCard({
                 type="date"
                 value={initiative.startDate || ''}
                 onChange={(e) => onUpdate({ startDate: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4C5D75]"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-secondary"
               />
             </div>
             <div>
@@ -2297,7 +2297,7 @@ function InitiativeCard({
                 type="date"
                 value={initiative.endDate || ''}
                 onChange={(e) => onUpdate({ endDate: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4C5D75]"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-secondary"
               />
             </div>
             <div>
@@ -2380,7 +2380,7 @@ function InitiativeCard({
                               setShowAssignmentFor(null)
                               onAddTeamMember()
                             }}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-[#4C5D75] hover:bg-gray-50 transition-colors font-medium"
+                            className="w-full flex items-center gap-3 px-4 py-3 text-brand-secondary hover:bg-gray-50 transition-colors font-medium"
                           >
                             <Plus className="w-5 h-5" />
                             Add New Person...
@@ -2541,11 +2541,11 @@ function InitiativeCard({
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-slate-100 border-t-2 border-[#4C5D75]">
+                    <tr className="bg-slate-100 border-t-2 border-brand-secondary">
                       <td colSpan={2} className="px-4 py-3 text-right font-bold text-gray-900">
                         Total Time:
                       </td>
-                      <td colSpan={4} className="px-4 py-3 font-bold text-[#4C5D75]">
+                      <td colSpan={4} className="px-4 py-3 font-bold text-brand-secondary">
                         {initiative.totalHours?.toFixed(1) || '0.0'} hours
                       </td>
                     </tr>
@@ -2603,7 +2603,7 @@ function TaskRow({ task, teamMembers, onUpdate, onDelete, onAddTeamMember }: Tas
           value={task.task}
           onChange={(e) => onUpdate({ task: e.target.value })}
           placeholder="Enter task description..."
-          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-[#4C5D75] text-sm"
+          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-secondary text-sm"
         />
       </td>
       <td className="px-4 py-3">
@@ -2616,7 +2616,7 @@ function TaskRow({ task, teamMembers, onUpdate, onDelete, onAddTeamMember }: Tas
               onUpdate({ assignedTo: e.target.value })
             }
           }}
-          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-[#4C5D75] text-sm"
+          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-secondary text-sm"
         >
           <option value="">Select person...</option>
           {teamMembers.map(member => {
@@ -2634,7 +2634,7 @@ function TaskRow({ task, teamMembers, onUpdate, onDelete, onAddTeamMember }: Tas
           value={task.minutesAllocated || ''}
           onChange={(e) => onUpdate({ minutesAllocated: parseInt(e.target.value) || 0 })}
           placeholder="0"
-          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-[#4C5D75] text-sm"
+          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-secondary text-sm"
         />
       </td>
       <td className="px-4 py-3">
@@ -2642,14 +2642,14 @@ function TaskRow({ task, teamMembers, onUpdate, onDelete, onAddTeamMember }: Tas
           type="date"
           value={task.dueDate}
           onChange={(e) => onUpdate({ dueDate: e.target.value })}
-          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-[#4C5D75] text-sm"
+          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-secondary text-sm"
         />
       </td>
       <td className="px-4 py-3">
         <select
           value={task.status}
           onChange={(e) => onUpdate({ status: e.target.value as TaskStatus })}
-          className={`w-full px-2 py-1 border rounded text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#4C5D75] ${getStatusColor(task.status)}`}
+          className={`w-full px-2 py-1 border rounded text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-brand-secondary ${getStatusColor(task.status)}`}
         >
           <option value="not_started">Not Started</option>
           <option value="in_progress">In Progress</option>
@@ -2703,7 +2703,7 @@ function AddInitiativeModal({ onClose, onAdd }: AddInitiativeModalProps) {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g., Launch new website, Implement CRM system, Q1 Marketing Campaign"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4C5D75]"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-secondary"
                 autoFocus
               />
             </div>
@@ -2768,7 +2768,7 @@ function AddTeamMemberModal({ onClose, onAdd }: AddTeamMemberModalProps) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="John Smith"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4C5D75]"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-secondary"
                 autoFocus
               />
             </div>
@@ -2781,7 +2781,7 @@ function AddTeamMemberModal({ onClose, onAdd }: AddTeamMemberModalProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="john@company.com"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4C5D75]"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-secondary"
               />
             </div>
             <div>
@@ -2793,7 +2793,7 @@ function AddTeamMemberModal({ onClose, onAdd }: AddTeamMemberModalProps) {
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
                 placeholder="e.g., Marketing Manager, Developer"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4C5D75]"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-secondary"
               />
             </div>
             <div>
@@ -2806,7 +2806,7 @@ function AddTeamMemberModal({ onClose, onAdd }: AddTeamMemberModalProps) {
                   onClick={() => setType('employee')}
                   className={`px-4 py-3 rounded-lg border-2 transition-colors ${
                     type === 'employee'
-                      ? 'border-[#4C5D75] bg-gray-50 text-[#4C5D75] font-semibold'
+                      ? 'border-brand-secondary bg-gray-50 text-brand-secondary font-semibold'
                       : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                   }`}
                 >
@@ -2817,7 +2817,7 @@ function AddTeamMemberModal({ onClose, onAdd }: AddTeamMemberModalProps) {
                   onClick={() => setType('contractor')}
                   className={`px-4 py-3 rounded-lg border-2 transition-colors ${
                     type === 'contractor'
-                      ? 'border-[#4C5D75] bg-gray-50 text-[#4C5D75] font-semibold'
+                      ? 'border-brand-secondary bg-gray-50 text-brand-secondary font-semibold'
                       : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                   }`}
                 >

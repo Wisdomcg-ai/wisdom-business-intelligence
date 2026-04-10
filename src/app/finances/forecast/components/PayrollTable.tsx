@@ -792,7 +792,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
       </div>
 
       {/* Employee Table */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         <div
           className="p-6 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
           onClick={() => setIsEmployeesExpanded(!isEmployeesExpanded)}
@@ -1019,7 +1019,7 @@ export default function PayrollTable({ forecast, employees, plLines, onSave, onU
       </div>
 
       {/* Monthly Payroll Forecast */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         <div
           className="p-6 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
           onClick={() => setIsMonthlyForecastExpanded(!isMonthlyForecastExpanded)}

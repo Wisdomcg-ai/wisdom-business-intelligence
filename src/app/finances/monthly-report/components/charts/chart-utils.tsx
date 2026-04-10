@@ -32,7 +32,7 @@ export function ChartCard({ title, subtitle, tooltip, children }: { title: strin
   const [showTooltip, setShowTooltip] = useState(false)
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
       <div className="flex items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-gray-900">{title}</h3>

@@ -404,7 +404,7 @@ function SettingsContent() {
                     <div className="border border-gray-200 rounded-xl p-4">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                         <div className="flex items-center gap-3 sm:gap-4">
-                          <div className="w-12 h-12 bg-[#13B5EA] rounded-lg flex items-center justify-center">
+                          <div className="w-12 h-12 bg-sky-400 rounded-lg flex items-center justify-center">
                             <span className="text-white font-bold text-lg">X</span>
                           </div>
                           <div>

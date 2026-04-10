@@ -16,7 +16,7 @@ export function LoadingState({ message = 'Loading...', size = 'md' }: LoadingSta
 
   return (
     <div className="flex flex-col items-center justify-center p-8" role="status" aria-live="polite">
-      <Loader2 className={`${sizeClasses[size]} animate-spin text-[#1a1f36]`} />
+      <Loader2 className={`${sizeClasses[size]} animate-spin text-brand-navy`} />
       <p className="mt-4 text-gray-600">{message}</p>
       <span className="sr-only">{message}</span>
     </div>

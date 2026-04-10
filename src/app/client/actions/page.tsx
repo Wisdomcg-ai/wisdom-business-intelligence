@@ -92,7 +92,7 @@ export default function ActionsPage() {
         {/* Stats */}
         {actions.length > 0 && (
           <div className="grid grid-cols-3 gap-4">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Total Actions</p>
@@ -101,7 +101,7 @@ export default function ActionsPage() {
                 <ListChecks className="w-8 h-8 text-gray-400" />
               </div>
             </div>
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Pending</p>
@@ -110,7 +110,7 @@ export default function ActionsPage() {
                 <Circle className="w-8 h-8 text-brand-orange-400" />
               </div>
             </div>
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Completed</p>
@@ -124,7 +124,7 @@ export default function ActionsPage() {
 
         {/* Filter */}
         {actions.length > 0 && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
             <div className="flex items-center gap-4">
               <Filter className="w-4 h-4 text-gray-600" />
               <div className="flex gap-2">

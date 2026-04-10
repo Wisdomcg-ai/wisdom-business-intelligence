@@ -255,7 +255,7 @@ export default function PageHeader({
               )}
               <div className="min-w-0">
                 <div className="flex items-center gap-3 flex-wrap">
-                  <h1 className="text-2xl font-bold text-white">{title}</h1>
+                  <h1 className="text-page-title text-white">{title}</h1>
                   {badge && (
                     <span className={`text-xs font-medium px-2 py-1 rounded-full ${badgeColors[badgeColor]}`}>
                       {badge}

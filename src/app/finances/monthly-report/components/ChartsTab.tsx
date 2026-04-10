@@ -33,7 +33,7 @@ interface ChartsTabProps {
 
 function LoadingBlock({ label }: { label: string }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
       <Loader2 className="w-6 h-6 animate-spin text-brand-orange mx-auto mb-2" />
       <p className="text-sm text-gray-500">Loading {label}...</p>
     </div>
@@ -42,7 +42,7 @@ function LoadingBlock({ label }: { label: string }) {
 
 function EmptyBlock({ label, hint }: { label: string; hint: string }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center">
       <p className="text-sm font-medium text-gray-600">{label}</p>
       <p className="text-xs text-gray-400 mt-1">{hint}</p>
     </div>

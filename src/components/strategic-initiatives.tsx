@@ -882,7 +882,7 @@ export default function StrategicInitiatives() {
       </div>
 
       {/* Foundation-First Roadmap - SECOND (Your Key IP) */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         <button
           onClick={() => setShowRoadmap(!showRoadmap)}
           className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors text-left"
@@ -1109,7 +1109,7 @@ export default function StrategicInitiatives() {
       )}
 
       {/* 12-Month Focus Selection Interface */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         {/* Section Header */}
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-between flex-wrap gap-4">
@@ -1170,7 +1170,7 @@ export default function StrategicInitiatives() {
       </div>
 
       {/* Your Initiatives List - FOURTH */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         <button
           onClick={() => setShowInitiatives(!showInitiatives)}
           className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors text-left"

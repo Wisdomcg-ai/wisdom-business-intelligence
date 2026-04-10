@@ -329,10 +329,10 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
       <StepHeader step="1.2" subtitle="Review your performance against your quarterly targets" estimatedTime={15} />
 
       {/* Quarter Header */}
-      <div className="bg-gradient-to-r from-slate-50 to-slate-100 rounded-lg border border-[#8E9AAF] p-5 mb-6">
+      <div className="bg-gradient-to-r from-slate-50 to-slate-100 rounded-lg border border-gray-400 p-5 mb-6">
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-xl font-bold text-[#3E3F57] mb-1">Quarter Performance Review</h2>
+            <h2 className="text-xl font-bold text-gray-800 mb-1">Quarter Performance Review</h2>
             <p className="text-gray-600 flex items-center gap-2">
               <Calendar className="w-4 h-4" />
               {quarterInfo ? <span>{quarterInfo.label} • {quarterInfo.months} • {yearType} {planYear}</span> : <span>Q{review.quarter} {review.year}</span>}
@@ -340,7 +340,7 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
           </div>
           <div className="text-right">
             <div className="text-sm text-gray-600 mb-1">Reviewing</div>
-            <div className="text-3xl font-bold text-[#4C5D75]">{quarterInfo?.label || `Q${review.quarter}`}</div>
+            <div className="text-3xl font-bold text-brand-secondary">{quarterInfo?.label || `Q${review.quarter}`}</div>
           </div>
         </div>
       </div>

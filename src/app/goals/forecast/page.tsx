@@ -266,7 +266,7 @@ export default function QuarterlyForecastPage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           
           {/* Quarter Selection */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex items-center gap-4">
               <label className="text-sm font-medium text-gray-700">Select Quarter:</label>
               <select
@@ -289,7 +289,7 @@ export default function QuarterlyForecastPage() {
           </div>
 
           {/* Monthly Projections */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-6">Monthly Projections</h2>
             
             <div className="overflow-x-auto">
@@ -478,7 +478,7 @@ export default function QuarterlyForecastPage() {
 
           {/* Gap Analysis */}
           {visionTargets && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Gap Analysis</h2>
               
               <div className="space-y-3">

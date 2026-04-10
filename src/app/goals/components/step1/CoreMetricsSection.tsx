@@ -25,7 +25,7 @@ export default function CoreMetricsSection({
   const currentYear = new Date().getFullYear()
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div
         onClick={onToggle}
         className="cursor-pointer p-5 flex items-center justify-between hover:bg-brand-orange-50 transition-colors"
