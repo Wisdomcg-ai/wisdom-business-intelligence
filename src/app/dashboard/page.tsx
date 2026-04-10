@@ -73,7 +73,7 @@ export default function DashboardPage() {
         : time.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
 
       setLastMessage({
-        preview: last.content.length > 50 ? last.content.substring(0, 50) + '...' : last.content,
+        preview: (last.content || '').length > 50 ? (last.content || '').substring(0, 50) + '...' : (last.content || ''),
         time: timeStr
       })
     }

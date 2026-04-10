@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerComponentClient } from '@/lib/supabase/server'
+import { createRouteHandlerClient } from '@/lib/supabase/server'
 import type { PLLine } from '@/app/finances/forecast/types'
 
 // Maximum lines allowed in a single import
@@ -31,7 +31,7 @@ function validateLine(line: PLLine, index: number): string | null {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerComponentClient()
+    const supabase = await createRouteHandlerClient()
 
     // Check authentication
     const { data: { user }, error: userError } = await supabase.auth.getUser()

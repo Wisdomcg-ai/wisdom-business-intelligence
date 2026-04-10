@@ -226,34 +226,25 @@ export async function GET(request: NextRequest) {
     let businessId: string;
     let returnTo: string = '/integrations';
 
-    // Try to verify as signed state first (new format)
     const signedStateData = verifySignedOAuthState<{ business_id: string; return_to?: string; timestamp: number }>(state);
 
-    if (signedStateData) {
-      // Check state is not too old (max 10 minutes)
-      const stateAge = Date.now() - signedStateData.timestamp;
-      if (stateAge > 10 * 60 * 1000) {
-        console.error('OAuth state expired');
-        return NextResponse.redirect(
-          new URL('/integrations?error=state_expired', request.url)
-        );
-      }
-      businessId = signedStateData.business_id;
-      returnTo = signedStateData.return_to || '/integrations';
-    } else {
-      // Fallback: try legacy base64 format (for backwards compatibility during migration)
-      try {
-        const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
-        businessId = stateData.business_id;
-        returnTo = stateData.return_to || '/integrations';
-        console.warn('Using legacy OAuth state format - please update auth route');
-      } catch (e) {
-        console.error('Invalid state:', e);
-        return NextResponse.redirect(
-          new URL('/integrations?error=invalid_state', request.url)
-        );
-      }
+    if (!signedStateData) {
+      console.error('Invalid OAuth state - signature verification failed');
+      return NextResponse.redirect(
+        new URL('/integrations?error=invalid_state', request.url)
+      );
     }
+
+    // Check state is not too old (max 10 minutes)
+    const stateAge = Date.now() - signedStateData.timestamp;
+    if (stateAge > 10 * 60 * 1000) {
+      console.error('OAuth state expired');
+      return NextResponse.redirect(
+        new URL('/integrations?error=state_expired', request.url)
+      );
+    }
+    businessId = signedStateData.business_id;
+    returnTo = signedStateData.return_to || '/integrations';
 
     // Step 1: Exchange code for tokens
     console.log('Exchanging code for tokens...');

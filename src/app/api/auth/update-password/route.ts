@@ -38,17 +38,17 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (error || !tokenData) {
-      return NextResponse.json({ valid: false, error: 'Invalid or expired token' })
+      return NextResponse.json({ valid: false, error: 'Invalid or expired token' }, { status: 400 })
     }
 
     // Check if already used
     if (tokenData.used_at) {
-      return NextResponse.json({ valid: false, error: 'This reset link has already been used' })
+      return NextResponse.json({ valid: false, error: 'This reset link has already been used' }, { status: 400 })
     }
 
     // Check if expired
     if (new Date(tokenData.expires_at) < new Date()) {
-      return NextResponse.json({ valid: false, error: 'This reset link has expired' })
+      return NextResponse.json({ valid: false, error: 'This reset link has expired' }, { status: 400 })
     }
 
     return NextResponse.json({ valid: true })
