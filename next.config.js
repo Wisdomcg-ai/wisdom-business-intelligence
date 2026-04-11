@@ -106,21 +106,21 @@ const nextConfig = {
   },
 }
 
-// Only use Sentry config if the package is installed and org/project are set
-let withSentryConfig;
-try {
-  withSentryConfig = require('@sentry/nextjs').withSentryConfig;
-} catch {
-  // @sentry/nextjs not installed — skip
-}
+// Wrap with Sentry for error tracking and optional source map upload
+const { withSentryConfig } = require('@sentry/nextjs');
 
-if (withSentryConfig && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT) {
-  module.exports = withSentryConfig(nextConfig, {
-    hideSourceMaps: true,
-    silent: true,
-    org: process.env.SENTRY_ORG,
-    project: process.env.SENTRY_PROJECT,
-  });
-} else {
-  module.exports = nextConfig;
-}
+module.exports = withSentryConfig(nextConfig, {
+  // Suppress Sentry CLI logs during build
+  silent: true,
+
+  // Hide source maps from client bundles
+  hideSourceMaps: true,
+
+  // Source map upload (only if SENTRY_AUTH_TOKEN + org/project are set)
+  org: process.env.SENTRY_ORG || 'wisdombi',
+  project: process.env.SENTRY_PROJECT || 'wisdom-bi',
+
+  // Disable source map upload if no auth token (still captures errors)
+  disableServerWebpackPlugin: !process.env.SENTRY_AUTH_TOKEN,
+  disableClientWebpackPlugin: !process.env.SENTRY_AUTH_TOKEN,
+});
