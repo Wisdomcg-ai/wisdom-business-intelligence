@@ -14,8 +14,8 @@ Sentry.init({
     Sentry.replayIntegration(),
   ],
 
-  // Only send errors in production
-  enabled: process.env.NODE_ENV === "production",
+  // Enable in all environments (DSN controls which project receives errors)
+  enabled: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
 
   // Filter out noisy errors
   ignoreErrors: [
