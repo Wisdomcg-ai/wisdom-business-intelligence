@@ -11,6 +11,7 @@ import { Badge, StatusBadge } from '@/components/admin/Badge'
 import { EmptyState } from '@/components/admin/EmptyState'
 import { ToastProvider, useToast } from '@/components/admin/Toast'
 import PageHeader from '@/components/ui/PageHeader'
+import { apiFetch } from '@/lib/api/fetch'
 import {
   Building2,
   Search,
@@ -349,7 +350,7 @@ function ClientsContent() {
 
     setInviting(true)
     try {
-      const response = await fetch('/api/team/invite', {
+      const response = await apiFetch('/api/team/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -397,7 +398,7 @@ function ClientsContent() {
     if (!confirm(`Are you sure you want to remove ${memberName} from this team?`)) return
 
     try {
-      const response = await fetch('/api/team/remove-member', {
+      const response = await apiFetch('/api/team/remove-member', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

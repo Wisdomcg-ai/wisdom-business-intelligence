@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import EnhancedKPIModal from '@/components/EnhancedKPIModal'
 import PageHeader from '@/components/ui/PageHeader'
-import { Target, TrendingUp, DollarSign, Users, Package, Heart, Settings, Check, AlertCircle, ChevronRight, Edit, Trash2, Plus, BarChart2 } from 'lucide-react'
+import { Target, TrendingUp, DollarSign, Users, Package, Heart, Settings, Check, AlertCircle, ChevronRight, Edit, Trash2, Plus, BarChart2, Loader2 } from 'lucide-react'
 
 // This is your complete KPI Selection page
 export default function KPISelectionPage() {
@@ -445,7 +445,7 @@ export default function KPISelectionPage() {
       {isSaving && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 flex items-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-orange mr-4"></div>
+            <Loader2 className="h-8 w-8 animate-spin text-brand-orange mr-4" />
             <span>Saving KPIs...</span>
           </div>
         </div>

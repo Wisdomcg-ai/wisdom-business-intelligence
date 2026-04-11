@@ -1,12 +1,19 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+import { csrfProtection } from '@/lib/security/csrf'
 
 export async function POST(request: Request) {
   const supabase = await createRouteHandlerClient()
   const adminSupabase = createServiceRoleClient()
 
   try {
+    // CSRF protection
+    const csrf = await csrfProtection(request)
+    if (!csrf.valid) {
+      return NextResponse.json({ error: csrf.error }, { status: 403 })
+    }
+
     const { data: { user }, error: userError } = await supabase.auth.getUser()
 
     if (userError || !user) {

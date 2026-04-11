@@ -6,6 +6,7 @@ import AdminLayout from '@/components/admin/AdminLayout'
 import { RoleBadge } from '@/components/admin/Badge'
 import { ToastProvider, useToast } from '@/components/admin/Toast'
 import PageHeader from '@/components/ui/PageHeader'
+import { apiFetch } from '@/lib/api/fetch'
 import {
   Users,
   Search,
@@ -71,7 +72,7 @@ function UsersContent() {
     setResetMethod(method)
 
     try {
-      const response = await fetch('/api/admin/reset-password', {
+      const response = await apiFetch('/api/admin/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

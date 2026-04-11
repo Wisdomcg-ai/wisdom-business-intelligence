@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { sendPasswordReset } from '@/lib/email/resend'
 import crypto from 'crypto'
 import { checkRateLimit, getClientIP, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
+import { csrfProtection } from '@/lib/security/csrf'
 
 // Use service role for admin operations
 const supabaseAdmin = createClient(
@@ -41,6 +42,12 @@ export async function POST(request: NextRequest) {
           }
         }
       )
+    }
+
+    // CSRF protection
+    const csrf = await csrfProtection(request)
+    if (!csrf.valid) {
+      return NextResponse.json({ error: csrf.error }, { status: 403 })
     }
 
     // Verify admin is authenticated

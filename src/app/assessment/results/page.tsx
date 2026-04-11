@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Trash2, Plus, AlertTriangle, FileText, Calendar, CheckCircle, XCircle, ClipboardList } from 'lucide-react'
+import { Trash2, Plus, AlertTriangle, FileText, Calendar, CheckCircle, XCircle, ClipboardList, Loader2 } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
 
 interface Assessment {
@@ -153,7 +153,7 @@ export default function ManageAssessments() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange mx-auto" />
           <p className="mt-4 text-gray-600">Loading assessments...</p>
         </div>
       </div>

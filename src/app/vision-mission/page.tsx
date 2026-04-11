@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Save, Lightbulb, Compass, TrendingUp, Star, CheckCircle, AlertCircle, Info, Sparkles, X, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, Lightbulb, Compass, TrendingUp, Star, CheckCircle, AlertCircle, Info, Sparkles, X, Plus, Trash2, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import toast, { Toaster } from 'react-hot-toast';
 import {
@@ -295,7 +295,7 @@ export default function VisionMissionPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto mb-4"></div>
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading vision and mission...</p>
         </div>
       </div>

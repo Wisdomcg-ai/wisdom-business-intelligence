@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Loader2, Mail, ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react'
+import { apiFetch } from '@/lib/api/fetch'
 
 export default function ResetPasswordPage() {
   const [email, setEmail] = useState('')
@@ -16,7 +17,7 @@ export default function ResetPasswordPage() {
     setError(null)
 
     try {
-      const response = await fetch('/api/auth/reset-password', {
+      const response = await apiFetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })

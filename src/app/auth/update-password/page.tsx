@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Loader2, Lock, CheckCircle, AlertCircle } from 'lucide-react'
+import { apiFetch } from '@/lib/api/fetch'
 
 function UpdatePasswordContent() {
   const router = useRouter()
@@ -60,7 +61,7 @@ function UpdatePasswordContent() {
     setIsLoading(true)
 
     try {
-      const response = await fetch('/api/auth/update-password', {
+      const response = await apiFetch('/api/auth/update-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, password })

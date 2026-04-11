@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createPortal } from 'react-dom'
+import { apiFetch } from '@/lib/api/fetch'
 import {
   Users,
   UserPlus,
@@ -218,7 +219,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
 
     try {
       // Use the team invite API which handles user creation and emails
-      const response = await fetch('/api/team/invite', {
+      const response = await apiFetch('/api/team/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -283,7 +284,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
   async function resendInvite(invite: PendingInvite) {
     try {
       setSuccess(null)
-      const response = await fetch('/api/team/invite', {
+      const response = await apiFetch('/api/team/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -345,7 +346,7 @@ export function TeamTab({ clientId, businessName }: TeamTabProps) {
     if (!confirm(confirmMsg)) return
 
     try {
-      const response = await fetch('/api/team/remove-member', {
+      const response = await apiFetch('/api/team/remove-member', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

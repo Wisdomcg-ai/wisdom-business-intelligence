@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChevronRight, ChevronLeft, Check, AlertCircle, ClipboardList } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, AlertCircle, ClipboardList, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { BUSINESS_ENGINES, TOTAL_MAX_SCORE, getHealthStatus, mapSectionToEngineId } from '@/lib/assessment/constants';
 import PageHeader from '@/components/ui/PageHeader';
@@ -460,7 +460,7 @@ export default function AssessmentPage() {
     <Suspense fallback={
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto mb-4" />
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading assessment...</p>
         </div>
       </div>
@@ -761,7 +761,7 @@ function AssessmentContent() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto mb-4" />
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading assessment...</p>
         </div>
       </div>
@@ -917,7 +917,7 @@ function AssessmentContent() {
                   >
                     {isSubmitting ? (
                       <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" />
+                        <Loader2 className="h-5 w-5 animate-spin text-white mr-2" />
                         Saving...
                       </>
                     ) : (

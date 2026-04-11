@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import PageHeader from '@/components/ui/PageHeader'
-import { Calculator, Plus, Trash2, ChevronDown, ChevronUp, Edit2, Target } from 'lucide-react'
+import { Calculator, Plus, Trash2, ChevronDown, ChevronUp, Edit2, Target, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import ProfitCalculator from '@/components/ProfitCalculator'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
@@ -377,7 +377,7 @@ export default function VisionTargetsPage() {
       <div className="min-h-screen bg-gray-50">
         <Navigation />
         <div className="flex justify-center items-center h-[calc(100vh-64px)]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange"></div>
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange" />
         </div>
       </div>
     )

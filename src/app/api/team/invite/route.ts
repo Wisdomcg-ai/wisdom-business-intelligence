@@ -3,6 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email/resend'
 import crypto from 'crypto'
+import { csrfProtection } from '@/lib/security/csrf'
 
 // Generate a secure random password
 function generateSecurePassword(length = 16): string {
@@ -26,6 +27,12 @@ export async function POST(request: Request) {
   const adminSupabase = createServiceRoleClient() // For bypassing RLS on admin operations
 
   try {
+    // CSRF protection
+    const csrf = await csrfProtection(request)
+    if (!csrf.valid) {
+      return NextResponse.json({ error: csrf.error }, { status: 403 })
+    }
+
     const { data: { user }, error: userError } = await supabase.auth.getUser()
 
     if (userError || !user) {

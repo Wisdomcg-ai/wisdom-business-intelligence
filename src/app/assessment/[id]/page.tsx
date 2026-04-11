@@ -16,7 +16,8 @@ import {
   RefreshCw,
   History,
   Activity,
-  ChevronRight
+  ChevronRight,
+  Loader2
 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 
@@ -84,7 +85,7 @@ export default function AssessmentResultsPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-orange-50 via-white to-purple-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange"></div>
+        <Loader2 className="h-12 w-12 animate-spin text-brand-orange" />
       </div>
     );
   }

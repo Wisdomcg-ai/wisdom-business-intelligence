@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
 import { Database } from '@/types/database.types';
 
 // Type definitions
@@ -178,7 +179,7 @@ export default function CoachDashboard() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-brand-orange-50 via-white to-brand-navy-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange mx-auto" />
           <p className="mt-4 text-gray-600">Loading clients...</p>
         </div>
       </div>

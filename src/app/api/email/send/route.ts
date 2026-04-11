@@ -8,9 +8,16 @@ import {
   sendSessionReminder,
   sendMessageNotification
 } from '@/lib/email/resend';
+import { csrfProtection } from '@/lib/security/csrf';
 
 export async function POST(request: NextRequest) {
   try {
+    // CSRF protection
+    const csrf = await csrfProtection(request);
+    if (!csrf.valid) {
+      return NextResponse.json({ error: csrf.error }, { status: 403 });
+    }
+
     const supabase = await createRouteHandlerClient();
     const { data: { user } } = await supabase.auth.getUser();
 

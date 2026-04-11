@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Calendar, TrendingUp, Eye, Clock, AlertTriangle, Target, Shield, Lightbulb, History } from 'lucide-react'
+import { Calendar, TrendingUp, Eye, Clock, AlertTriangle, Target, Shield, Lightbulb, History, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import PageHeader from '@/components/ui/PageHeader'
@@ -101,7 +101,7 @@ export default function SwotHistoryPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange mx-auto" />
           <p className="mt-4 text-gray-600">Loading history...</p>
         </div>
       </div>

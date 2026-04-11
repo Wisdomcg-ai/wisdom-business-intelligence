@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Save, CheckCircle, Compass } from 'lucide-react'
+import { Save, CheckCircle, Compass, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { SwotGrid } from '@/components/swot/SwotGrid'
 import type { SwotCategory, SwotItem, SwotGridData } from '@/lib/swot/types'
@@ -307,7 +307,7 @@ export default function SwotDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange mx-auto" />
           <p className="mt-4 text-gray-600">Loading SWOT Analysis...</p>
         </div>
       </div>
@@ -359,7 +359,7 @@ export default function SwotDetailPage() {
             >
               {saving ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  <Loader2 className="h-4 w-4 animate-spin text-white mr-2" />
                   Saving...
                 </>
               ) : (

@@ -15,7 +15,7 @@ import {
 import { SwotGrid } from '@/components/swot/SwotGrid';
 import { QuarterSelector } from '@/components/swot/QuarterSelector';
 import { createBrowserClient } from '@supabase/ssr';
-import { CheckCircle, AlertCircle, Download, History, TrendingUp, Target, HelpCircle, ChevronRight, ChevronLeft, ChevronDown } from 'lucide-react';
+import { CheckCircle, AlertCircle, Download, History, TrendingUp, Target, HelpCircle, ChevronRight, ChevronLeft, ChevronDown, Loader2 } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import PageHeader from '@/components/ui/PageHeader';
 import type { SaveStatus } from '@/hooks/useAutoSave';
@@ -681,7 +681,7 @@ export default function SwotPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange mx-auto" />
           <p className="mt-4 text-gray-600">Loading business context...</p>
         </div>
       </div>
@@ -692,7 +692,7 @@ export default function SwotPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange mx-auto" />
           <p className="mt-4 text-gray-600">Loading SWOT Analysis...</p>
         </div>
       </div>

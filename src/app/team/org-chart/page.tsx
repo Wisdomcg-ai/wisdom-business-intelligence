@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Network, Save } from 'lucide-react'
+import { Network, Save, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import PageHeader from '@/components/ui/PageHeader'
@@ -178,7 +178,7 @@ export default function OrgChartPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto mb-4" />
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading org chart...</p>
         </div>
       </div>

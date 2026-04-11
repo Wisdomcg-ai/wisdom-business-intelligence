@@ -16,7 +16,8 @@ import {
   Clock,
   ChevronRight,
   Minus,
-  Sparkles
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import jsPDF from 'jspdf';
@@ -48,7 +49,7 @@ export default function AssessmentResultsPage() {
     <Suspense fallback={
       <div className="min-h-screen bg-brand-navy-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange mx-auto" />
           <p className="mt-4 text-gray-600">Loading your results...</p>
         </div>
       </div>
@@ -645,7 +646,7 @@ function AssessmentResultsContent() {
     return (
       <div className="min-h-screen bg-brand-navy-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto"></div>
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange mx-auto" />
           <p className="mt-4 text-gray-600">Loading your results...</p>
         </div>
       </div>

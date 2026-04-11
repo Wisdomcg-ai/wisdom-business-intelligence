@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import PageHeader from '@/components/ui/PageHeader'
+import { apiFetch } from '@/lib/api/fetch'
 import {
   Users,
   UserPlus,
@@ -352,7 +353,7 @@ export default function TeamMembersPage() {
 
     try {
       // Use the team invite API which handles user creation and emails
-      const response = await fetch('/api/team/invite', {
+      const response = await apiFetch('/api/team/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -457,7 +458,7 @@ export default function TeamMembersPage() {
     if (!confirm(confirmMsg)) return
 
     try {
-      const response = await fetch('/api/team/remove-member', {
+      const response = await apiFetch('/api/team/remove-member', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

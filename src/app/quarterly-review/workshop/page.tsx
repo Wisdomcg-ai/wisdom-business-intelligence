@@ -32,7 +32,7 @@ import { NextYearTargetsStep } from '../components/steps/NextYearTargetsStep';
 import { AnnualInitiativePlanStep } from '../components/steps/AnnualInitiativePlanStep';
 
 import { useCoachView } from '@/hooks/useCoachView';
-import { ArrowLeft, Menu, X, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { ArrowLeft, Menu, X, PanelLeftClose, PanelLeftOpen, Loader2 } from 'lucide-react';
 
 function ReviewContent() {
   const searchParams = useSearchParams();
@@ -129,7 +129,7 @@ function ReviewContent() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange mx-auto mb-4"></div>
+          <Loader2 className="h-12 w-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading review...</p>
         </div>
       </div>
@@ -430,7 +430,7 @@ export default function ReviewPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-orange"></div>
+        <Loader2 className="h-12 w-12 animate-spin text-brand-orange" />
       </div>
     }>
       <ReviewContent />

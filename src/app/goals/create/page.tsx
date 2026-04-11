@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Target } from 'lucide-react';
+import { Target, Loader2 } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import PageHeader from '@/components/ui/PageHeader';
 
@@ -438,7 +438,7 @@ export default function CreateGoalPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-orange"></div>
+        <Loader2 className="h-8 w-8 animate-spin text-brand-orange" />
       </div>
     }>
       <CreateGoalContent />
