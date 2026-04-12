@@ -201,7 +201,7 @@ export async function middleware(request: NextRequest) {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https: http:",
     "font-src 'self' https://fonts.gstatic.com",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.xero.com https://identity.xero.com https://api.openai.com https://vercel.live wss://ws-us3.pusher.com",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.xero.com https://identity.xero.com https://api.openai.com https://vercel.live wss://ws-us3.pusher.com https://*.ingest.us.sentry.io",
     "frame-src 'self' https://js.stripe.com https://login.xero.com https://player.vimeo.com",
     "worker-src 'self' blob:",
     "object-src 'none'",
