@@ -282,6 +282,14 @@ export function ForecastWizardV4({
                     total: totalOpex, byLine: opexByLine,
                     byMonth: freshPriorFY.opex_by_month || {},
                   },
+                  otherIncome: freshPriorFY.other_income ? {
+                    total: freshPriorFY.other_income,
+                    byMonth: freshPriorFY.other_income_by_month || {},
+                  } : undefined,
+                  otherExpenses: freshPriorFY.other_expenses ? {
+                    total: freshPriorFY.other_expenses,
+                    byMonth: freshPriorFY.other_expenses_by_month || {},
+                  } : undefined,
                   seasonalityPattern: freshPriorFY.seasonality_pattern?.length === 12
                     ? freshPriorFY.seasonality_pattern : Array(12).fill(100 / 12),
                 };
@@ -731,21 +739,20 @@ export function ForecastWizardV4({
               byMonth: priorOpexByMonth,
               byLine: opexByLine,
             },
+            otherIncome: priorFY?.other_income ? {
+              total: priorFY.other_income,
+              byMonth: priorFY.other_income_by_month || {},
+            } : undefined,
+            otherExpenses: priorFY?.other_expenses ? {
+              total: priorFY.other_expenses,
+              byMonth: priorFY.other_expenses_by_month || {},
+            } : undefined,
             seasonalityPattern: priorFY?.seasonality_pattern?.length === 12
               ? priorFY.seasonality_pattern
               : savedAssumptions?.revenue?.seasonalityPattern?.length === 12
                 ? savedAssumptions.revenue.seasonalityPattern
                 : Array(12).fill(100 / 12),
           };
-
-          console.log('[ForecastWizardV4] Constructed priorYear:', {
-            revenueTotal: priorYear.revenue.total,
-            grossProfitTotal: priorYear.grossProfit.total,
-            opexTotal: priorYear.opex.total,
-            opexLineCount: priorYear.opex.byLine.length,
-            seasonalityPattern: priorYear.seasonalityPattern,
-            source: hasFreshData ? 'xero' : 'saved_assumptions',
-          });
 
           // Build team - prefer fresh Xero data, fall back to saved assumptions
           let team: TeamMember[] = [];

@@ -520,12 +520,16 @@ export interface PeriodSummary {
   gross_margin_percent: number
   operating_expenses: number
   operating_expenses_by_category: OpExCategory[]
+  other_income?: number
+  other_expenses?: number
   net_profit: number
   net_margin_percent: number
   // Monthly breakdown for seasonality
   revenue_by_month?: Record<string, number>
   cogs_by_month?: Record<string, number>
   opex_by_month?: Record<string, number>
+  other_income_by_month?: Record<string, number>
+  other_expenses_by_month?: Record<string, number>
   seasonality_pattern?: number[] // 12 percentages for FY months (Jul-Jun)
   // Individual line items
   revenue_lines?: PLLineItem[]

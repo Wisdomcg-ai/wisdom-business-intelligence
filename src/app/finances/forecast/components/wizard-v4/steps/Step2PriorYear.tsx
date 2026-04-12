@@ -246,7 +246,9 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
 
     const insights: AIInsight[] = [];
     const gpPercent = priorYear.grossProfit.percent;
-    const netProfit = priorYear.grossProfit.total - priorYear.opex.total;
+    const insightOI = priorYear.otherIncome?.total || 0;
+    const insightOE = priorYear.otherExpenses?.total || 0;
+    const netProfit = priorYear.grossProfit.total - priorYear.opex.total + insightOI - insightOE;
     const npPercent = priorYear.revenue.total > 0
       ? (netProfit / priorYear.revenue.total) * 100
       : 0;
@@ -722,7 +724,9 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
 
   // Data loaded - show analysis view
   const monthlyData = buildMonthlyComparison();
-  const netProfit = priorYear.grossProfit.total - priorYear.opex.total;
+  const otherIncome = priorYear.otherIncome?.total || 0;
+  const otherExpenses = priorYear.otherExpenses?.total || 0;
+  const netProfit = priorYear.grossProfit.total - priorYear.opex.total + otherIncome - otherExpenses;
   const netProfitPct = priorYear.revenue.total > 0 ? (netProfit / priorYear.revenue.total) * 100 : 0;
 
   return (
@@ -903,13 +907,49 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
                       {formatCurrency(priorYear.opex.total)}
                     </td>
                   </tr>
+                  {/* Prior Year Other Income */}
+                  {otherIncome > 0 && (
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-medium text-gray-700">Other Income</td>
+                      {monthlyData.map((m, idx) => {
+                        const val = priorYear.otherIncome?.byMonth[m.month] || 0;
+                        return (
+                          <td key={idx} className="px-3 py-2 text-sm text-gray-900 text-right">
+                            {val > 0 ? formatCurrency(val) : '-'}
+                          </td>
+                        );
+                      })}
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
+                        {formatCurrency(otherIncome)}
+                      </td>
+                    </tr>
+                  )}
+                  {/* Prior Year Other Expenses */}
+                  {otherExpenses > 0 && (
+                    <tr className="bg-gray-50">
+                      <td className="px-4 py-2 text-sm font-medium text-gray-700">Other Expenses</td>
+                      {monthlyData.map((m, idx) => {
+                        const val = priorYear.otherExpenses?.byMonth[m.month] || 0;
+                        return (
+                          <td key={idx} className="px-3 py-2 text-sm text-gray-900 text-right">
+                            {val > 0 ? formatCurrency(val) : '-'}
+                          </td>
+                        );
+                      })}
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900 text-right">
+                        {formatCurrency(otherExpenses)}
+                      </td>
+                    </tr>
+                  )}
                   {/* Prior Year Net Profit */}
                   <tr className="border-t-2 border-gray-300">
                     <td className="px-4 py-2 text-sm font-semibold text-gray-900">Net Profit</td>
                     {monthlyData.map((m, idx) => {
                       const gp = m.priorRevenue - m.priorCogs;
                       const opex = (priorYear.opex.byMonth[m.month] || 0);
-                      const np = gp - opex;
+                      const oi = (priorYear.otherIncome?.byMonth[m.month] || 0);
+                      const oe = (priorYear.otherExpenses?.byMonth[m.month] || 0);
+                      const np = gp - opex + oi - oe;
                       return (
                         <td key={idx} className={`px-3 py-2 text-sm font-medium text-right ${np >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                           {(m.priorRevenue > 0 || np !== 0) ? formatCurrency(np) : '-'}

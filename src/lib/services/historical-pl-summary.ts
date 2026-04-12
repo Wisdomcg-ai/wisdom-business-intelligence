@@ -136,9 +136,13 @@ function aggregatePeriod(
   let totalRevenue = 0
   let totalCogs = 0
   let totalOpex = 0
+  let totalOtherIncome = 0
+  let totalOtherExpenses = 0
   const revenueByMonth: Record<string, number> = {}
   const cogsByMonth: Record<string, number> = {}
   const opexByMonth: Record<string, number> = {}
+  const otherIncomeByMonth: Record<string, number> = {}
+  const otherExpensesByMonth: Record<string, number> = {}
   const opexAccounts: Record<string, { total: number; account_name: string }> = {}
   const revenueLines: PLLineItem[] = []
   const cogsLines: PLLineItem[] = []
@@ -147,6 +151,8 @@ function aggregatePeriod(
     revenueByMonth[mk] = 0
     cogsByMonth[mk] = 0
     opexByMonth[mk] = 0
+    otherIncomeByMonth[mk] = 0
+    otherExpensesByMonth[mk] = 0
   }
 
   // Aggregate by account_type enum — no string matching
@@ -171,8 +177,14 @@ function aggregatePeriod(
           opexByMonth[mk] += val
           totalOpex += val
           break
-        // other_income and other_expense excluded — matches Xero's
-        // separate "Revenue" vs "Other Income" sections
+        case 'other_income':
+          otherIncomeByMonth[mk] += val
+          totalOtherIncome += val
+          break
+        case 'other_expense':
+          otherExpensesByMonth[mk] += val
+          totalOtherExpenses += val
+          break
       }
     }
 
@@ -183,7 +195,7 @@ function aggregatePeriod(
         category: 'Revenue',
         total: lineTotal,
         by_month: Object.fromEntries(monthKeys.map(mk => [mk, values[mk] || 0])),
-        percent_of_revenue: 100, // will recalculate below
+        percent_of_revenue: 100,
       })
     } else if (line.account_type === 'cogs' && lineTotal !== 0) {
       cogsLines.push({
@@ -226,7 +238,7 @@ function aggregatePeriod(
   }
 
   const grossProfit = totalRevenue - totalCogs
-  const netProfit = grossProfit - totalOpex
+  const netProfit = grossProfit - totalOpex + totalOtherIncome - totalOtherExpenses
 
   return {
     period_label: label,
@@ -239,11 +251,15 @@ function aggregatePeriod(
     gross_margin_percent: totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0,
     operating_expenses: totalOpex,
     operating_expenses_by_category: opexCategories,
+    other_income: totalOtherIncome,
+    other_expenses: totalOtherExpenses,
     net_profit: netProfit,
     net_margin_percent: totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0,
     revenue_by_month: revenueByMonth,
     cogs_by_month: cogsByMonth,
     opex_by_month: opexByMonth,
+    other_income_by_month: otherIncomeByMonth,
+    other_expenses_by_month: otherExpensesByMonth,
     seasonality_pattern: seasonality.length > 0 ? seasonality : undefined,
     revenue_lines: revenueLines,
     cogs_lines: cogsLines,

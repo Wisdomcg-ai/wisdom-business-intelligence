@@ -346,6 +346,14 @@ export interface PriorYearData {
     byMonth: MonthlyData;
     byLine: { id: string; name: string; total: number; monthlyAvg: number; isOneOff: boolean; oneOffMonth?: number }[];
   };
+  otherIncome?: {
+    total: number;
+    byMonth: MonthlyData;
+  };
+  otherExpenses?: {
+    total: number;
+    byMonth: MonthlyData;
+  };
   seasonalityPattern: number[]; // 12 percentages that sum to 100
 }
 
