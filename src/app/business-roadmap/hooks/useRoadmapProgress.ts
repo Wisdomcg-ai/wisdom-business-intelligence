@@ -42,7 +42,6 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
   // Wait for BusinessContext to finish loading before attempting to load data
   useEffect(() => {
     if (isContextLoading) {
-      console.log('[RoadmapProgress] Waiting for BusinessContext to load...')
       return
     }
     loadProgress()
@@ -53,7 +52,6 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!user) {
-        console.log('No user found')
         setIsLoading(false)
         return
       }
@@ -105,7 +103,6 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
           bizId = profile.id
           profileRevenue = profile.annual_revenue || null
         } else {
-          console.warn('[RoadmapProgress] No business_profiles found for businesses.id:', activeBusiness.id)
           bizId = activeBusiness.id // Fallback
         }
       } else {
@@ -133,7 +130,7 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
         setStageChange(stageResult)
 
         if (stageResult.changed) {
-          console.log(`🎉 Stage changed from ${stageResult.previousStage} to ${stageResult.currentStage}`)
+          // Stage changed
         }
       }
 
@@ -163,10 +160,6 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
         if (data.has_seen_intro !== null) {
           setHasSeenIntro(data.has_seen_intro)
         }
-
-        console.log('✅ Loaded roadmap progress:', builds.length, 'builds completed')
-      } else {
-        console.log('No existing progress found, starting fresh')
       }
     } catch (error) {
       console.error('Error in loadProgress:', error)
@@ -217,8 +210,6 @@ export function useRoadmapProgress(overrideBusinessId?: string) {
 
       if (error) {
         console.error('Error saving roadmap progress:', error)
-      } else {
-        console.log('✅ Saved roadmap progress')
       }
     } catch (error) {
       console.error('Error in saveProgress:', error)

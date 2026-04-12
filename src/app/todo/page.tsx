@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Plus, Check, Trash2, ChevronDown, Calendar, AlertCircle, RotateCcw, CheckSquare } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
+import { EmptyState } from '@/components/ui/EmptyState'
 import {
   getTodaysTasks,
   getTodaysCompletedTasks,
@@ -382,15 +383,13 @@ export default function TodoPage() {
             </div>
           ) : activeTasks.length === 0 && completedTasks.length === 0 ? (
             // EMPTY STATE
-            <div className="rounded-xl shadow-sm border border-gray-200 bg-white p-8 sm:p-12 text-center">
-              <p className="text-gray-600 mb-4">No tasks yet. You're free!</p>
-              <button
-                onClick={() => setShowForm(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add your first task
-              </button>
+            <div className="rounded-xl shadow-sm border border-gray-200 bg-white">
+              <EmptyState
+                icon={<CheckSquare className="w-12 h-12" />}
+                title="No tasks yet"
+                description="You're all clear! Add your first task to get started."
+                action={{ label: 'Add your first task', onClick: () => setShowForm(true) }}
+              />
             </div>
           ) : (
             // TASK SECTIONS

@@ -95,14 +95,6 @@ export default function SwotPage() {
 
       const businessId = getSwotBusinessId(user.id);
 
-      console.log('[SWOT] Loading analysis with:', {
-        businessId,
-        quarter: currentQuarter.quarter,
-        year: currentQuarter.year,
-        userId: user.id,
-        isViewingAsCoach: viewerContext.isViewingAsCoach,
-      });
-
       // Check all SWOT analyses for this business
       const { data: allSwots } = await supabase
         .from('swot_analyses')
@@ -134,11 +126,6 @@ export default function SwotPage() {
         .eq('type', 'quarterly')
         .maybeSingle();
 
-      console.log('[SWOT] Query result for current quarter:', {
-        existingSwot: existingSwot ? { id: existingSwot.id, itemCount: existingSwot.swot_items?.length } : null,
-        fetchError
-      });
-
       if (fetchError && fetchError.code !== 'PGRST116') {
         // PGRST116 means no rows returned, which is fine
         throw fetchError;
@@ -154,7 +141,7 @@ export default function SwotPage() {
             .filter((s: any) => s.id !== existingSwot.id)
             .map((s: any) => `Q${s.quarter} ${s.year}`);
           if (quartersWithData.length > 0) {
-            console.log('[SWOT] Note: Current quarter is empty, but data exists in:', quartersWithData);
+            // Current quarter is empty, but data exists in other quarters
           }
         }
       } else {
@@ -187,7 +174,6 @@ export default function SwotPage() {
             .maybeSingle();
 
           if (!recentError && recentSwotWithItems && recentSwotWithItems.swot_items?.length > 0) {
-            console.log('[SWOT] Found recent SWOT with items from Q' + recentSwotWithItems.quarter + ' ' + recentSwotWithItems.year);
             // Update the quarter selector to show this quarter
             const boundaries = recentSwotWithItems.quarter === 1 ? { months: yearType === 'FY' ? 'Jul-Sep' : 'Jan-Mar' } :
                               recentSwotWithItems.quarter === 2 ? { months: yearType === 'FY' ? 'Oct-Dec' : 'Apr-Jun' } :
@@ -213,7 +199,6 @@ export default function SwotPage() {
         }
 
         // Create new SWOT analysis since no existing data found
-        console.log('[SWOT] No existing SWOT found, creating new one');
         const { data: newSwot, error: createError } = await supabase
           .rpc('create_quarterly_swot', {
             p_user_id: businessId,
@@ -260,9 +245,6 @@ export default function SwotPage() {
 
   // Organize items into grid categories
   const organizeSwotItems = (items: SwotItem[]) => {
-    console.log('[SWOT] organizeSwotItems called with', items?.length || 0, 'items');
-    console.log('[SWOT] Raw items:', items?.map(i => ({ id: i.id, title: i.title, status: i.status, category: i.category })));
-
     const organized: SwotGridData = {
       strengths: [],
       weaknesses: [],
@@ -274,8 +256,6 @@ export default function SwotPage() {
       // Include items with null/undefined status (backward compatibility), 'active', or 'carried-forward'
       // Only exclude explicitly 'archived' items
       const shouldInclude = !item.status || item.status === 'active' || item.status === 'carried-forward';
-      console.log('[SWOT] Item:', item.title, 'status:', item.status, 'include:', shouldInclude);
-
       if (shouldInclude) {
         switch (item.category) {
           case 'strength':
@@ -292,13 +272,6 @@ export default function SwotPage() {
             break;
         }
       }
-    });
-
-    console.log('[SWOT] Organized items:', {
-      strengths: organized.strengths.length,
-      weaknesses: organized.weaknesses.length,
-      opportunities: organized.opportunities.length,
-      threats: organized.threats.length
     });
 
     // Sort by priority order
@@ -428,7 +401,7 @@ export default function SwotPage() {
           setCurrentQuarter(getCurrentQuarter(loadedYearType));
         }
       } catch (err) {
-        console.log('[SWOT] Using default FY year type');
+        // ignored
       } finally {
         setYearTypeLoaded(true);
       }
@@ -481,8 +454,6 @@ export default function SwotPage() {
 
   // Handle adding new item
   const handleAddItem = async (category: SwotCategory, title: string, description?: string) => {
-    console.log('handleAddItem called:', { category, title, description, swotAnalysis });
-
     if (!swotAnalysis) {
       console.error('No swotAnalysis found');
       setError('SWOT analysis not loaded. Please refresh the page.');
@@ -498,7 +469,6 @@ export default function SwotPage() {
       }
 
       const categoryKey = getCategoryKey(category);
-      console.log('Category key:', categoryKey, 'Current items:', swotItems[categoryKey]?.length);
 
       const { data: newItem, error } = await supabase
         .from('swot_items')
@@ -521,8 +491,6 @@ export default function SwotPage() {
         throw error;
       }
 
-      console.log('Item added successfully:', newItem);
-
       // Update local state - create completely new object to force re-render
       setSwotItems(prevItems => {
         const newItems = {
@@ -532,7 +500,6 @@ export default function SwotPage() {
           threats: [...prevItems.threats]
         };
         newItems[categoryKey] = [...newItems[categoryKey], newItem];
-        console.log('Updated state:', newItems);
         return newItems;
       });
 
@@ -654,7 +621,6 @@ export default function SwotPage() {
   // Handle exporting SWOT
   const handleExport = () => {
     // This would trigger the export component
-    console.log('Exporting SWOT analysis...');
     // Implementation would use the SwotExport component
   };
 

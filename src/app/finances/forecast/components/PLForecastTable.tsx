@@ -85,10 +85,6 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
       result.push(merged)
     }
 
-    if (result.length < plLines.length) {
-      console.log(`[PLForecastTable] Deduplicated: ${plLines.length} → ${result.length} lines (merged ${plLines.length - result.length} duplicates)`)
-    }
-
     return result
   }, [plLines])
 
@@ -159,7 +155,6 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
       // If duplicates were merged, persist the clean version to DB (once per page load)
       if (deduplicatedPlLines.length < plLines.length && !hasDeduplicatedRef.current) {
         hasDeduplicatedRef.current = true
-        console.log(`[PLForecastTable] Saving deduplicated lines to DB...`)
         onSave(linesWithAnalysis)
       }
     } else {
@@ -167,7 +162,6 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
 
       if (deduplicatedPlLines.length < plLines.length && !hasDeduplicatedRef.current) {
         hasDeduplicatedRef.current = true
-        console.log(`[PLForecastTable] Saving deduplicated lines to DB...`)
         onSave(deduplicatedPlLines)
       }
     }
@@ -187,67 +181,9 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
     // This is where we'll insert the {baselineFY} Total, % Revenue, Avg/Mo, and Method columns
     const lastBaselineIdx = columns.reduce((lastIdx, col, idx) => col.isBaseline === true ? idx : lastIdx, -1)
 
-    console.log('[PLForecastTable] Generated columns:', {
-      count: columns.length,
-      baselineColumns: columns.filter(c => c.isBaseline === true).map(c => c.key),
-      currentYearActuals: columns.filter(c => c.isActual && c.isBaseline === false).map(c => c.key),
-      forecastColumns: columns.filter(c => c.isForecast).map(c => c.key),
-      lastBaselineIndex: lastBaselineIdx,
-      forecastDates: {
-        actual: `${forecast.actual_start_month} to ${forecast.actual_end_month}`,
-        forecast: `${forecast.forecast_start_month} to ${forecast.forecast_end_month}`,
-        baseline: `${forecast.baseline_start_month || 'none'} to ${forecast.baseline_end_month || 'none'}`
-      }
-    })
     setMonthColumns(columns)
     setLastActualIndex(lastBaselineIdx)
   }, [forecast.actual_start_month, forecast.actual_end_month, forecast.forecast_start_month, forecast.forecast_end_month, forecast.baseline_start_month, forecast.baseline_end_month])
-
-  // Diagnostic: log line data to identify doubling source
-  useEffect(() => {
-    if (lines.length === 0 || monthColumns.length === 0) return
-
-    const cats = ['Revenue', 'Cost of Sales', 'Operating Expenses', 'Other Income', 'Other Expenses']
-    const fyCols = monthColumns.filter(c => !c.isBaseline && c.key >= currentFYStart)
-    const seen = new Set<string>()
-    const dedupedFYCols = fyCols.filter(c => { if (seen.has(c.key)) return false; seen.add(c.key); return true })
-
-    console.group('[PLForecastTable] DATA DIAGNOSTIC')
-    console.log('FY columns for total:', dedupedFYCols.length,
-      '(actual:', dedupedFYCols.filter(c => c.isActual).length,
-      'forecast:', dedupedFYCols.filter(c => c.isForecast).length, ')')
-
-    for (const cat of cats) {
-      const catLines = lines.filter(l => l.category === cat)
-      if (catLines.length === 0) continue
-
-      const lineInfo = catLines.map(line => {
-        const fKeys = Object.keys(line.forecast_months || {}).filter(k => k >= currentFYStart).sort()
-        const aKeys = Object.keys(line.actual_months || {}).filter(k => k >= currentFYStart).sort()
-        const fTotal = fKeys.reduce((s, k) => s + (line.forecast_months?.[k] || 0), 0)
-        const aTotal = aKeys.reduce((s, k) => s + (line.actual_months?.[k] || 0), 0)
-        return {
-          name: line.account_name,
-          id: line.id?.substring(0, 8),
-          is_from_xero: line.is_from_xero,
-          actualMonths: aKeys.length,
-          actualTotal: Math.round(aTotal),
-          forecastMonths: fKeys.length,
-          forecastTotal: Math.round(fTotal),
-          fy26Total: Math.round(calculateLineFY26Total(line))
-        }
-      })
-      console.table(lineInfo)
-
-      // Check for duplicates
-      const names = catLines.map(l => l.account_name.toLowerCase().trim())
-      const dupes = names.filter((n, i) => names.indexOf(n) !== i)
-      if (dupes.length > 0) {
-        console.warn(`⚠️ DUPLICATE LINES in ${cat}:`, Array.from(new Set(dupes)))
-      }
-    }
-    console.groupEnd()
-  }, [lines, monthColumns])
 
   // Initialize history with first state
   useEffect(() => {
@@ -375,7 +311,6 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
       const safePattern = /^[\d\s\+\-\*\/\(\)\.]+$/
 
       if (!safePattern.test(expr)) {
-        console.warn('Invalid formula pattern - only numbers and math operators allowed:', expr)
         return 0
       }
 
@@ -614,35 +549,15 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
       ...(method === 'driver_based' && { driver_percentage: 0.25 })
     }
 
-    console.log('🔧 updateForecastMethod called:', {
-      lineIndex: index,
-      lineName: line.account_name,
-      method,
-      config: line.forecast_method,
-      currentForecastMonths: Object.keys(line.forecast_months || {}).length
-    })
-
     // Recalculate forecasts
     const baselineMonthKeys = monthColumns.filter(c => c.isBaseline === true).map(c => c.key)
     const forecastMonthKeys = monthColumns.filter(c => c.isForecast).map(c => c.key)
-
-    console.log('📊 Recalculating with:', {
-      baselineMonthCount: baselineMonthKeys.length,
-      forecastMonthCount: forecastMonthKeys.length,
-      totalLines: updatedLines.length
-    })
 
     const recalculatedLines = ForecastingEngine.recalculateAllForecasts(
       updatedLines,
       baselineMonthKeys,
       forecastMonthKeys
     )
-
-    console.log('✅ Recalculated line forecast:', {
-      lineName: recalculatedLines[index].account_name,
-      forecastMonths: recalculatedLines[index].forecast_months,
-      totalForecast: Object.values(recalculatedLines[index].forecast_months || {}).reduce((s, v) => s + v, 0)
-    })
 
     setLines(recalculatedLines)
     needsSave.current = true

@@ -125,7 +125,6 @@ const loadStateFromStorage = (businessId: string, fiscalYear: number): ForecastW
       // Validate it has the expected structure and matching version
       if (parsed && parsed.businessId === businessId && parsed.fiscalYearStart === fiscalYear) {
         if (parsed.wizardVersion !== WIZARD_VERSION) {
-          console.log('[ForecastWizard] Version mismatch (stored:', parsed.wizardVersion, 'current:', WIZARD_VERSION, ') — forcing re-init');
           return null;
         }
         // Backward compat: convert legacy capexItems/investments to plannedSpends
@@ -153,7 +152,6 @@ const loadStateFromStorage = (businessId: string, fiscalYear: number): ForecastW
             })),
           ];
         }
-        console.log('[ForecastWizard] Restored state from localStorage');
         return parsed as ForecastWizardState;
       }
     }
@@ -221,7 +219,6 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
     const key = getStorageKey(businessId, fiscalYearStart);
     localStorage.removeItem(key);
     setWasRestoredFromStorage(false);
-    console.log('[ForecastWizard] Cleared localStorage');
   }, [businessId, fiscalYearStart]);
 
   // Navigation
@@ -760,23 +757,6 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         const monthKeys = generateMonthKeys(prev.fiscalYearStart);
         const targetRevenue = data.goals?.year1?.revenue || 0;
 
-        console.log('[initializeFromXero] Starting with:', {
-          fiscalYearStart: prev.fiscalYearStart,
-          monthKeys: monthKeys.slice(0, 3),
-          targetRevenue,
-          ytdTotal: data.currentYTD?.total_revenue,
-          ytdMonths: data.currentYTD?.revenue_by_month ? Object.keys(data.currentYTD.revenue_by_month) : [],
-          priorYearTotal: data.priorYear.revenue.total,
-          byLineCount: data.priorYear.revenue.byLine.length,
-          byLineData: data.priorYear.revenue.byLine.map(l => ({
-            id: l.id,
-            name: l.name,
-            total: l.total,
-            byMonthKeys: Object.keys(l.byMonth || {}),
-            byMonthValues: Object.values(l.byMonth || {}),
-          })),
-        });
-
         // Create revenue lines from prior year data
         // If no individual lines but we have a total, create a default line
         let revenueLines: RevenueLine[] = [];
@@ -788,12 +768,6 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
             year2Monthly: {},
             year3Monthly: {},
           }));
-          console.log('[initializeFromXero] Created revenue lines from byLine:', revenueLines.map(l => ({
-            id: l.id,
-            name: l.name,
-            year1MonthlyKeys: Object.keys(l.year1Monthly),
-            year1MonthlyTotal: Object.values(l.year1Monthly).reduce((s, v) => s + v, 0),
-          })));
         } else if (targetRevenue > 0 || data.priorYear.revenue.total > 0) {
           // Create a default Sales Revenue line
           const year1Monthly: { [key: string]: number } = {};
@@ -818,16 +792,6 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
             }
           });
 
-          console.log('[initializeFromXero] Creating revenue line:', {
-            targetRevenue,
-            ytdTotal,
-            remainingTarget,
-            completedMonthsCount,
-            remainingMonths,
-            ytdMonthsKeys: Object.keys(ytdMonths),
-            totalRemainingSeasonality,
-          });
-
           monthKeys.forEach((key, idx) => {
             // Check if this is a completed month (we have actual data)
             if (ytdMonths[key] !== undefined) {
@@ -844,8 +808,6 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
               year1Monthly[key] = 0;
             }
           });
-
-          console.log('[initializeFromXero] Created year1Monthly:', year1Monthly);
 
           revenueLines = [{
             id: generateId(),
@@ -1371,7 +1333,6 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
   // Accepts optional forecastId and forecastName for updating existing forecasts
   // Set createNew=true to force creation of a new forecast (for "Save As" feature)
   const saveDraft = useCallback(async (forecastId?: string | null, forecastName?: string, createNew?: boolean): Promise<string | null> => {
-    console.log('Saving draft...', state);
     const assumptions = buildAssumptions();
 
     try {
@@ -1402,7 +1363,6 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       }
 
       const result = await response.json();
-      console.log('Draft saved:', result);
       return result.forecastId || result.forecast_id || null;
     } catch (error) {
       console.error('Error saving draft:', error);
@@ -1413,7 +1373,6 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
   // Generate forecast
   // Accepts optional forecastId and forecastName for updating existing forecasts
   const generateForecast = useCallback(async (forecastId?: string | null, forecastName?: string): Promise<string> => {
-    console.log('Generating forecast...', state);
     const assumptions = buildAssumptions();
 
     try {
@@ -1442,7 +1401,6 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       }
 
       const result = await response.json();
-      console.log('Forecast generated:', result);
 
       return result.forecastId;
     } catch (error) {

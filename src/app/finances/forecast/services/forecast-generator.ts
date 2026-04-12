@@ -79,41 +79,17 @@ export class ForecastGenerator {
       existingLines
     } = params
 
-    console.log('[ForecastGenerator] Generating forecast with params:', {
-      revenueGoal,
-      cogsPercentage,
-      opexBudget,
-      distributionMethod,
-      existingLinesCount: existingLines.length,
-      opexLinesCount: existingLines.filter(l => l.category === 'Operating Expenses').length
-    })
-
-    console.log('[ForecastGenerator] Forecast object:', {
-      forecast_start_month: forecast.forecast_start_month,
-      forecast_end_month: forecast.forecast_end_month,
-      baseline_start_month: forecast.baseline_start_month,
-      baseline_end_month: forecast.baseline_end_month
-    })
-
     // Get baseline month keys (FY25) for pattern calculations
     const baselineMonthKeys = this.getBaselineMonthKeys(forecast)
-    console.log('[ForecastGenerator] Using baseline months for patterns:', baselineMonthKeys)
 
     // Generate month keys for forecast period
     const forecastMonthKeys = this.generateMonthKeys(
       forecast.forecast_start_month,
       forecast.forecast_end_month
     )
-    console.log('[ForecastGenerator] Forecast period:', {
-      start: forecast.forecast_start_month,
-      end: forecast.forecast_end_month,
-      monthKeys: forecastMonthKeys,
-      count: forecastMonthKeys.length
-    })
 
     // Get current year months (FY26 YTD) - these are months between baseline end and forecast start
     const currentYearMonthKeys = this.getCurrentYearMonthKeys(forecast)
-    console.log('[ForecastGenerator] Current year YTD months:', currentYearMonthKeys)
 
     // 1. Distribute revenue to individual revenue lines based on FY25 patterns
     const linesWithRevenue = this.distributeRevenueToLines(
@@ -316,7 +292,6 @@ export class ForecastGenerator {
     currentYearMonthKeys: string[]
   ): PLLine[] {
     if (revenueGoal === 0) {
-      console.log('[ForecastGenerator] Revenue goal is 0, skipping distribution')
       return existingLines
     }
 
@@ -327,7 +302,6 @@ export class ForecastGenerator {
     )
 
     if (revenueLines.length === 0) {
-      console.log('[ForecastGenerator] No revenue detail lines found, creating default line')
       // Create a default "Sales" line if none exist
       const defaultRevenueLine: PLLine = {
         account_name: 'Sales',
@@ -350,16 +324,10 @@ export class ForecastGenerator {
       return sum + lineYtd
     }, 0)
 
-    console.log('[ForecastGenerator] FY26 YTD Revenue:', ytdRevenue.toFixed(2))
-    console.log('[ForecastGenerator] Annual Revenue Goal:', revenueGoal.toFixed(2))
-
     // Calculate remaining revenue needed to reach the goal
     const remainingRevenue = revenueGoal - ytdRevenue
 
-    console.log('[ForecastGenerator] Remaining Revenue to Forecast:', remainingRevenue.toFixed(2))
-
     if (remainingRevenue <= 0) {
-      console.log('[ForecastGenerator] YTD revenue meets or exceeds goal, setting forecast to zero')
       // YTD already meets/exceeds goal, set all forecast months to zero
       revenueLines.forEach(line => {
         line.forecast_months = monthKeys.reduce((acc, key) => {
@@ -382,7 +350,6 @@ export class ForecastGenerator {
     const totalFY25Revenue = fy25RevenueTotals.reduce((sum, item) => sum + item.total, 0)
 
     if (totalFY25Revenue === 0) {
-      console.log('[ForecastGenerator] No FY25 revenue actuals found, using even distribution')
       // Fallback: distribute evenly across all revenue lines
       const budgetPerLine = remainingRevenue / revenueLines.length
 
@@ -410,14 +377,10 @@ export class ForecastGenerator {
       return existingLines
     }
 
-    console.log('[ForecastGenerator] Distributing revenue across forecast months:', monthKeys)
-
     // Distribute remaining revenue (not full goal) to each line based on its % of FY25 total
     fy25RevenueTotals.forEach(({ line, total }) => {
       const percentageOfTotal = total / totalFY25Revenue
       const lineBudget = remainingRevenue * percentageOfTotal
-
-      console.log(`[ForecastGenerator] ${line.account_name}: FY25=${total.toFixed(0)}, %=${(percentageOfTotal * 100).toFixed(1)}%, Remaining Budget=${lineBudget.toFixed(0)}`)
 
       // Use seasonal pattern from FY25 or distribution method
       if (distributionMethod === 'seasonal_pattern') {
@@ -468,7 +431,6 @@ export class ForecastGenerator {
     currentYearMonthKeys: string[]
   ): PLLine[] {
     if (opexBudget === 0) {
-      console.log('[ForecastGenerator] OpEx budget is 0, skipping distribution')
       return existingLines
     }
 
@@ -479,7 +441,6 @@ export class ForecastGenerator {
     )
 
     if (opexLines.length === 0) {
-      console.log('[ForecastGenerator] No OpEx detail lines found')
       return existingLines
     }
 
@@ -491,16 +452,10 @@ export class ForecastGenerator {
       return sum + lineYtd
     }, 0)
 
-    console.log('[ForecastGenerator] FY26 YTD OpEx:', ytdOpEx.toFixed(2))
-    console.log('[ForecastGenerator] Annual OpEx Budget:', opexBudget.toFixed(2))
-
     // Calculate remaining OpEx budget needed
     const remainingOpEx = opexBudget - ytdOpEx
 
-    console.log('[ForecastGenerator] Remaining OpEx to Forecast:', remainingOpEx.toFixed(2))
-
     if (remainingOpEx <= 0) {
-      console.log('[ForecastGenerator] YTD OpEx meets or exceeds budget, setting forecast to zero')
       // YTD already meets/exceeds budget, set all forecast months to zero
       opexLines.forEach(line => {
         line.forecast_months = monthKeys.reduce((acc, key) => {
@@ -523,7 +478,6 @@ export class ForecastGenerator {
     const totalFY25OpEx = fy25OpexTotals.reduce((sum, item) => sum + item.total, 0)
 
     if (totalFY25OpEx === 0) {
-      console.log('[ForecastGenerator] No FY25 OpEx actuals found, using even distribution')
       // Fallback: distribute evenly across all OpEx lines
       const budgetPerLine = remainingOpEx / opexLines.length
       const monthlyAmount = budgetPerLine / monthKeys.length
@@ -542,8 +496,6 @@ export class ForecastGenerator {
     fy25OpexTotals.forEach(({ line, total }) => {
       const percentageOfTotal = total / totalFY25OpEx
       const lineBudget = remainingOpEx * percentageOfTotal
-
-      console.log(`[ForecastGenerator] ${line.account_name}: FY25=${total.toFixed(0)}, %=${(percentageOfTotal * 100).toFixed(1)}%, Remaining Budget=${lineBudget.toFixed(0)}`)
 
       // Use seasonal pattern from FY25 to distribute across months
       const seasonalDistribution = this.calculateSeasonalPattern([line], monthKeys, baselineMonthKeys)
@@ -608,16 +560,10 @@ export class ForecastGenerator {
       return sum + (cogsLine.actual_months?.[monthKey] || 0)
     }, 0)
 
-    console.log('[ForecastGenerator] Annual COGS (based on goal):', annualCOGS.toFixed(2))
-    console.log('[ForecastGenerator] FY26 YTD COGS:', ytdCOGS.toFixed(2))
-
     // Calculate remaining COGS to forecast
     const remainingCOGS = annualCOGS - ytdCOGS
 
-    console.log('[ForecastGenerator] Remaining COGS to Forecast:', remainingCOGS.toFixed(2))
-
     if (remainingCOGS <= 0) {
-      console.log('[ForecastGenerator] YTD COGS meets or exceeds annual target, setting forecast to zero')
       cogsLine.forecast_months = forecastMonthKeys.reduce((acc, key) => {
         acc[key] = 0
         return acc
@@ -671,7 +617,6 @@ export class ForecastGenerator {
 
     if (matchingLines.length > 1) {
       // If duplicates exist, remove all but the first one
-      console.warn(`[ForecastGenerator] Found ${matchingLines.length} duplicate "${accountName}" lines, removing duplicates`)
       const lineToKeep = matchingLines[0]
       const linesToRemove = matchingLines.slice(1)
 

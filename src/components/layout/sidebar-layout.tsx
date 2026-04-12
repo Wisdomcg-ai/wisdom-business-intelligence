@@ -194,6 +194,7 @@ const getNavigation = (userRole: 'coach' | 'client'): NavSection[] => {
       items: [
         { label: 'Messages', href: '/messages', icon: MessageCircle },
         { label: 'Session Notes', href: '/sessions', icon: FileText },
+        { label: 'Help & Support', href: '/help', icon: HelpCircle },
       ],
     })
   }
@@ -282,7 +283,6 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
       try {
         // Load user data from Supabase - force fresh fetch
         const { data: { user }, error } = await supabase.auth.getUser()
-        console.log('[Sidebar] Current user:', user?.email, error?.message)
 
         if (user) {
           const name = user.user_metadata?.first_name
@@ -305,7 +305,6 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
 
               if (businessUserError) {
                 // If section_permissions column doesn't exist, try fetching just the role
-                console.warn('[Sidebar] Error fetching permissions, trying fallback:', businessUserError.message)
                 const { data: roleOnly } = await supabase
                   .from('business_users')
                   .select('role')
@@ -367,7 +366,6 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[Sidebar] Auth state changed:', event, session?.user?.email)
       if (session?.user) {
         const name = session.user.user_metadata?.first_name
           ? `${session.user.user_metadata.first_name} ${session.user.user_metadata.last_name || ''}`
@@ -381,6 +379,25 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
       subscription.unsubscribe()
     }
   }, [supabase])
+
+  // Auto-expand sections and sub-items when current route matches a child
+  useEffect(() => {
+    if (!navigation.length) return
+    for (const section of navigation) {
+      for (const item of section.items) {
+        if (item.children) {
+          const childMatch = item.children.some(child => pathname === child.href || pathname.startsWith(child.href + '/'))
+          if (childMatch) {
+            setExpandedSections(prev => prev.includes(section.title) ? prev : [...prev, section.title])
+            setExpandedSubItems(prev => prev.includes(item.label) ? prev : [...prev, item.label])
+          }
+        }
+        if (pathname === item.href) {
+          setExpandedSections(prev => prev.includes(section.title) ? prev : [...prev, section.title])
+        }
+      }
+    }
+  }, [pathname, navigation])
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) =>
@@ -497,8 +514,9 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                     <div className="space-y-0.5 pb-2">
                       {section.items.map((item) => {
                         const Icon = item.icon
-                        const isActive = pathname === item.href
                         const hasChildren = item.children && item.children.length > 0
+                        const isChildActive = hasChildren && item.children!.some(child => pathname === child.href || pathname.startsWith(child.href + '/'))
+                        const isActive = pathname === item.href || isChildActive
                         const isExpanded = expandedSubItems.includes(item.label)
 
                         return (

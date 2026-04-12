@@ -16,14 +16,6 @@ import type { OnePagePlanData, PlanSnapshot } from './types'
 import { assemblePlanData } from './services/plan-data-assembler'
 import { planSnapshotService } from './services/plan-snapshot-service'
 
-// Only log in development
-const isDev = process.env.NODE_ENV === 'development'
-const devLog = (message: string, ...args: any[]) => {
-  if (isDev) {
-    console.log(message, ...args)
-  }
-}
-
 export default function OnePagePlan() {
   const router = useRouter()
   const supabase = createClient()
@@ -195,7 +187,7 @@ export default function OnePagePlan() {
           }
         }
       } catch (snapshotErr) {
-        console.warn('[One Page Plan] Could not load snapshots:', snapshotErr)
+        // ignored
       }
     } catch (err) {
       console.error('[One Page Plan] Error loading data:', err)

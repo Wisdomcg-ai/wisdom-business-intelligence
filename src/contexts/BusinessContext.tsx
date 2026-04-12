@@ -216,13 +216,10 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
 
   // Load current user on mount
   const loadCurrentUser = useCallback(async () => {
-    console.log('[BusinessContext] Loading current user...')
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser()
-      console.log('[BusinessContext] getUser returned:', user?.id || 'none', authError?.message || 'no error')
 
       if (!user) {
-        console.log('[BusinessContext] No user, setting loading to false')
         setCurrentUser(null)
         setIsLoading(false)
         return
@@ -242,8 +239,6 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
 
       // If user is a client, automatically load their business
       if (role === 'client' || role === null) {
-        console.log('[BusinessContext] Looking up business for client user:', user.id)
-
         // First try via business_users join table (for team members)
         // Now also fetch the role for proper permissions
         const { data: businessUser, error: businessUserError } = await supabase
@@ -252,13 +247,6 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
           .eq('user_id', user.id)
           .eq('status', 'active')
           .maybeSingle()
-
-        console.log('[BusinessContext] business_users lookup result:', {
-          found: !!businessUser,
-          businessId: businessUser?.business_id,
-          role: businessUser?.role,
-          error: businessUserError?.message
-        })
 
         let business = null
         let loadedVia = ''
@@ -271,12 +259,6 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
             .eq('id', businessUser.business_id)
             .maybeSingle()
           business = data
-          console.log('[BusinessContext] Loaded business as TEAM MEMBER:', {
-            businessId: data?.id,
-            businessName: data?.name,
-            ownerId: data?.owner_id,
-            error: bizError?.message
-          })
         } else {
           // Fallback: try direct owner_id lookup
           loadedVia = 'owner (businesses.owner_id)'
@@ -286,11 +268,6 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
             .eq('owner_id', user.id)
             .maybeSingle()
           business = data
-          console.log('[BusinessContext] Loaded business as OWNER:', {
-            businessId: data?.id,
-            businessName: data?.name,
-            error: ownerError?.message
-          })
         }
 
         if (business) {
@@ -302,19 +279,6 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
 
           const permissions = getPermissionsForRole(businessRole, isOwner)
 
-          console.log('[BusinessContext] Setting active business:', {
-            id: business.id,
-            name: business.name,
-            ownerId: business.owner_id,
-            loadedVia,
-            userIsOwner: isOwner,
-            businessRole,
-            permissions: {
-              canDeleteOwnItems: permissions.canDeleteOwnItems,
-              canDeleteAllItems: permissions.canDeleteAllItems,
-              canEditStrategicItems: permissions.canEditStrategicItems
-            }
-          })
           setActiveBusinessState({
             id: business.id,
             name: business.name || 'Unnamed Business',
@@ -340,8 +304,6 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
           if (profile?.id) {
             setBusinessProfileId(profile.id)
           }
-        } else {
-          console.log('[BusinessContext] No business found for user:', user.id)
         }
       }
 
@@ -349,7 +311,6 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
       console.error('[BusinessContext] Error loading user:', err)
       setError('Failed to load user data')
     } finally {
-      console.log('[BusinessContext] Finished loading, setting isLoading to false')
       setIsLoading(false)
     }
   }, [supabase])
@@ -357,7 +318,6 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
   // Set active business (used when coach views a client)
   const setActiveBusiness = useCallback(async (businessId: string) => {
     try {
-      console.log('[BusinessContext] Setting active business:', businessId)
       setIsLoading(true)
       setError(null)
 
@@ -375,8 +335,6 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         .select('id, name, owner_id, industry, status, assigned_coach_id')
         .eq('id', businessId)
         .maybeSingle()
-
-      console.log('[BusinessContext] Business fetch result:', { business: business?.name, error: fetchError?.message })
 
       if (fetchError || !business) {
         setError('Business not found or you do not have access')
@@ -461,19 +419,6 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         permissions,
       })
 
-      console.log('[BusinessContext] Active business set:', business.name, {
-        isOwner,
-        isAssignedCoach,
-        isSuperAdmin,
-        isTeamMember,
-        viewerRole,
-        teamMemberRole,
-        permissions: {
-          canDeleteOwnItems: permissions.canDeleteOwnItems,
-          canDeleteAllItems: permissions.canDeleteAllItems
-        }
-      })
-
     } catch (err) {
       console.error('[BusinessContext] Error setting active business:', err)
       setError('Failed to load business data')
@@ -503,7 +448,6 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
 
   // Load user on mount
   useEffect(() => {
-    console.log('[BusinessContext] Mounted - loading current user')
     isLoadingUserRef.current = true
     loadCurrentUser().finally(() => {
       isLoadingUserRef.current = false
@@ -518,10 +462,6 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
           const sessionUserId = _session?.user?.id
           // Reload if no user loaded yet OR if the user changed (e.g. coach login replacing client session)
           if (!currentUserRef.current || currentUserRef.current.id !== sessionUserId) {
-            console.log('[BusinessContext] Auth SIGNED_IN detected, reloading user...', {
-              previousUser: currentUserRef.current?.id,
-              newUser: sessionUserId,
-            })
             // Clear stale business data when user changes
             if (currentUserRef.current && currentUserRef.current.id !== sessionUserId) {
               setActiveBusinessState(null)

@@ -258,16 +258,6 @@ function StrategicPlanningContent() {
     saveAllData
   } = useStrategicPlanning(activeBusiness?.id)
 
-  // Debug logging for business context
-  useEffect(() => {
-    console.log('[Goals Page] Context state:', {
-      isViewingAsCoach: viewerContext.isViewingAsCoach,
-      activeBusinessId: activeBusiness?.id,
-      activeBusinessName: activeBusiness?.name,
-      passedToHook: activeBusiness?.id
-    })
-  }, [viewerContext.isViewingAsCoach, activeBusiness?.id, activeBusiness?.name])
-
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   const [showKPIModal, setShowKPIModal] = useState(false)
   const [showStepHelp, setShowStepHelp] = useState(false)
@@ -307,7 +297,7 @@ function StrategicPlanningContent() {
           }
         }
       } catch (snapshotErr) {
-        console.warn('[Goals] Snapshot creation failed (non-blocking):', snapshotErr)
+        // ignored
       }
 
       // 3. Navigate to dashboard
@@ -343,8 +333,6 @@ function StrategicPlanningContent() {
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
         )
 
-        console.log('[Goals] Loading SWOT data for business_id:', swotBusinessId)
-
         // Get the most recent SWOT analysis
         const { data: analysis, error: analysisError } = await supabase
           .from('swot_analyses')
@@ -357,7 +345,6 @@ function StrategicPlanningContent() {
           .maybeSingle()
 
         if (analysisError || !analysis) {
-          console.log('[Goals] No SWOT analysis found:', analysisError?.message)
           setSwotItems([])
           return
         }
@@ -370,7 +357,6 @@ function StrategicPlanningContent() {
           .order('impact_level', { ascending: false })
 
         if (!itemsError && items) {
-          console.log('[Goals] Loaded SWOT items:', items.length)
           setSwotItems(items)
         }
       } catch (err) {

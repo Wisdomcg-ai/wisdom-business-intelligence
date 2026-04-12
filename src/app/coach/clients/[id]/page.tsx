@@ -217,15 +217,12 @@ export default function ClientFilePage() {
 
         if (fetchedByBusinessId) {
           profileData = fetchedByBusinessId
-          console.log('[ClientPage] Found profile by business_id instead of user_id')
         }
       }
 
       if (profileData) {
         setBusinessProfile(profileData as BusinessProfileData)
       }
-
-      console.log('[ClientPage] Profile lookup - ownerId:', ownerId, 'found profileData:', !!profileData, 'profileId:', profileData?.id)
 
       // Load stats from database - wrap each query in try/catch for resilience
       // Collect ALL possible user IDs from all sources - the assessment might be under any of them
@@ -257,10 +254,9 @@ export default function ClientFilePage() {
               possibleUserIds.push(bu.user_id)
             }
           })
-          console.log('[ClientPage] Found users via business_users table:', businessUsers.map((bu: any) => bu.user_id))
         }
       } catch (e) {
-        console.log('[ClientPage] Could not query business_users:', e)
+        // ignored
       }
 
       // Source 4: Look up user by owner_email from the users table
@@ -274,10 +270,9 @@ export default function ClientFilePage() {
 
           if (userByEmail?.id && !possibleUserIds.includes(userByEmail.id)) {
             possibleUserIds.push(userByEmail.id)
-            console.log('[ClientPage] Found user by owner_email:', businessData.owner_email, '-> user_id:', userByEmail.id)
           }
         } catch (e) {
-          console.log('[ClientPage] Could not query users by email:', e)
+          // ignored
         }
       }
 
@@ -294,16 +289,13 @@ export default function ClientFilePage() {
             profilesByName.forEach((p: any) => {
               if (p.user_id && !possibleUserIds.includes(p.user_id)) {
                 possibleUserIds.push(p.user_id)
-                console.log('[ClientPage] Found user by business_name match:', businessData.name, '-> user_id:', p.user_id)
               }
             })
           }
         } catch (e) {
-          console.log('[ClientPage] Could not query business_profiles by name:', e)
+          // ignored
         }
       }
-
-      console.log('[ClientPage] All possible user IDs for business:', clientId, ':', possibleUserIds)
 
       // Use first user ID as the "effective" one for other queries
       const effectiveUserId = possibleUserIds[0] || null
@@ -315,7 +307,6 @@ export default function ClientFilePage() {
       let unreadMessages = 0
       let healthScore: number | null = null
 
-      console.log('[ClientPage] Loading stats - business:', clientId, 'possibleUserIds:', possibleUserIds, 'effectiveUserId:', effectiveUserId)
 
       // Store businessProfileId at higher scope for activity queries
       let businessProfileId: string | null = null
@@ -336,22 +327,19 @@ export default function ClientFilePage() {
             .order('created_at', { ascending: false })
             .limit(1)
 
-          console.log('[ClientPage] Assessment query for users:', possibleUserIds, '- result:', { data: assessmentData, error: assessmentError?.message })
           if (!assessmentError && assessmentData?.[0]) {
             // Use percentage if available, otherwise calculate from total_score/total_max
             healthScore = assessmentData[0].percentage ??
               Math.round((assessmentData[0].total_score / (assessmentData[0].total_max || 300)) * 100)
           }
         } catch (e) {
-          console.log('Could not load assessment data:', e)
+          // ignored
         }
 
         // Use the business_profiles.id from our earlier query for goals/initiatives
         // profileData was already fetched above using user_id = ownerId
         if (profileData?.id) {
           businessProfileId = profileData.id
-          console.log('[ClientPage] Using business profile from earlier query:', businessProfileId)
-
           try {
             // Count strategic initiatives as goals
             const { data: initiatives, error: initError } = await supabase
@@ -360,19 +348,16 @@ export default function ClientFilePage() {
               .eq('business_id', businessProfileId)
               .in('step_type', ['twelve_month', 'q1', 'q2', 'q3', 'q4'])
 
-            console.log('[ClientPage] Initiatives:', { count: initiatives?.length, error: initError?.message, data: initiatives })
-
             if (!initError && initiatives) {
               // status can be: 'not_started', 'in_progress', 'completed', 'blocked'
               completedGoals = initiatives.filter((i: any) => i.status === 'completed').length
               activeGoals = initiatives.filter((i: any) => i.status !== 'completed').length
             }
           } catch (e) {
-            console.log('Could not load goals data:', e)
+            // ignored
           }
         }
       } else {
-        console.log('[ClientPage] No effectiveUserId, skipping user queries')
       }
 
       // Get pending/overdue actions from open_loops + issues_list for the business owner's user IDs
@@ -581,12 +566,6 @@ export default function ClientFilePage() {
               .eq('id', businessProfileId)
               .limit(1)
 
-            console.log('[ClientPage] Business profile update check:', {
-              profile: profile?.[0],
-              error: profileError?.message,
-              hasUpdate: profile?.[0]?.updated_at !== profile?.[0]?.created_at
-            })
-
             if (profile?.[0]?.updated_at && profile[0].updated_at !== profile[0].created_at) {
               activities.push({
                 id: `profile-${profile[0].id}`,
@@ -696,8 +675,6 @@ export default function ClientFilePage() {
               .order('updated_at', { ascending: false })
               .limit(5)
 
-            console.log('[ClientPage] Weekly metrics snapshots:', { count: snapshots?.length, error: snapshotsError?.message })
-
             snapshots?.forEach(s => {
               // Only show if it was updated (has actual data entered)
               if (s.updated_at && s.updated_at !== s.created_at) {
@@ -717,10 +694,6 @@ export default function ClientFilePage() {
       activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       const recentActivities = activities.slice(0, 10)
       setRecentActivity(recentActivities)
-      console.log('[ClientPage] Recent activity:', recentActivities.length, 'items')
-
-      console.log('[ClientPage] Final stats:', { activeGoals, completedGoals, goalsProgress, healthScore, pendingActions, activityCount: activities.length })
-
       setStats({
         pendingActions,
         overdueActions,
@@ -754,8 +727,6 @@ export default function ClientFilePage() {
   useEffect(() => {
     if (!clientId) return
 
-    console.log('[CoachPortal] Setting up real-time subscriptions for client:', clientId)
-
     // Function to refresh data silently
     const refreshData = async () => {
       if (loadDataRef.current) {
@@ -776,8 +747,7 @@ export default function ClientFilePage() {
           table: 'business_profiles',
           filter: `business_id=eq.${clientId}`
         },
-        (payload) => {
-          console.log('[CoachPortal] Business profile change detected:', payload.eventType)
+        () => {
           refreshData()
         }
       )
@@ -789,8 +759,7 @@ export default function ClientFilePage() {
           schema: 'public',
           table: 'strategic_initiatives'
         },
-        (payload) => {
-          console.log('[CoachPortal] Initiative change detected:', payload.eventType)
+        () => {
           refreshData()
         }
       )
@@ -803,8 +772,7 @@ export default function ClientFilePage() {
           table: 'weekly_reviews',
           filter: `business_id=eq.${clientId}`
         },
-        (payload) => {
-          console.log('[CoachPortal] Weekly review change detected:', payload.eventType)
+        () => {
           refreshData()
         }
       )
@@ -817,8 +785,7 @@ export default function ClientFilePage() {
           table: 'audit_log',
           filter: `business_id=eq.${clientId}`
         },
-        (payload) => {
-          console.log('[CoachPortal] Audit log entry detected:', payload.eventType)
+        () => {
           refreshData()
         }
       )
@@ -830,8 +797,7 @@ export default function ClientFilePage() {
           schema: 'public',
           table: 'core_values'
         },
-        (payload) => {
-          console.log('[CoachPortal] Core values change detected:', payload.eventType)
+        () => {
           refreshData()
         }
       )
@@ -843,8 +809,7 @@ export default function ClientFilePage() {
           schema: 'public',
           table: 'swot_analyses'
         },
-        (payload) => {
-          console.log('[CoachPortal] SWOT change detected:', payload.eventType)
+        () => {
           refreshData()
         }
       )
@@ -856,23 +821,18 @@ export default function ClientFilePage() {
           schema: 'public',
           table: 'vision_targets'
         },
-        (payload) => {
-          console.log('[CoachPortal] Vision targets change detected:', payload.eventType)
+        () => {
           refreshData()
         }
       )
-      .subscribe((status) => {
-        console.log('[CoachPortal] Subscription status:', status)
-      })
+      .subscribe()
 
     // Auto-refresh every 30 seconds as fallback (in case subscriptions miss something)
     refreshIntervalRef.current = setInterval(() => {
-      console.log('[CoachPortal] Auto-refresh triggered')
       refreshData()
     }, 30000)
 
     return () => {
-      console.log('[CoachPortal] Cleaning up subscriptions')
       supabase.removeChannel(channel)
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current)

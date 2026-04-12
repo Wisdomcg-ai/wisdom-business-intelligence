@@ -207,7 +207,6 @@ export default function CoachDashboardPage() {
               .lte('scheduled_date', sunday.toISOString())
 
             if (error) {
-              console.warn('[Dashboard] coaching_sessions query failed:', error.message)
               return { data: null, count: 0, error: null }
             }
             return { data: null, count: count ?? 0, error: null }
@@ -229,7 +228,6 @@ export default function CoachDashboardPage() {
               .neq('sender_id', user.id)
 
             if (error) {
-              console.warn('[Dashboard] messages query failed:', error.message)
               return { data: null, count: 0, error: null }
             }
             return { data: null, count: count ?? 0, error: null }

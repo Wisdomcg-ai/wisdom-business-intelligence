@@ -70,10 +70,7 @@ function ClientsListContent() {
   async function loadClients() {
     try {
       setLoading(true)
-      console.log('[ClientsPage] Loading clients...')
-
       const { data: { user } } = await supabase.auth.getUser()
-      console.log('[ClientsPage] User:', user?.id || 'none')
       if (!user) return
 
       setUserId(user.id)
@@ -98,8 +95,6 @@ function ClientsListContent() {
       }
 
       const { data: businesses, error } = await businessQuery
-
-      console.log('[ClientsPage] Businesses result:', { count: businesses?.length, error: error?.message, isSuperAdmin })
 
       const businessList = businesses || []
       const businessIds = businessList.map(b => b.id)
@@ -761,8 +756,8 @@ function ClientsListContent() {
             <ClientCard
               key={client.id}
               client={client}
-              onMessage={(id) => console.log('Message client:', id)}
-              onSchedule={(id) => console.log('Schedule session:', id)}
+              onMessage={() => {}}
+              onSchedule={() => {}}
             />
           ))}
         </div>
@@ -770,8 +765,8 @@ function ClientsListContent() {
         <div className="overflow-x-auto">
           <ClientTable
             clients={filteredClients as ClientTableData[]}
-            onMessage={(id) => console.log('Message client:', id)}
-            onSchedule={(id) => console.log('Schedule session:', id)}
+            onMessage={() => {}}
+            onSchedule={() => {}}
           />
         </div>
       )}

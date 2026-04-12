@@ -153,7 +153,6 @@ export default function FinancialForecastPage() {
     // Only auto-sync once per page load, when we have a forecast and connection
     if (shouldSync && justConnected && forecast?.id && xeroConnection && !hasAutoSyncedRef.current && !isSyncing) {
       hasAutoSyncedRef.current = true
-      console.log('[Forecast] Auto-syncing after Xero connection...')
       toast.info('Syncing your Xero data...')
 
       // Trigger the full P&L sync
@@ -198,7 +197,6 @@ export default function FinancialForecastPage() {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        console.log('[Forecast] No user logged in')
         setIsLoading(false)
         return
       }
@@ -223,8 +221,6 @@ export default function FinancialForecastPage() {
       }
       setBusinessId(bizId)
 
-      console.log(`[Forecast] Loading data for business: ${bizId}`)
-
       // Fetch business fiscal year start for planning season detection
       let yearStart = 7 // default AU FY
       try {
@@ -237,7 +233,7 @@ export default function FinancialForecastPage() {
           yearStart = bizProfile.fiscal_year_start
         }
       } catch (e) {
-        console.warn('[Forecast] Could not load fiscal_year_start, using default 7')
+        // ignored
       }
       setFiscalYearStart(yearStart)
 
@@ -261,24 +257,10 @@ export default function FinancialForecastPage() {
         return
       }
 
-      console.log('[Forecast Page] Forecast dates:', {
-        actual_start: loadedForecast.actual_start_month,
-        actual_end: loadedForecast.actual_end_month,
-        forecast_start: loadedForecast.forecast_start_month,
-        forecast_end: loadedForecast.forecast_end_month
-      })
       setForecast(loadedForecast)
 
       // Load P&L lines
       const lines = await ForecastService.loadPLLines(loadedForecast.id!)
-      console.log('[Forecast Page] Loaded P&L lines:', lines.length)
-      if (lines.length > 0) {
-        console.log('[Forecast Page] Sample line:', {
-          name: lines[0].account_name,
-          actual_months: lines[0].actual_months,
-          monthKeys: Object.keys(lines[0].actual_months || {})
-        })
-      }
       setPlLines(lines)
 
       // Load Xero connection via API (bypasses RLS timing issues)
@@ -320,13 +302,6 @@ export default function FinancialForecastPage() {
       const parsed = (typeof forecast.assumptions === 'string'
         ? JSON.parse(forecast.assumptions)
         : forecast.assumptions) as ForecastAssumptions
-      console.log('[Forecast Page] Parsed assumptions:', {
-        hasRevenue: !!parsed?.revenue?.lines?.length,
-        hasTeam: !!parsed?.team?.existingTeam?.length,
-        hasOpex: !!parsed?.opex?.lines?.length,
-        hasSubs: !!parsed?.subscriptions,
-        hasCapex: !!parsed?.capex?.items?.length,
-      })
       return parsed
     } catch (e) {
       console.error('[Forecast Page] Failed to parse assumptions:', e)
@@ -348,7 +323,6 @@ export default function FinancialForecastPage() {
       if (result.success) {
         setPlLines(updatedLines)
         setHasUnsavedChanges(false) // Clear unsaved changes flag
-        console.log('[Forecast] P&L lines saved')
       } else {
         throw new Error(result.error || 'Failed to save P&L lines')
       }

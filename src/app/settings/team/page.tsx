@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import PageHeader from '@/components/ui/PageHeader'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { apiFetch } from '@/lib/api/fetch'
 import {
   Users,
@@ -693,18 +694,12 @@ export default function TeamMembersPage() {
           })}
 
           {teamMembers.length === 0 && (
-            <div className="px-4 sm:px-6 py-12 text-center">
-              <Users className="w-10 sm:w-12 h-10 sm:h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-sm sm:text-base text-gray-500">No team members yet</p>
-              {canManageTeam && (
-                <button
-                  onClick={() => setShowInviteModal(true)}
-                  className="mt-4 text-sm sm:text-base text-brand-orange hover:text-brand-orange-700 font-medium"
-                >
-                  Add your first team member
-                </button>
-              )}
-            </div>
+            <EmptyState
+              icon={<Users className="w-12 h-12" />}
+              title="No team members yet"
+              description="Invite your first team member to get started."
+              action={canManageTeam ? { label: 'Add your first team member', onClick: () => setShowInviteModal(true) } : undefined}
+            />
           )}
         </div>
       </div>

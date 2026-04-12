@@ -219,7 +219,7 @@ export default function StrategicInitiatives() {
           setRoadmapCompletions(completionsData);
         }
       } catch (completionError) {
-        console.log('Roadmap completions not available yet (this is okay)');
+        // ignored
       }
 
     } catch (error) {
@@ -338,7 +338,7 @@ export default function StrategicInitiatives() {
         setAssessmentSuggestions(suggestions);
       }
     } catch (error) {
-      console.log('No assessment results found in localStorage');
+      // ignored
     }
   };
 

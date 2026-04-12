@@ -259,15 +259,6 @@ export default function EnhancedBusinessProfile() {
         toast.error('Failed to load business profile: ' + error)
         setSaveStatus('error')
       } else if (data) {
-        console.log('✅ Loaded business profile:', {
-          businessId: bizId,
-          profileId: profId,
-          hasData: !!data,
-          dataKeys: Object.keys(data),
-          name: data.name,
-          industry: data.industry,
-          employee_count: data.employee_count
-        })
         setBusiness(data)
         setBusinessId(bizId)
         setProfileId(profId)
