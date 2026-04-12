@@ -118,13 +118,17 @@ const ACCOUNTING_PACKAGES = [
   },
 ];
 
-import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH, getCurrentFiscalYear, isNearYearEnd } from '@/lib/utils/fiscal-year-utils';
 
 const MONTHS = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
 
 export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2PriorYearProps) {
   const { priorYear } = state;
-  const priorFY = fiscalYear - 1;
+  // In planning season (extended forecast), prior year is 2 back (FY2025), current is 1 back (FY2026)
+  const currentFY = getCurrentFiscalYear(DEFAULT_YEAR_START_MONTH);
+  const isExtended = isNearYearEnd(new Date(), DEFAULT_YEAR_START_MONTH, 3) && fiscalYear === currentFY + 1;
+  const priorFY = isExtended ? currentFY - 1 : fiscalYear - 1;
+  const currentYearFY = isExtended ? currentFY : fiscalYear;
 
   // State for import flow
   const [selectedPackage, setSelectedPackage] = useState<AccountingPackage>(null);
@@ -824,7 +828,7 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
-              Current Year (FY{fiscalYear} YTD)
+              Current Year (FY{currentYearFY} YTD)
             </button>
           </div>
         </div>
@@ -923,7 +927,7 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
                   <tr>
                     <td className="px-4 py-2 text-sm font-medium text-gray-700">Revenue</td>
                     {monthlyData.map((m, idx) => {
-                      const val = currentYTD?.revenue_by_month?.[m.month.replace(/^\d{4}/, String(fiscalYear - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)))] ?? null;
+                      const val = currentYTD?.revenue_by_month?.[m.month.replace(/^\d{4}/, String(currentYearFY - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)))] ?? null;
                       return (
                         <td key={idx} className="px-3 py-2 text-sm text-right">
                           {val !== null ? <span className="text-gray-900">{formatCurrency(val)}</span> : <span className="text-gray-300">&mdash;</span>}
@@ -938,7 +942,7 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
                   <tr className="bg-gray-50">
                     <td className="px-4 py-2 text-sm font-medium text-gray-700">Cost of Sales</td>
                     {monthlyData.map((m, idx) => {
-                      const currentMonthKey = m.month.replace(/^\d{4}/, String(fiscalYear - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)));
+                      const currentMonthKey = m.month.replace(/^\d{4}/, String(currentYearFY - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)));
                       const val = currentYTD?.cogs_by_month?.[currentMonthKey] ?? null;
                       return (
                         <td key={idx} className="px-3 py-2 text-sm text-right">
@@ -954,7 +958,7 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
                   <tr className="border-t-2 border-gray-300">
                     <td className="px-4 py-2 text-sm font-semibold text-green-700">Gross Profit</td>
                     {monthlyData.map((m, idx) => {
-                      const currentMonthKey = m.month.replace(/^\d{4}/, String(fiscalYear - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)));
+                      const currentMonthKey = m.month.replace(/^\d{4}/, String(currentYearFY - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)));
                       const rev = currentYTD?.revenue_by_month?.[currentMonthKey] ?? null;
                       const cogs = currentYTD?.cogs_by_month?.[currentMonthKey] ?? null;
                       const gp = rev !== null && cogs !== null ? rev - cogs : null;
@@ -974,7 +978,7 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
                   <tr className="bg-gray-50">
                     <td className="px-4 py-2 text-sm font-medium text-gray-700">Operating Expenses</td>
                     {monthlyData.map((m, idx) => {
-                      const currentMonthKey = m.month.replace(/^\d{4}/, String(fiscalYear - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)));
+                      const currentMonthKey = m.month.replace(/^\d{4}/, String(currentYearFY - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)));
                       const val = (currentYTD as any)?.opex_by_month?.[currentMonthKey] ?? null;
                       return (
                         <td key={idx} className="px-3 py-2 text-sm text-right">
@@ -990,7 +994,7 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
                   <tr className="border-t-2 border-gray-300">
                     <td className="px-4 py-2 text-sm font-semibold text-gray-900">Net Profit</td>
                     {monthlyData.map((m, idx) => {
-                      const currentMonthKey = m.month.replace(/^\d{4}/, String(fiscalYear - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)));
+                      const currentMonthKey = m.month.replace(/^\d{4}/, String(currentYearFY - 1 + (parseInt(m.month.split('-')[1]) < 7 ? 1 : 0)));
                       const rev = currentYTD?.revenue_by_month?.[currentMonthKey] ?? null;
                       const cogs = currentYTD?.cogs_by_month?.[currentMonthKey] ?? null;
                       const opex = (currentYTD as any)?.opex_by_month?.[currentMonthKey] ?? null;
