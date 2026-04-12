@@ -93,7 +93,7 @@ export async function middleware(request: NextRequest) {
     '/login'
   ]
   // Check if it's a public route OR the home page OR legal pages OR standalone public pages
-  const isPublicRoute = pathname === '/' || pathname === '/privacy' || pathname === '/terms' || pathname.startsWith('/bali-retreat') || pathname.startsWith('/ai-advantage') || pathname.startsWith('/sentry-example-page') || publicRoutes.some(route => pathname.startsWith(route))
+  const isPublicRoute = pathname === '/' || pathname === '/privacy' || pathname === '/terms' || pathname.startsWith('/bali-retreat') || pathname.startsWith('/ai-advantage') || publicRoutes.some(route => pathname.startsWith(route))
 
   // If user is not logged in and trying to access protected routes
   if (!user && !isPublicRoute) {
