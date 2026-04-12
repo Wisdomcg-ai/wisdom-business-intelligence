@@ -80,10 +80,14 @@ async function getValidAccessToken(connection: any): Promise<string | null> {
 
 // Sync P&L data for a single connection
 async function syncConnection(connection: any): Promise<SyncResult> {
-  const businessId = connection.business_id;
+  const connectionBusinessId = connection.business_id; // business_profiles.id from xero_connections
   const tenantName = connection.tenant_name;
 
   try {
+    // Resolve both ID formats — xero_pl_lines FK expects businesses.id
+    const ids = await resolveBusinessIds(supabase, connectionBusinessId);
+    const businessId = ids.bizId; // Use businesses.id for xero_pl_lines inserts (FK constraint)
+
     const accessToken = await getValidAccessToken(connection);
     if (!accessToken) {
       return {
@@ -257,8 +261,7 @@ async function syncConnection(connection: any): Promise<SyncResult> {
 
     // Upsert P&L lines to database
     if (plLines.length > 0) {
-      // Resolve both ID formats so we clean up lines stored under either ID
-      const ids = await resolveBusinessIds(supabase, businessId);
+      // ids already resolved at top of syncConnection() — use ids.all for cleanup
 
       // Delete existing lines for this business + verify before inserting
       const { error: deleteError } = await supabase
@@ -334,7 +337,7 @@ async function syncConnection(connection: any): Promise<SyncResult> {
   } catch (error) {
     console.error(`[Xero Sync] Error for ${tenantName}:`, error);
     return {
-      business_id: businessId,
+      business_id: connectionBusinessId,
       tenant_name: tenantName,
       status: 'failed',
       message: error instanceof Error ? error.message : 'Unknown error'
