@@ -245,65 +245,45 @@ export function ForecastWizardV4({
             const freshPriorFY = plData.summary?.prior_fy;
             if (freshPriorFY && freshPriorFY.total_revenue != null) {
               const cachedRevenue = state.priorYear?.revenue?.total || 0;
-              const freshRevenue = Math.round(freshPriorFY.total_revenue);
+              const freshRevenue = freshPriorFY.total_revenue;
               // Update if the data has changed (or if cache seems wrong)
-              if (Math.abs(cachedRevenue - freshRevenue) > 1 || !state.priorYear) {
+              if (Math.abs((cachedRevenue || 0) - freshRevenue) > 1 || !state.priorYear) {
                 console.log('[ForecastWizardV4] Refreshing priorYear from Xero (cached:', cachedRevenue, 'fresh:', freshRevenue, ')');
-                const freshRevenueLines = freshPriorFY.revenue_lines || [];
-                const freshCogsLines = freshPriorFY.cogs_lines || [];
                 const totalRevenue = freshPriorFY.total_revenue;
                 const totalCogs = freshPriorFY.total_cogs;
                 const totalOpex = freshPriorFY.operating_expenses;
 
-                const rawRevenueByMonth = freshPriorFY.revenue_by_month || {};
-                const roundedRevenueByMonth: Record<string, number> = {};
-                Object.entries(rawRevenueByMonth).forEach(([key, val]) => {
-                  roundedRevenueByMonth[key] = Math.round(val as number);
-                });
-
-                const revenueByLine = freshRevenueLines.map((line: any, idx: number) => {
-                  const roundedByMonth: Record<string, number> = {};
-                  Object.entries(line.by_month || {}).forEach(([key, val]) => {
-                    roundedByMonth[key] = Math.round(val as number);
-                  });
-                  return { id: `revenue-${idx}`, name: line.account_name, total: Math.round(line.total), byMonth: roundedByMonth };
-                });
-
-                const cogsByLine = freshCogsLines.map((line: any, idx: number) => {
-                  const roundedByMonth: Record<string, number> = {};
-                  Object.entries(line.by_month || {}).forEach(([key, val]) => {
-                    roundedByMonth[key] = Math.round(val as number);
-                  });
-                  return {
-                    id: `cogs-${idx}`, name: line.account_name, total: Math.round(line.total),
-                    byMonth: roundedByMonth, percentOfRevenue: Math.round((line.percent_of_revenue || 0) * 10) / 10,
-                  };
-                });
-
+                // Preserve full precision — no rounding in data layer
+                const revenueByLine = (freshPriorFY.revenue_lines || []).map((line: any, idx: number) => ({
+                  id: `revenue-${idx}`, name: line.account_name, total: line.total, byMonth: line.by_month || {},
+                }));
+                const cogsByLine = (freshPriorFY.cogs_lines || []).map((line: any, idx: number) => ({
+                  id: `cogs-${idx}`, name: line.account_name, total: line.total,
+                  byMonth: line.by_month || {}, percentOfRevenue: line.percent_of_revenue || 0,
+                }));
                 const opexByLine = (freshPriorFY.operating_expenses_by_category || []).map((cat: any, idx: number) => ({
                   id: `opex-${idx}`, name: cat.account_name || cat.category,
-                  total: Math.round(cat.total), monthlyAvg: Math.round(cat.monthly_average || cat.total / 12), isOneOff: false,
+                  total: cat.total, monthlyAvg: cat.monthly_average || cat.total / 12, isOneOff: false,
                 }));
 
                 const freshPriorYear: PriorYearData = {
-                  revenue: { total: Math.round(totalRevenue), byMonth: roundedRevenueByMonth, byLine: revenueByLine },
+                  revenue: { total: totalRevenue, byMonth: freshPriorFY.revenue_by_month || {}, byLine: revenueByLine },
                   cogs: {
-                    total: Math.round(totalCogs),
-                    percentOfRevenue: totalRevenue ? Math.round((totalCogs / totalRevenue) * 1000) / 10 : 0,
-                    byMonth: {}, byLine: cogsByLine,
+                    total: totalCogs,
+                    percentOfRevenue: totalRevenue ? (totalCogs / totalRevenue) * 100 : 0,
+                    byMonth: freshPriorFY.cogs_by_month || {}, byLine: cogsByLine,
                   },
                   grossProfit: {
-                    total: Math.round(freshPriorFY.gross_profit || (totalRevenue - totalCogs)),
-                    percent: Math.round((freshPriorFY.gross_margin_percent || 0) * 10) / 10 ||
-                      (totalRevenue ? Math.round(((totalRevenue - totalCogs) / totalRevenue) * 1000) / 10 : 0),
+                    total: freshPriorFY.gross_profit || (totalRevenue - totalCogs),
+                    percent: freshPriorFY.gross_margin_percent || (totalRevenue ? ((totalRevenue - totalCogs) / totalRevenue) * 100 : 0),
                     byMonth: {},
                   },
                   opex: {
-                    total: Math.round(totalOpex), byLine: opexByLine,
-                    byMonth: Object.fromEntries(Object.entries(freshPriorFY.opex_by_month || {}).map(([k, v]) => [k, Math.round(v as number)])),
+                    total: totalOpex, byLine: opexByLine,
+                    byMonth: freshPriorFY.opex_by_month || {},
                   },
                   seasonalityPattern: freshPriorFY.seasonality_pattern?.length === 12
-                    ? freshPriorFY.seasonality_pattern : Array(12).fill(8.33),
+                    ? freshPriorFY.seasonality_pattern : Array(12).fill(100 / 12),
                 };
 
                 actionsRef.current.setPriorYear(freshPriorYear);
@@ -415,7 +395,7 @@ export function ForecastWizardV4({
                   opex: { total: Math.round(totalOpex), byMonth: {}, byLine: opexByLine },
                   seasonalityPattern: savedAssumptions.revenue?.seasonalityPattern?.length === 12
                     ? savedAssumptions.revenue.seasonalityPattern
-                    : Array(12).fill(8.33),
+                    : Array(12).fill(100 / 12),
                 };
 
                 actionsRef.current.setPriorYear(priorYear);
@@ -479,7 +459,7 @@ export function ForecastWizardV4({
                     byMonth: actualsSummary.opex.byMonth || {},
                     byLine: actualsSummary.opex.byLine || [],
                   },
-                  seasonalityPattern: actualsSummary.seasonalityPattern || Array(12).fill(8.33),
+                  seasonalityPattern: actualsSummary.seasonalityPattern || Array(12).fill(100 / 12),
                 };
                 priorYearFromForecast = true;
                 console.log('[ForecastWizardV4] Loaded prior year from locked forecast actuals:', {
@@ -621,23 +601,18 @@ export function ForecastWizardV4({
             // Only fall back to YTD if no prior FY data exists
             const sourceRevenueLines = priorRevenueLines.length > 0 ? priorRevenueLines : ytdRevenueLines;
 
+            // Preserve full precision — round only at display layer (formatCurrency)
             revenueByLine = sourceRevenueLines.map((line: {
               account_name: string;
               category: string;
               total: number;
               by_month: Record<string, number>;
-            }, idx: number) => {
-              const roundedByMonth: Record<string, number> = {};
-              Object.entries(line.by_month || {}).forEach(([key, val]) => {
-                roundedByMonth[key] = Math.round(val);
-              });
-              return {
-                id: `revenue-${idx}`,
-                name: line.account_name,
-                total: Math.round(line.total),
-                byMonth: roundedByMonth,
-              };
-            });
+            }, idx: number) => ({
+              id: `revenue-${idx}`,
+              name: line.account_name,
+              total: line.total,
+              byMonth: line.by_month || {},
+            }));
 
             const ytdCogsLines = currentYTDData?.cogs_lines || [];
             const priorCogsLines = priorFY?.cogs_lines || [];
@@ -649,19 +624,13 @@ export function ForecastWizardV4({
               total: number;
               by_month: Record<string, number>;
               percent_of_revenue: number;
-            }, idx: number) => {
-              const roundedByMonth: Record<string, number> = {};
-              Object.entries(line.by_month || {}).forEach(([key, val]) => {
-                roundedByMonth[key] = Math.round(val);
-              });
-              return {
-                id: `cogs-${idx}`,
-                name: line.account_name,
-                total: Math.round(line.total),
-                byMonth: roundedByMonth,
-                percentOfRevenue: Math.round(line.percent_of_revenue * 10) / 10,
-              };
-            });
+            }, idx: number) => ({
+              id: `cogs-${idx}`,
+              name: line.account_name,
+              total: line.total,
+              byMonth: line.by_month || {},
+              percentOfRevenue: line.percent_of_revenue || 0,
+            }));
           } else if (savedAssumptions) {
             // Fall back to saved assumptions when Xero data unavailable
             console.log('[ForecastWizardV4] No fresh Xero data, reconstructing from saved assumptions');
@@ -693,26 +662,10 @@ export function ForecastWizardV4({
 
           console.log('[ForecastWizardV4] Revenue lines:', revenueByLine.length, 'COGS lines:', cogsByLine.length);
 
-          // Round prior FY revenue by month
-          const rawPriorRevenueByMonth = priorFY?.revenue_by_month || {};
-          const roundedPriorRevenueByMonth: Record<string, number> = {};
-          Object.entries(rawPriorRevenueByMonth).forEach(([key, val]) => {
-            roundedPriorRevenueByMonth[key] = Math.round(val as number);
-          });
-
-          // Round prior FY COGS by month
-          const rawPriorCogsByMonth = priorFY?.cogs_by_month || {};
-          const roundedPriorCogsByMonth: Record<string, number> = {};
-          Object.entries(rawPriorCogsByMonth).forEach(([key, val]) => {
-            roundedPriorCogsByMonth[key] = Math.round(val as number);
-          });
-
-          // Round prior FY OpEx by month
-          const rawPriorOpexByMonth = priorFY?.opex_by_month || {};
-          const roundedPriorOpexByMonth: Record<string, number> = {};
-          Object.entries(rawPriorOpexByMonth).forEach(([key, val]) => {
-            roundedPriorOpexByMonth[key] = Math.round(val as number);
-          });
+          // Preserve full precision — no rounding in data layer
+          const priorRevenueByMonth = priorFY?.revenue_by_month || {};
+          const priorCogsByMonth = priorFY?.cogs_by_month || {};
+          const priorOpexByMonth = priorFY?.opex_by_month || {};
 
           // Calculate totals - prefer Xero data, fall back to saved assumptions
           // Use ?? (not ||) so that 0 is treated as a valid value, not falsy
@@ -735,8 +688,8 @@ export function ForecastWizardV4({
             opexByLine = priorFY.operating_expenses_by_category.map((cat: { category: string; account_name: string; total: number; monthly_average: number }, idx: number) => ({
               id: `opex-${idx}`,
               name: cat.account_name || cat.category,
-              total: Math.round(cat.total),
-              monthlyAvg: Math.round(cat.monthly_average || (cat.total / 12)),
+              total: cat.total,
+              monthlyAvg: cat.monthly_average || (cat.total / 12),
               isOneOff: false,
             }));
           } else if (savedAssumptions?.opex?.lines?.length > 0) {
@@ -754,34 +707,35 @@ export function ForecastWizardV4({
             }));
           }
 
+          // Preserve full precision from Xero — round only at display layer
           const priorYear: PriorYearData = {
             revenue: {
-              total: Math.round(totalRevenue),
-              byMonth: roundedPriorRevenueByMonth,
+              total: totalRevenue,
+              byMonth: priorRevenueByMonth,
               byLine: revenueByLine,
             },
             cogs: {
-              total: Math.round(totalCogs),
-              percentOfRevenue: totalRevenue ? Math.round((totalCogs / totalRevenue) * 1000) / 10 : 0,
-              byMonth: roundedPriorCogsByMonth,
+              total: totalCogs,
+              percentOfRevenue: totalRevenue ? (totalCogs / totalRevenue) * 100 : 0,
+              byMonth: priorCogsByMonth,
               byLine: cogsByLine,
             },
             grossProfit: {
-              total: Math.round((priorFY?.gross_profit || 0) || (totalRevenue - totalCogs)),
-              percent: Math.round((priorFY?.gross_margin_percent || 0) * 10) / 10 ||
-                (totalRevenue ? Math.round(((totalRevenue - totalCogs) / totalRevenue) * 1000) / 10 : 0),
+              total: (priorFY?.gross_profit || 0) || (totalRevenue - totalCogs),
+              percent: (priorFY?.gross_margin_percent || 0) ||
+                (totalRevenue ? ((totalRevenue - totalCogs) / totalRevenue) * 100 : 0),
               byMonth: {},
             },
             opex: {
-              total: Math.round(totalOpex),
-              byMonth: roundedPriorOpexByMonth,
+              total: totalOpex,
+              byMonth: priorOpexByMonth,
               byLine: opexByLine,
             },
             seasonalityPattern: priorFY?.seasonality_pattern?.length === 12
               ? priorFY.seasonality_pattern
               : savedAssumptions?.revenue?.seasonalityPattern?.length === 12
                 ? savedAssumptions.revenue.seasonalityPattern
-                : Array(12).fill(8.33),
+                : Array(12).fill(100 / 12),
           };
 
           console.log('[ForecastWizardV4] Constructed priorYear:', {
@@ -1351,15 +1305,15 @@ export function ForecastWizardV4({
             });
 
             const rawPriorRevenueByMonth = priorFY?.revenue_by_month || {};
-            const roundedPriorRevenueByMonth: Record<string, number> = {};
+            const priorRevenueByMonth: Record<string, number> = {};
             Object.entries(rawPriorRevenueByMonth).forEach(([key, val]) => {
-              roundedPriorRevenueByMonth[key] = Math.round(val as number);
+              priorRevenueByMonth[key] = Math.round(val as number);
             });
 
             const priorYear: PriorYearData = {
               revenue: {
                 total: Math.round(priorFY?.total_revenue || 0),
-                byMonth: roundedPriorRevenueByMonth,
+                byMonth: priorRevenueByMonth,
                 byLine: revenueByLine,
               },
               cogs: {
@@ -1388,7 +1342,7 @@ export function ForecastWizardV4({
               },
               seasonalityPattern: priorFY?.seasonality_pattern?.length === 12
                 ? priorFY.seasonality_pattern
-                : Array(12).fill(8.33),
+                : Array(12).fill(100 / 12),
             };
 
             const team: TeamMember[] = (teamData.employees || []).map((emp: any) => {
