@@ -84,32 +84,30 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // ===== 1. Resolve forecast ID =====
+    // ===== 1. Resolve dual business IDs and forecast ID =====
+    const ids = await resolveBusinessIds(supabase, business_id)
+
     let forecastId = budget_forecast_id
     if (!forecastId) {
-      // Resolve business_profiles.id from businesses.id
-      const idsToTry = await resolveBusinessIds(supabase, business_id)
-      for (const id of idsToTry) {
-        const { data: forecast } = await supabase
-          .from('financial_forecasts')
-          .select('id')
-          .eq('business_id', id)
-          .eq('fiscal_year', fiscal_year)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (forecast) { forecastId = forecast.id; break }
-      }
+      const { data: forecast } = await supabase
+        .from('financial_forecasts')
+        .select('id')
+        .in('business_id', ids.all)
+        .eq('fiscal_year', fiscal_year)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (forecast) { forecastId = forecast.id }
     }
 
     // ===== 2. Fetch DB data in parallel =====
     const [plResult, budgetResult, mappingsResult, forecastEmpResult, forecastSettingsResult] = await Promise.all([
-      // Actuals from xero_pl_lines
+      // Actuals from xero_pl_lines (search both ID formats)
       supabase
         .from('xero_pl_lines')
         .select('account_name, monthly_values')
-        .eq('business_id', business_id),
+        .in('business_id', ids.all),
       // Budget from forecast_pl_lines
       forecastId
         ? supabase
@@ -259,9 +257,10 @@ export async function POST(request: NextRequest) {
       const { data: connection } = await supabase
         .from('xero_connections')
         .select('*')
-        .eq('business_id', business_id)
+        .in('business_id', ids.all)
         .eq('is_active', true)
-        .single()
+        .limit(1)
+        .maybeSingle()
 
       if (connection) {
         const tokenResult = await getValidAccessToken(connection, supabase)

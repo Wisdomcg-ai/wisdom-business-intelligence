@@ -96,17 +96,12 @@ export default function ReportSettingsPanel({
     async function loadData() {
       const supabase = createClient()
       // Resolve business_profiles.id from businesses.id
-      const idsToTry = await resolveBusinessIds(supabase, businessId)
-      let forecastRes: any = { data: [] }
-      for (const id of idsToTry) {
-        const res = await supabase
-          .from('financial_forecasts')
-          .select('id, name, fiscal_year, forecast_type, is_active')
-          .eq('business_id', id)
-          .order('created_at', { ascending: false })
-        if (res.data && res.data.length > 0) { forecastRes = res; break }
-        forecastRes = res // keep last result
-      }
+      const ids = await resolveBusinessIds(supabase, businessId)
+      const forecastRes = await supabase
+        .from('financial_forecasts')
+        .select('id, name, fiscal_year, forecast_type, is_active')
+        .in('business_id', ids.all)
+        .order('created_at', { ascending: false })
       const [, mappingRes] = await Promise.all([
         Promise.resolve(forecastRes),
         supabase

@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,33 +47,17 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
 
     if (forecast) {
+      // Resolve both ID formats so access check works regardless of which was stored
+      const ids = await resolveBusinessIds(supabaseAdmin, forecast.business_id)
       const { data: bizAccess } = await supabase
         .from('businesses')
         .select('id')
-        .or(`id.eq.${forecast.business_id},owner_id.eq.${user.id},assigned_coach_id.eq.${user.id}`)
+        .in('id', ids.all)
+        .or(`owner_id.eq.${user.id},assigned_coach_id.eq.${user.id}`)
         .limit(1)
         .maybeSingle()
 
-      // Also check via business_profiles
-      let hasAccess = !!bizAccess
-      if (!hasAccess) {
-        const { data: profileBiz } = await supabaseAdmin
-          .from('business_profiles')
-          .select('business_id')
-          .eq('id', forecast.business_id)
-          .maybeSingle()
-        if (profileBiz) {
-          const { data: bizAccess2 } = await supabase
-            .from('businesses')
-            .select('id')
-            .eq('id', profileBiz.business_id)
-            .or(`owner_id.eq.${user.id},assigned_coach_id.eq.${user.id}`)
-            .maybeSingle()
-          hasAccess = !!bizAccess2
-        }
-      }
-
-      if (!hasAccess) {
+      if (!bizAccess) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }

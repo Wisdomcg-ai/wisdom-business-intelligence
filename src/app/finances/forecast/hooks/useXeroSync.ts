@@ -171,14 +171,12 @@ export function useXeroSync({
           .eq('forecast_id', forecastId)
       }
 
-      // Delete all forecasts for this business (try both businesses.id and business_profiles.id)
-      const idsToTry = await resolveBusinessIds(supabase, businessId)
-      for (const id of idsToTry) {
-        await supabase
-          .from('financial_forecasts')
-          .delete()
-          .eq('business_id', id)
-      }
+      // Delete all forecasts for this business (resolve both businesses.id and business_profiles.id)
+      const ids = await resolveBusinessIds(supabase, businessId)
+      await supabase
+        .from('financial_forecasts')
+        .delete()
+        .in('business_id', ids.all)
 
       // Disconnect Xero
       await supabase

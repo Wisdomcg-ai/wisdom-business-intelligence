@@ -46,19 +46,15 @@ export default function AccountMappingEditor({
     async function loadForecastLines() {
       const supabase = createClient()
       // Get the active forecast (resolve business_profiles.id from businesses.id)
-      const idsToTry = await resolveBusinessIds(supabase, businessId)
-      let forecast: any = null
-      for (const id of idsToTry) {
-        const { data: fc } = await supabase
-          .from('financial_forecasts')
-          .select('id')
-          .eq('business_id', id)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (fc) { forecast = fc; break }
-      }
+      const ids = await resolveBusinessIds(supabase, businessId)
+      const { data: forecast } = await supabase
+        .from('financial_forecasts')
+        .select('id')
+        .in('business_id', ids.all)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
       if (forecast) {
         const { data: lines } = await supabase

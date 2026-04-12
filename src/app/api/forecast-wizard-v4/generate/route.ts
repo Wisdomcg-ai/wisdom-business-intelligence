@@ -1,6 +1,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,17 +79,9 @@ export async function POST(request: Request) {
     }
 
     // financial_forecasts.business_id FK references business_profiles(id),
-    // but the wizard passes businesses.id — translate it
-    let profileId = businessId
-    const { data: profile } = await supabase
-      .from('business_profiles')
-      .select('id')
-      .eq('business_id', businessId)
-      .maybeSingle()
-
-    if (profile?.id) {
-      profileId = profile.id
-    }
+    // but the wizard passes businesses.id — resolve both IDs
+    const ids = await resolveBusinessIds(supabase, businessId)
+    const profileId = ids.profileId
 
     // Build the forecast data to upsert
     const year1 = summary?.year1 || {}

@@ -61,17 +61,13 @@ export async function GET(
       .order('created_at', { ascending: true })
 
     // Get forecast data if available (resolve business_profiles.id from businesses.id)
-    const idsToTry = await resolveBusinessIds(supabase, businessId)
-    let forecasts: any[] | null = null
-    for (const id of idsToTry) {
-      const { data: fcs } = await supabase
-        .from('financial_forecasts')
-        .select('id, created_at, version_name, forecast_data')
-        .eq('business_id', id)
-        .order('created_at', { ascending: false })
-        .limit(10)
-      if (fcs && fcs.length > 0) { forecasts = fcs; break }
-    }
+    const ids = await resolveBusinessIds(supabase, businessId)
+    const { data: forecasts } = await supabase
+      .from('financial_forecasts')
+      .select('id, created_at, version_name, forecast_data')
+      .in('business_id', ids.all)
+      .order('created_at', { ascending: false })
+      .limit(10)
 
     // Process session frequency data (by month)
     const sessionsByMonth = processSessionsByMonth(sessions || [])

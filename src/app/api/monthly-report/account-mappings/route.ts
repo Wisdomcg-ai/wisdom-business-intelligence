@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,11 +22,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 })
     }
 
-    // Fetch all existing mappings for this business
+    // Resolve dual business IDs (businesses.id vs business_profiles.id)
+    const ids = await resolveBusinessIds(supabase, businessId)
+
+    // Fetch all existing mappings for this business (search both ID formats)
     const { data: mappings, error: mappingsError } = await supabase
       .from('account_mappings')
       .select('*')
-      .eq('business_id', businessId)
+      .in('business_id', ids.all)
       .order('report_category', { ascending: true })
       .order('xero_account_name', { ascending: true })
 
@@ -38,7 +42,7 @@ export async function GET(request: NextRequest) {
     const { data: xeroAccounts, error: xeroError } = await supabase
       .from('xero_pl_lines')
       .select('account_name, account_type, section')
-      .eq('business_id', businessId)
+      .in('business_id', ids.all)
 
     if (xeroError) {
       console.error('[Account Mappings] Error fetching xero_pl_lines:', xeroError)

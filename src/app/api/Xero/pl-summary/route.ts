@@ -137,18 +137,18 @@ export async function GET(request: NextRequest) {
 
     // Get ALL forecasts for this business/fiscal year to find P&L lines
     // Resolve business_profiles.id from businesses.id
-    const idsToTry = await resolveBusinessIds(supabase, businessId);
+    const ids = await resolveBusinessIds(supabase, businessId);
     let forecasts: any[] | null = null;
     let forecastError: any = null;
-    for (const id of idsToTry) {
+    {
       const { data: fcs, error: err } = await supabase
         .from('financial_forecasts')
         .select('id, is_active')
-        .eq('business_id', id)
+        .in('business_id', ids.all)
         .eq('fiscal_year', fiscalYear)
         .order('is_active', { ascending: false })
         .order('updated_at', { ascending: false });
-      if (fcs && fcs.length > 0) { forecasts = fcs; break; }
+      if (fcs && fcs.length > 0) { forecasts = fcs; }
       if (err) forecastError = err;
     }
 
@@ -162,17 +162,14 @@ export async function GET(request: NextRequest) {
 
     // If no forecasts found, try without fiscal_year filter
     if (!forecasts || forecasts.length === 0) {
-      for (const id of idsToTry) {
-        const { data: anyForecasts } = await supabase
-          .from('financial_forecasts')
-          .select('id, fiscal_year, is_active')
-          .eq('business_id', id)
-          .order('updated_at', { ascending: false })
-          .limit(5);
-        if (anyForecasts && anyForecasts.length > 0) {
-          console.log('[Xero P&L Summary] All forecasts for business:', anyForecasts);
-          break;
-        }
+      const { data: anyForecasts } = await supabase
+        .from('financial_forecasts')
+        .select('id, fiscal_year, is_active')
+        .in('business_id', ids.all)
+        .order('updated_at', { ascending: false })
+        .limit(5);
+      if (anyForecasts && anyForecasts.length > 0) {
+        console.log('[Xero P&L Summary] All forecasts for business:', anyForecasts);
       }
     }
 

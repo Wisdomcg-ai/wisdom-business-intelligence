@@ -167,22 +167,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'business_id and fiscal_year required' }, { status: 400 })
     }
 
-    // Resolve business_profiles.id from businesses.id
-    const idsToTry = await resolveBusinessIds(supabase, businessId)
-    let versions: any[] | null = null
-    let error: any = null
-    for (const id of idsToTry) {
-      const { data: v, error: err } = await supabase
-        .from('financial_forecasts')
-        .select('*')
-        .eq('business_id', id)
-        .eq('fiscal_year', parseInt(fiscalYear))
-        .order('forecast_type', { ascending: true })
-        .order('version_number', { ascending: false })
-      if (v && v.length > 0) { versions = v; break }
-      if (err) error = err
-      if (!v || v.length === 0) versions = v // keep empty result for last iteration
-    }
+    // Resolve both business ID formats so we find forecasts stored under either
+    const ids = await resolveBusinessIds(supabase, businessId)
+
+    const { data: versions, error } = await supabase
+      .from('financial_forecasts')
+      .select('*')
+      .in('business_id', ids.all)
+      .eq('fiscal_year', parseInt(fiscalYear))
+      .order('forecast_type', { ascending: true })
+      .order('version_number', { ascending: false })
 
     if (error) {
       console.error('Error fetching versions from Supabase:', error)

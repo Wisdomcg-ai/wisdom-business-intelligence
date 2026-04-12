@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 
 export const dynamic = 'force-dynamic'
 
@@ -94,11 +95,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Resolve dual business IDs (businesses.id vs business_profiles.id)
+    const ids = await resolveBusinessIds(supabase, business_id)
+
     // Always fetch fiscal_year_start for parameterized FY range calculation
     const { data: profile } = await supabase
       .from('business_profiles')
       .select('id, fiscal_year_start')
-      .eq('business_id', business_id)
+      .eq('id', ids.profileId)
       .maybeSingle()
 
     const yearStartMonth: number = profile?.fiscal_year_start ?? DEFAULT_YEAR_START_MONTH
@@ -147,22 +151,16 @@ export async function POST(request: NextRequest) {
         .single()
       budgetForecast = fc
     } else {
-      // Try both profile ID and direct business_id to handle both FK patterns
-      const idsToTry = profile?.id ? [profile.id, business_id] : [business_id]
-
-      for (const id of idsToTry) {
-        const { data: fc } = await supabase
-          .from('financial_forecasts')
-          .select('id, name')
-          .eq('business_id', id)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (fc) {
-          budgetForecast = fc
-          break
-        }
+      const { data: fc } = await supabase
+        .from('financial_forecasts')
+        .select('id, name')
+        .in('business_id', ids.all)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (fc) {
+        budgetForecast = fc
       }
     }
 
@@ -178,7 +176,7 @@ export async function POST(request: NextRequest) {
     const { data: rawXeroLines, error: xeroErr } = await supabase
       .from('xero_pl_lines')
       .select('account_name, account_type, section, monthly_values')
-      .eq('business_id', business_id)
+      .in('business_id', ids.all)
 
     if (xeroErr) {
       console.error('[Full Year] Error loading xero_pl_lines:', xeroErr)

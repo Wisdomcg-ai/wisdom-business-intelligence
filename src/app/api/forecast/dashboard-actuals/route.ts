@@ -61,26 +61,17 @@ export async function GET(request: Request) {
     }
 
     // Dual-ID resolution — CRITICAL: financial_forecasts.business_id is FK to business_profiles.id
-    const idCandidates = await resolveBusinessIds(supabase, businessId)
+    const ids = await resolveBusinessIds(supabase, businessId)
 
-    // Find forecast using dual-ID candidates
-    let forecast: { id: string; business_id: string; fiscal_year: number } | null = null
-
-    for (const id of idCandidates) {
-      const { data, error } = await supabase
-        .from('financial_forecasts')
-        .select('id, business_id, fiscal_year')
-        .eq('business_id', id)
-        .eq('is_active', true)
-        .order('fiscal_year', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (!error && data) {
-        forecast = data
-        break
-      }
-    }
+    // Find forecast using dual-ID resolution
+    const { data: forecast, error: forecastError } = await supabase
+      .from('financial_forecasts')
+      .select('id, business_id, fiscal_year')
+      .in('business_id', ids.all)
+      .eq('is_active', true)
+      .order('fiscal_year', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     // No forecast found — not an error, business may not have one yet
     if (!forecast) {
@@ -101,21 +92,15 @@ export async function GET(request: Request) {
     const lines = plLines || []
 
     // Get last synced timestamp from financial_metrics
-    let lastSyncedAt: string | null = null
-    for (const id of idCandidates) {
-      const { data: metricsRow } = await supabase
-        .from('financial_metrics')
-        .select('updated_at')
-        .eq('business_id', id)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+    const { data: metricsRow } = await supabase
+      .from('financial_metrics')
+      .select('updated_at')
+      .in('business_id', ids.all)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-      if (metricsRow?.updated_at) {
-        lastSyncedAt = metricsRow.updated_at
-        break
-      }
-    }
+    const lastSyncedAt: string | null = metricsRow?.updated_at ?? null
 
     // Generate fiscal month keys in correct fiscal year order
     const monthKeys = generateFiscalMonthKeys(fiscalYear, yearStartMonth)

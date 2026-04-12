@@ -39,18 +39,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Get the latest forecast (resolve business_profiles.id from businesses.id)
-    const idsToTry = await resolveBusinessIds(supabase, businessId);
-    let forecast: any = null;
-    for (const id of idsToTry) {
-      const { data: fc } = await supabase
-        .from('financial_forecasts')
-        .select('id, fiscal_year')
-        .eq('business_id', id)
-        .order('fiscal_year', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (fc) { forecast = fc; break; }
-    }
+    const ids = await resolveBusinessIds(supabase, businessId);
+    const { data: forecast } = await supabase
+      .from('financial_forecasts')
+      .select('id, fiscal_year')
+      .in('business_id', ids.all)
+      .order('fiscal_year', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (!forecast) {
       console.log('[Xero accounts] No forecast found');

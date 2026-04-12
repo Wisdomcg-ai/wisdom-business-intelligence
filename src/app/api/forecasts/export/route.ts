@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { ExcelExportService } from '@/app/finances/forecast/services/excel-export-service'
 import { PDFExportService } from '@/app/finances/forecast/services/pdf-export-service'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,17 +46,29 @@ export async function GET(request: NextRequest) {
       .eq('id', forecastId)
       .single()
 
-    // Verify access - user owns forecast or is coach/admin
+    // Verify access - user owns forecast, has business access, or is coach/admin
     if (forecast && forecast.user_id !== user.id) {
-      const { data: roleData } = await supabase
-        .from('system_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .single()
+      // Resolve both ID formats so access check works regardless of which was stored
+      const ids = await resolveBusinessIds(supabaseAdmin, forecast.business_id)
+      const { data: bizAccess } = await supabase
+        .from('businesses')
+        .select('id')
+        .in('id', ids.all)
+        .or(`owner_id.eq.${user.id},assigned_coach_id.eq.${user.id}`)
+        .limit(1)
+        .maybeSingle()
 
-      const isCoachOrAdmin = roleData?.role === 'coach' || roleData?.role === 'super_admin'
-      if (!isCoachOrAdmin) {
-        return NextResponse.json({ error: 'Forbidden - Cannot access this forecast' }, { status: 403 })
+      if (!bizAccess) {
+        const { data: roleData } = await supabase
+          .from('system_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .single()
+
+        const isCoachOrAdmin = roleData?.role === 'coach' || roleData?.role === 'super_admin'
+        if (!isCoachOrAdmin) {
+          return NextResponse.json({ error: 'Forbidden - Cannot access this forecast' }, { status: 403 })
+        }
       }
     }
 

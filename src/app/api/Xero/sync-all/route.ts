@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { encrypt, decrypt } from '@/lib/utils/encryption';
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 minutes max for batch processing
@@ -256,11 +257,14 @@ async function syncConnection(connection: any): Promise<SyncResult> {
 
     // Upsert P&L lines to database
     if (plLines.length > 0) {
+      // Resolve both ID formats so we clean up lines stored under either ID
+      const ids = await resolveBusinessIds(supabase, businessId);
+
       // Delete existing lines for this business + verify before inserting
       const { error: deleteError } = await supabase
         .from('xero_pl_lines')
         .delete()
-        .eq('business_id', businessId);
+        .in('business_id', ids.all);
 
       if (deleteError) {
         console.error(`[Xero Sync] Delete failed for ${tenantName}:`, deleteError);
@@ -270,14 +274,14 @@ async function syncConnection(connection: any): Promise<SyncResult> {
       const { count } = await supabase
         .from('xero_pl_lines')
         .select('*', { count: 'exact', head: true })
-        .eq('business_id', businessId);
+        .in('business_id', ids.all);
 
       if (count && count > 0) {
         console.warn(`[Xero Sync] ${count} rows still exist after delete for ${tenantName} — retrying delete`);
         await supabase
           .from('xero_pl_lines')
           .delete()
-          .eq('business_id', businessId);
+          .in('business_id', ids.all);
       }
 
       // Insert new lines (fallback without account_code if column not yet added)

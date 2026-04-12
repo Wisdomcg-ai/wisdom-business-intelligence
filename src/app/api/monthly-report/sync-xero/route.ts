@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -122,10 +123,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
     }
 
+    // Resolve dual business IDs (businesses.id vs business_profiles.id)
+    const ids = await resolveBusinessIds(supabaseAdmin, business_id);
+
     const { data: business } = await supabaseAdmin
       .from('businesses')
       .select('id, owner_id, assigned_coach_id')
-      .eq('id', business_id)
+      .eq('id', ids.bizId)
       .maybeSingle();
 
     if (!business) {
@@ -138,8 +142,9 @@ export async function POST(request: NextRequest) {
     const { data: connection, error: connError } = await supabaseAdmin
       .from('xero_connections')
       .select('*')
-      .eq('business_id', business_id)
+      .in('business_id', ids.all)
       .eq('is_active', true)
+      .limit(1)
       .maybeSingle();
 
     if (connError || !connection) {
@@ -248,7 +253,7 @@ export async function POST(request: NextRequest) {
 
       for (const [name, data] of monthAccounts) {
         const existing = allAccounts.get(name) || {
-          business_id,
+          business_id: ids.profileId,
           account_name: name,
           account_code: accountCodeLookup.get(name) || null,
           account_type: mapSectionToType(data.section),
@@ -277,10 +282,11 @@ export async function POST(request: NextRequest) {
     if (plLines.length > 0) {
       // Use RPC or sequential delete+insert. Delete first, verify empty, then insert.
       // This prevents duplicates from concurrent sync operations.
+      // Delete rows under BOTH ID formats to clean up legacy data
       const { error: deleteError } = await supabaseAdmin
         .from('xero_pl_lines')
         .delete()
-        .eq('business_id', business_id);
+        .in('business_id', ids.all);
 
       if (deleteError) {
         console.error('[Sync Xero] Delete failed:', deleteError);
@@ -294,14 +300,14 @@ export async function POST(request: NextRequest) {
       const { count } = await supabaseAdmin
         .from('xero_pl_lines')
         .select('*', { count: 'exact', head: true })
-        .eq('business_id', business_id);
+        .in('business_id', ids.all);
 
       if (count && count > 0) {
         console.warn(`[Sync Xero] ${count} rows still exist after delete — retrying delete`);
         await supabaseAdmin
           .from('xero_pl_lines')
           .delete()
-          .eq('business_id', business_id);
+          .in('business_id', ids.all);
       }
 
       // Try inserting with account_code; if column doesn't exist yet, retry without it

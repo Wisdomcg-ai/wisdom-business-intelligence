@@ -30,19 +30,17 @@ export async function GET(request: NextRequest) {
     }
 
     // 1. Find active forecast (resolve business_profiles.id from businesses.id)
-    const idsToTry = await resolveBusinessIds(supabaseAdmin, business_id)
+    const ids = await resolveBusinessIds(supabaseAdmin, business_id)
     let forecast: any = null
-    for (const id of idsToTry) {
-      const { data: fc } = await supabaseAdmin
-        .from('financial_forecasts')
-        .select('id, name, fiscal_year, is_active, is_completed, created_at, updated_at')
-        .eq('business_id', id)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (fc) { forecast = fc; break }
-    }
+    const { data: fc } = await supabaseAdmin
+      .from('financial_forecasts')
+      .select('id, name, fiscal_year, is_active, is_completed, created_at, updated_at')
+      .in('business_id', ids.all)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (fc) { forecast = fc }
 
     // 2. Get forecast_pl_lines
     let forecastLines: any[] = []

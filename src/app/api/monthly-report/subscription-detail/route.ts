@@ -267,18 +267,16 @@ export async function POST(request: NextRequest) {
 
       if (!forecastId) {
         // Resolve business_profiles.id from businesses.id
-        const idsToTry = await resolveBusinessIds(supabase, business_id)
-        for (const id of idsToTry) {
-          const { data: fc } = await supabase
-            .from('financial_forecasts')
-            .select('id')
-            .eq('business_id', id)
-            .eq('is_active', true)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-          if (fc) { forecastId = fc.id; break }
-        }
+        const ids = await resolveBusinessIds(supabase, business_id)
+        const { data: fc } = await supabase
+          .from('financial_forecasts')
+          .select('id')
+          .in('business_id', ids.all)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (fc) { forecastId = fc.id }
       }
 
       if (forecastId) {

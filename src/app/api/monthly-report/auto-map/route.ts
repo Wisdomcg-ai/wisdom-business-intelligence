@@ -44,18 +44,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 })
     }
 
+    // Resolve dual business IDs (businesses.id vs business_profiles.id)
+    const ids = await resolveBusinessIds(supabase, business_id)
+
     // 1. Query all Xero accounts including account_code (if column exists)
     let { data: xeroAccounts, error: xeroError } = await supabase
       .from('xero_pl_lines')
       .select('account_name, account_code, account_type, section')
-      .eq('business_id', business_id)
+      .in('business_id', ids.all)
 
     // Fallback: if account_code column doesn't exist yet
     if (xeroError?.message?.includes('account_code')) {
       const fallback = await supabase
         .from('xero_pl_lines')
         .select('account_name, account_type, section')
-        .eq('business_id', business_id)
+        .in('business_id', ids.all)
       xeroAccounts = (fallback.data || []).map(a => ({ ...a, account_code: null })) as any
       xeroError = fallback.error
     }
@@ -93,22 +96,18 @@ export async function POST(request: NextRequest) {
     let matchedByCode = 0
     let matchedByName = 0
 
-    // Resolve business_profiles.id from businesses.id
-    const idsToTry = await resolveBusinessIds(supabase, business_id)
     let activeForecast: any = null
     let forecastError: any = null
-    for (const id of idsToTry) {
-      const { data: fc, error: err } = await supabase
-        .from('financial_forecasts')
-        .select('id')
-        .eq('business_id', id)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (fc) { activeForecast = fc; break }
-      if (err) forecastError = err
-    }
+    const { data: fc, error: err } = await supabase
+      .from('financial_forecasts')
+      .select('id')
+      .in('business_id', ids.all)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (fc) { activeForecast = fc }
+    if (err) { forecastError = err }
 
     if (forecastError) {
       console.error('[Auto-Map] Error fetching active forecast:', forecastError)
