@@ -1,7 +1,9 @@
 import * as Sentry from "@sentry/nextjs";
 
+const SENTRY_DSN = process.env.NEXT_PUBLIC_SENTRY_DSN || "https://5f617384407d5579ae786ca49693fb1f@o4510784570916864.ingest.us.sentry.io/4510789719162880";
+
 Sentry.init({
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  dsn: SENTRY_DSN,
 
   // Performance monitoring — sample 10% of transactions in production
   tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
@@ -13,9 +15,6 @@ Sentry.init({
   integrations: [
     Sentry.replayIntegration(),
   ],
-
-  // Enable in all environments (DSN controls which project receives errors)
-  enabled: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
 
   // Filter out noisy errors
   ignoreErrors: [
