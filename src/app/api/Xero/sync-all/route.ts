@@ -183,7 +183,7 @@ async function syncConnection(connection: any): Promise<SyncResult> {
 
     console.log(`[Xero Sync] Syncing ${tenantName}: base month ${recentFrom}`);
 
-    const reportUrl1 = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${recentFrom}&toDate=${recentTo}&periods=11&timeframe=MONTH&standardLayout=true&paymentsOnly=false`;
+    const reportUrl1 = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${recentFrom}&toDate=${recentTo}&periods=11&timeframe=MONTH&standardLayout=false&paymentsOnly=false`;
     const reportResponse1 = await fetch(reportUrl1, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -227,7 +227,7 @@ async function syncConnection(connection: any): Promise<SyncResult> {
     const olderFrom = `${olderYear}-${String(olderMonthNum).padStart(2, '0')}-01`;
     const olderTo = new Date(olderYear, olderMonthNum, 0).toISOString().split('T')[0]; // last day of that month
 
-    const reportUrl2 = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${olderFrom}&toDate=${olderTo}&periods=11&timeframe=MONTH&standardLayout=true&paymentsOnly=false`;
+    const reportUrl2 = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${olderFrom}&toDate=${olderTo}&periods=11&timeframe=MONTH&standardLayout=false&paymentsOnly=false`;
     try {
       const reportResponse2 = await fetch(reportUrl2, {
         headers: {
