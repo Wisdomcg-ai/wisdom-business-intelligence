@@ -160,8 +160,6 @@ function aggregatePeriod(
 
       switch (line.account_type) {
         case 'revenue':
-        case 'other_income':
-          // Include other_income in revenue to match Xero's "Total Income"
           revenueByMonth[mk] += val
           totalRevenue += val
           break
@@ -170,16 +168,16 @@ function aggregatePeriod(
           totalCogs += val
           break
         case 'opex':
-        case 'other_expense':
-          // Include other_expense in opex to match Xero's "Total Expenses"
           opexByMonth[mk] += val
           totalOpex += val
           break
+        // other_income and other_expense excluded — matches Xero's
+        // separate "Revenue" vs "Other Income" sections
       }
     }
 
     // Build line items for revenue and COGS
-    if ((line.account_type === 'revenue' || line.account_type === 'other_income') && lineTotal !== 0) {
+    if (line.account_type === 'revenue' && lineTotal !== 0) {
       revenueLines.push({
         account_name: line.account_name,
         category: 'Revenue',
@@ -194,7 +192,7 @@ function aggregatePeriod(
         total: lineTotal,
         by_month: Object.fromEntries(monthKeys.map(mk => [mk, values[mk] || 0])),
       })
-    } else if ((line.account_type === 'opex' || line.account_type === 'other_expense') && lineTotal !== 0) {
+    } else if (line.account_type === 'opex' && lineTotal !== 0) {
       opexAccounts[line.account_name] = {
         total: lineTotal,
         account_name: line.account_name,
