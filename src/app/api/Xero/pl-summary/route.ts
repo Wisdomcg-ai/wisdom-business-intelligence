@@ -239,19 +239,33 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const priorFYSummary = calculatePeriodSummary(dedupedLines, priorFY.startMonth, priorFY.endMonth, `FY${fiscalYear - 1}`);
-    console.log('[Xero P&L Summary] Prior FY summary:', priorFYSummary ? {
-      revenue: priorFYSummary.total_revenue,
-      cogs: priorFYSummary.total_cogs,
-      opex: priorFYSummary.operating_expenses,
-      seasonality: priorFYSummary.seasonality_pattern?.slice(0, 3),
-    } : 'null');
+    // Determine if this is an extended forecast (planning season: within 3 months of current FY end)
+    // In that case, prior year = FY BEFORE current (complete), and YTD = current FY actuals
+    const nowDate = new Date();
+    const currentCalMonth = nowDate.getMonth() + 1;
+    const currentCalYear = nowDate.getFullYear();
+    // Current FY: for yearStartMonth=7, Apr 2026 is in FY2026
+    const currentFYNum = currentCalMonth >= 7 ? currentCalYear + 1 : currentCalYear;
+    const isExtendedForecast = fiscalYear === currentFYNum + 1;
+
+    let priorFYBounds: ReturnType<typeof getFiscalYearBoundaries>;
+    let ytdFiscalYear: number;
+
+    if (isExtendedForecast) {
+      // Extended: prior = FY before current (complete 12 months), YTD = current FY
+      priorFYBounds = getFiscalYearBoundaries(currentFYNum - 1);
+      ytdFiscalYear = currentFYNum;
+      console.log('[Xero P&L Summary] Extended forecast detected — prior FY:', currentFYNum - 1, 'YTD from FY:', currentFYNum);
+    } else {
+      priorFYBounds = priorFY;
+      ytdFiscalYear = fiscalYear;
+    }
+
+    const priorFYSummary = calculatePeriodSummary(dedupedLines, priorFYBounds.startMonth, priorFYBounds.endMonth, `FY${isExtendedForecast ? currentFYNum - 1 : fiscalYear - 1}`);
 
     // Calculate current YTD summary
-    const ytdBoundaries = getCurrentYTDBoundaries(fiscalYear);
+    const ytdBoundaries = getCurrentYTDBoundaries(ytdFiscalYear);
     let currentYTD = null;
-
-    console.log('[Xero P&L Summary] YTD boundaries result:', ytdBoundaries);
 
     if (ytdBoundaries) {
       const ytdSummary = calculatePeriodSummary(dedupedLines, ytdBoundaries.startMonth, ytdBoundaries.endMonth, `FY${fiscalYear} YTD`);

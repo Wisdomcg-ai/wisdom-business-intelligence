@@ -189,49 +189,84 @@ export function getQuarterForMonth(calendarMonth: number, yearStartMonth: number
 
 /**
  * Calculate forecast periods for a fiscal year.
- * Replaces the hardcoded calculateForecastPeriods in forecast-service.ts.
+ *
+ * When in "planning season" (within 3 months of current FY end), the forecast
+ * is EXTENDED to cover both the remaining current FY and the full next FY.
+ * This creates a combined forecast:
+ *   - Apr (3 months left): 15-month forecast (Apr-Jun current + Jul-Jun next)
+ *   - May (2 months left): 14-month forecast (May-Jun current + Jul-Jun next)
+ *   - Jun (1 month left):  13-month forecast (Jun current + Jul-Jun next)
+ *
+ * The baseline (prior year) is always the fiscal year BEFORE the current FY,
+ * so coaches see a complete 12-month comparison.
  */
 export function calculateForecastPeriods(fiscalYear: number, yearStartMonth: number = DEFAULT_YEAR_START_MONTH) {
   const today = new Date()
+  const currentFY = getFiscalYear(today, yearStartMonth)
+  const currentFYStart = getFiscalYearStartDate(currentFY, yearStartMonth)
+  const currentFYEnd = getFiscalYearEndDate(currentFY, yearStartMonth)
+  const isInCurrentFY = today >= currentFYStart && today <= currentFYEnd
+
+  // Last complete month (for actuals cutoff)
+  const lastCompleteMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+  const lastCompleteStr = `${lastCompleteMonth.getFullYear()}-${String(lastCompleteMonth.getMonth() + 1).padStart(2, '0')}`
+  const forecastStartDate = new Date(today.getFullYear(), today.getMonth(), 1)
+  const forecastStartStr = `${forecastStartDate.getFullYear()}-${String(forecastStartDate.getMonth() + 1).padStart(2, '0')}`
+
+  // Planning season: within 3 months of current FY end, forecasting NEXT FY
+  const isPlanningSeason = isInCurrentFY && isNearYearEnd(today, yearStartMonth, 3)
+
+  if (isPlanningSeason && fiscalYear === currentFY + 1) {
+    // EXTENDED forecast: remaining current FY + full next FY
+    // Baseline = the FY BEFORE current (complete 12 months for comparison)
+    const baselineFY = currentFY - 1
+    const baselineKeys = generateFiscalMonthKeys(baselineFY, yearStartMonth)
+    const currentFYKeys = generateFiscalMonthKeys(currentFY, yearStartMonth)
+    const nextFYKeys = generateFiscalMonthKeys(fiscalYear, yearStartMonth)
+
+    return {
+      baseline_start_month: baselineKeys[0],
+      baseline_end_month: baselineKeys[baselineKeys.length - 1],
+      actual_start_month: currentFYKeys[0],
+      actual_end_month: lastCompleteStr,
+      forecast_start_month: forecastStartStr,
+      forecast_end_month: nextFYKeys[nextFYKeys.length - 1],
+      is_rolling: true,
+      is_extended: true,
+    }
+  }
+
+  // Standard: forecasting within the current FY (rolling)
   const fyStart = getFiscalYearStartDate(fiscalYear, yearStartMonth)
   const fyEnd = getFiscalYearEndDate(fiscalYear, yearStartMonth)
-
-  // Baseline is always the prior fiscal year
   const priorFYKeys = generateFiscalMonthKeys(fiscalYear - 1, yearStartMonth)
-  const baselineStart = priorFYKeys[0]
-  const baselineEnd = priorFYKeys[priorFYKeys.length - 1]
-
   const currentFYKeys = generateFiscalMonthKeys(fiscalYear, yearStartMonth)
   const fyStartStr = currentFYKeys[0]
   const fyEndStr = currentFYKeys[currentFYKeys.length - 1]
 
   if (today >= fyStart && today <= fyEnd) {
-    // Rolling forecast — split into actuals + remaining
-    const lastCompleteMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-    const lastCompleteStr = `${lastCompleteMonth.getFullYear()}-${String(lastCompleteMonth.getMonth() + 1).padStart(2, '0')}`
-    const forecastStart = new Date(today.getFullYear(), today.getMonth(), 1)
-    const forecastStartStr = `${forecastStart.getFullYear()}-${String(forecastStart.getMonth() + 1).padStart(2, '0')}`
-
     return {
-      baseline_start_month: baselineStart,
-      baseline_end_month: baselineEnd,
+      baseline_start_month: priorFYKeys[0],
+      baseline_end_month: priorFYKeys[priorFYKeys.length - 1],
       actual_start_month: fyStartStr,
       actual_end_month: lastCompleteStr,
       forecast_start_month: forecastStartStr,
       forecast_end_month: fyEndStr,
       is_rolling: true,
+      is_extended: false,
     }
   }
 
   // Not in FY yet — entire period is forecast
   return {
-    baseline_start_month: baselineStart,
-    baseline_end_month: baselineEnd,
+    baseline_start_month: priorFYKeys[0],
+    baseline_end_month: priorFYKeys[priorFYKeys.length - 1],
     actual_start_month: fyStartStr,
-    actual_end_month: priorFYKeys[priorFYKeys.length - 1], // placeholder
+    actual_end_month: priorFYKeys[priorFYKeys.length - 1],
     forecast_start_month: fyStartStr,
     forecast_end_month: fyEndStr,
     is_rolling: false,
+    is_extended: false,
   }
 }
 
