@@ -414,7 +414,7 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
   const buildMonthlyComparison = (): MonthlyComparison[] => {
     if (!priorYear) return [];
 
-    const fyStartYear = fiscalYear - 2; // For FY25, prior year starts Jul 2023
+    const fyStartYear = priorFY - 1; // FY2025 starts Jul 2024, so fyStartYear = 2024
     const comparison: MonthlyComparison[] = [];
 
     // Check if we have actual monthly data or need to derive from seasonality
