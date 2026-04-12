@@ -261,14 +261,37 @@ export async function GET(request: NextRequest) {
       ytdFiscalYear = fiscalYear;
     }
 
-    const priorFYSummary = calculatePeriodSummary(dedupedLines, priorFYBounds.startMonth, priorFYBounds.endMonth, `FY${isExtendedForecast ? currentFYNum - 1 : fiscalYear - 1}`);
+    // For prior year and YTD, use raw xero_pl_lines (24 months of data) instead of
+    // forecast_pl_lines which only has data synced to the specific forecast period.
+    // This ensures FY2025 data is available even when the forecast is for FY2027.
+    const { data: xeroRawLines } = await supabase
+      .from('xero_pl_lines')
+      .select('account_name, account_type, monthly_values')
+      .in('business_id', ids.all);
+
+    // Convert xero_pl_lines format to match forecast_pl_lines format for calculatePeriodSummary
+    const xeroAsPlLines = (xeroRawLines || []).map((xl: any) => ({
+      account_name: xl.account_name,
+      category: xl.account_type === 'revenue' ? 'Revenue'
+        : xl.account_type === 'cogs' ? 'Cost of Sales'
+        : xl.account_type === 'other_income' ? 'Other Income'
+        : xl.account_type === 'other_expense' ? 'Other Expenses'
+        : 'Operating Expenses',
+      actual_months: xl.monthly_values || {},
+    }));
+
+    // Use raw Xero data for prior year (has full 24 months), forecast lines for dedup logic
+    const linesForPriorYear = xeroAsPlLines.length > 0 ? xeroAsPlLines : dedupedLines;
+    const linesForYTD = xeroAsPlLines.length > 0 ? xeroAsPlLines : dedupedLines;
+
+    const priorFYSummary = calculatePeriodSummary(linesForPriorYear, priorFYBounds.startMonth, priorFYBounds.endMonth, `FY${isExtendedForecast ? currentFYNum - 1 : fiscalYear - 1}`);
 
     // Calculate current YTD summary
     const ytdBoundaries = getCurrentYTDBoundaries(ytdFiscalYear);
     let currentYTD = null;
 
     if (ytdBoundaries) {
-      const ytdSummary = calculatePeriodSummary(dedupedLines, ytdBoundaries.startMonth, ytdBoundaries.endMonth, `FY${fiscalYear} YTD`);
+      const ytdSummary = calculatePeriodSummary(linesForYTD, ytdBoundaries.startMonth, ytdBoundaries.endMonth, `FY${ytdFiscalYear} YTD`);
 
       console.log('[Xero P&L Summary] YTD summary result:', ytdSummary ? {
         months_count: ytdSummary.months_count,
