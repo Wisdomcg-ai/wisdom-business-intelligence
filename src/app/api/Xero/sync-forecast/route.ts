@@ -1,364 +1,197 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { createRouteHandlerClient } from '@/lib/supabase/server';
-import { getValidAccessToken } from '@/lib/xero/token-manager';
-import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
-import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
+/**
+ * Sync Forecast from Xero
+ *
+ * Copies P&L data from xero_pl_lines (source of truth, synced daily by sync-all)
+ * into forecast_pl_lines.actual_months for a specific forecast.
+ *
+ * This gives ALL downstream systems (PLForecastTable, cashflow engine, dashboard,
+ * quarterly review, export) access to the full 24 months of historical data.
+ *
+ * NO Xero API calls are made — we read from the already-synced local data.
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 
 export const dynamic = 'force-dynamic'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
-);
+)
 
-// Map Xero account types to our P&L categories
-const ACCOUNT_TYPE_MAPPING: { [key: string]: string } = {
-  'REVENUE': 'Revenue',
-  'SALES': 'Revenue',
-  'OTHERINCOME': 'Other Income',
-  'EXPENSE': 'Operating Expenses',
-  'DIRECTCOSTS': 'Cost of Sales',
-  'OVERHEADS': 'Operating Expenses',
-  'DEPRECIATION': 'Operating Expenses',
-  'EQUITY': 'Other Expenses',
-  'LIABILITY': 'Other Expenses',
-  'ASSET': 'Other Income'
-};
+// Map xero_pl_lines.account_type enum to forecast_pl_lines.category display string
+const ACCOUNT_TYPE_TO_CATEGORY: Record<string, string> = {
+  revenue: 'Revenue',
+  cogs: 'Cost of Sales',
+  opex: 'Operating Expenses',
+  other_income: 'Other Income',
+  other_expense: 'Other Expenses',
+}
 
 export async function POST(request: NextRequest) {
   try {
     // Auth check
-    const authClient = await createRouteHandlerClient();
-    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    const authClient = await createRouteHandlerClient()
+    const { data: { user }, error: authError } = await authClient.auth.getUser()
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { business_id, forecast_id } = await request.json();
+    const { business_id, forecast_id } = await request.json()
 
     if (!business_id || !forecast_id) {
       return NextResponse.json(
         { error: 'business_id and forecast_id are required' },
-        { status: 400 }
-      );
+        { status: 400 },
+      )
     }
 
-    // Verify user has access to this business
-    const hasAccess = await verifyBusinessAccess(user.id, business_id);
+    // Verify access
+    const hasAccess = await verifyBusinessAccess(user.id, business_id)
     if (!hasAccess) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    // Get the Xero connection (resolves businesses.id vs business_profiles.id)
-    const { connection } = await resolveXeroBusinessId(supabase, business_id);
-
+    // Verify Xero connection exists
+    const { connection } = await resolveXeroBusinessId(supabase, business_id)
     if (!connection) {
       return NextResponse.json(
         { error: 'No active Xero connection found' },
-        { status: 404 }
-      );
+        { status: 404 },
+      )
     }
 
-    // Get the forecast details to determine date range
+    // Verify forecast exists
     const { data: forecast, error: forecastError } = await supabase
       .from('financial_forecasts')
-      .select('*')
+      .select('id, fiscal_year, actual_start_month, actual_end_month')
       .eq('id', forecast_id)
-      .maybeSingle();
+      .maybeSingle()
 
     if (forecastError || !forecast) {
+      return NextResponse.json({ error: 'Forecast not found' }, { status: 404 })
+    }
+
+    // ── Read from xero_pl_lines (source of truth) ────────────────────────
+    // This table is populated daily by sync-all cron with 24 months of Xero data.
+    // No Xero API calls needed — we just copy the local data.
+    const ids = await resolveBusinessIds(supabase, business_id)
+
+    const { data: xeroLines, error: xeroError } = await supabase
+      .from('xero_pl_lines')
+      .select('account_name, account_code, account_type, monthly_values')
+      .in('business_id', ids.all)
+
+    if (xeroError) {
+      console.error('[Sync Forecast] Failed to read xero_pl_lines:', xeroError)
       return NextResponse.json(
-        { error: 'Forecast not found' },
-        { status: 404 }
-      );
+        { error: 'Failed to read Xero data' },
+        { status: 500 },
+      )
     }
 
-    // Get valid access token using the robust token manager
-    // This handles: refresh threshold (15 min), retry logic, race conditions
-    const tokenResult = await getValidAccessToken(connection, supabase);
-
-    if (!tokenResult.success) {
-      console.error('[Xero Sync] Token refresh failed:', tokenResult.error, tokenResult.message);
-      return NextResponse.json(
-        {
-          error: tokenResult.message || 'Xero connection expired. Please reconnect Xero from the Integrations page.',
-          details: tokenResult.error,
-          needsReconnect: tokenResult.shouldDeactivate
-        },
-        { status: 401 }
-      );
+    if (!xeroLines || xeroLines.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'No Xero P&L data available. Run a Xero sync first.',
+        lines_count: 0,
+      })
     }
 
-    const accessToken = tokenResult.accessToken!;
+    // ── Build forecast_pl_lines from xero_pl_lines ───────────────────────
+    const plLines = xeroLines
+      .filter((xl: any) => {
+        // Only include lines that have data
+        const values = xl.monthly_values || {}
+        return Object.values(values).some((v: any) => v !== 0)
+      })
+      .map((xl: any) => ({
+        account_name: xl.account_name,
+        account_code: xl.account_code || undefined,
+        account_type: xl.account_type,
+        category: ACCOUNT_TYPE_TO_CATEGORY[xl.account_type] || 'Operating Expenses',
+        actual_months: xl.monthly_values || {},  // ALL 24 months
+        is_from_xero: true,
+      }))
 
-    // Fetch P&L data for BOTH baseline and actual periods
-    // Baseline = prior FY for comparison/patterns (e.g., FY25: Jul 2024 - Jun 2025)
-    // Actual = current FY YTD for performance tracking (e.g., FY26 YTD: Jul 2025 - Mar 2026)
-
-    const periods = [];
-
-    // Always fetch baseline if available
-    if (forecast.baseline_start_month && forecast.baseline_end_month) {
-      periods.push({
-        name: 'baseline',
-        start: forecast.baseline_start_month,
-        end: forecast.baseline_end_month
-      });
-    }
-
-    // Fetch actual period (current FY YTD) — always use current date for end month
-    // so we pick up recent months even if forecast dates are stale
-    const now = new Date();
-    const lastCompleteMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const currentActualEnd = `${lastCompleteMonth.getFullYear()}-${String(lastCompleteMonth.getMonth() + 1).padStart(2, '0')}`;
-    const actualEnd = forecast.actual_end_month > currentActualEnd ? forecast.actual_end_month : currentActualEnd;
-
-    periods.push({
-      name: 'actual',
-      start: forecast.actual_start_month,
-      end: actualEnd
-    });
-
-    console.log(`[Sync] Fetching data for periods:`, periods);
-
-    // We'll aggregate all monthly data into a single structure
-    const monthlyData: { [accountName: string]: { category: string; months: { [monthKey: string]: number } } } = {}
-
-    // Fetch each period
-    for (const period of periods) {
-      console.log(`[Sync] Fetching ${period.name} period: ${period.start} to ${period.end}`);
-
-      const startMonth = new Date(period.start + '-01');
-      const endMonth = new Date(period.end + '-01');
-
-      let currentMonth = new Date(startMonth);
-      while (currentMonth <= endMonth) {
-      const year = currentMonth.getFullYear();
-      const month = currentMonth.getMonth();  // 0-based month
-      const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
-
-      // Build date strings directly to avoid timezone issues
-      const monthStr = String(month + 1).padStart(2, '0');
-      const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
-      const fromDate = `${year}-${monthStr}-01`;
-      const toDate = `${year}-${monthStr}-${String(lastDayOfMonth).padStart(2, '0')}`;
-
-      console.log(`[Sync] Fetching month: ${monthKey} (${fromDate} to ${toDate})`);
-
-      // Fetch P&L for this single month
-      const monthResponse = await fetch(
-        `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${fromDate}&toDate=${toDate}&standardLayout=true&paymentsOnly=false`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'xero-tenant-id': connection.tenant_id,
-            'Accept': 'application/json'
-          }
-        }
-      );
-
-      if (!monthResponse.ok) {
-        console.error(`[Sync] Failed to fetch ${monthKey}`);
-        currentMonth.setMonth(currentMonth.getMonth() + 1);
-        continue;
-      }
-
-      const monthData = await monthResponse.json();
-
-      // Parse this month's data
-      if (monthData?.Reports?.[0]?.Rows) {
-        monthData.Reports[0].Rows.forEach((section: any) => {
-          if (section.RowType === 'Section' && section.Rows) {
-            // Determine category — check order matters!
-            // COGS must be checked BEFORE Revenue because "LESS COST OF SALES" contains "SALES"
-            let category = 'Operating Expenses';
-            const sectionTitle = section.Title?.toUpperCase() || '';
-
-            if (sectionTitle.includes('COST OF SALES') || sectionTitle.includes('DIRECT COSTS') || sectionTitle.includes('COST OF GOODS')) {
-              category = 'Cost of Sales';
-            } else if (sectionTitle.includes('OTHER INCOME')) {
-              category = 'Other Income';
-            } else if (sectionTitle.includes('OTHER EXPENSE')) {
-              category = 'Other Expenses';
-            } else if (sectionTitle.includes('INCOME') || sectionTitle.includes('REVENUE') || sectionTitle.includes('SALES') || sectionTitle.includes('TRADING INCOME')) {
-              category = 'Revenue';
-            }
-
-            // Process rows
-            section.Rows.forEach((row: any) => {
-              if (row.RowType === 'Row' && row.Cells && row.Cells.length > 0) {
-                const accountName = row.Cells[0]?.Value || 'Unknown';
-
-                // Skip summary rows
-                const lowerName = accountName.toLowerCase();
-                if (!accountName ||
-                    lowerName.includes('total') ||
-                    lowerName.includes('gross profit') ||
-                    lowerName.includes('net profit') ||
-                    lowerName.includes('net income') ||
-                    lowerName.includes('operating profit') ||
-                    lowerName.includes('ebitda')) {
-                  return;
-                }
-
-                // Get the value (second cell is the total for the period)
-                const value = parseFloat(row.Cells[1]?.Value) || 0;
-
-                // Initialize account if needed
-                if (!monthlyData[accountName]) {
-                  monthlyData[accountName] = { category, months: {} };
-                }
-
-                // Store this month's value
-                monthlyData[accountName].months[monthKey] = value;
-              }
-            });
-          }
-        });
-      }
-
-        // Move to next month
-        currentMonth.setMonth(currentMonth.getMonth() + 1);
-      }
-    }
-
-    console.log(`[Sync] Fetched all periods. Processing ${Object.keys(monthlyData).length} accounts`);
-
-    // Convert aggregated data to P&L lines
-    const plLines: Array<{
-      account_code?: string;
-      account_name: string;
-      account_type?: string;
-      category: string;
-      actual_months: { [key: string]: number };
-      is_from_xero: boolean;
-    }> = [];
-
-    Object.entries(monthlyData).forEach(([accountName, data]) => {
-      const { category, months } = data;
-      const actual_months: { [key: string]: number } = {};
-
-      // Extract just the month values
-      Object.entries(months).forEach(([key, value]) => {
-        if (typeof value === 'number') {
-          actual_months[key] = value;
-        }
-      });
-
-      // Only add if there's actual data
-      const hasData = Object.values(actual_months).some(val => val !== 0);
-      if (hasData) {
-        plLines.push({
-          account_name: accountName,
-          category: category as string,
-          actual_months,
-          is_from_xero: true
-        });
-      }
-    });
-
-    console.log(`[Sync] Created ${plLines.length} P&L line items from monthly data`);
-
-    // Log sample data from first line to verify month keys and values
-    if (plLines.length > 0) {
-      console.log('[Sync] Sample line:', {
-        name: plLines[0].account_name,
-        category: plLines[0].category,
-        monthKeys: Object.keys(plLines[0].actual_months),
-        sampleValues: Object.entries(plLines[0].actual_months).slice(0, 3)
-      });
-    }
-
-    // Read existing lines to preserve forecast_months (wizard-generated budget data)
+    // ── Preserve existing forecast_months (wizard budget data) ───────────
     const { data: existingLines } = await supabase
       .from('forecast_pl_lines')
       .select('account_name, forecast_months, forecast_method, is_from_payroll, sort_order')
-      .eq('forecast_id', forecast_id);
+      .eq('forecast_id', forecast_id)
 
-    // Build lookup: account_name → existing line data
-    const existingLookup = new Map<string, any>();
-    (existingLines || []).forEach(line => {
-      existingLookup.set(line.account_name, line);
-    });
+    const existingLookup = new Map<string, any>()
+    ;(existingLines || []).forEach((line: any) => {
+      existingLookup.set(line.account_name, line)
+    })
 
-    // Delete existing Xero-synced lines for this forecast
-    console.log('[Sync] Deleting existing Xero lines...');
+    // ── Delete existing Xero-synced lines ────────────────────────────────
     const { error: deleteError } = await supabase
       .from('forecast_pl_lines')
       .delete()
       .eq('forecast_id', forecast_id)
-      .eq('is_from_xero', true);
+      .eq('is_from_xero', true)
 
     if (deleteError) {
-      console.error('[Sync] Delete error:', deleteError);
+      console.error('[Sync Forecast] Delete error:', deleteError)
     }
 
-    // Insert new lines, preserving forecast_months from existing wizard-generated data
+    // ── Insert new lines with full 24-month actual_months ────────────────
     if (plLines.length > 0) {
-      const linesToInsert = plLines.map((line, index) => {
-        const existing = existingLookup.get(line.account_name);
-        const preservedForecastMonths = existing?.forecast_months && Object.keys(existing.forecast_months).length > 0
-          ? existing.forecast_months
-          : {};
-        const preservedMethod = existing?.forecast_method || undefined;
-
+      const linesToInsert = plLines.map((line: any, index: number) => {
+        const existing = existingLookup.get(line.account_name)
         return {
           forecast_id,
           ...line,
           sort_order: existing?.sort_order ?? index,
-          forecast_months: preservedForecastMonths,
-          forecast_method: preservedMethod,
-        };
-      });
+          forecast_months: existing?.forecast_months && Object.keys(existing.forecast_months).length > 0
+            ? existing.forecast_months
+            : {},
+          forecast_method: existing?.forecast_method || undefined,
+        }
+      })
 
-      console.log(`[Sync] Inserting ${linesToInsert.length} lines (${linesToInsert.filter(l => Object.keys(l.forecast_months).length > 0).length} with preserved forecast data)...`);
-      const { data: insertedData, error: insertError } = await supabase
+      const { error: insertError } = await supabase
         .from('forecast_pl_lines')
         .insert(linesToInsert)
-        .select();
 
       if (insertError) {
-        console.error('[Sync] Failed to insert P&L lines:', insertError);
+        console.error('[Sync Forecast] Insert error:', insertError)
         return NextResponse.json(
           { error: 'Failed to save P&L data', details: insertError },
-          { status: 500 }
-        );
+          { status: 500 },
+        )
       }
-
-      console.log(`[Sync] Successfully inserted ${insertedData?.length || 0} lines`);
-    } else {
-      console.log('[Sync] No lines to insert - plLines is empty');
     }
 
-    // Update last sync time
-    await supabase
-      .from('xero_connections')
-      .update({ last_synced_at: new Date().toISOString() })
-      .eq('id', connection.id);
+    // ── Update timestamps ────────────────────────────────────────────────
+    const now = new Date()
+    const lastCompleteMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const actualEndStr = `${lastCompleteMonth.getFullYear()}-${String(lastCompleteMonth.getMonth() + 1).padStart(2, '0')}`
 
-    // Update the forecast's last sync timestamp and actual period end date
     await supabase
       .from('financial_forecasts')
       .update({
-        last_xero_sync_at: new Date().toISOString(),
-        actual_end_month: actualEnd,
+        last_xero_sync_at: now.toISOString(),
+        actual_end_month: actualEndStr,
       })
-      .eq('id', forecast_id);
-
-    console.log(`[Sync] Successfully synced ${plLines.length} lines from both baseline and actual periods`);
+      .eq('id', forecast_id)
 
     return NextResponse.json({
       success: true,
-      message: `Successfully synced ${plLines.length} P&L line items from Xero`,
-      lines_count: plLines.length
-    });
-
+      message: `Synced ${plLines.length} P&L lines from Xero data`,
+      lines_count: plLines.length,
+    })
   } catch (error) {
-    console.error('Sync forecast error:', error);
+    console.error('[Sync Forecast] Error:', error)
     return NextResponse.json(
       { error: 'Failed to sync forecast data' },
-      { status: 500 }
-    );
+      { status: 500 },
+    )
   }
 }
