@@ -1284,7 +1284,7 @@ export default function ClientFilePage() {
           <div className="bg-white rounded-xl border border-gray-200 p-6 sm:p-8 text-center">
             <p className="text-sm sm:text-base text-gray-500">View and manage the client&apos;s strategic goals, quarterly rocks, and KPIs.</p>
             <Link
-              href={`/coach/clients/${clientId}/view/goals`}
+              href={`/coach/clients/${clientId}/goals`}
               className="mt-4 inline-block text-sm sm:text-base text-brand-orange hover:text-brand-orange-700 font-medium"
             >
               Open Goals & Planning
