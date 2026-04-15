@@ -228,6 +228,14 @@ export default function CoachGoalsPage() {
     sprintKeyActions,
     operationalActivities,
     setOperationalActivities,
+    // Extended period (Phase 14)
+    isExtendedPeriod,
+    year1Months,
+    currentYearRemainingMonths,
+    fiscalYearStart,
+    // Annual review detection (Phase 15)
+    hasNextYearAnnualPlan,
+    annualReviewYear,
     saveAllData
   } = useStrategicPlanning(clientId)
 
@@ -777,6 +785,9 @@ export default function CoachGoalsPage() {
                   kpis={kpis}
                   yearType={yearType}
                   businessId={businessId}
+                  isExtendedPeriod={isExtendedPeriod}
+                  currentYearRemainingMonths={currentYearRemainingMonths}
+                  fiscalYearStart={fiscalYearStart}
                 />
               </div>
             )}
@@ -794,6 +805,11 @@ export default function CoachGoalsPage() {
                   businessId={businessId}
                   operationalActivities={operationalActivities}
                   setOperationalActivities={setOperationalActivities}
+                  strategicIdeas={strategicIdeas}
+                  setStrategicIdeas={setStrategicIdeas}
+                  isExtendedPeriod={isExtendedPeriod}
+                  currentYearRemainingMonths={currentYearRemainingMonths}
+                  fiscalYearStart={fiscalYearStart}
                 />
               </div>
             )}
