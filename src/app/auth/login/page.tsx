@@ -65,6 +65,16 @@ export default function LoginPage() {
 
         if (signInError) throw signInError
 
+        // Update last_login_at for activity tracking
+        const { data: { user: signedInUser } } = await supabase.auth.getUser()
+        if (signedInUser) {
+          supabase
+            .from('users')
+            .update({ last_login_at: new Date().toISOString() })
+            .eq('id', signedInUser.id)
+            .then(() => {}) // fire-and-forget, non-blocking
+        }
+
         // Check user's role and redirect appropriately
         const role = await getUserSystemRole()
 

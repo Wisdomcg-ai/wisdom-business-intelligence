@@ -4,10 +4,12 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ClientOverviewTable, type ClientMetrics } from '@/components/coach/ClientOverviewTable'
 import { ActivityFeed, type ActivityItem } from '@/components/coach/ActivityFeed'
+import { TodaySchedule, type Session as TodaySession } from '@/components/coach/TodaySchedule'
 import { StatsCard } from '@/components/admin/StatsCard'
 import PageHeader from '@/components/ui/PageHeader'
 import { Loader2, AlertTriangle, RefreshCw, Users, Calendar, ListChecks, MessageSquare, Building2, Plus, ArrowRight, LayoutDashboard } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 // Stage calculation from revenue (matching stage-service.ts)
 function calculateStageFromRevenue(revenue: number | null | undefined): string {
@@ -20,6 +22,7 @@ function calculateStageFromRevenue(revenue: number | null | undefined): string {
 
 export default function CoachDashboardPage() {
   const supabase = createClient()
+  const router = useRouter()
 
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -29,6 +32,13 @@ export default function CoachDashboardPage() {
     pendingActions: 0,
     unreadMessages: 0
   })
+  const [trends, setTrends] = useState<{
+    activeClients?: { value: number; label: string }
+    sessionsThisWeek?: { value: number; label: string }
+    pendingActions?: { value: number; label: string }
+    unreadMessages?: { value: number; label: string }
+  }>({})
+  const [todaySessions, setTodaySessions] = useState<TodaySession[]>([])
   const [clientMetrics, setClientMetrics] = useState<ClientMetrics[]>([])
   const [activities, setActivities] = useState<ActivityItem[]>([])
   const [clientsNeedingAttention, setClientsNeedingAttention] = useState<{
@@ -117,7 +127,9 @@ export default function CoachDashboardPage() {
         assessmentActivityResult,
         userLoginsResult,
         sessionsThisWeekResult,
-        unreadMessagesResult
+        unreadMessagesResult,
+        todaySessionsResult,
+        lastWeekSessionsResult
       ] = await Promise.all([
         // Latest completed weekly review per business (actual client completion)
         businessIds.length > 0
@@ -179,12 +191,12 @@ export default function CoachDashboardPage() {
               .order('created_at', { ascending: false })
           : Promise.resolve({ data: [], error: null }),
 
-        // User last login times
+        // User last login times (from public.users which has coach RLS access)
         ownerIds.length > 0
           ? supabase
-              .from('user_logins')
-              .select('user_id, login_at')
-              .in('user_id', ownerIds)
+              .from('users')
+              .select('id, last_login_at')
+              .in('id', ownerIds)
           : Promise.resolve({ data: [], error: null }),
 
         // Coaching sessions this week
@@ -203,8 +215,8 @@ export default function CoachDashboardPage() {
               .from('coaching_sessions')
               .select('id', { count: 'exact', head: true })
               .eq('coach_id', user.id)
-              .gte('scheduled_date', monday.toISOString())
-              .lte('scheduled_date', sunday.toISOString())
+              .gte('scheduled_at', monday.toISOString())
+              .lte('scheduled_at', sunday.toISOString())
 
             if (error) {
               return { data: null, count: 0, error: null }
@@ -230,6 +242,70 @@ export default function CoachDashboardPage() {
             if (error) {
               return { data: null, count: 0, error: null }
             }
+            return { data: null, count: count ?? 0, error: null }
+          } catch {
+            return { data: null, count: 0, error: null }
+          }
+        })(),
+
+        // Today's sessions with business names
+        (async () => {
+          try {
+            const today = new Date()
+            const startOfDay = new Date(today)
+            startOfDay.setHours(0, 0, 0, 0)
+            const endOfDay = new Date(today)
+            endOfDay.setHours(23, 59, 59, 999)
+
+            const { data, error } = await supabase
+              .from('coaching_sessions')
+              .select(`
+                id,
+                business_id,
+                scheduled_at,
+                duration_minutes,
+                session_type,
+                status,
+                prep_completed,
+                notes,
+                businesses (
+                  business_name
+                )
+              `)
+              .eq('coach_id', user.id)
+              .gte('scheduled_at', startOfDay.toISOString())
+              .lte('scheduled_at', endOfDay.toISOString())
+              .order('scheduled_at', { ascending: true })
+
+            if (error) return { data: [], error: null }
+            return { data: data || [], error: null }
+          } catch {
+            return { data: [], error: null }
+          }
+        })(),
+
+        // Last week's sessions count (for trend calculation)
+        (async () => {
+          try {
+            const now = new Date()
+            const day = now.getDay()
+            const thisMonday = new Date(now)
+            thisMonday.setDate(now.getDate() - (day === 0 ? 6 : day - 1))
+            thisMonday.setHours(0, 0, 0, 0)
+            const lastMonday = new Date(thisMonday)
+            lastMonday.setDate(thisMonday.getDate() - 7)
+            const lastSunday = new Date(thisMonday)
+            lastSunday.setDate(thisMonday.getDate() - 1)
+            lastSunday.setHours(23, 59, 59, 999)
+
+            const { count, error } = await supabase
+              .from('coaching_sessions')
+              .select('id', { count: 'exact', head: true })
+              .eq('coach_id', user.id)
+              .gte('scheduled_at', lastMonday.toISOString())
+              .lte('scheduled_at', lastSunday.toISOString())
+
+            if (error) return { data: null, count: 0, error: null }
             return { data: null, count: count ?? 0, error: null }
           } catch {
             return { data: null, count: 0, error: null }
@@ -286,15 +362,11 @@ export default function CoachDashboardPage() {
         }
       })
 
-      // Build user login map
+      // Build user login map from public.users table
       const lastLoginByUser = new Map<string, string>()
-      userLoginsResult.data?.forEach((u: { user_id: string; login_at: string }) => {
-        if (u.login_at) {
-          // Keep only the most recent login per user
-          const existing = lastLoginByUser.get(u.user_id)
-          if (!existing || new Date(u.login_at) > new Date(existing)) {
-            lastLoginByUser.set(u.user_id, u.login_at)
-          }
+      userLoginsResult.data?.forEach((u: { id: string; last_login_at: string | null }) => {
+        if (u.last_login_at) {
+          lastLoginByUser.set(u.id, u.last_login_at)
         }
       })
 
@@ -319,16 +391,17 @@ export default function CoachDashboardPage() {
 
         const assessment = ownerId ? assessmentsByUser.get(ownerId) : undefined
 
-        // Get last login from most recent CLIENT activity (weekly review, completed action, assessment)
+        // Separate actual login from general activity
+        const actualLastLogin = ownerId ? lastLoginByUser.get(ownerId) || null : null
         const lastActivity = getMostRecentActivity(b.id, ownerId)
 
         return {
           id: b.id,
           businessName: b.business_name || 'Unnamed Business',
           status: (b.status as ClientMetrics['status']) || 'active',
-          lastLogin: lastActivity, // Use most recent CLIENT activity
+          lastLogin: actualLastLogin, // Actual platform login only
           lastWeeklyReview: weeklyReviewsByBusiness.get(b.id) || null,
-          lastDashboardUpdate: null, // Removed - was tracking coach views, not client activity
+          lastDashboardUpdate: lastActivity, // Most recent activity of any type
           lastAssessmentScore: assessment?.percentage ?? null,
           lastAssessmentStatus: assessment?.status ?? null,
           roadmapLevel: calculateStageFromRevenue(revenue),
@@ -388,13 +461,58 @@ export default function CoachDashboardPage() {
         }
       })
 
+      // Map today's sessions for TodaySchedule component
+      const todayRaw = (todaySessionsResult as { data: any[] }).data || []
+      const mappedTodaySessions: TodaySession[] = todayRaw.map(s => {
+        const businessData = s.businesses as unknown
+        const business = Array.isArray(businessData)
+          ? businessData[0] as { business_name: string } | undefined
+          : businessData as { business_name: string } | null
+
+        const scheduledAt = new Date(s.scheduled_at)
+        const endAt = new Date(scheduledAt.getTime() + (s.duration_minutes || 60) * 60000)
+        const formatTime = (d: Date) => d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })
+
+        // Determine session status for the TodaySchedule component
+        const now = new Date()
+        let displayStatus: TodaySession['status'] = 'upcoming'
+        if (s.status === 'completed') {
+          displayStatus = 'completed'
+        } else if (now >= scheduledAt && now <= endAt) {
+          displayStatus = 'in-progress'
+        }
+
+        return {
+          id: s.id,
+          clientName: business?.business_name || 'Unknown',
+          clientId: s.business_id,
+          time: formatTime(scheduledAt),
+          endTime: formatTime(endAt),
+          type: (s.session_type as TodaySession['type']) || 'video',
+          status: displayStatus,
+          prepCompleted: s.prep_completed || false,
+          notes: s.notes || undefined
+        }
+      })
+
+      // Calculate trends (week-over-week for sessions)
+      const currentWeekSessions = (sessionsThisWeekResult as { count: number }).count ?? 0
+      const lastWeekSessions = (lastWeekSessionsResult as { count: number }).count ?? 0
+      const computedTrends: typeof trends = {}
+      if (lastWeekSessions > 0) {
+        const sessionsTrend = Math.round(((currentWeekSessions - lastWeekSessions) / lastWeekSessions) * 100)
+        computedTrends.sessionsThisWeek = { value: sessionsTrend, label: 'vs last week' }
+      }
+
       setClientMetrics(metrics)
       setStats({
         activeClients: metrics.filter(c => c.status === 'active').length,
-        sessionsThisWeek: (sessionsThisWeekResult as { count: number }).count ?? 0,
+        sessionsThisWeek: currentWeekSessions,
         pendingActions: metrics.reduce((sum, c) => sum + c.openLoopsCount + c.openIssuesCount, 0),
         unreadMessages: (unreadMessagesResult as { count: number }).count ?? 0
       })
+      setTrends(computedTrends)
+      setTodaySessions(mappedTodaySessions)
       setActivities(processedActivities)
       setClientsNeedingAttention(attention)
 
@@ -455,7 +573,8 @@ export default function CoachDashboardPage() {
             value={stats.activeClients}
             icon={Building2}
             iconColor="teal"
-            onClick={() => window.location.href = '/coach/clients'}
+            trend={trends.activeClients}
+            onClick={() => router.push('/coach/clients')}
           />
           <StatsCard
             title="Pending Actions"
@@ -463,23 +582,33 @@ export default function CoachDashboardPage() {
             icon={ListChecks}
             iconColor="amber"
             subtitle="Open loops & issues"
-            onClick={() => window.location.href = '/coach/actions'}
+            trend={trends.pendingActions}
+            onClick={() => router.push('/coach/actions')}
           />
           <StatsCard
             title="Sessions This Week"
             value={stats.sessionsThisWeek}
             icon={Calendar}
             iconColor="navy"
-            onClick={() => window.location.href = '/coach/schedule'}
+            trend={trends.sessionsThisWeek}
+            onClick={() => router.push('/coach/schedule')}
           />
           <StatsCard
             title="Unread Messages"
             value={stats.unreadMessages}
             icon={MessageSquare}
             iconColor="orange"
-            onClick={() => window.location.href = '/coach/messages'}
+            trend={trends.unreadMessages}
+            onClick={() => router.push('/coach/messages')}
           />
         </div>
+
+        {/* Today's Schedule */}
+        <TodaySchedule
+          sessions={todaySessions}
+          onStartSession={(sessionId) => router.push(`/coach/sessions/${sessionId}`)}
+          onViewPrep={(sessionId) => router.push(`/coach/sessions/${sessionId}`)}
+        />
 
         {/* Needs Attention Card */}
         {clientsNeedingAttention.length > 0 && (
