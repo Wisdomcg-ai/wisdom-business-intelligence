@@ -76,7 +76,7 @@ const MODULE_GROUPS: ModuleGroup[] = [
   },
   {
     label: 'Team',
-    keys: ['orgChart', 'accountability', 'hiringRoadmap'],
+    keys: ['orgChart', 'accountability'],
     color: 'bg-purple-50 text-purple-700',
   },
   {
@@ -117,7 +117,6 @@ const MODULE_LABELS: Record<string, string> = {
   stopDoing: 'Stop Doing',
   orgChart: 'Org Chart',
   accountability: 'Accountability',
-  hiringRoadmap: 'Hiring Roadmap',
   valueProposition: 'Value Proposition',
   processes: 'Processes',
   sessionNotes: 'Session Notes',

@@ -110,6 +110,7 @@ export function MessagesTab({ businessId, businessName }: MessagesTabProps) {
       .insert({
         business_id: businessId,
         sender_id: currentUserId,
+        sender_type: 'coach',
         content: newMessage.trim(),
         read: false,
       })

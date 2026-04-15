@@ -42,11 +42,6 @@ export function CoachPerformance({ data, period = 'month' }: CoachPerformancePro
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900">Coach Performance</h2>
-        <select className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-orange">
-          <option value="month">This Month</option>
-          <option value="quarter">This Quarter</option>
-          <option value="year">This Year</option>
-        </select>
       </div>
 
       {/* Primary Metrics */}

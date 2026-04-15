@@ -30,7 +30,7 @@ export function UpcomingSessions({ sessions, onSessionClick }: UpcomingSessionsP
 
   // Group by date
   const groupedByDate = upcomingSessions.reduce((acc, session) => {
-    const dateKey = new Date(session.scheduledAt).toDateString()
+    const dateKey = new Date(session.scheduledAt).toLocaleDateString('en-AU', { timeZone: TZ })
     if (!acc[dateKey]) {
       acc[dateKey] = []
     }

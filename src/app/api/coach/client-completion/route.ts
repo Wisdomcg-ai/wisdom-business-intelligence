@@ -398,10 +398,10 @@ export async function GET() {
           .select('id, business_id')
           .in('business_id', businessIds)
       ),
-      // 24. Chat Messages
+      // 24. Messages
       safeQuery<R[]>(() =>
         supabase
-          .from('chat_messages')
+          .from('messages')
           .select('id, business_id, sender_id, read, created_at')
           .in('business_id', businessIds)
       ),

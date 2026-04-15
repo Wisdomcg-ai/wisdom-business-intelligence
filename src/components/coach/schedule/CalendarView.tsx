@@ -149,12 +149,11 @@ export function CalendarView({
   }
 
   const isToday = (date: Date) => {
-    const today = new Date()
-    return date.toDateString() === today.toDateString()
+    return isSameSydneyDay(date, new Date())
   }
 
   const isSelected = (date: Date) => {
-    return date.toDateString() === selectedDate.toDateString()
+    return isSameSydneyDay(date, selectedDate)
   }
 
   const getTypeIcon = (type: CalendarSession['type']) => {
@@ -541,7 +540,8 @@ function DayView({
                         <span className="font-medium text-gray-900">{session.businessName}</span>
                       </div>
                       <span className="text-sm text-gray-500">
-                        {new Date(session.scheduledAt).toLocaleTimeString('en-AU', {
+                        {new Date(session.scheduledAt).toLocaleTimeString(LOCALE, {
+                          timeZone: TIMEZONE,
                           hour: '2-digit',
                           minute: '2-digit'
                         })} - {session.durationMinutes} min
