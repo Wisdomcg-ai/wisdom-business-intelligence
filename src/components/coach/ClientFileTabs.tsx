@@ -11,10 +11,11 @@ import {
   StickyNote,
   Users,
   CalendarCheck,
+  Calendar,
   History
 } from 'lucide-react'
 
-export type TabId = 'overview' | 'profile' | 'goals' | 'financials' | 'actions' | 'documents' | 'messages' | 'notes' | 'team' | 'weekly-reviews' | 'activity-log' | 'kpi'
+export type TabId = 'overview' | 'profile' | 'sessions' | 'goals' | 'financials' | 'actions' | 'documents' | 'messages' | 'notes' | 'team' | 'weekly-reviews' | 'activity-log' | 'kpi'
 
 interface Tab {
   id: TabId
@@ -47,6 +48,7 @@ export function ClientFileTabs({
   const allTabs: Tab[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'profile', label: 'Profile', icon: Building2 },
+    { id: 'sessions', label: 'Sessions', icon: Calendar },
     { id: 'team', label: 'Team', icon: Users },
     { id: 'weekly-reviews', label: 'Weekly Reviews', icon: CalendarCheck },
     { id: 'goals', label: 'Goals & Planning', icon: Target },

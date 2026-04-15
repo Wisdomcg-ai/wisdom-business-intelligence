@@ -7,6 +7,10 @@ import { createClient } from '@/lib/supabase/client'
 import { ClientFileTabs, type TabId } from '@/components/coach/ClientFileTabs'
 import { OverviewTab } from '@/components/coach/tabs/OverviewTab'
 import { ProfileTab } from '@/components/coach/tabs/ProfileTab'
+import { SessionsTab, type Session } from '@/components/coach/tabs/SessionsTab'
+import { ActionsTab } from '@/components/coach/tabs/ActionsTab'
+import { NotesTab } from '@/components/coach/tabs/NotesTab'
+import { MessagesTab } from '@/components/coach/tabs/MessagesTab'
 import { TeamTab } from '@/components/coach/tabs/TeamTab'
 import { WeeklyReviewsTab } from '@/components/coach/tabs/WeeklyReviewsTab'
 import { ClientActivityLog } from '@/components/coach/ClientActivityLog'
@@ -113,6 +117,7 @@ export default function ClientFilePage() {
     timestamp: string
   }>>([])
 
+  const [sessions, setSessions] = useState<Session[]>([])
   const [activeTab, setActiveTab] = useState<TabId>(
     (searchParams?.get('tab') as TabId) || 'overview'
   )
@@ -690,6 +695,27 @@ export default function ClientFilePage() {
         }
       }
 
+      // Load coaching sessions for this client
+      try {
+        const { data: sessionsData } = await supabase
+          .from('coaching_sessions')
+          .select('id, scheduled_at, duration_minutes, session_type, status, prep_completed, notes')
+          .eq('business_id', clientId)
+          .order('scheduled_at', { ascending: false })
+
+        if (sessionsData) {
+          setSessions(sessionsData.map(s => ({
+            id: s.id,
+            scheduledAt: s.scheduled_at,
+            durationMinutes: s.duration_minutes || 60,
+            type: (s.session_type as Session['type']) || 'video',
+            status: (s.status as Session['status']) || 'scheduled',
+            prepCompleted: s.prep_completed || false,
+            notes: s.notes || undefined
+          })))
+        }
+      } catch (e) { /* Ignore */ }
+
       // Sort all activities by timestamp (most recent first) and take top 10
       activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       const recentActivities = activities.slice(0, 10)
@@ -1235,6 +1261,18 @@ export default function ClientFilePage() {
           />
         )}
 
+        {activeTab === 'sessions' && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <SessionsTab
+              clientId={clientId}
+              businessName={business.business_name}
+              sessions={sessions}
+              onScheduleSession={() => router.push(`/coach/schedule?client=${clientId}`)}
+              onViewSession={(sessionId) => router.push(`/coach/sessions/${sessionId}`)}
+            />
+          </div>
+        )}
+
         {activeTab === 'weekly-reviews' && (
           <WeeklyReviewsTab
             businessId={clientId}
@@ -1283,8 +1321,8 @@ export default function ClientFilePage() {
         )}
 
         {activeTab === 'actions' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6 sm:p-8 text-center">
-            <p className="text-sm sm:text-base text-gray-500">Actions tab coming soon</p>
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <ActionsTab businessId={clientId} ownerId={business.owner_id} />
           </div>
         )}
 
@@ -1295,14 +1333,14 @@ export default function ClientFilePage() {
         )}
 
         {activeTab === 'messages' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6 sm:p-8 text-center">
-            <p className="text-sm sm:text-base text-gray-500">Messages tab coming soon</p>
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <MessagesTab businessId={clientId} businessName={business.business_name} />
           </div>
         )}
 
         {activeTab === 'notes' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6 sm:p-8 text-center">
-            <p className="text-sm sm:text-base text-gray-500">Private notes tab coming soon</p>
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <NotesTab businessId={clientId} businessName={business.business_name} />
           </div>
         )}
 

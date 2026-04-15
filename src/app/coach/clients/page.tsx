@@ -489,7 +489,30 @@ function ClientsListContent() {
         icon={Users}
         actions={
           <>
-            <button className="flex items-center gap-2 px-4 py-2 text-sm sm:text-base bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors">
+            <button
+              onClick={() => {
+                const headers = ['Business Name', 'Industry', 'Status', 'Program', 'Last Session', 'Last Login', 'Pending Actions', 'Unread Messages']
+                const rows = clients.map(c => [
+                  c.businessName,
+                  c.industry || '',
+                  c.status,
+                  c.programType || '',
+                  c.lastSessionDate || '',
+                  c.lastLogin || '',
+                  c.pendingActions || 0,
+                  c.unreadMessages || 0
+                ])
+                const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n')
+                const blob = new Blob([csv], { type: 'text/csv' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `clients-export-${new Date().toISOString().split('T')[0]}.csv`
+                a.click()
+                URL.revokeObjectURL(url)
+              }}
+              className="flex items-center gap-2 px-4 py-2 text-sm sm:text-base bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors"
+            >
               <Download className="w-4 h-4" />
               <span className="hidden sm:inline">Export</span>
             </button>
