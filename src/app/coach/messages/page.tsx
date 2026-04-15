@@ -11,7 +11,12 @@ import PageHeader from '@/components/ui/PageHeader'
 import {
   Loader2,
   MessageSquare,
-  Radio
+  Radio,
+  Settings,
+  Plus,
+  Trash2,
+  X,
+  Save
 } from 'lucide-react'
 
 interface Client {
@@ -32,25 +37,11 @@ export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [showBroadcastModal, setShowBroadcastModal] = useState(false)
-
-  // Message templates
-  const messageTemplates = [
-    {
-      id: '1',
-      name: 'Session Reminder',
-      content: 'Hi! Just a friendly reminder about our upcoming coaching session. Looking forward to speaking with you.'
-    },
-    {
-      id: '2',
-      name: 'Action Follow-up',
-      content: 'Hi! I wanted to check in on the action items we discussed in our last session. How are you progressing?'
-    },
-    {
-      id: '3',
-      name: 'Weekly Check-in',
-      content: 'Hi! Hope you\'re having a productive week. Is there anything you\'d like to discuss before our next session?'
-    }
-  ]
+  const [messageTemplates, setMessageTemplates] = useState<{id: string; name: string; content: string; category?: string}[]>([])
+  const [showManageTemplates, setShowManageTemplates] = useState(false)
+  const [newTemplateName, setNewTemplateName] = useState('')
+  const [newTemplateContent, setNewTemplateContent] = useState('')
+  const [savingTemplate, setSavingTemplate] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -133,6 +124,29 @@ export default function MessagesPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       setCurrentUserId(user.id)
+
+      // Load message templates from DB
+      const { data: templatesData } = await supabase
+        .from('message_templates')
+        .select('id, name, content, category')
+        .eq('coach_id', user.id)
+        .order('name')
+
+      if (templatesData && templatesData.length > 0) {
+        setMessageTemplates(templatesData)
+      } else {
+        // First time — seed default templates for this coach
+        const defaults = [
+          { coach_id: user.id, name: 'Session Reminder', content: 'Hi! Just a friendly reminder about our upcoming coaching session. Looking forward to speaking with you.', category: 'reminder' },
+          { coach_id: user.id, name: 'Action Follow-up', content: 'Hi! I wanted to check in on the action items we discussed in our last session. How are you progressing?', category: 'follow-up' },
+          { coach_id: user.id, name: 'Weekly Check-in', content: "Hi! Hope you're having a productive week. Is there anything you'd like to discuss before our next session?", category: 'check-in' }
+        ]
+        const { data: seeded } = await supabase
+          .from('message_templates')
+          .insert(defaults)
+          .select('id, name, content, category')
+        if (seeded) setMessageTemplates(seeded)
+      }
 
       // Load businesses (clients)
       const { data: businessesData } = await supabase
@@ -351,6 +365,55 @@ export default function MessagesPage() {
     }
   }
 
+  const handleSaveTemplate = async () => {
+    if (!newTemplateName.trim() || !newTemplateContent.trim() || !currentUserId) return
+    setSavingTemplate(true)
+    try {
+      const { data, error } = await supabase
+        .from('message_templates')
+        .insert({
+          coach_id: currentUserId,
+          name: newTemplateName.trim(),
+          content: newTemplateContent.trim(),
+          category: 'custom'
+        })
+        .select('id, name, content, category')
+        .single()
+
+      if (error) {
+        console.error('Error saving template:', error)
+        return
+      }
+      if (data) {
+        setMessageTemplates(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+        setNewTemplateName('')
+        setNewTemplateContent('')
+      }
+    } catch (err) {
+      console.error('Error saving template:', err)
+    } finally {
+      setSavingTemplate(false)
+    }
+  }
+
+  const handleDeleteTemplate = async (templateId: string) => {
+    try {
+      const { error } = await supabase
+        .from('message_templates')
+        .delete()
+        .eq('id', templateId)
+        .eq('coach_id', currentUserId)
+
+      if (error) {
+        console.error('Error deleting template:', error)
+        return
+      }
+      setMessageTemplates(prev => prev.filter(t => t.id !== templateId))
+    } catch (err) {
+      console.error('Error deleting template:', err)
+    }
+  }
+
   const handleBroadcastSend = async (clientIds: string[], message: string) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -414,13 +477,22 @@ export default function MessagesPage() {
           subtitle={`${conversations.length} conversations · ${totalUnread} unread`}
           icon={MessageSquare}
           actions={
-            <button
-              onClick={() => setShowBroadcastModal(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg shadow-sm hover:bg-brand-orange-600 transition-colors"
-            >
-              <Radio className="w-4 h-4" />
-              <span className="hidden sm:inline">Broadcast</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowManageTemplates(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+                <span className="hidden sm:inline">Manage Templates</span>
+              </button>
+              <button
+                onClick={() => setShowBroadcastModal(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg shadow-sm hover:bg-brand-orange-600 transition-colors"
+              >
+                <Radio className="w-4 h-4" />
+                <span className="hidden sm:inline">Broadcast</span>
+              </button>
+            </div>
           }
         />
 
@@ -473,6 +545,79 @@ export default function MessagesPage() {
           </div>
         </div>
       </div>
+
+      {/* Manage Templates Modal */}
+      {showManageTemplates && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Manage Templates</h2>
+              <button
+                onClick={() => setShowManageTemplates(false)}
+                className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Template List */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+              {messageTemplates.length === 0 && (
+                <p className="text-sm text-gray-500 text-center py-4">No templates yet. Add one below.</p>
+              )}
+              {messageTemplates.map(template => (
+                <div
+                  key={template.id}
+                  className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{template.name}</p>
+                    <p className="text-sm text-gray-500 mt-1 line-clamp-2">{template.content}</p>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteTemplate(template.id)}
+                    className="flex-shrink-0 p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+                    title="Delete template"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Add New Template Form */}
+            <div className="px-6 py-4 border-t border-gray-200 space-y-3">
+              <h3 className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+                <Plus className="w-4 h-4" />
+                Add New Template
+              </h3>
+              <input
+                type="text"
+                value={newTemplateName}
+                onChange={e => setNewTemplateName(e.target.value)}
+                placeholder="Template name"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+              />
+              <textarea
+                value={newTemplateContent}
+                onChange={e => setNewTemplateContent(e.target.value)}
+                placeholder="Template message content..."
+                rows={3}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent resize-none"
+              />
+              <button
+                onClick={handleSaveTemplate}
+                disabled={!newTemplateName.trim() || !newTemplateContent.trim() || savingTemplate}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg shadow-sm hover:bg-brand-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4" />
+                {savingTemplate ? 'Saving...' : 'Save Template'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Broadcast Modal */}
       <BroadcastModal

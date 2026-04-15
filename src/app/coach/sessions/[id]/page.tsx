@@ -29,6 +29,7 @@ import {
   AlertTriangle
 } from 'lucide-react'
 import TranscriptAnalyzer from '@/components/coach/TranscriptAnalyzer'
+import { SessionPrepForm } from '@/components/coach/SessionPrepForm'
 
 interface SessionAction {
   id: string
@@ -1171,6 +1172,13 @@ export default function SessionDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Pre-Session Client Prep */}
+            <SessionPrepForm
+              sessionId={session.id}
+              businessId={session.business_id}
+              mode="coach"
+            />
 
             {/* AI Transcript Analysis */}
             <TranscriptAnalyzer
