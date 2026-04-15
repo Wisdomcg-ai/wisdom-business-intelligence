@@ -13,6 +13,7 @@ import {
   Calendar,
   ListChecks,
   BarChart3,
+  Activity,
   Settings,
   LogOut,
   ChevronDown,
@@ -80,6 +81,12 @@ const navigation = [
     href: '/coach/actions',
     icon: ListChecks,
     description: 'Track action items'
+  },
+  {
+    name: 'Engagement',
+    href: '/coach/dashboard/engagement',
+    icon: Activity,
+    description: 'Client completion matrix'
   },
   {
     name: 'Reports',
