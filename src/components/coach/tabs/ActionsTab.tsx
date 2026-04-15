@@ -161,7 +161,8 @@ export function ActionsTab({ businessId, ownerId }: ActionsTabProps) {
     } finally {
       setLoading(false)
     }
-  }, [supabase, businessId, ownerId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId, ownerId])
 
   useEffect(() => {
     loadData()

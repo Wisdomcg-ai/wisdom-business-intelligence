@@ -335,7 +335,8 @@ export function SessionPrepForm({ sessionId, businessId, mode, onSubmit }: Sessi
     } finally {
       setLoading(false)
     }
-  }, [sessionId, supabase])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
 
   useEffect(() => {
     loadPrep()

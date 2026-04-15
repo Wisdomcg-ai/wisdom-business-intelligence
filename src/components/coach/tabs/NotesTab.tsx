@@ -84,7 +84,8 @@ export function NotesTab({ businessId, businessName }: NotesTabProps) {
       setNotes(data ?? [])
     }
     setLoading(false)
-  }, [businessId, supabase])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId])
 
   useEffect(() => {
     async function init() {
@@ -95,7 +96,8 @@ export function NotesTab({ businessId, businessName }: NotesTabProps) {
       await fetchNotes()
     }
     init()
-  }, [fetchNotes, supabase.auth])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString + 'T00:00:00')

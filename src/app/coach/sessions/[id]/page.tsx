@@ -238,7 +238,8 @@ export default function SessionDetailPage() {
     } finally {
       setLoading(false)
     }
-  }, [supabase, sessionId, router])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
 
   useEffect(() => {
     loadSession()
@@ -420,7 +421,7 @@ export default function SessionDetailPage() {
       if (status === 'carried_over') {
         const action = previousActions.find(a => a.id === actionId)
         if (action) {
-          const { error: insertError } = await supabase
+          const { data: newAction, error: insertError } = await supabase
             .from('session_actions')
             .insert({
               session_note_id: sessionId,
@@ -432,14 +433,18 @@ export default function SessionDetailPage() {
               carried_over_from_id: actionId,
               created_by: currentUserId
             })
+            .select('id')
+            .single()
 
           if (insertError) throw insertError
 
-          // Update original action with carried_over_to_id
-          await supabase
-            .from('session_actions')
-            .update({ carried_over_to_id: actionId })
-            .eq('id', actionId)
+          // Update original action to point to the newly created action
+          if (newAction) {
+            await supabase
+              .from('session_actions')
+              .update({ carried_over_to_id: newAction.id })
+              .eq('id', actionId)
+          }
         }
       }
 
