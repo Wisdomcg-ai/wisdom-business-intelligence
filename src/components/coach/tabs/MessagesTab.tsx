@@ -70,6 +70,30 @@ export function MessagesTab({ businessId, businessName }: MessagesTabProps) {
     init()
   }, [businessId])
 
+  // Real-time subscription for new messages in this conversation
+  useEffect(() => {
+    if (!currentUserId) return
+    const supabase = createClient()
+
+    const channel = supabase
+      .channel(`messages-tab-${businessId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `business_id=eq.${businessId}`
+      }, (payload) => {
+        const newMsg = payload.new as Message
+        if (newMsg.sender_id === currentUserId) return
+        setMessages(prev => [...prev, newMsg])
+        // Mark as read since we're viewing
+        supabase.from('messages').update({ read: true }).eq('id', newMsg.id).then(() => {})
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [businessId, currentUserId])
+
   // Scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom()

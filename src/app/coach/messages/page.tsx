@@ -57,6 +57,68 @@ export default function MessagesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Real-time subscription for new messages
+  useEffect(() => {
+    if (!currentUserId) return
+
+    const channel = supabase
+      .channel('coach-messages-realtime')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages'
+      }, (payload) => {
+        const newMsg = payload.new as any
+        if (!newMsg || newMsg.sender_id === currentUserId) return
+
+        // Add to current thread if viewing that conversation
+        if (selectedConversation && newMsg.business_id === selectedConversation.businessId) {
+          setMessages(prev => [...prev, {
+            id: newMsg.id,
+            content: newMsg.content || '',
+            senderId: newMsg.sender_id,
+            senderName: selectedConversation.businessName,
+            senderType: 'client' as const,
+            createdAt: newMsg.created_at,
+            status: 'delivered' as const
+          }])
+
+          // Mark as read immediately since we're viewing
+          supabase
+            .from('messages')
+            .update({ read: true })
+            .eq('id', newMsg.id)
+            .then(() => {})
+        }
+
+        // Update conversation list
+        setConversations(prev => {
+          const updated = prev.map(c => {
+            if (c.businessId === newMsg.business_id) {
+              return {
+                ...c,
+                lastMessage: newMsg.content || '',
+                lastMessageAt: newMsg.created_at,
+                unreadCount: selectedConversation?.businessId === newMsg.business_id
+                  ? c.unreadCount
+                  : c.unreadCount + 1
+              }
+            }
+            return c
+          })
+          return updated.sort((a, b) =>
+            new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+          )
+        })
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserId, selectedConversation?.businessId])
+
   useEffect(() => {
     if (selectedConversation) {
       loadMessages(selectedConversation.businessId)
