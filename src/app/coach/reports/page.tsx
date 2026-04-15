@@ -80,7 +80,7 @@ export default function ReportsPage() {
       // Load clients
       const { data: clientsData } = await supabase
         .from('businesses')
-        .select('id, business_name, industry, status, created_at')
+        .select('id, business_name, industry, status, created_at, owner_id')
         .eq('assigned_coach_id', user.id)
 
       const totalClients = clientsData?.length || 0
@@ -88,7 +88,7 @@ export default function ReportsPage() {
 
       // Load sessions for this period
       const { data: sessionsThisPeriod } = await supabase
-        .from('sessions')
+        .from('coaching_sessions')
         .select('id, duration_minutes, scheduled_at')
         .eq('coach_id', user.id)
         .gte('scheduled_at', startDate.toISOString())
@@ -96,7 +96,7 @@ export default function ReportsPage() {
 
       // Load sessions for last period
       const { data: sessionsLastPeriod } = await supabase
-        .from('sessions')
+        .from('coaching_sessions')
         .select('id')
         .eq('coach_id', user.id)
         .gte('scheduled_at', lastPeriodStart.toISOString())
@@ -108,21 +108,118 @@ export default function ReportsPage() {
         ? Math.round(sessionsThisPeriod.reduce((acc, s) => acc + (s.duration_minutes || 60), 0) / sessionsThisPeriod.length)
         : 60
 
-      // Load goals completed
-      const { data: goalsData } = await supabase
-        .from('goals')
-        .select('id, status')
-        .in('business_id', clientsData?.map(c => c.id) || [])
+      const businessIds = clientsData?.map(c => c.id) || []
+      const ownerIds = clientsData?.map(c => c.owner_id).filter(Boolean) as string[]
 
-      const goalsCompleted = goalsData?.filter(g => g.status === 'completed').length || 0
+      // Parallel queries for real metrics
+      const [
+        goalsResult,
+        actionsResult,
+        messagesResult,
+        assessmentsResult,
+        responseTimeResult
+      ] = await Promise.all([
+        // Goals from strategic_initiatives
+        businessIds.length > 0
+          ? (async () => {
+              try {
+                // Get profile IDs for strategic_initiatives lookup
+                const { data: profiles } = await supabase
+                  .from('business_profiles')
+                  .select('id')
+                  .in('business_id', businessIds)
+                const profileIds = profiles?.map(p => p.id) || []
+                if (profileIds.length === 0) return { completed: 0 }
+                const { data } = await supabase
+                  .from('strategic_initiatives')
+                  .select('id, status')
+                  .in('business_id', profileIds)
+                return { completed: data?.filter(g => g.status === 'completed').length || 0 }
+              } catch { return { completed: 0 } }
+            })()
+          : Promise.resolve({ completed: 0 }),
 
-      // Load actions completed
-      const { data: actionsData } = await supabase
-        .from('action_items')
-        .select('id, status, completed_at')
-        .in('business_id', clientsData?.map(c => c.id) || [])
+        // Actions from session_actions
+        businessIds.length > 0
+          ? (async () => {
+              try {
+                const { data } = await supabase
+                  .from('session_actions')
+                  .select('id, status')
+                  .in('business_id', businessIds)
+                return { completed: data?.filter(a => a.status === 'completed').length || 0 }
+              } catch { return { completed: 0 } }
+            })()
+          : Promise.resolve({ completed: 0 }),
 
-      const actionsCompleted = actionsData?.filter(a => a.status === 'completed').length || 0
+        // Messages this week (real count)
+        businessIds.length > 0
+          ? (async () => {
+              try {
+                const weekAgo = new Date()
+                weekAgo.setDate(weekAgo.getDate() - 7)
+                const { count } = await supabase
+                  .from('messages')
+                  .select('id', { count: 'exact', head: true })
+                  .in('business_id', businessIds)
+                  .gte('created_at', weekAgo.toISOString())
+                return { count: count || 0 }
+              } catch { return { count: 0 } }
+            })()
+          : Promise.resolve({ count: 0 }),
+
+        // Average client health from assessments (real calculation)
+        ownerIds.length > 0
+          ? (async () => {
+              try {
+                const { data } = await supabase
+                  .from('assessments')
+                  .select('user_id, percentage')
+                  .in('user_id', ownerIds)
+                  .eq('status', 'completed')
+                  .order('created_at', { ascending: false })
+                // Keep only latest per user
+                const latestByUser = new Map<string, number>()
+                data?.forEach(a => {
+                  if (!latestByUser.has(a.user_id) && a.percentage != null) {
+                    latestByUser.set(a.user_id, a.percentage)
+                  }
+                })
+                const scores = Array.from(latestByUser.values())
+                return { avg: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0, count: scores.length }
+              } catch { return { avg: 0, count: 0 } }
+            })()
+          : Promise.resolve({ avg: 0, count: 0 }),
+
+        // Avg response time (days between client message and coach reply)
+        businessIds.length > 0
+          ? (async () => {
+              try {
+                const { data } = await supabase
+                  .from('messages')
+                  .select('sender_id, created_at, business_id')
+                  .in('business_id', businessIds)
+                  .order('created_at', { ascending: true })
+                  .limit(200)
+                if (!data || data.length < 2) return { days: 0 }
+                // Calculate avg gap between client message and next coach reply
+                let totalGapMs = 0
+                let gapCount = 0
+                for (let i = 0; i < data.length - 1; i++) {
+                  if (data[i].sender_id !== user.id && data[i + 1].sender_id === user.id && data[i].business_id === data[i + 1].business_id) {
+                    totalGapMs += new Date(data[i + 1].created_at).getTime() - new Date(data[i].created_at).getTime()
+                    gapCount++
+                  }
+                }
+                const avgDays = gapCount > 0 ? Math.round((totalGapMs / gapCount) / (1000 * 60 * 60 * 24) * 10) / 10 : 0
+                return { days: avgDays }
+              } catch { return { days: 0 } }
+            })()
+          : Promise.resolve({ days: 0 })
+      ])
+
+      const goalsCompleted = goalsResult.completed
+      const actionsCompleted = actionsResult.completed
 
       // Calculate client retention (simplified - clients active > 3 months / total)
       const threeMonthsAgo = new Date()
@@ -132,74 +229,89 @@ export default function ReportsPage() {
       ).length || 0
       const clientRetention = totalClients > 0 ? Math.round((retainedClients / totalClients) * 100) : 100
 
-      // Set performance data
+      // Set performance data with REAL calculated values
       setPerformanceData({
         sessionsThisMonth,
         sessionsLastMonth,
         totalClients,
         activeClients,
         avgSessionDuration,
-        responseTime: 4, // Placeholder - would come from messages
+        responseTime: responseTimeResult.days,
         clientRetention,
-        avgClientHealth: 72, // Placeholder - would come from health scores
+        avgClientHealth: assessmentsResult.avg,
         goalsCompleted,
         actionsCompleted,
-        messagesThisWeek: 24 // Placeholder - would come from messages
+        messagesThisWeek: messagesResult.count
       })
 
       // Build client progress data
       const progressData: ClientProgress[] = []
 
-      for (const client of clientsData || []) {
-        // Get client sessions
-        const { data: clientSessions } = await supabase
-          .from('sessions')
-          .select('id, scheduled_at')
-          .eq('business_id', client.id)
-          .order('scheduled_at', { ascending: false })
+      // Batch queries for all clients at once (instead of N+1 per-client queries)
+      const [allSessionsResult, allActionsResult, allAssessmentsResult] = await Promise.all([
+        businessIds.length > 0
+          ? supabase.from('coaching_sessions').select('id, business_id, scheduled_at, status').in('business_id', businessIds).eq('status', 'completed').order('scheduled_at', { ascending: false })
+          : Promise.resolve({ data: [] }),
+        businessIds.length > 0
+          ? supabase.from('session_actions').select('id, business_id, status').in('business_id', businessIds)
+          : Promise.resolve({ data: [] }),
+        ownerIds.length > 0
+          ? supabase.from('assessments').select('user_id, percentage').in('user_id', ownerIds).eq('status', 'completed').order('created_at', { ascending: false })
+          : Promise.resolve({ data: [] })
+      ])
 
-        // Get client goals
-        const { data: clientGoals } = await supabase
-          .from('goals')
-          .select('id, status')
-          .eq('business_id', client.id)
+      // Build lookup maps
+      const sessionsByBusiness = new Map<string, any[]>()
+      allSessionsResult.data?.forEach(s => {
+        const list = sessionsByBusiness.get(s.business_id) || []
+        list.push(s)
+        sessionsByBusiness.set(s.business_id, list)
+      })
 
-        const totalGoals = clientGoals?.length || 0
-        const completedGoals = clientGoals?.filter(g => g.status === 'completed').length || 0
-        const goalsProgress = totalGoals > 0 ? Math.round((completedGoals / totalGoals) * 100) : 0
+      const actionsByBusiness = new Map<string, { completed: number; pending: number }>()
+      allActionsResult.data?.forEach(a => {
+        const entry = actionsByBusiness.get(a.business_id) || { completed: 0, pending: 0 }
+        if (a.status === 'completed') entry.completed++
+        else if (a.status === 'pending') entry.pending++
+        actionsByBusiness.set(a.business_id, entry)
+      })
 
-        // Get client actions
-        const { data: clientActions } = await supabase
-          .from('action_items')
-          .select('id, status')
-          .eq('business_id', client.id)
-
-        const completedActions = clientActions?.filter(a => a.status === 'completed').length || 0
-        const pendingActions = clientActions?.filter(a => a.status !== 'completed' && a.status !== 'cancelled').length || 0
-
-        // Calculate health score (simplified)
-        let healthScore = 50
-        if (goalsProgress > 50) healthScore += 20
-        if (completedActions > 5) healthScore += 15
-        if (clientSessions && clientSessions.length > 0) {
-          const lastSession = new Date(clientSessions[0].scheduled_at)
-          const daysSinceSession = Math.floor((now.getTime() - lastSession.getTime()) / (1000 * 60 * 60 * 24))
-          if (daysSinceSession < 14) healthScore += 15
-          else if (daysSinceSession > 30) healthScore -= 20
+      const assessmentByUser = new Map<string, number>()
+      allAssessmentsResult.data?.forEach(a => {
+        if (!assessmentByUser.has(a.user_id) && a.percentage != null) {
+          assessmentByUser.set(a.user_id, a.percentage)
         }
-        healthScore = Math.min(100, Math.max(0, healthScore))
+      })
+
+      for (const client of clientsData || []) {
+        const clientSessions = sessionsByBusiness.get(client.id) || []
+        const clientActions = actionsByBusiness.get(client.id) || { completed: 0, pending: 0 }
+        const assessmentScore = client.owner_id ? assessmentByUser.get(client.owner_id) : undefined
+
+        // Use real assessment score if available, otherwise estimate from activity
+        let healthScore = assessmentScore ?? 50
+        if (assessmentScore == null) {
+          if (clientActions.completed > 5) healthScore += 15
+          if (clientSessions.length > 0) {
+            const lastSession = new Date(clientSessions[0].scheduled_at)
+            const daysSinceSession = Math.floor((now.getTime() - lastSession.getTime()) / (1000 * 60 * 60 * 24))
+            if (daysSinceSession < 14) healthScore += 15
+            else if (daysSinceSession > 30) healthScore -= 20
+          }
+          healthScore = Math.min(100, Math.max(0, healthScore))
+        }
 
         progressData.push({
           id: client.id,
           businessName: client.business_name || 'Unnamed Business',
           industry: client.industry || undefined,
           healthScore,
-          healthTrend: Math.floor(Math.random() * 20) - 10, // Placeholder - would calculate from history
-          sessionsCompleted: clientSessions?.length || 0,
-          goalsProgress,
-          actionsCompleted: completedActions,
-          actionsPending: pendingActions,
-          lastSessionDate: clientSessions?.[0]?.scheduled_at || undefined,
+          healthTrend: 0, // No historical data yet — show neutral instead of random
+          sessionsCompleted: clientSessions.length,
+          goalsProgress: 0, // Would need strategic_initiatives per-client query
+          actionsCompleted: clientActions.completed,
+          actionsPending: clientActions.pending,
+          lastSessionDate: clientSessions[0]?.scheduled_at || undefined,
           status: client.status === 'active'
             ? (healthScore < 50 ? 'at-risk' : 'active')
             : client.status === 'pending' ? 'pending' : 'inactive'
