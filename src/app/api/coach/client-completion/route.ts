@@ -704,7 +704,7 @@ export async function GET() {
       const alerts = generateAlerts(modules, engagement)
 
       // Convert module keys from snake_case to camelCase to match frontend component
-      const camelModules: Record<string, string> = {}
+      const camelModules: Record<string, ModuleStatus> = {}
       const keyMap: Record<string, string> = {
         business_profile: 'businessProfile',
         xero_connected: 'xeroConnected',
@@ -725,7 +725,7 @@ export async function GET() {
         session_notes: 'sessionNotes',
       }
       for (const [key, value] of Object.entries(modules)) {
-        camelModules[keyMap[key] || key] = value
+        camelModules[keyMap[key] || key] = value as ModuleStatus
       }
 
       return {
