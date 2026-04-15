@@ -28,6 +28,7 @@ import {
   XCircle,
   AlertTriangle
 } from 'lucide-react'
+import TranscriptAnalyzer from '@/components/coach/TranscriptAnalyzer'
 
 interface SessionAction {
   id: string
@@ -1170,6 +1171,12 @@ export default function SessionDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* AI Transcript Analysis */}
+            <TranscriptAnalyzer
+              sessionId={session.id}
+              onAnalysisComplete={() => loadSession()}
+            />
 
             {/* Attendees */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
