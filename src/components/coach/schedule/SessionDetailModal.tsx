@@ -19,9 +19,12 @@ import {
   ListChecks,
   ChevronRight,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Download,
+  ExternalLink
 } from 'lucide-react'
 import type { CalendarSession } from './CalendarView'
+import { downloadICS, getGoogleCalendarUrl } from '@/lib/utils/ics-generator'
 
 interface SessionDetailModalProps {
   session: CalendarSession
@@ -239,21 +242,59 @@ export function SessionDetailModal({
 
             {/* Quick Actions */}
             {session.status === 'scheduled' && (
-              <div className="grid grid-cols-2 gap-3">
-                <Link
-                  href={`/coach/clients/${session.businessId}?tab=messages`}
-                  className="flex items-center justify-center gap-2 p-3 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  <span className="text-sm font-medium">Message</span>
-                </Link>
-                <Link
-                  href={`/coach/clients/${session.businessId}?tab=actions`}
-                  className="flex items-center justify-center gap-2 p-3 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <ListChecks className="w-4 h-4" />
-                  <span className="text-sm font-medium">Actions</span>
-                </Link>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Link
+                    href={`/coach/clients/${session.businessId}?tab=messages`}
+                    className="flex items-center justify-center gap-2 p-3 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span className="text-sm font-medium">Message</span>
+                  </Link>
+                  <Link
+                    href={`/coach/clients/${session.businessId}?tab=actions`}
+                    className="flex items-center justify-center gap-2 p-3 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <ListChecks className="w-4 h-4" />
+                    <span className="text-sm font-medium">Actions</span>
+                  </Link>
+                </div>
+
+                {/* Add to Calendar */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => {
+                      const start = new Date(session.scheduledAt)
+                      const end = new Date(start.getTime() + session.durationMinutes * 60000)
+                      downloadICS({
+                        title: `Coaching: ${session.businessName}`,
+                        description: session.notes || `Coaching session with ${session.businessName}`,
+                        startDate: start,
+                        endDate: end,
+                        location: session.type === 'in-person' ? 'In person' : session.type === 'video' ? 'Video call' : 'Phone call'
+                      })
+                    }}
+                    className="flex items-center justify-center gap-2 p-3 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span className="text-sm font-medium">.ics File</span>
+                  </button>
+                  <a
+                    href={getGoogleCalendarUrl({
+                      title: `Coaching: ${session.businessName}`,
+                      description: session.notes || `Coaching session with ${session.businessName}`,
+                      startDate: new Date(session.scheduledAt),
+                      endDate: new Date(new Date(session.scheduledAt).getTime() + session.durationMinutes * 60000),
+                      location: session.type === 'in-person' ? 'In person' : session.type === 'video' ? 'Video call' : 'Phone call'
+                    })}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 p-3 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span className="text-sm font-medium">Google Cal</span>
+                  </a>
+                </div>
               </div>
             )}
           </div>
