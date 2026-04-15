@@ -18,12 +18,13 @@ interface CoachPerformanceData {
   totalClients: number
   activeClients: number
   avgSessionDuration: number
-  responseTime: number // hours
+  responseTime: number // days
   clientRetention: number // percentage
   avgClientHealth: number // percentage
   goalsCompleted: number
   actionsCompleted: number
   messagesThisWeek: number
+  retentionTrend?: number // percentage change vs prior period
 }
 
 interface CoachPerformanceProps {
@@ -72,18 +73,18 @@ export function CoachPerformance({ data, period = 'month' }: CoachPerformancePro
         <MetricCard
           title="Client Retention"
           value={`${data.clientRetention}%`}
-          trend={{
-            value: 5,
-            label: 'vs last quarter',
-            isPositive: true
-          }}
+          trend={data.retentionTrend !== undefined ? {
+            value: data.retentionTrend,
+            label: 'vs prior period',
+            isPositive: data.retentionTrend >= 0
+          } : undefined}
           icon={TrendingUp}
           iconColor="text-green-600"
           iconBgColor="bg-green-100"
         />
         <MetricCard
           title="Avg Response Time"
-          value={`${data.responseTime}h`}
+          value={data.responseTime < 1 ? `${Math.round(data.responseTime * 24)}h` : `${data.responseTime}d`}
           subtitle="to client messages"
           icon={MessageSquare}
           iconColor="text-brand-navy"

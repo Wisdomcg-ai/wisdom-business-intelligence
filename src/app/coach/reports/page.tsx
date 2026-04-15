@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { CoachPerformance } from '@/components/coach/reports/CoachPerformance'
+import { CoachingROI } from '@/components/coach/reports/CoachingROI'
 import { ClientProgressTable, type ClientProgress } from '@/components/coach/reports/ClientProgressTable'
 import PageHeader from '@/components/ui/PageHeader'
 import {
@@ -479,6 +480,9 @@ Last Session: ${client.lastSessionDate ? new Date(client.lastSessionDate).toLoca
         {performanceData && (
           <CoachPerformance data={performanceData} period={dateRange} />
         )}
+
+        {/* Coaching ROI */}
+        <CoachingROI />
 
         {/* Client Progress Table */}
         <ClientProgressTable
