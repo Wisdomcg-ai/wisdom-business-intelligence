@@ -471,7 +471,7 @@ export default function CoachDashboardPage() {
 
         const scheduledAt = new Date(s.scheduled_at)
         const endAt = new Date(scheduledAt.getTime() + (s.duration_minutes || 60) * 60000)
-        const formatTime = (d: Date) => d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })
+        const formatTime = (d: Date) => d.toLocaleTimeString('en-AU', { timeZone: 'Australia/Sydney', hour: '2-digit', minute: '2-digit', hour12: false })
 
         // Determine session status for the TodaySchedule component
         const now = new Date()

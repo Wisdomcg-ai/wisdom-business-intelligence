@@ -72,6 +72,7 @@ function ScheduleContent() {
         .eq('coach_id', user.id)
         .order('scheduled_at', { ascending: true })
 
+      console.log('[Schedule] Loaded sessions:', sessionsData?.length, sessionsData)
       if (sessionsData) {
         setSessions(sessionsData.map(s => {
           // Handle both single object and array returns from Supabase
@@ -131,13 +132,31 @@ function ScheduleContent() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const scheduledAt = `${data.date}T${data.time}:00`
+    // Build a local Date object so the timezone offset is included
+    const localDate = new Date(`${data.date}T${data.time}:00`)
+    const scheduledAt = localDate.toISOString()
+
+    // Check for overlapping sessions
+    const newStart = localDate.getTime()
+    const newEnd = newStart + data.duration * 60000
+    const overlap = sessions.find(s => {
+      if (s.status === 'cancelled') return false
+      const sStart = new Date(s.scheduledAt).getTime()
+      const sEnd = sStart + s.durationMinutes * 60000
+      return newStart < sEnd && newEnd > sStart
+    })
+    if (overlap) {
+      throw new Error(`Time conflict with ${overlap.businessName} at ${new Date(overlap.scheduledAt).toLocaleTimeString('en-AU', { timeZone: 'Australia/Sydney', hour: '2-digit', minute: '2-digit', hour12: true })}`)
+    }
+
+    const clientName = clients.find(c => c.id === data.businessId)?.businessName || 'Session'
 
     const { error } = await supabase
       .from('coaching_sessions')
       .insert({
         coach_id: user.id,
         business_id: data.businessId,
+        title: `Coaching Session - ${clientName}`,
         scheduled_at: scheduledAt,
         duration_minutes: data.duration,
         session_type: data.type,
@@ -146,7 +165,8 @@ function ScheduleContent() {
       })
 
     if (error) {
-      console.error('Error scheduling session:', error)
+      console.error('Error scheduling session:', JSON.stringify(error, null, 2))
+      console.error('Insert payload:', { coach_id: user.id, business_id: data.businessId, scheduled_at: scheduledAt, duration_minutes: data.duration, session_type: data.type, status: 'scheduled' })
       throw error
     }
 

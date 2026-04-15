@@ -46,9 +46,12 @@ export function UpcomingSessions({ sessions, onSessionClick }: UpcomingSessionsP
     }
   }
 
+  const TZ = 'Australia/Sydney'
+
   const formatTime = (dateString: string) => {
     const date = new Date(dateString)
     return date.toLocaleTimeString('en-AU', {
+      timeZone: TZ,
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
@@ -61,17 +64,23 @@ export function UpcomingSessions({ sessions, onSessionClick }: UpcomingSessionsP
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
 
-    if (date.toDateString() === today.toDateString()) {
+    const dateStr = date.toLocaleDateString('en-AU', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+    const todayStr = today.toLocaleDateString('en-AU', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+    const tomorrowStr = tomorrow.toLocaleDateString('en-AU', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+
+    if (dateStr === todayStr) {
       return 'Today'
-    } else if (date.toDateString() === tomorrow.toDateString()) {
+    } else if (dateStr === tomorrowStr) {
       return 'Tomorrow'
     } else {
-      return date.toLocaleDateString('en-AU', { weekday: 'short', month: 'short', day: 'numeric' })
+      return date.toLocaleDateString('en-AU', { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric' })
     }
   }
 
   const isToday = (dateString: string) => {
-    return new Date(dateString).toDateString() === new Date().toDateString()
+    const date = new Date(dateString)
+    const today = new Date()
+    return date.toLocaleDateString('en-AU', { timeZone: TZ }) === today.toLocaleDateString('en-AU', { timeZone: TZ })
   }
 
   if (upcomingSessions.length === 0) {

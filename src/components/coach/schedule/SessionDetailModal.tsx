@@ -61,8 +61,11 @@ export function SessionDetailModal({
 
   const TypeIcon = getTypeIcon()
 
+  const TZ = 'Australia/Sydney'
+
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('en-AU', {
+      timeZone: TZ,
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -72,6 +75,7 @@ export function SessionDetailModal({
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('en-AU', {
+      timeZone: TZ,
       hour: '2-digit',
       minute: '2-digit',
       hour12: true

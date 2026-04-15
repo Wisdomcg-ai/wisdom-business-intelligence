@@ -53,7 +53,16 @@ export async function POST(request: Request) {
       engagementStartDate,
       enabledModules,
       sendInvitation = true,
-      teamMembers = [] // Array of team members to invite
+      teamMembers = [], // Array of team members to invite
+      // Step 5: Initial Assessment
+      topChallenges = [],
+      topOpportunities = [],
+      coachNotes = '',
+      // Step 6: First Session
+      firstSessionDate = null,
+      firstSessionTime = null,
+      firstSessionType = 'video',
+      firstSessionAgenda = ''
     } = body
 
     // Validate required fields
@@ -350,6 +359,61 @@ export async function POST(request: Request) {
             error: 'Unexpected error creating team member'
           })
         }
+      }
+    }
+
+    // STEP 10: Store initial assessment data (challenges & opportunities)
+    if (topChallenges.length > 0 || topOpportunities.length > 0) {
+      try {
+        await supabase
+          .from('business_profiles')
+          .update({
+            top_challenges: topChallenges,
+            growth_opportunities: topOpportunities
+          })
+          .eq('business_id', business.id)
+      } catch (e) {
+        console.warn('[Coach Client Create] Failed to save assessment data:', e)
+      }
+    }
+
+    // STEP 11: Create initial coach note (if provided)
+    if (coachNotes.trim()) {
+      try {
+        await supabase
+          .from('session_notes')
+          .insert({
+            business_id: business.id,
+            coach_id: user.id,
+            session_date: new Date().toISOString().split('T')[0],
+            status: 'completed',
+            private_observations: coachNotes,
+            discussion_points: 'Onboarding notes'
+          })
+      } catch (e) {
+        console.warn('[Coach Client Create] Failed to create coach note:', e)
+      }
+    }
+
+    // STEP 12: Create first coaching session (if date provided)
+    if (firstSessionDate) {
+      try {
+        const sessionDateTime = new Date(`${firstSessionDate}T${firstSessionTime || '09:00'}:00`).toISOString()
+        await supabase
+          .from('coaching_sessions')
+          .insert({
+            business_id: business.id,
+            coach_id: user.id,
+            title: `First Session - ${businessName}`,
+            scheduled_at: sessionDateTime,
+            duration_minutes: 60,
+            session_type: firstSessionType || 'video',
+            status: 'scheduled',
+            notes: firstSessionAgenda || null,
+            prep_completed: false
+          })
+      } catch (e) {
+        console.warn('[Coach Client Create] Failed to create first session:', e)
       }
     }
 

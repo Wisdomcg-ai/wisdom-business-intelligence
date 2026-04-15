@@ -48,6 +48,7 @@ export function ScheduleSessionModal({
 }: ScheduleSessionModalProps) {
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
 
   // Form state
@@ -85,6 +86,7 @@ export function ScheduleSessionModal({
     if (!selectedClientId || !date || !time) return
 
     setSaving(true)
+    setError(null)
     try {
       await onSchedule({
         businessId: selectedClientId,
@@ -95,8 +97,8 @@ export function ScheduleSessionModal({
         notes: notes || undefined
       })
       onClose()
-    } catch (error) {
-      console.error('Error scheduling session:', error)
+    } catch (err: any) {
+      setError(err?.message || 'Failed to schedule session')
     } finally {
       setSaving(false)
     }
@@ -309,6 +311,13 @@ export function ScheduleSessionModal({
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               </div>
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div className="mx-6 mb-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              {error}
             </div>
           )}
 

@@ -11,6 +11,7 @@ import {
   MapPin,
   User
 } from 'lucide-react'
+import { TIMEZONE, LOCALE, getSydneyHour, isSameSydneyDay } from '@/lib/timezone'
 
 export interface CalendarSession {
   id: string
@@ -38,6 +39,20 @@ interface CalendarViewProps {
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 7) // 7 AM to 6 PM
 
+// Client color palette for distinguishing sessions by client
+const CLIENT_COLORS = [
+  { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
+  { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
+  { bg: 'bg-teal-100', text: 'text-teal-700', border: 'border-teal-300' },
+  { bg: 'bg-pink-100', text: 'text-pink-700', border: 'border-pink-300' },
+  { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-300' },
+  { bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-300' },
+  { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-300' },
+  { bg: 'bg-cyan-100', text: 'text-cyan-700', border: 'border-cyan-300' },
+  { bg: 'bg-lime-100', text: 'text-lime-700', border: 'border-lime-300' },
+  { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300' },
+]
+
 export function CalendarView({
   sessions,
   viewMode,
@@ -48,6 +63,16 @@ export function CalendarView({
   onTimeSlotClick
 }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(selectedDate)
+
+  // Build a stable color map: each unique businessId gets a consistent color
+  const clientColorMap = useMemo(() => {
+    const uniqueClients = [...new Set(sessions.map(s => s.businessId))]
+    const map = new Map<string, typeof CLIENT_COLORS[0]>()
+    uniqueClients.forEach((clientId, index) => {
+      map.set(clientId, CLIENT_COLORS[index % CLIENT_COLORS.length])
+    })
+    return map
+  }, [sessions])
 
   // Navigation
   const navigatePrev = () => {
@@ -93,33 +118,33 @@ export function CalendarView({
     }
   }, [currentDate, viewMode])
 
-  // Get sessions for a specific date
+  // Get sessions for a specific date (using Sydney timezone)
   const getSessionsForDate = (date: Date) => {
     return sessions.filter(session => {
       const sessionDate = new Date(session.scheduledAt)
-      return sessionDate.toDateString() === date.toDateString()
+      return isSameSydneyDay(sessionDate, date)
     })
   }
 
-  // Get sessions for a specific hour on a date
+  // Get sessions for a specific hour on a date (using Sydney timezone)
   const getSessionsForHour = (date: Date, hour: number) => {
     return sessions.filter(session => {
       const sessionDate = new Date(session.scheduledAt)
-      return sessionDate.toDateString() === date.toDateString() &&
-        sessionDate.getHours() === hour
+      return isSameSydneyDay(sessionDate, date) &&
+        getSydneyHour(sessionDate) === hour
     })
   }
 
   const formatHeaderDate = () => {
     if (viewMode === 'month') {
-      return currentDate.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+      return currentDate.toLocaleDateString(LOCALE, { timeZone: TIMEZONE, month: 'long', year: 'numeric' })
     } else if (viewMode === 'week') {
       const weekStart = getWeekStart(currentDate)
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 6)
-      return `${weekStart.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-AU', { month: 'short', day: 'numeric', year: 'numeric' })}`
+      return `${weekStart.toLocaleDateString(LOCALE, { timeZone: TIMEZONE, month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString(LOCALE, { timeZone: TIMEZONE, month: 'short', day: 'numeric', year: 'numeric' })}`
     } else {
-      return currentDate.toLocaleDateString('en-AU', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+      return currentDate.toLocaleDateString(LOCALE, { timeZone: TIMEZONE, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
     }
   }
 
@@ -192,6 +217,22 @@ export function CalendarView({
         </div>
       </div>
 
+      {/* Client Color Legend */}
+      {clientColorMap.size > 1 && (
+        <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-4 flex-wrap">
+          <span className="text-xs font-medium text-gray-500">Clients:</span>
+          {Array.from(clientColorMap.entries()).map(([clientId, color]) => {
+            const clientName = sessions.find(s => s.businessId === clientId)?.businessName || 'Unknown'
+            return (
+              <span key={clientId} className="flex items-center gap-1.5 text-xs">
+                <span className={`w-3 h-3 rounded-full ${color.bg} border ${color.border}`} />
+                <span className="text-gray-600">{clientName}</span>
+              </span>
+            )
+          })}
+        </div>
+      )}
+
       {/* Calendar Grid */}
       {viewMode === 'month' && (
         <MonthView
@@ -204,6 +245,7 @@ export function CalendarView({
           onDateClick={(date) => onDateChange(date)}
           onSessionClick={onSessionClick}
           getTypeIcon={getTypeIcon}
+          clientColorMap={clientColorMap}
         />
       )}
 
@@ -216,6 +258,7 @@ export function CalendarView({
           onSessionClick={onSessionClick}
           onTimeSlotClick={onTimeSlotClick}
           getTypeIcon={getTypeIcon}
+          clientColorMap={clientColorMap}
         />
       )}
 
@@ -227,10 +270,23 @@ export function CalendarView({
           onSessionClick={onSessionClick}
           onTimeSlotClick={onTimeSlotClick}
           getTypeIcon={getTypeIcon}
+          clientColorMap={clientColorMap}
         />
       )}
     </div>
   )
+}
+
+// Helper to get session color classes
+function getSessionColorClasses(
+  session: CalendarSession,
+  clientColorMap: Map<string, typeof CLIENT_COLORS[0]>
+): string {
+  if (session.status === 'completed') return 'bg-green-100 text-green-700'
+  if (session.status === 'cancelled') return 'bg-gray-100 text-gray-500 line-through'
+  const clientColor = clientColorMap.get(session.businessId)
+  if (clientColor) return `${clientColor.bg} ${clientColor.text}`
+  return 'bg-brand-orange-100 text-brand-orange-700'
 }
 
 // Month View Component
@@ -243,7 +299,8 @@ function MonthView({
   isSelected,
   onDateClick,
   onSessionClick,
-  getTypeIcon
+  getTypeIcon,
+  clientColorMap
 }: {
   data: Date[][]
   currentDate: Date
@@ -254,6 +311,7 @@ function MonthView({
   onDateClick: (date: Date) => void
   onSessionClick: (session: CalendarSession) => void
   getTypeIcon: (type: CalendarSession['type']) => typeof Video
+  clientColorMap: Map<string, typeof CLIENT_COLORS[0]>
 }) {
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -304,11 +362,7 @@ function MonthView({
                         onSessionClick(session)
                       }}
                       className={`px-2 py-1 rounded text-xs truncate cursor-pointer ${
-                        session.status === 'completed'
-                          ? 'bg-green-100 text-green-700'
-                          : session.status === 'cancelled'
-                            ? 'bg-gray-100 text-gray-500 line-through'
-                            : 'bg-brand-orange-100 text-brand-orange-700'
+                        getSessionColorClasses(session, clientColorMap)
                       }`}
                     >
                       <div className="flex items-center gap-1">
@@ -340,7 +394,8 @@ function WeekView({
   isToday,
   onSessionClick,
   onTimeSlotClick,
-  getTypeIcon
+  getTypeIcon,
+  clientColorMap
 }: {
   data: Date[]
   sessions: CalendarSession[]
@@ -349,6 +404,7 @@ function WeekView({
   onSessionClick: (session: CalendarSession) => void
   onTimeSlotClick?: (date: Date, hour: number) => void
   getTypeIcon: (type: CalendarSession['type']) => typeof Video
+  clientColorMap: Map<string, typeof CLIENT_COLORS[0]>
 }) {
   return (
     <div className="overflow-auto max-h-[600px]">
@@ -397,16 +453,13 @@ function WeekView({
                           onSessionClick(session)
                         }}
                         className={`p-2 rounded text-xs mb-1 cursor-pointer ${
-                          session.status === 'completed'
-                            ? 'bg-green-100 text-green-700'
-                            : session.status === 'cancelled'
-                              ? 'bg-gray-100 text-gray-500'
-                              : 'bg-brand-orange-100 text-brand-orange-700'
+                          getSessionColorClasses(session, clientColorMap)
                         }`}
                       >
                         <div className="flex items-center gap-1 font-medium">
                           <Icon className="w-3 h-3" />
-                          {new Date(session.scheduledAt).toLocaleTimeString('en-AU', {
+                          {new Date(session.scheduledAt).toLocaleTimeString(LOCALE, {
+                            timeZone: TIMEZONE,
                             hour: '2-digit',
                             minute: '2-digit'
                           })}
@@ -432,7 +485,8 @@ function DayView({
   getSessionsForHour,
   onSessionClick,
   onTimeSlotClick,
-  getTypeIcon
+  getTypeIcon,
+  clientColorMap
 }: {
   date: Date
   sessions: CalendarSession[]
@@ -440,6 +494,7 @@ function DayView({
   onSessionClick: (session: CalendarSession) => void
   onTimeSlotClick?: (date: Date, hour: number) => void
   getTypeIcon: (type: CalendarSession['type']) => typeof Video
+  clientColorMap: Map<string, typeof CLIENT_COLORS[0]>
 }) {
   return (
     <div className="overflow-auto max-h-[600px]">
@@ -463,18 +518,25 @@ function DayView({
                       e.stopPropagation()
                       onSessionClick(session)
                     }}
-                    className={`p-3 rounded-lg mb-2 cursor-pointer ${
+                    className={`p-3 rounded-lg mb-2 cursor-pointer border ${
                       session.status === 'completed'
-                        ? 'bg-green-50 border border-green-200'
+                        ? 'bg-green-50 border-green-200'
                         : session.status === 'cancelled'
-                          ? 'bg-gray-50 border border-gray-200'
-                          : 'bg-brand-orange-50 border border-brand-orange-200'
+                          ? 'bg-gray-50 border-gray-200'
+                          : (() => {
+                              const c = clientColorMap.get(session.businessId)
+                              return c ? `${c.bg} ${c.border}` : 'bg-brand-orange-50 border-brand-orange-200'
+                            })()
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Icon className={`w-4 h-4 ${
-                          session.status === 'completed' ? 'text-green-600' : 'text-brand-orange'
+                          session.status === 'completed' ? 'text-green-600' :
+                          (() => {
+                            const c = clientColorMap.get(session.businessId)
+                            return c ? c.text : 'text-brand-orange'
+                          })()
                         }`} />
                         <span className="font-medium text-gray-900">{session.businessName}</span>
                       </div>

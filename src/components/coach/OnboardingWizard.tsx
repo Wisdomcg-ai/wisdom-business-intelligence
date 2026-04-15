@@ -14,7 +14,15 @@ import {
   Mail,
   Phone,
   Globe,
-  MapPin
+  MapPin,
+  ClipboardList,
+  Calendar,
+  Video,
+  MapPinIcon,
+  Plus,
+  X,
+  Target,
+  Lightbulb
 } from 'lucide-react'
 
 // Step types
@@ -91,6 +99,17 @@ export interface WizardData {
 
   // Step 4: Additional Team Members (optional)
   teamMembers: TeamMemberInput[]
+
+  // Step 5: Initial Assessment
+  topChallenges: string[]
+  topOpportunities: string[]
+  coachNotes: string
+
+  // Step 6: First Session Prep
+  firstSessionDate: string
+  firstSessionTime: string
+  firstSessionType: 'video' | 'phone' | 'in-person'
+  firstSessionAgenda: string
 }
 
 const defaultData: WizardData = {
@@ -144,6 +163,15 @@ const defaultData: WizardData = {
   },
   // Step 4: Team members (empty by default)
   teamMembers: [],
+  // Step 5: Initial Assessment
+  topChallenges: ['', '', ''],
+  topOpportunities: ['', '', ''],
+  coachNotes: '',
+  // Step 6: First Session Prep
+  firstSessionDate: '',
+  firstSessionTime: '09:00',
+  firstSessionType: 'video',
+  firstSessionAgenda: '',
 }
 
 const steps = [
@@ -151,6 +179,8 @@ const steps = [
   { id: 2, title: 'Program Setup', icon: Briefcase },
   { id: 3, title: 'Modules', icon: LayoutGrid },
   { id: 4, title: 'Team Members', icon: User },
+  { id: 5, title: 'Assessment', icon: ClipboardList },
+  { id: 6, title: 'First Session', icon: Calendar },
 ]
 
 const industries = [
@@ -980,6 +1010,239 @@ function Step4TeamMembers({ data, updateData }: StepProps) {
   )
 }
 
+// Step 5: Initial Assessment
+function Step5Assessment({ data, updateData }: StepProps) {
+  const updateChallenge = (index: number, value: string) => {
+    const updated = [...data.topChallenges]
+    updated[index] = value
+    updateData({ topChallenges: updated })
+  }
+
+  const updateOpportunity = (index: number, value: string) => {
+    const updated = [...data.topOpportunities]
+    updated[index] = value
+    updateData({ topOpportunities: updated })
+  }
+
+  const addChallenge = () => {
+    updateData({ topChallenges: [...data.topChallenges, ''] })
+  }
+
+  const removeChallenge = (index: number) => {
+    if (data.topChallenges.length <= 1) return
+    updateData({ topChallenges: data.topChallenges.filter((_, i) => i !== index) })
+  }
+
+  const addOpportunity = () => {
+    updateData({ topOpportunities: [...data.topOpportunities, ''] })
+  }
+
+  const removeOpportunity = (index: number) => {
+    if (data.topOpportunities.length <= 1) return
+    updateData({ topOpportunities: data.topOpportunities.filter((_, i) => i !== index) })
+  }
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-1">Initial Assessment</h2>
+        <p className="text-gray-500">
+          Capture the client&apos;s current challenges and opportunities to set the coaching direction.
+          <span className="block text-sm mt-1 text-gray-400">This step is optional — you can update this later.</span>
+        </p>
+      </div>
+
+      {/* Top Challenges */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Target className="w-5 h-5 text-red-500" />
+          <h3 className="font-semibold text-gray-900">Top Challenges</h3>
+        </div>
+        <div className="space-y-3">
+          {data.topChallenges.map((challenge, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-400 w-6">{index + 1}.</span>
+              <input
+                type="text"
+                value={challenge}
+                onChange={(e) => updateChallenge(index, e.target.value)}
+                placeholder={`Challenge ${index + 1}`}
+                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+              />
+              {data.topChallenges.length > 1 && (
+                <button
+                  onClick={() => removeChallenge(index)}
+                  className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          ))}
+          <button
+            onClick={addChallenge}
+            className="flex items-center gap-2 text-sm text-brand-orange hover:text-brand-orange-600 font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            Add challenge
+          </button>
+        </div>
+      </div>
+
+      {/* Top Opportunities */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Lightbulb className="w-5 h-5 text-green-500" />
+          <h3 className="font-semibold text-gray-900">Top Opportunities</h3>
+        </div>
+        <div className="space-y-3">
+          {data.topOpportunities.map((opportunity, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-400 w-6">{index + 1}.</span>
+              <input
+                type="text"
+                value={opportunity}
+                onChange={(e) => updateOpportunity(index, e.target.value)}
+                placeholder={`Opportunity ${index + 1}`}
+                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+              />
+              {data.topOpportunities.length > 1 && (
+                <button
+                  onClick={() => removeOpportunity(index)}
+                  className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          ))}
+          <button
+            onClick={addOpportunity}
+            className="flex items-center gap-2 text-sm text-brand-orange hover:text-brand-orange-600 font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            Add opportunity
+          </button>
+        </div>
+      </div>
+
+      {/* Coach Notes */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Initial Coach Notes
+        </label>
+        <textarea
+          value={data.coachNotes}
+          onChange={(e) => updateData({ coachNotes: e.target.value })}
+          rows={4}
+          placeholder="Any initial observations, impressions, or notes from your discovery call..."
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange resize-none"
+        />
+        <p className="text-xs text-gray-400 mt-1">Private — only visible to you.</p>
+      </div>
+    </div>
+  )
+}
+
+// Step 6: First Session Prep
+function Step6FirstSession({ data, updateData, errors }: StepProps) {
+  return (
+    <div className="space-y-8">
+      <div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-1">First Session</h2>
+        <p className="text-gray-500">
+          Schedule the first coaching session and set the agenda.
+          <span className="block text-sm mt-1 text-gray-400">This step is optional — you can schedule later from the Schedule page.</span>
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        {/* Date */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Session Date
+          </label>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="date"
+              value={data.firstSessionDate}
+              onChange={(e) => updateData({ firstSessionDate: e.target.value })}
+              min={new Date().toISOString().split('T')[0]}
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+            />
+          </div>
+        </div>
+
+        {/* Time */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Session Time
+          </label>
+          <input
+            type="time"
+            value={data.firstSessionTime}
+            onChange={(e) => updateData({ firstSessionTime: e.target.value })}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+          />
+        </div>
+      </div>
+
+      {/* Session Type */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-3">Session Type</label>
+        <div className="grid grid-cols-3 gap-3">
+          {([
+            { value: 'video', label: 'Video Call', icon: Video },
+            { value: 'phone', label: 'Phone Call', icon: Phone },
+            { value: 'in-person', label: 'In Person', icon: MapPinIcon },
+          ] as const).map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              onClick={() => updateData({ firstSessionType: value })}
+              className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                data.firstSessionType === value
+                  ? 'border-brand-orange bg-brand-orange-50 text-brand-orange'
+                  : 'border-gray-200 text-gray-500 hover:border-gray-300'
+              }`}
+            >
+              <Icon className="w-6 h-6" />
+              <span className="text-sm font-medium">{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Agenda Notes */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Session Agenda / Prep Notes
+        </label>
+        <textarea
+          value={data.firstSessionAgenda}
+          onChange={(e) => updateData({ firstSessionAgenda: e.target.value })}
+          rows={5}
+          placeholder={"Suggested first session agenda:\n• Introductions & expectations\n• Review business overview\n• Discuss top challenges\n• Set initial goals\n• Agree on session cadence"}
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-orange focus:border-brand-orange resize-none"
+        />
+      </div>
+
+      {/* Summary Card */}
+      {data.firstSessionDate && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-5">
+          <h3 className="font-semibold text-green-800 mb-2">Session Summary</h3>
+          <div className="text-sm text-green-700 space-y-1">
+            <p>Client: <strong>{data.businessName || 'TBD'}</strong></p>
+            <p>Date: <strong>{new Date(data.firstSessionDate + 'T00:00').toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong></p>
+            <p>Time: <strong>{data.firstSessionTime}</strong></p>
+            <p>Type: <strong>{data.firstSessionType === 'in-person' ? 'In Person' : data.firstSessionType === 'video' ? 'Video Call' : 'Phone Call'}</strong></p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Main Wizard Component
 interface OnboardingWizardProps {
   onComplete: (data: WizardData) => Promise<void>
@@ -1075,7 +1338,7 @@ export function OnboardingWizard({ onComplete, onCancel }: OnboardingWizardProps
 
   const handleNext = () => {
     if (validateStep(currentStep)) {
-      setCurrentStep(prev => Math.min(prev + 1, 4))
+      setCurrentStep(prev => Math.min(prev + 1, 6))
     }
   }
 
@@ -1119,6 +1382,8 @@ export function OnboardingWizard({ onComplete, onCancel }: OnboardingWizardProps
       case 2: return <Step2ProgramSetup {...stepProps} />
       case 3: return <Step3Modules {...stepProps} />
       case 4: return <Step4TeamMembers {...stepProps} />
+      case 5: return <Step5Assessment {...stepProps} />
+      case 6: return <Step6FirstSession {...stepProps} />
       default: return null
     }
   }
@@ -1233,7 +1498,7 @@ export function OnboardingWizard({ onComplete, onCancel }: OnboardingWizardProps
             Back
           </button>
 
-          {currentStep < 4 ? (
+          {currentStep < 6 ? (
             <button
               onClick={handleNext}
               className="flex items-center gap-2 px-6 py-3 bg-brand-orange text-white rounded-lg font-medium hover:bg-brand-orange-600 transition-colors"

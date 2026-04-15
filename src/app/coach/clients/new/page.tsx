@@ -26,7 +26,16 @@ export default function NewClientPage() {
         engagementStartDate: data.engagementStartDate,
         enabledModules: data.enabledModules,
         sendInvitation: true, // Always send invitation email
-        teamMembers: data.teamMembers || [] // Include team members from Step 4
+        teamMembers: data.teamMembers || [], // Include team members from Step 4
+        // Step 5: Initial Assessment
+        topChallenges: data.topChallenges?.filter(c => c.trim()) || [],
+        topOpportunities: data.topOpportunities?.filter(o => o.trim()) || [],
+        coachNotes: data.coachNotes || '',
+        // Step 6: First Session
+        firstSessionDate: data.firstSessionDate || null,
+        firstSessionTime: data.firstSessionTime || null,
+        firstSessionType: data.firstSessionType || 'video',
+        firstSessionAgenda: data.firstSessionAgenda || ''
       })
     })
 
