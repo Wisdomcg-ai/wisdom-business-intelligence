@@ -738,8 +738,8 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           setYear1Months(loadedExtendedPeriod.year1Months)
           setCurrentYearRemainingMonths(loadedExtendedPeriod.currentYearRemainingMonths)
           detectedExtended = true
-        } else if (!loadedFinancialData) {
-          // First-time user — check if near year end
+        } else if (ownerUser === user.id && !loadedFinancialData) {
+          // First-time user (client's own view only, not coach viewing) — check if near year end
           const nearEnd = isNearYearEnd(new Date(), effectiveYearStart)
           if (nearEnd) {
             const monthsLeft = getMonthsUntilYearEnd(new Date(), effectiveYearStart)

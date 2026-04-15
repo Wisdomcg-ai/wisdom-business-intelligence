@@ -205,13 +205,21 @@ export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
               <span>{activeBusiness?.name || 'Loading...'}</span>
             </div>
           </div>
-          <Link
-            href="/coach/clients"
-            className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Exit to Coach Portal
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/coach/clients/${clientId}`}
+              className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-sm"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Client File
+            </Link>
+            <Link
+              href="/coach/clients"
+              className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-medium"
+            >
+              Exit Coach View
+            </Link>
+          </div>
         </div>
       </div>
 

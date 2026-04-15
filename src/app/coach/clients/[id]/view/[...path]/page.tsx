@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useBusinessContext } from '@/contexts/BusinessContext'
+import { createClient } from '@/lib/supabase/client'
 import { Loader2, AlertCircle, Construction } from 'lucide-react'
 
 // Map of path to component imports - MUST match all client routes
@@ -101,6 +102,24 @@ export default function CoachViewPage({ params }: PageProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [businessSet, setBusinessSet] = useState(false)
+  const auditLogged = useRef(false)
+
+  // Audit log: record coach viewing client page
+  useEffect(() => {
+    if (auditLogged.current || !currentUser || !clientId) return
+    auditLogged.current = true
+
+    const supabase = createClient()
+    supabase
+      .from('coach_audit_log')
+      .insert({
+        coach_id: currentUser.id,
+        business_id: clientId,
+        action: 'view_client',
+        page_path: pathString
+      })
+      .then(() => {}) // fire-and-forget
+  }, [currentUser, clientId, pathString])
 
   // Set the active business when the page loads
   // Wait for currentUser to be available (initial context load complete)
