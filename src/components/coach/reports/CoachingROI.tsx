@@ -85,13 +85,12 @@ export function CoachingROI() {
 
       // Check coach role
       const { data: roleData } = await supabase
-        .from('user_roles')
+        .from('system_roles')
         .select('role')
         .eq('user_id', user.id)
-        .eq('role', 'coach')
         .maybeSingle()
 
-      if (!roleData) {
+      if (!roleData || (roleData.role !== 'coach' && roleData.role !== 'super_admin')) {
         setError('Coach access required')
         return
       }

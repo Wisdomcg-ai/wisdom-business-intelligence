@@ -703,11 +703,36 @@ export async function GET() {
       // ── Alerts ─────────────────────────────────────────────────
       const alerts = generateAlerts(modules, engagement)
 
+      // Convert module keys from snake_case to camelCase to match frontend component
+      const camelModules: Record<string, string> = {}
+      const keyMap: Record<string, string> = {
+        business_profile: 'businessProfile',
+        xero_connected: 'xeroConnected',
+        vision_mission: 'visionMission',
+        one_page_plan: 'onePagePlan',
+        strategic_initiatives: 'strategicInitiatives',
+        monthly_report: 'monthlyReport',
+        kpi_dashboard: 'kpiDashboard',
+        weekly_reviews: 'weeklyReviews',
+        quarterly_review: 'quarterlyReview',
+        issues_list: 'issuesList',
+        open_loops: 'openLoops',
+        stop_doing: 'stopDoing',
+        accountability_chart: 'accountability',
+        org_chart: 'orgChart',
+        hiring_roadmap: 'hiringRoadmap',
+        value_proposition: 'valueProposition',
+        session_notes: 'sessionNotes',
+      }
+      for (const [key, value] of Object.entries(modules)) {
+        camelModules[keyMap[key] || key] = value
+      }
+
       return {
         businessId: biz.id,
         businessName: biz.business_name || biz.name || 'Unnamed',
         ownerId,
-        modules,
+        modules: camelModules,
         engagement,
         alerts,
       }
