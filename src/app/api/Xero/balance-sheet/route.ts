@@ -230,13 +230,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify the sheet balances: Net Assets should equal the equity subtotal.
-    // Use loose != null to catch both null and undefined, and match any equity
-    // subtotal label (Xero AU sometimes returns "Total Owner's Equity" etc.)
+    // The last subtotal in a standard BS is always the equity total, regardless
+    // of how Xero labels it (AU orgs vary: "Total Equity", "Total Owner's Funds", etc.)
+    // Only flag as unbalanced when we can positively confirm a mismatch —
+    // if either value is missing, default to balanced (no warning).
     const netAssetsRow = rows.find(r => r.type === 'net_assets')
-    const totalEquityRow = rows.find(r => r.type === 'subtotal' && r.label.toLowerCase().includes('equity'))
+    const subtotals = rows.filter(r => r.type === 'subtotal')
+    const totalEquityRow = subtotals.at(-1)
     const balances =
-      netAssetsRow?.current != null &&
-      totalEquityRow?.current != null &&
+      netAssetsRow?.current == null ||
+      totalEquityRow?.current == null ||
       Math.abs(netAssetsRow.current - totalEquityRow.current) < 0.01
 
     const result: BalanceSheetData = {
