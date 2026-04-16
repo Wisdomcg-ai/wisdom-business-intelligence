@@ -18,20 +18,45 @@ function parseAmount(val: string): number {
   return isNaN(n) ? 0 : n
 }
 
-/** Classify a balance sheet line item into an opening balance category */
+/**
+ * Classify a balance sheet line item into an opening balance category.
+ *
+ * Xero balance sheet returns sections at the TOP LEVEL — not nested.
+ * Typical section titles include: "Bank", "Current Assets", "Fixed Assets",
+ * "Current Liabilities", "Non-Current Liabilities", "Equity" — plus the
+ * plural "Assets"/"Liabilities" from some org layouts.
+ */
 function classifyAccount(label: string, sectionTitle: string): string | null {
   const l = label.toLowerCase()
-  const s = sectionTitle.toLowerCase()
+  const s = sectionTitle.toLowerCase().trim()
 
-  // Bank accounts (under Assets)
-  if (s.includes('asset')) {
+  // "Bank" section — every line is a bank account regardless of label
+  if (s === 'bank' || s === 'bank accounts' || s === 'cash at bank') {
+    return 'bank'
+  }
+
+  const isAssetSection =
+    s.includes('asset') ||
+    s.includes('receivable') ||
+    s.includes('inventor') ||
+    s.includes('stock') ||
+    s === 'current' // some layouts use 'Current' / 'Non-Current' as bare labels
+  const isLiabilitySection =
+    s.includes('liabilit') ||
+    s.includes('payable') ||
+    s.includes('creditor')
+
+  // Asset-section items
+  if (isAssetSection) {
     if (l.includes('bank') || l.includes('cash') || l.includes('cheque') ||
         l.includes('checking') || l.includes('savings') || l.includes('petty cash') ||
-        l.includes('float') || l.includes('stripe') || l.includes('paypal')) {
+        l.includes('float') || l.includes('stripe') || l.includes('paypal') ||
+        l.includes('wise') || l.includes('revolut')) {
       return 'bank'
     }
     if (l.includes('trade debtor') || l.includes('accounts receivable') ||
-        l.includes('trade receivable') || l.includes('debtors')) {
+        l.includes('trade receivable') || l.includes('debtors') ||
+        l.includes('a/r') || l === 'receivable' || l === 'receivables') {
       return 'trade_debtors'
     }
     if (l.includes('stock') || l.includes('inventory') || l.includes('inventories')) {
@@ -39,10 +64,11 @@ function classifyAccount(label: string, sectionTitle: string): string | null {
     }
   }
 
-  // Liabilities
-  if (s.includes('liabilit')) {
+  // Liability-section items
+  if (isLiabilitySection) {
     if (l.includes('trade creditor') || l.includes('accounts payable') ||
-        l.includes('trade payable') || l.includes('creditors')) {
+        l.includes('trade payable') || l.includes('creditors') ||
+        l.includes('a/p') || l === 'payable' || l === 'payables') {
       return 'trade_creditors'
     }
     if (l.includes('gst') || l.includes('goods and services tax') || l.includes('bas')) {
@@ -160,6 +186,9 @@ export async function POST(request: NextRequest) {
     // Also collect detected loan accounts
     const detectedLoans: { name: string; balance: number }[] = []
 
+    // Log every classified line so we can audit what's being picked up
+    const classificationLog: Array<{ section: string; label: string; amount: number; category: string | null }> = []
+
     for (const row of (report.Rows ?? [])) {
       if (row.RowType !== 'Section') continue
       const sectionTitle = row.Title ?? ''
@@ -172,12 +201,15 @@ export async function POST(request: NextRequest) {
         if (!label || amount === 0) continue
 
         const category = classifyAccount(label, sectionTitle)
+        classificationLog.push({ section: sectionTitle, label, amount, category })
         if (category) {
           balances[category] += amount
         }
 
-        // Detect loan accounts (liabilities with "loan" or "borrowing" in name)
-        if (sectionTitle.toLowerCase().includes('liabilit')) {
+        // Detect loan accounts — check section + label for loan-like wording
+        const sL = sectionTitle.toLowerCase()
+        const isLiabSection = sL.includes('liabilit') || sL.includes('payable') || sL.includes('creditor')
+        if (isLiabSection) {
           const ll = label.toLowerCase()
           if ((ll.includes('loan') || ll.includes('borrowing') || ll.includes('hire purchase') ||
                ll.includes('chattel mortgage') || ll.includes('finance lease')) &&
@@ -187,6 +219,10 @@ export async function POST(request: NextRequest) {
         }
       }
     }
+
+    console.log('[SyncBalances] Classified lines for business', business_id, 'at', balance_date, ':',
+      JSON.stringify(classificationLog, null, 2))
+    console.log('[SyncBalances] Final balances:', balances)
 
     // Try to calculate DSO/DPO from Xero aged receivables/payables
     let dso_days = 30
@@ -278,6 +314,8 @@ export async function POST(request: NextRequest) {
       balance_date,
       last_xero_sync_at: new Date().toISOString(),
       detected_loans: detectedLoans,
+      // Include classification audit trail so the UI can show what was picked up
+      classification_log: classificationLog,
     }
 
     // Optionally persist to the forecast's assumptions
