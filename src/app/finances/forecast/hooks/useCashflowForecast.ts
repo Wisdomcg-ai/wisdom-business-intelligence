@@ -55,12 +55,13 @@ export function useCashflowForecast({
 }: UseCashflowForecastOptions): UseCashflowForecastReturn {
   const [assumptions, setAssumptions] = useState<CashflowAssumptions>(getDefaultCashflowAssumptions())
   const [payrollSummary, setPayrollSummary] = useState<PayrollSummary | null>(null)
+  const [mergedLines, setMergedLines] = useState<PLLine[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [hasAutoSynced, setHasAutoSynced] = useState(false)
 
-  // Load assumptions and payroll summary on mount
+  // Load assumptions, payroll summary, and Xero actuals on mount
   useEffect(() => {
     if (!forecast?.id || !businessId) return
     loadData()
@@ -71,10 +72,11 @@ export function useCashflowForecast({
     setIsLoading(true)
 
     try {
-      // Load assumptions and payroll summary in parallel
-      const [assumptionsRes, payrollRes] = await Promise.all([
+      // Load assumptions, payroll, and Xero actuals in parallel
+      const [assumptionsRes, payrollRes, xeroActualsRes] = await Promise.all([
         fetch(`/api/forecast/cashflow/assumptions?forecast_id=${forecast.id}`),
         loadPayrollSummary(forecast.id),
+        businessId ? fetch(`/api/forecast/cashflow/xero-actuals?business_id=${businessId}`) : Promise.resolve(null),
       ])
 
       if (assumptionsRes.ok) {
@@ -89,6 +91,16 @@ export function useCashflowForecast({
         }
       }
 
+      // Merge Xero actuals with forecast P&L lines
+      let xeroActuals: PLLine[] = []
+      if (xeroActualsRes && xeroActualsRes.ok) {
+        const { data: xeroData } = await xeroActualsRes.json()
+        if (xeroData) {
+          xeroActuals = xeroData
+        }
+      }
+      setMergedLines(mergeActualsAndForecast(xeroActuals, plLines))
+
       setPayrollSummary(payrollRes)
       setLoaded(true)
     } catch (err) {
@@ -97,6 +109,17 @@ export function useCashflowForecast({
       setIsLoading(false)
     }
   }
+
+  // Re-merge when plLines change (e.g. after forecast update)
+  useEffect(() => {
+    if (loaded && plLines.length > 0) {
+      // Re-merge preserving existing xero actuals
+      setMergedLines(prev => {
+        const xeroOnlyLines = prev.filter(l => l.id?.startsWith('xero-actual-') && !plLines.some(fl => fl.account_name === l.account_name))
+        return mergeActualsAndForecast(xeroOnlyLines, plLines)
+      })
+    }
+  }, [plLines, loaded])
 
   // Auto-sync from Xero on first load if no balances have been set
   useEffect(() => {
@@ -116,16 +139,18 @@ export function useCashflowForecast({
   }, [loaded, hasXeroConnection, hasAutoSynced, isSyncing, assumptions.opening_bank_balance, assumptions.balance_date, forecast?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Run engine client-side via useMemo (instant updates)
+  // Use mergedLines (Xero actuals + forecast) for the most complete picture
   const data = useMemo(() => {
-    if (!forecast || !loaded || plLines.length === 0) return null
+    const linesToUse = mergedLines.length > 0 ? mergedLines : plLines
+    if (!forecast || !loaded || linesToUse.length === 0) return null
 
     try {
-      return generateCashflowForecast(plLines, payrollSummary, assumptions, forecast, plannedSpends)
+      return generateCashflowForecast(linesToUse, payrollSummary, assumptions, forecast, plannedSpends)
     } catch (err) {
       console.error('[useCashflowForecast] Engine error:', err)
       return null
     }
-  }, [plLines, payrollSummary, assumptions, forecast, loaded, plannedSpends])
+  }, [mergedLines, plLines, payrollSummary, assumptions, forecast, loaded, plannedSpends])
 
   const updateAssumption = useCallback(<K extends keyof CashflowAssumptions>(key: K, value: CashflowAssumptions[K]) => {
     setAssumptions(prev => ({ ...prev, [key]: value }))
@@ -250,4 +275,60 @@ async function loadPayrollSummary(forecastId: string): Promise<PayrollSummary | 
   } catch {
     return null
   }
+}
+
+/**
+ * Merge Xero actuals with forecast P&L lines.
+ *
+ * For each account:
+ * - If it exists in both Xero and forecast: use Xero actual_months + forecast forecast_months
+ * - If it exists only in Xero: include with actual_months only (real spend not in budget)
+ * - If it exists only in forecast: keep as-is (manual/budget-only lines)
+ *
+ * This ensures the cashflow reflects ALL real cash movements for past months,
+ * plus the budget projection for future months.
+ */
+function mergeActualsAndForecast(xeroLines: PLLine[], forecastLines: PLLine[]): PLLine[] {
+  // Build a map by account name for efficient matching
+  const accountMap = new Map<string, { xero: PLLine | null; forecast: PLLine | null }>()
+
+  for (const fl of forecastLines) {
+    accountMap.set(fl.account_name, { xero: null, forecast: fl })
+  }
+
+  for (const xl of xeroLines) {
+    const existing = accountMap.get(xl.account_name)
+    if (existing) {
+      existing.xero = xl
+    } else {
+      accountMap.set(xl.account_name, { xero: xl, forecast: null })
+    }
+  }
+
+  const result: PLLine[] = []
+
+  for (const [accountName, { xero, forecast: fc }] of accountMap) {
+    if (fc && xero) {
+      // Account exists in both — merge Xero actuals into the forecast line
+      result.push({
+        ...fc,
+        actual_months: {
+          ...(fc.actual_months || {}),
+          ...(xero.actual_months || {}), // Xero actuals override forecast actuals
+        },
+      })
+    } else if (fc) {
+      // Forecast only — keep as-is
+      result.push(fc)
+    } else if (xero) {
+      // Xero only — real account not in the budget, still affects cash
+      result.push({
+        ...xero,
+        account_name: accountName,
+        forecast_months: {}, // No budget data
+      })
+    }
+  }
+
+  return result
 }
