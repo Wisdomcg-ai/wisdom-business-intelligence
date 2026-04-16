@@ -229,13 +229,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Verify the sheet balances: Net Assets row should equal Total Equity
+    // Verify the sheet balances: Net Assets should equal the equity subtotal.
+    // Use loose != null to catch both null and undefined, and match any equity
+    // subtotal label (Xero AU sometimes returns "Total Owner's Equity" etc.)
     const netAssetsRow = rows.find(r => r.type === 'net_assets')
-    const totalEquityRow = rows.find(r => r.type === 'subtotal' && r.label === 'Total Equity')
+    const totalEquityRow = rows.find(r => r.type === 'subtotal' && r.label.toLowerCase().includes('equity'))
     const balances =
-      netAssetsRow?.current !== null &&
-      totalEquityRow?.current !== null &&
-      Math.abs((netAssetsRow?.current ?? 0) - (totalEquityRow?.current ?? 0)) < 0.01
+      netAssetsRow?.current != null &&
+      totalEquityRow?.current != null &&
+      Math.abs(netAssetsRow.current - totalEquityRow.current) < 0.01
 
     const result: BalanceSheetData = {
       business_id: businessId,
