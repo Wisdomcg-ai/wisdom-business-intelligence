@@ -33,6 +33,8 @@ import { useXeroConnection } from './hooks/useXeroConnection'
 import { useAccountMappings } from './hooks/useAccountMappings'
 import { useReconciliation } from './hooks/useReconciliation'
 import { useReportTemplates } from './hooks/useReportTemplates'
+import { useBalanceSheet } from './hooks/useBalanceSheet'
+import BalanceSheetTab from './components/BalanceSheetTab'
 import { loadSettings, getCurrentFiscalYear, getDefaultReportMonth } from './services/monthly-report-service'
 import { MonthlyReportPDFService } from './services/monthly-report-pdf-service'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
@@ -71,7 +73,7 @@ export default function MonthlyReportPage() {
   const [activeTab, setActiveTab] = useState<ReportTab>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('monthly-report-active-tab')
-      if (saved && ['report', 'full-year', 'trends', 'charts', 'subscriptions', 'wages', 'cashflow', 'mapping', 'history'].includes(saved)) {
+      if (saved && ['report', 'full-year', 'trends', 'charts', 'subscriptions', 'wages', 'cashflow', 'balance-sheet', 'mapping', 'history'].includes(saved)) {
         return saved as ReportTab
       }
     }
@@ -154,6 +156,15 @@ export default function MonthlyReportPage() {
     applyTemplate,
     setActiveTemplateId,
   } = useReportTemplates(businessId)
+
+  const {
+    balanceSheet,
+    isLoading: balanceSheetLoading,
+    error: balanceSheetError,
+    compare: balanceSheetCompare,
+    setCompare: setBalanceSheetCompare,
+    load: loadBalanceSheet,
+  } = useBalanceSheet(businessId)
 
   // Load cashflow forecast (reusable for tab, charts, and PDF)
   const loadCashflowForecast = useCallback(async () => {
@@ -678,6 +689,7 @@ export default function MonthlyReportPage() {
           showWages={!!(settings?.sections.payroll_detail && (settings?.wages_account_names || []).length > 0)}
           showCashflow={!!(settings?.sections.cashflow)}
           showCharts={!!(settings?.sections && Object.entries(settings.sections).some(([k, v]) => k.startsWith('chart_') && v))}
+          showBalanceSheet={!!(settings?.sections.balance_sheet)}
         />
 
         {/* Tab Content */}
@@ -783,6 +795,19 @@ export default function MonthlyReportPage() {
           <CashflowTab
             data={cashflowForecast}
             isLoading={cashflowLoading}
+          />
+        )}
+
+        {activeTab === 'balance-sheet' && (
+          <BalanceSheetTab
+            businessId={businessId}
+            month={selectedMonth}
+            balanceSheet={balanceSheet}
+            isLoading={balanceSheetLoading}
+            error={balanceSheetError}
+            compare={balanceSheetCompare}
+            onCompareChange={setBalanceSheetCompare}
+            onLoad={loadBalanceSheet}
           />
         )}
 

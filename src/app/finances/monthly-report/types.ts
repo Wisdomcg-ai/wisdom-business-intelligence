@@ -1,6 +1,6 @@
 // Monthly Report Types
 
-export type ReportTab = 'report' | 'full-year' | 'trends' | 'charts' | 'subscriptions' | 'wages' | 'cashflow' | 'mapping' | 'history'
+export type ReportTab = 'report' | 'full-year' | 'trends' | 'charts' | 'subscriptions' | 'wages' | 'cashflow' | 'balance-sheet' | 'mapping' | 'history'
 
 export type ReportStatus = 'draft' | 'final'
 
@@ -401,5 +401,32 @@ export interface WagesDetailData {
   grand_total: { actual: number; budget: number; variance: number }
   payroll_available: boolean
   pay_run_dates: string[]
+}
+
+// ============================================
+// Balance Sheet (Phase 27)
+// ============================================
+
+export type BalanceSheetRowType = 'section_header' | 'line_item' | 'subtotal' | 'net_assets'
+
+export interface BalanceSheetRow {
+  type: BalanceSheetRowType
+  label: string
+  current: number | null   // Current period actuals
+  prior: number | null     // Prior period actuals
+  variance: number | null  // current - prior
+  variance_pct: number | null  // null = N/A (prior is 0)
+}
+
+export type BalanceSheetCompare = 'yoy' | 'mom'
+
+export interface BalanceSheetData {
+  business_id: string
+  report_date: string        // last day of report month, YYYY-MM-DD
+  compare: BalanceSheetCompare
+  current_label: string      // e.g. "Mar 2026"
+  prior_label: string        // e.g. "Mar 2025"
+  rows: BalanceSheetRow[]
+  balances: boolean          // true if Total Asset - Total Liability === Total Equity
 }
 

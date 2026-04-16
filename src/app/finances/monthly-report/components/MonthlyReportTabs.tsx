@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { BarChart3, Link2, Clock, Calendar, TrendingUp, CreditCard, Users, DollarSign, PieChart } from 'lucide-react'
+import { BarChart3, Link2, Clock, Calendar, TrendingUp, CreditCard, Users, DollarSign, PieChart, Scale } from 'lucide-react'
 import type { ReportTab } from '../types'
 
 interface MonthlyReportTabsProps {
@@ -12,6 +12,7 @@ interface MonthlyReportTabsProps {
   showWages?: boolean
   showCashflow?: boolean
   showCharts?: boolean
+  showBalanceSheet?: boolean
 }
 
 type TabDef = { id: ReportTab; label: string; icon: typeof BarChart3 }
@@ -27,7 +28,7 @@ const endTabs: TabDef[] = [
   { id: 'history', label: 'Report History', icon: Clock },
 ]
 
-export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped, showSubscriptions, showWages, showCashflow, showCharts }: MonthlyReportTabsProps) {
+export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped, showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet }: MonthlyReportTabsProps) {
   const tabs = useMemo(() => {
     const result = [...baseTabs]
     if (showCharts) {
@@ -42,9 +43,12 @@ export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped,
     if (showCashflow) {
       result.push({ id: 'cashflow', label: 'Cashflow', icon: DollarSign })
     }
+    if (showBalanceSheet) {
+      result.push({ id: 'balance-sheet', label: 'Balance Sheet', icon: Scale })
+    }
     result.push(...endTabs)
     return result
-  }, [showSubscriptions, showWages, showCashflow, showCharts])
+  }, [showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet])
 
   return (
     <div className="bg-white rounded-lg shadow-sm mb-6">
