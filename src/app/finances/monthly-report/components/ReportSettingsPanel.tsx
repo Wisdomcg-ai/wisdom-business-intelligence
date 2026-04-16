@@ -318,9 +318,6 @@ export default function ReportSettingsPanel({
                         className="rounded border-gray-300 text-brand-orange focus:ring-brand-orange"
                       />
                       <span className="text-sm text-gray-700">{label}</span>
-                      {key === 'balance_sheet' && (
-                        <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">Phase 2+</span>
-                      )}
                     </label>
 
                     {/* Subscription account picker */}

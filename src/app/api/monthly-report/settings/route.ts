@@ -77,8 +77,14 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // Merge stored sections with defaults so keys added after initial save are always present
+    const mergedSettings = {
+      ...settings,
+      sections: { ...DEFAULT_SECTIONS, ...(settings.sections ?? {}) },
+    }
+
     return NextResponse.json({
-      settings,
+      settings: mergedSettings,
       is_default: false,
     })
 
