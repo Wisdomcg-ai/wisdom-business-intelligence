@@ -264,14 +264,10 @@ export function useCashflowForecast({
 
 async function loadPayrollSummary(forecastId: string): Promise<PayrollSummary | null> {
   try {
-    const res = await fetch(`/api/forecast/${forecastId}`)
+    const res = await fetch(`/api/forecast/cashflow/payroll-summary?forecast_id=${forecastId}`)
     if (!res.ok) return null
     const { data } = await res.json()
-
-    // Try loading from forecast_payroll_summary table via supabase
-    // Since we're client-side, use the forecast API
-    // The payroll summary may be stored in the forecast's assumptions
-    return null // Will be enhanced when payroll data is available
+    return data || null
   } catch {
     return null
   }
