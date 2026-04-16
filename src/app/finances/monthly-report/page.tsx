@@ -32,6 +32,7 @@ import { useWagesDetail } from './hooks/useWagesDetail'
 import { useXeroConnection } from './hooks/useXeroConnection'
 import { useAccountMappings } from './hooks/useAccountMappings'
 import { useReconciliation } from './hooks/useReconciliation'
+import { useReportTemplates } from './hooks/useReportTemplates'
 import { loadSettings, getCurrentFiscalYear, getDefaultReportMonth } from './services/monthly-report-service'
 import { MonthlyReportPDFService } from './services/monthly-report-pdf-service'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
@@ -142,6 +143,18 @@ export default function MonthlyReportPage() {
     saveLayout,
   } = usePDFLayout(businessId, settings, setSettings)
 
+  const {
+    templates,
+    isLoading: templatesLoading,
+    activeTemplateId,
+    loadTemplates,
+    saveTemplate,
+    updateTemplate,
+    deleteTemplate,
+    applyTemplate,
+    setActiveTemplateId,
+  } = useReportTemplates(businessId)
+
   // Load cashflow forecast (reusable for tab, charts, and PDF)
   const loadCashflowForecast = useCallback(async () => {
     if (!businessId || !userId || cashflowLoading) return
@@ -234,6 +247,22 @@ export default function MonthlyReportPage() {
       loadMappings()
     }
   }, [businessId, loadMappings])
+
+  // Load templates when businessId is set; auto-apply default on first load
+  const hasAppliedDefaultTemplate = useRef(false)
+  useEffect(() => {
+    if (!businessId) return
+    loadTemplates().then(loaded => {
+      if (!hasAppliedDefaultTemplate.current && loaded.length > 0) {
+        const defaultTemplate = loaded.find(t => t.is_default)
+        if (defaultTemplate) {
+          hasAppliedDefaultTemplate.current = true
+          setActiveTemplateId(defaultTemplate.id)
+          setSettings(prev => prev ? applyTemplate(defaultTemplate, prev) : prev)
+        }
+      }
+    })
+  }, [businessId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check reconciliation when month changes
   useEffect(() => {
@@ -791,6 +820,29 @@ export default function MonthlyReportPage() {
             if (report) {
               handleGenerateReport()
             }
+          }}
+          templates={templates}
+          activeTemplateId={activeTemplateId}
+          templatesLoading={templatesLoading}
+          onApplyTemplate={(template) => {
+            const newSettings = applyTemplate(template, settings)
+            setSettings(newSettings)
+            toast.success(`Template "${template.name}" applied`)
+            if (report) handleGenerateReport()
+          }}
+          onDeleteTemplate={async (template) => {
+            const ok = await deleteTemplate(template.id)
+            if (ok) toast.success(`Template "${template.name}" deleted`)
+            else toast.error('Failed to delete template')
+          }}
+          onSetDefaultTemplate={async (template) => {
+            const updated = await updateTemplate(template.id, { is_default: true })
+            if (updated) toast.success(`"${template.name}" is now the default template`)
+            else toast.error('Failed to set default')
+          }}
+          onSaveTemplate={async (name, isDefault) => {
+            const saved = await saveTemplate(name, settings, isDefault)
+            if (!saved) throw new Error('Save failed')
           }}
         />
       )}

@@ -78,7 +78,7 @@
 - [x] COGS Y2/Y3 trend selector per line (Same / Improves / Increases)
 - [x] Cashflow tool integration — PlannedSpend feeds cashflow engine (outright/finance/lease monthly commitments)
 - [x] Change tracking — "Modified since last review" badge + "Mark as reviewed" button
-- [x] Step 4 Team �� Collapsible detail columns (show/hide rate, hours, bonus, commission)
+- [x] Step 4 Team — Collapsible detail columns (show/hide rate, hours, bonus, commission)
 
 ### Phase 12b: AI Enhancements [COMPLETE]
 **Goal:** Better use of existing AI infrastructure (endpoints already working)
@@ -104,7 +104,7 @@
 
 ### Phase 13: Year Type Foundation [COMPLETE]
 **Goal:** Support both FY (Jul-Jun) and CY (Jan-Dec) businesses
-- [x] Central utility module (src/lib/utils/fiscal-year-utils.ts) ��� all date-boundary logic parameterized by yearStartMonth
+- [x] Central utility module (src/lib/utils/fiscal-year-utils.ts) — all date-boundary logic parameterized by yearStartMonth
 - [x] DB migration: fiscal_year_start on business_profiles, fiscal_year on strategic_initiatives
 - [x] Refactored generateMonthKeys(), getForecastFiscalYear(), calculateForecastPeriods() to use central utility
 - [x] Updated 15+ wizard components (Step2, Step4, Step5, Step8, BudgetTracker, useForecastWizard, parsePLFile, opex-classifier)
@@ -169,7 +169,7 @@ Plans:
 Plans:
 - [ ] 17-01-PLAN.md — Quarter aggregation helpers + quarterly-summary API endpoint
 - [ ] 17-02-PLAN.md — Variance panel in ConfidenceRealignmentStep + adjust-forward write-back API
-- [x] 17-03-PLAN.md �� One Page Plan next-year financial view with year toggle
+- [x] 17-03-PLAN.md — One Page Plan next-year financial view with year toggle
 
 - [ ] Q review shows: "Q3 forecast: $2.8M | Actual: $2.6M | Variance: -7%"
 - [ ] Confidence adjustment can optionally update remaining forecast months
@@ -239,3 +239,341 @@ Plans:
 - [ ] Progress tracking against annual plan
 - [ ] Strategic initiative status updates
 - [ ] Completion tracking linked to initiative status field (from Phase 15)
+
+---
+
+## Milestone 5: Financial Report Pack
+
+### Phase 23: Report Template System ✅
+**Goal:** Coaches can save, apply, and manage named report templates so each client's monthly pack is reproducible in one action without re-configuring settings each time.
+**Depends on:** Phase 19 (monthly reporting foundation — in progress)
+**Requirements:** TMPL-01, TMPL-02, TMPL-03, TMPL-04
+**UI hint:** yes
+**Status:** Complete
+
+**Delivered:**
+- `supabase/migrations/20260416_report_templates.sql` — `report_templates` table with RLS
+- `src/app/api/monthly-report/templates/route.ts` — GET / POST / PUT / DELETE
+- `src/app/finances/monthly-report/types.ts` — `ReportTemplate`, `TemplateColumnSettings` types
+- `src/app/finances/monthly-report/hooks/useReportTemplates.ts` — full CRUD hook
+- `src/app/finances/monthly-report/components/TemplatePicker.tsx` — dropdown with star/delete actions
+- `src/app/finances/monthly-report/components/TemplateSaveModal.tsx` — name + default checkbox modal
+- `ReportSettingsPanel.tsx` — templates section at top; "Save as template" link
+- `page.tsx` — wired hook, auto-applies default on load, applies on picker select
+
+**Success Criteria:**
+- Coach saves current report settings as a named template and it appears in the template picker on next load
+- Applying a template to a different client's report updates all section toggles and column settings in one click
+- Setting a default template means it loads automatically when the monthly report page opens for that business
+- Coach renames a template and the new name is reflected everywhere it is referenced
+- Deleting a template does not affect any business that had it set as default (falls back to no template)
+
+---
+
+### Phase 24: AI Commentary + Trend Tables
+**Goal:** Coaches receive AI-drafted narrative commentary for over-budget accounts and 6-month rolling metric trend tables, reducing time-to-report from hours to minutes.
+**Depends on:** Phase 19 (monthly reporting foundation — in progress), Phase 23 (templates)
+**Requirements:** CMNT-01, CMNT-02, CMNT-03
+**UI hint:** yes
+**Plans:** TBD
+
+**Success Criteria:**
+- Clicking "Generate AI Commentary" for an over-budget account produces bullet-point narrative within 10 seconds
+- Coach edits the AI text inline and the edited version is saved on report finalise
+- Commentary section renders a 6-month rolling table showing each tracked metric as $ and as % of revenue
+- AI commentary respects Australian business context (AUD, AU fiscal year, GST-inclusive framing)
+- Report with no over-budget accounts shows no generate button rather than an empty commentary block
+
+---
+
+### Phase 25: Contractors Payment Summary
+**Goal:** Coaches and clients can see individual contractor payments with rolling history and budget variance so contractor spend is as visible as payroll.
+**Depends on:** Phase 19 (monthly reporting foundation — in progress), Phase 23 (templates)
+**Requirements:** CNTR-01, CNTR-02, CNTR-03, CNTR-04
+**UI hint:** yes
+**Plans:** TBD
+
+**Success Criteria:**
+- Contractors tab lists each contractor with their Budget | Month-3 | Month-2 | Month-1 | Current | Variance columns populated from Xero bill payment data
+- Contractors are grouped by department/category with a subtotal row per group
+- A contractor with no activity in the current month shows $0 in the Current column, not a blank row
+- Disabling the Contractors section in the template removes the tab entirely from the report view
+- Variance column highlights red when actual spend exceeds budget by more than 10%
+
+---
+
+### Phase 26: Prior Year Chart Series
+**Goal:** Income, COGS, and Expense trend charts show prior year actuals as a third bar series so coaches can discuss year-on-year performance without leaving the report.
+**Depends on:** Phase 19 (monthly reporting foundation — in progress)
+**Requirements:** PRYR-01, PRYR-02
+**UI hint:** yes
+**Plans:** TBD
+
+**Success Criteria:**
+- Income bar chart shows three bars per month: Actuals (current year), Budget, and Prior Year Actuals
+- COGS and Expense charts show the same three-series layout
+- Prior year bars are visually distinct (different colour/pattern) from current year actuals
+- A month with no prior year data in xero_pl_lines renders the prior year bar as absent (not zero)
+- Legend clearly labels all three series
+
+---
+
+### Phase 27: Balance Sheet
+**Goal:** Coaches can view a full balance sheet tab inside the monthly report showing current month, prior year, and variance — matching the Calxa balance sheet format.
+**Depends on:** Phase 19 (monthly reporting foundation — in progress), Phase 23 (templates)
+**Requirements:** BLSH-01, BLSH-02, BLSH-03
+**UI hint:** yes
+**Plans:** TBD
+
+**Success Criteria:**
+- Balance sheet tab renders Assets, Liabilities, and Equity sections with Current Month / Prior Year / Var$ / Var% columns
+- Data loads from Xero /Reports/BalanceSheet API with prior year comparison parameter
+- Assets + Liabilities + Equity totals balance (i.e. Assets = Liabilities + Equity) for every loaded period
+- Disabling the balance sheet in the template hides the tab with no errors thrown
+- Balance sheet correctly reflects the business's fiscal year end when requesting the Xero report
+
+---
+
+### Phase 28: Direct Method Cashflow Engine
+**Goal:** Coaches can generate a direct method cashflow statement that converts P&L to cash, separates AU tax liabilities (GST, PAYG, Super), and shows a rolling 12-month bank balance — preserving the existing indirect method as an option.
+**Depends on:** Phase 19 (monthly reporting foundation — in progress), Phase 23 (templates)
+**Requirements:** DRCF-01, DRCF-02, DRCF-03, DRCF-04, DRCF-05
+**UI hint:** yes
+**Plans:** TBD
+
+**Success Criteria:**
+- Direct method cashflow tab shows cash receipts from income as revenue ÷ 1.1 (GST-exclusive) and cash payments from expenses as expense ÷ 1.1 where GST applies
+- GST liability row shows quarterly BAS amounts (Feb, Apr, Jul, Oct payment months for AU quarters)
+- PAYG withholding shown as a separate monthly liability row; Super shown as a quarterly liability row (Jan, Apr, Jul, Oct)
+- CapEx from forecast_investments appears as an asset movement row in the correct purchase month
+- 12-month rolling bank balance section shows Bank at Beginning, net cash movements, and Bank at End for each month
+- Toggle between direct and indirect (DSO/DPO) method is persistent per template
+
+---
+
+### Phase 29: "Where Did Our Money Go?"
+**Goal:** Clients can see a plain-English summary of the month's cash movements — what came in, what went out, and why the bank balance changed — without needing to read a formal cashflow statement.
+**Depends on:** Phase 27 (Balance Sheet — required for balance sheet movement data)
+**Requirements:** WDMG-01, WDMG-02, WDMG-03
+**UI hint:** yes
+**Plans:** TBD
+
+**Success Criteria:**
+- "Where Did Our Money Go?" tab renders a P&L summary block (Income / COGS / Expenses / Other Income / Surplus) for the selected month
+- Each balance sheet movement (e.g. debtors increase, creditors decrease) is labelled as either a source of cash or a use of cash in plain language
+- Opening and closing bank balance are shown with net movement reconciling to the P&L surplus/deficit
+- Section is hidden when balance sheet data is unavailable for the prior month (graceful empty state, not an error)
+- Client-facing language avoids accounting jargon (e.g. "Customers owed you more" rather than "Debtors increased")
+
+---
+
+### Phase 30: MYOB Integration
+**Goal:** Businesses using MYOB AccountRight can connect their company file and have P&L and balance sheet data flow into the report pack exactly as Xero businesses do.
+**Depends on:** Phase 19 (monthly reporting foundation — in progress), Phase 27 (Balance Sheet)
+**Requirements:** MYOB-01, MYOB-02, MYOB-03, MYOB-04
+**UI hint:** yes
+**Plans:** TBD
+
+**Success Criteria:**
+- Coach connects a MYOB AccountRight company file via OAuth 2.0 from the Settings page and connection status is confirmed in the UI
+- P&L actuals from MYOB sync into xero_pl_lines with source: 'myob' and appear in the monthly report without any manual CSV import
+- Balance sheet tab loads MYOB balance sheet data for an MYOB-connected business
+- All report features (Commentary, Contractors, Cashflow, Excel export) function identically for MYOB-connected businesses as for Xero-connected businesses
+- Disconnecting MYOB clears the token and reverts the report source banner to "No accounting source connected"
+
+---
+
+### Phase 31: HubStaff Integration
+**Goal:** Businesses using HubStaff for contractor tracking can see HubStaff payment data merged into the Contractors tab alongside Xero data, giving a single complete view of contractor spend.
+**Depends on:** Phase 25 (Contractors Payment Summary — extends it with a secondary data source)
+**Requirements:** HBSF-01, HBSF-02, HBSF-03
+**UI hint:** yes
+**Plans:** TBD
+
+**Success Criteria:**
+- Coach connects a HubStaff organisation via OAuth 2.0 from the Settings page and connection status is confirmed
+- Contractors tab shows HubStaff payment data in addition to Xero data when HubStaff is connected
+- HubStaff contractors are matched to Xero contacts by name (case-insensitive) and merged into the same row; unmatched HubStaff contractors appear as additional rows
+- Disconnecting HubStaff removes HubStaff-sourced rows from the Contractors tab without affecting Xero-sourced rows
+- A "Source" indicator on each contractor row shows whether data came from Xero, HubStaff, or both
+
+---
+
+### Phase 32: Excel Report Pack Export
+**Goal:** Coaches can export the complete monthly report pack as a single multi-sheet Excel file on demand, with only the sections enabled in the active template included, matching the Calxa-format layout coaches already know.
+**Depends on:** Phase 23 (templates), Phase 24 (AI commentary), Phase 25 (contractors), Phase 26 (prior year charts), Phase 27 (balance sheet), Phase 28 (direct cashflow), Phase 29 (cash movement), Phase 30 (MYOB), Phase 31 (HubStaff)
+**Requirements:** EXCL-01, EXCL-02, EXCL-03, EXCL-04, EXCL-05, EXCL-06
+**UI hint:** yes
+**Plans:** TBD
+
+**Success Criteria:**
+- "Export Excel" button on the monthly report page downloads a .xlsx file within 15 seconds for a typical report
+- Only sheets corresponding to sections enabled in the active template are present in the exported file
+- Summary P&L sheet uses the 9-column Calxa format with colour-coded section headers (Revenue, COGS, Gross Profit, Expenses, Net Profit)
+- Income Detail, COGS Detail, and Expenses Detail sheets each contain line-item rows with Budget / Actual / Var$ / Var% / YTD columns
+- Subscriptions, Wages/Payroll, and Contractors sheets are included only when those sections are enabled in the template
+- Full Year Budget, Balance Sheet, Cashflow (direct method), and Cash Movement sheets are each included only when their respective template toggle is on
+
+---
+
+### Phase 33: CFO Multi-Client Dashboard
+**Goal:** Matt can see all 5 CFO clients on a single screen at `/cfo`, with at-a-glance financial health, reconciliation status, and report delivery state — eliminating the need to open each client's report individually.
+**Depends on:** Phase 23 (templates — defines report status vocabulary)
+**Requirements:** CFOD-01, CFOD-02, CFOD-03, CFOD-04, CFOD-05, CFOD-06, CFOD-07
+**UI hint:** yes
+**Plans:** TBD
+
+**Scope:**
+- New DB column: `businesses.is_cfo_client boolean DEFAULT false` — flags which businesses appear on the CFO dashboard
+- New DB table: `cfo_report_status (id, business_id → businesses, period_month date, status text CHECK IN ('draft','ready_for_review','approved','sent'), commentary_approved bool, approved_by, approved_at, sent_at, created_at)` with unique constraint on (business_id, period_month)
+- New API: `GET /api/cfo/summaries?month=YYYY-MM` — reads from `xero_pl_lines` + `forecast_pl_lines` + `financial_metrics` + `cfo_report_status`; no live Xero API calls; returns per-client headline metrics + computed status badge
+- New layout: `src/app/cfo/layout.tsx` — reuses `CoachLayoutNew` (same chrome as coach portal)
+- New page: `src/app/cfo/page.tsx` — coach/super_admin only; month selector defaults to previous month
+- Middleware: add `/cfo` to `onboardingExemptRoutes`
+- CoachLayoutNew: add "CFO Dashboard" nav link pointing to `/cfo`
+
+**Layout:**
+```
+Top bar (4 stat cards)
+  ├── Clients on track    (count — green)
+  ├── Pending approval    (count — amber)
+  ├── Recon alerts        (count — red)
+  └── Next report due     (date or "All clear")
+
+Client grid (5 cards, 3-col desktop → 2-col tablet → 1-col mobile)
+  Each card:
+    ├── Client name + industry
+    ├── Status badge: On Track | Watch | Alert
+    ├── Revenue vs Budget %
+    ├── Gross Profit %
+    ├── Net Profit $ (month)
+    ├── Cash balance
+    ├── Reconciliation: ✓ Clean | ⚠ N unreconciled
+    ├── Report status: draft | ready_for_review | approved | sent
+    └── "Review Report" button → /finances/monthly-report?business_id=X
+```
+
+**Status badge logic:**
+- **On Track**: net profit within 10% of budget AND unreconciled_count = 0
+- **Watch**: net profit 10–25% below budget OR unreconciled_count > 0 (minor)
+- **Alert**: net profit >25% below budget OR unreconciled_count > 10 OR report overdue
+
+**Data sources (all DB — no live Xero calls):**
+- P&L actuals: `xero_pl_lines.monthly_values[monthKey]` grouped by `account_type`
+- P&L budget: `forecast_pl_lines.forecast_months[monthKey]` via active `financial_forecasts`
+- Cash + recon: `financial_metrics.total_cash`, `financial_metrics.unreconciled_count`
+- Report status: `cfo_report_status` for (business_id, period_month)
+
+**Auth:** Coach or super_admin role (via `system_roles` table). Clients cannot access `/cfo`.
+
+**Success Criteria:**
+- Page loads and shows all 5 CFO clients with correct status badges within 3 seconds
+- Stat cards accurately count on-track / pending-approval / recon-alert clients
+- Status badge matches the defined logic (10%/25% thresholds against budget)
+- "Review Report" button navigates to the correct client's monthly report for the selected period
+- Month selector changes all client cards to reflect that period's data
+- Page is inaccessible to non-coach users (redirects to login)
+- Layout is responsive: 3 columns on desktop, 2 on tablet, 1 on mobile
+
+---
+
+### Phase 34: Dragon Multi-Entity Consolidation
+**Goal:** Dragon Roofing and Easy Hail (two separate Xero organisations) can be reported as a single consolidated P&L with three columns — Entity A | Entity B | Combined — matching the multi-entity format Calxa produces today.
+**Depends on:** Phase 23 (templates), Phase 27 (Balance Sheet — for consolidated BS)
+**Requirements:** MLTE-01, MLTE-02, MLTE-03, MLTE-04, MLTE-05
+**UI hint:** yes
+**Plans:** TBD
+
+**Context:**
+Dragon Consolidation is one of the 5 CFO clients. It is not a single Xero org — it is two orgs that must be merged at report time:
+- Dragon Roofing — Xero tenant ID starts `7e0a3887` — 269 accounts
+- Easy Hail — Xero tenant ID starts `64bcb836` — 92 accounts
+
+**Scope:**
+- New DB table: `consolidation_groups (id, name, business_id → businesses, created_at)` — one row per consolidated entity (e.g. "Dragon Consolidation")
+- New DB table: `consolidation_group_members (id, group_id → consolidation_groups, source_business_id → businesses, display_name, display_order)` — one row per Xero org in the group
+- New API: `GET /api/monthly-report/consolidated?group_id=&report_month=&fiscal_year=` — fetches `xero_pl_lines` for each member business independently, aligns account categories, returns three-column P&L structure: Entity A amounts | Entity B amounts | Combined amounts
+- New UI: `ConsolidatedPLTab` — three-column table matching the 9-column Calxa single-entity format but with Entity A / Entity B / Combined column groups per metric
+- Monthly report page: detects `group_id` query param and renders consolidated view instead of single-entity view
+- Template system applies to consolidated groups identically to single businesses
+
+**Three-column layout (per P&L row):**
+```
+Account Name | Entity A Actual | Entity A Budget | Entity B Actual | Entity B Budget | Combined Actual | Combined Budget | Combined Variance
+```
+
+**Account alignment:**
+- Accounts are matched across entities by `account_type` (revenue / cogs / opex / other_income / other_expense) — not by account name
+- An account present in one entity but not the other shows $0 for the absent entity
+- Intercompany eliminations are out of scope for V1
+
+**Success Criteria:**
+- Consolidated P&L tab shows Dragon Roofing and Easy Hail side-by-side with a Combined column for every P&L row
+- Revenue, COGS, Gross Profit, Expenses, and Net Profit combined totals equal the arithmetic sum of the two entities
+- An account that exists only in one entity shows $0 (not blank) for the other entity
+- Selecting the Dragon Consolidation business from the report selector loads the consolidated view automatically
+- Template saved for Dragon Consolidation applies to the consolidated report (section toggles work identically to single-entity)
+
+---
+
+### Phase 35: Report Approval + Delivery Workflow
+**Goal:** Matt can mark a monthly report as approved inside WisdomBI, triggering an automated email to the client via Make.com — replacing the current manual process of exporting from Calxa and sending separately.
+**Depends on:** Phase 33 (CFO Dashboard — defines `cfo_report_status` table and status vocabulary)
+**Requirements:** APPR-01, APPR-02, APPR-03, APPR-04, APPR-05
+**UI hint:** yes
+**Plans:** TBD
+
+**Context:**
+The `cfo_report_status` table (created in Phase 33) already models the full status lifecycle:
+`draft → ready_for_review → approved → sent`
+
+Phase 35 adds the UI controls and automation trigger that move a report through this lifecycle.
+
+**Scope:**
+- New DB column: `businesses.make_webhook_url text` — per-client Make.com webhook URL, set in business settings
+- New API: `POST /api/cfo/report-status` — upserts `cfo_report_status` for (business_id, period_month); if transitioning to `approved`, fires the Make.com webhook with report metadata; if webhook succeeds, sets `sent_at` and status → `sent`
+- Modified UI: monthly report page top bar gains a status pill + action button:
+  - `draft` → "Mark Ready for Review" button
+  - `ready_for_review` → "Approve & Send" button (coach only)
+  - `approved` → "Sent ✓" badge with `sent_at` timestamp
+  - `sent` → read-only "Delivered [date]" badge
+- Webhook payload to Make.com: `{ business_name, period_month, report_url, approved_by_name, approved_at }`
+- CFO dashboard (Phase 33) reads `cfo_report_status` — status changes on the report page are immediately reflected on the dashboard
+
+**Make.com automation (Matt configures in Make.com, not in code):**
+- Trigger: Custom Webhook receives payload
+- Action: Send email to client with report link or PDF attachment
+
+**Success Criteria:**
+- Clicking "Approve & Send" on a report with status `ready_for_review` posts the webhook payload and transitions status to `sent`
+- The CFO dashboard "Pending Approval" count decrements immediately after a report is approved
+- If the Make.com webhook returns an error, the status stays at `approved` (not `sent`) and an error toast is shown
+- `approved_by` is recorded as the authenticated user's ID; `approved_at` and `sent_at` are timestamped
+- Webhook URL is configurable per business in the business settings page — not hardcoded
+
+---
+
+### Phase 36: Client Portal
+**Goal:** Each CFO client can log in to a read-only portal and view their approved monthly reports without needing a coach login — giving clients self-serve access to their financials between sessions.
+**Depends on:** Phase 35 (Approval workflow — only approved/sent reports are visible in the portal)
+**Requirements:** CPRT-01, CPRT-02, CPRT-03, CPRT-04, CPRT-05
+**UI hint:** yes
+**Plans:** TBD
+
+**Scope:**
+- New route: `/portal` — client-facing login page (separate from `/coach/login` and `/auth/login`)
+- New route: `/portal/[businessSlug]` — read-only report view for an authenticated portal client
+- Auth model: portal clients authenticate via Supabase Auth (email + password or magic link); their `system_roles.role = 'client'` already exists; RLS policies limit them to their own business data
+- New DB column: `businesses.portal_slug text UNIQUE` — URL-safe identifier used in portal links (e.g. `urban-road`)
+- Portal shows: list of approved/sent reports for the business (from `cfo_report_status WHERE status IN ('approved','sent')`); clicking a report opens the read-only monthly report view
+- Read-only enforcement: all edit controls (settings panel, approve button, template picker, commentary edit) hidden in portal context via `isPortalView` prop passed down from portal layout
+- Portal layout: client branding (business name + logo), no coach sidebar, no admin controls
+- Deep-link: the `report_url` in the Make.com webhook payload (Phase 35) links directly to `/portal/[slug]?month=YYYY-MM`
+
+**Success Criteria:**
+- A client can log in at `/portal` with their email and see only their own business's reports
+- Only reports with status `approved` or `sent` are visible — draft and ready_for_review reports are hidden
+- All edit controls are hidden in portal view; no data can be modified by a portal client
+- The URL `/portal/urban-road?month=2026-03` deep-links directly to Urban Road's March 2026 report
+- Portal client cannot access any coach route (`/coach/*`, `/cfo`, `/finances/*`) — middleware redirects to portal login
+- Disconnecting or revoking portal access (deleting the system_roles row) immediately prevents login

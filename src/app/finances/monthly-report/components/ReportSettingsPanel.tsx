@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Settings } from 'lucide-react'
+import { X, Settings, BookmarkPlus } from 'lucide-react'
 import { toast } from 'sonner'
-import type { MonthlyReportSettings, ReportSections, ForecastOption, AccountMapping } from '../types'
+import type { MonthlyReportSettings, ReportSections, ForecastOption, AccountMapping, ReportTemplate } from '../types'
 import { createClient } from '@/lib/supabase/client'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import TemplatePicker from './TemplatePicker'
+import TemplateSaveModal from './TemplateSaveModal'
 
 interface ReportSettingsPanelProps {
   isOpen: boolean
@@ -13,6 +15,14 @@ interface ReportSettingsPanelProps {
   businessId: string
   settings: MonthlyReportSettings
   onSettingsChange: (settings: MonthlyReportSettings) => void
+  // Template props (optional — graceful degradation when not yet wired)
+  templates?: ReportTemplate[]
+  activeTemplateId?: string | null
+  templatesLoading?: boolean
+  onApplyTemplate?: (template: ReportTemplate) => void
+  onDeleteTemplate?: (template: ReportTemplate) => void
+  onSetDefaultTemplate?: (template: ReportTemplate) => void
+  onSaveTemplate?: (name: string, isDefault: boolean) => Promise<void>
 }
 
 interface SectionGroup {
@@ -81,12 +91,21 @@ export default function ReportSettingsPanel({
   businessId,
   settings,
   onSettingsChange,
+  templates = [],
+  activeTemplateId = null,
+  templatesLoading = false,
+  onApplyTemplate,
+  onDeleteTemplate,
+  onSetDefaultTemplate,
+  onSaveTemplate,
 }: ReportSettingsPanelProps) {
   const [localSettings, setLocalSettings] = useState<MonthlyReportSettings>(settings)
   const [forecasts, setForecasts] = useState<ForecastOption[]>([])
   const [expenseAccounts, setExpenseAccounts] = useState<AccountMapping[]>([])
   const [wagesAccountOptions, setWagesAccountOptions] = useState<string[]>([])
   const [isSaving, setIsSaving] = useState(false)
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false)
 
   useEffect(() => {
     setLocalSettings(settings)
@@ -188,6 +207,20 @@ export default function ReportSettingsPanel({
     }
   }
 
+  const handleSaveTemplate = async (name: string, isDefault: boolean) => {
+    if (!onSaveTemplate) return
+    setIsSavingTemplate(true)
+    try {
+      await onSaveTemplate(name, isDefault)
+      setShowSaveModal(false)
+      toast.success(`Template "${name}" saved`)
+    } catch {
+      toast.error('Failed to save template')
+    } finally {
+      setIsSavingTemplate(false)
+    }
+  }
+
   if (!isOpen) return null
 
   return (
@@ -210,6 +243,48 @@ export default function ReportSettingsPanel({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Templates */}
+          {onApplyTemplate && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-gray-900">Templates</h3>
+                {onSaveTemplate && (
+                  <button
+                    type="button"
+                    onClick={() => setShowSaveModal(true)}
+                    className="flex items-center gap-1 text-xs text-brand-orange hover:text-brand-orange-600 font-medium"
+                  >
+                    <BookmarkPlus className="w-3.5 h-3.5" />
+                    Save as template
+                  </button>
+                )}
+              </div>
+              <TemplatePicker
+                templates={templates}
+                activeTemplateId={activeTemplateId}
+                isLoading={templatesLoading}
+                onApply={(template) => {
+                  onApplyTemplate(template)
+                  // Sync local settings to the applied template
+                  setLocalSettings(prev => ({
+                    ...prev,
+                    sections: { ...prev.sections, ...template.sections },
+                    show_prior_year: template.column_settings?.show_prior_year ?? prev.show_prior_year,
+                    show_ytd: template.column_settings?.show_ytd ?? prev.show_ytd,
+                    show_unspent_budget: template.column_settings?.show_unspent_budget ?? prev.show_unspent_budget,
+                    show_budget_next_month: template.column_settings?.show_budget_next_month ?? prev.show_budget_next_month,
+                    show_budget_annual_total: template.column_settings?.show_budget_annual_total ?? prev.show_budget_annual_total,
+                    budget_forecast_id: template.budget_forecast_id ?? prev.budget_forecast_id,
+                    subscription_account_codes: template.subscription_account_codes ?? prev.subscription_account_codes,
+                    wages_account_names: template.wages_account_names ?? prev.wages_account_names,
+                  }))
+                }}
+                onDelete={onDeleteTemplate ?? (() => {})}
+                onSetDefault={onSetDefaultTemplate ?? (() => {})}
+              />
+            </div>
+          )}
+
           {/* Budget Forecast Selection */}
           <div>
             <h3 className="text-sm font-semibold text-gray-900 mb-2">Budget Forecast</h3>
@@ -352,6 +427,14 @@ export default function ReportSettingsPanel({
           </button>
         </div>
       </div>
+
+      {/* Template Save Modal */}
+      <TemplateSaveModal
+        isOpen={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        onSave={handleSaveTemplate}
+        isSaving={isSavingTemplate}
+      />
     </div>
   )
 }

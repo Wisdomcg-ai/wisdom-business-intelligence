@@ -63,6 +63,32 @@ export interface MonthlyReportSettings {
   updated_at?: string
 }
 
+// ============================================
+// Report Templates (Phase 23)
+// ============================================
+
+export interface TemplateColumnSettings {
+  show_prior_year: boolean
+  show_ytd: boolean
+  show_unspent_budget: boolean
+  show_budget_next_month: boolean
+  show_budget_annual_total: boolean
+}
+
+export interface ReportTemplate {
+  id: string
+  business_id: string
+  name: string
+  is_default: boolean
+  sections: ReportSections
+  column_settings: TemplateColumnSettings
+  budget_forecast_id?: string | null
+  subscription_account_codes?: string[]
+  wages_account_names?: string[]
+  created_at?: string
+  updated_at?: string
+}
+
 export const DEFAULT_SECTIONS: ReportSections = {
   revenue_detail: true,
   cogs_detail: true,
