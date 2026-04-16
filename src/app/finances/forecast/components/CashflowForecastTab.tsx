@@ -27,6 +27,7 @@ export default function CashflowForecastTab({
   const {
     data,
     assumptions,
+    dataQuality,
     isLoading,
     isSyncing,
     saveAssumptions,
@@ -181,13 +182,40 @@ export default function CashflowForecastTab({
         <CashflowForecastChart data={data} />
       )}
 
-      {/* Footer Info */}
-      <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-        <p className="text-xs text-blue-800">
-          Cashflow forecast converts your accrual P&L into cash timing.
-          DSO {assumptions.dso_days} days | DPO {assumptions.dpo_days} days
-          {assumptions.gst_registered && ` | GST ${assumptions.gst_reporting_frequency}`}
-          {assumptions.balance_date && ` | Balances from ${assumptions.balance_date}`}
+      {/* Data Quality Panel */}
+      <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 text-xs text-gray-600">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span className="font-medium text-gray-900">Cashflow sources:</span>
+          <span className={dataQuality.xeroActualsCount > 0 ? 'text-green-700' : 'text-amber-700'}>
+            {dataQuality.xeroActualsCount > 0
+              ? `✓ ${dataQuality.xeroActualsCount} Xero accounts (actuals)`
+              : '✗ No Xero actuals loaded'}
+          </span>
+          <span className="text-gray-400">·</span>
+          <span className={dataQuality.forecastLinesCount > 0 ? 'text-green-700' : 'text-amber-700'}>
+            {dataQuality.forecastLinesCount > 0
+              ? `✓ ${dataQuality.forecastLinesCount} forecast lines`
+              : '✗ No forecast lines'}
+          </span>
+          <span className="text-gray-400">·</span>
+          <span className={dataQuality.hasPayrollSummary ? 'text-green-700' : 'text-amber-700'}>
+            {dataQuality.hasPayrollSummary ? '✓ Payroll timed' : '⚠ No payroll summary (wages timed as OpEx)'}
+          </span>
+          <span className="text-gray-400">·</span>
+          <span className={dataQuality.hasOpeningBalances ? 'text-green-700' : 'text-amber-700'}>
+            {dataQuality.hasOpeningBalances
+              ? `✓ Opening balances${dataQuality.openingBalanceDate ? ` (${dataQuality.openingBalanceDate})` : ''}`
+              : '⚠ Opening balances not set'}
+          </span>
+        </div>
+        {dataQuality.accountsOnlyInXero > 0 && (
+          <p className="mt-1 text-gray-500">
+            {dataQuality.accountsOnlyInXero} Xero account{dataQuality.accountsOnlyInXero === 1 ? '' : 's'} with spend outside the forecast — included for actual months.
+          </p>
+        )}
+        <p className="mt-1 text-gray-500">
+          DSO {assumptions.dso_days}d · DPO {assumptions.dpo_days}d
+          {assumptions.gst_registered && ` · GST ${assumptions.gst_reporting_frequency}`}
         </p>
       </div>
 

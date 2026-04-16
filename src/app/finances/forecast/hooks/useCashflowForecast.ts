@@ -35,10 +35,23 @@ interface UseCashflowForecastOptions {
   hasXeroConnection?: boolean
 }
 
+export interface CashflowDataQuality {
+  xeroActualsCount: number       // how many Xero P&L accounts were pulled
+  forecastLinesCount: number     // how many forecast P&L lines exist
+  mergedLinesCount: number       // total accounts feeding the engine
+  accountsOnlyInXero: number     // real spend not in the budget
+  accountsOnlyInForecast: number // budget lines with no Xero data
+  hasPayrollSummary: boolean     // wages, PAYG, super timed correctly
+  hasOpeningBalances: boolean    // opening bank balance synced/set
+  openingBalanceDate: string | null
+  lastXeroSync: string | null
+}
+
 interface UseCashflowForecastReturn {
   data: CashflowForecastData | null
   assumptions: CashflowAssumptions
   payrollSummary: PayrollSummary | null
+  dataQuality: CashflowDataQuality
   isLoading: boolean
   isSyncing: boolean
   saveAssumptions: (updated: Partial<CashflowAssumptions>) => Promise<void>
@@ -56,6 +69,7 @@ export function useCashflowForecast({
   const [assumptions, setAssumptions] = useState<CashflowAssumptions>(getDefaultCashflowAssumptions())
   const [payrollSummary, setPayrollSummary] = useState<PayrollSummary | null>(null)
   const [mergedLines, setMergedLines] = useState<PLLine[]>([])
+  const [xeroActualsCount, setXeroActualsCount] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -99,6 +113,7 @@ export function useCashflowForecast({
           xeroActuals = xeroData
         }
       }
+      setXeroActualsCount(xeroActuals.length)
       setMergedLines(mergeActualsAndForecast(xeroActuals, plLines))
 
       setPayrollSummary(payrollRes)
@@ -250,10 +265,33 @@ export function useCashflowForecast({
     }
   }, [forecast?.id, businessId, forecast?.actual_start_month])
 
+  // Compute data quality metrics so the UI can show what's actually feeding the cashflow
+  const dataQuality = useMemo<CashflowDataQuality>(() => {
+    const forecastNames = new Set(plLines.map(l => l.account_name))
+    const xeroOnlyCount = mergedLines.filter(
+      l => !forecastNames.has(l.account_name) && !!l.actual_months && Object.keys(l.actual_months).length > 0
+    ).length
+    const forecastOnlyCount = plLines.filter(
+      fl => !mergedLines.some(ml => ml.account_name === fl.account_name && !!ml.actual_months && Object.keys(ml.actual_months).length > 0)
+    ).length
+    return {
+      xeroActualsCount,
+      forecastLinesCount: plLines.length,
+      mergedLinesCount: mergedLines.length,
+      accountsOnlyInXero: xeroOnlyCount,
+      accountsOnlyInForecast: forecastOnlyCount,
+      hasPayrollSummary: !!payrollSummary,
+      hasOpeningBalances: assumptions.opening_bank_balance !== 0 || !!assumptions.balance_date,
+      openingBalanceDate: assumptions.balance_date || null,
+      lastXeroSync: assumptions.last_xero_sync_at || null,
+    }
+  }, [plLines, mergedLines, xeroActualsCount, payrollSummary, assumptions])
+
   return {
     data,
     assumptions,
     payrollSummary,
+    dataQuality,
     isLoading,
     isSyncing,
     saveAssumptions,
