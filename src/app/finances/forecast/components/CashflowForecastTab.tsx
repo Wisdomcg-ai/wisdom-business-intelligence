@@ -32,13 +32,15 @@ export default function CashflowForecastTab({
     saveAssumptions,
     syncFromXero,
     updateAssumption,
-  } = useCashflowForecast({ forecast, plLines, businessId })
+  } = useCashflowForecast({ forecast, plLines, businessId, hasXeroConnection })
 
-  if (isLoading) {
+  if (isLoading || (isSyncing && !data)) {
     return (
       <div className="bg-white rounded-lg shadow-sm p-8 text-center">
         <Loader2 className="w-8 h-8 animate-spin text-brand-orange mx-auto mb-3" />
-        <p className="text-sm text-gray-600">Loading cashflow forecast...</p>
+        <p className="text-sm text-gray-600">
+          {isSyncing ? 'Syncing opening balances from Xero…' : 'Loading cashflow forecast...'}
+        </p>
       </div>
     )
   }
@@ -138,6 +140,17 @@ export default function CashflowForecastTab({
           </button>
         </div>
       </div>
+
+      {/* Zero balance warning */}
+      {assumptions.opening_bank_balance === 0 && !assumptions.balance_date && !isSyncing && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          Opening bank balance is $0.
+          {hasXeroConnection
+            ? ' Click "Sync Balances" to pull real balances from Xero, or enter them manually in Settings.'
+            : ' Open Settings to enter your opening balance manually.'}
+        </div>
+      )}
 
       {/* Cashflow Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

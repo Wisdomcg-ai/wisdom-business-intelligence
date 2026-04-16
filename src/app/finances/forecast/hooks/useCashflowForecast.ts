@@ -32,6 +32,7 @@ interface UseCashflowForecastOptions {
   plLines: PLLine[]
   businessId: string
   plannedSpends?: PlannedSpendItem[]
+  hasXeroConnection?: boolean
 }
 
 interface UseCashflowForecastReturn {
@@ -50,12 +51,14 @@ export function useCashflowForecast({
   plLines,
   businessId,
   plannedSpends = [],
+  hasXeroConnection = false,
 }: UseCashflowForecastOptions): UseCashflowForecastReturn {
   const [assumptions, setAssumptions] = useState<CashflowAssumptions>(getDefaultCashflowAssumptions())
   const [payrollSummary, setPayrollSummary] = useState<PayrollSummary | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [hasAutoSynced, setHasAutoSynced] = useState(false)
 
   // Load assumptions and payroll summary on mount
   useEffect(() => {
@@ -94,6 +97,23 @@ export function useCashflowForecast({
       setIsLoading(false)
     }
   }
+
+  // Auto-sync from Xero on first load if no balances have been set
+  useEffect(() => {
+    if (
+      loaded &&
+      hasXeroConnection &&
+      !hasAutoSynced &&
+      !isSyncing &&
+      assumptions.opening_bank_balance === 0 &&
+      !assumptions.balance_date &&
+      forecast?.id &&
+      forecast?.actual_start_month
+    ) {
+      setHasAutoSynced(true)
+      syncFromXero()
+    }
+  }, [loaded, hasXeroConnection, hasAutoSynced, isSyncing, assumptions.opening_bank_balance, assumptions.balance_date, forecast?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Run engine client-side via useMemo (instant updates)
   const data = useMemo(() => {
