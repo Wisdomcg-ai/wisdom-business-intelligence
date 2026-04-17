@@ -37,7 +37,7 @@ export default function CashflowAssumptionsPanel({
   businessId,
 }: CashflowAssumptionsPanelProps) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    accounts: false,  // Phase 28.1 — collapsed by default so existing users aren't disturbed
+    accounts: true,   // Phase 28.1 — expanded so the new feature is discoverable
     timing: true,
     gst: true,
     tax: false,
