@@ -87,12 +87,66 @@
 - **BLSH-02**: Balance sheet data fetched from Xero /Reports/BalanceSheet API with prior year compare
 - **BLSH-03**: Balance sheet is enabled/disabled per template
 
-### DRCF — Direct Method Cashflow Engine
-- **DRCF-01**: Direct method engine converts P&L to cash (income ÷ 1.1 GST, expense ÷ 1.1 where applicable)
-- **DRCF-02**: GST (BAS quarterly), PAYG (monthly), Super (quarterly) shown as separate liability rows
-- **DRCF-03**: CapEx from forecast_investments shown as asset movement row
-- **DRCF-04**: 12-month rolling bank balance shown (Bank at Beginning → movements → Bank at End)
-- **DRCF-05**: User can toggle between direct method and existing indirect (DSO/DPO) method
+### CASH-C — Cashflow Engine Calxa Standard Rebuild (Phase 28)
+
+**Sub-phase 28.0: Quick Wins + Tests**
+- **CASH-C-01**: OpEx paid in month accrued (remove DPO delay on non-employment, non-bank-fee accounts) — Calxa Rule 7
+- **CASH-C-02**: `getTimingSplit` returns splits summing to exactly 100% (fix overlap bug at day ranges >30)
+- **CASH-C-03**: Depreciation and amortisation accounts excluded from cash outflows (keyword-match as interim)
+- **CASH-C-04**: Engine test suite covers ≥15 core scenarios (opening balances, DSO/DPO, GST, super, PAYG, loans, stock, actuals override, depreciation exclusion)
+- **CASH-C-05**: All tests pass; zero TypeScript errors
+
+**Sub-phase 28.1: Settings Foundation**
+- **CASH-C-10**: New table `cashflow_settings` stores explicit Xero account IDs per forecast
+- **CASH-C-11**: New table `cashflow_account_profiles` for per-account Type 1-5 overrides
+- **CASH-C-12**: New table `cashflow_statement_classification` for AASB 107 four-list classification
+- **CASH-C-13**: New table `xero_accounts` caches full Chart of Accounts with type/class/status
+- **CASH-C-14**: `/api/Xero/chart-of-accounts-full` endpoint fetches and caches COA
+- **CASH-C-15**: `/api/forecast/cashflow/settings` GET/POST endpoint for settings
+- **CASH-C-16**: `useXeroAccounts` hook provides grouped account lists (bank, fixed assets, etc.)
+- **CASH-C-17**: `CashflowAccountsPanel` UI with dropdowns for all important account categories
+- **CASH-C-18**: Auto-populate sensible defaults based on `xero_type` (BANK → bank list, etc.)
+- **CASH-C-19**: Feature flag `use_explicit_accounts` gates new behaviour (defaults false)
+- **CASH-C-20**: Engine falls back to keyword matching when `use_explicit_accounts=false`
+
+**Sub-phase 28.2: Algorithm Completeness**
+- **CASH-C-25**: Depreciation identification uses account ID when settings configured, keyword otherwise
+- **CASH-C-26**: Depreciation shown as non-cash add-back above Net Movement in indirect view
+- **CASH-C-27**: Company Tax module computes annual tax = net profit × rate
+- **CASH-C-28**: Company Tax distributed across schedule months (quarterly PAYG instalments or annual)
+- **CASH-C-29**: CapEx module pulls Fixed Asset movements from Xero balance sheet for actual months
+- **CASH-C-30**: CapEx module uses `forecast_investments` for forecast months
+- **CASH-C-31**: `CashflowForecastMonth` type extended with indirect-method fields (net_profit, depreciation_addback, debtor_adjustment, etc.)
+- **CASH-C-32**: `CashflowForecastTable` has Direct/Indirect toggle
+- **CASH-C-33**: Both methods reconcile to same Net Cash Movement
+- **CASH-C-34**: Engine test suite extended with depreciation/tax/capex scenarios
+- **CASH-C-35**: Direct method behaviour preserved for backwards compat
+
+**Sub-phase 28.3: Schedule + Distribution Model**
+- **CASH-C-40**: New table `cashflow_schedules` stores BasePeriods[12] arrays
+- **CASH-C-41**: 6 AU-standard schedules seeded (Monthly, Feb Apr Jul Oct BAS, etc.)
+- **CASH-C-42**: `daysToDistribution(days)` helper produces distribution[12] summing to 100
+- **CASH-C-43**: `resolveSchedule(name)` returns BasePeriods for named schedule
+- **CASH-C-44**: Settings use schedule name (not frequency string) for GST/PAYG/Super/Tax
+- **CASH-C-45**: `/api/forecast/cashflow/profiles` CRUD endpoint for per-account profiles
+- **CASH-C-46**: `AccountProfileEditor` UI allows coach to set Type 1-5 per account
+- **CASH-C-47**: Type 1 Immediate = pays in accrual month (100% bucket 0)
+- **CASH-C-48**: Type 3 CreditorDays / Type 4 DebtorDays accept float precision
+- **CASH-C-49**: Type 5 Schedule uses named BasePeriods lookup
+- **CASH-C-50**: Engine prefers per-account profile over global DSO/DPO when configured
+
+**Sub-phase 28.4: Cashflow Statement (AASB 107)**
+- **CASH-C-55**: Classification UI (`StatementClassificationEditor`) for four-list assignment
+- **CASH-C-56**: Auto-classify heuristic based on `xero_type` (BANK→Unassigned, CURRENT/CURRLIAB→Operating, FIXED→Investing, etc.)
+- **CASH-C-57**: `/api/forecast/cashflow/statement` endpoint returns AASB 107 structured statement
+- **CASH-C-58**: Statement reconciles: Net change in cash = Closing cash - Opening cash (within $0.01)
+- **CASH-C-59**: Operating section: Net Profit + Depreciation add-back + BS movements
+- **CASH-C-60**: Investing section: Movements in Fixed Asset / Investment accounts with correct sign
+- **CASH-C-61**: Financing section: Loan drawdowns (inflow), repayments (outflow), dividends (outflow)
+- **CASH-C-62**: Non-Cash section: Depreciation and amortisation shown as add-backs only
+- **CASH-C-63**: `CashflowStatementTab` renders AASB 107 layout on main cashflow page
+- **CASH-C-64**: Warning shown if any Asset/Liability account remains `Unassigned`
+- **CASH-C-65**: Engine test suite extended with statement reconciliation tests
 
 ### WDMG — "Where Did Our Money Go?"
 - **WDMG-01**: Report shows P&L summary (Income / COGS / Expenses / Other Income / Surplus) for the month
@@ -170,11 +224,55 @@
 | BLSH-01 | Balance sheet tab shows Assets, Liabilities, Equity with Current Month / Prior Year / Var$ / Var% | Phase 27 |
 | BLSH-02 | Balance sheet data fetched from Xero /Reports/BalanceSheet API with prior year compare | Phase 27 |
 | BLSH-03 | Balance sheet enabled/disabled per template | Phase 27 |
-| DRCF-01 | Direct method engine converts P&L to cash (income ÷ 1.1 GST, expense ÷ 1.1 where applicable) | Phase 28 |
-| DRCF-02 | GST (BAS quarterly), PAYG (monthly), Super (quarterly) shown as separate liability rows | Phase 28 |
-| DRCF-03 | CapEx from forecast_investments shown as asset movement row | Phase 28 |
-| DRCF-04 | 12-month rolling bank balance shown (Bank at Beginning → movements → Bank at End) | Phase 28 |
-| DRCF-05 | User can toggle between direct method and existing indirect (DSO/DPO) method | Phase 28 |
+| CASH-C-01 | OpEx paid in month accrued (Calxa Rule 7) | Phase 28.0 |
+| CASH-C-02 | `getTimingSplit` returns splits summing to exactly 100% | Phase 28.0 |
+| CASH-C-03 | Depreciation excluded from cash outflows (keyword-match interim) | Phase 28.0 |
+| CASH-C-04 | Engine test suite covers ≥15 core scenarios | Phase 28.0 |
+| CASH-C-05 | All tests pass; zero TypeScript errors | Phase 28.0 |
+| CASH-C-10 | `cashflow_settings` table stores explicit Xero account IDs | Phase 28.1 |
+| CASH-C-11 | `cashflow_account_profiles` table for per-account Type 1-5 overrides | Phase 28.1 |
+| CASH-C-12 | `cashflow_statement_classification` table for AASB 107 classification | Phase 28.1 |
+| CASH-C-13 | `xero_accounts` caches full Chart of Accounts | Phase 28.1 |
+| CASH-C-14 | `/api/Xero/chart-of-accounts-full` endpoint fetches and caches COA | Phase 28.1 |
+| CASH-C-15 | `/api/forecast/cashflow/settings` GET/POST endpoint | Phase 28.1 |
+| CASH-C-16 | `useXeroAccounts` hook provides grouped account lists | Phase 28.1 |
+| CASH-C-17 | `CashflowAccountsPanel` UI with dropdowns for each category | Phase 28.1 |
+| CASH-C-18 | Auto-populate defaults based on `xero_type` | Phase 28.1 |
+| CASH-C-19 | Feature flag `use_explicit_accounts` gates new behaviour | Phase 28.1 |
+| CASH-C-20 | Engine falls back to keyword matching when flag off | Phase 28.1 |
+| CASH-C-25 | Depreciation uses account ID when configured, keyword otherwise | Phase 28.2 |
+| CASH-C-26 | Depreciation shown as non-cash add-back in indirect view | Phase 28.2 |
+| CASH-C-27 | Company Tax module: annual tax = net profit × rate | Phase 28.2 |
+| CASH-C-28 | Company Tax distributed across schedule months | Phase 28.2 |
+| CASH-C-29 | CapEx pulls Fixed Asset movements from Xero balance sheet | Phase 28.2 |
+| CASH-C-30 | CapEx uses `forecast_investments` for forecast months | Phase 28.2 |
+| CASH-C-31 | Type extended with indirect-method fields | Phase 28.2 |
+| CASH-C-32 | Direct/Indirect toggle on CashflowForecastTable | Phase 28.2 |
+| CASH-C-33 | Both methods reconcile to same Net Cash Movement | Phase 28.2 |
+| CASH-C-34 | Engine tests cover depreciation/tax/capex | Phase 28.2 |
+| CASH-C-35 | Direct method behaviour preserved (backwards compat) | Phase 28.2 |
+| CASH-C-40 | `cashflow_schedules` table with BasePeriods[12] | Phase 28.3 |
+| CASH-C-41 | 6 AU-standard schedules seeded | Phase 28.3 |
+| CASH-C-42 | `daysToDistribution(days)` produces dist[12] summing to 100 | Phase 28.3 |
+| CASH-C-43 | `resolveSchedule(name)` returns BasePeriods | Phase 28.3 |
+| CASH-C-44 | Settings use schedule name (not frequency string) | Phase 28.3 |
+| CASH-C-45 | `/api/forecast/cashflow/profiles` CRUD endpoint | Phase 28.3 |
+| CASH-C-46 | `AccountProfileEditor` Type 1-5 UI | Phase 28.3 |
+| CASH-C-47 | Type 1 Immediate pays in accrual month | Phase 28.3 |
+| CASH-C-48 | Type 3/4 accept float-precision days | Phase 28.3 |
+| CASH-C-49 | Type 5 uses named BasePeriods lookup | Phase 28.3 |
+| CASH-C-50 | Engine prefers profile over global DSO/DPO | Phase 28.3 |
+| CASH-C-55 | `StatementClassificationEditor` for four-list UI | Phase 28.4 |
+| CASH-C-56 | Auto-classify heuristic based on `xero_type` | Phase 28.4 |
+| CASH-C-57 | `/api/forecast/cashflow/statement` endpoint | Phase 28.4 |
+| CASH-C-58 | Statement reconciles to bank balance change | Phase 28.4 |
+| CASH-C-59 | Operating section: Net Profit + add-backs + BS movements | Phase 28.4 |
+| CASH-C-60 | Investing section: Fixed Asset movements with correct sign | Phase 28.4 |
+| CASH-C-61 | Financing section: Loans and equity movements | Phase 28.4 |
+| CASH-C-62 | Non-Cash section: Depreciation/amortisation add-backs | Phase 28.4 |
+| CASH-C-63 | `CashflowStatementTab` renders AASB 107 layout | Phase 28.4 |
+| CASH-C-64 | Warning if any account is Unassigned | Phase 28.4 |
+| CASH-C-65 | Statement reconciliation tests pass | Phase 28.4 |
 | WDMG-01 | Report shows P&L summary (Income / COGS / Expenses / Other Income / Surplus) for the month | Phase 29 |
 | WDMG-02 | Report classifies each balance sheet movement as a source or use of cash | Phase 29 |
 | WDMG-03 | Report shows net effect on bank balance (opening + closing) | Phase 29 |

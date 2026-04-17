@@ -334,20 +334,37 @@ Plans:
 
 ---
 
-### Phase 28: Direct Method Cashflow Engine
-**Goal:** Coaches can generate a direct method cashflow statement that converts P&L to cash, separates AU tax liabilities (GST, PAYG, Super), and shows a rolling 12-month bank balance — preserving the existing indirect method as an option.
-**Depends on:** Phase 19 (monthly reporting foundation — in progress), Phase 23 (templates)
-**Requirements:** DRCF-01, DRCF-02, DRCF-03, DRCF-04, DRCF-05
+### Phase 28: Cashflow Engine — Calxa Standard Rebuild
+**Goal:** Bring the WisdomBI cashflow engine up to Calxa-equivalent accounting standards. Fix known bugs (OpEx DPO, math overlap, missing depreciation/tax/CapEx), replace keyword-based account matching with explicit Xero account IDs, and add AASB 107 compliant Cashflow Statement. Done as 5 sequential sub-phases with feature flags and fallbacks so existing clients never break.
+**Depends on:** Phase 19 (monthly reporting), Phase 23 (templates), Phase 27 (balance sheet)
+**Requirements:** CASH-C-01 through CASH-C-65
 **UI hint:** yes
-**Plans:** TBD
+**Plans:** `.planning/phases/28-cashflow-calxa-standard/`
+
+**Sub-phases:**
+- **28.0 — Quick Wins + Test Suite** (2h) — Fix OpEx DPO + DSO/DPO math bugs + lock behaviour with tests
+- **28.1 — Settings Foundation** (4-5h) — 3 new tables; Xero account-picker UI; COA sync
+- **28.2 — Algorithm Completeness** (4-5h) — Depreciation, Company Tax, CapEx; indirect-method output layout
+- **28.3 — Schedule + Distribution Model** (3-4h) — BasePeriods[12], distribution[12], per-account Type 1-5 profiles
+- **28.4 — Cashflow Statement (Actuals)** (3-4h) — Four-list classification + AASB 107 statement view
+
+**Safety rails:**
+- Additive schema only — new tables, no changes to existing
+- Feature flag per sub-phase (`use_explicit_accounts`, etc.) — keyword fallback preserved
+- Test suite written in 28.0 locks current behaviour before refactor
+- Atomic commits, short smoke test between sub-phases
 
 **Success Criteria:**
-- Direct method cashflow tab shows cash receipts from income as revenue ÷ 1.1 (GST-exclusive) and cash payments from expenses as expense ÷ 1.1 where GST applies
-- GST liability row shows quarterly BAS amounts (Feb, Apr, Jul, Oct payment months for AU quarters)
-- PAYG withholding shown as a separate monthly liability row; Super shown as a quarterly liability row (Jan, Apr, Jul, Oct)
-- CapEx from forecast_investments appears as an asset movement row in the correct purchase month
-- 12-month rolling bank balance section shows Bank at Beginning, net cash movements, and Bank at End for each month
-- Toggle between direct and indirect (DSO/DPO) method is persistent per template
+- Cashflow reconciles to Xero bank balance for every actual month (continues existing behaviour)
+- OpEx paid in the month it's accrued (no DPO delay) — matches Calxa Rule 7
+- Depreciation correctly added back as non-cash (indirect method)
+- Company tax modelled as scheduled cash outflow (quarterly PAYG instalments or annual lump sum)
+- CapEx appears as cash outflow in purchase month (from balance sheet movement)
+- Coach can explicitly map every Xero account (bank, AR, AP, GST, PAYG, super, depreciation, tax) via UI dropdowns
+- Per-account Type 1-5 profiles override global DSO/DPO where configured
+- AASB 107 compliant Cashflow Statement view with Operating / Investing / Financing / Non-Cash sections
+- Engine has >70% test coverage on core algorithm paths
+- Zero existing clients broken during rollout
 
 ---
 
