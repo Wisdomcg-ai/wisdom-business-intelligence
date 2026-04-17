@@ -3,6 +3,9 @@
 import { useState } from 'react'
 import { X, RefreshCw, Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
 import type { CashflowAssumptions, LoanSchedule } from '../types'
+import { useCashflowSettings } from '../hooks/useCashflowSettings'
+import { useXeroAccounts } from '../hooks/useXeroAccounts'
+import CashflowAccountsPanel from './CashflowAccountsPanel'
 
 interface CashflowAssumptionsPanelProps {
   assumptions: CashflowAssumptions
@@ -12,6 +15,9 @@ interface CashflowAssumptionsPanelProps {
   onUpdate: <K extends keyof CashflowAssumptions>(key: K, value: CashflowAssumptions[K]) => void
   onSave: (updated: Partial<CashflowAssumptions>) => Promise<void>
   onSyncFromXero: () => Promise<void>
+  // Phase 28.1: optional — when provided, shows the Calxa-standard account mapping section
+  forecastId?: string
+  businessId?: string
 }
 
 function fmt$(value: number): string {
@@ -27,8 +33,11 @@ export default function CashflowAssumptionsPanel({
   onUpdate,
   onSave,
   onSyncFromXero,
+  forecastId,
+  businessId,
 }: CashflowAssumptionsPanelProps) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    accounts: false,  // Phase 28.1 — collapsed by default so existing users aren't disturbed
     timing: true,
     gst: true,
     tax: false,
@@ -37,6 +46,11 @@ export default function CashflowAssumptionsPanel({
     stock: false,
     loans: false,
   })
+
+  // Phase 28.1: load cashflow settings + Xero accounts when forecast/business known.
+  // Hooks no-op if IDs are undefined.
+  const calxaSettings = useCashflowSettings(forecastId)
+  const xeroAccountsHook = useXeroAccounts(businessId ?? '')
 
   const toggleSection = (key: string) => {
     setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }))
@@ -56,6 +70,27 @@ export default function CashflowAssumptionsPanel({
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
+
+        {/* Cashflow Accounts (Phase 28.1 — Calxa-standard explicit account mapping) */}
+        {forecastId && businessId && (
+          <Section title="Cashflow Accounts (Calxa standard)" sectionKey="accounts" expanded={expandedSections.accounts} onToggle={toggleSection}>
+            <CashflowAccountsPanel
+              settings={calxaSettings.settings}
+              accounts={xeroAccountsHook.accounts}
+              grouped={xeroAccountsHook.grouped}
+              isLoadingSettings={calxaSettings.isLoading}
+              isSavingSettings={calxaSettings.isSaving}
+              isLoadingAccounts={xeroAccountsHook.isLoading}
+              isRefreshingAccounts={xeroAccountsHook.isRefreshing}
+              accountsError={xeroAccountsHook.error}
+              settingsError={calxaSettings.error}
+              lastSyncedAt={xeroAccountsHook.lastSyncedAt}
+              onUpdate={calxaSettings.update}
+              onSave={calxaSettings.save}
+              onRefreshAccounts={xeroAccountsHook.refresh}
+            />
+          </Section>
+        )}
 
         {/* Cash Timing */}
         <Section title="Cash Timing" sectionKey="timing" expanded={expandedSections.timing} onToggle={toggleSection}>
