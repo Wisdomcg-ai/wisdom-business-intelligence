@@ -207,6 +207,12 @@ export default function CashflowForecastTab({
               ? `✓ Opening balances${dataQuality.openingBalanceDate ? ` (${dataQuality.openingBalanceDate})` : ''}`
               : '⚠ Opening balances not set'}
           </span>
+          <span className="text-gray-400">·</span>
+          <span className={dataQuality.actualMonthsReconciled > 0 ? 'text-green-700' : 'text-amber-700'}>
+            {dataQuality.actualMonthsReconciled > 0
+              ? `✓ ${dataQuality.actualMonthsReconciled} month${dataQuality.actualMonthsReconciled === 1 ? '' : 's'} reconciled to Xero bank`
+              : '⚠ No Xero bank reconciliation'}
+          </span>
         </div>
         {dataQuality.accountsOnlyInXero > 0 && (
           <p className="mt-1 text-gray-500">

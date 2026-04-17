@@ -45,6 +45,7 @@ export interface CashflowDataQuality {
   hasOpeningBalances: boolean    // opening bank balance synced/set
   openingBalanceDate: string | null
   lastXeroSync: string | null
+  actualMonthsReconciled: number // count of months where bank balance is from Xero (not derived)
 }
 
 interface UseCashflowForecastReturn {
@@ -70,6 +71,7 @@ export function useCashflowForecast({
   const [payrollSummary, setPayrollSummary] = useState<PayrollSummary | null>(null)
   const [mergedLines, setMergedLines] = useState<PLLine[]>([])
   const [xeroActualsCount, setXeroActualsCount] = useState(0)
+  const [actualBankBalances, setActualBankBalances] = useState<Record<string, number>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -136,6 +138,33 @@ export function useCashflowForecast({
     }
   }, [plLines, loaded])
 
+  // Fetch actual monthly bank balances from Xero for the actuals period.
+  // These override the engine's derived bank_at_beginning/bank_at_end so the
+  // cashflow reconciles directly to the Xero bank.
+  useEffect(() => {
+    if (!hasXeroConnection || !businessId || !forecast?.actual_start_month || !forecast?.actual_end_month) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/forecast/cashflow/bank-balances', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            business_id: businessId,
+            from_month: forecast.actual_start_month,
+            to_month: forecast.actual_end_month,
+          }),
+        })
+        if (!res.ok) return
+        const { data } = await res.json()
+        if (!cancelled && data) setActualBankBalances(data)
+      } catch (err) {
+        console.error('[useCashflowForecast] Bank balances fetch error:', err)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [hasXeroConnection, businessId, forecast?.actual_start_month, forecast?.actual_end_month, assumptions.last_xero_sync_at])
+
   // Auto-sync from Xero on first load if no balances have been set
   useEffect(() => {
     if (
@@ -160,12 +189,69 @@ export function useCashflowForecast({
     if (!forecast || !loaded || linesToUse.length === 0) return null
 
     try {
-      return generateCashflowForecast(linesToUse, payrollSummary, assumptions, forecast, plannedSpends)
+      const engineOutput = generateCashflowForecast(linesToUse, payrollSummary, assumptions, forecast, plannedSpends)
+      if (!engineOutput) return null
+
+      // Post-process: override bank balances for ACTUAL months with Xero's real
+      // month-end bank balance. Derived balances from P&L + timing will never
+      // exactly match Xero (owner drawings, loan movements, transfers, etc.
+      // aren't in the P&L). For past months we trust Xero; for future months
+      // we use the engine's projection, carrying forward from the last actual.
+      const hasActualBalances = Object.keys(actualBankBalances).length > 0
+      if (!hasActualBalances) return engineOutput
+
+      const adjustedMonths = [...engineOutput.months]
+      let lastActualEnd: number | null = null
+
+      for (let i = 0; i < adjustedMonths.length; i++) {
+        const m = adjustedMonths[i]
+        if (m.source === 'actual' && actualBankBalances[m.month] !== undefined) {
+          // Xero has the real month-end balance — use it
+          const actualEnd = actualBankBalances[m.month]
+          const openingForThisMonth = i === 0
+            ? (actualBankBalances[m.month] - (m.net_movement ?? 0)) // infer from first month's net
+            : (adjustedMonths[i - 1].bank_at_end ?? m.bank_at_beginning)
+          adjustedMonths[i] = {
+            ...m,
+            bank_at_beginning: i === 0 ? assumptions.opening_bank_balance : openingForThisMonth,
+            bank_at_end: actualEnd,
+            net_movement: actualEnd - (i === 0 ? assumptions.opening_bank_balance : openingForThisMonth),
+          }
+          lastActualEnd = actualEnd
+        } else if (lastActualEnd !== null && m.source !== 'actual') {
+          // First forecast month after the actual period — rebase from last actual
+          const opening = i > 0 ? (adjustedMonths[i - 1].bank_at_end ?? lastActualEnd) : lastActualEnd
+          adjustedMonths[i] = {
+            ...m,
+            bank_at_beginning: opening,
+            bank_at_end: opening + (m.net_movement ?? 0),
+          }
+          // From here on, subsequent forecast months carry forward normally (they already do)
+          lastActualEnd = null // stop rebasing
+        }
+      }
+
+      // Recompute lowest bank balance after adjustments
+      let lowest = Infinity
+      let lowestMonth = ''
+      for (const m of adjustedMonths) {
+        if (m.bank_at_end !== undefined && m.bank_at_end < lowest) {
+          lowest = m.bank_at_end
+          lowestMonth = m.month
+        }
+      }
+
+      return {
+        ...engineOutput,
+        months: adjustedMonths,
+        lowest_bank_balance: lowest === Infinity ? 0 : Math.round(lowest * 100) / 100,
+        lowest_bank_month: lowestMonth,
+      }
     } catch (err) {
       console.error('[useCashflowForecast] Engine error:', err)
       return null
     }
-  }, [mergedLines, plLines, payrollSummary, assumptions, forecast, loaded, plannedSpends])
+  }, [mergedLines, plLines, payrollSummary, assumptions, forecast, loaded, plannedSpends, actualBankBalances])
 
   const updateAssumption = useCallback(<K extends keyof CashflowAssumptions>(key: K, value: CashflowAssumptions[K]) => {
     setAssumptions(prev => ({ ...prev, [key]: value }))
@@ -284,8 +370,9 @@ export function useCashflowForecast({
       hasOpeningBalances: assumptions.opening_bank_balance !== 0 || !!assumptions.balance_date,
       openingBalanceDate: assumptions.balance_date || null,
       lastXeroSync: assumptions.last_xero_sync_at || null,
+      actualMonthsReconciled: Object.keys(actualBankBalances).length,
     }
-  }, [plLines, mergedLines, xeroActualsCount, payrollSummary, assumptions])
+  }, [plLines, mergedLines, xeroActualsCount, payrollSummary, assumptions, actualBankBalances])
 
   return {
     data,
