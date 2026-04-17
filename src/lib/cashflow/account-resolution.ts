@@ -19,6 +19,7 @@ import type { PLLine } from '@/app/finances/forecast/types'
 export interface AccountResolutionSettings {
   use_explicit_accounts?: boolean
   depreciation_expense_account_id?: string | null
+  depreciation_accumulated_account_ids?: string[]
   wages_expense_account_id?: string | null
   super_expense_account_id?: string | null
   super_payable_account_id?: string | null

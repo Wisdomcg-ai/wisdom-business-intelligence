@@ -246,19 +246,22 @@ export default function CashflowAccountsPanel({
         />
       </Section>
 
-      {/* GST */}
+      {/* GST — allow any balance sheet account; some orgs use a single GST
+          account (asset or liability), others split. */}
       <Section title="GST / BAS">
         <AccountSelect
           label="GST Paid (on expenses)"
           value={settings.gst_paid_account_id}
-          accounts={assetAccounts}
+          accounts={[...assetAccounts, ...liabilityAccounts]}
           onChange={id => onUpdate('gst_paid_account_id', id)}
+          help="Some orgs post GST Paid to a liability account (net GST position). Pick whichever Xero uses."
         />
         <AccountSelect
           label="GST Collected (on income)"
           value={settings.gst_collected_account_id}
-          accounts={liabilityAccounts}
+          accounts={[...assetAccounts, ...liabilityAccounts]}
           onChange={id => onUpdate('gst_collected_account_id', id)}
+          help="If you use a single GST account for both, pick the same one here and above."
         />
       </Section>
 
@@ -295,7 +298,8 @@ export default function CashflowAccountsPanel({
         />
       </Section>
 
-      {/* Depreciation */}
+      {/* Depreciation — expense is usually a single account; accumulated is
+          often split by asset class (vehicles, equipment, leasehold improvements) */}
       <Section title="Depreciation (non-cash)">
         <AccountSelect
           label="Depreciation Expense"
@@ -304,11 +308,11 @@ export default function CashflowAccountsPanel({
           onChange={id => onUpdate('depreciation_expense_account_id', id)}
           help="Excluded from cashflow — added back in indirect method"
         />
-        <AccountSelect
-          label="Accumulated Depreciation"
-          value={settings.depreciation_accumulated_account_id}
+        <AccountMultiSelect
+          label="Accumulated Depreciation (select all)"
+          values={settings.depreciation_accumulated_account_ids}
           accounts={assetAccounts}
-          onChange={id => onUpdate('depreciation_accumulated_account_id', id)}
+          onChange={ids => onUpdate('depreciation_accumulated_account_ids', ids)}
         />
       </Section>
 

@@ -31,7 +31,7 @@ export interface CashflowCalxaSettings {
   super_schedule: string
 
   depreciation_expense_account_id: string | null
-  depreciation_accumulated_account_id: string | null
+  depreciation_accumulated_account_ids: string[]
 
   debtors_account_id: string | null
   creditors_account_id: string | null
