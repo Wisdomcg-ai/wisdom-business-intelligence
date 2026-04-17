@@ -12,8 +12,18 @@
  * foundation without requiring the algorithm switch.
  */
 
-import { isDepreciationExpense } from './engine'
 import type { PLLine } from '@/app/finances/forecast/types'
+
+/**
+ * Keyword-based depreciation check (same rules as engine.isDepreciationExpense).
+ * Inlined here to avoid a circular import between engine.ts and account-resolution.ts.
+ */
+function isDepreciationByKeyword(accountName: string): boolean {
+  const lower = accountName.toLowerCase()
+  return lower.includes('depreciation') ||
+         lower.includes('amortisation') ||
+         lower.includes('amortization')
+}
 
 /** Minimal shape of CashflowCalxaSettings needed for resolution */
 export interface AccountResolutionSettings {
@@ -79,7 +89,7 @@ export function resolveIsDepreciation(
   if (settings?.use_explicit_accounts && settings.depreciation_expense_account_id) {
     return lineMatchesAccountIds(line, [settings.depreciation_expense_account_id], lookup)
   }
-  return isDepreciationExpense(line.account_name)
+  return isDepreciationByKeyword(line.account_name)
 }
 
 /**

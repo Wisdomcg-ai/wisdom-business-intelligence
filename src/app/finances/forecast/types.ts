@@ -806,6 +806,15 @@ export interface CashflowForecastMonth {
 
   net_movement: number
   bank_at_end: number
+
+  // Phase 28.2 — indirect-method fields. All optional; populated by the
+  // engine when the information is available. Consumers that don't need
+  // them simply ignore. The sum reconciles to the same net_movement as
+  // the direct-method fields above.
+  net_profit?: number              // Revenue - COGS - OpEx (accrual, per month)
+  depreciation_addback?: number    // Non-cash add-back for identified depn accounts
+  company_tax_payment?: number     // Positive amount when tax is paid this month
+  capex_payment?: number           // Positive amount = CapEx cash outflow this month
 }
 
 export interface CashflowForecastData {

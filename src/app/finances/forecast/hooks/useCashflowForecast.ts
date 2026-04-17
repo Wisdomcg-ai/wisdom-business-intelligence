@@ -72,6 +72,10 @@ export function useCashflowForecast({
   const [mergedLines, setMergedLines] = useState<PLLine[]>([])
   const [xeroActualsCount, setXeroActualsCount] = useState(0)
   const [actualBankBalances, setActualBankBalances] = useState<Record<string, number>>({})
+  // Phase 28.2 — optional Calxa-standard settings + Xero accounts lookup
+  const [calxaSettings, setCalxaSettings] = useState<any | null>(null)
+  const [xeroAccountsLookup, setXeroAccountsLookup] = useState<any[]>([])
+  const [capexByMonth, setCapexByMonth] = useState<Record<string, number>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -138,6 +142,22 @@ export function useCashflowForecast({
     }
   }, [plLines, loaded])
 
+  // Phase 28.2: fetch Calxa-standard settings (feature flag) + Xero accounts lookup.
+  // These are used by the engine when use_explicit_accounts=true.
+  useEffect(() => {
+    if (!forecast?.id || !businessId) return
+    let cancelled = false
+    Promise.all([
+      fetch(`/api/forecast/cashflow/settings?forecast_id=${forecast.id}`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/Xero/chart-of-accounts-full?business_id=${businessId}`).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([settingsRes, accountsRes]) => {
+      if (cancelled) return
+      if (settingsRes?.data) setCalxaSettings(settingsRes.data)
+      if (accountsRes?.data) setXeroAccountsLookup(accountsRes.data)
+    })
+    return () => { cancelled = true }
+  }, [forecast?.id, businessId])
+
   // Fetch actual monthly bank balances from Xero for the actuals period.
   // These override the engine's derived bank_at_beginning/bank_at_end so the
   // cashflow reconciles directly to the Xero bank.
@@ -160,6 +180,31 @@ export function useCashflowForecast({
         if (!cancelled && data) setActualBankBalances(data)
       } catch (err) {
         console.error('[useCashflowForecast] Bank balances fetch error:', err)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [hasXeroConnection, businessId, forecast?.actual_start_month, forecast?.actual_end_month, assumptions.last_xero_sync_at])
+
+  // Phase 28.2: fetch CapEx (fixed asset movements) for the actuals period
+  useEffect(() => {
+    if (!hasXeroConnection || !businessId || !forecast?.actual_start_month || !forecast?.actual_end_month) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/forecast/cashflow/capex', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            business_id: businessId,
+            from_month: forecast.actual_start_month,
+            to_month: forecast.actual_end_month,
+          }),
+        })
+        if (!res.ok) return
+        const { data } = await res.json()
+        if (!cancelled && data) setCapexByMonth(data)
+      } catch (err) {
+        console.error('[useCashflowForecast] CapEx fetch error:', err)
       }
     })()
     return () => { cancelled = true }
@@ -189,7 +234,11 @@ export function useCashflowForecast({
     if (!forecast || !loaded || linesToUse.length === 0) return null
 
     try {
-      const engineOutput = generateCashflowForecast(linesToUse, payrollSummary, assumptions, forecast, plannedSpends)
+      const engineOutput = generateCashflowForecast(linesToUse, payrollSummary, assumptions, forecast, plannedSpends, {
+        settings: calxaSettings,
+        xeroAccounts: xeroAccountsLookup,
+        capexByMonth,
+      })
       if (!engineOutput) return null
 
       // Post-process: override bank balances for ACTUAL months with Xero's real
@@ -251,7 +300,7 @@ export function useCashflowForecast({
       console.error('[useCashflowForecast] Engine error:', err)
       return null
     }
-  }, [mergedLines, plLines, payrollSummary, assumptions, forecast, loaded, plannedSpends, actualBankBalances])
+  }, [mergedLines, plLines, payrollSummary, assumptions, forecast, loaded, plannedSpends, actualBankBalances, calxaSettings, xeroAccountsLookup, capexByMonth])
 
   const updateAssumption = useCallback(<K extends keyof CashflowAssumptions>(key: K, value: CashflowAssumptions[K]) => {
     setAssumptions(prev => ({ ...prev, [key]: value }))

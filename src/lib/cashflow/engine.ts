@@ -16,6 +16,11 @@ import type {
   CashflowForecastData,
   FinancialForecast,
 } from '@/app/finances/forecast/types'
+import {
+  buildAccountLookup,
+  resolveIsDepreciation,
+} from './account-resolution'
+import { computeCompanyTaxByMonth } from './company-tax'
 
 // ============================================================================
 // Expense Group Classification
@@ -268,13 +273,33 @@ interface PlannedSpendItem {
   annualDepreciation?: number
 }
 
+/**
+ * Phase 28.2 additions:
+ * - Optional Calxa-standard settings (when use_explicit_accounts=true)
+ * - Optional xero_accounts lookup for account_id → code/name resolution
+ * - Optional capexByMonth for fixed asset purchases (Phase 28.2 CapEx module)
+ *
+ * All new params are optional so 28.0 / 28.1 behaviour is preserved exactly
+ * when they are omitted or when the feature flag is off.
+ */
+export interface CashflowEngineOptions {
+  settings?: import('./account-resolution').AccountResolutionSettings | null
+  xeroAccounts?: import('./account-resolution').XeroAccountRef[]
+  /** Capex by month (YYYY-MM → cash outflow in AUD). Positive number = outflow. */
+  capexByMonth?: Record<string, number>
+}
+
 export function generateCashflowForecast(
   plLines: PLLine[],
   payrollSummary: PayrollSummary | null,
   assumptions: CashflowAssumptions,
   forecast: FinancialForecast,
   plannedSpends: PlannedSpendItem[] = [],
+  options: CashflowEngineOptions = {},
 ): CashflowForecastData {
+  const settings = options.settings ?? null
+  const xeroAccounts = options.xeroAccounts ?? []
+  const capexByMonth = options.capexByMonth ?? {}
   // Build ordered list of all months in the forecast
   const allMonths = buildMonthList(forecast)
 
@@ -409,13 +434,15 @@ export function generateCashflowForecast(
   // Exceptions preserved: skip employment if payroll summary handles it;
   // skip depreciation/amortisation entirely (non-cash items).
   // Per-account overrides for delayed OpEx come in Phase 28.3 via Type 3 profiles.
+  const depnLookup = buildAccountLookup(xeroAccounts)
   for (const line of opexLines) {
     // Skip employment lines if payroll summary handles them
     if (payrollSummary && isEmploymentExpense(line.account_name)) continue
 
-    // Skip non-cash items (depreciation, amortisation) — they're P&L-only,
-    // they shouldn't appear as cash outflows
-    if (isDepreciationExpense(line.account_name)) continue
+    // Skip non-cash items (depreciation, amortisation).
+    // Phase 28.2: when settings.use_explicit_accounts=true, match by account ID
+    // via the xero_accounts lookup; otherwise falls back to keyword matching.
+    if (resolveIsDepreciation(line, settings, depnLookup)) continue
 
     const group = classifyExpenseGroup(line.account_name)
 
@@ -436,6 +463,30 @@ export function generateCashflowForecast(
       cashOpExPayments[mk].push({ label: line.account_name, amount: cashAmount, group })
     }
   }
+
+  // Phase 28.2: pre-compute net profit per month for Company Tax calculation
+  // and indirect-method output fields.
+  const netProfitByMonth: Record<string, number> = {}
+  for (const mk of allMonths) {
+    const rev = revenueLines.reduce((s, l) => s + getLineValue(l, mk, forecast), 0)
+    const cogs = cogsLines.reduce((s, l) => s + Math.abs(getLineValue(l, mk, forecast)), 0)
+    const opex = opexLines.reduce((s, l) => {
+      // Exclude depreciation/amortisation from net profit for cash-relevant tax
+      // (depreciation IS a tax-deductible expense so it reduces taxable income —
+      // keeping it here is correct for simple tax approximation).
+      return s + Math.abs(getLineValue(l, mk, forecast))
+    }, 0)
+    netProfitByMonth[mk] = rev - cogs - opex
+  }
+
+  // Phase 28.2: Company Tax (only active when explicit settings provided)
+  const companyTaxByMonth: Record<string, number> = (() => {
+    if (!settings?.use_explicit_accounts) return {}
+    const rate = (settings as any).company_tax_rate ?? 0
+    const schedule = (settings as any).company_tax_schedule ?? 'none'
+    if (rate <= 0 || schedule === 'none') return {}
+    return computeCompanyTaxByMonth(allMonths, netProfitByMonth, { rate, schedule })
+  })()
 
   // Build monthly cashflow data
   const months: CashflowForecastMonth[] = []
@@ -562,6 +613,15 @@ export function generateCashflowForecast(
       if (gstRate > 0) monthGSTPaid += ps.amount * gstRate
     }
 
+    // Phase 28.2: CapEx — Fixed Asset movements from Xero balance sheet.
+    // These are cash outflows that DON'T appear in the P&L (CapEx is balance
+    // sheet only). Only added when explicit settings are enabled to avoid
+    // double-counting with PlannedSpend assets above.
+    const capexThisMonth = capexByMonth[mk]
+    if (settings?.use_explicit_accounts && capexThisMonth && capexThisMonth > 0) {
+      assetLines.push({ label: 'CapEx (Fixed Assets)', value: round2(-capexThisMonth) })
+    }
+
     const movementInAssets = round2(assetLines.reduce((sum, l) => sum + l.value, 0))
 
     // ---- Balance Sheet — Liabilities ----
@@ -622,6 +682,12 @@ export function generateCashflowForecast(
       liabilityLines.push({ label: 'Superannuation', value: round2(-superPayment) })
     }
 
+    // Phase 28.2: Company Tax (active only when explicit settings enabled + schedule has a payment this month)
+    const companyTax = companyTaxByMonth[mk]
+    if (companyTax && companyTax >= 0.01) {
+      liabilityLines.push({ label: 'Company Tax', value: round2(-companyTax) })
+    }
+
     // Loan Repayments
     for (let lIdx = 0; lIdx < assumptions.loans.length; lIdx++) {
       const loan = assumptions.loans[lIdx]
@@ -668,6 +734,16 @@ export function generateCashflowForecast(
 
     bankBalance = bankAtEnd
 
+    // Phase 28.2: compute indirect-method helper fields for this month
+    const depreciationAddback = round2(opexLines.reduce((sum, l) => {
+      if (resolveIsDepreciation(l, settings, depnLookup)) {
+        return sum + Math.abs(getLineValue(l, mk, forecast))
+      }
+      return sum
+    }, 0))
+    const companyTaxPayment = round2(companyTaxByMonth[mk] ?? 0)
+    const capexPayment = round2((settings?.use_explicit_accounts && capexByMonth[mk] > 0) ? capexByMonth[mk] : 0)
+
     months.push({
       month: mk,
       monthLabel: formatMonthLabel(mk),
@@ -686,6 +762,11 @@ export function generateCashflowForecast(
       other_inflows: otherInflows,
       net_movement: netMovement,
       bank_at_end: bankAtEnd,
+      // Phase 28.2 indirect-method fields
+      net_profit: round2(netProfitByMonth[mk] ?? 0),
+      depreciation_addback: depreciationAddback,
+      company_tax_payment: companyTaxPayment,
+      capex_payment: capexPayment,
     })
   }
 
