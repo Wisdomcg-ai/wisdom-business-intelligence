@@ -1,9 +1,10 @@
 'use client'
 
-import { useMemo } from 'react'
-import { RefreshCw, Save, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { RefreshCw, Save, Loader2, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react'
 import type { CashflowCalxaSettings } from '../hooks/useCashflowSettings'
 import type { XeroAccount, GroupedXeroAccounts } from '../hooks/useXeroAccounts'
+import AccountProfileEditor from './AccountProfileEditor'
 
 interface CashflowAccountsPanelProps {
   settings: CashflowCalxaSettings | null
@@ -19,6 +20,7 @@ interface CashflowAccountsPanelProps {
   onUpdate: <K extends keyof CashflowCalxaSettings>(key: K, value: CashflowCalxaSettings[K]) => void
   onSave: () => Promise<boolean>
   onRefreshAccounts: () => Promise<void>
+  forecastId?: string  // Phase 28.3 — required for account profiles
 }
 
 /** Display label for a Xero account: "Code Name" */
@@ -104,6 +106,7 @@ function AccountMultiSelect({
 
 export default function CashflowAccountsPanel({
   settings,
+  accounts,
   grouped,
   isLoadingSettings,
   isSavingSettings,
@@ -115,7 +118,9 @@ export default function CashflowAccountsPanel({
   onUpdate,
   onSave,
   onRefreshAccounts,
+  forecastId,
 }: CashflowAccountsPanelProps) {
+  const [showAdvanced, setShowAdvanced] = useState(false)
   // Accounts eligible for each category
   const assetAccounts = useMemo(
     () => [...grouped.currentAssets, ...grouped.fixedAssets, ...grouped.inventory],
@@ -357,6 +362,29 @@ export default function CashflowAccountsPanel({
           onChange={id => onUpdate('company_tax_liability_account_id', id)}
         />
       </Section>
+
+      {/* Advanced — per-account Type 1-5 profiles (Phase 28.3) */}
+      {forecastId && (
+        <div className="bg-white border border-gray-200 rounded-lg p-3">
+          <button
+            onClick={() => setShowAdvanced(v => !v)}
+            className="w-full flex items-center justify-between text-left"
+          >
+            <div>
+              <h4 className="text-sm font-semibold text-gray-800">Advanced: Per-Account Timing</h4>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Override payment timing for specific accounts (Calxa Type 1-5 profiles)
+              </p>
+            </div>
+            {showAdvanced ? <ChevronDown className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+          </button>
+          {showAdvanced && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <AccountProfileEditor forecastId={forecastId} accounts={accounts} />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Save button */}
       <div className="sticky bottom-0 bg-white border-t border-gray-200 pt-3">

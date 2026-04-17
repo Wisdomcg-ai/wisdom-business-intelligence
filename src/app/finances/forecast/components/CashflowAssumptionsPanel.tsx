@@ -88,6 +88,7 @@ export default function CashflowAssumptionsPanel({
               onUpdate={calxaSettings.update}
               onSave={calxaSettings.save}
               onRefreshAccounts={xeroAccountsHook.refresh}
+              forecastId={forecastId}
             />
           </Section>
         )}
