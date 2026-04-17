@@ -69,6 +69,10 @@ export function useXeroConnection(businessId: string) {
     if (!businessId) return
     setIsSyncing(true)
 
+    // Trace what triggered this sync (helps diagnose auto-fire mysteries)
+    console.log('[useXeroConnection] handleSync called for business:', businessId, 'from:', window.location.href)
+    console.trace('[useXeroConnection] handleSync call stack')
+
     try {
       const res = await fetch('/api/monthly-report/sync-xero', {
         method: 'POST',

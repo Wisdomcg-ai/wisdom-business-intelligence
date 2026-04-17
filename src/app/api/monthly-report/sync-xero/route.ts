@@ -9,7 +9,8 @@ import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 120;
+// Vercel Hobby caps at 60s; request 60s explicitly
+export const maxDuration = 60;
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -227,7 +228,10 @@ export async function POST(request: NextRequest) {
     // 24 months × ~1s = ~30s total. Well within 120s timeout.
     // ===================================================================
     stage = 'fetch_monthly_pl';
-    const months = getMonthList(24);
+    // Reduced from 24 to 13 months (current FY + prior year comparison)
+    // to fit within Vercel's 60s timeout. 13 × (500ms delay + ~2s API call)
+    // = ~32s + overhead. If longer history is needed, run sync multiple times.
+    const months = getMonthList(13);
     const allAccounts = new Map<string, {
       business_id: string;
       account_name: string;
@@ -400,16 +404,19 @@ export async function POST(request: NextRequest) {
     const errMsg = error instanceof Error ? error.message : 'Sync failed';
     const stack = error instanceof Error ? error.stack : undefined;
 
-    // Log error to debug table so we can diagnose remotely
-    supabaseAdmin.from('debug_log').insert({
-      route: '/api/monthly-report/sync-xero',
-      stage,
-      level: 'error',
-      message: errMsg,
-      data: { stack_preview: stack?.slice(0, 1000) },
-      referer,
-      user_agent: userAgent,
-    }).then(() => {}, () => {});
+    // Log error to debug table so we can diagnose remotely.
+    // AWAIT this — fire-and-forget was being dropped on serverless function termination.
+    try {
+      await supabaseAdmin.from('debug_log').insert({
+        route: '/api/monthly-report/sync-xero',
+        stage,
+        level: 'error',
+        message: errMsg,
+        data: { stack_preview: stack?.slice(0, 1000) },
+        referer,
+        user_agent: userAgent,
+      });
+    } catch { /* logging failure is non-critical */ }
 
     return NextResponse.json(
       {
