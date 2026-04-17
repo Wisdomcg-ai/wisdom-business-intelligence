@@ -236,6 +236,8 @@ export default function CashflowForecastTab({
         onUpdate={updateAssumption}
         onSave={saveAssumptions}
         onSyncFromXero={syncFromXero}
+        forecastId={forecast.id}
+        businessId={businessId}
       />
     </div>
   )
