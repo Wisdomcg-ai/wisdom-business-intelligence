@@ -291,7 +291,8 @@ export async function POST(request: NextRequest) {
 
       for (const [name, data] of monthAccounts) {
         const existing = allAccounts.get(name) || {
-          business_id: ids.profileId,
+          // FK: xero_pl_lines.business_id → businesses.id (NOT business_profiles.id)
+          business_id: ids.bizId,
           account_name: name,
           account_code: accountCodeLookup.get(name) || null,
           account_type: mapSectionToType(data.section),
