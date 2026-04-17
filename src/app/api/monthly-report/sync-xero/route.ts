@@ -110,6 +110,20 @@ function parseSingleMonthReport(report: any): Map<string, { value: number; secti
 }
 
 export async function POST(request: NextRequest) {
+  // Capture incoming request metadata for debug logging
+  const referer = request.headers.get('referer') || '';
+  const userAgent = request.headers.get('user-agent') || '';
+
+  // Log EVERY incoming call so we can trace origin of mysterious 500s
+  supabaseAdmin.from('debug_log').insert({
+    route: '/api/monthly-report/sync-xero',
+    stage: 'entry',
+    level: 'info',
+    message: 'sync-xero invoked',
+    referer,
+    user_agent: userAgent,
+  }).then(() => {}, () => {}); // fire-and-forget; never block on logging
+
   // Stage tracker so 500s tell us exactly where things failed
   let stage = 'init';
   try {
@@ -385,11 +399,22 @@ export async function POST(request: NextRequest) {
     console.error(`[Sync Xero] Error at stage "${stage}":`, error);
     const errMsg = error instanceof Error ? error.message : 'Sync failed';
     const stack = error instanceof Error ? error.stack : undefined;
+
+    // Log error to debug table so we can diagnose remotely
+    supabaseAdmin.from('debug_log').insert({
+      route: '/api/monthly-report/sync-xero',
+      stage,
+      level: 'error',
+      message: errMsg,
+      data: { stack_preview: stack?.slice(0, 1000) },
+      referer,
+      user_agent: userAgent,
+    }).then(() => {}, () => {});
+
     return NextResponse.json(
       {
         error: errMsg,
         stage,
-        // Return stack first 500 chars for debugging (not sensitive)
         stack_preview: stack?.slice(0, 500),
       },
       { status: 500 }
