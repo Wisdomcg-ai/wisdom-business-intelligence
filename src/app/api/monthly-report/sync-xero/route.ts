@@ -110,35 +110,48 @@ function parseSingleMonthReport(report: any): Map<string, { value: number; secti
 }
 
 export async function POST(request: NextRequest) {
+  // Stage tracker so 500s tell us exactly where things failed
+  let stage = 'init';
   try {
+    stage = 'auth';
     const supabase = await createRouteHandlerClient();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized', stage }, { status: 401 });
     }
 
+    stage = 'parse_body';
     const body = await request.json();
     const { business_id } = body;
     if (!business_id) {
-      return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
+      return NextResponse.json({ error: 'business_id is required', stage }, { status: 400 });
     }
 
-    // Resolve dual business IDs (businesses.id vs business_profiles.id)
+    stage = 'resolve_business_ids';
     const ids = await resolveBusinessIds(supabaseAdmin, business_id);
+    console.log(`[Sync Xero] Resolved IDs for ${business_id}:`, ids);
 
-    const { data: business } = await supabaseAdmin
+    stage = 'fetch_business';
+    const { data: business, error: bizError } = await supabaseAdmin
       .from('businesses')
       .select('id, owner_id, assigned_coach_id')
       .eq('id', ids.bizId)
       .maybeSingle();
 
-    if (!business) {
-      return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+    if (bizError) {
+      console.error('[Sync Xero] Business fetch error:', bizError);
+      return NextResponse.json({ error: 'Business lookup failed', detail: bizError.message, stage }, { status: 500 });
     }
-    if (business.owner_id !== user.id && business.assigned_coach_id !== user.id) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    if (!business) {
+      return NextResponse.json({ error: 'Business not found', stage, resolved_ids: ids }, { status: 404 });
     }
 
+    stage = 'authz';
+    if (business.owner_id !== user.id && business.assigned_coach_id !== user.id) {
+      return NextResponse.json({ error: 'Access denied', stage, user_id: user.id }, { status: 403 });
+    }
+
+    stage = 'fetch_connection';
     const { data: connection, error: connError } = await supabaseAdmin
       .from('xero_connections')
       .select('*')
@@ -147,14 +160,19 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    if (connError || !connection) {
-      return NextResponse.json({ error: 'No active Xero connection found' }, { status: 404 });
+    if (connError) {
+      console.error('[Sync Xero] Connection fetch error:', connError);
+      return NextResponse.json({ error: 'Connection lookup failed', detail: connError.message, stage }, { status: 500 });
+    }
+    if (!connection) {
+      return NextResponse.json({ error: 'No active Xero connection found', stage, searched_ids: ids.all }, { status: 404 });
     }
 
+    stage = 'refresh_token';
     const tokenResult = await getValidAccessToken(connection, supabaseAdmin);
     if (!tokenResult.success || !tokenResult.accessToken) {
       return NextResponse.json(
-        { error: 'Token expired', message: tokenResult.message, tokenError: tokenResult.error },
+        { error: 'Token expired', message: tokenResult.message, tokenError: tokenResult.error, stage },
         { status: 401 }
       );
     }
@@ -162,6 +180,7 @@ export async function POST(request: NextRequest) {
     const accessToken = tokenResult.accessToken;
     const tenantId = connection.tenant_id;
 
+    stage = 'fetch_chart_of_accounts';
     // Fetch Chart of Accounts to get account codes (P&L reports don't include them)
     const accountCodeLookup = new Map<string, string>(); // name → code
     try {
@@ -193,6 +212,7 @@ export async function POST(request: NextRequest) {
     // One Xero API call per month. No ambiguous "periods" parameter.
     // 24 months × ~1s = ~30s total. Well within 120s timeout.
     // ===================================================================
+    stage = 'fetch_monthly_pl';
     const months = getMonthList(24);
     const allAccounts = new Map<string, {
       business_id: string;
@@ -279,6 +299,7 @@ export async function POST(request: NextRequest) {
       line => Object.keys(line.monthly_values).length > 0
     );
 
+    stage = 'db_delete';
     if (plLines.length > 0) {
       // Use RPC or sequential delete+insert. Delete first, verify empty, then insert.
       // This prevents duplicates from concurrent sync operations.
@@ -291,7 +312,7 @@ export async function POST(request: NextRequest) {
       if (deleteError) {
         console.error('[Sync Xero] Delete failed:', deleteError);
         return NextResponse.json(
-          { error: 'Database delete failed', detail: deleteError.message },
+          { error: 'Database delete failed', detail: deleteError.message, stage, hint: deleteError.hint, code: deleteError.code },
           { status: 500 }
         );
       }
@@ -310,6 +331,7 @@ export async function POST(request: NextRequest) {
           .in('business_id', ids.all);
       }
 
+      stage = 'db_insert';
       // Try inserting with account_code; if column doesn't exist yet, retry without it
       let insertError: any = null;
       const { error: firstError } = await supabaseAdmin
@@ -330,7 +352,7 @@ export async function POST(request: NextRequest) {
       if (insertError) {
         console.error('[Sync Xero] Insert failed:', insertError);
         return NextResponse.json(
-          { error: 'Database insert failed', detail: insertError.message },
+          { error: 'Database insert failed', detail: insertError.message, stage, hint: insertError.hint, code: insertError.code, sample_row: plLines[0] },
           { status: 500 }
         );
       }
@@ -360,9 +382,16 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[Sync Xero] Error:', error);
+    console.error(`[Sync Xero] Error at stage "${stage}":`, error);
+    const errMsg = error instanceof Error ? error.message : 'Sync failed';
+    const stack = error instanceof Error ? error.stack : undefined;
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Sync failed' },
+      {
+        error: errMsg,
+        stage,
+        // Return stack first 500 chars for debugging (not sensitive)
+        stack_preview: stack?.slice(0, 500),
+      },
       { status: 500 }
     );
   }
