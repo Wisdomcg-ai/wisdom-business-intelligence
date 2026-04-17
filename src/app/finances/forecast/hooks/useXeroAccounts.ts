@@ -13,12 +13,14 @@ export interface XeroAccount {
   xero_status: string | null      // ACTIVE | ARCHIVED
   tax_type: string | null
   description: string | null
+  bank_account_type: string | null // BANK | CREDITCARD | PAYPAL (for Type=BANK accounts only)
   last_synced_at: string
 }
 
 export interface GroupedXeroAccounts {
   all: XeroAccount[]
-  bank: XeroAccount[]             // xero_type = BANK
+  bank: XeroAccount[]             // xero_type = BANK AND bank_account_type != CREDITCARD (incl. null for legacy)
+  creditCards: XeroAccount[]      // xero_type = BANK AND bank_account_type = CREDITCARD
   currentAssets: XeroAccount[]    // xero_type = CURRENT
   fixedAssets: XeroAccount[]      // xero_type = FIXED
   inventory: XeroAccount[]        // xero_type = INVENTORY
@@ -44,9 +46,17 @@ function groupAccounts(accounts: XeroAccount[]): GroupedXeroAccounts {
   const byType = (types: string[]) =>
     accounts.filter(a => a.xero_type && types.includes(a.xero_type.toUpperCase()) && a.xero_status !== 'ARCHIVED')
 
+  const allBank = byType(['BANK'])
+  // Split BANK accounts by Xero's BankAccountType:
+  //   CREDITCARD → creditCards group
+  //   anything else (BANK, PAYPAL, null) → bank group
+  const bank = allBank.filter(a => (a.bank_account_type ?? '').toUpperCase() !== 'CREDITCARD')
+  const creditCards = allBank.filter(a => (a.bank_account_type ?? '').toUpperCase() === 'CREDITCARD')
+
   return {
     all: accounts,
-    bank: byType(['BANK']),
+    bank,
+    creditCards,
     currentAssets: byType(['CURRENT']),
     fixedAssets: byType(['FIXED', 'NONCURRENT']),
     inventory: byType(['INVENTORY']),

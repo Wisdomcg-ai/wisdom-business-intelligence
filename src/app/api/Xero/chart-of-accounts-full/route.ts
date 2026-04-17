@@ -69,6 +69,8 @@ async function fetchFromXeroAndCache(businessId: string, accessToken: string, te
     xero_status: a.Status ?? null,
     tax_type: a.TaxType ?? null,
     description: a.Description ?? null,
+    // BankAccountType: BANK | CREDITCARD | PAYPAL (only set for Type=BANK accounts)
+    bank_account_type: a.BankAccountType ?? null,
     last_synced_at: new Date().toISOString(),
   }))
 

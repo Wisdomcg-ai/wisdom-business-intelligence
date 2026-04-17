@@ -210,10 +210,42 @@ export default function CashflowAccountsPanel({
       <Section title="Bank & Equity">
         <AccountMultiSelect
           label="Bank Accounts"
-          values={settings.bank_account_ids}
+          values={settings.bank_account_ids.filter(id =>
+            grouped.bank.some(a => a.xero_account_id === id)
+          )}
           accounts={grouped.bank}
-          onChange={ids => onUpdate('bank_account_ids', ids)}
+          onChange={selectedBank => {
+            // Preserve any already-ticked credit cards — they're stored in the
+            // same bank_account_ids list but filtered by group in the UI
+            const currentCards = settings.bank_account_ids.filter(id =>
+              grouped.creditCards.some(a => a.xero_account_id === id)
+            )
+            onUpdate('bank_account_ids', [...selectedBank, ...currentCards])
+          }}
         />
+
+        {grouped.creditCards.length > 0 && (
+          <div className="pt-1">
+            <AccountMultiSelect
+              label="Credit Cards & Short-Term Debt (optional)"
+              values={settings.bank_account_ids.filter(id =>
+                grouped.creditCards.some(a => a.xero_account_id === id)
+              )}
+              accounts={grouped.creditCards}
+              onChange={selectedCards => {
+                const currentBank = settings.bank_account_ids.filter(id =>
+                  grouped.bank.some(a => a.xero_account_id === id)
+                )
+                onUpdate('bank_account_ids', [...currentBank, ...selectedCards])
+              }}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Tick to include credit card balances in your cash position (shows net liquid position).
+              Leave unticked for pure bank-only cashflow. Default: unticked.
+            </p>
+          </div>
+        )}
+
         <AccountSelect
           label="Retained Earnings"
           value={settings.retained_earnings_account_id}
