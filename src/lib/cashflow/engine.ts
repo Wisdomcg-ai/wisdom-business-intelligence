@@ -61,6 +61,18 @@ function isBankFee(accountName: string): boolean {
   return EXPENSE_GROUP_KEYWORDS['Bank and Other Fees'].some(kw => lower.includes(kw))
 }
 
+/**
+ * Depreciation and amortisation are non-cash P&L items. They should NOT flow
+ * into cashflow outflows. Interim keyword match — Phase 28.2 upgrades to
+ * explicit account ID lookup from cashflow_settings.
+ */
+export function isDepreciationExpense(accountName: string): boolean {
+  const lower = accountName.toLowerCase()
+  return lower.includes('depreciation') ||
+         lower.includes('amortisation') ||
+         lower.includes('amortization')
+}
+
 // ============================================================================
 // DSO/DPO Timing
 // ============================================================================
@@ -68,18 +80,21 @@ function isBankFee(accountName: string): boolean {
 /**
  * Split an amount across months based on DSO/DPO days.
  * Returns array of { offset, portion } where offset 0 = same month.
+ *
+ * Uses Calxa's bucket-based formula: portions ALWAYS sum to exactly 1.0.
+ * Previously could produce >100% allocation for day ranges >30 (e.g. days=45
+ * allocated 100% to next month AND 50% to month after = 150% total).
  */
-function getTimingSplit(days: number): { offset: number; portion: number }[] {
+export function getTimingSplit(days: number): { offset: number; portion: number }[] {
   if (days <= 0) return [{ offset: 0, portion: 1 }]
 
-  const sameMonth = Math.max(0, (30 - days) / 30)
-  const nextMonth = Math.min(1, days / 30) - Math.max(0, (days - 30) / 30)
-  const monthAfter = Math.max(0, (days - 30) / 30)
+  const bucket = Math.floor(days / 30)
+  const fraction = (days % 30) / 30
 
   const splits: { offset: number; portion: number }[] = []
-  if (sameMonth > 0) splits.push({ offset: 0, portion: sameMonth })
-  if (nextMonth > 0) splits.push({ offset: 1, portion: nextMonth })
-  if (monthAfter > 0) splits.push({ offset: 2, portion: monthAfter })
+  const sameBucketPortion = 1 - fraction
+  if (sameBucketPortion > 0) splits.push({ offset: bucket, portion: sameBucketPortion })
+  if (fraction > 0) splits.push({ offset: bucket + 1, portion: fraction })
 
   return splits
 }
@@ -390,10 +405,17 @@ export function generateCashflowForecast(
     }
   }
 
-  // Spread OpEx across months with DPO timing (pre-compute like revenue/COGS)
+  // OpEx is paid in the month accrued (Calxa Rule 7 — no DPO on OpEx).
+  // Exceptions preserved: skip employment if payroll summary handles it;
+  // skip depreciation/amortisation entirely (non-cash items).
+  // Per-account overrides for delayed OpEx come in Phase 28.3 via Type 3 profiles.
   for (const line of opexLines) {
     // Skip employment lines if payroll summary handles them
     if (payrollSummary && isEmploymentExpense(line.account_name)) continue
+
+    // Skip non-cash items (depreciation, amortisation) — they're P&L-only,
+    // they shouldn't appear as cash outflows
+    if (isDepreciationExpense(line.account_name)) continue
 
     const group = classifyExpenseGroup(line.account_name)
 
@@ -410,38 +432,8 @@ export function generateCashflowForecast(
         cashAmount = accrualAmount * (1 + gstRate * assumptions.gst_applicable_expense_pct)
       }
 
-      // Employment & bank fees paid same month (no DPO)
-      if (isEmploymentExpense(line.account_name) || isBankFee(line.account_name)) {
-        cashOpExPayments[mk].push({ label: line.account_name, amount: cashAmount, group })
-      } else {
-        // Apply DPO timing
-        for (const split of dpoSplit) {
-          const targetIdx = i + split.offset
-          if (targetIdx < monthCount) {
-            cashOpExPayments[allMonths[targetIdx]].push({
-              label: line.account_name,
-              amount: cashAmount * split.portion,
-              group,
-            })
-          }
-        }
-
-        // First-month spillover: in steady state, month 0 would receive
-        // DPO-delayed payments from the prior month (before the forecast).
-        // We approximate using month 0's own accrual as a proxy.
-        // Revenue/COGS have opening debtors/creditors for this; OpEx doesn't.
-        if (i === 0) {
-          for (const split of dpoSplit) {
-            if (split.offset > 0) {
-              cashOpExPayments[allMonths[0]].push({
-                label: line.account_name,
-                amount: cashAmount * split.portion,
-                group,
-              })
-            }
-          }
-        }
-      }
+      // OpEx paid immediately in accrual month (per Calxa Rule 7)
+      cashOpExPayments[mk].push({ label: line.account_name, amount: cashAmount, group })
     }
   }
 
