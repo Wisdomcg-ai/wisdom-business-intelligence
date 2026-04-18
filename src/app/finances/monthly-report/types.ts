@@ -1,6 +1,6 @@
 // Monthly Report Types
 
-export type ReportTab = 'report' | 'full-year' | 'trends' | 'charts' | 'subscriptions' | 'wages' | 'cashflow' | 'balance-sheet' | 'mapping' | 'history'
+export type ReportTab = 'report' | 'full-year' | 'trends' | 'charts' | 'subscriptions' | 'wages' | 'cashflow' | 'balance-sheet' | 'mapping' | 'history' | 'consolidated'
 
 export type ReportStatus = 'draft' | 'final'
 
@@ -188,6 +188,14 @@ export interface GeneratedReport {
   unreconciled_count: number
   has_budget: boolean
   budget_forecast_name?: string
+  /**
+   * True when this report was produced by `/api/monthly-report/consolidated`
+   * (i.e. the underlying business is a consolidation parent). Enables
+   * consolidation-specific UI affordances — e.g. the "Consolidated budget
+   * not yet supported" info note in BudgetVsActualTable's header, and
+   * blocking the snapshot path (Phase 35 will ship consolidated snapshots).
+   */
+  is_consolidation?: boolean
 }
 
 // ============================================

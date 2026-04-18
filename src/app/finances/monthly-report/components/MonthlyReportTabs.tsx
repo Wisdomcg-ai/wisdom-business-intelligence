@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { BarChart3, Link2, Clock, Calendar, TrendingUp, CreditCard, Users, DollarSign, PieChart, Scale } from 'lucide-react'
+import { BarChart3, Link2, Clock, Calendar, TrendingUp, CreditCard, Users, DollarSign, PieChart, Scale, Layers } from 'lucide-react'
 import type { ReportTab } from '../types'
 
 interface MonthlyReportTabsProps {
@@ -13,6 +13,8 @@ interface MonthlyReportTabsProps {
   showCashflow?: boolean
   showCharts?: boolean
   showBalanceSheet?: boolean
+  /** Phase 34: true when the active business is a consolidation parent. */
+  showConsolidated?: boolean
 }
 
 type TabDef = { id: ReportTab; label: string; icon: typeof BarChart3 }
@@ -28,9 +30,14 @@ const endTabs: TabDef[] = [
   { id: 'history', label: 'Report History', icon: Clock },
 ]
 
-export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped, showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet }: MonthlyReportTabsProps) {
+export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped, showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated }: MonthlyReportTabsProps) {
   const tabs = useMemo(() => {
     const result = [...baseTabs]
+    // Consolidated P&L — only for consolidation parents. Insert near the top
+    // so it surfaces next to the primary Actual-vs-Budget report.
+    if (showConsolidated) {
+      result.push({ id: 'consolidated', label: 'Consolidated P&L', icon: Layers })
+    }
     if (showCharts) {
       result.push({ id: 'charts', label: 'Charts', icon: PieChart })
     }
@@ -48,7 +55,7 @@ export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped,
     }
     result.push(...endTabs)
     return result
-  }, [showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet])
+  }, [showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated])
 
   return (
     <div className="bg-white rounded-lg shadow-sm mb-6">

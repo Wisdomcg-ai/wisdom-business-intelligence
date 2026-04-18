@@ -26,6 +26,7 @@ import ForecastService from '@/app/finances/forecast/services/forecast-service'
 import { generateCashflowForecast, getDefaultCashflowAssumptions } from '@/lib/cashflow/engine'
 import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year'
 import { useMonthlyReport } from './hooks/useMonthlyReport'
+import { useConsolidatedReport } from './hooks/useConsolidatedReport'
 import { useFullYearReport } from './hooks/useFullYearReport'
 import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
 import { useWagesDetail } from './hooks/useWagesDetail'
@@ -73,7 +74,7 @@ export default function MonthlyReportPage() {
   const [activeTab, setActiveTab] = useState<ReportTab>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('monthly-report-active-tab')
-      if (saved && ['report', 'full-year', 'trends', 'charts', 'subscriptions', 'wages', 'cashflow', 'balance-sheet', 'mapping', 'history'].includes(saved)) {
+      if (saved && ['report', 'full-year', 'trends', 'charts', 'subscriptions', 'wages', 'cashflow', 'balance-sheet', 'mapping', 'history', 'consolidated'].includes(saved)) {
         return saved as ReportTab
       }
     }
@@ -85,10 +86,22 @@ export default function MonthlyReportPage() {
     report,
     isLoading: reportLoading,
     error: reportError,
+    isConsolidationGroup,
     generateReport,
     saveSnapshot,
     loadSnapshot,
   } = useMonthlyReport(businessId)
+
+  // Phase 34: consolidated-specific payload (per-entity columns + FX context).
+  // `isConsolidationGroup` is the single source of truth — useMonthlyReport
+  // and useConsolidatedReport both query `consolidation_groups.business_id`
+  // from the browser and agree on the value.
+  const {
+    report: consolidatedReport,
+    isLoading: consolidatedLoading,
+    error: consolidatedError,
+    generateConsolidated,
+  } = useConsolidatedReport(businessId)
 
   const {
     fullYearReport,
@@ -356,6 +369,24 @@ export default function MonthlyReportPage() {
       loadCashflowForecast()
     }
   }, [activeTab, cashflowForecast, cashflowLoading, businessId, userId, loadCashflowForecast])
+
+  // Phase 34 (MLTE-04): when the consolidated tab is active and this business
+  // is a consolidation parent, fetch the consolidated report. The tab + banner
+  // rendering is wired in the tab content section below.
+  useEffect(() => {
+    if (
+      activeTab === 'consolidated' &&
+      isConsolidationGroup === true &&
+      !consolidatedReport &&
+      !consolidatedLoading &&
+      !consolidatedError &&
+      businessId &&
+      selectedMonth &&
+      fiscalYear
+    ) {
+      generateConsolidated(selectedMonth, fiscalYear)
+    }
+  }, [activeTab, isConsolidationGroup, consolidatedReport, consolidatedLoading, consolidatedError, businessId, selectedMonth, fiscalYear, generateConsolidated])
 
   // Fetch commentary after report generation — expenses over budget only
   const fetchCommentary = useCallback(async (reportData: GeneratedReport, existingCommentary?: VarianceCommentary) => {
@@ -690,6 +721,7 @@ export default function MonthlyReportPage() {
           showCashflow={!!(settings?.sections.cashflow)}
           showCharts={!!(settings?.sections && Object.entries(settings.sections).some(([k, v]) => k.startsWith('chart_') && v))}
           showBalanceSheet={!!(settings?.sections.balance_sheet)}
+          showConsolidated={isConsolidationGroup === true}
         />
 
         {/* Tab Content */}
