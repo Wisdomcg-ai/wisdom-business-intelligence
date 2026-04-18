@@ -1,4 +1,5 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
 
@@ -16,6 +17,7 @@ function generateSecurePassword(length = 16): string {
 
 export async function POST(request: Request) {
   const supabase = await createRouteHandlerClient()
+  const adminSupabase = createServiceRoleClient() // For bypassing RLS on users table upsert
 
   try {
     // Check if user is authenticated and is super admin
@@ -154,6 +156,25 @@ export async function POST(request: Request) {
         { error: 'Failed to create user account' },
         { status: 500 }
       )
+    }
+
+    // STEP 1b: Mirror the new user into the public `users` table so TeamTab and other
+    // joins can resolve first_name/last_name/email. Without this, the owner shows as
+    // "Unknown User" in the team list because business_users → users returns no row.
+    const { error: userMirrorError } = await adminSupabase
+      .from('users')
+      .upsert({
+        id: newUserId,
+        email: email.toLowerCase(),
+        first_name: firstName,
+        last_name: lastName || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' })
+
+    if (userMirrorError) {
+      console.error('[Admin Client Create] Failed to mirror user into public.users:', userMirrorError)
+      // Non-fatal: continue, but the team tab will show Unknown until a backfill runs
     }
 
     // STEP 2: Create business record (with owner_id linked to the new user)
