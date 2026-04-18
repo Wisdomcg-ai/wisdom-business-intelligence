@@ -8,7 +8,6 @@ import PageHeader from '@/components/ui/PageHeader'
 import ForecastService from '@/app/finances/forecast/services/forecast-service'
 import type { FinancialForecast, PLLine, XeroConnection } from '@/app/finances/forecast/types'
 import CashflowForecastTab from '@/app/finances/forecast/components/CashflowForecastTab'
-import CashflowStatementTab from '@/app/finances/forecast/components/CashflowStatementTab'
 import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year'
 import { useXeroKeepalive } from '@/hooks/useXeroKeepalive'
 
@@ -139,63 +138,14 @@ export default function CashflowForecastPage() {
 
       <div className="max-w-[1800px] mx-auto p-4 sm:p-6 lg:p-8">
         {forecast && (
-          <>
-            {/* Tab switcher: Forecast (forward-looking) vs Statement (AASB 107 actuals) */}
-            <CashflowPageTabs
-              forecast={forecast}
-              plLines={plLines}
-              businessId={businessId}
-              hasXeroConnection={!!xeroConnection}
-            />
-          </>
+          <CashflowForecastTab
+            forecast={forecast}
+            plLines={plLines}
+            businessId={businessId}
+            hasXeroConnection={!!xeroConnection}
+          />
         )}
       </div>
-    </div>
-  )
-}
-
-function CashflowPageTabs({
-  forecast,
-  plLines,
-  businessId,
-  hasXeroConnection,
-}: {
-  forecast: FinancialForecast
-  plLines: PLLine[]
-  businessId: string
-  hasXeroConnection: boolean
-}) {
-  const [tab, setTab] = useState<'forecast' | 'statement'>('forecast')
-  return (
-    <div className="space-y-4">
-      <div className="inline-flex rounded-lg border border-gray-200 bg-white overflow-hidden">
-        <button
-          onClick={() => setTab('forecast')}
-          className={`px-4 py-1.5 text-sm font-medium transition-colors ${
-            tab === 'forecast' ? 'bg-brand-navy text-white' : 'text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          Forecast
-        </button>
-        <button
-          onClick={() => setTab('statement')}
-          className={`px-4 py-1.5 text-sm font-medium transition-colors border-l border-gray-200 ${
-            tab === 'statement' ? 'bg-brand-navy text-white' : 'text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          Statement (AASB 107)
-        </button>
-      </div>
-      {tab === 'forecast' ? (
-        <CashflowForecastTab
-          forecast={forecast}
-          plLines={plLines}
-          businessId={businessId}
-          hasXeroConnection={hasXeroConnection}
-        />
-      ) : (
-        <CashflowStatementTab forecast={forecast} />
-      )}
     </div>
   )
 }

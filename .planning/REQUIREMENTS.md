@@ -135,23 +135,12 @@
 - **CASH-C-49**: Type 5 Schedule uses named BasePeriods lookup
 - **CASH-C-50**: Engine prefers per-account profile over global DSO/DPO when configured
 
-**Sub-phase 28.4: Cashflow Statement (AASB 107)**
-- **CASH-C-55**: Classification UI (`StatementClassificationEditor`) for four-list assignment
-- **CASH-C-56**: Auto-classify heuristic based on `xero_type` (BANK→Unassigned, CURRENT/CURRLIAB→Operating, FIXED→Investing, etc.)
-- **CASH-C-57**: `/api/forecast/cashflow/statement` endpoint returns AASB 107 structured statement
-- **CASH-C-58**: Statement reconciles: Net change in cash = Closing cash - Opening cash (within $0.01)
-- **CASH-C-59**: Operating section: Net Profit + Depreciation add-back + BS movements
-- **CASH-C-60**: Investing section: Movements in Fixed Asset / Investment accounts with correct sign
-- **CASH-C-61**: Financing section: Loan drawdowns (inflow), repayments (outflow), dividends (outflow)
-- **CASH-C-62**: Non-Cash section: Depreciation and amortisation shown as add-backs only
-- **CASH-C-63**: `CashflowStatementTab` renders AASB 107 layout on main cashflow page
-- **CASH-C-64**: Warning shown if any Asset/Liability account remains `Unassigned`
-- **CASH-C-65**: Engine test suite extended with statement reconciliation tests
-
-### WDMG — "Where Did Our Money Go?"
-- **WDMG-01**: Report shows P&L summary (Income / COGS / Expenses / Other Income / Surplus) for the month
-- **WDMG-02**: Report classifies each balance sheet movement as a source of cash or use of cash
-- **WDMG-03**: Report shows net effect on bank balance (opening + closing)
+**Sub-phase 28.4: Cashflow Statement (AASB 107)** — REMOVED 2026-04-17
+  Xero produces this natively; coach narrates cash movements from the
+  existing cashflow table during monthly review. Full infrastructure
+  removed: `statement.ts`, `classifications` route, `statement` route,
+  `CashflowStatementTab`, `StatementClassificationEditor`,
+  `useCashflowStatement`, `cashflow_statement_classification` table.
 
 ### MYOB — MYOB AccountRight Integration
 - **MYOB-01**: User can connect MYOB AccountRight company file via OAuth 2.0
@@ -262,20 +251,6 @@
 | CASH-C-48 | Type 3/4 accept float-precision days | Phase 28.3 |
 | CASH-C-49 | Type 5 uses named BasePeriods lookup | Phase 28.3 |
 | CASH-C-50 | Engine prefers profile over global DSO/DPO | Phase 28.3 |
-| CASH-C-55 | `StatementClassificationEditor` for four-list UI | Phase 28.4 |
-| CASH-C-56 | Auto-classify heuristic based on `xero_type` | Phase 28.4 |
-| CASH-C-57 | `/api/forecast/cashflow/statement` endpoint | Phase 28.4 |
-| CASH-C-58 | Statement reconciles to bank balance change | Phase 28.4 |
-| CASH-C-59 | Operating section: Net Profit + add-backs + BS movements | Phase 28.4 |
-| CASH-C-60 | Investing section: Fixed Asset movements with correct sign | Phase 28.4 |
-| CASH-C-61 | Financing section: Loans and equity movements | Phase 28.4 |
-| CASH-C-62 | Non-Cash section: Depreciation/amortisation add-backs | Phase 28.4 |
-| CASH-C-63 | `CashflowStatementTab` renders AASB 107 layout | Phase 28.4 |
-| CASH-C-64 | Warning if any account is Unassigned | Phase 28.4 |
-| CASH-C-65 | Statement reconciliation tests pass | Phase 28.4 |
-| WDMG-01 | Report shows P&L summary (Income / COGS / Expenses / Other Income / Surplus) for the month | Phase 29 |
-| WDMG-02 | Report classifies each balance sheet movement as a source or use of cash | Phase 29 |
-| WDMG-03 | Report shows net effect on bank balance (opening + closing) | Phase 29 |
 | MYOB-01 | User can connect MYOB AccountRight company file via OAuth 2.0 | Phase 30 |
 | MYOB-02 | MYOB P&L actuals sync into xero_pl_lines table (source: 'myob' flag) | Phase 30 |
 | MYOB-03 | MYOB balance sheet data available for balance sheet report | Phase 30 |

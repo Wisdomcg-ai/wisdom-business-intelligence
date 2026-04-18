@@ -362,25 +362,14 @@ Plans:
 - CapEx appears as cash outflow in purchase month (from balance sheet movement)
 - Coach can explicitly map every Xero account (bank, AR, AP, GST, PAYG, super, depreciation, tax) via UI dropdowns
 - Per-account Type 1-5 profiles override global DSO/DPO where configured
-- AASB 107 compliant Cashflow Statement view with Operating / Investing / Financing / Non-Cash sections
 - Engine has >70% test coverage on core algorithm paths
 - Zero existing clients broken during rollout
 
----
-
-### Phase 29: "Where Did Our Money Go?"
-**Goal:** Clients can see a plain-English summary of the month's cash movements — what came in, what went out, and why the bank balance changed — without needing to read a formal cashflow statement.
-**Depends on:** Phase 27 (Balance Sheet — required for balance sheet movement data)
-**Requirements:** WDMG-01, WDMG-02, WDMG-03
-**UI hint:** yes
-**Plans:** TBD
-
-**Success Criteria:**
-- "Where Did Our Money Go?" tab renders a P&L summary block (Income / COGS / Expenses / Other Income / Surplus) for the selected month
-- Each balance sheet movement (e.g. debtors increase, creditors decrease) is labelled as either a source of cash or a use of cash in plain language
-- Opening and closing bank balance are shown with net movement reconciling to the P&L surplus/deficit
-- Section is hidden when balance sheet data is unavailable for the prior month (graceful empty state, not an error)
-- Client-facing language avoids accounting jargon (e.g. "Customers owed you more" rather than "Debtors increased")
+**Scope note (2026-04-17):** AASB 107 Cashflow Statement view and Phase 29
+"Where Did Our Money Go?" were both removed as redundant — Xero already
+produces the statement natively, and the forecast cashflow table already
+breaks down monthly movements. Coaches narrate cash movements to clients
+directly as part of their monthly review.
 
 ---
 
