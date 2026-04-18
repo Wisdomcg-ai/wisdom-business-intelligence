@@ -488,13 +488,13 @@ Client grid (5 cards, 3-col desktop → 2-col tablet → 1-col mobile)
 **Depends on:** Phase 23 (templates), Phase 27 (Balance Sheet), Phase 33 (CFO dashboard — cfo_report_status snapshot target for Phase 35)
 **Requirements:** MLTE-01, MLTE-02, MLTE-03, MLTE-04, MLTE-05
 **UI hint:** yes
-**Plans:** 3/8 plans executed
+**Plans:** 4/8 plans executed
 
 Plans:
 - [x] 34-00a-foundation-PLAN.md — shared.ts extraction, Dragon/IICT PDF fixtures, 3 migrations (consolidation_groups + fx_rates + snapshot columns)
 - [x] 34-00b-engine-core-PLAN.md — account alignment + engine orchestration (parallel member fetch + combine)
 - [x] 34-00c-fx-translation-PLAN.md — HKD/AUD monthly_average translation + missing-rate surfacing (no silent 1.0 fallback)
-- [ ] 34-00d-eliminations-seed-push-PLAN.md — elimination engine + Dragon/IICT seed migration + [BLOCKING] schema push
+- [x] 34-00d-eliminations-seed-push-PLAN.md — elimination engine + Dragon/IICT seed migration + [BLOCKING] schema push
 - [ ] 34-00e-api-ui-PLAN.md — /api/monthly-report/consolidated route + ConsolidatedPLTab + FXRateMissingBanner + page wiring
 - [ ] 34-00f-admin-fx-entry-PLAN.md — /admin/consolidation page + FX rate CRUD API + groups diagnostic view
 - [ ] 34-01a-consolidated-balance-sheet-PLAN.md — translateBSAtClosingSpot + BS engine with Translation Reserve + intercompany_loan eliminations + BS tab
