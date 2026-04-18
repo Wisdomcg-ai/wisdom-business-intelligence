@@ -116,6 +116,7 @@ export async function middleware(request: NextRequest) {
       '/auth/logout',
       '/coach',        // Coach portal doesn't require client onboarding
       '/admin',        // Admin portal doesn't require client onboarding
+      '/cfo',          // CFO dashboard — coach/super_admin only (layout enforces)
       '/dashboard'     // Allow dashboard access - it handles its own auth/data
     ]
     // Also exempt public marketing pages from onboarding checks

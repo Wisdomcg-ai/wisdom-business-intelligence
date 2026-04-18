@@ -58,6 +58,12 @@ const navigation = [
     description: 'Overview & quick actions'
   },
   {
+    name: 'CFO Dashboard',
+    href: '/cfo',
+    icon: Briefcase,
+    description: 'Multi-client financial overview'
+  },
+  {
     name: 'Clients',
     href: '/coach/clients',
     icon: Building2,

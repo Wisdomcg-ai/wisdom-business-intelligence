@@ -21,7 +21,8 @@ import {
   Shield,
   HelpCircle,
   ExternalLink,
-  Activity
+  Activity,
+  BarChart3,
 } from 'lucide-react'
 
 // Context for admin data sharing
@@ -43,6 +44,12 @@ const navigation = [
     href: '/admin',
     icon: LayoutDashboard,
     description: 'Overview & quick actions'
+  },
+  {
+    name: 'CFO Dashboard',
+    href: '/cfo',
+    icon: BarChart3,
+    description: 'Multi-client financial overview'
   },
   {
     name: 'Clients',
