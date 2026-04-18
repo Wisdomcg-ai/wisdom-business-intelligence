@@ -44,6 +44,31 @@ export interface BuildConsolidationOpts {
   reportMonth: string // 'YYYY-MM'
   fiscalYear: number
   fyMonths: readonly string[] // 12 'YYYY-MM' keys, driven by business fiscal year
+  /**
+   * Optional FX translator invoked once per member whose `functional_currency`
+   * differs from the group's `presentation_currency`. Members sharing the
+   * presentation currency are short-circuited and NEVER reach the callback
+   * (pure pass-through, zero cost).
+   *
+   * The callback returns:
+   *   - `translated`  — the same-shape XeroPLLineLike array in presentation currency
+   *   - `missing`     — month keys (e.g. '2026-03') for which no rate was available;
+   *                     surfaced to the UI via `fx_context.missing_rates`
+   *   - `ratesUsed`   — a flat map with keys `${currency_pair}::${month}` so multiple
+   *                     pairs can coexist in one response
+   *
+   * Omit this callback to get the pre-34.0c pass-through behaviour (used by
+   * unit tests and AUD-only groups where `functional_currency === presentation_currency`
+   * for every member).
+   */
+  translate?: (
+    member: ConsolidationMember,
+    lines: XeroPLLineLike[],
+  ) => Promise<{
+    translated: XeroPLLineLike[]
+    missing: string[]
+    ratesUsed: Record<string, number>
+  }>
 }
 
 /**
@@ -173,8 +198,33 @@ export async function buildConsolidation(
     lines: deduplicateMemberLines(s.rawLines),
   }))
 
-  // 4. FX PLUG-IN POINT — plan 00c replaces this identity pass-through with actual translation
-  const translated = deduped
+  // 4. FX TRANSLATION — only invoked for members whose functional_currency differs
+  // from the group's presentation_currency. AUD-only consolidations (e.g. Dragon)
+  // short-circuit here and incur zero FX cost. Missing rates surface via
+  // `fx_context.missing_rates[]` — we NEVER silently fall back to 1.0.
+  const fxRatesUsed: Record<string, number> = {}
+  const fxMissing: { currency_pair: string; period: string }[] = []
+  const translated = await Promise.all(
+    deduped.map(async (d) => {
+      // Short-circuit: same currency → pass-through (no callback invocation)
+      if (
+        !opts.translate ||
+        d.member.functional_currency === group.presentation_currency
+      ) {
+        return d
+      }
+      const { translated: tLines, missing, ratesUsed } = await opts.translate(
+        d.member,
+        d.lines,
+      )
+      Object.assign(fxRatesUsed, ratesUsed)
+      const pair = `${d.member.functional_currency}/${group.presentation_currency}`
+      for (const m of missing) {
+        fxMissing.push({ currency_pair: pair, period: m })
+      }
+      return { ...d, lines: tLines }
+    }),
+  )
 
   // 5. Build universe + entity columns
   const universe = buildAlignedAccountUniverse(translated.map((t) => t.lines))
@@ -199,7 +249,7 @@ export async function buildConsolidation(
     byEntity,
     eliminations,
     consolidated,
-    fx_context: { rates_used: {}, missing_rates: [] },
+    fx_context: { rates_used: fxRatesUsed, missing_rates: fxMissing },
     diagnostics: {
       members_loaded: members.length,
       total_lines_processed: totalLines,
