@@ -4,6 +4,25 @@
 **Domain:** Multi-entity financial consolidation (P&L, Balance Sheet, Cashflow) with FX translation + intercompany eliminations
 **Confidence:** HIGH (schema + architecture) / MEDIUM (FX source selection) / MEDIUM (UI horizontal scaling pattern)
 
+---
+
+> **⚠ POST-RESEARCH CORRECTIONS (2026-04-18, confirmed by user)**
+>
+> CONTEXT.md is authoritative on these two points — they override conflicting details in this document:
+>
+> 1. **Currency pair is HKD/AUD, not NZD/AUD.** IICT Group Limited is Hong Kong-incorporated (base currency HKD in Xero), confirmed by user. Wherever this doc says "NZD" in relation to IICT Group Limited, read "HKD". Replace `NZD_AUD` with `HKD_AUD` in all schemas and helper signatures.
+>
+> 2. **FX rates are manual-entry only for Iteration 34.0. NO scheduled cron, NO external API integration.** User locked Option 1 (simple manual-rate approach). The `fx_rates` table is correct, but:
+>    - Remove the nightly Vercel cron / `fx-sync` route / RBA F11.1 CSV scraper from scope
+>    - Remove `source = 'rba'` rows from seed migrations — manual entry only
+>    - Add a minimal manual-entry UI (admin / coach settings) for entering monthly rates
+>    - Missing rate = prominent warning on consolidated report + link to rate entry UI (not silent 1:1 fallback)
+>    - Auto-fill from external source can be a future iteration (34.3+), not this phase
+>
+> The architecture, aggregation pattern, elimination engine, approval snapshot, and all other decisions below remain valid.
+
+---
+
 ## Summary
 
 Phase 34 delivers a three-iteration slice that turns WisdomBI into a consolidation platform. Iteration 34.0 ships consolidated P&L with per-entity columns, **FX translation** for NZD-denominated IICT Group Limited, and **intercompany elimination rules** for Dragon's active inter-entity transactions. Iteration 34.1 adds Balance Sheet with closing-spot FX translation (generating a Cumulative Translation Adjustment equity line) and intercompany loan eliminations. Iteration 34.2 aggregates per-entity Phase 28 cashflow engine outputs.
