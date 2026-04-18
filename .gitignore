@@ -44,3 +44,6 @@ next-env.d.ts
 lambda/
 .claude/worktrees/
 .next-old/
+
+# Supabase CLI local state
+supabase/.temp/
