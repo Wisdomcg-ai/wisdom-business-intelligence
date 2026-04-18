@@ -609,32 +609,32 @@ export function calcVariance(
 - **A4** (IICT entity state): ask Matt "are IICT (Aust), IICT Group Limited, IICT Group Pty Ltd all connected to WisdomBI today?"
 - **A5** (which IICT entity is NZD): ask Matt directly to confirm
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Where do FX rates come from on day one?**
    - What we know: IAS 21 / AASB 121 standard is monthly average for P&L, closing spot for BS. RBA F11.1 provides daily AUD/NZD historical rates as CSV.
    - What's unclear: Paid API vs CSV import job
-   - Recommendation: Start with a **manual seeding migration** that inserts ~36 months of monthly-average NZD/AUD rates hand-computed from RBA historical CSV. Build a nightly `/api/cron/fx-sync` endpoint in Iteration 34.0 but don't rely on it for go-live — manual seed means Iteration 34.0 ships even if cron is flaky.
+   - **RESOLVED:** Recommendation: Start with a **manual seeding migration** that inserts ~36 months of monthly-average NZD/AUD rates hand-computed from RBA historical CSV. Build a nightly `/api/cron/fx-sync` endpoint in Iteration 34.0 but don't rely on it for go-live — manual seed means Iteration 34.0 ships even if cron is flaky.
 
 2. **Should the Eliminations column be hidden when empty?**
    - What we know: IICT has minimal P&L eliminations; Dragon has several
    - What's unclear: UX preference
-   - Recommendation: Show the Eliminations column always when the group has any active rules (even if this month has zero). Consistency beats adaptive UI here.
+   - **RESOLVED:** Recommendation: Show the Eliminations column always when the group has any active rules (even if this month has zero). Consistency beats adaptive UI here.
 
 3. **What's the mobile layout for 3+ entities?**
    - What we know: CONTEXT.md proposes toggle pills on mobile; Calxa's approach is horizontal scroll
    - What's unclear: user preference not captured
-   - Recommendation: Desktop = sticky first (Account Name) + sticky last (Consolidated) columns, horizontal scroll for middle entity columns. Mobile = single-entity-at-a-time toggle pills + always-visible Consolidated column below. Ship desktop-first; add mobile toggle in polish task.
+   - **RESOLVED:** Recommendation: Desktop = sticky first (Account Name) + sticky last (Consolidated) columns, horizontal scroll for middle entity columns. Mobile = single-entity-at-a-time toggle pills + always-visible Consolidated column below. Ship desktop-first; add mobile toggle in polish task.
 
 4. **Elimination rule storage: encode transfer direction explicitly?**
    - What we know: CONTEXT.md has `direction` enum with 3 values
    - What's unclear: How to represent a $9,015 advertising transfer from Dragon TO Easy Hail vs FROM Easy Hail
-   - Recommendation: Use `direction: 'bidirectional'` as default (matches CONTEXT.md's Dragon rule list). The engine eliminates the FULL amount on whichever side it's booked. Post-hoc edge cases (where only one side was booked in Xero) can be handled by a manual journal adjustment rule — deferred to 34.3.
+   - **RESOLVED:** Recommendation: Use `direction: 'bidirectional'` as default (matches CONTEXT.md's Dragon rule list). The engine eliminates the FULL amount on whichever side it's booked. Post-hoc edge cases (where only one side was booked in Xero) can be handled by a manual journal adjustment rule — deferred to 34.3.
 
 5. **Does the Phase 23 template system need any new section toggles?**
    - What we know: CONTEXT.md locks "templates apply identically"
    - What's unclear: does "per-entity columns" need its own toggle? E.g. show consolidated only, hide entity breakdown?
-   - Recommendation: Add ONE new template section: `show_entity_columns: boolean` (default true). This future-proofs without scope creep. Put in the Iteration 34.0 migration.
+   - **RESOLVED:** Recommendation: Add ONE new template section: `show_entity_columns: boolean` (default true). This future-proofs without scope creep. Put in the Iteration 34.0 migration.
 
 ## Environment Availability
 
