@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { createClient } from '@/lib/supabase/client'
 import dynamic from 'next/dynamic'
@@ -36,6 +36,8 @@ import { useReconciliation } from './hooks/useReconciliation'
 import { useReportTemplates } from './hooks/useReportTemplates'
 import { useBalanceSheet } from './hooks/useBalanceSheet'
 import BalanceSheetTab from './components/BalanceSheetTab'
+import ConsolidatedPLTab from './components/ConsolidatedPLTab'
+import FXRateMissingBanner from './components/FXRateMissingBanner'
 import { loadSettings, getCurrentFiscalYear, getDefaultReportMonth } from './services/monthly-report-service'
 import { MonthlyReportPDFService } from './services/monthly-report-pdf-service'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
@@ -50,6 +52,7 @@ const PDFLayoutEditorModal = dynamic(
 export default function MonthlyReportPage() {
   const supabase = createClient()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
   const [mounted, setMounted] = useState(false)
   const [isInitializing, setIsInitializing] = useState(true)
@@ -841,6 +844,22 @@ export default function MonthlyReportPage() {
             onCompareChange={setBalanceSheetCompare}
             onLoad={loadBalanceSheet}
           />
+        )}
+
+        {/* Phase 34 — Consolidated P&L tab (only rendered for consolidation parents) */}
+        {activeTab === 'consolidated' && isConsolidationGroup === true && (
+          <>
+            <FXRateMissingBanner
+              missingRates={consolidatedReport?.fx_context?.missing_rates ?? []}
+              onAddRate={() => router.push('/admin/consolidation')}
+            />
+            <ConsolidatedPLTab
+              report={consolidatedReport}
+              reportMonth={selectedMonth}
+              isLoading={consolidatedLoading}
+              error={consolidatedError}
+            />
+          </>
         )}
 
         {activeTab === 'mapping' && (
