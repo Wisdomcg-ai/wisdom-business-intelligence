@@ -69,13 +69,28 @@ Each iteration ships as a working slice. The user has two consolidations they pr
 - **Re-running after Xero changes works automatically** — next report load reflects latest synced data.
 - **Approval snapshot for historical integrity** — when a report is marked `approved` (Phase 35 `cfo_report_status`), a JSONB snapshot of the consolidated output is stored. This solves "we had a meeting, then Xero changed" without blocking live re-runs.
 
-### FX Translation (locked, Iteration 34.0)
+### FX Translation (locked, Iteration 34.0) — simple manual-rate approach
 
-- Each member business declares `functional_currency` (default 'AUD')
-- When `functional_currency != presentation_currency`, translate P&L lines at the **monthly average rate** (standard IAS 21 / AASB 121 for P&L)
-- Balance Sheet lines (Iteration 34.1) translate at **closing spot rate**; translation differences go to a Translation Reserve equity line
-- FX rates sourced from `xero_currency_rates` table if present, else from a new `fx_rates` table seeded by a scheduled job pulling RBA/ECB rates
-- Applies to IICT Group Limited (NZ) — other entities are AUD so translation is a no-op
+**Confirmed foreign entity:** IICT Group Limited is Hong Kong-incorporated (base currency HKD in Xero). All other member entities (Dragon Roofing, Easy Hail Claim, IICT Aust, IICT Group Pty Ltd) are AUD.
+
+**Today:** Calxa handles the HKD→AUD translation at consolidation time. Since WisdomBI replaces Calxa, we must take over that translation.
+
+**Approach — Option 1 (simple manual rates) locked:**
+
+- Each member business declares `functional_currency` in `consolidation_group_members` (default 'AUD')
+- New `fx_rates` table with minimal schema:
+  - `currency_pair` (text, e.g. 'HKD/AUD')
+  - `rate_type` (text: 'monthly_average' for P&L, 'closing_spot' for BS)
+  - `period` (date, first-of-month for monthly_average; month-end date for closing_spot)
+  - `rate` (numeric)
+  - `source` (text: 'manual' | 'rba' — only 'manual' implemented in 34.0)
+- P&L lines translate at **monthly average rate** for the reporting month (IAS 21 / AASB 121 standard)
+- Balance Sheet lines (Iteration 34.1) translate at **closing spot rate**; CTA goes to Translation Reserve equity line
+- **No API integration, no cron job** — user enters rates manually via a simple UI (CoachLayoutNew settings page or a tab in consolidation group admin)
+- **Fallback if rate missing:** show prominent warning on consolidated report "HKD/AUD rate missing for YYYY-MM — add rate to proceed" with link to rate entry UI. Do not silently fall back to 1:1.
+- Auto-fill optional for future (Iteration 34.3+): RBA F11.1 CSV import for historical months
+
+Applies only to IICT consolidation (one foreign entity). Dragon is pure aggregation, no translation path invoked.
 
 ### Intercompany Elimination (locked, Iteration 34.0)
 
@@ -188,10 +203,11 @@ From the IICT Mar 2026 PDF:
 
 ### IICT FX translation specifics
 
-- IICT Group Limited is the NZ entity (confirmed by user report showing `Bank Revaluations` and `Realised Currency Gains` in IICT Aust columns)
-- Wait — actually from careful re-read: the NZD entity is likely **IICT Group Limited**. Researcher must confirm by checking member business `base_currency` from Xero connection during research phase.
-- P&L translation: monthly average NZD/AUD rate
-- BS translation (34.1): closing spot rate; CTA (cumulative translation adjustment) goes to equity
+- **IICT Group Limited is Hong Kong-incorporated** (user confirmed 2026-04-18) — Xero base currency is HKD
+- Currency pair: `HKD/AUD`
+- P&L translation: monthly average HKD/AUD rate, entered manually per month
+- BS translation (34.1): closing spot rate at month-end; CTA (cumulative translation adjustment) goes to Translation Reserve equity line
+- Dragon, Easy Hail, IICT Aust, IICT Group Pty Ltd are all AUD — translation is a no-op for them
 
 ### UI — per-entity columns for N=3 entities
 
