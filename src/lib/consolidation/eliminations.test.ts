@@ -315,6 +315,7 @@ describe('applyEliminations — reportMonth scoping', () => {
     const entries = applyEliminations([rule], [entityA, entityB], '2026-03')
     const dragonEntry = entries.find((e) => e.source_entity_id === DRAGON_ROOFING_BIZ)
     expect(dragonEntry!.source_amount).toBe(0)
-    expect(dragonEntry!.amount).toBe(0)
+    // Use toBeCloseTo(0, 0) to avoid +0 / -0 distinction from `-src` when src===0
+    expect(dragonEntry!.amount).toBeCloseTo(0, 0)
   })
 })
