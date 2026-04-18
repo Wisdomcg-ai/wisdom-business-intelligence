@@ -366,6 +366,10 @@ export async function POST(request: Request) {
 
       if (userInsertError) {
         console.error('[Team Invite] Users table insert error:', userInsertError)
+        return NextResponse.json(
+          { error: `Failed to create user profile: ${userInsertError.message}` },
+          { status: 500 }
+        )
       }
 
       // Set system role as client (use admin to bypass RLS)
@@ -379,9 +383,14 @@ export async function POST(request: Request) {
 
       if (roleError) {
         console.error('[Team Invite] System roles insert error:', roleError)
+        return NextResponse.json(
+          { error: `Failed to assign system role: ${roleError.message}` },
+          { status: 500 }
+        )
       }
 
       // Add to business_users (use admin to bypass RLS)
+      // CRITICAL: if this fails, the member is orphaned (auth user exists but can't access anything)
       const { error: memberError } = await adminSupabase
         .from('business_users')
         .insert({
@@ -396,6 +405,10 @@ export async function POST(request: Request) {
 
       if (memberError) {
         console.error('[Team Invite] Member insert error:', memberError)
+        return NextResponse.json(
+          { error: `Failed to add member to business: ${memberError.message}` },
+          { status: 500 }
+        )
       }
 
       // Send invitation email with credentials
