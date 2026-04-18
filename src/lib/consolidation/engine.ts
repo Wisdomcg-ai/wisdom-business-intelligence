@@ -27,6 +27,7 @@ import {
   accountAlignmentKey,
   type AlignedAccount,
 } from './account-alignment'
+import { loadEliminationRules, applyEliminations } from './eliminations'
 
 interface LoadedGroup {
   group: ConsolidationGroup
@@ -97,18 +98,21 @@ export async function loadMemberSnapshots(
 
 /**
  * Combine per-entity columns into a single consolidated column.
- * Formula: consolidated[account][month] = Σ entities[account][month] + Σ eliminations[account][month]
- * (eliminations are signed — negative amounts reduce totals.)
+ * Formula: consolidated[account][reportMonth] = Σ entities[account][reportMonth] + Σ eliminations[account]
+ *          consolidated[account][otherMonth]  = Σ entities[account][otherMonth]   (no eliminations applied)
  *
- * NOTE: in this plan (00b) eliminations are passed through but their contribution is
- * multiplied by 0 — see staging comment below. Plan 00d removes the * 0 and adds the
- * reportMonth parameter so eliminations are actually applied on the reportMonth only.
+ * Eliminations are month-scoped at the source (applyEliminations uses `reportMonth` to derive
+ * source amounts), so we only apply them when iterating the reportMonth. Applying them to every
+ * month would double-count or misapply values from other months that weren't part of the rule.
+ *
+ * Sign convention: eliminations carry negative amounts that reduce the consolidated total.
  */
 export function combineEntities(
   byEntity: EntityColumn[],
   universe: AlignedAccount[],
   eliminations: EliminationEntry[],
   fyMonths: readonly string[],
+  reportMonth: string,
 ): ConsolidatedReport['consolidated'] {
   const elimsByKey = new Map<string, EliminationEntry[]>()
   for (const e of eliminations) {
@@ -130,14 +134,11 @@ export function combineEntities(
         )
         sum += lineInEntity?.monthly_values[m] ?? 0
       }
-      const elims = elimsByKey.get(u.key) ?? []
-      // INTENTIONAL NO-OP (checker revision #8): the `* 0` multiplier zeroes the elimination
-      // contribution in this plan on purpose. Plan 00b ships the orchestration scaffolding; plan
-      // 00d removes the `* 0` and adds the `reportMonth` parameter so eliminations are actually
-      // applied to the reportMonth only. This structure is chosen (rather than a stub with no
-      // elimination code at all) so plan 00d's diff is minimal and the sign-convention plumbing
-      // is in place at the call site.
-      sum += elims.reduce((acc, e) => acc + e.amount, 0) * 0 // STAGING for plan 00d — do NOT remove in 00b
+      // Eliminations apply only to the reportMonth (their source amounts were sampled there).
+      if (m === reportMonth) {
+        const elims = elimsByKey.get(u.key) ?? []
+        sum += elims.reduce((acc, e) => acc + e.amount, 0)
+      }
       monthly[m] = sum
     }
     return {
@@ -179,11 +180,17 @@ export async function buildConsolidation(
   const universe = buildAlignedAccountUniverse(translated.map((t) => t.lines))
   const byEntity = translated.map((t) => buildEntityColumn(t.member, t.lines, universe, opts.fyMonths))
 
-  // 6. ELIMINATION PLUG-IN POINT — plan 00d replaces this [] with actual entries
-  const eliminations: EliminationEntry[] = []
+  // 6. ELIMINATION APPLICATION
+  // Load ALL active rules for the group, then filter out BS-only rule types before applying
+  // to the P&L engine. `intercompany_loan` rules are consumed exclusively by the BS path
+  // in plan 01a (buildConsolidatedBalanceSheet). Mixing them here would incorrectly zero
+  // out P&L rows that share a name pattern with a loan account.
+  const allRules = await loadEliminationRules(supabase, opts.groupId)
+  const plRules = allRules.filter((r) => r.rule_type !== 'intercompany_loan')
+  const eliminations = applyEliminations(plRules, byEntity, opts.reportMonth)
 
   // 7. Combine
-  const consolidated = combineEntities(byEntity, universe, eliminations, opts.fyMonths)
+  const consolidated = combineEntities(byEntity, universe, eliminations, opts.fyMonths, opts.reportMonth)
 
   const totalLines = deduped.reduce((acc, d) => acc + d.lines.length, 0)
 
@@ -196,8 +203,8 @@ export async function buildConsolidation(
     diagnostics: {
       members_loaded: members.length,
       total_lines_processed: totalLines,
-      eliminations_applied_count: 0,
-      eliminations_total_amount: 0,
+      eliminations_applied_count: eliminations.length,
+      eliminations_total_amount: eliminations.reduce((acc, e) => acc + Math.abs(e.amount), 0),
       processing_ms: Date.now() - startedAt,
     },
   }
