@@ -33,7 +33,8 @@ import {
   Lightbulb,
   MessageCircle,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Link2 as Link2Icon
 } from 'lucide-react'
 
 interface NavItem {
@@ -155,6 +156,16 @@ const getClientNavigation = (clientId: string): NavSection[] => [
     items: [
       { label: 'Messages', href: `/coach/clients/${clientId}/view/messages`, icon: MessageCircle },
       { label: 'Session Notes', href: `/coach/clients/${clientId}/view/sessions`, icon: FileText },
+    ],
+  },
+  {
+    title: 'SETTINGS',
+    defaultOpen: false,
+    items: [
+      // Lives inside the coach shell so connecting Xero for a client never
+      // leaves /coach/clients/[id]/view/... — return_to preserves this path.
+      { label: 'Integrations', href: `/coach/clients/${clientId}/view/integrations`, icon: Link2Icon },
+      { label: 'Settings', href: `/coach/clients/${clientId}/view/settings`, icon: Settings },
     ],
   },
 ]
