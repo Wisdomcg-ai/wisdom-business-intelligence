@@ -95,6 +95,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Super-admin fallback (platform operator connecting on behalf of clients)
+    if (!hasAccess) {
+      const { data: roleRow } = await supabaseAdmin
+        .from('system_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (roleRow?.role === 'super_admin') hasAccess = true;
+    }
+
     if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }

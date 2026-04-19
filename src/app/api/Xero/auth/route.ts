@@ -77,8 +77,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if user is owner or assigned coach
-    if (business.owner_id !== user.id && business.assigned_coach_id !== user.id) {
+    // Allow owner, assigned coach, OR super_admin (platform operator)
+    let allowed = business.owner_id === user.id || business.assigned_coach_id === user.id;
+    if (!allowed) {
+      const { data: roleRow } = await supabase
+        .from('system_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (roleRow?.role === 'super_admin') allowed = true;
+    }
+    if (!allowed) {
       return NextResponse.json(
         { error: 'Access denied. You do not have permission to connect integrations for this business.' },
         { status: 403 }

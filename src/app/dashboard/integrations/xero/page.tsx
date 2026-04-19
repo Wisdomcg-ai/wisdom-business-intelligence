@@ -25,19 +25,39 @@ export default function XeroIntegrationPage() {
   }, []);
 
   async function loadBusinesses() {
-    const { data, error } = await supabase
-      .from('businesses')
-      .select('id, name')
-      .order('name');
+    // Scope the business list by actor type:
+    //   super_admin → all businesses
+    //   coach       → assigned clients
+    //   owner/other → businesses they own
+    // This prevents accidental selection of the wrong umbrella (the "My Business"
+    // demo row was confusing super_admins on the Dragon/IICT setup).
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData?.user?.id;
+    if (!userId) {
+      setMessage('Not signed in');
+      return;
+    }
+
+    const { data: roleRow } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .maybeSingle();
+    const role = roleRow?.role;
+
+    let query = supabase.from('businesses').select('id, name, owner_id, assigned_coach_id').order('name');
+    if (role !== 'super_admin') {
+      query = query.or(`owner_id.eq.${userId},assigned_coach_id.eq.${userId}`);
+    }
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error loading businesses:', error);
       setMessage('Error loading businesses');
     } else {
       setBusinesses(data || []);
-      if (data && data.length > 0) {
-        setSelectedBusiness(data[0].id);
-      }
+      // Do NOT auto-select — make the user explicitly pick to avoid wrong-business saves
+      setSelectedBusiness('');
     }
   }
 
