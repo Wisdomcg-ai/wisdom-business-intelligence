@@ -1,19 +1,18 @@
 /**
- * Multi-Entity Consolidation — Account Alignment (Phase 34)
+ * Multi-Tenant Consolidation — Account Alignment (Phase 34)
  *
- * Takes N members' P&L lines and produces:
- *   1. A deduplicated, sorted account universe across entities
- *   2. Per-entity columns where every universe row appears (absent accounts → $0 filler)
+ * Takes N tenants' P&L lines and produces:
+ *   1. A deduplicated, sorted account universe across tenants
+ *   2. Per-tenant columns where every universe row appears (absent accounts → $0 filler)
  *
  * Core design: the alignment key combines account_type AND normalized account_name
  * (Pitfall 4 from 34-RESEARCH.md). Two accounts with the same display name but different
- * account_type (e.g. "Bank Fees" as opex vs other_expense) stay separate rows in the
- * consolidated universe — they are not merged.
+ * account_type (e.g. "Bank Fees" as opex vs other_expense) stay separate rows.
  *
  * This module is pure — no Supabase, no async. Drives deterministic tests.
  */
 
-import type { XeroPLLineLike, ConsolidationMember, EntityColumn } from './types'
+import type { XeroPLLineLike, ConsolidationTenant, EntityColumn } from './types'
 
 /**
  * Alignment key — combines account_type and normalized account_name.
@@ -26,10 +25,10 @@ export function accountAlignmentKey(line: { account_type: string; account_name: 
 }
 
 /**
- * Xero sync can produce duplicate rows in xero_pl_lines for the same (business_id, account_name).
- * Mirror generate/route.ts:254-265: merge by account_name within a member, summing monthly_values.
+ * Xero sync can produce duplicate rows in xero_pl_lines for the same (business_id, tenant_id, account_name).
+ * Mirror generate/route.ts:254-265: merge by account_name within a tenant, summing monthly_values.
  */
-export function deduplicateMemberLines(lines: XeroPLLineLike[]): XeroPLLineLike[] {
+export function deduplicateLines(lines: XeroPLLineLike[]): XeroPLLineLike[] {
   const byName = new Map<string, XeroPLLineLike>()
   for (const line of lines) {
     const key = line.account_name
@@ -57,13 +56,13 @@ export interface AlignedAccount {
 }
 
 /**
- * Builds a deduplicated, sorted universe of accounts across all members' deduped lines.
+ * Builds a deduplicated, sorted universe of accounts across all tenants' deduped lines.
  * Sort order: account_type (revenue, cogs, opex, other_income, other_expense) → account_name alpha.
  */
-export function buildAlignedAccountUniverse(memberDedupedLines: XeroPLLineLike[][]): AlignedAccount[] {
+export function buildAlignedAccountUniverse(tenantDedupedLines: XeroPLLineLike[][]): AlignedAccount[] {
   const universe = new Map<string, AlignedAccount>()
-  for (const memberLines of memberDedupedLines) {
-    for (const line of memberLines) {
+  for (const tenantLines of tenantDedupedLines) {
+    for (const line of tenantLines) {
       const key = accountAlignmentKey(line)
       if (!universe.has(key)) {
         universe.set(key, {
@@ -91,17 +90,17 @@ export function buildAlignedAccountUniverse(memberDedupedLines: XeroPLLineLike[]
 }
 
 /**
- * Build per-entity column from a member's deduped lines + the unified universe.
- * Every universe row MUST appear in the column. Absent-in-member rows get all-zero monthly_values.
+ * Build per-tenant column from a tenant's deduped lines + the unified universe.
+ * Every universe row MUST appear in the column. Absent-in-tenant rows get all-zero monthly_values.
  */
 export function buildEntityColumn(
-  member: ConsolidationMember,
-  memberDedupedLines: XeroPLLineLike[],
+  tenant: ConsolidationTenant,
+  tenantDedupedLines: XeroPLLineLike[],
   universe: AlignedAccount[],
   fyMonths: readonly string[],
 ): EntityColumn {
   const byKey = new Map<string, XeroPLLineLike>()
-  for (const line of memberDedupedLines) {
+  for (const line of tenantDedupedLines) {
     byKey.set(accountAlignmentKey(line), line)
   }
   const zeroMonths = (): Record<string, number> => {
@@ -114,9 +113,10 @@ export function buildEntityColumn(
     if (existing) {
       return existing
     }
-    // Filler — absent in this member
+    // Filler — absent in this tenant
     return {
-      business_id: member.source_business_id,
+      business_id: tenant.business_id,
+      tenant_id: tenant.tenant_id,
       account_name: u.account_name,
       account_code: null,
       account_type: u.account_type,
@@ -125,11 +125,11 @@ export function buildEntityColumn(
     } satisfies XeroPLLineLike
   })
   return {
-    member_id: member.id,
-    business_id: member.source_business_id,
-    display_name: member.display_name,
-    display_order: member.display_order,
-    functional_currency: member.functional_currency,
+    connection_id: tenant.connection_id,
+    tenant_id: tenant.tenant_id,
+    display_name: tenant.display_name,
+    display_order: tenant.display_order,
+    functional_currency: tenant.functional_currency,
     lines,
   }
 }

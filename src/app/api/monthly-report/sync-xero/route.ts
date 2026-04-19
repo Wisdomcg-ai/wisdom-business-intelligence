@@ -152,238 +152,179 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied', stage, user_id: user.id }, { status: 403 });
     }
 
-    stage = 'fetch_connection';
-    const { data: connection, error: connError } = await supabaseAdmin
+    stage = 'fetch_connections';
+    // Tenant-aware sync: pull ALL active Xero connections for this business,
+    // sync each one separately, tag rows with tenant_id.
+    const { data: connections, error: connError } = await supabaseAdmin
       .from('xero_connections')
       .select('*')
       .in('business_id', ids.all)
-      .eq('is_active', true)
-      .limit(1)
-      .maybeSingle();
+      .eq('is_active', true);
 
     if (connError) {
       console.error('[Sync Xero] Connection fetch error:', connError);
       return NextResponse.json({ error: 'Connection lookup failed', detail: connError.message, stage }, { status: 500 });
     }
-    if (!connection) {
+    if (!connections || connections.length === 0) {
       return NextResponse.json({ error: 'No active Xero connection found', stage, searched_ids: ids.all }, { status: 404 });
     }
 
-    stage = 'refresh_token';
-    const tokenResult = await getValidAccessToken(connection, supabaseAdmin);
-    if (!tokenResult.success || !tokenResult.accessToken) {
-      return NextResponse.json(
-        { error: 'Token expired', message: tokenResult.message, tokenError: tokenResult.error, stage },
-        { status: 401 }
-      );
-    }
+    console.log(`[Sync Xero] Found ${connections.length} active connection(s) for business ${business_id}`);
 
-    const accessToken = tokenResult.accessToken;
-    const tenantId = connection.tenant_id;
+    const months = getMonthList(13);
+    let totalAccountsSynced = 0;
+    let totalMonthsFetched = 0;
+    let totalMonthsFailed = 0;
+    const perTenantErrors: { tenant_id: string; error: string }[] = [];
+    const syncedTenantIds: string[] = [];
 
-    stage = 'fetch_chart_of_accounts';
-    // Fetch Chart of Accounts to get account codes (P&L reports don't include them)
-    const accountCodeLookup = new Map<string, string>(); // name → code
-    try {
-      const coaResp = await fetch(
-        `https://api.xero.com/api.xro/2.0/Accounts?where=${encodeURIComponent('Type=="REVENUE"||Type=="OTHERINCOME"||Type=="DIRECTCOSTS"||Type=="EXPENSE"||Type=="OVERHEADS"')}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'xero-tenant-id': tenantId,
-            'Accept': 'application/json',
-          },
-        }
-      );
-      if (coaResp.ok) {
-        const coaData = await coaResp.json();
-        for (const acc of coaData.Accounts || []) {
-          if (acc.Name && acc.Code) {
-            accountCodeLookup.set(acc.Name, acc.Code);
+    // Per-connection sync loop
+    for (const connection of connections) {
+      const tenantId = connection.tenant_id;
+      const tenantLabel = connection.display_name || connection.tenant_name || tenantId;
+      console.log(`[Sync Xero] === Syncing tenant ${tenantLabel} (${tenantId}) ===`);
+
+      stage = `refresh_token:${tenantId}`;
+      const tokenResult = await getValidAccessToken(connection, supabaseAdmin);
+      if (!tokenResult.success || !tokenResult.accessToken) {
+        perTenantErrors.push({ tenant_id: tenantId, error: `Token: ${tokenResult.message || tokenResult.error}` });
+        continue; // Skip this tenant, try the next
+      }
+      const accessToken = tokenResult.accessToken;
+
+      stage = `fetch_chart_of_accounts:${tenantId}`;
+      const accountCodeLookup = new Map<string, string>();
+      try {
+        const coaResp = await fetch(
+          `https://api.xero.com/api.xro/2.0/Accounts?where=${encodeURIComponent('Type=="REVENUE"||Type=="OTHERINCOME"||Type=="DIRECTCOSTS"||Type=="EXPENSE"||Type=="OVERHEADS"')}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'xero-tenant-id': tenantId,
+              'Accept': 'application/json',
+            },
+          }
+        );
+        if (coaResp.ok) {
+          const coaData = await coaResp.json();
+          for (const acc of coaData.Accounts || []) {
+            if (acc.Name && acc.Code) accountCodeLookup.set(acc.Name, acc.Code);
           }
         }
-        console.log(`[Sync Xero] Chart of Accounts: ${accountCodeLookup.size} account codes loaded`);
-      }
-    } catch (coaErr) {
-      console.warn('[Sync Xero] Could not fetch Chart of Accounts for codes (non-fatal):', coaErr);
-    }
-
-    // ===================================================================
-    // FETCH EACH MONTH INDIVIDUALLY — guaranteed correct monthly values.
-    // One Xero API call per month. No ambiguous "periods" parameter.
-    // 24 months × ~1s = ~30s total. Well within 120s timeout.
-    // ===================================================================
-    stage = 'fetch_monthly_pl';
-    // Reduced from 24 to 13 months (current FY + prior year comparison)
-    // to fit within Vercel's 60s timeout. 13 × (500ms delay + ~2s API call)
-    // = ~32s + overhead. If longer history is needed, run sync multiple times.
-    const months = getMonthList(13);
-    const allAccounts = new Map<string, {
-      business_id: string;
-      account_name: string;
-      account_code: string | null;
-      account_type: string;
-      section: string;
-      monthly_values: Record<string, number>;
-      updated_at: string;
-    }>();
-
-    let fetchedCount = 0;
-    let failedCount = 0;
-    const errors: string[] = [];
-
-    console.log(`[Sync Xero] Fetching ${months.length} individual months for business ${business_id}`);
-
-    for (const month of months) {
-      // Rate limiting: 500ms between requests (Xero allows 60/min)
-      if (fetchedCount > 0) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (coaErr) {
+        console.warn(`[Sync Xero] ${tenantLabel}: could not fetch CoA (non-fatal):`, coaErr);
       }
 
-      const result = await fetchSingleMonthPL(accessToken, tenantId, month.fromDate, month.toDate);
+      stage = `fetch_monthly_pl:${tenantId}`;
+      const tenantAccounts = new Map<string, {
+        business_id: string;
+        tenant_id: string;
+        account_name: string;
+        account_code: string | null;
+        account_type: string;
+        section: string;
+        monthly_values: Record<string, number>;
+        updated_at: string;
+      }>();
+      let fetchedCount = 0;
+      let failedCount = 0;
 
-      if (!result.success) {
-        if (result.status === 401) {
-          return NextResponse.json(
-            { error: 'Token expired during sync', month: month.key, fetched: fetchedCount },
-            { status: 401 }
-          );
-        }
-        if (result.status === 429) {
-          // Rate limited — wait and retry once
-          console.warn(`[Sync Xero] Rate limited at ${month.key}, waiting 10s...`);
-          await new Promise(resolve => setTimeout(resolve, 10000));
-          const retry = await fetchSingleMonthPL(accessToken, tenantId, month.fromDate, month.toDate);
-          if (!retry.success) {
+      for (const month of months) {
+        if (fetchedCount > 0) await new Promise((r) => setTimeout(r, 500));
+
+        const result = await fetchSingleMonthPL(accessToken, tenantId, month.fromDate, month.toDate);
+
+        if (!result.success) {
+          if (result.status === 401) {
+            perTenantErrors.push({ tenant_id: tenantId, error: `Token expired mid-sync at ${month.key}` });
+            break;
+          }
+          if (result.status === 429) {
+            await new Promise((r) => setTimeout(r, 10000));
+            const retry = await fetchSingleMonthPL(accessToken, tenantId, month.fromDate, month.toDate);
+            if (!retry.success) {
+              failedCount++;
+              continue;
+            }
+            result.report = retry.report;
+          } else {
             failedCount++;
-            errors.push(`${month.key}: rate limited`);
             continue;
           }
-          result.report = retry.report;
-        } else {
+        }
+        if (!result.report) {
           failedCount++;
-          errors.push(`${month.key}: ${result.status}`);
+          continue;
+        }
+
+        const monthAccounts = parseSingleMonthReport(result.report);
+        for (const [name, data] of monthAccounts) {
+          const existing = tenantAccounts.get(name) || {
+            business_id: ids.bizId,
+            tenant_id: tenantId,
+            account_name: name,
+            account_code: accountCodeLookup.get(name) || null,
+            account_type: mapSectionToType(data.section),
+            section: data.section,
+            monthly_values: {} as Record<string, number>,
+            updated_at: new Date().toISOString(),
+          };
+          existing.monthly_values[month.key] = data.value;
+          tenantAccounts.set(name, existing);
+        }
+        fetchedCount++;
+      }
+
+      console.log(`[Sync Xero] ${tenantLabel}: ${fetchedCount}/${months.length} months OK, ${failedCount} failed, ${tenantAccounts.size} accounts`);
+      totalMonthsFetched += fetchedCount;
+      totalMonthsFailed += failedCount;
+
+      const tenantPlLines = Array.from(tenantAccounts.values()).filter(
+        (l) => Object.keys(l.monthly_values).length > 0,
+      );
+
+      // Replace this tenant's P&L rows (scoped by tenant_id — does NOT touch other tenants)
+      stage = `db_delete:${tenantId}`;
+      const { error: deleteError } = await supabaseAdmin
+        .from('xero_pl_lines')
+        .delete()
+        .in('business_id', ids.all)
+        .eq('tenant_id', tenantId);
+      if (deleteError) {
+        perTenantErrors.push({ tenant_id: tenantId, error: `Delete failed: ${deleteError.message}` });
+        continue;
+      }
+
+      if (tenantPlLines.length > 0) {
+        stage = `db_insert:${tenantId}`;
+        const { error: insertError } = await supabaseAdmin
+          .from('xero_pl_lines')
+          .insert(tenantPlLines);
+        if (insertError) {
+          perTenantErrors.push({ tenant_id: tenantId, error: `Insert failed: ${insertError.message}` });
           continue;
         }
       }
 
-      if (!result.report) {
-        failedCount++;
-        errors.push(`${month.key}: no report data`);
-        continue;
-      }
+      await supabaseAdmin
+        .from('xero_connections')
+        .update({ last_synced_at: new Date().toISOString() })
+        .eq('id', connection.id);
 
-      const monthAccounts = parseSingleMonthReport(result.report);
-
-      for (const [name, data] of monthAccounts) {
-        const existing = allAccounts.get(name) || {
-          // FK: xero_pl_lines.business_id → businesses.id (NOT business_profiles.id)
-          business_id: ids.bizId,
-          account_name: name,
-          account_code: accountCodeLookup.get(name) || null,
-          account_type: mapSectionToType(data.section),
-          section: data.section,
-          monthly_values: {} as Record<string, number>,
-          updated_at: new Date().toISOString(),
-        };
-
-        existing.monthly_values[month.key] = data.value;
-        allAccounts.set(name, existing);
-      }
-
-      fetchedCount++;
-      if (fetchedCount % 6 === 0) {
-        console.log(`[Sync Xero] Progress: ${fetchedCount}/${months.length} months fetched`);
-      }
+      totalAccountsSynced += tenantPlLines.length;
+      syncedTenantIds.push(tenantId);
     }
 
-    console.log(`[Sync Xero] Fetch complete: ${fetchedCount} months OK, ${failedCount} failed, ${allAccounts.size} accounts`);
-
-    // Build final list
-    const plLines = Array.from(allAccounts.values()).filter(
-      line => Object.keys(line.monthly_values).length > 0
-    );
-
-    stage = 'db_delete';
-    if (plLines.length > 0) {
-      // Use RPC or sequential delete+insert. Delete first, verify empty, then insert.
-      // This prevents duplicates from concurrent sync operations.
-      // Delete rows under BOTH ID formats to clean up legacy data
-      const { error: deleteError } = await supabaseAdmin
-        .from('xero_pl_lines')
-        .delete()
-        .in('business_id', ids.all);
-
-      if (deleteError) {
-        console.error('[Sync Xero] Delete failed:', deleteError);
-        return NextResponse.json(
-          { error: 'Database delete failed', detail: deleteError.message, stage, hint: deleteError.hint, code: deleteError.code },
-          { status: 500 }
-        );
-      }
-
-      // Verify deletion completed before inserting
-      const { count } = await supabaseAdmin
-        .from('xero_pl_lines')
-        .select('*', { count: 'exact', head: true })
-        .in('business_id', ids.all);
-
-      if (count && count > 0) {
-        console.warn(`[Sync Xero] ${count} rows still exist after delete — retrying delete`);
-        await supabaseAdmin
-          .from('xero_pl_lines')
-          .delete()
-          .in('business_id', ids.all);
-      }
-
-      stage = 'db_insert';
-      // Try inserting with account_code; if column doesn't exist yet, retry without it
-      let insertError: any = null;
-      const { error: firstError } = await supabaseAdmin
-        .from('xero_pl_lines')
-        .insert(plLines);
-
-      if (firstError?.message?.includes('account_code')) {
-        console.warn('[Sync Xero] account_code column not yet added — inserting without it');
-        const linesWithoutCode = plLines.map(({ account_code, ...rest }) => rest);
-        const { error: retryError } = await supabaseAdmin
-          .from('xero_pl_lines')
-          .insert(linesWithoutCode);
-        insertError = retryError;
-      } else {
-        insertError = firstError;
-      }
-
-      if (insertError) {
-        console.error('[Sync Xero] Insert failed:', insertError);
-        return NextResponse.json(
-          { error: 'Database insert failed', detail: insertError.message, stage, hint: insertError.hint, code: insertError.code, sample_row: plLines[0] },
-          { status: 500 }
-        );
-      }
-    }
-
-    await supabaseAdmin
-      .from('xero_connections')
-      .update({ last_synced_at: new Date().toISOString() })
-      .eq('id', connection.id);
-
-    // Log sample data for debugging
-    const sampleAccount = plLines.find(l => l.account_type === 'revenue');
-    if (sampleAccount) {
-      const recentMonths = months.slice(0, 3).map(m => m.key);
-      const sampleValues = recentMonths.map(k => `${k}: ${sampleAccount.monthly_values[k] ?? 'N/A'}`);
-      console.log(`[Sync Xero] Sample revenue "${sampleAccount.account_name}": ${sampleValues.join(', ')}`);
-    }
-
-    console.log(`[Sync Xero] Done: ${plLines.length} accounts synced across ${fetchedCount} months`);
+    console.log(`[Sync Xero] Done: ${totalAccountsSynced} accounts synced across ${syncedTenantIds.length}/${connections.length} tenants`);
 
     return NextResponse.json({
       success: true,
-      accounts_synced: plLines.length,
-      months_fetched: fetchedCount,
-      months_failed: failedCount,
-      errors: errors.length > 0 ? errors : undefined,
+      tenants_synced: syncedTenantIds.length,
+      tenants_total: connections.length,
+      accounts_synced: totalAccountsSynced,
+      months_fetched: totalMonthsFetched,
+      months_failed: totalMonthsFailed,
+      errors: perTenantErrors.length > 0 ? perTenantErrors : undefined,
     });
 
   } catch (error) {

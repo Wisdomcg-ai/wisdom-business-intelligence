@@ -21,6 +21,7 @@ import { iictHKPL, HKD_AUD_MONTHLY } from './__fixtures__/iict-mar-2026'
 function hkdLine(name: string, values: Record<string, number>): XeroPLLineLike {
   return {
     business_id: 'hk-biz',
+    tenant_id: 't-hk',
     account_name: name,
     account_code: null,
     account_type: 'revenue',

@@ -1,16 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import {
   accountAlignmentKey,
-  deduplicateMemberLines,
+  deduplicateLines,
   buildAlignedAccountUniverse,
   buildEntityColumn,
 } from './account-alignment'
-import type { XeroPLLineLike, ConsolidationMember } from './types'
+import type { XeroPLLineLike, ConsolidationTenant } from './types'
 import {
   FY_MONTHS,
   dragonRoofingPL,
   easyHailPL,
   DRAGON_ROOFING_BIZ,
+  DRAGON_ROOFING_TENANT,
 } from './__fixtures__/dragon-mar-2026'
 
 describe('accountAlignmentKey', () => {
@@ -27,11 +28,12 @@ describe('accountAlignmentKey', () => {
   })
 })
 
-describe('deduplicateMemberLines', () => {
+describe('deduplicateLines', () => {
   it('sums monthly_values of duplicate account_name rows', () => {
     const input: XeroPLLineLike[] = [
       {
         business_id: 'x',
+        tenant_id: 't1',
         account_name: 'Sales',
         account_type: 'revenue',
         section: 'Revenue',
@@ -39,13 +41,14 @@ describe('deduplicateMemberLines', () => {
       },
       {
         business_id: 'x',
+        tenant_id: 't1',
         account_name: 'Sales',
         account_type: 'revenue',
         section: 'Revenue',
         monthly_values: { '2026-03': 200, '2026-05': 30 },
       },
     ]
-    const result = deduplicateMemberLines(input)
+    const result = deduplicateLines(input)
     expect(result.length).toBe(1)
     expect(result[0].monthly_values).toEqual({ '2026-03': 300, '2026-04': 50, '2026-05': 30 })
   })
@@ -54,6 +57,7 @@ describe('deduplicateMemberLines', () => {
     const input: XeroPLLineLike[] = [
       {
         business_id: 'x',
+        tenant_id: 't1',
         account_name: 'Fees',
         account_code: null,
         account_type: 'opex',
@@ -62,6 +66,7 @@ describe('deduplicateMemberLines', () => {
       },
       {
         business_id: 'x',
+        tenant_id: 't1',
         account_name: 'Fees',
         account_code: '410',
         account_type: 'opex',
@@ -69,7 +74,7 @@ describe('deduplicateMemberLines', () => {
         monthly_values: { '2026-03': 5 },
       },
     ]
-    const result = deduplicateMemberLines(input)
+    const result = deduplicateLines(input)
     expect(result.length).toBe(1)
     expect(result[0].account_code).toBe('410')
     expect(result[0].section).toBe('Operating Expenses')
@@ -78,14 +83,13 @@ describe('deduplicateMemberLines', () => {
 })
 
 describe('buildAlignedAccountUniverse — Dragon fixture', () => {
-  it('produces a single universe covering accounts from both members', () => {
+  it('produces a single universe covering accounts from both tenants', () => {
     const universe = buildAlignedAccountUniverse([dragonRoofingPL, easyHailPL])
-    // At minimum the elimination-pivot accounts must appear
     const names = universe.map((u) => u.account_name)
-    expect(names).toContain('Advertising & Marketing') // shared between members
-    expect(names).toContain('Sales - Deposit') // Easy Hail only
-    expect(names).toContain('Referral Fee - Easy Hail') // Dragon only
-    expect(names).toContain('Sales - Referral Fee') // Easy Hail only
+    expect(names).toContain('Advertising & Marketing')
+    expect(names).toContain('Sales - Deposit')
+    expect(names).toContain('Referral Fee - Easy Hail')
+    expect(names).toContain('Sales - Referral Fee')
   })
 
   it('merges shared accounts (Advertising & Marketing appears exactly once)', () => {
@@ -103,34 +107,28 @@ describe('buildAlignedAccountUniverse — Dragon fixture', () => {
 })
 
 describe('buildEntityColumn — fills absent accounts with $0', () => {
-  it('Dragon entity column covers every universe row including Easy-Hail-only accounts', () => {
+  const dragonTenant: ConsolidationTenant = {
+    connection_id: 'c-dragon',
+    business_id: DRAGON_ROOFING_BIZ,
+    tenant_id: DRAGON_ROOFING_TENANT,
+    display_name: 'Dragon Roofing Pty Ltd',
+    display_order: 0,
+    functional_currency: 'AUD',
+    include_in_consolidation: true,
+  }
+
+  it('Dragon tenant column covers every universe row including Easy-Hail-only accounts', () => {
     const universe = buildAlignedAccountUniverse([dragonRoofingPL, easyHailPL])
-    const dragonMember: ConsolidationMember = {
-      id: 'm-dragon',
-      group_id: 'g1',
-      source_business_id: DRAGON_ROOFING_BIZ,
-      display_name: 'Dragon Roofing Pty Ltd',
-      display_order: 0,
-      functional_currency: 'AUD',
-    }
-    const col = buildEntityColumn(dragonMember, dragonRoofingPL, universe, FY_MONTHS)
+    const col = buildEntityColumn(dragonTenant, dragonRoofingPL, universe, FY_MONTHS)
     expect(col.lines.length).toBe(universe.length)
     const depositRow = col.lines.find((l) => l.account_name === 'Sales - Deposit')
     expect(depositRow).toBeDefined()
-    expect(depositRow!.monthly_values['2026-03']).toBe(0) // absent in Dragon → $0 filler
+    expect(depositRow!.monthly_values['2026-03']).toBe(0)
   })
 
   it('filler rows contain all FY months initialised to 0', () => {
     const universe = buildAlignedAccountUniverse([dragonRoofingPL, easyHailPL])
-    const dragonMember: ConsolidationMember = {
-      id: 'm-dragon',
-      group_id: 'g1',
-      source_business_id: DRAGON_ROOFING_BIZ,
-      display_name: 'Dragon Roofing Pty Ltd',
-      display_order: 0,
-      functional_currency: 'AUD',
-    }
-    const col = buildEntityColumn(dragonMember, dragonRoofingPL, universe, FY_MONTHS)
+    const col = buildEntityColumn(dragonTenant, dragonRoofingPL, universe, FY_MONTHS)
     const depositRow = col.lines.find((l) => l.account_name === 'Sales - Deposit')
     expect(depositRow).toBeDefined()
     for (const m of FY_MONTHS) {

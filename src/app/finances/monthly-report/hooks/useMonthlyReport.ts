@@ -4,7 +4,7 @@
  * useMonthlyReport — powers the Actual-vs-Budget tab.
  *
  * MLTE-05 (Phase 34): when the resolved `businessId` matches a
- * `consolidation_groups.business_id` record, `generateReport()` routes to
+ * multi-connection business (2+ active tenants), `generateReport()` routes to
  * `POST /api/monthly-report/consolidated` and adapts the response into the
  * `GeneratedReport` shape the existing Actual-vs-Budget UI (BudgetVsActualTable
  * + ReportSettingsPanel + template picker) already consumes. Single-entity
@@ -244,8 +244,8 @@ export function useMonthlyReport(businessId: string) {
     boolean | null
   >(null)
 
-  // MLTE-05: detect consolidation mode via the same one-query lookup
-  // useConsolidatedReport uses — so both hooks agree on the mode.
+  // MLTE-05: detect consolidation mode = business has 2+ active,
+  // consolidation-included xero_connections. Mirrors useConsolidatedReport.
   useEffect(() => {
     if (!businessId) {
       setIsConsolidationGroup(null)
@@ -254,14 +254,14 @@ export function useMonthlyReport(businessId: string) {
     let cancelled = false
     const supabase = createClient()
     supabase
-      .from('consolidation_groups')
-      .select('id')
+      .from('xero_connections')
+      .select('id', { count: 'exact', head: true })
       .eq('business_id', businessId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!cancelled) setIsConsolidationGroup(!!data)
+      .eq('is_active', true)
+      .eq('include_in_consolidation', true)
+      .then(({ count }) => {
+        if (!cancelled) setIsConsolidationGroup((count ?? 0) >= 2)
       })
-      // RLS-denied / network errors → treat as single-entity (safe default).
       .then(undefined, () => {
         if (!cancelled) setIsConsolidationGroup(false)
       })

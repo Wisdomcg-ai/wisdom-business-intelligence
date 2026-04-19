@@ -39,6 +39,10 @@ export function evenSpread(months: readonly string[], amount: number): Record<st
 export const IICT_AUST_BIZ = '00000000-0000-0000-0000-iictaust0aust'
 export const IICT_GROUP_PTY_BIZ = '00000000-0000-0000-0000-iictgrp0ptyl'
 export const IICT_HK_BIZ = '00000000-0000-0000-0000-iicthkltd00hk'
+// Fixture tenant_ids
+export const IICT_AUST_TENANT = 'tenant-iict-aust'
+export const IICT_GROUP_PTY_TENANT = 'tenant-iict-group-pty'
+export const IICT_HK_TENANT = 'tenant-iict-hk'
 
 /**
  * IICT (Aust) Pty Ltd — AUD functional currency. Transcribed from PDF.
@@ -48,6 +52,7 @@ export const IICT_HK_BIZ = '00000000-0000-0000-0000-iicthkltd00hk'
 export const iictAustPL: XeroPLLineLike[] = [
   {
     business_id: IICT_AUST_BIZ,
+    tenant_id: IICT_AUST_TENANT,
     account_name: 'Revenue - Services',
     account_code: '200',
     account_type: 'revenue',
@@ -57,6 +62,7 @@ export const iictAustPL: XeroPLLineLike[] = [
   },
   {
     business_id: IICT_AUST_BIZ,
+    tenant_id: IICT_AUST_TENANT,
     account_name: 'Wages and Salaries',
     account_code: '477',
     account_type: 'opex',
@@ -73,6 +79,7 @@ export const iictAustPL: XeroPLLineLike[] = [
 export const iictGroupPtyLtdPL: XeroPLLineLike[] = [
   {
     business_id: IICT_GROUP_PTY_BIZ,
+    tenant_id: IICT_GROUP_PTY_TENANT,
     account_name: 'Management Fees',
     account_code: '205',
     account_type: 'revenue',
@@ -82,6 +89,7 @@ export const iictGroupPtyLtdPL: XeroPLLineLike[] = [
   },
   {
     business_id: IICT_GROUP_PTY_BIZ,
+    tenant_id: IICT_GROUP_PTY_TENANT,
     account_name: 'Administration Expenses',
     account_code: '401',
     account_type: 'opex',
@@ -101,6 +109,7 @@ export const iictGroupPtyLtdPL: XeroPLLineLike[] = [
 export const iictHKPL: XeroPLLineLike[] = [
   {
     business_id: IICT_HK_BIZ,
+    tenant_id: IICT_HK_TENANT,
     account_name: 'Revenue - HK Operations',
     account_code: '200',
     account_type: 'revenue',
@@ -110,6 +119,7 @@ export const iictHKPL: XeroPLLineLike[] = [
   },
   {
     business_id: IICT_HK_BIZ,
+    tenant_id: IICT_HK_TENANT,
     account_name: 'HK Operating Costs',
     account_code: '420',
     account_type: 'opex',

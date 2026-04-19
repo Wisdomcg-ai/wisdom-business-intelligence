@@ -1,26 +1,19 @@
 'use client'
 
 /**
- * useConsolidatedReport — detects whether a given `businessId` is a
- * consolidation_groups.business_id (i.e. a consolidation parent) and, if so,
- * fetches the consolidated P&L for the requested month + fiscal year.
+ * useConsolidatedReport — detects whether a given `businessId` has 2+ active
+ * Xero connections (i.e. needs consolidation) and, if so, fetches the
+ * consolidated P&L for the requested month + fiscal year.
  *
  * Returned fields:
- *   - report                  — the ConsolidatedReport payload (loose typing)
- *   - isLoading               — while the fetch is in flight
+ *   - report                  — ConsolidatedReport payload (loose typing)
+ *   - isLoading               — while fetch is in flight
  *   - error                   — fetch or API error
- *   - isConsolidationGroup    — null = detection in flight; false = single-entity;
- *                               true = consolidation parent
- *   - generateConsolidated    — trigger a consolidated report fetch for a given month
+ *   - isConsolidationGroup    — null = detection in flight; false = single-tenant;
+ *                               true = multi-tenant (2+ connections)
+ *   - generateConsolidated    — trigger a fetch for a given month
  *
- * Contract:
- * - Detection does ONE cheap query: `consolidation_groups.select('id').eq(business_id, id)`.
- * - Browser supabase client is the singleton from `@/lib/supabase/client`
- *   (same client that `page.tsx` already uses — prevents multiple clients
- *   flickering auth state).
- * - Per MLTE-05: this hook is ALSO consumed by `useMonthlyReport` to decide
- *   whether the Actual-vs-Budget tab should hit `/api/monthly-report/consolidated`
- *   instead of `/generate`. See the sibling hook for the adapter.
+ * Detection = single query: COUNT(xero_connections WHERE business_id=X AND is_active AND include_in_consolidation) >= 2
  */
 
 import { useState, useEffect, useCallback } from 'react'
@@ -43,7 +36,7 @@ export function useConsolidatedReport(
     boolean | null
   >(null)
 
-  // 1. Detect whether this businessId is a consolidation group parent.
+  // 1. Detect whether this business has 2+ consolidation-eligible tenants.
   useEffect(() => {
     if (!businessId) {
       setIsConsolidationGroup(null)
@@ -52,15 +45,14 @@ export function useConsolidatedReport(
     let cancelled = false
     const supabase = createClient()
     supabase
-      .from('consolidation_groups')
-      .select('id')
+      .from('xero_connections')
+      .select('id', { count: 'exact', head: true })
       .eq('business_id', businessId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!cancelled) setIsConsolidationGroup(!!data)
+      .eq('is_active', true)
+      .eq('include_in_consolidation', true)
+      .then(({ count }) => {
+        if (!cancelled) setIsConsolidationGroup((count ?? 0) >= 2)
       })
-      // .catch guards RLS-denied / network errors — treat as "not a group"
-      // rather than poisoning the hook.
       .then(undefined, () => {
         if (!cancelled) setIsConsolidationGroup(false)
       })

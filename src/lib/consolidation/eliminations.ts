@@ -1,26 +1,19 @@
 /**
- * Intercompany Elimination Engine — Phase 34.0
+ * Intercompany Elimination Engine — Phase 34 (Tenant Model)
  *
- * Rules live in `consolidation_elimination_rules`. Rule types:
+ * Rules live in `consolidation_elimination_rules`, business-scoped, pairing two
+ * tenants (tenant_a_id, tenant_b_id) within the SAME business. Rule types:
  *   - account_pair      — explicit account_code or regex against account_name_pattern
- *   - account_category  — regex-based match across entities (e.g. "Advertising transfers")
- *   - intercompany_loan — BS-only use (Iteration 34.1 / buildConsolidatedBalanceSheet).
- *                         P&L engine MUST filter these out before calling applyEliminations.
+ *   - account_category  — regex-based match across tenants
+ *   - intercompany_loan — BS-only (filtered out by P&L engine before applyEliminations)
  *
- * Direction semantics (per RESEARCH.md § Pattern 3):
- *   - bidirectional        — eliminate matches on BOTH entities
- *   - entity_a_eliminates  — eliminate matches on entity A only
- *   - entity_b_eliminates  — eliminate matches on entity B only
+ * Direction semantics:
+ *   - bidirectional        — eliminate matches on BOTH tenants
+ *   - entity_a_eliminates  — eliminate matches on tenant A only
+ *   - entity_b_eliminates  — eliminate matches on tenant B only
  *
- * Sign convention:
- *   Elimination `amount` is ALWAYS the negative of the source amount on each matched side
- *   so that (pre-elim consolidated) + (eliminations) = consolidated after eliminations.
- *
- *   Example — Dragon/Easy Hail advertising transfer at Mar 2026:
- *     Dragon Advertising     source: -9,015  → entry.amount = +9,015
- *     Easy Hail Advertising  source: +9,015  → entry.amount = -9,015
- *     Raw sum pre-elim = 0; eliminations net to 0 but explicit entries appear in
- *     the diagnostic panel so the coach can verify the $9,015 transfer was detected.
+ * Sign convention: entry.amount = -source_amount so that
+ *   (raw consolidated sum) + (Σ entry.amount) = post-elimination consolidated total.
  */
 
 import type {
@@ -30,39 +23,35 @@ import type {
   XeroPLLineLike,
 } from './types'
 
-/** Maximum length of an account_name_pattern regex — mirrors DB CHECK constraint. */
 const MAX_PATTERN_LENGTH = 256
 
 /**
- * Load active elimination rules for a consolidation group from Supabase.
- * Throws on DB error; callers are responsible for filtering by `rule_type`
- * (P&L engine filters out 'intercompany_loan'; BS engine consumes only that type).
+ * Load active elimination rules for a business. Callers filter by rule_type
+ * (P&L filters out 'intercompany_loan'; BS consumes only that type).
  */
-export async function loadEliminationRules(
+export async function loadEliminationRulesForBusiness(
   supabase: any,
-  groupId: string,
+  businessId: string,
 ): Promise<EliminationRule[]> {
   const { data, error } = await supabase
     .from('consolidation_elimination_rules')
     .select('*')
-    .eq('group_id', groupId)
+    .eq('business_id', businessId)
     .eq('active', true)
 
   if (error) {
-    throw new Error(
-      `[Eliminations] Failed to load rules for group ${groupId}: ${error.message}`,
-    )
+    throw new Error(`[Eliminations] Failed to load rules for business ${businessId}: ${error.message}`)
   }
   return (data ?? []) as EliminationRule[]
 }
 
 /**
  * Match a rule against one side's lines. Matches by exact account_code OR regex on
- * account_name_pattern (case-insensitive). Both matchers triggering = UNION.
+ * account_name_pattern (case-insensitive, union).
  *
  * Throws on:
- *   - pattern > MAX_PATTERN_LENGTH (DoS guard; mirrors DB CHECK constraint)
- *   - invalid regex syntax (error message includes rule_id + pattern for diagnostics)
+ *   - pattern > MAX_PATTERN_LENGTH (DoS guard)
+ *   - invalid regex syntax
  */
 export function matchRuleToLines(
   rule: EliminationRule,
@@ -73,10 +62,7 @@ export function matchRuleToLines(
   const pattern =
     side === 'a' ? rule.entity_a_account_name_pattern : rule.entity_b_account_name_pattern
 
-  if (!code && !pattern) {
-    // DB CHECK enforces at least one matcher per side; defensive no-match in TS.
-    return []
-  }
+  if (!code && !pattern) return []
 
   if (pattern && pattern.length > MAX_PATTERN_LENGTH) {
     throw new Error(
@@ -89,9 +75,7 @@ export function matchRuleToLines(
     try {
       re = new RegExp(pattern, 'i')
     } catch (err) {
-      throw new Error(
-        `[Eliminations] Rule ${rule.id} has invalid regex "${pattern}": ${String(err)}`,
-      )
+      throw new Error(`[Eliminations] Rule ${rule.id} has invalid regex "${pattern}": ${String(err)}`)
     }
   }
 
@@ -103,29 +87,25 @@ export function matchRuleToLines(
 }
 
 /**
- * Produce elimination entries for a set of rules against per-entity P&L columns,
- * scoped to a single `reportMonth`. Each emitted entry has:
- *   amount = -source_amount  (sign convention — adding entry amounts to the raw
- *                             consolidated sum yields the post-elimination total).
+ * Produce elimination entries for a set of rules against per-tenant P&L columns,
+ * scoped to a single `reportMonth`.
  *
- * Rules that reference an entity not in `byEntity` are silently skipped — this
- * happens when a group has members that weren't loaded (fixture-only tests,
- * or partially-seeded groups). Diagnostics surface can log these later.
+ * Rules referencing a tenant not in byTenant are skipped.
  */
 export function applyEliminations(
   rules: EliminationRule[],
-  byEntity: EntityColumn[],
+  byTenant: EntityColumn[],
   reportMonth: string,
 ): EliminationEntry[] {
   const entries: EliminationEntry[] = []
 
   for (const rule of rules) {
-    const entityA = byEntity.find((e) => e.business_id === rule.entity_a_business_id)
-    const entityB = byEntity.find((e) => e.business_id === rule.entity_b_business_id)
-    if (!entityA || !entityB) continue // missing member — skip rule (diagnostics TBD)
+    const tenantA = byTenant.find((e) => e.tenant_id === rule.tenant_a_id)
+    const tenantB = byTenant.find((e) => e.tenant_id === rule.tenant_b_id)
+    if (!tenantA || !tenantB) continue
 
-    const matchedA = matchRuleToLines(rule, 'a', entityA.lines)
-    const matchedB = matchRuleToLines(rule, 'b', entityB.lines)
+    const matchedA = matchRuleToLines(rule, 'a', tenantA.lines)
+    const matchedB = matchRuleToLines(rule, 'b', tenantB.lines)
 
     if (rule.direction !== 'entity_b_eliminates') {
       for (const line of matchedA) {
@@ -136,7 +116,7 @@ export function applyEliminations(
           account_type: line.account_type,
           account_name: line.account_name,
           amount: -src,
-          source_entity_id: rule.entity_a_business_id,
+          source_tenant_id: rule.tenant_a_id,
           source_amount: src,
         })
       }
@@ -150,7 +130,7 @@ export function applyEliminations(
           account_type: line.account_type,
           account_name: line.account_name,
           amount: -src,
-          source_entity_id: rule.entity_b_business_id,
+          source_tenant_id: rule.tenant_b_id,
           source_amount: src,
         })
       }

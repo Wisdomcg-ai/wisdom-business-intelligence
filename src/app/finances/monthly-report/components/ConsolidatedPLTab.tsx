@@ -45,7 +45,7 @@ interface EliminationEntryVM {
 
 interface ConsolidatedReportVM {
   group: { id: string; name: string; presentation_currency: string }
-  byEntity: EntityColumnVM[]
+  byTenant: EntityColumnVM[]
   eliminations: EliminationEntryVM[]
   consolidated: {
     lines: Array<{
@@ -131,7 +131,7 @@ export default function ConsolidatedPLTab({
   // (already sorted by account_type → account_name in the engine).
   const rows = report.consolidated.lines.map((l) => {
     const key = alignmentKey(l)
-    const entityValues = report.byEntity.map((col) => {
+    const entityValues = report.byTenant.map((col) => {
       const line = col.lines.find((el) => alignmentKey(el) === key)
       return line?.monthly_values[reportMonth] ?? 0
     })
@@ -150,7 +150,7 @@ export default function ConsolidatedPLTab({
     <div className="space-y-4 bg-white rounded-lg shadow-sm p-4">
       {/* Mobile entity toggle pills — desktop hides these and shows all columns */}
       <div className="flex gap-2 flex-wrap md:hidden">
-        {report.byEntity.map((col, idx) => (
+        {report.byTenant.map((col, idx) => (
           <button
             key={col.member_id}
             onClick={() => setActiveEntityIdx(idx)}
@@ -172,7 +172,7 @@ export default function ConsolidatedPLTab({
               <th className="sticky left-0 z-10 bg-gray-50 text-left px-4 py-2 whitespace-nowrap">
                 Account
               </th>
-              {report.byEntity.map((col, idx) => (
+              {report.byTenant.map((col, idx) => (
                 <th
                   key={col.member_id}
                   className={`text-right px-4 py-2 whitespace-nowrap ${

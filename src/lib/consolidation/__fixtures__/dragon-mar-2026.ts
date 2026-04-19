@@ -41,6 +41,9 @@ export function evenSpread(months: readonly string[], amount: number): Record<st
 // from the businesses table.
 export const DRAGON_ROOFING_BIZ = '00000000-0000-0000-0000-dragon00dragn'
 export const EASY_HAIL_BIZ = '00000000-0000-0000-0000-easyhail0hail'
+// Fixture tenant_ids — represent xero_connections.tenant_id values.
+export const DRAGON_ROOFING_TENANT = 'tenant-dragon-roofing'
+export const EASY_HAIL_TENANT = 'tenant-easy-hail'
 
 /**
  * Dragon Roofing Pty Ltd — key P&L rows for the consolidation fixture.
@@ -53,6 +56,7 @@ export const dragonRoofingPL: XeroPLLineLike[] = [
   // Revenue
   {
     business_id: DRAGON_ROOFING_BIZ,
+    tenant_id: DRAGON_ROOFING_TENANT,
     account_name: 'Sales - Roofing',
     account_code: '200',
     account_type: 'revenue',
@@ -62,6 +66,7 @@ export const dragonRoofingPL: XeroPLLineLike[] = [
   },
   {
     business_id: DRAGON_ROOFING_BIZ,
+    tenant_id: DRAGON_ROOFING_TENANT,
     account_name: 'Referral Fee - Easy Hail',
     account_code: '210',
     account_type: 'revenue',
@@ -72,6 +77,7 @@ export const dragonRoofingPL: XeroPLLineLike[] = [
   // Operating Expenses
   {
     business_id: DRAGON_ROOFING_BIZ,
+    tenant_id: DRAGON_ROOFING_TENANT,
     account_name: 'Advertising & Marketing',
     account_code: '420',
     account_type: 'opex',
@@ -98,6 +104,7 @@ export const easyHailPL: XeroPLLineLike[] = [
   {
     // Anchored: Sales - Deposit Mar 2026 = 11,652 per VALIDATION.md spot-check.
     business_id: EASY_HAIL_BIZ,
+    tenant_id: EASY_HAIL_TENANT,
     account_name: 'Sales - Deposit',
     account_code: '220',
     monthly_values: { '2026-03': 11652 },
@@ -106,6 +113,7 @@ export const easyHailPL: XeroPLLineLike[] = [
   },
   {
     business_id: EASY_HAIL_BIZ,
+    tenant_id: EASY_HAIL_TENANT,
     account_name: 'Sales - Referral Fee',
     account_code: '221',
     account_type: 'revenue',
@@ -116,6 +124,7 @@ export const easyHailPL: XeroPLLineLike[] = [
   // Operating Expenses
   {
     business_id: EASY_HAIL_BIZ,
+    tenant_id: EASY_HAIL_TENANT,
     account_name: 'Advertising & Marketing',
     account_code: '420',
     account_type: 'opex',
