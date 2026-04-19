@@ -26,7 +26,10 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { businessId, profileId, ownerUserId, data } = body
+    // ownerUserId intentionally IGNORED even if the client sends it — ownership is
+    // derived server-side from businesses.owner_id to prevent attribution tampering
+    // by a coach or admin writing to the wrong user.
+    const { businessId, profileId, data } = body
 
     if (!businessId) {
       return NextResponse.json({ error: 'Missing businessId' }, { status: 400 })
@@ -70,9 +73,17 @@ export async function POST(request: Request) {
       }
     }
 
-    // Determine the correct IDs
+    // Determine the correct IDs — ownership ALWAYS resolves to the client
+    // who owns the business, never the caller. If the business has no owner_id
+    // we refuse the write instead of silently attributing to the coach.
     const saveProfileId = profileId || businessId
-    const saveUserId = ownerUserId || business.owner_id || user.id
+    const saveUserId = business.owner_id
+    if (!saveUserId) {
+      return NextResponse.json(
+        { error: 'Business has no owner — cannot save goals. Assign an owner first.' },
+        { status: 422 },
+      )
+    }
 
     const errors: string[] = []
     const successes: string[] = []
