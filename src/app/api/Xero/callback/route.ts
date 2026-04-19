@@ -74,8 +74,20 @@ async function saveXeroConnection(
     .select();
 
   if (upsertError || !insertedData || insertedData.length === 0) {
-    console.error('[Xero] Connection insert failed:', upsertError, { businessId, userId, tenantId: tenant.tenantId });
-    return { success: false, error: 'database_error' };
+    console.error('[Xero] Connection upsert failed:', {
+      error: upsertError,
+      errorMessage: upsertError?.message,
+      errorCode: upsertError?.code,
+      errorDetails: upsertError?.details,
+      errorHint: upsertError?.hint,
+      businessId: canonicalBusinessId,
+      userId,
+      tenantId: tenant.tenantId,
+      insertedDataLength: insertedData?.length,
+    });
+    // Encode error detail in redirect for user to see
+    const detail = upsertError?.message || upsertError?.code || 'empty_insert';
+    return { success: false, error: `database_error:${encodeURIComponent(detail.slice(0, 100))}` };
   }
 
   const id = (insertedData[0] as any).id;

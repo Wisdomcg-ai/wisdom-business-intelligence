@@ -61,46 +61,30 @@ export default function IntegrationsPage() {
     if (bizId) {
       setBusinessId(bizId)
 
-      // Check Xero connection — try multiple ID formats since the connection
-      // might be stored under businesses.id or business_profiles.id
-      let xeroIntegration: any = null;
-      let xeroError: any = null;
+      // Multi-tenant: a business can have multiple xero_connections, one per Xero org.
+      // Also try resolving through business_profiles in case connections were stored there.
+      const idCandidates: string[] = [bizId]
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('business_id', bizId)
+        .maybeSingle()
+      if (profile?.id) idCandidates.push(profile.id)
 
-      // Try direct match first
-      const { data: directXero, error: directErr } = await supabase
+      const { data: allConnections, error: connError } = await supabase
         .from('xero_connections')
         .select('*')
-        .eq('business_id', bizId)
+        .in('business_id', idCandidates)
         .eq('is_active', true)
-        .maybeSingle()
+        .order('display_order', { ascending: true })
 
-      if (directXero) {
-        xeroIntegration = directXero;
-      } else {
-        // Try resolving through business_profiles
-        const { data: profile } = await supabase
-          .from('business_profiles')
-          .select('id')
-          .eq('business_id', bizId)
-          .maybeSingle()
-        if (profile?.id) {
-          const { data: profileXero } = await supabase
-            .from('xero_connections')
-            .select('*')
-            .eq('business_id', profile.id)
-            .eq('is_active', true)
-            .maybeSingle()
-          if (profileXero) xeroIntegration = profileXero;
-        }
-        xeroError = directErr;
-      }
+      console.log('[Integrations] Connections loaded:', allConnections?.length ?? 0, 'for bizId candidates:', idCandidates)
+      if (connError) console.error('[Integrations] Load error:', connError)
 
-      console.log('[Integrations] Xero data:', xeroIntegration)
-      console.log('[Integrations] Xero error:', xeroError)
-
-      if (xeroIntegration) {
+      if (allConnections && allConnections.length > 0) {
         setXeroConnected(true)
-        setXeroData(xeroIntegration)
+        // Keep the full list for any consumer that wants it; first connection for legacy UI
+        setXeroData({ ...allConnections[0], all: allConnections })
       }
     }
 
