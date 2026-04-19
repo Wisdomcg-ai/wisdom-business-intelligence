@@ -22,11 +22,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { pending_id, tenant_id } = await request.json();
+    const { pending_id, tenant_id, tenant_ids } = await request.json();
 
-    if (!pending_id || !tenant_id) {
+    // Accept either a single tenant_id (legacy) or an array tenant_ids.
+    // Phase 34 multi-tenant flow: the select-org page sends `tenant_ids` so
+    // users can connect multiple Xero orgs to one business in a single step.
+    const selectedTenantIds: string[] = Array.isArray(tenant_ids)
+      ? tenant_ids
+      : tenant_id
+        ? [tenant_id]
+        : [];
+
+    if (!pending_id || selectedTenantIds.length === 0) {
       return NextResponse.json(
-        { error: 'pending_id and tenant_id are required' },
+        { error: 'pending_id and at least one tenant id are required' },
         { status: 400 }
       );
     }
@@ -90,23 +99,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Verify selected tenant is in the list
+    // Verify every selected tenant is in the authorised list
     const tenants = pending.tenants as { tenantId: string; tenantName: string }[];
-    const selectedTenant = tenants.find(t => t.tenantId === tenant_id);
-    if (!selectedTenant) {
+    const selectedTenants = selectedTenantIds
+      .map((tid) => tenants.find((t) => t.tenantId === tid))
+      .filter((t): t is { tenantId: string; tenantName: string } => !!t);
+    if (selectedTenants.length !== selectedTenantIds.length) {
       return NextResponse.json(
-        { error: 'Selected organisation not found in authorised list' },
+        { error: 'One or more selected organisations are not in the authorised list' },
         { status: 400 }
       );
     }
 
-    // Decrypt tokens from pending record
+    // Decrypt tokens from pending record (shared across all selected tenants —
+    // Xero's OAuth grant covers all authorised orgs)
     const accessToken = decrypt(pending.encrypted_access_token);
     const refreshToken = decrypt(pending.encrypted_refresh_token);
 
-    // Phase 34 pivot: upsert by (business_id, tenant_id) so connecting a
-    // DIFFERENT tenant to the same business adds a new row — existing tenant
-    // rows are preserved.
+    // Phase 34 pivot: upsert every selected tenant as its own xero_connections
+    // row. (business_id, tenant_id) is unique, so reconnecting the same tenant
+    // refreshes tokens in place; a new tenant adds a new row.
     let bizId = pending.business_id;
     const { data: profile } = await supabaseAdmin
       .from('business_profiles')
@@ -116,51 +128,54 @@ export async function POST(request: NextRequest) {
     if (profile?.business_id) {
       bizId = profile.business_id;
     }
-    console.log('[Xero Complete] Using canonical business_id:', bizId);
+    console.log('[Xero Complete] Using canonical business_id:', bizId, 'tenants:', selectedTenants.length);
 
-    const { data: connection, error: insertError } = await supabaseAdmin
+    const rowsToUpsert = selectedTenants.map((t) => ({
+      business_id: bizId,
+      user_id: pending.user_id,
+      tenant_id: t.tenantId,
+      tenant_name: t.tenantName,
+      display_name: t.tenantName,
+      access_token: encrypt(accessToken),
+      refresh_token: encrypt(refreshToken),
+      expires_at: pending.token_expires_at,
+      is_active: true,
+    }));
+
+    const { data: inserted, error: insertError } = await supabaseAdmin
       .from('xero_connections')
-      .upsert(
-        {
-          business_id: bizId,
-          user_id: pending.user_id,
-          tenant_id: selectedTenant.tenantId,
-          tenant_name: selectedTenant.tenantName,
-          display_name: selectedTenant.tenantName,
-          access_token: encrypt(accessToken),
-          refresh_token: encrypt(refreshToken),
-          expires_at: pending.token_expires_at,
-          is_active: true,
-        },
-        { onConflict: 'business_id,tenant_id' },
-      )
-      .select()
-      .maybeSingle();
+      .upsert(rowsToUpsert, { onConflict: 'business_id,tenant_id' })
+      .select();
 
-    if (insertError || !connection) {
-      console.error('[Xero Complete] Insert failed:', insertError, { bizId });
+    if (insertError) {
+      console.error('[Xero Complete] Upsert failed:', insertError, { bizId });
       return NextResponse.json(
-        { error: 'Failed to save connection' },
+        { error: 'Failed to save connection(s)', detail: insertError.message },
         { status: 500 }
       );
     }
 
     // Delete the pending record
-    await supabaseAdmin
-      .from('pending_xero_connections')
-      .delete()
-      .eq('id', pending_id);
+    await supabaseAdmin.from('pending_xero_connections').delete().eq('id', pending_id);
 
-    console.log('[Xero Complete] Connection saved:', connection.id, 'tenant:', selectedTenant.tenantName);
+    console.log(
+      '[Xero Complete] Saved',
+      inserted?.length ?? 0,
+      'connection(s):',
+      selectedTenants.map((t) => t.tenantName).join(', '),
+    );
 
-    // Trigger initial sync in the background
-    triggerInitialSync(pending.business_id, accessToken, selectedTenant.tenantId).catch(err => {
-      console.error('[Xero Complete] Initial sync failed:', err);
-    });
+    // Trigger initial sync per tenant in the background
+    for (const t of selectedTenants) {
+      triggerInitialSync(pending.business_id, accessToken, t.tenantId).catch((err) =>
+        console.error(`[Xero Complete] Initial sync failed for ${t.tenantName}:`, err),
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      tenant_name: selectedTenant.tenantName,
+      tenant_count: selectedTenants.length,
+      tenant_names: selectedTenants.map((t) => t.tenantName),
       redirect_to: `${pending.return_to || '/integrations'}?success=connected&syncing=true`,
     });
   } catch (error) {

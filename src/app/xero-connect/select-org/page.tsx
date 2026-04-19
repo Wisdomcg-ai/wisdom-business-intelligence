@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Building2, CheckCircle, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
+import { Building2, CheckSquare, Square, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface Tenant {
   tenantId: string;
@@ -16,7 +16,7 @@ export default function SelectOrgPage() {
   const businessId = searchParams.get('business_id');
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const [selectedTenantIds, setSelectedTenantIds] = useState<Set<string>>(new Set());
   const [businessName, setBusinessName] = useState<string>('');
   const [returnTo, setReturnTo] = useState<string>('/integrations');
   const [loading, setLoading] = useState(true);
@@ -33,7 +33,6 @@ export default function SelectOrgPage() {
 
     const fetchData = async () => {
       try {
-        // Fetch pending tenants
         const res = await fetch(`/api/Xero/pending-connection?pending_id=${pendingId}`);
         if (!res.ok) {
           const data = await res.json();
@@ -43,10 +42,13 @@ export default function SelectOrgPage() {
         }
 
         const data = await res.json();
-        setTenants(data.tenants || []);
+        const fetchedTenants: Tenant[] = data.tenants || [];
+        setTenants(fetchedTenants);
+        // Pre-select ALL tenants by default — multi-tenant consolidation is the
+        // common path. Users can uncheck any they don't want.
+        setSelectedTenantIds(new Set(fetchedTenants.map((t) => t.tenantId)));
         if (data.return_to) setReturnTo(data.return_to);
 
-        // Fetch business name for display
         if (businessId) {
           try {
             const bizRes = await fetch(`/api/business-profile?business_id=${businessId}`);
@@ -55,7 +57,7 @@ export default function SelectOrgPage() {
               setBusinessName(bizData.profile?.business_name || bizData.profile?.name || '');
             }
           } catch {
-            // Non-critical — just won't show business name
+            // Non-critical
           }
         }
       } catch {
@@ -68,8 +70,17 @@ export default function SelectOrgPage() {
     fetchData();
   }, [pendingId, businessId]);
 
+  const toggleTenant = (tenantId: string) => {
+    setSelectedTenantIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tenantId)) next.delete(tenantId);
+      else next.add(tenantId);
+      return next;
+    });
+  };
+
   const handleConnect = async () => {
-    if (!selectedTenantId || !pendingId) return;
+    if (selectedTenantIds.size === 0 || !pendingId) return;
     setConnecting(true);
     setError(null);
 
@@ -79,7 +90,7 @@ export default function SelectOrgPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pending_id: pendingId,
-          tenant_id: selectedTenantId,
+          tenant_ids: Array.from(selectedTenantIds),
         }),
       });
 
@@ -91,7 +102,6 @@ export default function SelectOrgPage() {
         return;
       }
 
-      // Redirect to the return URL
       router.push(data.redirect_to || '/integrations?success=connected');
     } catch {
       setError('Connection failed. Please try again.');
@@ -131,52 +141,71 @@ export default function SelectOrgPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm max-w-lg w-full">
-        {/* Header */}
         <div className="px-8 py-6 border-b border-gray-200">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 bg-sky-400/10 rounded-full flex items-center justify-center">
               <Building2 className="w-5 h-5 text-sky-400" />
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">Select Xero Organisation</h1>
+            <h1 className="text-xl font-semibold text-gray-900">Select Xero Organisations</h1>
           </div>
           {businessName && (
             <p className="text-sm text-gray-600">
-              Which Xero organisation should be connected to <strong>{businessName}</strong>?
+              Which Xero organisations should be connected to <strong>{businessName}</strong>? Select one or more — each will become a column in your consolidated reports.
             </p>
           )}
           {!businessName && (
             <p className="text-sm text-gray-600">
-              Select the Xero organisation to connect.
+              Select one or more Xero organisations to connect. Multiple organisations can be consolidated into a single report.
             </p>
           )}
         </div>
 
-        {/* Tenant List */}
         <div className="px-8 py-4">
-          <div className="space-y-2">
-            {tenants.map((tenant) => (
+          <div className="flex items-center justify-between mb-3 text-xs text-gray-500">
+            <span>
+              {selectedTenantIds.size} of {tenants.length} selected
+            </span>
+            <div className="flex gap-3">
               <button
-                key={tenant.tenantId}
-                onClick={() => setSelectedTenantId(tenant.tenantId)}
-                className={`w-full flex items-center gap-3 p-4 rounded-lg border-2 transition-all text-left ${
-                  selectedTenantId === tenant.tenantId
-                    ? 'border-brand-orange bg-orange-50'
-                    : 'border-gray-200 hover:border-gray-300 bg-white'
-                }`}
+                onClick={() => setSelectedTenantIds(new Set(tenants.map((t) => t.tenantId)))}
+                className="hover:text-gray-700"
               >
-                <Building2 className={`w-5 h-5 flex-shrink-0 ${
-                  selectedTenantId === tenant.tenantId ? 'text-brand-orange' : 'text-gray-400'
-                }`} />
-                <span className={`text-sm font-medium ${
-                  selectedTenantId === tenant.tenantId ? 'text-gray-900' : 'text-gray-700'
-                }`}>
-                  {tenant.tenantName}
-                </span>
-                {selectedTenantId === tenant.tenantId && (
-                  <CheckCircle className="w-5 h-5 text-brand-orange ml-auto flex-shrink-0" />
-                )}
+                Select all
               </button>
-            ))}
+              <button
+                onClick={() => setSelectedTenantIds(new Set())}
+                className="hover:text-gray-700"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {tenants.map((tenant) => {
+              const isSelected = selectedTenantIds.has(tenant.tenantId);
+              return (
+                <button
+                  key={tenant.tenantId}
+                  onClick={() => toggleTenant(tenant.tenantId)}
+                  className={`w-full flex items-center gap-3 p-4 rounded-lg border-2 transition-all text-left ${
+                    isSelected
+                      ? 'border-brand-orange bg-orange-50'
+                      : 'border-gray-200 hover:border-gray-300 bg-white'
+                  }`}
+                >
+                  {isSelected ? (
+                    <CheckSquare className="w-5 h-5 flex-shrink-0 text-brand-orange" />
+                  ) : (
+                    <Square className="w-5 h-5 flex-shrink-0 text-gray-400" />
+                  )}
+                  <Building2 className={`w-5 h-5 flex-shrink-0 ${isSelected ? 'text-brand-orange' : 'text-gray-400'}`} />
+                  <span className={`text-sm font-medium ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
+                    {tenant.tenantName}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {error && (
@@ -186,7 +215,6 @@ export default function SelectOrgPage() {
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-8 py-4 border-t border-gray-200 flex items-center justify-between">
           <button
             onClick={() => router.push(returnTo)}
@@ -196,9 +224,9 @@ export default function SelectOrgPage() {
           </button>
           <button
             onClick={handleConnect}
-            disabled={!selectedTenantId || connecting}
+            disabled={selectedTenantIds.size === 0 || connecting}
             className={`flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-medium transition-colors ${
-              selectedTenantId && !connecting
+              selectedTenantIds.size > 0 && !connecting
                 ? 'bg-brand-navy text-white hover:bg-brand-navy/90'
                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
             }`}
@@ -210,7 +238,7 @@ export default function SelectOrgPage() {
               </>
             ) : (
               <>
-                Connect
+                Connect {selectedTenantIds.size > 1 ? `${selectedTenantIds.size} organisations` : 'organisation'}
                 <ArrowRight className="w-4 h-4" />
               </>
             )}
