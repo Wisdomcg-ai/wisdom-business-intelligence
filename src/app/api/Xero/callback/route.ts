@@ -39,33 +39,38 @@ async function saveXeroConnection(
 ): Promise<{ success: boolean; error?: string; connectionId?: string }> {
   const { businessId, userId, tenant, tokens, expiresAt } = params;
 
-  // Use businesses.id directly — FK constraint has been dropped
-  // Delete all existing connections for this business under any ID format
-  await supabase.from('xero_connections').delete().eq('business_id', businessId);
+  // Phase 34 pivot: upsert by (business_id, tenant_id) so reconnecting the same
+  // Xero org refreshes its tokens in place, and connecting a DIFFERENT Xero org
+  // to the same business adds a new row (does NOT wipe other tenants).
+  //
+  // Resolve the dual-ID form in case the caller passed business_profiles.id.
+  let canonicalBusinessId = businessId;
   const { data: profile } = await supabase
     .from('business_profiles')
     .select('id, business_id')
     .or(`id.eq.${businessId},business_id.eq.${businessId}`)
     .maybeSingle();
-  if (profile) {
-    if (profile.id !== businessId) await supabase.from('xero_connections').delete().eq('business_id', profile.id);
-    if (profile.business_id && profile.business_id !== businessId) await supabase.from('xero_connections').delete().eq('business_id', profile.business_id);
+  if (profile?.business_id) {
+    canonicalBusinessId = profile.business_id;
   }
 
-  // Insert the connection
-  console.log('[Xero] Inserting connection with business_id:', businessId, 'tenant:', tenant.tenantId);
+  console.log('[Xero] Upserting connection for business:', canonicalBusinessId, 'tenant:', tenant.tenantId);
   const { data: insertedData, error: upsertError } = await supabase
     .from('xero_connections')
-    .insert({
-      business_id: businessId,
-      user_id: userId,
-      tenant_id: tenant.tenantId,
-      tenant_name: tenant.tenantName,
-      access_token: encrypt(tokens.access_token),
-      refresh_token: encrypt(tokens.refresh_token),
-      expires_at: expiresAt.toISOString(),
-      is_active: true
-    })
+    .upsert(
+      {
+        business_id: canonicalBusinessId,
+        user_id: userId,
+        tenant_id: tenant.tenantId,
+        tenant_name: tenant.tenantName,
+        display_name: tenant.tenantName, // default; user can rename later
+        access_token: encrypt(tokens.access_token),
+        refresh_token: encrypt(tokens.refresh_token),
+        expires_at: expiresAt.toISOString(),
+        is_active: true,
+      },
+      { onConflict: 'business_id,tenant_id' },
+    )
     .select();
 
   if (upsertError || !insertedData || insertedData.length === 0) {

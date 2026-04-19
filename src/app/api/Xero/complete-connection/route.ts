@@ -104,42 +104,36 @@ export async function POST(request: NextRequest) {
     const accessToken = decrypt(pending.encrypted_access_token);
     const refreshToken = decrypt(pending.encrypted_refresh_token);
 
-    // Use pending.business_id directly — the callback already resolved it.
-    // Delete ALL existing connections for this business under any ID format.
-    const bizId = pending.business_id;
-    console.log('[Xero Complete] Using business_id:', bizId);
-
-    // Clean up: delete by the pending business_id
-    await supabaseAdmin.from('xero_connections').delete().eq('business_id', bizId);
-
-    // Also clean up by any resolved IDs (handles the dual-ID system)
+    // Phase 34 pivot: upsert by (business_id, tenant_id) so connecting a
+    // DIFFERENT tenant to the same business adds a new row — existing tenant
+    // rows are preserved.
+    let bizId = pending.business_id;
     const { data: profile } = await supabaseAdmin
       .from('business_profiles')
       .select('id, business_id')
       .or(`id.eq.${bizId},business_id.eq.${bizId}`)
       .maybeSingle();
-    if (profile) {
-      // Delete under both the profile.id and the businesses.id
-      if (profile.id !== bizId) {
-        await supabaseAdmin.from('xero_connections').delete().eq('business_id', profile.id);
-      }
-      if (profile.business_id && profile.business_id !== bizId) {
-        await supabaseAdmin.from('xero_connections').delete().eq('business_id', profile.business_id);
-      }
+    if (profile?.business_id) {
+      bizId = profile.business_id;
     }
+    console.log('[Xero Complete] Using canonical business_id:', bizId);
 
     const { data: connection, error: insertError } = await supabaseAdmin
       .from('xero_connections')
-      .insert({
-        business_id: bizId,
-        user_id: pending.user_id,
-        tenant_id: selectedTenant.tenantId,
-        tenant_name: selectedTenant.tenantName,
-        access_token: encrypt(accessToken),
-        refresh_token: encrypt(refreshToken),
-        expires_at: pending.token_expires_at,
-        is_active: true,
-      })
+      .upsert(
+        {
+          business_id: bizId,
+          user_id: pending.user_id,
+          tenant_id: selectedTenant.tenantId,
+          tenant_name: selectedTenant.tenantName,
+          display_name: selectedTenant.tenantName,
+          access_token: encrypt(accessToken),
+          refresh_token: encrypt(refreshToken),
+          expires_at: pending.token_expires_at,
+          is_active: true,
+        },
+        { onConflict: 'business_id,tenant_id' },
+      )
       .select()
       .maybeSingle();
 

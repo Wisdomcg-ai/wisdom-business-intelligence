@@ -138,7 +138,7 @@ export default function XeroIntegrationPage() {
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center justify-between mb-2">
             <Link className="h-5 w-5 text-green-600" />
-            <span className="text-2xl font-bold">{connections.filter(c => c.connection_status === 'active').length}</span>
+            <span className="text-2xl font-bold">{connections.filter(c => c.is_active !== false).length}</span>
           </div>
           <p className="text-sm text-gray-600">Connected</p>
         </div>
@@ -146,7 +146,7 @@ export default function XeroIntegrationPage() {
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center justify-between mb-2">
             <Unlink className="h-5 w-5 text-gray-400" />
-            <span className="text-2xl font-bold">{businesses.length - connections.filter(c => c.connection_status === 'active').length}</span>
+            <span className="text-2xl font-bold">{businesses.length - connections.filter(c => c.is_active !== false).length}</span>
           </div>
           <p className="text-sm text-gray-600">Not Connected</p>
         </div>
@@ -168,13 +168,22 @@ export default function XeroIntegrationPage() {
               disabled={loading}
             >
               <option value="">-- Select a business --</option>
-              {businesses
-                .filter(b => !connections.find(c => c.business_id === b.id && c.connection_status === 'active'))
-                .map((business) => (
+              {/* Businesses with existing connections stay in the list so users
+                  can add additional Xero organisations (multi-tenant consolidation). */}
+              {businesses.map((business) => {
+                const existingCount = connections.filter(
+                  (c) => c.business_id === business.id && c.is_active !== false,
+                ).length
+                const label =
+                  existingCount > 0
+                    ? `${business.name} (${existingCount} connected — add another)`
+                    : business.name
+                return (
                   <option key={business.id} value={business.id}>
-                    {business.name}
+                    {label}
                   </option>
-                ))}
+                )
+              })}
             </select>
           </div>
 
@@ -214,7 +223,7 @@ export default function XeroIntegrationPage() {
                       <h3 className="font-semibold text-gray-900">
                         {connection.businesses?.name || 'Unknown Business'}
                       </h3>
-                      {connection.connection_status === 'active' ? (
+                      {connection.is_active !== false ? (
                         <CheckCircle className="h-4 w-4 text-green-600" />
                       ) : (
                         <AlertCircle className="h-4 w-4 text-yellow-600" />
@@ -227,17 +236,11 @@ export default function XeroIntegrationPage() {
                       </p>
                       <p className="text-sm text-gray-600">
                         Last sync: <span className="font-medium">
-                          {connection.last_sync_at 
-                            ? new Date(connection.last_sync_at).toLocaleString() 
+                          {connection.last_synced_at
+                            ? new Date(connection.last_synced_at).toLocaleString()
                             : 'Never synced'}
                         </span>
                       </p>
-                      {connection.unreconciled_count > 0 && (
-                        <p className="text-sm text-yellow-600 flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          {connection.unreconciled_count} unreconciled transactions
-                        </p>
-                      )}
                     </div>
                   </div>
                   
