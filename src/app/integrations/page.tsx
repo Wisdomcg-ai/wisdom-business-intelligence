@@ -128,14 +128,23 @@ export default function IntegrationsPage() {
 
     setSyncing(true)
     try {
-      const res = await fetch(`/api/Xero/sync?business_id=${businessId}`)
+      // Use the tenant-aware sync endpoint — loops over all active connections
+      // for the business and tags each row with tenant_id.
+      const res = await fetch('/api/monthly-report/sync-xero', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_id: businessId }),
+      })
       const data = await res.json()
 
       if (data.success) {
-        alert('Xero data synced successfully!')
+        const tenantMsg = data.tenants_synced
+          ? `${data.tenants_synced}/${data.tenants_total} Xero organisations synced (${data.accounts_synced} accounts)`
+          : 'Xero data synced successfully'
+        alert(tenantMsg)
         await loadIntegrations()
       } else {
-        throw new Error(data.error)
+        throw new Error(data.error || 'Sync failed')
       }
     } catch (error: any) {
       console.error('Error syncing Xero:', error)
@@ -260,7 +269,29 @@ export default function IntegrationsPage() {
               </p>
 
               {/* Account Info (if connected) */}
-              {integration.status === 'connected' && integration.accountName && (
+              {integration.status === 'connected' && integration.id === 'xero' && xeroData?.all?.length > 0 && (
+                <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-gray-600 mb-2">
+                    Connected Organisation{xeroData.all.length > 1 ? `s (${xeroData.all.length})` : ''}
+                  </p>
+                  <ul className="space-y-1">
+                    {xeroData.all.map((conn: any) => (
+                      <li key={conn.id} className="flex items-center gap-2 text-sm">
+                        <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                        <span className="font-medium text-gray-900 truncate">
+                          {conn.display_name || conn.tenant_name}
+                        </span>
+                        {conn.last_synced_at && (
+                          <span className="text-xs text-gray-500 ml-auto flex-shrink-0">
+                            {new Date(conn.last_synced_at).toLocaleDateString()}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {integration.status === 'connected' && integration.id !== 'xero' && integration.accountName && (
                 <div className="mb-4 p-3 bg-gray-50 rounded-lg">
                   <p className="text-xs text-gray-600">Connected Account</p>
                   <p className="text-sm font-medium text-gray-900">{integration.accountName}</p>
@@ -286,12 +317,19 @@ export default function IntegrationsPage() {
                         {syncing ? 'Syncing...' : 'Sync Now'}
                       </button>
                       <button
+                        onClick={handleConnectXero}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white border border-brand-orange hover:bg-orange-50 text-brand-orange text-sm font-medium rounded-lg transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Another Organisation
+                      </button>
+                      <button
                         onClick={handleDisconnectXero}
                         disabled={syncing}
                         className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
-                        Disconnect
+                        Disconnect All
                       </button>
                     </>
                   ) : (
