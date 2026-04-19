@@ -100,6 +100,12 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.append('redirect_uri', REDIRECT_URI);
     authUrl.searchParams.append('scope', SCOPES);
     authUrl.searchParams.append('state', state);
+    // prompt=consent forces Xero to re-show the organisation picker and consent
+    // screen even if the user has already authorized the app. Without this,
+    // Xero silently returns only the orgs already granted — which means a user
+    // who's authorized "Dragon Roofing" can't pick "Easy Hail Claim" on a
+    // subsequent click. Required for multi-tenant consolidation setups.
+    authUrl.searchParams.append('prompt', 'consent');
 
     const xeroAuthUrl = authUrl.toString();
     console.log('Redirecting to Xero auth:', xeroAuthUrl);
