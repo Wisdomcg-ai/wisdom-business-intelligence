@@ -40,18 +40,29 @@ function setAuthMock(mock: any) {
 }
 
 function mockSupabase(rowsByTable: Record<string, any[]>) {
-  const matchAll = (rows: any[], filters: Array<[string, unknown, 'eq' | 'in']>) => {
+  // Filter ops supported: 'eq', 'in', 'is' (for NULL matches), 'neq' (not used here yet).
+  const matchAll = (
+    rows: any[],
+    filters: Array<[string, unknown, 'eq' | 'in' | 'is']>,
+  ) => {
     return rows.filter((r) =>
       filters.every(([col, val, op]) => {
-        if (op === 'eq') return r[col] === val
-        if (op === 'in') return Array.isArray(val) && (val as unknown[]).includes(r[col])
+        const cell = r[col]
+        if (op === 'eq') return cell === val
+        if (op === 'in') return Array.isArray(val) && (val as unknown[]).includes(cell)
+        if (op === 'is') {
+          // `.is(col, null)` → match rows where cell is null OR undefined
+          // (fixtures often omit nullable columns).
+          if (val === null) return cell === null || cell === undefined
+          return cell === val
+        }
         return false
       }),
     )
   }
   const buildQuery = (
     table: string,
-    filters: Array<[string, unknown, 'eq' | 'in']> = [],
+    filters: Array<[string, unknown, 'eq' | 'in' | 'is']> = [],
     ordered: { col: string; ascending: boolean } | null = null,
   ): any => {
     const rows = rowsByTable[table] ?? []
@@ -71,6 +82,7 @@ function mockSupabase(rowsByTable: Record<string, any[]>) {
     return {
       eq: (col: string, val: unknown) => buildQuery(table, [...filters, [col, val, 'eq']], ordered),
       in: (col: string, val: unknown[]) => buildQuery(table, [...filters, [col, val, 'in']], ordered),
+      is: (col: string, val: unknown) => buildQuery(table, [...filters, [col, val, 'is']], ordered),
       order: (col: string, opts?: { ascending?: boolean }) =>
         buildQuery(table, filters, { col, ascending: opts?.ascending ?? true }),
       limit: (n: number) =>
@@ -172,7 +184,7 @@ function buildState(opts: { withBudgetA: boolean; withBudgetB: boolean }) {
     )
   }
   return {
-    businesses: [{ id: BIZ, name: 'Test Group' }],
+    businesses: [{ id: BIZ, name: 'Test Group', consolidation_budget_mode: 'per_tenant' }],
     business_profiles: [{ id: BIZ, business_id: BIZ, fiscal_year_start: 7 }],
     xero_connections: [
       { id: 'c-a', business_id: BIZ, tenant_id: T_A, tenant_name: 'Tenant A', display_name: 'Tenant A', display_order: 0, functional_currency: 'AUD', include_in_consolidation: true, is_active: true },
