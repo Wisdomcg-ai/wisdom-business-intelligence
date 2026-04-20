@@ -131,20 +131,93 @@ export function translatePLAtMonthlyAverage(
 }
 
 /**
- * STUB — full implementation lands in plan 34-01a (Iteration 34.1, Balance
- * Sheet). The signature is exported today so `engine.ts` and any future
- * balance-sheet call site can import the symbol without conditional branching.
+ * Translate Balance Sheet lines at a single closing-spot rate (IAS 21 / AASB 121).
  *
- * Throwing here (rather than returning an empty array) makes any accidental
- * pre-34.1 invocation loud during development.
+ * Unlike `translatePLAtMonthlyAverage` (which accepts a per-month Map of
+ * average rates), the balance sheet represents balances AS OF a single date,
+ * so a single closing-spot rate is applied uniformly across every month key
+ * in `monthly_values`. In practice the balance sheet engine only consults
+ * the `asOfDate` key, but we translate every key for forward-compatibility
+ * with multi-period BS comparatives.
+ *
+ * Contract:
+ * - Rate must be a positive finite number; otherwise throws (no silent
+ *   fallback to 1.0). A zero or negative rate is always a bug — either
+ *   missing rate data or a sign-flipped import.
+ * - Every value in each line's `monthly_values` is multiplied by `rate`.
+ * - All non-monthly fields pass through unchanged.
+ * - Input is not mutated.
+ *
+ * Residuals from translating assets vs. liabilities vs. equity at a single
+ * closing rate are absorbed by the Translation Reserve (CTA) line computed
+ * by `buildConsolidatedBalanceSheet` in balance-sheet.ts. This function is
+ * deliberately kept as a pure scalar-multiply — the CTA logic lives at the
+ * engine level where totals are known.
  */
 export function translateBSAtClosingSpot(
-  _lines: XeroPLLineLike[],
-  _rate: number,
+  lines: XeroPLLineLike[],
+  rate: number,
 ): XeroPLLineLike[] {
-  throw new Error(
-    '[FX] translateBSAtClosingSpot not yet implemented — see plan 34-01a',
-  )
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new Error(
+      `[FX] translateBSAtClosingSpot requires a positive finite rate, got ${rate}`,
+    )
+  }
+  return lines.map((line) => ({
+    ...line,
+    monthly_values: Object.fromEntries(
+      Object.entries(line.monthly_values).map(([period, value]) => [
+        period,
+        value * rate,
+      ]),
+    ),
+  }))
+}
+
+/**
+ * Load a single closing-spot rate for a currency pair on a given month-end date.
+ *
+ * The `period` column in `fx_rates` stores YYYY-MM-DD. For `closing_spot` rows
+ * the date is the month-end (e.g. '2026-03-31'). Callers that only know the
+ * month key ('2026-03') must convert to month-end before calling.
+ *
+ * Returns `null` when no rate is found — the caller MUST surface this as a
+ * missing rate rather than falling back to 1.0, mirroring the monthly-average
+ * contract in `translatePLAtMonthlyAverage`.
+ */
+export async function loadClosingSpotRate(
+  supabase: {
+    from: (table: string) => {
+      select: (cols: string) => {
+        eq: (col: string, val: unknown) => {
+          eq: (col: string, val: unknown) => {
+            eq: (col: string, val: unknown) => Promise<{
+              data: Array<{ rate: number }> | null
+              error: { message: string } | null
+            }>
+          }
+        }
+      }
+    }
+  },
+  currencyPair: string,
+  asOfDate: string, // 'YYYY-MM-DD' — month-end date
+): Promise<number | null> {
+  const { data, error } = await supabase
+    .from('fx_rates')
+    .select('rate')
+    .eq('currency_pair', currencyPair)
+    .eq('rate_type', 'closing_spot')
+    .eq('period', asOfDate)
+
+  if (error) {
+    throw new Error(
+      `[FX] Failed to load closing spot for ${currencyPair} ${asOfDate}: ${error.message}`,
+    )
+  }
+
+  const row = (data ?? [])[0]
+  return row ? Number(row.rate) : null
 }
 
 /**
