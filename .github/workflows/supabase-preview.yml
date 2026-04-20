@@ -1,0 +1,51 @@
+name: Supabase Preview Branch
+
+# Sanity-check PRs before Supabase auto-creates a preview branch:
+# - Verify migrations have valid filenames
+# - Verify tsc + vitest pass
+# The actual preview-branch database is spun up by Supabase's GitHub integration,
+# not this workflow. This workflow just gates PR quality so preview branches
+# don't spin up for obviously-broken work.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check migration filenames
+        run: |
+          INVALID=$(find supabase/migrations -maxdepth 1 -name '*.sql' -type f \
+            | grep -v -E '^supabase/migrations/[0-9]{14}_[a-z0-9_]+\.sql$' \
+            | grep -v -E '^supabase/migrations/[0-9]{8}_[a-z0-9_]+\.sql$' || true)
+          if [ -n "$INVALID" ]; then
+            echo "Invalid migration filenames (must be YYYYMMDD_name.sql or YYYYMMDDHHMMSS_name.sql):"
+            echo "$INVALID"
+            exit 1
+          fi
+          echo "All migration filenames are valid."
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Vitest
+        run: npx vitest run --reporter=dot
