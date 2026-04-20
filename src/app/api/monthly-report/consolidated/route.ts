@@ -10,6 +10,14 @@
  * Xero connections marked include_in_consolidation. With 0 or 1 tenant, the
  * returned report still works but has 0 or 1 columns.
  *
+ * Phase 34.3: the engine now also loads per-tenant forecasts from
+ * `financial_forecasts` (scoped by tenant_id + fiscal_year) and attaches
+ *   - byTenant[].budgetLines (per-tenant budget, universe-aligned)
+ *   - consolidated.budgetLines (summed across tenants)
+ *   - diagnostics.tenants_with_budget / tenants_without_budget
+ * No route-level change is required — the output flows through the generic
+ * `report` object returned below.
+ *
  * Security:
  * - Auth-gated (401)
  * - Access check: owner_id or assigned_coach_id OR super_admin
