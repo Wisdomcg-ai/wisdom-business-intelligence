@@ -81,6 +81,17 @@ export interface FxRateRow {
   source: 'manual' | 'rba'
 }
 
+// Shape of forecast_pl_lines rows as consumed by the consolidation engine
+// for the budget side. account_type mirrors xero_pl_lines values (lowercase).
+// monthly_values merges forecast_months + actual_months (same key space as
+// XeroPLLineLike.monthly_values) so the budget column aligns against the
+// same account universe as actuals.
+export interface ForecastLineLike {
+  account_type: string
+  account_name: string
+  monthly_values: Record<string, number> // 'YYYY-MM' → amount
+}
+
 // Per-tenant column in the consolidated P&L response.
 export interface EntityColumn {
   connection_id: string
@@ -88,7 +99,23 @@ export interface EntityColumn {
   display_name: string
   display_order: number
   functional_currency: string
-  lines: XeroPLLineLike[] // post-translation (in presentation_currency)
+  lines: XeroPLLineLike[] // post-translation (in presentation_currency) — ACTUALS
+  /**
+   * Tenant-scoped budget lines — aligned to the same account universe as
+   * `lines` (every universe row appears, absent accounts get zero months).
+   * Present iff a tenant-scoped forecast is found for this tenant (or the
+   * legacy fallback fires — see engine.ts). Omitted when the tenant has no
+   * budget for the requested fiscal year.
+   */
+  budgetLines?: ForecastLineLike[]
+}
+
+// One consolidated line (account-aligned sum across tenants). Used for
+// actuals AND for the summed-budget column.
+export interface ConsolidatedLine {
+  account_type: string
+  account_name: string
+  monthly_values: Record<string, number>
 }
 
 // Full consolidated API response shape.
@@ -97,11 +124,14 @@ export interface ConsolidatedReport {
   byTenant: EntityColumn[]
   eliminations: EliminationEntry[]
   consolidated: {
-    lines: {
-      account_type: string
-      account_name: string
-      monthly_values: Record<string, number>
-    }[]
+    lines: ConsolidatedLine[]
+    /**
+     * Summed-across-tenants budget (Phase 34.3). Same account universe as
+     * `lines`. Empty when no tenant has a budget AND the legacy fallback
+     * did not match. NEVER includes eliminations — budgets are aggregated
+     * raw; coaches factor inter-co out of their budgeting manually.
+     */
+    budgetLines: ConsolidatedLine[]
   }
   fx_context: {
     rates_used: Record<string, number>
@@ -113,5 +143,9 @@ export interface ConsolidatedReport {
     eliminations_applied_count: number
     eliminations_total_amount: number
     processing_ms: number
+    /** How many tenants had a tenant-scoped forecast (or matched the fallback). */
+    tenants_with_budget: number
+    /** Tenants for which no budget was found (for UI warnings). */
+    tenants_without_budget: string[]
   }
 }

@@ -21,6 +21,8 @@ import type {
   EntityColumn,
   EliminationEntry,
   ConsolidatedReport,
+  ForecastLineLike,
+  ConsolidatedLine,
 } from './types'
 import {
   buildAlignedAccountUniverse,
@@ -64,6 +66,12 @@ export interface BuildConsolidationOpts {
     missing: string[]
     ratesUsed: Record<string, number>
   }>
+  /**
+   * Inject pre-built per-tenant budgets (tests / callers that already hold the
+   * forecast rows). When omitted, the engine loads via `loadTenantBudgets`.
+   * Key = tenant_id, value = forecast lines (already aligned or raw).
+   */
+  tenantBudgets?: Map<string, ForecastLineLike[]>
 }
 
 /**
@@ -161,7 +169,7 @@ export function combineTenants(
   eliminations: EliminationEntry[],
   fyMonths: readonly string[],
   reportMonth: string,
-): ConsolidatedReport['consolidated'] {
+): { lines: ConsolidatedLine[] } {
   const elimsByKey = new Map<string, EliminationEntry[]>()
   for (const e of eliminations) {
     const key = accountAlignmentKey({ account_type: e.account_type, account_name: e.account_name })
@@ -196,6 +204,196 @@ export function combineTenants(
   })
 
   return { lines }
+}
+
+/**
+ * Convert a raw forecast_pl_lines row into a ForecastLineLike used by the
+ * consolidation engine. forecast_months + actual_months share the same
+ * 'YYYY-MM' key space, so we MERGE them — forecast_months wins on overlap
+ * (edited forecasts override stale actual snapshots in the forecast table).
+ *
+ * account_type is normalised: forecast_pl_lines uses a variety of casings
+ * and the consolidation engine's alignment key expects lowercase ('revenue',
+ * 'cogs', 'opex', 'other_income', 'other_expense').
+ */
+export function normaliseForecastLine(row: {
+  account_name: string
+  account_type?: string | null
+  account_class?: string | null
+  category?: string | null
+  actual_months?: Record<string, number> | null
+  forecast_months?: Record<string, number> | null
+}): ForecastLineLike {
+  const merged: Record<string, number> = { ...(row.actual_months ?? {}) }
+  for (const [k, v] of Object.entries(row.forecast_months ?? {})) {
+    merged[k] = v
+  }
+  // account_type prefers the explicit account_type column; falls back to
+  // account_class / category string mapping. Lowercased + common aliases
+  // collapsed to the five canonical values used by xero_pl_lines.
+  const raw = (row.account_type ?? row.account_class ?? row.category ?? '')
+    .toString()
+    .toLowerCase()
+    .trim()
+  let account_type: string
+  if (raw.includes('revenue') || raw === 'income') account_type = 'revenue'
+  else if (raw.includes('cogs') || raw.includes('cost of sales')) account_type = 'cogs'
+  else if (raw.includes('opex') || raw.includes('operating expense')) account_type = 'opex'
+  else if (raw.includes('other income')) account_type = 'other_income'
+  else if (raw.includes('other expense')) account_type = 'other_expense'
+  else account_type = raw || 'opex' // conservative default — never silently drops a line
+  return {
+    account_type,
+    account_name: row.account_name,
+    monthly_values: merged,
+  }
+}
+
+/**
+ * Load per-tenant forecast P&L lines for the given fiscal year.
+ *
+ * Lookup strategy (Option B — each tenant has its own budget):
+ *   1. For each tenant, find a forecast where business_id matches (via
+ *      resolveBusinessIds for dual-ID safety) AND tenant_id = tenant.tenant_id
+ *      AND fiscal_year matches. If found, load that forecast's pl_lines.
+ *   2. If NO tenants have tenant-scoped forecasts (simpler alternative per
+ *      plan): return an empty Map and let the caller render zero-budget
+ *      columns + surface `tenants_without_budget` to the UI.
+ *
+ * Returns a Map keyed by tenant_id → ForecastLineLike[]. Tenants WITHOUT a
+ * budget are absent from the Map (caller distinguishes "no budget" from
+ * "empty budget").
+ */
+export async function loadTenantBudgets(
+  supabase: any,
+  businessId: string,
+  tenants: ConsolidationTenant[],
+  fiscalYear: number,
+): Promise<Map<string, ForecastLineLike[]>> {
+  const result = new Map<string, ForecastLineLike[]>()
+  if (tenants.length === 0) return result
+
+  const ids = await resolveBusinessIds(supabase, businessId)
+
+  // 1. For each tenant, try to find a tenant-scoped forecast.
+  // Uses .limit(1) — if multiple exist, pick the most recently updated one.
+  // (The forecast wizard may create multiple versions per tenant.)
+  for (const tenant of tenants) {
+    const { data: forecasts, error } = await supabase
+      .from('financial_forecasts')
+      .select('id')
+      .in('business_id', ids.all)
+      .eq('tenant_id', tenant.tenant_id)
+      .eq('fiscal_year', fiscalYear)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+    if (error) {
+      throw new Error(
+        `[Consolidation Engine] Failed to load forecast for tenant ${tenant.tenant_id}: ${error.message}`,
+      )
+    }
+    const forecastId = forecasts?.[0]?.id
+    if (!forecastId) continue
+
+    const { data: plRows, error: plErr } = await supabase
+      .from('forecast_pl_lines')
+      .select('account_name, account_type, account_class, category, actual_months, forecast_months')
+      .eq('forecast_id', forecastId)
+    if (plErr) {
+      throw new Error(
+        `[Consolidation Engine] Failed to load forecast_pl_lines for forecast ${forecastId}: ${plErr.message}`,
+      )
+    }
+    const lines = (plRows ?? []).map(normaliseForecastLine)
+    result.set(tenant.tenant_id, lines)
+  }
+
+  return result
+}
+
+/**
+ * Build per-tenant budget columns aligned to the P&L universe.
+ *
+ * For each tenant we emit a ForecastLineLike[] with EXACTLY the same
+ * (account_type, account_name) rows as the consolidated universe. Missing
+ * rows get zero-filled months. When a tenant has no budget at all, its
+ * entry is OMITTED from the returned array (caller records this as a
+ * `tenants_without_budget` diagnostic).
+ */
+export function buildTenantBudgetColumns(
+  tenants: ConsolidationTenant[],
+  budgetsByTenant: Map<string, ForecastLineLike[]>,
+  universe: AlignedAccount[],
+  fyMonths: readonly string[],
+): Array<{ tenantId: string; lines: ForecastLineLike[] } | null> {
+  return tenants.map((tenant) => {
+    const raw = budgetsByTenant.get(tenant.tenant_id)
+    if (!raw) return null
+    // Align raw budget rows to the universe — same pattern as buildEntityColumn
+    // but for forecast shape.
+    const byKey = new Map<string, ForecastLineLike>()
+    for (const line of raw) {
+      byKey.set(accountAlignmentKey(line), line)
+    }
+    const zeroMonths = (): Record<string, number> => {
+      const z: Record<string, number> = {}
+      for (const m of fyMonths) z[m] = 0
+      return z
+    }
+    const lines: ForecastLineLike[] = universe.map((u) => {
+      const existing = byKey.get(u.key)
+      if (existing) {
+        // Normalise monthly_values to include every fy month (defensive).
+        const filled: Record<string, number> = {}
+        for (const m of fyMonths) filled[m] = existing.monthly_values[m] ?? 0
+        return {
+          account_type: u.account_type,
+          account_name: u.account_name,
+          monthly_values: filled,
+        }
+      }
+      return {
+        account_type: u.account_type,
+        account_name: u.account_name,
+        monthly_values: zeroMonths(),
+      }
+    })
+    return { tenantId: tenant.tenant_id, lines }
+  })
+}
+
+/**
+ * Sum per-tenant budget columns into a single consolidated budget column.
+ * Every universe row is represented; months with no data in any tenant
+ * become 0. Eliminations are NOT applied to budgets (budgets are already
+ * coach-entered at a "net" level — plan simplification).
+ */
+export function combineTenantBudgets(
+  tenantBudgetColumns: Array<{ tenantId: string; lines: ForecastLineLike[] } | null>,
+  universe: AlignedAccount[],
+  fyMonths: readonly string[],
+): ConsolidatedLine[] {
+  return universe.map((u) => {
+    const monthly: Record<string, number> = {}
+    for (const m of fyMonths) {
+      let sum = 0
+      for (const col of tenantBudgetColumns) {
+        if (!col) continue
+        const line = col.lines.find(
+          (l) =>
+            accountAlignmentKey({ account_type: l.account_type, account_name: l.account_name }) ===
+            u.key,
+        )
+        sum += line?.monthly_values[m] ?? 0
+      }
+      monthly[m] = sum
+    }
+    return {
+      account_type: u.account_type,
+      account_name: u.account_name,
+      monthly_values: monthly,
+    }
+  })
 }
 
 /**
@@ -238,17 +436,81 @@ export async function buildConsolidation(
     }),
   )
 
-  // 5. Build universe + per-tenant columns
-  const universe = buildAlignedAccountUniverse(translated.map((t) => t.lines))
-  const byTenant = translated.map((t) => buildEntityColumn(t.tenant, t.lines, universe, opts.fyMonths))
+  // 5. Load per-tenant budgets (Phase 34.3) — used to build per-tenant
+  //    budget columns + a summed consolidated budget. Loaded BEFORE the
+  //    universe so budget accounts contribute to the account universe too
+  //    (otherwise a budgeted-but-not-actualised account wouldn't render).
+  const budgetsByTenant = opts.tenantBudgets
+    ?? (await loadTenantBudgets(supabase, opts.businessId, tenants, opts.fiscalYear))
 
-  // 6. Elimination application — business-scoped rules, filter BS-only (intercompany_loan)
+  // 6. Build universe — include budget accounts so budget-only rows render.
+  //    The consolidation account universe is the union of actuals + budget
+  //    accounts across all tenants. This is critical: a fully-forecasted
+  //    account with no actuals this fiscal year still needs a row so the
+  //    variance = 0 - budget can be computed and shown.
+  const budgetLinesForUniverse: XeroPLLineLike[][] = []
+  for (const tenant of tenants) {
+    const raw = budgetsByTenant.get(tenant.tenant_id)
+    if (!raw) continue
+    budgetLinesForUniverse.push(
+      raw.map((r) => ({
+        business_id: '',
+        tenant_id: tenant.tenant_id,
+        account_name: r.account_name,
+        account_code: null,
+        account_type: r.account_type,
+        section: '',
+        monthly_values: r.monthly_values,
+      })),
+    )
+  }
+  const universe = buildAlignedAccountUniverse([
+    ...translated.map((t) => t.lines),
+    ...budgetLinesForUniverse,
+  ])
+
+  // 7. Per-tenant actual columns aligned to the universe
+  const byTenantActuals = translated.map((t) =>
+    buildEntityColumn(t.tenant, t.lines, universe, opts.fyMonths),
+  )
+
+  // 8. Per-tenant budget columns aligned to the universe (omitted for
+  //    tenants with no budget — we'll record those for the diagnostics).
+  const budgetColumns = buildTenantBudgetColumns(
+    tenants,
+    budgetsByTenant,
+    universe,
+    opts.fyMonths,
+  )
+
+  // Stitch budget columns onto byTenant so the API/UI get one cohesive object.
+  const byTenant: EntityColumn[] = byTenantActuals.map((col, idx) => {
+    const budget = budgetColumns[idx]
+    if (budget) {
+      return { ...col, budgetLines: budget.lines }
+    }
+    return col
+  })
+
+  const tenantsWithBudget = budgetColumns.filter((b) => b !== null).length
+  const tenantsWithoutBudget = tenants
+    .filter((t) => !budgetsByTenant.has(t.tenant_id))
+    .map((t) => t.tenant_id)
+
+  // 9. Elimination application — business-scoped rules, filter BS-only (intercompany_loan)
   const allRules = await loadEliminationRulesForBusiness(supabase, opts.businessId)
   const plRules = allRules.filter((r) => r.rule_type !== 'intercompany_loan')
   const eliminations = applyEliminations(plRules, byTenant, opts.reportMonth)
 
-  // 7. Combine
-  const consolidated = combineTenants(byTenant, universe, eliminations, opts.fyMonths, opts.reportMonth)
+  // 10. Combine actuals (with eliminations) and budgets (sum only, no eliminations).
+  const consolidatedActuals = combineTenants(
+    byTenant,
+    universe,
+    eliminations,
+    opts.fyMonths,
+    opts.reportMonth,
+  )
+  const consolidatedBudget = combineTenantBudgets(budgetColumns, universe, opts.fyMonths)
 
   const totalLines = deduped.reduce((acc, d) => acc + d.lines.length, 0)
 
@@ -256,7 +518,10 @@ export async function buildConsolidation(
     business,
     byTenant,
     eliminations,
-    consolidated,
+    consolidated: {
+      lines: consolidatedActuals.lines,
+      budgetLines: consolidatedBudget,
+    },
     fx_context: { rates_used: fxRatesUsed, missing_rates: fxMissing },
     diagnostics: {
       tenants_loaded: tenants.length,
@@ -264,6 +529,8 @@ export async function buildConsolidation(
       eliminations_applied_count: eliminations.length,
       eliminations_total_amount: eliminations.reduce((acc, e) => acc + Math.abs(e.amount), 0),
       processing_ms: Date.now() - startedAt,
+      tenants_with_budget: tenantsWithBudget,
+      tenants_without_budget: tenantsWithoutBudget,
     },
   }
 }
