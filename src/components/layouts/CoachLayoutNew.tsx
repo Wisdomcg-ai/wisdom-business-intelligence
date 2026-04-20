@@ -26,7 +26,8 @@ import {
   Shield,
   HelpCircle,
   ExternalLink,
-  UserPlus
+  UserPlus,
+  Layers
 } from 'lucide-react'
 import { useUnreadMessages } from '@/hooks/useUnreadMessages'
 
@@ -99,6 +100,12 @@ const navigation = [
     href: '/coach/reports',
     icon: BarChart3,
     description: 'Analytics & insights'
+  },
+  {
+    name: 'Consolidation',
+    href: '/admin/consolidation',
+    icon: Layers,
+    description: 'FX rates & tenant settings'
   },
 ]
 

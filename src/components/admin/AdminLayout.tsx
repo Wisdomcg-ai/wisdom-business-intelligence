@@ -23,6 +23,7 @@ import {
   ExternalLink,
   Activity,
   BarChart3,
+  Layers,
 } from 'lucide-react'
 
 // Context for admin data sharing
@@ -74,6 +75,12 @@ const navigation = [
     href: '/admin/users',
     icon: Users,
     description: 'User accounts & passwords'
+  },
+  {
+    name: 'Consolidation',
+    href: '/admin/consolidation',
+    icon: Layers,
+    description: 'FX rates & tenant settings'
   },
 ]
 
