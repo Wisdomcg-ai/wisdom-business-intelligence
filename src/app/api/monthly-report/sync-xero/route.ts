@@ -110,6 +110,64 @@ function parseSingleMonthReport(report: any): Map<string, { value: number; secti
   return accounts;
 }
 
+// Map Xero BS section titles to account_type for xero_balance_sheet_lines
+function mapBSSectionToType(section: string): 'asset' | 'liability' | 'equity' | null {
+  const t = section.trim().toLowerCase();
+  // Xero uses plural "Assets"/"Liabilities"/"Equity"; also handle variants
+  if (t.includes('asset')) return 'asset';
+  if (t.includes('liabilit')) return 'liability';
+  if (t.includes('equity') || t.includes("owner")) return 'equity';
+  return null; // skip unknown/nested sections
+}
+
+// Fetch BS snapshot for a given month-end date
+async function fetchSingleMonthBS(
+  accessToken: string,
+  tenantId: string,
+  reportDate: string, // YYYY-MM-DD
+): Promise<{ success: boolean; report?: any; error?: string; status?: number }> {
+  const url = `https://api.xero.com/api.xro/2.0/Reports/BalanceSheet?date=${reportDate}&periods=1&timeframe=MONTH&standardLayout=true`;
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'xero-tenant-id': tenantId,
+      'Accept': 'application/json',
+    },
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    return { success: false, error: errText, status: response.status };
+  }
+  const data = await response.json();
+  return { success: true, report: data?.Reports?.[0] };
+}
+
+// Parse BS report → Map<account_name, { value, section, account_type }>
+// Skips Section headers, SummaryRow subtotals, and unmapped sections.
+function parseSingleMonthBSReport(
+  report: any,
+): Map<string, { value: number; section: string; account_type: 'asset' | 'liability' | 'equity' }> {
+  const accounts = new Map<string, { value: number; section: string; account_type: 'asset' | 'liability' | 'equity' }>();
+  const rows = report?.Rows || [];
+  for (const row of rows) {
+    if (row.RowType !== 'Section' || !row.Rows) continue;
+    const sectionTitle = (row.Title || '').trim();
+    const mappedType = mapBSSectionToType(sectionTitle);
+    if (!mappedType) continue;
+    for (const inner of row.Rows) {
+      if (inner.RowType !== 'Row' || !inner.Cells) continue; // skip SummaryRow subtotals
+      const name = inner.Cells[0]?.Value;
+      if (!name) continue;
+      const raw = inner.Cells[1]?.Value ?? '';
+      if (!raw.trim()) continue;
+      const value = parseFloat(raw.replace(/,/g, ''));
+      if (isNaN(value)) continue;
+      accounts.set(name, { value, section: sectionTitle, account_type: mappedType });
+    }
+  }
+  return accounts;
+}
+
 export async function POST(request: NextRequest) {
   // Stage tracker — included in error responses to aid debugging
   let stage = 'init';
@@ -303,6 +361,75 @@ export async function POST(request: NextRequest) {
         if (insertError) {
           perTenantErrors.push({ tenant_id: tenantId, error: `Insert failed: ${insertError.message}` });
           continue;
+        }
+      }
+
+      // ── Balance Sheet snapshot sync (same tenant, 3 most-recent months) ──
+      // Scoped to 3 months to stay within Vercel's 60s function budget when
+      // 3 tenants × (13 P&L months + 3 BS months) × 500ms ≈ 24s. BS is a
+      // point-in-time snapshot, so each month-end gets its own row set.
+      stage = `fetch_monthly_bs:${tenantId}`;
+      const bsMonths = months.slice(0, 3); // most-recent 3 months
+      const tenantBSAccounts = new Map<string, {
+        business_id: string;
+        tenant_id: string;
+        account_name: string;
+        account_code: string | null;
+        account_type: 'asset' | 'liability' | 'equity';
+        section: string;
+        monthly_values: Record<string, number>;
+        updated_at: string;
+      }>();
+
+      for (const month of bsMonths) {
+        // Pacing — stay under Xero's 60/min limit
+        await new Promise((r) => setTimeout(r, 500));
+        const bsResult = await fetchSingleMonthBS(accessToken, tenantId, month.toDate);
+        if (!bsResult.success) {
+          console.warn(`[Sync Xero BS] ${tenantLabel} ${month.key}: ${bsResult.status} ${bsResult.error?.slice(0, 150)}`);
+          continue;
+        }
+        if (!bsResult.report) continue;
+
+        const bsAccounts = parseSingleMonthBSReport(bsResult.report);
+        for (const [name, data] of bsAccounts) {
+          const existing = tenantBSAccounts.get(name) || {
+            business_id: ids.bizId,
+            tenant_id: tenantId,
+            account_name: name,
+            account_code: null,
+            account_type: data.account_type,
+            section: data.section,
+            monthly_values: {} as Record<string, number>,
+            updated_at: new Date().toISOString(),
+          };
+          existing.monthly_values[month.key] = data.value;
+          tenantBSAccounts.set(name, existing);
+        }
+      }
+
+      const tenantBSLines = Array.from(tenantBSAccounts.values()).filter(
+        (l) => Object.keys(l.monthly_values).length > 0,
+      );
+
+      // Replace this tenant's BS rows (scoped)
+      stage = `db_delete_bs:${tenantId}`;
+      const { error: bsDeleteError } = await supabaseAdmin
+        .from('xero_balance_sheet_lines')
+        .delete()
+        .in('business_id', ids.all)
+        .eq('tenant_id', tenantId);
+      if (bsDeleteError) {
+        console.warn(`[Sync Xero BS] ${tenantLabel}: delete failed — ${bsDeleteError.message}`);
+      } else if (tenantBSLines.length > 0) {
+        stage = `db_insert_bs:${tenantId}`;
+        const { error: bsInsertError } = await supabaseAdmin
+          .from('xero_balance_sheet_lines')
+          .insert(tenantBSLines);
+        if (bsInsertError) {
+          console.warn(`[Sync Xero BS] ${tenantLabel}: insert failed — ${bsInsertError.message}`);
+        } else {
+          console.log(`[Sync Xero BS] ${tenantLabel}: ${tenantBSLines.length} BS accounts (${bsMonths.length} months)`);
         }
       }
 
