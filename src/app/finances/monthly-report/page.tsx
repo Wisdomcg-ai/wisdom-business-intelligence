@@ -36,9 +36,11 @@ import { useReconciliation } from './hooks/useReconciliation'
 import { useReportTemplates } from './hooks/useReportTemplates'
 import { useBalanceSheet } from './hooks/useBalanceSheet'
 import { useConsolidatedBalanceSheet } from './hooks/useConsolidatedBalanceSheet'
+import { useConsolidatedCashflow } from './hooks/useConsolidatedCashflow'
 import BalanceSheetTab from './components/BalanceSheetTab'
 import ConsolidatedPLTab from './components/ConsolidatedPLTab'
 import ConsolidatedBSTab from './components/ConsolidatedBSTab'
+import ConsolidatedCashflowTab from './components/ConsolidatedCashflowTab'
 import FXRateMissingBanner from './components/FXRateMissingBanner'
 import { loadSettings, getCurrentFiscalYear, getDefaultReportMonth } from './services/monthly-report-service'
 import { MonthlyReportPDFService } from './services/monthly-report-pdf-service'
@@ -79,7 +81,7 @@ export default function MonthlyReportPage() {
   const [activeTab, setActiveTab] = useState<ReportTab>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('monthly-report-active-tab')
-      if (saved && ['report', 'full-year', 'trends', 'charts', 'subscriptions', 'wages', 'cashflow', 'balance-sheet', 'balance-sheet-consolidated', 'mapping', 'history', 'consolidated'].includes(saved)) {
+      if (saved && ['report', 'full-year', 'trends', 'charts', 'subscriptions', 'wages', 'cashflow', 'balance-sheet', 'balance-sheet-consolidated', 'cashflow-consolidated', 'mapping', 'history', 'consolidated'].includes(saved)) {
         return saved as ReportTab
       }
     }
@@ -117,6 +119,15 @@ export default function MonthlyReportPage() {
     error: consolidatedBSError,
     generateBalanceSheet: generateConsolidatedBS,
   } = useConsolidatedBalanceSheet(businessId)
+
+  // Phase 34 Iteration 34.2 — consolidated Cashflow payload. Same detection
+  // query as the other two consolidation hooks; they will always agree.
+  const {
+    report: consolidatedCashflow,
+    isLoading: consolidatedCashflowLoading,
+    error: consolidatedCashflowError,
+    generateCashflow: generateConsolidatedCashflow,
+  } = useConsolidatedCashflow(businessId)
 
   const {
     fullYearReport,
@@ -420,6 +431,23 @@ export default function MonthlyReportPage() {
       generateConsolidatedBS(selectedMonth, fiscalYear)
     }
   }, [activeTab, isConsolidationGroup, consolidatedBS, consolidatedBSLoading, consolidatedBSError, businessId, selectedMonth, fiscalYear, generateConsolidatedBS])
+
+  // Phase 34 Iteration 34.2 — auto-load consolidated cashflow when the user
+  // switches to the cashflow-consolidated tab. Unlike P&L / BS, cashflow only
+  // depends on fiscalYear (not selectedMonth) — it's a 12-month forward view.
+  useEffect(() => {
+    if (
+      activeTab === 'cashflow-consolidated' &&
+      isConsolidationGroup === true &&
+      !consolidatedCashflow &&
+      !consolidatedCashflowLoading &&
+      !consolidatedCashflowError &&
+      businessId &&
+      fiscalYear
+    ) {
+      generateConsolidatedCashflow(fiscalYear)
+    }
+  }, [activeTab, isConsolidationGroup, consolidatedCashflow, consolidatedCashflowLoading, consolidatedCashflowError, businessId, fiscalYear, generateConsolidatedCashflow])
 
   // Fetch commentary after report generation — expenses over budget only
   const fetchCommentary = useCallback(async (reportData: GeneratedReport, existingCommentary?: VarianceCommentary) => {
@@ -756,6 +784,7 @@ export default function MonthlyReportPage() {
           showBalanceSheet={!!(settings?.sections.balance_sheet)}
           showConsolidated={isConsolidationGroup === true}
           showConsolidatedBS={isConsolidationGroup === true}
+          showConsolidatedCashflow={isConsolidationGroup === true}
         />
 
         {/* Tab Content */}
@@ -904,6 +933,21 @@ export default function MonthlyReportPage() {
               report={consolidatedBS}
               isLoading={consolidatedBSLoading}
               error={consolidatedBSError}
+            />
+          </>
+        )}
+
+        {/* Phase 34 Iteration 34.2 — Consolidated Cashflow tab */}
+        {activeTab === 'cashflow-consolidated' && isConsolidationGroup === true && (
+          <>
+            <FXRateMissingBanner
+              missingRates={consolidatedCashflow?.fx_context?.missing_rates ?? []}
+              onAddRate={() => router.push('/admin/consolidation')}
+            />
+            <ConsolidatedCashflowTab
+              report={consolidatedCashflow}
+              isLoading={consolidatedCashflowLoading}
+              error={consolidatedCashflowError}
             />
           </>
         )}
