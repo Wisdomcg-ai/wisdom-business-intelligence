@@ -30,6 +30,18 @@ export interface ConsolidationBusiness {
   id: string
   name: string
   presentation_currency: string // always 'AUD' for now
+  /**
+   * Hybrid budget mode (Phase 34 Step 2):
+   *   - 'single'     → ONE business-level forecast (tenant_id IS NULL) feeds
+   *                    the consolidated Budget column. Per-tenant budget
+   *                    columns stay undefined.
+   *   - 'per_tenant' → Each tenant has its own forecast; engine sums them into
+   *                    the consolidated Budget column. Falls back to the legacy
+   *                    tenant_id IS NULL forecast when NO tenant has a
+   *                    tenant-scoped forecast (backward compatibility).
+   * Defaults to 'single' at the DB layer.
+   */
+  consolidation_budget_mode: 'single' | 'per_tenant'
 }
 
 // One Xero tenant connected to a business (from xero_connections table).
@@ -147,5 +159,18 @@ export interface ConsolidatedReport {
     tenants_with_budget: number
     /** Tenants for which no budget was found (for UI warnings). */
     tenants_without_budget: string[]
+    /**
+     * Which budget mode the engine ran in (from businesses.consolidation_budget_mode).
+     * Phase 34 Step 2. The UI uses this to hide per-tenant Budget/Variance
+     * columns in 'single' mode.
+     */
+    budget_mode: 'single' | 'per_tenant'
+    /**
+     * In 'single' mode, whether the business-level (tenant_id IS NULL)
+     * forecast was actually found. False = the consolidated Budget column
+     * is all zeros until a coach creates a forecast. Absent in 'per_tenant'
+     * mode.
+     */
+    single_budget_found?: boolean
   }
 }
