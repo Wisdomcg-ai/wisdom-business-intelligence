@@ -48,6 +48,15 @@ interface Tenant {
   is_active: boolean
 }
 
+interface Forecast {
+  id: string
+  name: string
+  fiscal_year: number
+  tenant_id: string | null
+  forecast_type: string | null
+  is_active: boolean | null
+}
+
 interface FxRate {
   id: string
   currency_pair: string
@@ -105,6 +114,8 @@ export default function ConsolidationBusinessDetailPage() {
   const [drafts, setDrafts] = useState<Record<string, TenantDraft>>({})
   const [fxRates, setFxRates] = useState<FxRate[]>([])
   const [rules, setRules] = useState<EliminationRule[]>([])
+  const [forecasts, setForecasts] = useState<Forecast[]>([])
+  const [forecastSavingId, setForecastSavingId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [savingConnectionId, setSavingConnectionId] = useState<string | null>(
@@ -183,6 +194,28 @@ export default function ConsolidationBusinessDetailPage() {
         .order('active', { ascending: false })
       if (ruleErr) throw ruleErr
       setRules((ruleRows ?? []) as EliminationRule[])
+
+      // Financial forecasts — so the coach can assign each to a tenant.
+      // financial_forecasts.business_id FKs to business_profiles(id) in some
+      // installs; we try businesses.id first and fall back to the profile id
+      // (mirrors the ForecastService lookup pattern).
+      const idsToTry: string[] = [businessId]
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('business_id', businessId)
+        .maybeSingle()
+      if (profile?.id && profile.id !== businessId) {
+        idsToTry.push(profile.id)
+      }
+      const { data: forecastRows, error: forecastErr } = await supabase
+        .from('financial_forecasts')
+        .select('id, name, fiscal_year, tenant_id, forecast_type, is_active')
+        .in('business_id', idsToTry)
+        .order('fiscal_year', { ascending: false })
+        .order('updated_at', { ascending: false })
+      if (forecastErr) throw forecastErr
+      setForecasts((forecastRows ?? []) as Forecast[])
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg || 'Failed to load consolidation data')
@@ -338,6 +371,35 @@ export default function ConsolidationBusinessDetailPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg || 'Failed to delete FX rate')
+    }
+  }
+
+  // ---- Forecast tenant-assignment handler ----
+  const saveForecastTenant = async (
+    forecastId: string,
+    tenantId: string | null,
+  ) => {
+    setForecastSavingId(forecastId)
+    setError(null)
+    try {
+      const res = await fetch(
+        `/api/consolidation/forecasts/${encodeURIComponent(forecastId)}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: tenantId }),
+        },
+      )
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(body?.error ?? `Save failed (HTTP ${res.status})`)
+      }
+      await reload()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setError(msg || 'Failed to save forecast tenant assignment')
+    } finally {
+      setForecastSavingId(null)
     }
   }
 
@@ -765,6 +827,101 @@ export default function ConsolidationBusinessDetailPage() {
             </span>
           </div>
         )}
+      </section>
+
+      {/* Phase 34.3 — Forecast tenant assignment.
+          Each financial_forecasts row gets scoped to exactly one Xero tenant
+          so the consolidated P&L can sum per-tenant budgets into a
+          consolidated budget column. Selecting "Whole business (legacy)" stores
+          tenant_id = NULL and preserves pre-34.3 behaviour. */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Forecast tenant assignment</h2>
+          <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+            <Info className="w-3 h-3" /> Pick the Xero tenant each budget covers
+          </span>
+        </div>
+        {forecasts.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            No financial forecasts exist for this business yet. Create one via
+            the <Link href="/finances/forecast" className="text-brand-orange hover:underline">Forecast page</Link> — once saved, come back here to assign it to a tenant.
+          </p>
+        ) : (
+          <div className="border rounded-lg overflow-hidden bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium">Name</th>
+                  <th className="text-left px-3 py-2 font-medium">Fiscal year</th>
+                  <th className="text-left px-3 py-2 font-medium">Type</th>
+                  <th className="text-left px-3 py-2 font-medium">Tenant assignment</th>
+                  <th className="text-center px-3 py-2 font-medium">Active</th>
+                </tr>
+              </thead>
+              <tbody>
+                {forecasts.map(f => {
+                  const saving = forecastSavingId === f.id
+                  return (
+                    <tr key={f.id} className="border-b hover:bg-gray-50">
+                      <td className="px-3 py-2">{f.name}</td>
+                      <td className="px-3 py-2 tabular-nums">{f.fiscal_year}</td>
+                      <td className="px-3 py-2 text-xs">
+                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                          {f.forecast_type ?? 'forecast'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <select
+                            disabled={saving}
+                            value={f.tenant_id ?? ''}
+                            onChange={e =>
+                              saveForecastTenant(
+                                f.id,
+                                e.target.value === '' ? null : e.target.value,
+                              )
+                            }
+                            className="px-2 py-1 border rounded text-xs min-w-[200px]"
+                          >
+                            <option value="">
+                              Whole business (legacy / consolidated)
+                            </option>
+                            {tenants
+                              .filter(t => t.is_active && t.include_in_consolidation)
+                              .map(t => (
+                                <option key={t.id} value={t.tenant_id}>
+                                  {t.display_name ?? t.tenant_name ?? t.tenant_id}
+                                </option>
+                              ))}
+                          </select>
+                          {saving && (
+                            <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {f.is_active ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                            active
+                          </span>
+                        ) : (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                            inactive
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-xs text-gray-500">
+          Legacy forecasts stay unassigned (NULL) and continue to work. Once a
+          forecast is assigned to a tenant, its P&amp;L lines feed the Budget
+          column for that tenant in the consolidated P&amp;L report.
+        </p>
       </section>
     </div>
   )
