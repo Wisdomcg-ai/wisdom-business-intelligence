@@ -129,17 +129,17 @@ const DRAGON_TENANT = 'tenant-dragon-roofing'
 const EASY_HAIL_TENANT = 'tenant-easy-hail'
 
 const dragonBSLines = [
-  { business_id: DRAGON_BIZ, tenant_id: DRAGON_TENANT, account_name: 'Bank', account_code: null, account_type: 'asset', section: 'Current Assets', monthly_values: { '2026-03-31': 684827 } },
-  { business_id: DRAGON_BIZ, tenant_id: DRAGON_TENANT, account_name: 'Fixed Assets', account_code: null, account_type: 'asset', section: 'Non-Current Assets', monthly_values: { '2026-03-31': 315173 } },
-  { business_id: DRAGON_BIZ, tenant_id: DRAGON_TENANT, account_name: 'Trade Payables', account_code: null, account_type: 'liability', section: 'Current Liabilities', monthly_values: { '2026-03-31': 284827 } },
-  { business_id: DRAGON_BIZ, tenant_id: DRAGON_TENANT, account_name: 'Loan Payable - Dragon Roofing', account_code: null, account_type: 'liability', section: 'Non-Current Liabilities', monthly_values: { '2026-03-31': 315173 } },
-  { business_id: DRAGON_BIZ, tenant_id: DRAGON_TENANT, account_name: 'Retained Earnings', account_code: null, account_type: 'equity', section: 'Equity', monthly_values: { '2026-03-31': 400000 } },
+  { business_id: DRAGON_BIZ, tenant_id: DRAGON_TENANT, account_name: 'Bank', account_code: null, account_type: 'asset', section: 'Current Assets', monthly_values: { '2026-03': 684827 } },
+  { business_id: DRAGON_BIZ, tenant_id: DRAGON_TENANT, account_name: 'Fixed Assets', account_code: null, account_type: 'asset', section: 'Non-Current Assets', monthly_values: { '2026-03': 315173 } },
+  { business_id: DRAGON_BIZ, tenant_id: DRAGON_TENANT, account_name: 'Trade Payables', account_code: null, account_type: 'liability', section: 'Current Liabilities', monthly_values: { '2026-03': 284827 } },
+  { business_id: DRAGON_BIZ, tenant_id: DRAGON_TENANT, account_name: 'Loan Payable - Dragon Roofing', account_code: null, account_type: 'liability', section: 'Non-Current Liabilities', monthly_values: { '2026-03': 315173 } },
+  { business_id: DRAGON_BIZ, tenant_id: DRAGON_TENANT, account_name: 'Retained Earnings', account_code: null, account_type: 'equity', section: 'Equity', monthly_values: { '2026-03': 400000 } },
 ]
 const easyHailBSLines = [
-  { business_id: DRAGON_BIZ, tenant_id: EASY_HAIL_TENANT, account_name: 'Bank', account_code: null, account_type: 'asset', section: 'Current Assets', monthly_values: { '2026-03-31': 184827 } },
-  { business_id: DRAGON_BIZ, tenant_id: EASY_HAIL_TENANT, account_name: 'Loan Receivable - Dragon Roofing', account_code: null, account_type: 'asset', section: 'Current Assets', monthly_values: { '2026-03-31': 315173 } },
-  { business_id: DRAGON_BIZ, tenant_id: EASY_HAIL_TENANT, account_name: 'Trade Payables', account_code: null, account_type: 'liability', section: 'Current Liabilities', monthly_values: { '2026-03-31': 100000 } },
-  { business_id: DRAGON_BIZ, tenant_id: EASY_HAIL_TENANT, account_name: 'Retained Earnings', account_code: null, account_type: 'equity', section: 'Equity', monthly_values: { '2026-03-31': 400000 } },
+  { business_id: DRAGON_BIZ, tenant_id: EASY_HAIL_TENANT, account_name: 'Bank', account_code: null, account_type: 'asset', section: 'Current Assets', monthly_values: { '2026-03': 184827 } },
+  { business_id: DRAGON_BIZ, tenant_id: EASY_HAIL_TENANT, account_name: 'Loan Receivable - Dragon Roofing', account_code: null, account_type: 'asset', section: 'Current Assets', monthly_values: { '2026-03': 315173 } },
+  { business_id: DRAGON_BIZ, tenant_id: EASY_HAIL_TENANT, account_name: 'Trade Payables', account_code: null, account_type: 'liability', section: 'Current Liabilities', monthly_values: { '2026-03': 100000 } },
+  { business_id: DRAGON_BIZ, tenant_id: EASY_HAIL_TENANT, account_name: 'Retained Earnings', account_code: null, account_type: 'equity', section: 'Equity', monthly_values: { '2026-03': 400000 } },
 ]
 
 const dragonLoanRule = {
@@ -263,13 +263,13 @@ describe('POST /api/monthly-report/consolidated-bs', () => {
       ],
       xero_balance_sheet_lines: [
         // HKD-denominated, at rate 0.1925 translates to AUD
-        { business_id: IICT_BIZ, tenant_id: HK_TENANT, account_name: 'Cash', account_code: null, account_type: 'asset', section: 'Current Assets', monthly_values: { '2026-03-31': 10000 } },
-        { business_id: IICT_BIZ, tenant_id: HK_TENANT, account_name: 'Payables', account_code: null, account_type: 'liability', section: 'Current Liabilities', monthly_values: { '2026-03-31': 6000 } },
-        { business_id: IICT_BIZ, tenant_id: HK_TENANT, account_name: 'Retained Earnings', account_code: null, account_type: 'equity', section: 'Equity', monthly_values: { '2026-03-31': 4000 } },
+        { business_id: IICT_BIZ, tenant_id: HK_TENANT, account_name: 'Cash', account_code: null, account_type: 'asset', section: 'Current Assets', monthly_values: { '2026-03': 10000 } },
+        { business_id: IICT_BIZ, tenant_id: HK_TENANT, account_name: 'Payables', account_code: null, account_type: 'liability', section: 'Current Liabilities', monthly_values: { '2026-03': 6000 } },
+        { business_id: IICT_BIZ, tenant_id: HK_TENANT, account_name: 'Retained Earnings', account_code: null, account_type: 'equity', section: 'Equity', monthly_values: { '2026-03': 4000 } },
         // AUD already
-        { business_id: IICT_BIZ, tenant_id: AU_TENANT, account_name: 'Cash', account_code: null, account_type: 'asset', section: 'Current Assets', monthly_values: { '2026-03-31': 5000 } },
-        { business_id: IICT_BIZ, tenant_id: AU_TENANT, account_name: 'Payables', account_code: null, account_type: 'liability', section: 'Current Liabilities', monthly_values: { '2026-03-31': 2000 } },
-        { business_id: IICT_BIZ, tenant_id: AU_TENANT, account_name: 'Retained Earnings', account_code: null, account_type: 'equity', section: 'Equity', monthly_values: { '2026-03-31': 3000 } },
+        { business_id: IICT_BIZ, tenant_id: AU_TENANT, account_name: 'Cash', account_code: null, account_type: 'asset', section: 'Current Assets', monthly_values: { '2026-03': 5000 } },
+        { business_id: IICT_BIZ, tenant_id: AU_TENANT, account_name: 'Payables', account_code: null, account_type: 'liability', section: 'Current Liabilities', monthly_values: { '2026-03': 2000 } },
+        { business_id: IICT_BIZ, tenant_id: AU_TENANT, account_name: 'Retained Earnings', account_code: null, account_type: 'equity', section: 'Equity', monthly_values: { '2026-03': 3000 } },
       ],
       consolidation_elimination_rules: [],
       fx_rates: [
@@ -345,7 +345,7 @@ describe('POST /api/monthly-report/consolidated-bs', () => {
         { id: 'c-hk', business_id: IICT_BIZ, tenant_id: HK_TENANT, tenant_name: 'IICT Group Limited', display_name: 'IICT Group Limited', display_order: 0, functional_currency: 'HKD', include_in_consolidation: true, is_active: true },
       ],
       xero_balance_sheet_lines: [
-        { business_id: IICT_BIZ, tenant_id: HK_TENANT, account_name: 'Cash', account_code: null, account_type: 'asset', section: 'Current Assets', monthly_values: { '2026-03-31': 10000 } },
+        { business_id: IICT_BIZ, tenant_id: HK_TENANT, account_name: 'Cash', account_code: null, account_type: 'asset', section: 'Current Assets', monthly_values: { '2026-03': 10000 } },
       ],
       consolidation_elimination_rules: [],
       fx_rates: [], // no closing-spot rate for 2026-03-31

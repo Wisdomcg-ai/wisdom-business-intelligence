@@ -168,13 +168,16 @@ function buildBSEntityColumn(
   for (const line of dedupedLines) {
     byKey.set(accountAlignmentKey(line), line)
   }
+  // monthly_values is keyed YYYY-MM (e.g. '2026-03'); asOfDate is a full
+  // month-end date (e.g. '2026-03-31'). Normalise before lookup.
+  const monthKey = asOfDate.slice(0, 7)
   const rows: BSRow[] = universe.map((u) => {
     const existing = byKey.get(u.key)
     return {
       account_type: u.account_type,
       account_name: u.account_name,
       section: existing?.section ?? u.section,
-      balance: existing?.monthly_values?.[asOfDate] ?? 0,
+      balance: existing?.monthly_values?.[monthKey] ?? 0,
     }
   })
   return {
