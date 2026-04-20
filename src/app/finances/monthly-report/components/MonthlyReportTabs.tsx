@@ -15,6 +15,8 @@ interface MonthlyReportTabsProps {
   showBalanceSheet?: boolean
   /** Phase 34: true when the active business is a consolidation parent. */
   showConsolidated?: boolean
+  /** Phase 34 Iteration 34.1: true when consolidation parent + BS section enabled. */
+  showConsolidatedBS?: boolean
 }
 
 type TabDef = { id: ReportTab; label: string; icon: typeof BarChart3 }
@@ -30,7 +32,7 @@ const endTabs: TabDef[] = [
   { id: 'history', label: 'Report History', icon: Clock },
 ]
 
-export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped, showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated }: MonthlyReportTabsProps) {
+export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped, showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated, showConsolidatedBS }: MonthlyReportTabsProps) {
   const tabs = useMemo(() => {
     const result = [...baseTabs]
     // Consolidated P&L — only for consolidation parents. Insert near the top
@@ -53,9 +55,15 @@ export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped,
     if (showBalanceSheet) {
       result.push({ id: 'balance-sheet', label: 'Balance Sheet', icon: Scale })
     }
+    // Iteration 34.1: Consolidated BS tab — only for consolidation parents.
+    // Placed next to the single-entity Balance Sheet so switching between the
+    // two views is one click.
+    if (showConsolidatedBS) {
+      result.push({ id: 'balance-sheet-consolidated', label: 'Consolidated BS', icon: Scale })
+    }
     result.push(...endTabs)
     return result
-  }, [showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated])
+  }, [showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated, showConsolidatedBS])
 
   return (
     <div className="bg-white rounded-lg shadow-sm mb-6">

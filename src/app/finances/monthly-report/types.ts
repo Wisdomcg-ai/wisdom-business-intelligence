@@ -1,6 +1,6 @@
 // Monthly Report Types
 
-export type ReportTab = 'report' | 'full-year' | 'trends' | 'charts' | 'subscriptions' | 'wages' | 'cashflow' | 'balance-sheet' | 'mapping' | 'history' | 'consolidated'
+export type ReportTab = 'report' | 'full-year' | 'trends' | 'charts' | 'subscriptions' | 'wages' | 'cashflow' | 'balance-sheet' | 'balance-sheet-consolidated' | 'mapping' | 'history' | 'consolidated'
 
 export type ReportStatus = 'draft' | 'final'
 

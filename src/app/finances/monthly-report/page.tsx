@@ -35,8 +35,10 @@ import { useAccountMappings } from './hooks/useAccountMappings'
 import { useReconciliation } from './hooks/useReconciliation'
 import { useReportTemplates } from './hooks/useReportTemplates'
 import { useBalanceSheet } from './hooks/useBalanceSheet'
+import { useConsolidatedBalanceSheet } from './hooks/useConsolidatedBalanceSheet'
 import BalanceSheetTab from './components/BalanceSheetTab'
 import ConsolidatedPLTab from './components/ConsolidatedPLTab'
+import ConsolidatedBSTab from './components/ConsolidatedBSTab'
 import FXRateMissingBanner from './components/FXRateMissingBanner'
 import { loadSettings, getCurrentFiscalYear, getDefaultReportMonth } from './services/monthly-report-service'
 import { MonthlyReportPDFService } from './services/monthly-report-pdf-service'
@@ -77,7 +79,7 @@ export default function MonthlyReportPage() {
   const [activeTab, setActiveTab] = useState<ReportTab>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('monthly-report-active-tab')
-      if (saved && ['report', 'full-year', 'trends', 'charts', 'subscriptions', 'wages', 'cashflow', 'balance-sheet', 'mapping', 'history', 'consolidated'].includes(saved)) {
+      if (saved && ['report', 'full-year', 'trends', 'charts', 'subscriptions', 'wages', 'cashflow', 'balance-sheet', 'balance-sheet-consolidated', 'mapping', 'history', 'consolidated'].includes(saved)) {
         return saved as ReportTab
       }
     }
@@ -105,6 +107,16 @@ export default function MonthlyReportPage() {
     error: consolidatedError,
     generateConsolidated,
   } = useConsolidatedReport(businessId)
+
+  // Phase 34 Iteration 34.1 — consolidated Balance Sheet payload.
+  // `isConsolidationGroup` in this hook agrees with the P&L hook above
+  // (same detection query), so we don't duplicate that flag into page state.
+  const {
+    report: consolidatedBS,
+    isLoading: consolidatedBSLoading,
+    error: consolidatedBSError,
+    generateBalanceSheet: generateConsolidatedBS,
+  } = useConsolidatedBalanceSheet(businessId)
 
   const {
     fullYearReport,
@@ -390,6 +402,24 @@ export default function MonthlyReportPage() {
       generateConsolidated(selectedMonth, fiscalYear)
     }
   }, [activeTab, isConsolidationGroup, consolidatedReport, consolidatedLoading, consolidatedError, businessId, selectedMonth, fiscalYear, generateConsolidated])
+
+  // Phase 34 Iteration 34.1 — mirror the P&L auto-load for the Consolidated BS
+  // tab. Fire when the user switches to balance-sheet-consolidated AND this
+  // business is a consolidation parent AND no report has been loaded yet.
+  useEffect(() => {
+    if (
+      activeTab === 'balance-sheet-consolidated' &&
+      isConsolidationGroup === true &&
+      !consolidatedBS &&
+      !consolidatedBSLoading &&
+      !consolidatedBSError &&
+      businessId &&
+      selectedMonth &&
+      fiscalYear
+    ) {
+      generateConsolidatedBS(selectedMonth, fiscalYear)
+    }
+  }, [activeTab, isConsolidationGroup, consolidatedBS, consolidatedBSLoading, consolidatedBSError, businessId, selectedMonth, fiscalYear, generateConsolidatedBS])
 
   // Fetch commentary after report generation — expenses over budget only
   const fetchCommentary = useCallback(async (reportData: GeneratedReport, existingCommentary?: VarianceCommentary) => {
@@ -725,6 +755,7 @@ export default function MonthlyReportPage() {
           showCharts={!!(settings?.sections && Object.entries(settings.sections).some(([k, v]) => k.startsWith('chart_') && v))}
           showBalanceSheet={!!(settings?.sections.balance_sheet)}
           showConsolidated={isConsolidationGroup === true}
+          showConsolidatedBS={isConsolidationGroup === true}
         />
 
         {/* Tab Content */}
@@ -858,6 +889,21 @@ export default function MonthlyReportPage() {
               reportMonth={selectedMonth}
               isLoading={consolidatedLoading}
               error={consolidatedError}
+            />
+          </>
+        )}
+
+        {/* Phase 34 Iteration 34.1 — Consolidated Balance Sheet tab */}
+        {activeTab === 'balance-sheet-consolidated' && isConsolidationGroup === true && (
+          <>
+            <FXRateMissingBanner
+              missingRates={consolidatedBS?.fx_context?.missing_rates ?? []}
+              onAddRate={() => router.push('/admin/consolidation')}
+            />
+            <ConsolidatedBSTab
+              report={consolidatedBS}
+              isLoading={consolidatedBSLoading}
+              error={consolidatedBSError}
             />
           </>
         )}
