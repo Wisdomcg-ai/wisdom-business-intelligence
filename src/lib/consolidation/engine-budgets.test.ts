@@ -229,7 +229,11 @@ describe('buildConsolidation integration — budget piping via tenantBudgets opt
             select: () => ({
               eq: () => ({
                 single: async () => ({
-                  data: { id: DRAGON_ROOFING_BIZ, name: 'Dragon Group' },
+                  data: {
+                    id: DRAGON_ROOFING_BIZ,
+                    name: 'Dragon Group',
+                    consolidation_budget_mode: 'per_tenant',
+                  },
                   error: null,
                 }),
               }),

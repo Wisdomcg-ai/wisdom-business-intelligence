@@ -72,10 +72,23 @@ export interface BuildConsolidationOpts {
    * Key = tenant_id, value = forecast lines (already aligned or raw).
    */
   tenantBudgets?: Map<string, ForecastLineLike[]>
+  /**
+   * Inject a pre-built single business-level budget (tenant_id IS NULL
+   * forecast). Only consulted when the business's budget mode is 'single',
+   * OR as the 'per_tenant' fallback when no tenant-scoped forecasts exist.
+   * Tests inject this directly to avoid mocking financial_forecasts queries.
+   */
+  singleBusinessBudget?: ForecastLineLike[] | null
 }
 
 /**
  * Load business metadata + its active, consolidation-included Xero tenants.
+ *
+ * Phase 34 Step 2: also reads `businesses.consolidation_budget_mode` so the
+ * engine can branch between the single-budget and per-tenant-budget modes.
+ * The column is expected to exist (migration `20260420195612_consolidation_budget_mode.sql`)
+ * but we defensively coalesce to 'single' for rows loaded before the column
+ * was added (test fixtures, legacy installs).
  */
 export async function loadBusinessContext(
   supabase: any,
@@ -83,7 +96,7 @@ export async function loadBusinessContext(
 ): Promise<LoadedContext> {
   const { data: business, error: bErr } = await supabase
     .from('businesses')
-    .select('id, name')
+    .select('id, name, consolidation_budget_mode')
     .eq('id', businessId)
     .single()
   if (bErr || !business) {
@@ -111,11 +124,17 @@ export async function loadBusinessContext(
     include_in_consolidation: c.include_in_consolidation ?? true,
   }))
 
+  // Normalise budget mode. Anything unrecognised → 'single' (safest default).
+  const rawMode = (business as any).consolidation_budget_mode
+  const budgetMode: 'single' | 'per_tenant' =
+    rawMode === 'per_tenant' ? 'per_tenant' : 'single'
+
   return {
     business: {
       id: business.id,
       name: business.name,
       presentation_currency: 'AUD', // hardcoded for now — could add to businesses column later
+      consolidation_budget_mode: budgetMode,
     },
     tenants,
   }
@@ -312,6 +331,82 @@ export async function loadTenantBudgets(
 }
 
 /**
+ * Load the single business-level forecast (tenant_id IS NULL) for the given
+ * fiscal year. Used by:
+ *   - 'single' budget mode: the ONLY forecast that feeds consolidated.budgetLines
+ *   - 'per_tenant' fallback: when zero tenants have a tenant-scoped forecast
+ *     for the fiscal year, we fall back to the legacy business-level forecast
+ *     so existing workflows keep rendering.
+ *
+ * Returns null when no such forecast exists; returns its aligned lines otherwise.
+ */
+export async function loadSingleBusinessBudget(
+  supabase: any,
+  businessId: string,
+  fiscalYear: number,
+): Promise<ForecastLineLike[] | null> {
+  const ids = await resolveBusinessIds(supabase, businessId)
+
+  const { data: forecasts, error } = await supabase
+    .from('financial_forecasts')
+    .select('id')
+    .in('business_id', ids.all)
+    .is('tenant_id', null)
+    .eq('fiscal_year', fiscalYear)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+  if (error) {
+    throw new Error(
+      `[Consolidation Engine] Failed to load business-level forecast: ${error.message}`,
+    )
+  }
+  const forecastId = forecasts?.[0]?.id
+  if (!forecastId) return null
+
+  const { data: plRows, error: plErr } = await supabase
+    .from('forecast_pl_lines')
+    .select('account_name, account_type, account_class, category, actual_months, forecast_months')
+    .eq('forecast_id', forecastId)
+  if (plErr) {
+    throw new Error(
+      `[Consolidation Engine] Failed to load forecast_pl_lines for forecast ${forecastId}: ${plErr.message}`,
+    )
+  }
+  return (plRows ?? []).map(normaliseForecastLine)
+}
+
+/**
+ * Align a flat ForecastLineLike[] to the engine's account universe. Produces
+ * a ConsolidatedLine[] with every universe row present (zero-filled if the
+ * source budget doesn't mention that account) and every fy month populated.
+ *
+ * Used by 'single' mode to produce the `consolidated.budgetLines` column
+ * directly from the business-level forecast (no per-tenant stitching).
+ */
+export function alignBudgetToUniverse(
+  budget: ForecastLineLike[],
+  universe: AlignedAccount[],
+  fyMonths: readonly string[],
+): ConsolidatedLine[] {
+  const byKey = new Map<string, ForecastLineLike>()
+  for (const line of budget) {
+    byKey.set(accountAlignmentKey(line), line)
+  }
+  return universe.map((u) => {
+    const existing = byKey.get(u.key)
+    const monthly: Record<string, number> = {}
+    for (const m of fyMonths) {
+      monthly[m] = existing?.monthly_values[m] ?? 0
+    }
+    return {
+      account_type: u.account_type,
+      account_name: u.account_name,
+      monthly_values: monthly,
+    }
+  })
+}
+
+/**
  * Build per-tenant budget columns aligned to the P&L universe.
  *
  * For each tenant we emit a ForecastLineLike[] with EXACTLY the same
@@ -436,12 +531,56 @@ export async function buildConsolidation(
     }),
   )
 
-  // 5. Load per-tenant budgets (Phase 34.3) — used to build per-tenant
-  //    budget columns + a summed consolidated budget. Loaded BEFORE the
-  //    universe so budget accounts contribute to the account universe too
-  //    (otherwise a budgeted-but-not-actualised account wouldn't render).
-  const budgetsByTenant = opts.tenantBudgets
-    ?? (await loadTenantBudgets(supabase, opts.businessId, tenants, opts.fiscalYear))
+  // 5. Load budgets (Phase 34.3 → 34-step2 hybrid mode).
+  //
+  //    Two modes (businesses.consolidation_budget_mode):
+  //      'single'     → load ONE business-level forecast (tenant_id IS NULL).
+  //                     Per-tenant budgets are INTENTIONALLY empty.
+  //      'per_tenant' → load one forecast per tenant (existing behaviour).
+  //                     Fallback: if NO tenants have a tenant-scoped forecast
+  //                     for this fy, we use the tenant_id IS NULL forecast to
+  //                     avoid a silent zero-budget regression for installs
+  //                     that pre-date the mode toggle.
+  //
+  //    Both branches produce `budgetsByTenant` (Map<tenant_id, lines>) and
+  //    `singleModeBudget` (ForecastLineLike[] | null) — exactly one of them
+  //    will be non-empty per run. The universe builder consumes both.
+  const budgetMode: 'single' | 'per_tenant' = business.consolidation_budget_mode
+
+  let budgetsByTenant = new Map<string, ForecastLineLike[]>()
+  let singleModeBudget: ForecastLineLike[] | null = null
+  let singleBudgetFound = false
+  let fallbackFired = false
+
+  if (budgetMode === 'single') {
+    // Single mode: one forecast drives consolidated.budgetLines. Tests can
+    // inject singleBusinessBudget; otherwise the engine loads it.
+    const loaded =
+      opts.singleBusinessBudget !== undefined
+        ? opts.singleBusinessBudget
+        : await loadSingleBusinessBudget(supabase, opts.businessId, opts.fiscalYear)
+    singleModeBudget = loaded
+    singleBudgetFound = loaded !== null && loaded.length > 0
+  } else {
+    // Per-tenant mode: each tenant has its own forecast.
+    budgetsByTenant = opts.tenantBudgets
+      ?? (await loadTenantBudgets(supabase, opts.businessId, tenants, opts.fiscalYear))
+
+    // Legacy fallback: if NO tenants have a tenant-scoped forecast, fall
+    // back to the business-level (tenant_id IS NULL) forecast. This keeps
+    // pre-34-step2 installs working — they have one legacy forecast and
+    // mode defaulted to 'per_tenant' would otherwise render zero budgets.
+    if (budgetsByTenant.size === 0) {
+      const fallback =
+        opts.singleBusinessBudget !== undefined
+          ? opts.singleBusinessBudget
+          : await loadSingleBusinessBudget(supabase, opts.businessId, opts.fiscalYear)
+      if (fallback && fallback.length > 0) {
+        singleModeBudget = fallback
+        fallbackFired = true
+      }
+    }
+  }
 
   // 6. Build universe — include budget accounts so budget-only rows render.
   //    The consolidation account universe is the union of actuals + budget
@@ -464,6 +603,20 @@ export async function buildConsolidation(
       })),
     )
   }
+  if (singleModeBudget && singleModeBudget.length > 0) {
+    // Single-mode (or fallback) budget also contributes accounts to the universe.
+    budgetLinesForUniverse.push(
+      singleModeBudget.map((r) => ({
+        business_id: '',
+        tenant_id: null,
+        account_name: r.account_name,
+        account_code: null,
+        account_type: r.account_type,
+        section: '',
+        monthly_values: r.monthly_values,
+      })),
+    )
+  }
   const universe = buildAlignedAccountUniverse([
     ...translated.map((t) => t.lines),
     ...budgetLinesForUniverse,
@@ -474,14 +627,15 @@ export async function buildConsolidation(
     buildEntityColumn(t.tenant, t.lines, universe, opts.fyMonths),
   )
 
-  // 8. Per-tenant budget columns aligned to the universe (omitted for
-  //    tenants with no budget — we'll record those for the diagnostics).
-  const budgetColumns = buildTenantBudgetColumns(
-    tenants,
-    budgetsByTenant,
-    universe,
-    opts.fyMonths,
-  )
+  // 8. Per-tenant budget columns aligned to the universe.
+  //    - 'single' mode: all columns null (no per-tenant budget by design).
+  //    - 'per_tenant' mode: build per-tenant columns normally. When the
+  //      legacy fallback fired, per-tenant budgetLines stay undefined — the
+  //      consolidated column will carry the business-level forecast instead.
+  const budgetColumns =
+    budgetMode === 'per_tenant' && !fallbackFired
+      ? buildTenantBudgetColumns(tenants, budgetsByTenant, universe, opts.fyMonths)
+      : tenants.map(() => null as null | { tenantId: string; lines: ForecastLineLike[] })
 
   // Stitch budget columns onto byTenant so the API/UI get one cohesive object.
   const byTenant: EntityColumn[] = byTenantActuals.map((col, idx) => {
@@ -492,17 +646,29 @@ export async function buildConsolidation(
     return col
   })
 
-  const tenantsWithBudget = budgetColumns.filter((b) => b !== null).length
-  const tenantsWithoutBudget = tenants
-    .filter((t) => !budgetsByTenant.has(t.tenant_id))
-    .map((t) => t.tenant_id)
+  // Budget-coverage diagnostics differ per mode:
+  //   - 'single': tenants_with_budget is always 0 (per-tenant cols unused);
+  //     `tenants_without_budget` stays empty (it's not meaningful in this mode).
+  //   - 'per_tenant': count non-null columns; list tenants without a forecast.
+  //     When the legacy fallback fired, all tenants are flagged as "without"
+  //     because the budget sits at the business level.
+  const tenantsWithBudget =
+    budgetMode === 'per_tenant' ? budgetColumns.filter((b) => b !== null).length : 0
+  const tenantsWithoutBudget =
+    budgetMode === 'per_tenant'
+      ? tenants.filter((t) => !budgetsByTenant.has(t.tenant_id)).map((t) => t.tenant_id)
+      : []
 
   // 9. Elimination application — business-scoped rules, filter BS-only (intercompany_loan)
   const allRules = await loadEliminationRulesForBusiness(supabase, opts.businessId)
   const plRules = allRules.filter((r) => r.rule_type !== 'intercompany_loan')
   const eliminations = applyEliminations(plRules, byTenant, opts.reportMonth)
 
-  // 10. Combine actuals (with eliminations) and budgets (sum only, no eliminations).
+  // 10. Combine actuals (with eliminations) and budgets.
+  //     Budget combination branches on mode:
+  //       - 'single'     → align the business-level budget (or zeros) to the universe.
+  //       - 'per_tenant' → sum per-tenant budget columns; when the fallback
+  //                        fired, fall back to the business-level budget too.
   const consolidatedActuals = combineTenants(
     byTenant,
     universe,
@@ -510,7 +676,16 @@ export async function buildConsolidation(
     opts.fyMonths,
     opts.reportMonth,
   )
-  const consolidatedBudget = combineTenantBudgets(budgetColumns, universe, opts.fyMonths)
+
+  let consolidatedBudget: ConsolidatedLine[]
+  if (singleModeBudget && singleModeBudget.length > 0) {
+    consolidatedBudget = alignBudgetToUniverse(singleModeBudget, universe, opts.fyMonths)
+  } else if (budgetMode === 'per_tenant') {
+    consolidatedBudget = combineTenantBudgets(budgetColumns, universe, opts.fyMonths)
+  } else {
+    // Single mode with no forecast found → zero-filled universe.
+    consolidatedBudget = alignBudgetToUniverse([], universe, opts.fyMonths)
+  }
 
   const totalLines = deduped.reduce((acc, d) => acc + d.lines.length, 0)
 
@@ -531,6 +706,10 @@ export async function buildConsolidation(
       processing_ms: Date.now() - startedAt,
       tenants_with_budget: tenantsWithBudget,
       tenants_without_budget: tenantsWithoutBudget,
+      budget_mode: budgetMode,
+      // Only surface single_budget_found in 'single' mode. In 'per_tenant'
+      // mode the flag isn't meaningful (even if the fallback fired).
+      ...(budgetMode === 'single' ? { single_budget_found: singleBudgetFound } : {}),
     },
   }
 }
