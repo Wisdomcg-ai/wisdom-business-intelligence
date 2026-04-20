@@ -17,6 +17,8 @@ interface MonthlyReportTabsProps {
   showConsolidated?: boolean
   /** Phase 34 Iteration 34.1: true when consolidation parent + BS section enabled. */
   showConsolidatedBS?: boolean
+  /** Phase 34 Iteration 34.2: true when consolidation parent + cashflow section enabled. */
+  showConsolidatedCashflow?: boolean
 }
 
 type TabDef = { id: ReportTab; label: string; icon: typeof BarChart3 }
@@ -32,7 +34,7 @@ const endTabs: TabDef[] = [
   { id: 'history', label: 'Report History', icon: Clock },
 ]
 
-export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped, showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated, showConsolidatedBS }: MonthlyReportTabsProps) {
+export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped, showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated, showConsolidatedBS, showConsolidatedCashflow }: MonthlyReportTabsProps) {
   const tabs = useMemo(() => {
     const result = [...baseTabs]
     // Consolidated P&L — only for consolidation parents. Insert near the top
@@ -61,9 +63,14 @@ export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped,
     if (showConsolidatedBS) {
       result.push({ id: 'balance-sheet-consolidated', label: 'Consolidated BS', icon: Scale })
     }
+    // Iteration 34.2: Consolidated Cashflow tab — only for consolidation parents.
+    // Placed alongside the single-entity Cashflow / Consolidated BS tabs.
+    if (showConsolidatedCashflow) {
+      result.push({ id: 'cashflow-consolidated', label: 'Consolidated Cashflow', icon: DollarSign })
+    }
     result.push(...endTabs)
     return result
-  }, [showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated, showConsolidatedBS])
+  }, [showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated, showConsolidatedBS, showConsolidatedCashflow])
 
   return (
     <div className="bg-white rounded-lg shadow-sm mb-6">
