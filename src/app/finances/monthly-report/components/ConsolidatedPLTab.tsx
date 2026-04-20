@@ -22,7 +22,7 @@
  */
 
 import { Fragment, useState } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Info } from 'lucide-react'
 
 interface ForecastLineVM {
   account_type: string
@@ -78,6 +78,12 @@ interface ConsolidatedReportVM {
     processing_ms: number
     tenants_with_budget: number
     tenants_without_budget: string[]
+    /**
+     * Phase 34 Step 2 — hybrid budget mode. Optional for backward compat
+     * with cached/pre-Step-2 responses; code should defensively default.
+     */
+    budget_mode?: 'single' | 'per_tenant'
+    single_budget_found?: boolean
   }
 }
 
@@ -142,6 +148,13 @@ export default function ConsolidatedPLTab({
   const budgetLines = report.consolidated.budgetLines ?? []
   const tenantsWithoutBudget = report.diagnostics.tenants_without_budget ?? []
 
+  // Phase 34 Step 2 — budget mode drives per-tenant column visibility.
+  // Defaults to 'per_tenant' for responses from pre-Step-2 servers so the
+  // existing UI stays unchanged until the backend is upgraded.
+  const budgetMode: 'single' | 'per_tenant' =
+    report.diagnostics.budget_mode ?? 'per_tenant'
+  const isSingleMode = budgetMode === 'single'
+
   // Index budgets by alignment key for O(1) lookup
   const budgetByKey = new Map<string, ForecastLineVM>()
   for (const b of budgetLines) budgetByKey.set(alignmentKey(b), b)
@@ -201,12 +214,42 @@ export default function ConsolidatedPLTab({
     }
   })
 
-  const hasAnyBudget = report.byTenant.some((c) => c.budgetLines != null)
+  // "Do we have any budget data?"
+  //   - per_tenant: at least one tenant has budgetLines attached
+  //   - single:     the consolidated budgetLines column is populated AND the
+  //                 engine confirmed a business-level forecast was found (or
+  //                 diagnostic is absent on pre-Step-2 responses — fall back
+  //                 to checking non-empty budgetLines).
+  const hasAnyBudget = isSingleMode
+    ? report.diagnostics.single_budget_found !== false && budgetLines.length > 0
+    : report.byTenant.some((c) => c.budgetLines != null)
 
   return (
     <div className="space-y-4 bg-white rounded-lg shadow-sm p-4">
-      {/* No-budget warning banner — surfaces tenants missing a forecast for this FY */}
-      {tenantsWithoutBudget.length > 0 && (
+      {/* Phase 34 Step 2 — single-mode info banner.
+          In single mode, per-tenant Budget + Variance columns are hidden;
+          explain where to read Budget/Variance from. */}
+      {isSingleMode && (
+        <div className="p-3 rounded-lg border border-blue-200 bg-blue-50 text-xs text-blue-800 flex items-start gap-2">
+          <Info className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>
+            Budget tracked at the consolidation level. See the{' '}
+            <strong>Consolidated</strong> column for Budget and Variance.
+            {report.diagnostics.single_budget_found === false && (
+              <>
+                {' '}No business-level forecast found for this fiscal year —
+                Budget values are zero until one is created on the{' '}
+                <span className="font-medium">Forecast</span> page.
+              </>
+            )}
+          </span>
+        </div>
+      )}
+
+      {/* No-budget warning banner — per-tenant mode only, surfaces tenants
+          missing a forecast for this FY. Hidden in single mode because the
+          concept doesn't apply. */}
+      {!isSingleMode && tenantsWithoutBudget.length > 0 && (
         <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-800 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
           <span>
@@ -249,7 +292,8 @@ export default function ConsolidatedPLTab({
               {report.byTenant.map((col, idx) => (
                 <th
                   key={col.connection_id}
-                  colSpan={3}
+                  // Single mode: only Actual column per tenant (Budget + Variance hidden).
+                  colSpan={isSingleMode ? 1 : 3}
                   className={`text-center px-4 py-2 border-l whitespace-nowrap ${
                     idx === activeEntityIdx ? '' : 'hidden md:table-cell'
                   }`}
@@ -262,7 +306,8 @@ export default function ConsolidatedPLTab({
                       {report.business.presentation_currency})
                     </span>
                   )}
-                  {col.budgetLines == null && (
+                  {/* "(no budget)" hint is only meaningful in per-tenant mode. */}
+                  {!isSingleMode && col.budgetLines == null && (
                     <span className="block text-[10px] font-normal text-amber-700">
                       (no budget)
                     </span>
@@ -282,7 +327,8 @@ export default function ConsolidatedPLTab({
                 Consolidated
               </th>
             </tr>
-            {/* Row 2: Actual / Budget / Var $ subheaders */}
+            {/* Row 2: Actual / Budget / Var $ subheaders.
+                Single mode hides Budget + Var $ per tenant. */}
             <tr className="bg-gray-100">
               {report.byTenant.map((col, idx) => (
                 <Fragment key={col.connection_id}>
@@ -293,20 +339,24 @@ export default function ConsolidatedPLTab({
                   >
                     Actual
                   </th>
-                  <th
-                    className={`text-right px-3 py-1 text-[11px] font-medium ${
-                      idx === activeEntityIdx ? '' : 'hidden md:table-cell'
-                    }`}
-                  >
-                    Budget
-                  </th>
-                  <th
-                    className={`text-right px-3 py-1 text-[11px] font-medium ${
-                      idx === activeEntityIdx ? '' : 'hidden md:table-cell'
-                    }`}
-                  >
-                    Var $
-                  </th>
+                  {!isSingleMode && (
+                    <>
+                      <th
+                        className={`text-right px-3 py-1 text-[11px] font-medium ${
+                          idx === activeEntityIdx ? '' : 'hidden md:table-cell'
+                        }`}
+                      >
+                        Budget
+                      </th>
+                      <th
+                        className={`text-right px-3 py-1 text-[11px] font-medium ${
+                          idx === activeEntityIdx ? '' : 'hidden md:table-cell'
+                        }`}
+                      >
+                        Var $
+                      </th>
+                    </>
+                  )}
                 </Fragment>
               ))}
               <th className="sticky right-0 z-10 bg-gray-100 text-right px-3 py-1 text-[11px] font-medium border-l">
@@ -338,36 +388,42 @@ export default function ConsolidatedPLTab({
                     >
                       {fmt(cell.actual, { dash: true })}
                     </td>
-                    <td
-                      className={`text-right tabular-nums px-3 py-2 ${
-                        idx === activeEntityIdx ? '' : 'hidden md:table-cell'
-                      } ${
-                        !cell.hasBudget
-                          ? 'text-gray-300'
-                          : cell.budget < 0
-                            ? 'text-red-600'
-                            : 'text-gray-700'
-                      }`}
-                    >
-                      {cell.hasBudget ? fmt(cell.budget, { dash: true }) : '—'}
-                    </td>
-                    <td
-                      className={`text-right tabular-nums px-3 py-2 ${
-                        idx === activeEntityIdx ? '' : 'hidden md:table-cell'
-                      } ${
-                        !cell.hasBudget
-                          ? 'text-gray-300'
-                          : cell.variance < 0
-                            ? 'text-red-600'
-                            : cell.variance > 0
-                              ? 'text-green-700'
-                              : 'text-gray-500'
-                      }`}
-                    >
-                      {cell.hasBudget
-                        ? fmt(cell.variance, { dash: true })
-                        : '—'}
-                    </td>
+                    {!isSingleMode && (
+                      <>
+                        <td
+                          className={`text-right tabular-nums px-3 py-2 ${
+                            idx === activeEntityIdx ? '' : 'hidden md:table-cell'
+                          } ${
+                            !cell.hasBudget
+                              ? 'text-gray-300'
+                              : cell.budget < 0
+                                ? 'text-red-600'
+                                : 'text-gray-700'
+                          }`}
+                        >
+                          {cell.hasBudget
+                            ? fmt(cell.budget, { dash: true })
+                            : '—'}
+                        </td>
+                        <td
+                          className={`text-right tabular-nums px-3 py-2 ${
+                            idx === activeEntityIdx ? '' : 'hidden md:table-cell'
+                          } ${
+                            !cell.hasBudget
+                              ? 'text-gray-300'
+                              : cell.variance < 0
+                                ? 'text-red-600'
+                                : cell.variance > 0
+                                  ? 'text-green-700'
+                                  : 'text-gray-500'
+                          }`}
+                        >
+                          {cell.hasBudget
+                            ? fmt(cell.variance, { dash: true })
+                            : '—'}
+                        </td>
+                      </>
+                    )}
                   </Fragment>
                 ))}
                 <td
@@ -452,13 +508,26 @@ export default function ConsolidatedPLTab({
         </details>
       )}
 
-      {/* Diagnostics footer — tenants loaded, budget coverage, lines processed. */}
+      {/* Diagnostics footer — tenants loaded, budget coverage, lines processed.
+          Single mode reports whether the business-level forecast was found
+          instead of per-tenant counts (which are 0 by design in single mode). */}
       <div className="text-xs text-gray-500">
-        Tenants loaded: {report.diagnostics.tenants_loaded} · With budget:{' '}
-        {report.diagnostics.tenants_with_budget}/
-        {report.diagnostics.tenants_loaded} · Lines processed:{' '}
-        {report.diagnostics.total_lines_processed} · Processing:{' '}
-        {report.diagnostics.processing_ms}ms
+        Tenants loaded: {report.diagnostics.tenants_loaded}
+        {isSingleMode ? (
+          <>
+            {' '}· Mode: single · Business budget:{' '}
+            {report.diagnostics.single_budget_found === false
+              ? 'not found'
+              : 'loaded'}
+          </>
+        ) : (
+          <>
+            {' '}· With budget: {report.diagnostics.tenants_with_budget}/
+            {report.diagnostics.tenants_loaded}
+          </>
+        )}{' '}
+        · Lines processed: {report.diagnostics.total_lines_processed} ·
+        Processing: {report.diagnostics.processing_ms}ms
       </div>
     </div>
   )
