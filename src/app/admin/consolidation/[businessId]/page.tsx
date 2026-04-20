@@ -105,11 +105,15 @@ function makeDraft(t: Tenant): TenantDraft {
   }
 }
 
+type BudgetMode = 'single' | 'per_tenant'
+
 export default function ConsolidationBusinessDetailPage() {
   const params = useParams<{ businessId: string }>()
   const businessId = params?.businessId as string
 
   const [businessName, setBusinessName] = useState<string>('')
+  const [budgetMode, setBudgetMode] = useState<BudgetMode>('single')
+  const [savingBudgetMode, setSavingBudgetMode] = useState(false)
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [drafts, setDrafts] = useState<Record<string, TenantDraft>>({})
   const [fxRates, setFxRates] = useState<FxRate[]>([])
@@ -138,14 +142,17 @@ export default function ConsolidationBusinessDetailPage() {
     try {
       const supabase = createClient()
 
-      // Business name
+      // Business name + hybrid budget mode (Phase 34 Step 2).
       const { data: biz, error: bizErr } = await supabase
         .from('businesses')
-        .select('business_name')
+        .select('business_name, consolidation_budget_mode')
         .eq('id', businessId)
         .maybeSingle()
       if (bizErr) throw bizErr
       setBusinessName(biz?.business_name ?? '(unnamed business)')
+      // Defensive: fall back to 'single' if the column is missing / unrecognised.
+      const rawMode = (biz as any)?.consolidation_budget_mode
+      setBudgetMode(rawMode === 'per_tenant' ? 'per_tenant' : 'single')
 
       // Tenants (xero_connections — INCLUDE inactive so coach can re-enable).
       const { data: tenantRows, error: tenantErr } = await supabase
@@ -260,6 +267,42 @@ export default function ConsolidationBusinessDetailPage() {
     }
     return out
   }, [tenants])
+
+  // ---- Budget mode save handler (Phase 34 Step 2) ----
+  // Persists the selected mode via PATCH /api/consolidation/businesses/[id].
+  // Optimistic UI: we update state immediately and roll back on failure so
+  // the radio reflects the server's authoritative value.
+  const saveBudgetMode = async (next: BudgetMode) => {
+    if (next === budgetMode || savingBudgetMode) return
+    const previous = budgetMode
+    setBudgetMode(next)
+    setSavingBudgetMode(true)
+    setError(null)
+    try {
+      const res = await fetch(
+        `/api/consolidation/businesses/${encodeURIComponent(businessId)}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ consolidation_budget_mode: next }),
+        },
+      )
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(body?.error ?? `Save failed (HTTP ${res.status})`)
+      }
+      const serverMode = body?.business?.consolidation_budget_mode
+      if (serverMode === 'single' || serverMode === 'per_tenant') {
+        setBudgetMode(serverMode)
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setError(msg || 'Failed to save budget mode')
+      setBudgetMode(previous)
+    } finally {
+      setSavingBudgetMode(false)
+    }
+  }
 
   // ---- Tenant save handler ----
   const updateDraft = (connectionId: string, patch: Partial<TenantDraft>) => {
@@ -439,6 +482,82 @@ export default function ConsolidationBusinessDetailPage() {
           {error}
         </div>
       )}
+
+      {/* Phase 34 Step 2 — Hybrid Budget Mode toggle.
+          Lets the coach choose whether this business budgets at a single
+          consolidated level or per Xero tenant. The selection drives the
+          consolidated P&L's Budget / Variance columns. */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Budget mode</h2>
+          {savingBudgetMode && (
+            <Loader2
+              className="w-3 h-3 animate-spin text-gray-400"
+              aria-label="Saving budget mode"
+            />
+          )}
+        </div>
+        <div
+          role="radiogroup"
+          aria-label="Consolidation budget mode"
+          className="grid grid-cols-1 md:grid-cols-2 gap-3"
+        >
+          <label
+            className={`border rounded-lg p-4 cursor-pointer ${
+              budgetMode === 'single'
+                ? 'border-brand-orange bg-orange-50'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <input
+                type="radio"
+                name="consolidation-budget-mode"
+                value="single"
+                checked={budgetMode === 'single'}
+                onChange={() => saveBudgetMode('single')}
+                disabled={savingBudgetMode}
+                className="mt-1"
+              />
+              <div>
+                <div className="font-medium">Single consolidated budget</div>
+                <p className="text-xs text-gray-600 mt-1">
+                  One forecast for the whole business. Simpler — use when the
+                  group is budgeted as a single unit. Per-tenant Budget +
+                  Variance columns are hidden on the consolidated P&amp;L.
+                </p>
+              </div>
+            </div>
+          </label>
+          <label
+            className={`border rounded-lg p-4 cursor-pointer ${
+              budgetMode === 'per_tenant'
+                ? 'border-brand-orange bg-orange-50'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <input
+                type="radio"
+                name="consolidation-budget-mode"
+                value="per_tenant"
+                checked={budgetMode === 'per_tenant'}
+                onChange={() => saveBudgetMode('per_tenant')}
+                disabled={savingBudgetMode}
+                className="mt-1"
+              />
+              <div>
+                <div className="font-medium">Per-tenant budgets</div>
+                <p className="text-xs text-gray-600 mt-1">
+                  Each Xero tenant has its own forecast. Budgets are summed
+                  into the consolidated Budget column (Calxa-style). Use the
+                  tenant picker below to assign each forecast.
+                </p>
+              </div>
+            </div>
+          </label>
+        </div>
+      </section>
 
       {/* Per-tenant settings */}
       <section className="space-y-3">
@@ -833,18 +952,35 @@ export default function ConsolidationBusinessDetailPage() {
           Each financial_forecasts row gets scoped to exactly one Xero tenant
           so the consolidated P&L can sum per-tenant budgets into a
           consolidated budget column. Selecting "Whole business (legacy)" stores
-          tenant_id = NULL and preserves pre-34.3 behaviour. */}
+          tenant_id = NULL and preserves pre-34.3 behaviour.
+
+          Phase 34 Step 2 — the header + selector adapt to budgetMode:
+            - 'single'     → one business-level forecast (tenant_id IS NULL)
+                             drives the consolidated Budget. Tenant picker is
+                             hidden; a Scope column shows which forecast is the
+                             consolidated budget source.
+            - 'per_tenant' → full picker UI (original 34.3 behaviour). */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Forecast tenant assignment</h2>
+          <h2 className="text-lg font-semibold">
+            {budgetMode === 'single'
+              ? 'Forecast (single budget)'
+              : 'Forecast tenant assignment'}
+          </h2>
           <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-            <Info className="w-3 h-3" /> Pick the Xero tenant each budget covers
+            <Info className="w-3 h-3" />{' '}
+            {budgetMode === 'single'
+              ? 'Single mode — one business-level forecast drives the consolidated Budget'
+              : 'Pick the Xero tenant each budget covers'}
           </span>
         </div>
         {forecasts.length === 0 ? (
           <p className="text-sm text-gray-500">
             No financial forecasts exist for this business yet. Create one via
-            the <Link href="/finances/forecast" className="text-brand-orange hover:underline">Forecast page</Link> — once saved, come back here to assign it to a tenant.
+            the <Link href="/finances/forecast" className="text-brand-orange hover:underline">Forecast page</Link>
+            {budgetMode === 'single'
+              ? ' — it will drive the consolidated Budget column.'
+              : ' — once saved, come back here to assign it to a tenant.'}
           </p>
         ) : (
           <div className="border rounded-lg overflow-hidden bg-white">
@@ -854,15 +990,26 @@ export default function ConsolidationBusinessDetailPage() {
                   <th className="text-left px-3 py-2 font-medium">Name</th>
                   <th className="text-left px-3 py-2 font-medium">Fiscal year</th>
                   <th className="text-left px-3 py-2 font-medium">Type</th>
-                  <th className="text-left px-3 py-2 font-medium">Tenant assignment</th>
+                  {budgetMode === 'per_tenant' ? (
+                    <th className="text-left px-3 py-2 font-medium">Tenant assignment</th>
+                  ) : (
+                    <th className="text-left px-3 py-2 font-medium">Scope</th>
+                  )}
                   <th className="text-center px-3 py-2 font-medium">Active</th>
                 </tr>
               </thead>
               <tbody>
                 {forecasts.map(f => {
                   const saving = forecastSavingId === f.id
+                  const isSingleModeSource =
+                    budgetMode === 'single' && f.tenant_id == null
                   return (
-                    <tr key={f.id} className="border-b hover:bg-gray-50">
+                    <tr
+                      key={f.id}
+                      className={`border-b hover:bg-gray-50 ${
+                        isSingleModeSource ? 'bg-orange-50/40' : ''
+                      }`}
+                    >
                       <td className="px-3 py-2">{f.name}</td>
                       <td className="px-3 py-2 tabular-nums">{f.fiscal_year}</td>
                       <td className="px-3 py-2 text-xs">
@@ -870,35 +1017,49 @@ export default function ConsolidationBusinessDetailPage() {
                           {f.forecast_type ?? 'forecast'}
                         </span>
                       </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <select
-                            disabled={saving}
-                            value={f.tenant_id ?? ''}
-                            onChange={e =>
-                              saveForecastTenant(
-                                f.id,
-                                e.target.value === '' ? null : e.target.value,
-                              )
-                            }
-                            className="px-2 py-1 border rounded text-xs min-w-[200px]"
-                          >
-                            <option value="">
-                              Whole business (legacy / consolidated)
-                            </option>
-                            {tenants
-                              .filter(t => t.is_active && t.include_in_consolidation)
-                              .map(t => (
-                                <option key={t.id} value={t.tenant_id}>
-                                  {t.display_name ?? t.tenant_name ?? t.tenant_id}
-                                </option>
-                              ))}
-                          </select>
-                          {saving && (
-                            <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
+                      {budgetMode === 'per_tenant' ? (
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <select
+                              disabled={saving}
+                              value={f.tenant_id ?? ''}
+                              onChange={e =>
+                                saveForecastTenant(
+                                  f.id,
+                                  e.target.value === '' ? null : e.target.value,
+                                )
+                              }
+                              className="px-2 py-1 border rounded text-xs min-w-[200px]"
+                            >
+                              <option value="">
+                                Whole business (legacy / consolidated)
+                              </option>
+                              {tenants
+                                .filter(t => t.is_active && t.include_in_consolidation)
+                                .map(t => (
+                                  <option key={t.id} value={t.tenant_id}>
+                                    {t.display_name ?? t.tenant_name ?? t.tenant_id}
+                                  </option>
+                                ))}
+                            </select>
+                            {saving && (
+                              <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
+                            )}
+                          </div>
+                        </td>
+                      ) : (
+                        <td className="px-3 py-2 text-xs">
+                          {f.tenant_id == null ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-800">
+                              Consolidated budget source
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-gray-500">
+                              Scoped to tenant (unused in single mode)
+                            </span>
                           )}
-                        </div>
-                      </td>
+                        </td>
+                      )}
                       <td className="px-3 py-2 text-center">
                         {f.is_active ? (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
@@ -918,9 +1079,9 @@ export default function ConsolidationBusinessDetailPage() {
           </div>
         )}
         <p className="text-xs text-gray-500">
-          Legacy forecasts stay unassigned (NULL) and continue to work. Once a
-          forecast is assigned to a tenant, its P&amp;L lines feed the Budget
-          column for that tenant in the consolidated P&amp;L report.
+          {budgetMode === 'single'
+            ? 'In single mode, the consolidated P&L reads the first business-level forecast (tenant_id = NULL) for the fiscal year. Tenant-scoped forecasts are ignored — switch to Per-tenant mode above to use them.'
+            : 'Legacy forecasts stay unassigned (NULL) and continue to work as a fallback when no tenants have a forecast for the fiscal year. Once a forecast is assigned to a tenant, its P&L lines feed the Budget column for that tenant in the consolidated P&L report.'}
         </p>
       </section>
     </div>
