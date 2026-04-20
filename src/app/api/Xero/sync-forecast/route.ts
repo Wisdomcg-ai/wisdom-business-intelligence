@@ -189,8 +189,10 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Sync Forecast] Error:', error)
+    const message = error instanceof Error ? error.message : String(error)
+    const stack = error instanceof Error ? error.stack?.slice(0, 500) : undefined
     return NextResponse.json(
-      { error: 'Failed to sync forecast data' },
+      { error: 'Failed to sync forecast data', detail: message, stack },
       { status: 500 },
     )
   }
