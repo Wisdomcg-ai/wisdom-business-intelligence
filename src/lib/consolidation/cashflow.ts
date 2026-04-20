@@ -184,13 +184,34 @@ async function loadBusinessBaseline(
 ): Promise<BusinessCashflowBaseline | null> {
   const ids = await resolveBusinessIds(supabase, businessId)
 
-  // 1. Active forecast for the business (single umbrella covering all tenants)
-  const { data: forecast } = await supabase
+  // 1. Active forecast for the business. Prefer the business-level forecast
+  //    (tenant_id IS NULL) as the consolidation baseline; fall back to whichever
+  //    tenant-scoped forecast is most recent if no business-level forecast exists.
+  //    Per-tenant cashflow breakdown is TODO — today we combine a single
+  //    baseline with per-tenant opening bank balances via loadTenantOpeningBankBalance.
+  const { data: nullTenantForecast } = await supabase
     .from('financial_forecasts')
     .select('*')
     .in('business_id', ids.all)
     .eq('is_active', true)
+    .is('tenant_id', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle()
+
+  let forecast = nullTenantForecast
+  if (!forecast) {
+    // Fallback: any active forecast (most recent) — for per-tenant-mode businesses
+    const { data: anyForecast } = await supabase
+      .from('financial_forecasts')
+      .select('*')
+      .in('business_id', ids.all)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    forecast = anyForecast
+  }
   if (!forecast) return null
 
   // 2. Forecast P&L lines
