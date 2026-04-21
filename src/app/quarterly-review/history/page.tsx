@@ -30,6 +30,7 @@ import {
   Award
 } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId';
 import { useCoachView } from '@/hooks/useCoachView';
 import PageHeader from '@/components/ui/PageHeader';
 import Link from 'next/link';
@@ -699,17 +700,11 @@ export default function QuarterlyReviewHistoryPage() {
           return;
         }
 
-        let bizId: string | null = null;
-        if (activeBusiness?.id) {
-          bizId = activeBusiness.id;
-        } else if (currentUser?.role === 'client') {
-          const { data: business } = await supabase
-            .from('businesses')
-            .select('id')
-            .eq('owner_id', user.id)
-            .maybeSingle();
-          bizId = business?.id || null;
-        }
+        const { businessId: bizId } = await resolveBusinessId(supabase, {
+          userId: user.id,
+          role: currentUser?.role ?? null,
+          activeBusinessId: activeBusiness?.id ?? null,
+        });
 
         if (bizId) {
           const allReviews = await quarterlyReviewService.getAllReviews(bizId);
