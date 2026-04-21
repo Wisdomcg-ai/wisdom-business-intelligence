@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { getCurrentFiscalYear, getQuarterForMonth, getFiscalYearStartDate, getFiscalYearEndDate, getQuarterDefs, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import type { FinancialGoals, Rock, DashboardData, DashboardError, DashboardInsight, SuggestedAction } from '../types'
 
@@ -232,7 +233,7 @@ function generateSuggestedActions(
 
 export function useDashboardData(): UseDashboardDataReturn {
   const supabase = useMemo(() => createClient(), [])
-  const { activeBusiness, businessProfileId: cachedProfileId, isLoading: contextLoading } = useBusinessContext()
+  const { activeBusiness, currentUser, businessProfileId: cachedProfileId, isLoading: contextLoading } = useBusinessContext()
 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<DashboardError | null>(null)
@@ -389,18 +390,30 @@ export function useDashboardData(): UseDashboardDataReturn {
           .maybeSingle()
         bId = profile?.id || activeBusiness.id
       } else {
-        // Only fall back to user.id lookup for clients viewing their own data.
-        // If the user is a coach/admin with no activeBusiness, there's nothing
-        // to show — don't accidentally load the coach's own profile.
-        const targetOwnerId = activeBusiness?.ownerId || user.id
+        // No cached profile and no activeBusiness — route through the shared
+        // role-aware resolver. Returns a `businesses.id` (or null for coach
+        // without a client); we then translate to `business_profiles.id`
+        // because this hook's downstream queries target business_profiles.id.
+        const resolved = await resolveBusinessId(supabase, {
+          userId: user.id,
+          role: currentUser?.role ?? null,
+          activeBusinessId: null,
+        })
+
+        if (!resolved.businessId) {
+          console.log('[Dashboard] No business resolved (reason=' + resolved.reason + ')')
+          setIsLoading(false)
+          return
+        }
+
         const { data: profile } = await supabase
           .from('business_profiles')
           .select('id')
-          .eq('user_id', targetOwnerId)
+          .eq('business_id', resolved.businessId)
           .maybeSingle()
 
         if (!profile?.id) {
-          console.log('[Dashboard] No business found for user/owner:', targetOwnerId)
+          console.log('[Dashboard] No business_profile for businesses.id:', resolved.businessId)
           setIsLoading(false)
           return
         }
@@ -492,7 +505,7 @@ export function useDashboardData(): UseDashboardDataReturn {
       })
       setIsLoading(false)
     }
-  }, [supabase, buildTeamMembersMap, loadAnnualGoals, loadQuarterlyGoals, loadRocks, loadWeeklyGoals, activeBusiness?.id, cachedProfileId, contextLoading])
+  }, [supabase, buildTeamMembersMap, loadAnnualGoals, loadQuarterlyGoals, loadRocks, loadWeeklyGoals, activeBusiness?.id, cachedProfileId, contextLoading, currentUser?.role])
 
   useEffect(() => {
     loadDashboardData()
