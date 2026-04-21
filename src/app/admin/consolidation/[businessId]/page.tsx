@@ -150,9 +150,11 @@ export default function ConsolidationBusinessDetailPage() {
       currency_pair: 'HKD/AUD',
       year: priorYear,
       month: priorMonth,
+      months_to_backfill: 1,
     }
   })
   const [oxrSyncing, setOxrSyncing] = useState(false)
+  const [oxrProgress, setOxrProgress] = useState<string | null>(null)
   const [oxrResult, setOxrResult] = useState<string | null>(null)
 
   const loadedRef = useRef(false)
@@ -422,33 +424,64 @@ export default function ConsolidationBusinessDetailPage() {
     if (oxrSyncing) return
     setOxrSyncing(true)
     setOxrResult(null)
+    setOxrProgress(null)
     setError(null)
-    try {
-      const res = await fetch('/api/consolidation/fx-rates/sync-oxr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          currency_pair: oxrForm.currency_pair,
-          year: oxrForm.year,
-          month: oxrForm.month,
-        }),
-      })
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(body?.error ?? body?.detail ?? `HTTP ${res.status}`)
+
+    // Backfill: the selected (year, month) is the LATEST month; we walk
+    // backwards months_to_backfill months. Sequential client-side requests
+    // sidestep Vercel's single-request timeout and let us show progress.
+    const count = Math.max(1, Math.min(24, oxrForm.months_to_backfill))
+    const targets: Array<{ year: number; month: number }> = []
+    let y = oxrForm.year
+    let m = oxrForm.month
+    for (let i = 0; i < count; i++) {
+      targets.push({ year: y, month: m })
+      m -= 1
+      if (m === 0) {
+        m = 12
+        y -= 1
       }
-      const d = body?.diagnostics ?? {}
-      setOxrResult(
-        `Synced ${oxrForm.currency_pair} ${oxrForm.year}-${String(oxrForm.month).padStart(2, '0')}: ` +
-          `monthly_avg=${Number(d.monthly_average ?? 0).toFixed(6)}, ` +
-          `closing_spot=${Number(d.closing_spot ?? 0).toFixed(6)} ` +
-          `(${d.days_fetched ?? 0} days fetched${d.days_missing?.length ? `, ${d.days_missing.length} missing` : ''})`,
-      )
+    }
+
+    const succeeded: string[] = []
+    const failed: Array<{ ym: string; error: string }> = []
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        const t = targets[i]
+        const ym = `${t.year}-${String(t.month).padStart(2, '0')}`
+        setOxrProgress(`Syncing ${oxrForm.currency_pair} ${ym} (${i + 1}/${targets.length})…`)
+        try {
+          const res = await fetch('/api/consolidation/fx-rates/sync-oxr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              currency_pair: oxrForm.currency_pair,
+              year: t.year,
+              month: t.month,
+            }),
+          })
+          const body = await res.json().catch(() => ({}))
+          if (!res.ok) {
+            failed.push({ ym, error: body?.error ?? body?.detail ?? `HTTP ${res.status}` })
+            continue
+          }
+          succeeded.push(ym)
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err)
+          failed.push({ ym, error: msg })
+        }
+      }
+      const lines: string[] = []
+      if (succeeded.length) lines.push(`Synced ${succeeded.length} month(s): ${succeeded.join(', ')}`)
+      if (failed.length) {
+        lines.push(
+          `Failed ${failed.length}: ${failed.map((f) => `${f.ym} (${f.error.slice(0, 60)})`).join('; ')}`,
+        )
+      }
+      setOxrResult(lines.join(' · '))
       await reload()
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setError(`OXR sync failed: ${msg}`)
     } finally {
+      setOxrProgress(null)
       setOxrSyncing(false)
     }
   }
@@ -761,7 +794,7 @@ export default function ConsolidationBusinessDetailPage() {
                 </p>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
                   Currency pair
@@ -785,7 +818,7 @@ export default function ConsolidationBusinessDetailPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Year
+                  Latest year
                 </label>
                 <input
                   type="number"
@@ -800,7 +833,7 @@ export default function ConsolidationBusinessDetailPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Month
+                  Latest month
                 </label>
                 <select
                   value={oxrForm.month}
@@ -818,12 +851,34 @@ export default function ConsolidationBusinessDetailPage() {
                   )}
                 </select>
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Backfill months
+                </label>
+                <select
+                  value={oxrForm.months_to_backfill}
+                  onChange={e =>
+                    setOxrForm(prev => ({
+                      ...prev,
+                      months_to_backfill: Number(e.target.value),
+                    }))
+                  }
+                  className="w-full px-3 py-2 border rounded bg-white"
+                  title="How many months, counting back from the Latest month above"
+                >
+                  {[1, 3, 6, 12, 15, 18, 24].map(n => (
+                    <option key={n} value={n}>
+                      {n} month{n === 1 ? '' : 's'}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="flex items-end">
                 <button
                   type="button"
                   onClick={handleOxrSync}
                   disabled={oxrSyncing}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 w-full justify-center"
                 >
                   {oxrSyncing ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -834,8 +889,14 @@ export default function ConsolidationBusinessDetailPage() {
                 </button>
               </div>
             </div>
+            {oxrProgress && (
+              <div className="text-xs text-blue-800 bg-blue-100 border border-blue-300 rounded px-3 py-2 flex items-center gap-2">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {oxrProgress}
+              </div>
+            )}
             {oxrResult && (
-              <div className="text-xs text-green-800 bg-green-50 border border-green-200 rounded px-3 py-2">
+              <div className="text-xs text-green-800 bg-green-50 border border-green-200 rounded px-3 py-2 whitespace-pre-wrap">
                 {oxrResult}
               </div>
             )}
