@@ -30,6 +30,7 @@ import {
   AlertTriangle,
   Link2,
   Info,
+  Download,
 } from 'lucide-react'
 import {
   ALLOWED_FUNCTIONAL_CURRENCIES,
@@ -134,6 +135,25 @@ export default function ConsolidationBusinessDetailPage() {
     rate: '',
   })
   const [fxSubmitting, setFxSubmitting] = useState(false)
+
+  // OXR sync — replicates Calxa's FX source (Open Exchange Rates). Pulls daily
+  // EOD rates for the chosen month, averages them for monthly_average (P&L),
+  // and takes the last day for closing_spot (BS). Writes both with source='oxr'.
+  const [oxrForm, setOxrForm] = useState(() => {
+    const now = new Date()
+    const year = now.getUTCFullYear()
+    const month = now.getUTCMonth() + 1 // current month default — user usually wants last-completed
+    // Default to prior month so results are always complete
+    const priorMonth = month === 1 ? 12 : month - 1
+    const priorYear = month === 1 ? year - 1 : year
+    return {
+      currency_pair: 'HKD/AUD',
+      year: priorYear,
+      month: priorMonth,
+    }
+  })
+  const [oxrSyncing, setOxrSyncing] = useState(false)
+  const [oxrResult, setOxrResult] = useState<string | null>(null)
 
   const loadedRef = useRef(false)
 
@@ -395,6 +415,41 @@ export default function ConsolidationBusinessDetailPage() {
       setError(msg || 'Failed to save FX rate')
     } finally {
       setFxSubmitting(false)
+    }
+  }
+
+  const handleOxrSync = async () => {
+    if (oxrSyncing) return
+    setOxrSyncing(true)
+    setOxrResult(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/consolidation/fx-rates/sync-oxr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currency_pair: oxrForm.currency_pair,
+          year: oxrForm.year,
+          month: oxrForm.month,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(body?.error ?? body?.detail ?? `HTTP ${res.status}`)
+      }
+      const d = body?.diagnostics ?? {}
+      setOxrResult(
+        `Synced ${oxrForm.currency_pair} ${oxrForm.year}-${String(oxrForm.month).padStart(2, '0')}: ` +
+          `monthly_avg=${Number(d.monthly_average ?? 0).toFixed(6)}, ` +
+          `closing_spot=${Number(d.closing_spot ?? 0).toFixed(6)} ` +
+          `(${d.days_fetched ?? 0} days fetched${d.days_missing?.length ? `, ${d.days_missing.length} missing` : ''})`,
+      )
+      await reload()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setError(`OXR sync failed: ${msg}`)
+    } finally {
+      setOxrSyncing(false)
     }
   }
 
@@ -691,6 +746,101 @@ export default function ConsolidationBusinessDetailPage() {
             </p>
           )}
         </div>
+
+        {foreignCurrencies.length > 0 && (
+          <div className="p-4 border rounded-lg bg-blue-50 border-blue-200 space-y-3">
+            <div className="flex items-start gap-2">
+              <Download className="w-4 h-4 mt-0.5 text-blue-700 shrink-0" />
+              <div className="text-xs text-blue-900">
+                <div className="font-semibold mb-1">Sync from Open Exchange Rates</div>
+                <p>
+                  Pulls daily USD snapshots for the selected month, cross-rates to{' '}
+                  {oxrForm.currency_pair}, averages for monthly_average (P&amp;L) and
+                  takes the last day for closing_spot (BS). This is the same source Calxa uses,
+                  so numbers will match their report.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Currency pair
+                </label>
+                <select
+                  value={oxrForm.currency_pair}
+                  onChange={e =>
+                    setOxrForm(prev => ({ ...prev, currency_pair: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 border rounded bg-white"
+                >
+                  {relevantPairs.map(p => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                  {!relevantPairs.includes(oxrForm.currency_pair) && (
+                    <option value={oxrForm.currency_pair}>{oxrForm.currency_pair}</option>
+                  )}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Year
+                </label>
+                <input
+                  type="number"
+                  min={1999}
+                  max={2100}
+                  value={oxrForm.year}
+                  onChange={e =>
+                    setOxrForm(prev => ({ ...prev, year: Number(e.target.value) }))
+                  }
+                  className="w-full px-3 py-2 border rounded bg-white tabular-nums"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Month
+                </label>
+                <select
+                  value={oxrForm.month}
+                  onChange={e =>
+                    setOxrForm(prev => ({ ...prev, month: Number(e.target.value) }))
+                  }
+                  className="w-full px-3 py-2 border rounded bg-white"
+                >
+                  {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map(
+                    (label, i) => (
+                      <option key={i} value={i + 1}>
+                        {label}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={handleOxrSync}
+                  disabled={oxrSyncing}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {oxrSyncing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  {oxrSyncing ? 'Syncing…' : 'Sync from OXR'}
+                </button>
+              </div>
+            </div>
+            {oxrResult && (
+              <div className="text-xs text-green-800 bg-green-50 border border-green-200 rounded px-3 py-2">
+                {oxrResult}
+              </div>
+            )}
+          </div>
+        )}
 
         {foreignCurrencies.length > 0 ? (
           <form
