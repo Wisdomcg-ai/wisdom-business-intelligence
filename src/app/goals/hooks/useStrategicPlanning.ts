@@ -50,6 +50,7 @@ import { KPIService } from '../services/kpi-service'
 import { StrategicPlanningService } from '../services/strategic-planning-service'
 import { OperationalActivitiesService, OperationalActivity } from '../services/operational-activities-service'
 import { createClient } from '@/lib/supabase/client'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { isNearYearEnd, getMonthsUntilYearEnd, DEFAULT_YEAR_START_MONTH, getCurrentFiscalYear, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils'
 import { ExtendedPeriodInfo } from '../types'
 
@@ -666,36 +667,44 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           // Track the original businesses.id for FK-constrained tables
           setBusinessesId(overrideBusinessId)
         } else {
-          // Normal user view - get their business_profile
-          // IMPORTANT: Goals data is stored with business_profiles.id as the business_id
-          // This is different from businesses.id - do not change this!
+          // Normal user view — route through the shared resolver. Only reachable
+          // when overrideBusinessId is null/'' (not undefined), which in practice
+          // is the client self-view path. The resolver returns businesses.id;
+          // we then translate to business_profiles.id (goals data keys on that).
+          const resolved = await resolveBusinessId(supabase, {
+            userId: user.id,
+            role: 'client',
+            activeBusinessId: null,
+          })
+          if (!resolved.businessId) {
+            console.warn('[Strategic Planning] Resolver returned no business — aborting load (reason=' + resolved.reason + ')')
+            setIsLoading(false)
+            return
+          }
+
           const { data: profile, error: profileError } = await supabase
             .from('business_profiles')
             .select('id, industry, business_id, fiscal_year_start')
-            .eq('user_id', user.id)
+            .eq('business_id', resolved.businessId)
             .single()
 
-          console.log(`[Strategic Planning] 🔍 User ID: ${user.id}`)
+          console.log(`[Strategic Planning] 🔍 Resolved businesses.id: ${resolved.businessId}`)
           console.log(`[Strategic Planning] 🔍 Profile query result:`, { profile, profileError: profileError?.message })
 
-          // Never fall back to user.id as a business_profiles.id — it is an
-          // auth UUID and would silently write to a non-existent row. If the
-          // profile hasn't been created yet, bail out and let the page show
-          // an onboarding/empty state.
           if (!profile?.id) {
-            console.warn('[Strategic Planning] No business_profiles row for user — aborting load')
+            console.warn('[Strategic Planning] No business_profiles row for resolved business — aborting load')
             setIsLoading(false)
             return
           }
           bizId = profile.id
-          ownerUser = user.id // For SWOT queries, SWOT stores with user.id as business_id
+          // SWOT still keys on user.id (the OWNER's user.id — same as current
+          // user here since this branch is client self-view).
+          ownerUser = user.id
 
           console.log(`[Strategic Planning] 🔍 Using bizId: ${bizId}, ownerUser: ${ownerUser}`)
 
           // Track the businesses.id for FK-constrained tables
-          if (profile?.business_id) {
-            setBusinessesId(profile.business_id)
-          }
+          setBusinessesId(resolved.businessId)
 
           // Set industry from profile, fallback to default
           if (profile?.industry) {

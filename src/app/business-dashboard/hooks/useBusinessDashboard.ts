@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/contexts/BusinessContext'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import WeeklyMetricsService, { WeeklyMetricsSnapshot } from '../services/weekly-metrics-service'
 import DashboardPreferencesService, { DashboardPreferences } from '../services/dashboard-preferences-service'
 import { FinancialService } from '../../goals/services/financial-service'
@@ -117,28 +118,29 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
       const uid = user.id
       setUserId(uid)
 
-      // Role-gated business_profile resolution. The legacy `|| user.id`
-      // fallback could pin a coach to their own auth UUID as a profile id.
+      // Business-profile resolution via shared helper. Resolver returns
+      // businesses.id; we translate to business_profiles.id because this
+      // hook's downstream queries key on business_profiles.id.
       let bizId: string | null = null
 
       if (overrideBusinessId) {
         bizId = overrideBusinessId
       } else if (cachedProfileId) {
         bizId = cachedProfileId
-      } else if (activeBusiness?.id) {
-        const { data: profile } = await supabase
-          .from('business_profiles')
-          .select('id')
-          .eq('business_id', activeBusiness.id)
-          .single()
-        bizId = profile?.id || activeBusiness.id
-      } else if (currentUser?.role === 'client') {
-        const { data: profile } = await supabase
-          .from('business_profiles')
-          .select('id, industry')
-          .eq('user_id', user.id)
-          .single()
-        bizId = profile?.id ?? null
+      } else {
+        const resolved = await resolveBusinessId(supabase, {
+          userId: user.id,
+          role: currentUser?.role ?? null,
+          activeBusinessId: activeBusiness?.id ?? null,
+        })
+        if (resolved.businessId) {
+          const { data: profile } = await supabase
+            .from('business_profiles')
+            .select('id, industry')
+            .eq('business_id', resolved.businessId)
+            .single()
+          bizId = profile?.id ?? resolved.businessId
+        }
       }
 
       if (!bizId) {

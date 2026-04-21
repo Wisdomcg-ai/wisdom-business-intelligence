@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { Printer, Loader2, ExternalLink, CheckCircle2, Circle, Lightbulb, FileText, ChevronDown, History, ArrowLeft } from 'lucide-react'
 import type { QuarterInfo } from '@/app/goals/utils/quarters'
 import { calculateQuarters } from '@/app/goals/utils/quarters'
@@ -174,22 +175,22 @@ export default function OnePagePlan() {
       try {
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
-          // Role-gated snapshot business resolution — never use user.id.
+          // Snapshot business resolution via shared helper, then translate
+          // businesses.id → business_profiles.id (plan snapshots key on
+          // business_profiles.id).
+          const resolved = await resolveBusinessId(supabase, {
+            userId: user.id,
+            role: currentUser?.role ?? null,
+            activeBusinessId: activeBusiness?.id ?? null,
+          })
           let snapshotBusinessId: string | undefined
-          if (activeBusiness?.id) {
+          if (resolved.businessId) {
             const { data: profileData } = await supabase
               .from('business_profiles')
               .select('id')
-              .eq('business_id', activeBusiness.id)
+              .eq('business_id', resolved.businessId)
               .single()
-            snapshotBusinessId = profileData?.id || activeBusiness.id
-          } else if (currentUser?.role === 'client') {
-            const { data: profileData } = await supabase
-              .from('business_profiles')
-              .select('id')
-              .eq('user_id', user.id)
-              .single()
-            snapshotBusinessId = profileData?.id
+            snapshotBusinessId = profileData?.id || resolved.businessId
           }
           if (snapshotBusinessId) {
             const snapshotsList = await planSnapshotService.getSnapshots(snapshotBusinessId)
