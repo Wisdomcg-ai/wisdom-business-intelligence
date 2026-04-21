@@ -202,3 +202,9 @@ progress:
 ## Last Session
 
 - 2026-04-08T04:31:09Z — Completed 21-03-PLAN.md (Phase 21 fully complete)
+
+## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 37 added: Resolver adoption — route all pages through resolveBusinessId (2026-04-22)

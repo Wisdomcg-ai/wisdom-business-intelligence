@@ -567,6 +567,53 @@ Phase 35 adds the UI controls and automation trigger that move a report through 
 - `approved_by` is recorded as the authenticated user's ID; `approved_at` and `sent_at` are timestamped
 - Webhook URL is configurable per business in the business settings page — not hardcoded
 
+### Phase 37: Resolver adoption — route all pages through resolveBusinessId
+
+**Goal:** Eliminate the ~20 duplicated `businessId` resolution blocks in the codebase by routing them through `src/lib/business/resolveBusinessId.ts` (helper created in commit ed9dfa7). Makes the "coach saves to my business" bug class structurally impossible to reintroduce — there becomes one and only one place where a page decides which business it operates on.
+
+**Non-goals:** DB schema changes; RLS changes; new product features; refactoring business logic beyond the resolution code path.
+
+**Depends on:** ed9dfa7 (coach-context fix, shipped) and 9d33a74 (phase A hardening, shipped).
+
+**Scope — pages/hooks to route through the resolver:**
+- `src/app/finances/monthly-report/page.tsx`
+- `src/app/finances/cashflow/page.tsx`
+- `src/app/finances/forecast/page.tsx`
+- `src/app/one-page-plan/page.tsx`
+- `src/app/goals/page.tsx` + `src/app/goals/hooks/useStrategicPlanning.ts` + `src/app/goals/components/OperationalPlanTab.tsx`
+- `src/app/business-dashboard/hooks/useBusinessDashboard.ts`
+- `src/app/reviews/weekly/page.tsx`
+- `src/app/sessions/page.tsx`
+- `src/app/messages/page.tsx`
+- `src/app/integrations/page.tsx`
+- `src/app/settings/notifications/page.tsx`
+- `src/app/settings/team/page.tsx`
+- `src/app/quarterly-review/page.tsx` + `src/app/quarterly-review/history/page.tsx` + `src/app/quarterly-review/hooks/useQuarterlyReview.ts`
+- `src/app/dashboard/hooks/useDashboardData.ts`
+- `src/app/dashboard/components/SessionActionsCard.tsx`
+- `src/hooks/useUnreadMessages.ts`
+
+**Acceptance criteria:**
+1. `grep -rE "\.eq\('owner_id', user\.id\)" src/app src/hooks` returns 0 matches outside the resolver itself.
+2. Every page in scope imports from `@/lib/business/resolveBusinessId` and uses the helper (no re-implemented logic).
+3. `npm run build` passes.
+4. Vercel preview deploy exercises the full coach→client flow, monthly-report, sessions, messages without regression.
+5. `resolveBusinessId` runtime invariant never fires during preview smoke test.
+
+**Risk:** high blast radius — touches every page a client uses daily. Must ship via **feature branch `feat/resolver-adoption` → Vercel preview → manual smoke test → merge to main**. Do NOT push straight to main.
+
+**Requirements:** N/A (internal refactor — no new requirements)
+
+**Plans:** 6 plans
+
+Plans:
+- [ ] 37-01-PLAN.md — Low-risk hooks/components (useUnreadMessages, SessionActionsCard, useDashboardData)
+- [ ] 37-02-PLAN.md — Finances pages (monthly-report, cashflow, forecast)
+- [ ] 37-03-PLAN.md — Client workflows (sessions, messages, integrations, settings/notifications, settings/team, reviews/weekly)
+- [ ] 37-04-PLAN.md — Strategic planning surface (one-page-plan page + assembler, goals page + hook + OperationalPlanTab, useBusinessDashboard)
+- [ ] 37-05-PLAN.md — Quarterly review (page, history, useQuarterlyReview hook)
+- [ ] 37-06-PLAN.md — Build + push + Vercel preview + manual smoke test + merge gate
+
 ---
 
 ### Phase 36: Client Portal
