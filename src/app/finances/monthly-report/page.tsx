@@ -911,7 +911,7 @@ export default function MonthlyReportPage() {
           <>
             <FXRateMissingBanner
               missingRates={consolidatedReport?.fx_context?.missing_rates ?? []}
-              onAddRate={() => router.push('/admin/consolidation')}
+              onAddRate={() => router.push(`/admin/consolidation/${businessId}`)}
             />
             <ConsolidatedPLTab
               report={consolidatedReport}
@@ -927,7 +927,7 @@ export default function MonthlyReportPage() {
           <>
             <FXRateMissingBanner
               missingRates={consolidatedBS?.fx_context?.missing_rates ?? []}
-              onAddRate={() => router.push('/admin/consolidation')}
+              onAddRate={() => router.push(`/admin/consolidation/${businessId}`)}
             />
             <ConsolidatedBSTab
               report={consolidatedBS}
@@ -942,7 +942,7 @@ export default function MonthlyReportPage() {
           <>
             <FXRateMissingBanner
               missingRates={consolidatedCashflow?.fx_context?.missing_rates ?? []}
-              onAddRate={() => router.push('/admin/consolidation')}
+              onAddRate={() => router.push(`/admin/consolidation/${businessId}`)}
             />
             <ConsolidatedCashflowTab
               report={consolidatedCashflow}
