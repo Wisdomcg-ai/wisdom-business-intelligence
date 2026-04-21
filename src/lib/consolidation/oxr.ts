@@ -149,13 +149,26 @@ export async function deriveMonthlyRatePair(
   }
 
   const symbols = Array.from(new Set([base, quote]))
+
+  // Fetch all days in parallel with a concurrency cap. OXR has no documented
+  // per-second rate limit (only a monthly quota) but we cap to be polite and
+  // to avoid slamming 31 connections at once on serverless cold-starts.
+  const CONCURRENCY = 8
+  const fetched: Array<{ date: string; snap: OxrHistoricalResponse | null }> = []
+  for (let i = 0; i < days.length; i += CONCURRENCY) {
+    const batch = days.slice(i, i + CONCURRENCY)
+    const results = await Promise.all(
+      batch.map(async (date) => ({
+        date,
+        snap: await fetchOxrDay(date, symbols, appId),
+      })),
+    )
+    fetched.push(...results)
+  }
+
   const dailyRates: Array<{ date: string; rate: number }> = []
   const missing: string[] = []
-
-  // Sequential — OXR free tier doesn't love bursts, and 31 calls
-  // completes well within any realistic timeout.
-  for (const date of days) {
-    const snap = await fetchOxrDay(date, symbols, appId)
+  for (const { date, snap } of fetched) {
     if (!snap) {
       missing.push(date)
       continue
@@ -167,6 +180,8 @@ export async function deriveMonthlyRatePair(
     }
     dailyRates.push({ date, rate })
   }
+  // Preserve chronological order (important: closing_spot = last day).
+  dailyRates.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 
   if (dailyRates.length < 5) {
     throw new Error(

@@ -20,6 +20,12 @@ import { deriveMonthlyRatePair } from '@/lib/consolidation/oxr'
 
 export const dynamic = 'force-dynamic'
 
+// Vercel default for serverless functions is 10s. One month of OXR daily
+// fetches is ~30 HTTP calls — if even a few are slow we easily blow that
+// budget. Bump to 60s (allowed on Pro plan; Fluid Compute handles it on
+// Hobby). The client loops per-month so one request covers one month.
+export const maxDuration = 60
+
 const adminDb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!,
