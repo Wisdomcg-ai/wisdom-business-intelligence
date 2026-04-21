@@ -1,14 +1,30 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Shield, Lock, Mail, AlertCircle } from 'lucide-react'
 import { getUserSystemRole } from '@/lib/auth/roles'
 
+// Same-origin relative paths only — blocks open-redirect.
+function safeNext(raw: string | null): string | null {
+  if (!raw) return null
+  if (!raw.startsWith('/') || raw.startsWith('//')) return null
+  return raw
+}
+
 export default function AdminLogin() {
+  return (
+    <Suspense fallback={null}>
+      <AdminLoginInner />
+    </Suspense>
+  )
+}
+
+function AdminLoginInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
 
   const [email, setEmail] = useState('')
@@ -45,8 +61,9 @@ export default function AdminLogin() {
         return
       }
 
-      // Success - redirect to admin dashboard
-      router.push('/admin')
+      // Success - honor ?next= if provided, else admin dashboard.
+      const next = safeNext(searchParams?.get('next'))
+      router.push(next ?? '/admin')
 
     } catch (err) {
       console.error('Login error:', err)

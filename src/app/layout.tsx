@@ -4,6 +4,7 @@ import './globals.css'
 import SidebarLayout from '@/components/layout/sidebar-layout'
 import { Toaster } from 'sonner'
 import { BusinessContextProvider } from '@/contexts/BusinessContext'
+import { ContextErrorToast } from '@/components/providers/ContextErrorToast'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -41,6 +42,10 @@ export default function RootLayout({
               duration: 4000,
             }}
           />
+          {/* Surfaces BusinessContext errors (e.g. transient role-query
+              failures) as a persistent toast so users don't see a silently
+              broken page. */}
+          <ContextErrorToast />
           {/* Wrap all page content with ErrorBoundary and SidebarLayout */}
           <ErrorBoundary>
             <SidebarLayout>

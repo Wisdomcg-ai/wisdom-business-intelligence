@@ -41,6 +41,27 @@ export interface ResolveResult {
     | 'unauthenticated'
 }
 
+/**
+ * Runtime invariant: a resolved business ID must never equal the user's
+ * auth UUID. If it does, the old "saves to my business" bug has recurred and
+ * we fail loudly rather than silently write to the wrong row.
+ */
+function assertNotUserId(businessId: string, userId: string | null | undefined, reason: string): void {
+  if (userId && businessId === userId) {
+    const err = new Error(
+      `[resolveBusinessId] INVARIANT VIOLATED: resolved businessId == userId (reason="${reason}"). ` +
+      `This indicates the pre-fix fallback bug has recurred — a page is treating the user's auth UUID as a business id.`
+    )
+    // Log to Sentry if present; log to console unconditionally. Throw so the
+    // caller fails fast rather than writing to the wrong business.
+    if (typeof window !== 'undefined' && (window as any).Sentry?.captureException) {
+      (window as any).Sentry.captureException(err)
+    }
+    console.error(err)
+    throw err
+  }
+}
+
 export async function resolveBusinessId(
   supabase: SupabaseClient,
   params: {
@@ -50,6 +71,7 @@ export async function resolveBusinessId(
   }
 ): Promise<ResolveResult> {
   if (params.activeBusinessId) {
+    assertNotUserId(params.activeBusinessId, params.userId, 'active')
     return { businessId: params.activeBusinessId, reason: 'active' }
   }
   if (!params.userId) {
@@ -69,6 +91,7 @@ export async function resolveBusinessId(
     .maybeSingle()
 
   if (businessUser?.business_id) {
+    assertNotUserId(businessUser.business_id, params.userId, 'client-team')
     return { businessId: businessUser.business_id, reason: 'client-team' }
   }
 
@@ -79,6 +102,7 @@ export async function resolveBusinessId(
     .maybeSingle()
 
   if (ownedBusiness?.id) {
+    assertNotUserId(ownedBusiness.id, params.userId, 'client-owner')
     return { businessId: ownedBusiness.id, reason: 'client-owner' }
   }
 
