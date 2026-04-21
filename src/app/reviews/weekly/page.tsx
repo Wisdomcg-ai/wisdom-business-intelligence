@@ -42,6 +42,7 @@ import WeeklyReviewService, {
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { StrategicPlanningService } from '@/app/goals/services/strategic-planning-service'
 import { FinancialService } from '@/app/goals/services/financial-service'
 import PageHeader from '@/components/ui/PageHeader'
@@ -291,38 +292,31 @@ export default function WeeklyReviewPage() {
       const uid = activeBusiness?.ownerId || user.id
       setUserId(uid)
 
-      // Determine the correct business_profiles.id
-      let bizId: string
-      if (activeBusiness?.id) {
-        const { data: profile } = await supabase
-          .from('business_profiles')
-          .select('id')
-          .eq('business_id', activeBusiness.id)
-          .maybeSingle()
-
-        if (profile?.id) {
-          bizId = profile.id
-        } else {
-          console.warn('[Weekly Review] No business_profiles found for businesses.id:', activeBusiness.id)
-          bizId = activeBusiness.id
-        }
-      } else if (currentUser?.role === 'client') {
-        const { data: profile } = await supabase
-          .from('business_profiles')
-          .select('id')
-          .eq('user_id', user.id)
-          .maybeSingle()
-        if (!profile?.id) {
-          // Client without a business_profile yet — no review to load.
-          setIsLoading(false)
-          return
-        }
-        bizId = profile.id
-      } else {
-        // Coach/admin without an active client selection — show nothing to
-        // avoid pinning reviews to the wrong business.
+      // Resolve the businesses.id via the shared helper, then translate to
+      // business_profiles.id (this page's downstream queries key on
+      // business_profiles.id). Resolver returns null for coach/admin without
+      // an active client — same empty-state outcome as before.
+      const resolved = await resolveBusinessId(supabase, {
+        userId: user.id,
+        role: currentUser?.role ?? null,
+        activeBusinessId: activeBusiness?.id ?? null,
+      })
+      if (!resolved.businessId) {
         setIsLoading(false)
         return
+      }
+
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('business_id', resolved.businessId)
+        .maybeSingle()
+
+      // Fallback to businesses.id if no profile row exists — preserves prior
+      // behaviour when a business has been created but profile not yet.
+      const bizId: string = profile?.id ?? resolved.businessId
+      if (!profile?.id) {
+        console.warn('[Weekly Review] No business_profiles found for businesses.id:', resolved.businessId)
       }
       setBusinessId(bizId)
 

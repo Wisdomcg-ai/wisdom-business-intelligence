@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/contexts/BusinessContext'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import PageHeader from '@/components/ui/PageHeader'
 import {
   Bell,
@@ -147,35 +148,13 @@ export default function NotificationPreferencesPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Prefer activeBusiness from context — keeps coach views scoped to the
-      // client they're viewing. Only fall through to the owner lookup for
-      // confirmed clients; coaches/admins without an active selection show
-      // no preferences (avoids pinning to their own owned business).
-      let bizId: string | null = null
-      if (activeBusiness?.id) {
-        bizId = activeBusiness.id
-        setBusinessId(bizId)
-      } else if (currentUser?.role === 'client') {
-        const { data: businessUser } = await supabase
-          .from('business_users')
-          .select('business_id')
-          .eq('user_id', user.id)
-          .maybeSingle()
-
-        if (businessUser?.business_id) {
-          bizId = businessUser.business_id
-        } else {
-          const { data: ownedBusiness } = await supabase
-            .from('businesses')
-            .select('id')
-            .eq('owner_id', user.id)
-            .maybeSingle()
-          bizId = ownedBusiness?.id ?? null
-        }
-
-        if (bizId) setBusinessId(bizId)
-      }
-
+      // Business resolution via the shared role-aware helper.
+      const { businessId: bizId } = await resolveBusinessId(supabase, {
+        userId: user.id,
+        role: currentUser?.role ?? null,
+        activeBusinessId: activeBusiness?.id ?? null,
+      })
+      if (bizId) setBusinessId(bizId)
       if (!bizId) return
 
       // Load notification preferences

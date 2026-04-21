@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Link2, CheckCircle, XCircle, RefreshCw, Trash2, ExternalLink, Plus, Settings } from 'lucide-react'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import PageHeader from '@/components/ui/PageHeader'
 
 interface Integration {
@@ -41,23 +42,12 @@ export default function IntegrationsPage() {
 
     console.log('[Integrations] User ID:', user.id)
 
-    // Use activeBusiness if viewing as coach, otherwise (for clients) get their
-    // own business. Coaches/admins without an active client must not resolve to
-    // their own owned business — that would show the wrong Xero connection.
-    let bizId: string | null = null
-    if (activeBusiness?.id) {
-      bizId = activeBusiness.id
-    } else if (currentUser?.role === 'client') {
-      const { data: businessData, error: businessError } = await supabase
-        .from('businesses')
-        .select('id')
-        .eq('owner_id', user.id)
-        .maybeSingle()
-
-      console.log('[Integrations] Business data:', businessData)
-      console.log('[Integrations] Business error:', businessError)
-      bizId = businessData?.id || null
-    }
+    // Business resolution via the shared role-aware helper.
+    const { businessId: bizId } = await resolveBusinessId(supabase, {
+      userId: user.id,
+      role: currentUser?.role ?? null,
+      activeBusinessId: activeBusiness?.id ?? null,
+    })
 
     if (bizId) {
       setBusinessId(bizId)
