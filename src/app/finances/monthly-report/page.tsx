@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { createClient } from '@/lib/supabase/client'
 import dynamic from 'next/dynamic'
 import { Loader2, BarChart3, Settings, Download, Save, LayoutGrid } from 'lucide-react'
@@ -268,20 +269,14 @@ export default function MonthlyReportPage() {
       }
       setUserId(user.id)
 
-      // Role-gated business resolution. A coach/admin without an active client
-      // MUST NOT fall back to owner_id or user.id — both would save to the
-      // wrong business. See src/lib/business/resolveBusinessId.ts.
-      let bizId: string | null = null
-      if (activeBusiness?.id) {
-        bizId = activeBusiness.id
-      } else if (currentUser?.role === 'client') {
-        const { data: business } = await supabase
-          .from('businesses')
-          .select('id')
-          .eq('owner_id', user.id)
-          .maybeSingle()
-        bizId = business?.id ?? null
-      }
+      // Business resolution via the shared role-aware helper. See
+      // src/lib/business/resolveBusinessId.ts — returns null for coach/admin
+      // without an active client (no silent fallback to owner_id).
+      const { businessId: bizId } = await resolveBusinessId(supabase, {
+        userId: user.id,
+        role: currentUser?.role ?? null,
+        activeBusinessId: activeBusiness?.id ?? null,
+      })
       if (!bizId) {
         setIsInitializing(false)
         return

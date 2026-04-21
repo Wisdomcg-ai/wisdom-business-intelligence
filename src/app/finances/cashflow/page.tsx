@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { Loader2, Banknote } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
@@ -43,18 +44,12 @@ export default function CashflowForecastPage() {
         return
       }
 
-      // Role-gated business resolution — never pin a coach to their own user.id.
-      let bizId: string | null = null
-      if (activeBusiness?.id) {
-        bizId = activeBusiness.id
-      } else if (currentUser?.role === 'client') {
-        const { data: business } = await supabase
-          .from('businesses')
-          .select('id')
-          .eq('owner_id', user.id)
-          .maybeSingle()
-        bizId = business?.id ?? null
-      }
+      // Business resolution via the shared role-aware helper.
+      const { businessId: bizId } = await resolveBusinessId(supabase, {
+        userId: user.id,
+        role: currentUser?.role ?? null,
+        activeBusinessId: activeBusiness?.id ?? null,
+      })
       if (!bizId) {
         setIsLoading(false)
         return

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { Loader2, Save, Pencil, TrendingUp, Lock } from 'lucide-react'
 import { toast } from 'sonner'
@@ -204,20 +205,12 @@ export default function FinancialForecastPage() {
       const uid = user.id
       setUserId(uid)
 
-      // Role-gated business resolution. Coaches/admins without an active client
-      // selection must NOT resolve to user.id — that was the root cause of
-      // forecast writes landing on the coach's own UUID.
-      let bizId: string | null = null
-      if (activeBusiness?.id) {
-        bizId = activeBusiness.id
-      } else if (currentUser?.role === 'client') {
-        const { data: business } = await supabase
-          .from('businesses')
-          .select('id')
-          .eq('owner_id', user.id)
-          .maybeSingle()
-        bizId = business?.id ?? null
-      }
+      // Business resolution via the shared role-aware helper.
+      const { businessId: bizId } = await resolveBusinessId(supabase, {
+        userId: user.id,
+        role: currentUser?.role ?? null,
+        activeBusinessId: activeBusiness?.id ?? null,
+      })
       if (!bizId) {
         setIsLoading(false)
         return
