@@ -45,7 +45,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Business not found' }, { status: 404 });
     }
 
-    if (business.owner_id !== user.id && business.assigned_coach_id !== user.id) {
+    // Allow owner, assigned coach, OR super_admin (platform operator).
+    let allowed = business.owner_id === user.id || business.assigned_coach_id === user.id;
+    if (!allowed) {
+      const { data: roleRow } = await supabase
+        .from('system_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (roleRow?.role === 'super_admin') allowed = true;
+    }
+    if (!allowed) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 

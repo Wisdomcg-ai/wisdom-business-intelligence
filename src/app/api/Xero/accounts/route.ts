@@ -27,15 +27,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
     }
 
-    // Verify user owns this business
+    // Allow owner, assigned coach, OR super_admin (platform operator).
     const { data: business, error: bizError } = await supabase
       .from('businesses')
-      .select('id, owner_id')
+      .select('id, owner_id, assigned_coach_id')
       .eq('id', businessId)
       .single();
 
-    if (bizError || !business || business.owner_id !== user.id) {
+    if (bizError || !business) {
       return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+    }
+
+    let allowed = business.owner_id === user.id || business.assigned_coach_id === user.id;
+    if (!allowed) {
+      const { data: roleRow } = await supabase
+        .from('system_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (roleRow?.role === 'super_admin') allowed = true;
+    }
+    if (!allowed) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     // Get the latest forecast (resolve business_profiles.id from businesses.id)
