@@ -22,7 +22,7 @@ import { createClient } from '@/lib/supabase/client'
  * ```
  */
 export function useActiveBusinessId() {
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
+  const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext()
   const [businessId, setBusinessId] = useState<string | null>(activeBusiness?.id ?? null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -41,7 +41,16 @@ export function useActiveBusinessId() {
       return
     }
 
-    // If no active business in context, try to load the user's own business
+    // Coach/admin without an active client — do NOT fall back to owner_id.
+    // Previously this hook would return whichever business the coach owned,
+    // and every consumer would silently save to the wrong business.
+    if (currentUser?.role !== 'client') {
+      setBusinessId(null)
+      setIsLoading(false)
+      return
+    }
+
+    // Client — resolve via business_users → owner_id.
     async function loadOwnBusiness() {
       try {
         const supabase = createClient()
@@ -82,7 +91,6 @@ export function useActiveBusinessId() {
         }
 
         if (fetchError || !business) {
-          // User might be a coach with no own business - that's OK
           setBusinessId(null)
           setIsLoading(false)
           return
@@ -99,7 +107,7 @@ export function useActiveBusinessId() {
     }
 
     loadOwnBusiness()
-  }, [activeBusiness?.id, contextLoading])
+  }, [activeBusiness?.id, contextLoading, currentUser?.role])
 
   return {
     businessId,

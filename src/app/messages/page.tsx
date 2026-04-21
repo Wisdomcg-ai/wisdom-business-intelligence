@@ -19,6 +19,7 @@ import {
 import Link from 'next/link'
 import { uploadMessageAttachment, formatFileSize, isAllowedFileType } from '@/lib/services/messageAttachments'
 import PageHeader from '@/components/ui/PageHeader'
+import { useBusinessContext } from '@/contexts/BusinessContext'
 
 interface Message {
   id: string
@@ -37,6 +38,7 @@ interface Message {
 
 export default function MessagesPage() {
   const supabase = createClient()
+  const { activeBusiness, currentUser, viewerContext } = useBusinessContext()
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [loading, setLoading] = useState(true)
@@ -62,32 +64,42 @@ export default function MessagesPage() {
     setUserId(user.id)
 
     // Set default name - profiles table doesn't have name fields
-    setUserName('You')
+    setUserName(viewerContext.isViewingAsCoach ? 'Coach' : 'You')
 
-    // First try to get business via business_users join table
-    const { data: businessUser } = await supabase
-      .from('business_users')
-      .select('business_id')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
+    // When a coach is viewing a client, use activeBusiness from context
     let businessData = null
+    if (activeBusiness?.id) {
+      const { data } = await supabase
+        .from('businesses')
+        .select('id, assigned_coach_id')
+        .eq('id', activeBusiness.id)
+        .maybeSingle()
+      businessData = data
+    } else if (currentUser?.role === 'client') {
+      // Client viewing own data — resolve via business_users or owner_id.
+      // Coaches/admins without an active client do NOT fall through here —
+      // loading their owned business would show the wrong message thread.
+      const { data: businessUser } = await supabase
+        .from('business_users')
+        .select('business_id')
+        .eq('user_id', user.id)
+        .maybeSingle()
 
-    if (businessUser) {
-      const { data } = await supabase
-        .from('businesses')
-        .select('id, assigned_coach_id')
-        .eq('id', businessUser.business_id)
-        .maybeSingle()
-      businessData = data
-    } else {
-      // Fallback: try direct owner_id lookup
-      const { data } = await supabase
-        .from('businesses')
-        .select('id, assigned_coach_id')
-        .eq('owner_id', user.id)
-        .maybeSingle()
-      businessData = data
+      if (businessUser) {
+        const { data } = await supabase
+          .from('businesses')
+          .select('id, assigned_coach_id')
+          .eq('id', businessUser.business_id)
+          .maybeSingle()
+        businessData = data
+      } else {
+        const { data } = await supabase
+          .from('businesses')
+          .select('id, assigned_coach_id')
+          .eq('owner_id', user.id)
+          .maybeSingle()
+        businessData = data
+      }
     }
 
     if (!businessData) {

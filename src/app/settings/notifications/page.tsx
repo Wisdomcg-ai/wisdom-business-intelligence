@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useBusinessContext } from '@/contexts/BusinessContext'
 import PageHeader from '@/components/ui/PageHeader'
 import {
   Bell,
@@ -125,6 +126,7 @@ const NOTIFICATION_ITEMS: NotificationItem[] = [
 
 export default function NotificationPreferencesPage() {
   const supabase = createClient()
+  const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext()
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -135,8 +137,9 @@ export default function NotificationPreferencesPage() {
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false)
 
   useEffect(() => {
-    loadPreferences()
-  }, [])
+    if (!contextLoading) loadPreferences()
+
+  }, [contextLoading, activeBusiness?.id])
 
   async function loadPreferences() {
     try {
@@ -144,28 +147,35 @@ export default function NotificationPreferencesPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Get user's business
-      const { data: businessUser } = await supabase
-        .from('business_users')
-        .select('business_id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (!businessUser) {
-        const { data: ownedBusiness } = await supabase
-          .from('businesses')
-          .select('id')
-          .eq('owner_id', user.id)
+      // Prefer activeBusiness from context — keeps coach views scoped to the
+      // client they're viewing. Only fall through to the owner lookup for
+      // confirmed clients; coaches/admins without an active selection show
+      // no preferences (avoids pinning to their own owned business).
+      let bizId: string | null = null
+      if (activeBusiness?.id) {
+        bizId = activeBusiness.id
+        setBusinessId(bizId)
+      } else if (currentUser?.role === 'client') {
+        const { data: businessUser } = await supabase
+          .from('business_users')
+          .select('business_id')
+          .eq('user_id', user.id)
           .maybeSingle()
 
-        if (ownedBusiness) {
-          setBusinessId(ownedBusiness.id)
+        if (businessUser?.business_id) {
+          bizId = businessUser.business_id
+        } else {
+          const { data: ownedBusiness } = await supabase
+            .from('businesses')
+            .select('id')
+            .eq('owner_id', user.id)
+            .maybeSingle()
+          bizId = ownedBusiness?.id ?? null
         }
-      } else {
-        setBusinessId(businessUser.business_id)
+
+        if (bizId) setBusinessId(bizId)
       }
 
-      const bizId = businessUser?.business_id || businessId
       if (!bizId) return
 
       // Load notification preferences

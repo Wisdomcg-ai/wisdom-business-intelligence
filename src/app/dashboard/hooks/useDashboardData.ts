@@ -375,7 +375,9 @@ export function useDashboardData(): UseDashboardDataReturn {
       setUserId(user.id)
 
       // Use cached businessProfileId from context (resolved during init)
-      // Falls back to querying if not cached
+      // Falls back to querying if not cached.
+      // IMPORTANT: When a coach is viewing a client, activeBusiness holds the
+      // client's business — never fall back to user.id (that's the coach).
       let bId: string
       if (cachedProfileId) {
         bId = cachedProfileId
@@ -387,14 +389,18 @@ export function useDashboardData(): UseDashboardDataReturn {
           .maybeSingle()
         bId = profile?.id || activeBusiness.id
       } else {
+        // Only fall back to user.id lookup for clients viewing their own data.
+        // If the user is a coach/admin with no activeBusiness, there's nothing
+        // to show — don't accidentally load the coach's own profile.
+        const targetOwnerId = activeBusiness?.ownerId || user.id
         const { data: profile } = await supabase
           .from('business_profiles')
           .select('id')
-          .eq('user_id', user.id)
+          .eq('user_id', targetOwnerId)
           .maybeSingle()
 
         if (!profile?.id) {
-          console.log('[Dashboard] No business found for user')
+          console.log('[Dashboard] No business found for user/owner:', targetOwnerId)
           setIsLoading(false)
           return
         }

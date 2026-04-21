@@ -235,21 +235,19 @@ export default function Step4AnnualPlan({
         return
       }
 
-      const { data: businesses } = await supabase
-        .from('businesses')
-        .select('id')
-        .eq('owner_id', user.id)
-        .limit(1)
-
-      if (!businesses || businesses.length === 0) {
-        console.error('No business found')
+      // Use the businessId prop passed in from the parent — it already reflects
+      // the coach's active client (or the client's own business) correctly.
+      // The previous owner_id lookup was wrong whenever the current user was a
+      // coach: it would add a team member to the coach's own business.
+      if (!businessId) {
+        console.error('No business ID provided')
         setIsSavingNewPerson(false)
         return
       }
 
-      const businessId = businesses[0].id
-
-      // Get current key_roles
+      // Match the lookup convention used elsewhere in this file (see
+      // loadTeamMembers above) — business_profiles is queried by its
+      // `business_id` column from this component.
       const { data: profile } = await supabase
         .from('business_profiles')
         .select('key_roles')

@@ -27,7 +27,7 @@ import Link from 'next/link';
 export default function QuarterlyReviewPage() {
   const router = useRouter();
   const supabase = createClient();
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext();
+  const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext();
   const { getPath } = useCoachView();
   const [reviews, setReviews] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,11 +47,12 @@ export default function QuarterlyReviewPage() {
           return;
         }
 
-        // Use activeBusiness from context if available (coach view)
+        // Role-gated: coaches/admins without an active client do not fall back
+        // to owner_id (that would load the coach's own owned business).
         let bizId: string | null = null;
         if (activeBusiness?.id) {
           bizId = activeBusiness.id;
-        } else {
+        } else if (currentUser?.role === 'client') {
           const { data: business, error: bizError } = await supabase
             .from('businesses')
             .select('id')

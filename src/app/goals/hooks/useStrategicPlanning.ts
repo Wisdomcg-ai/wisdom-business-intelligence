@@ -678,7 +678,16 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           console.log(`[Strategic Planning] 🔍 User ID: ${user.id}`)
           console.log(`[Strategic Planning] 🔍 Profile query result:`, { profile, profileError: profileError?.message })
 
-          bizId = profile?.id || user.id
+          // Never fall back to user.id as a business_profiles.id — it is an
+          // auth UUID and would silently write to a non-existent row. If the
+          // profile hasn't been created yet, bail out and let the page show
+          // an onboarding/empty state.
+          if (!profile?.id) {
+            console.warn('[Strategic Planning] No business_profiles row for user — aborting load')
+            setIsLoading(false)
+            return
+          }
+          bizId = profile.id
           ownerUser = user.id // For SWOT queries, SWOT stores with user.id as business_id
 
           console.log(`[Strategic Planning] 🔍 Using bizId: ${bizId}, ownerUser: ${ownerUser}`)

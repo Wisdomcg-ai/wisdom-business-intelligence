@@ -13,7 +13,7 @@ import { useXeroKeepalive } from '@/hooks/useXeroKeepalive'
 
 export default function CashflowForecastPage() {
   const supabase = createClient()
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
+  const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -43,18 +43,21 @@ export default function CashflowForecastPage() {
         return
       }
 
-      // Get business ID
-      let bizId: string
+      // Role-gated business resolution — never pin a coach to their own user.id.
+      let bizId: string | null = null
       if (activeBusiness?.id) {
         bizId = activeBusiness.id
-      } else {
-        const targetOwnerId = activeBusiness?.ownerId || user.id
+      } else if (currentUser?.role === 'client') {
         const { data: business } = await supabase
           .from('businesses')
           .select('id')
-          .eq('owner_id', targetOwnerId)
+          .eq('owner_id', user.id)
           .maybeSingle()
-        bizId = business?.id || user.id
+        bizId = business?.id ?? null
+      }
+      if (!bizId) {
+        setIsLoading(false)
+        return
       }
       setBusinessId(bizId)
 
@@ -102,6 +105,26 @@ export default function CashflowForecastPage() {
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading cashflow forecast...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!businessId) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="max-w-md text-center px-6">
+          <Banknote className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">No client selected</h2>
+          <p className="text-gray-600 mb-4">
+            Open a client from the coach portal to view their cashflow forecast.
+          </p>
+          <a
+            href="/coach/clients"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
+          >
+            Go to Clients
+          </a>
         </div>
       </div>
     )

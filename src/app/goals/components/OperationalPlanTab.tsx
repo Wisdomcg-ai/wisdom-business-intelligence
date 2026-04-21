@@ -96,12 +96,13 @@ export default function OperationalPlanTab({
           return
         }
 
-        const targetBusinessId = businessId || user.id
-        if (!targetBusinessId) {
+        // Never fall back to user.id — business_profiles.id is never a user UUID.
+        if (!businessId) {
           console.log('[OperationalPlanTab] No businessId, using localStorage fallback')
           loadFromLocalStorage()
           return
         }
+        const targetBusinessId = businessId
 
         // Load from business_profiles (key_roles + owner_info)
         const { data: profile, error: profileError } = await supabase

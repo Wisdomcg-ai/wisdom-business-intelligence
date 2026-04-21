@@ -35,7 +35,7 @@ export interface QuarterInfo {
 
 export function useBusinessDashboard(overrideBusinessId?: string) {
   const supabase = createClient()
-  const { activeBusiness, businessProfileId: cachedProfileId, isLoading: isContextLoading } = useBusinessContext()
+  const { activeBusiness, currentUser, businessProfileId: cachedProfileId, isLoading: isContextLoading } = useBusinessContext()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -117,8 +117,9 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
       const uid = user.id
       setUserId(uid)
 
-      // Use cached businessProfileId from context when available
-      let bizId: string
+      // Role-gated business_profile resolution. The legacy `|| user.id`
+      // fallback could pin a coach to their own auth UUID as a profile id.
+      let bizId: string | null = null
 
       if (overrideBusinessId) {
         bizId = overrideBusinessId
@@ -131,14 +132,19 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
           .eq('business_id', activeBusiness.id)
           .single()
         bizId = profile?.id || activeBusiness.id
-      } else {
-        const targetUserId = activeBusiness?.ownerId || user.id
+      } else if (currentUser?.role === 'client') {
         const { data: profile } = await supabase
           .from('business_profiles')
           .select('id, industry')
-          .eq('user_id', targetUserId)
+          .eq('user_id', user.id)
           .single()
-        bizId = profile?.id || user.id
+        bizId = profile?.id ?? null
+      }
+
+      if (!bizId) {
+        // Coach/admin without an active client, or client without a profile yet.
+        setIsLoading(false)
+        return
       }
 
       setBusinessId(bizId)

@@ -95,15 +95,45 @@ export async function middleware(request: NextRequest) {
   // Check if it's a public route OR the home page OR legal pages OR standalone public pages
   const isPublicRoute = pathname === '/' || pathname === '/privacy' || pathname === '/terms' || pathname.startsWith('/bali-retreat') || pathname.startsWith('/ai-advantage') || publicRoutes.some(route => pathname.startsWith(route))
 
-  // If user is not logged in and trying to access protected routes
+  // If user is not logged in and trying to access protected routes.
+  // Preserve the originally-requested URL as ?next= so login can bounce
+  // the user back where they were (critical for coaches deep inside
+  // /coach/clients/[id]/view/... when their session expires).
   if (!user && !isPublicRoute) {
-    return NextResponse.redirect(new URL('/auth/login', request.url))
+    const nextParam = pathname + (request.nextUrl.search || '')
+    // Coach paths always route to the coach login so coach credentials
+    // don't trigger the client-login "wrong portal" sign-in/sign-out dance.
+    const loginBase = pathname.startsWith('/coach')
+      ? '/coach/login'
+      : pathname.startsWith('/admin')
+        ? '/admin/login'
+        : '/auth/login'
+    const loginUrl = new URL(loginBase, request.url)
+    loginUrl.searchParams.set('next', nextParam)
+    return NextResponse.redirect(loginUrl)
   }
 
   // If user is logged in and trying to access auth pages (except update-password)
-  if (user && pathname.startsWith('/auth') && !pathname.startsWith('/auth/update-password')) {
-    // Redirect to dashboard instead of goals
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+  if (user && pathname.startsWith('/auth') && !pathname.startsWith('/auth/update-password') && !pathname.startsWith('/auth/callback')) {
+    // Redirect coaches/admins to their portals, clients to dashboard.
+    // Honor ?next= when present (preserves deep-link return after login).
+    const { data: roleRow } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    const role = roleRow?.role
+    const roleDefault = role === 'coach' ? '/coach/dashboard'
+      : role === 'super_admin' ? '/admin'
+      : '/dashboard'
+
+    const rawNext = request.nextUrl.searchParams.get('next')
+    const safeNext =
+      rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : null
+    const destination = safeNext ?? roleDefault
+
+    return NextResponse.redirect(new URL(destination, request.url))
   }
 
   // Onboarding flow check - only for authenticated users

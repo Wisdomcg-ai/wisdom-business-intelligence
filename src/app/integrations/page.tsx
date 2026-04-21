@@ -20,7 +20,7 @@ interface Integration {
 export default function IntegrationsPage() {
   const supabase = createClient()
   const pathname = usePathname()
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
+  const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext()
   const [loading, setLoading] = useState(true)
   const [xeroConnected, setXeroConnected] = useState(false)
   const [xeroData, setXeroData] = useState<any>(null)
@@ -41,12 +41,13 @@ export default function IntegrationsPage() {
 
     console.log('[Integrations] User ID:', user.id)
 
-    // Use activeBusiness if viewing as coach, otherwise get user's own business
+    // Use activeBusiness if viewing as coach, otherwise (for clients) get their
+    // own business. Coaches/admins without an active client must not resolve to
+    // their own owned business — that would show the wrong Xero connection.
     let bizId: string | null = null
     if (activeBusiness?.id) {
       bizId = activeBusiness.id
-    } else {
-      // Get user's business first to get the business_id
+    } else if (currentUser?.role === 'client') {
       const { data: businessData, error: businessError } = await supabase
         .from('businesses')
         .select('id')

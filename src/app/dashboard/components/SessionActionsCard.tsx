@@ -22,7 +22,7 @@ interface SessionActionsCardProps {
 
 export function SessionActionsCard({ userId }: SessionActionsCardProps) {
   const supabase = createClient()
-  const { activeBusiness } = useBusinessContext()
+  const { activeBusiness, currentUser } = useBusinessContext()
   const [actions, setActions] = useState<SessionAction[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
@@ -33,8 +33,9 @@ export function SessionActionsCard({ userId }: SessionActionsCardProps) {
         // First try to get business ID from context
         let businessId = activeBusiness?.id
 
-        // If no context, try to find user's business directly
-        if (!businessId) {
+        // If no context, try to find user's business directly — but ONLY for
+        // confirmed clients. Coaches/admins must rely on activeBusiness.
+        if (!businessId && currentUser?.role === 'client') {
           const { data: { user } } = await supabase.auth.getUser()
           if (!user) {
             setLoading(false)

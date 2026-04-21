@@ -229,7 +229,7 @@ function ListInput({
 
 export default function WeeklyReviewPage() {
   const supabase = createClient()
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
+  const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -306,14 +306,23 @@ export default function WeeklyReviewPage() {
           console.warn('[Weekly Review] No business_profiles found for businesses.id:', activeBusiness.id)
           bizId = activeBusiness.id
         }
-      } else {
-        const targetUserId = activeBusiness?.ownerId || user.id
+      } else if (currentUser?.role === 'client') {
         const { data: profile } = await supabase
           .from('business_profiles')
           .select('id')
-          .eq('user_id', targetUserId)
+          .eq('user_id', user.id)
           .maybeSingle()
-        bizId = profile?.id || user.id
+        if (!profile?.id) {
+          // Client without a business_profile yet — no review to load.
+          setIsLoading(false)
+          return
+        }
+        bizId = profile.id
+      } else {
+        // Coach/admin without an active client selection — show nothing to
+        // avoid pinning reviews to the wrong business.
+        setIsLoading(false)
+        return
       }
       setBusinessId(bizId)
 

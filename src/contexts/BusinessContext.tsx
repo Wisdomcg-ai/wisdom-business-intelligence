@@ -74,6 +74,13 @@ interface BusinessContextType {
   setActiveBusiness: (businessId: string) => Promise<void>
   clearActiveBusiness: () => void
   refreshUser: () => Promise<void>
+
+  /**
+   * Build a navigation href that stays within the coach view shell when applicable.
+   * When a coach is viewing a client, `/sessions` → `/coach/clients/{id}/view/sessions`.
+   * When a client is viewing their own data, returns the path unchanged.
+   */
+  buildHref: (path: string) => string
 }
 
 // Permission mapping by role
@@ -192,6 +199,7 @@ const defaultContext: BusinessContextType = {
   setActiveBusiness: async () => {},
   clearActiveBusiness: () => {},
   refreshUser: async () => {},
+  buildHref: (path: string) => path,
 }
 
 // Create the context
@@ -225,20 +233,41 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         return
       }
 
-      // Get role after confirming user exists (getUserSystemRole calls getUser internally)
+      // Get role after confirming user exists (getUserSystemRole calls getUser internally).
+      // IMPORTANT: getUserSystemRole now returns null on transient errors (not 'client').
+      // We treat null as "unknown" and refuse to auto-load a business — previously this
+      // path silently pinned coaches to whatever business they owned, producing the
+      // "saves to my business" bug when the role query hiccuped.
       const role = await getUserSystemRole()
-      const mappedRole = role === 'super_admin' ? 'admin' : role || 'client'
+      const mappedRole = role === 'super_admin' ? 'admin' : role === 'coach' ? 'coach' : role === 'client' ? 'client' : null
+
+      if (mappedRole === null) {
+        // Unknown role (transient error or unauthenticated). Surface as an error state
+        // so pages show an empty state rather than silently using the wrong business.
+        setCurrentUser({
+          id: user.id,
+          email: user.email || '',
+          role: 'client', // placeholder; components gate on activeBusiness anyway
+          firstName: user.user_metadata?.first_name,
+          lastName: user.user_metadata?.last_name,
+        })
+        setError('Could not determine user role — please refresh')
+        setIsLoading(false)
+        return
+      }
 
       setCurrentUser({
         id: user.id,
         email: user.email || '',
-        role: mappedRole as 'client' | 'coach' | 'admin',
+        role: mappedRole,
         firstName: user.user_metadata?.first_name,
         lastName: user.user_metadata?.last_name,
       })
 
-      // If user is a client, automatically load their business
-      if (role === 'client' || role === null) {
+      // Only auto-load a business for CONFIRMED clients. Coaches/admins must enter
+      // a client via /coach/clients/[id]/view/... which calls setActiveBusiness
+      // explicitly — they never get a default business attached to their session.
+      if (mappedRole === 'client') {
         // First try via business_users join table (for team members)
         // Now also fetch the role for proper permissions
         const { data: businessUser, error: businessUserError } = await supabase
@@ -489,6 +518,16 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
     }
   }, [supabase])
 
+  // Build navigation hrefs that stay inside the coach view shell.
+  // When a coach is viewing a client, `/sessions` → `/coach/clients/{id}/view/sessions`.
+  const buildHref = useCallback((path: string): string => {
+    if (viewerContext.isViewingAsCoach && activeBusiness?.id) {
+      const cleanPath = path.startsWith('/') ? path.slice(1) : path
+      return `/coach/clients/${activeBusiness.id}/view/${cleanPath}`
+    }
+    return path
+  }, [viewerContext.isViewingAsCoach, activeBusiness?.id])
+
   const value: BusinessContextType = {
     currentUser,
     activeBusiness,
@@ -499,6 +538,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
     setActiveBusiness,
     clearActiveBusiness,
     refreshUser,
+    buildHref,
   }
 
   return (

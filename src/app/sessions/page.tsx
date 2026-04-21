@@ -16,6 +16,7 @@ import {
   Upload
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { useBusinessContext } from '@/contexts/BusinessContext'
 
 interface SessionNote {
   id: string
@@ -32,6 +33,7 @@ interface SessionNote {
 export default function ClientSessionsPage() {
   const router = useRouter()
   const supabase = createClient()
+  const { activeBusiness, currentUser } = useBusinessContext()
 
   const [loading, setLoading] = useState(true)
   const [sessions, setSessions] = useState<SessionNote[]>([])
@@ -41,7 +43,7 @@ export default function ClientSessionsPage() {
 
   useEffect(() => {
     loadSessions()
-  }, [])
+  }, [activeBusiness?.id])
 
   async function loadSessions() {
     try {
@@ -51,37 +53,51 @@ export default function ClientSessionsPage() {
         return
       }
 
-      // Get user's business
-      const { data: businessUser } = await supabase
-        .from('business_users')
-        .select('business_id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      let bizId = businessUser?.business_id
-
-      if (!bizId) {
-        // Fallback: direct owner lookup
-        const { data: business } = await supabase
-          .from('businesses')
-          .select('id, assigned_coach_id')
-          .eq('owner_id', user.id)
-          .maybeSingle()
-
-        if (business) {
-          bizId = business.id
-          setCoachId(business.assigned_coach_id)
-        }
-      } else {
+      // Use activeBusiness from context if available (coach viewing client).
+      // For coaches/admins without an active client we intentionally do NOT
+      // fall back to `owner_id = user.id` — that would load whichever business
+      // the coach happens to own and pin session writes to it.
+      let bizId: string | undefined
+      if (activeBusiness?.id) {
+        bizId = activeBusiness.id
         // Get coach ID
         const { data: business } = await supabase
           .from('businesses')
           .select('assigned_coach_id')
           .eq('id', bizId)
           .maybeSingle()
+        if (business) setCoachId(business.assigned_coach_id)
+      } else if (currentUser?.role === 'client') {
+        // Client viewing own data — resolve via business_users or owner_id
+        const { data: businessUser } = await supabase
+          .from('business_users')
+          .select('business_id')
+          .eq('user_id', user.id)
+          .maybeSingle()
 
-        if (business) {
-          setCoachId(business.assigned_coach_id)
+        bizId = businessUser?.business_id
+
+        if (!bizId) {
+          const { data: business } = await supabase
+            .from('businesses')
+            .select('id, assigned_coach_id')
+            .eq('owner_id', user.id)
+            .maybeSingle()
+
+          if (business) {
+            bizId = business.id
+            setCoachId(business.assigned_coach_id)
+          }
+        } else {
+          const { data: business } = await supabase
+            .from('businesses')
+            .select('assigned_coach_id')
+            .eq('id', bizId)
+            .maybeSingle()
+
+          if (business) {
+            setCoachId(business.assigned_coach_id)
+          }
         }
       }
 

@@ -189,7 +189,7 @@ function getSaveStatusDisplay(status: SaveStatus, isDirty: boolean, lastSaved: D
 function StrategicPlanningContent() {
   const searchParams = useSearchParams()
   const goalsRouter = useRouter()
-  const { activeBusiness, viewerContext, isLoading: isContextLoading } = useBusinessContext()
+  const { activeBusiness, currentUser, viewerContext, isLoading: isContextLoading } = useBusinessContext()
 
   // Hydration fix: ensure state matches between server and client
   const [mounted, setMounted] = useState(false)
@@ -285,6 +285,7 @@ function StrategicPlanningContent() {
           const result = await assemblePlanData({
             supabase,
             activeBusiness: activeBusiness ? { id: activeBusiness.id, ownerId: activeBusiness.ownerId } : null,
+            userRole: currentUser?.role,
           })
           if (result) {
             await planSnapshotService.createSnapshot({

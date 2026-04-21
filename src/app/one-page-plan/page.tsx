@@ -19,7 +19,7 @@ import { planSnapshotService } from './services/plan-snapshot-service'
 export default function OnePagePlan() {
   const router = useRouter()
   const supabase = createClient()
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
+  const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext()
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<OnePagePlanData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -145,10 +145,20 @@ export default function OnePagePlan() {
         supabase,
         activeBusiness: activeBusiness ? { id: activeBusiness.id, ownerId: activeBusiness.ownerId } : null,
         selectedQuarterId: overrideQuarterId || selectedQuarterId || undefined,
+        userRole: currentUser?.role,
       })
 
       if (!result) {
-        router.push('/auth/login')
+        // Null means either unauthenticated OR coach/admin with no active client.
+        // Check auth to decide where to go rather than always pushing to login.
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          router.push('/auth/login')
+        } else {
+          // Authenticated coach/admin with no active client — stop loading so
+          // the page can show its empty state.
+          setLoading(false)
+        }
         return
       }
 
@@ -164,6 +174,7 @@ export default function OnePagePlan() {
       try {
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
+          // Role-gated snapshot business resolution — never use user.id.
           let snapshotBusinessId: string | undefined
           if (activeBusiness?.id) {
             const { data: profileData } = await supabase
@@ -172,14 +183,13 @@ export default function OnePagePlan() {
               .eq('business_id', activeBusiness.id)
               .single()
             snapshotBusinessId = profileData?.id || activeBusiness.id
-          } else {
-            const targetUserId = activeBusiness?.ownerId || user.id
+          } else if (currentUser?.role === 'client') {
             const { data: profileData } = await supabase
               .from('business_profiles')
               .select('id')
-              .eq('user_id', targetUserId)
+              .eq('user_id', user.id)
               .single()
-            snapshotBusinessId = profileData?.id || user.id
+            snapshotBusinessId = profileData?.id
           }
           if (snapshotBusinessId) {
             const snapshotsList = await planSnapshotService.getSnapshots(snapshotBusinessId)

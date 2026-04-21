@@ -17,6 +17,10 @@ interface AssemblePlanDataParams {
   supabase: SupabaseClient
   activeBusiness?: { id: string; ownerId?: string; name?: string } | null
   selectedQuarterId?: string
+  // Role is optional for backward compatibility but callers should pass it.
+  // When the caller is a coach with no active client, we return null rather
+  // than silently loading the coach's own profile.
+  userRole?: 'client' | 'coach' | 'admin' | null
 }
 
 interface AssemblePlanDataResult {
@@ -31,7 +35,7 @@ interface AssemblePlanDataResult {
  * Returns null if the user is not authenticated.
  */
 export async function assemblePlanData(params: AssemblePlanDataParams): Promise<AssemblePlanDataResult | null> {
-  const { supabase, activeBusiness, selectedQuarterId: inputQuarterId } = params
+  const { supabase, activeBusiness, selectedQuarterId: inputQuarterId, userRole } = params
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
@@ -69,7 +73,10 @@ export async function assemblePlanData(params: AssemblePlanDataParams): Promise<
         .single()
       ownerUserId = bizData?.owner_id || user.id
     }
-  } else {
+  } else if (userRole === 'client' || userRole === undefined) {
+    // Client view — look up their own profile by user_id. (`undefined` preserves
+    // backward compat for any legacy callers that haven't been updated to pass
+    // userRole yet; those callers should be updated to explicitly pass 'client'.)
     ownerUserId = user.id
     const { data: profileData } = await supabase
       .from('business_profiles')
@@ -78,7 +85,9 @@ export async function assemblePlanData(params: AssemblePlanDataParams): Promise<
       .single()
 
     profile = profileData
-    businessId = profile?.id || user.id
+    // If no profile found, bail — never use user.id as a business/profile ID.
+    if (!profile?.id) return null
+    businessId = profile.id
 
     // Look up businesses.id
     const { data: bizData } = await supabase
@@ -86,7 +95,11 @@ export async function assemblePlanData(params: AssemblePlanDataParams): Promise<
       .select('id')
       .eq('owner_id', ownerUserId)
       .maybeSingle()
-    businessesId = bizData?.id || businessId
+    if (!bizData?.id) return null
+    businessesId = bizData.id
+  } else {
+    // Coach/admin without an active client selection — nothing to load.
+    return null
   }
 
   devLog('[PlanAssembler] Resolved IDs:', { businessId, businessesId, ownerUserId })

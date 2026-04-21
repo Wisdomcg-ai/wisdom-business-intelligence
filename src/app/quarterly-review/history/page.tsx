@@ -679,7 +679,7 @@ function TrendInsights({ reviews }: { reviews: QuarterlyReview[] }) {
 export default function QuarterlyReviewHistoryPage() {
   const router = useRouter();
   const supabase = createClient();
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext();
+  const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext();
   const { getPath } = useCoachView();
 
   const [reviews, setReviews] = useState<QuarterlyReview[]>([]);
@@ -702,7 +702,7 @@ export default function QuarterlyReviewHistoryPage() {
         let bizId: string | null = null;
         if (activeBusiness?.id) {
           bizId = activeBusiness.id;
-        } else {
+        } else if (currentUser?.role === 'client') {
           const { data: business } = await supabase
             .from('businesses')
             .select('id')

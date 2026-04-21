@@ -32,6 +32,23 @@ export function useSessionTimeout(options: UseSessionTimeoutOptions = {}) {
   const warningMs = (timeoutMinutes - warningMinutes) * 60 * 1000
 
   const handleLogout = useCallback(async () => {
+    // Preserve where they were so login can bounce them back. Coaches deep
+    // in /coach/clients/[id]/view/... get sent to the coach login portal so
+    // they don't see the client login page with their coach credentials.
+    const currentPath =
+      typeof window !== 'undefined'
+        ? window.location.pathname + window.location.search
+        : '/'
+    const isCoachPath = currentPath.startsWith('/coach')
+    const isAdminPath = currentPath.startsWith('/admin')
+    const loginBase = isCoachPath
+      ? '/coach/login'
+      : isAdminPath
+        ? '/admin/login'
+        : '/auth/login'
+    const params = new URLSearchParams({ reason: 'session_expired', next: currentPath })
+    const loginUrl = `${loginBase}?${params.toString()}`
+
     try {
       // Call server-side logout
       await fetch('/api/auth/logout', { method: 'POST' })
@@ -44,10 +61,10 @@ export function useSessionTimeout(options: UseSessionTimeoutOptions = {}) {
         onTimeout()
       }
 
-      router.push('/auth/login?reason=session_expired')
+      router.push(loginUrl)
     } catch (error) {
       console.error('[Session Timeout] Logout error:', error)
-      router.push('/auth/login?reason=session_expired')
+      router.push(loginUrl)
     }
   }, [router, onTimeout])
 

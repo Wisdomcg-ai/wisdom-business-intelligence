@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
   ArrowLeft,
@@ -110,7 +110,10 @@ type BudgetMode = 'single' | 'per_tenant'
 
 export default function ConsolidationBusinessDetailPage() {
   const params = useParams<{ businessId: string }>()
+  const searchParams = useSearchParams()
   const businessId = params?.businessId as string
+  // When navigating here from the coach view, a `from` param preserves the return path
+  const coachReturnPath = searchParams?.get('from') || null
 
   const [businessName, setBusinessName] = useState<string>('')
   const [budgetMode, setBudgetMode] = useState<BudgetMode>('single')
@@ -545,12 +548,22 @@ export default function ConsolidationBusinessDetailPage() {
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-8">
       <header className="space-y-2">
-        <Link
-          href="/admin/consolidation"
-          className="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-brand-orange"
-        >
-          <ArrowLeft className="w-4 h-4" /> All businesses
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/admin/consolidation"
+            className="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-brand-orange"
+          >
+            <ArrowLeft className="w-4 h-4" /> All businesses
+          </Link>
+          {coachReturnPath && (
+            <Link
+              href={coachReturnPath}
+              className="inline-flex items-center gap-1 text-sm text-brand-orange hover:text-brand-orange-600 font-medium"
+            >
+              <ArrowLeft className="w-4 h-4" /> Return to Coach View
+            </Link>
+          )}
+        </div>
         <h1 className="text-2xl font-semibold">{businessName}</h1>
         <p className="text-sm text-gray-600">
           {tenants.length} connected Xero tenant{tenants.length === 1 ? '' : 's'}

@@ -8,46 +8,56 @@ export interface UserWithRole {
   role: SystemRole
 }
 
+// Postgrest "no rows" — distinguish from genuine errors so a transient
+// network/RLS failure never silently promotes a coach into the client branch.
+const PGRST_NO_ROWS = 'PGRST116'
+
 /**
- * Get the current user's system role
+ * Get the current user's system role.
+ *
+ * Returns:
+ *  - 'coach' | 'super_admin' | 'client' when the role is known
+ *  - 'client' only when BOTH tables confirmed "no row" for this user
+ *  - null on auth failure OR transient error (caller must treat as unknown,
+ *    NOT as client — previously we defaulted to 'client' which caused coaches
+ *    to be auto-loaded into a random owned business on Supabase hiccups).
  */
 export async function getUserSystemRole(): Promise<SystemRole | null> {
   const supabase = createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    console.log('[Auth] No user found')
-    return null
-  }
+  if (!user) return null
 
-  console.log('[Auth] Checking role for user:', user.id)
-
-  // First try the system_roles table
+  // system_roles is the source of truth
   const { data: roleData, error: roleError } = await supabase
     .from('system_roles')
     .select('role')
     .eq('user_id', user.id)
-    .single()
+    .maybeSingle()
 
-  if (!roleError && roleData?.role) {
-    console.log('[Auth] Found role in system_roles:', roleData.role)
-    return roleData.role as SystemRole
+  if (roleData?.role) return roleData.role as SystemRole
+
+  // Real error (not just "no row") — propagate as unknown
+  if (roleError && roleError.code !== PGRST_NO_ROWS) {
+    console.error('[Auth] system_roles query failed:', roleError)
+    return null
   }
 
-  // Fallback: check the users table system_role column
+  // Fallback to users.system_role
   const { data: userData, error: userError } = await supabase
     .from('users')
     .select('system_role')
     .eq('id', user.id)
-    .single()
+    .maybeSingle()
 
-  if (!userError && userData?.system_role) {
-    console.log('[Auth] Found role in users table:', userData.system_role)
-    return userData.system_role as SystemRole
+  if (userData?.system_role) return userData.system_role as SystemRole
+
+  if (userError && userError.code !== PGRST_NO_ROWS) {
+    console.error('[Auth] users.system_role query failed:', userError)
+    return null
   }
 
-  // Default to client if no role found anywhere
-  console.log('[Auth] No role found, defaulting to client')
+  // Both tables confirmed no row — user is a client by default.
   return 'client'
 }
 

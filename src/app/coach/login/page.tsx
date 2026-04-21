@@ -1,14 +1,30 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Briefcase, Lock, Mail, AlertCircle } from 'lucide-react'
 import { getUserSystemRole } from '@/lib/auth/roles'
 
+// Same-origin relative paths only — blocks open-redirect.
+function safeNext(raw: string | null): string | null {
+  if (!raw) return null
+  if (!raw.startsWith('/') || raw.startsWith('//')) return null
+  return raw
+}
+
 export default function CoachLogin() {
+  return (
+    <Suspense fallback={null}>
+      <CoachLoginInner />
+    </Suspense>
+  )
+}
+
+function CoachLoginInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
 
   const [email, setEmail] = useState('')
@@ -51,7 +67,8 @@ export default function CoachLogin() {
       }
 
       console.log('[CoachLogin] Login successful! Redirecting...')
-      router.push('/coach/dashboard')
+      const next = safeNext(searchParams?.get('next'))
+      router.push(next ?? '/coach/dashboard')
 
     } catch (err) {
       console.error('Login error:', err)

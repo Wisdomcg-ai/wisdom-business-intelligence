@@ -1,14 +1,31 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, Mail, Lock, Building2, AlertCircle } from 'lucide-react'
 import { getUserSystemRole } from '@/lib/auth/roles'
 
+function safeNext(raw: string | null): string | null {
+  if (!raw) return null
+  if (!raw.startsWith('/') || raw.startsWith('//')) return null
+  return raw
+}
+
+// Wrapper adds a Suspense boundary required by useSearchParams during the
+// static render of this client page.
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
+  )
+}
+
+function LoginPageInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
   
   const [isLoading, setIsLoading] = useState(false)
@@ -78,21 +95,23 @@ export default function LoginPage() {
         // Check user's role and redirect appropriately
         const role = await getUserSystemRole()
 
-        // Security: Verify this is a client login page - reject non-client roles
-        // Admins and coaches should use their dedicated login portals
-        if (role === 'super_admin' || role === 'coach') {
-          // Sign them out and redirect to appropriate portal
-          await supabase.auth.signOut()
-          if (role === 'super_admin') {
-            setError('Please use the admin login portal at /admin/login')
-          } else {
-            setError('Please use the coach login portal at /coach/login')
-          }
+        const next = safeNext(searchParams?.get('next'))
+
+        // The coach/admin arrived at the client login page with coach/admin
+        // credentials — they're now signed in correctly. Route them straight
+        // to where they were going (or their role dashboard) rather than
+        // signing them out and asking them to log in again on another page.
+        if (role === 'super_admin') {
+          router.push(next ?? '/admin')
+          return
+        }
+        if (role === 'coach') {
+          router.push(next ?? '/coach/dashboard')
           return
         }
 
-        // Clients go to client dashboard
-        router.push('/dashboard')
+        // Clients go to their intended destination (or dashboard).
+        router.push(next ?? '/dashboard')
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred. Please try again.')

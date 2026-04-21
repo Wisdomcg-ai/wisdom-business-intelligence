@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import {
   ArrowLeft,
@@ -87,6 +87,7 @@ const getClientNavigation = (clientId: string): NavSection[] => [
       { label: 'Financial Forecast', href: `/coach/clients/${clientId}/view/finances/forecast`, icon: TrendingUp },
       { label: 'Monthly Report', href: `/coach/clients/${clientId}/view/finances/monthly-report`, icon: BarChart3 },
       { label: 'Cashflow Forecast', href: `/coach/clients/${clientId}/view/finances/cashflow`, icon: Banknote },
+      { label: 'Consolidation', href: `/admin/consolidation/${clientId}?from=${encodeURIComponent(`/coach/clients/${clientId}/view/finances/monthly-report`)}`, icon: Layers },
     ],
   },
   {
@@ -175,9 +176,72 @@ interface CoachViewLayoutProps {
   clientId: string
 }
 
+// Paths that should NOT be intercepted (they belong outside the coach shell)
+const PASSTHROUGH_PREFIXES = ['/coach/', '/admin/', '/auth/', '/api/']
+
 export function CoachViewLayout({ children, clientId }: CoachViewLayoutProps) {
   const { activeBusiness } = useBusinessContext()
   const pathname = usePathname()
+  const router = useRouter()
+
+  // ── Navigation interceptor ──
+  // When a coach is viewing a client, catch clicks on <a> tags with app-relative
+  // hrefs (e.g. "/sessions") and redirect them to the coach-scoped equivalent
+  // ("/coach/clients/{id}/view/sessions"). This prevents the 130+ hardcoded
+  // <Link href="/…"> in imported page components from breaking out of the coach
+  // shell.
+  const rewriteHref = useCallback((href: string): string | null => {
+    if (!href.startsWith('/')) return null // relative or external — leave alone
+    if (PASSTHROUGH_PREFIXES.some((p) => href.startsWith(p))) return null
+    return `/coach/clients/${clientId}/view${href}`
+  }, [clientId])
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest('a')
+      if (!anchor) return
+      const href = anchor.getAttribute('href')
+      if (!href) return
+      const rewritten = rewriteHref(href)
+      if (!rewritten) return
+
+      // Intercept before Next.js Link processes the click
+      e.preventDefault()
+      e.stopPropagation()
+      router.push(rewritten)
+    }
+
+    // Capture phase so we fire before React's synthetic event handlers
+    document.addEventListener('click', handler, true)
+    return () => document.removeEventListener('click', handler, true)
+  }, [rewriteHref, router])
+
+  // Also intercept pushState/replaceState for router.push() calls in child pages.
+  // Next.js router.push ultimately calls history.pushState. We monkey-patch it
+  // while the coach view is mounted and restore on unmount.
+  useEffect(() => {
+    const origPush = history.pushState.bind(history)
+    const origReplace = history.replaceState.bind(history)
+
+    const patchUrl = (url: string | URL | null | undefined): string | URL | null | undefined => {
+      if (!url || typeof url !== 'string') return url
+      const rewritten = rewriteHref(url)
+      return rewritten ?? url
+    }
+
+    history.pushState = function (data: any, unused: string, url?: string | URL | null) {
+      return origPush(data, unused, patchUrl(url) as any)
+    }
+    history.replaceState = function (data: any, unused: string, url?: string | URL | null) {
+      return origReplace(data, unused, patchUrl(url) as any)
+    }
+
+    return () => {
+      history.pushState = origPush
+      history.replaceState = origReplace
+    }
+  }, [rewriteHref])
+
   const [expandedSections, setExpandedSections] = useState<string[]>([
     'HOME',
     'SETUP',

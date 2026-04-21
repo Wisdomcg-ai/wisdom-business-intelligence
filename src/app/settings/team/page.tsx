@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useBusinessContext } from '@/contexts/BusinessContext'
 import PageHeader from '@/components/ui/PageHeader'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { apiFetch } from '@/lib/api/fetch'
@@ -207,6 +208,7 @@ const ROLE_INFO = {
 
 export default function TeamMembersPage() {
   const supabase = createClient()
+  const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext()
 
   const [loading, setLoading] = useState(true)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
@@ -231,8 +233,8 @@ export default function TeamMembersPage() {
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
 
   useEffect(() => {
-    loadTeamData()
-  }, [])
+    if (!contextLoading) loadTeamData()
+  }, [contextLoading, activeBusiness?.id])
 
   async function loadTeamData() {
     try {
@@ -240,53 +242,70 @@ export default function TeamMembersPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Get user's business
-      const { data: businessUser } = await supabase
-        .from('business_users')
-        .select('business_id, role')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
       // Track the actual business ID in a local variable to avoid stale state issues
       let actualBusinessId: string | null = null
 
-      if (!businessUser) {
-        // Try via owner_id
-        const { data: ownedBusiness } = await supabase
-          .from('businesses')
-          .select('id, business_name')
-          .eq('owner_id', user.id)
+      if (activeBusiness?.id) {
+        // Coach viewing a client — scope to the active client business.
+        actualBusinessId = activeBusiness.id
+        setBusinessId(activeBusiness.id)
+        setBusinessName(activeBusiness.name || 'Client Business')
+
+        // Role in this business: coach acts as owner-equivalent for UI gating.
+        const { data: businessUser } = await supabase
+          .from('business_users')
+          .select('role')
+          .eq('business_id', activeBusiness.id)
+          .eq('user_id', user.id)
+          .maybeSingle()
+        setCurrentUserRole(businessUser?.role || (currentUser?.role === 'coach' || currentUser?.role === 'admin' ? 'owner' : 'member'))
+      } else if (currentUser?.role === 'client') {
+        // Client managing their own team — business_users → owner_id fallback.
+        const { data: businessUser } = await supabase
+          .from('business_users')
+          .select('business_id, role')
+          .eq('user_id', user.id)
           .maybeSingle()
 
-        if (ownedBusiness) {
-          actualBusinessId = ownedBusiness.id
-          setBusinessId(ownedBusiness.id)
-          setBusinessName(ownedBusiness.business_name || 'My Business')
-          setCurrentUserRole('owner')
+        if (!businessUser) {
+          const { data: ownedBusiness } = await supabase
+            .from('businesses')
+            .select('id, business_name')
+            .eq('owner_id', user.id)
+            .maybeSingle()
 
-          // Create business_users entry if doesn't exist
-          await supabase
-            .from('business_users')
-            .upsert({
-              business_id: ownedBusiness.id,
-              user_id: user.id,
-              role: 'owner',
-              status: 'active'
-            }, { onConflict: 'business_id,user_id' })
+          if (ownedBusiness) {
+            actualBusinessId = ownedBusiness.id
+            setBusinessId(ownedBusiness.id)
+            setBusinessName(ownedBusiness.business_name || 'My Business')
+            setCurrentUserRole('owner')
+
+            // Create business_users entry if doesn't exist
+            await supabase
+              .from('business_users')
+              .upsert({
+                business_id: ownedBusiness.id,
+                user_id: user.id,
+                role: 'owner',
+                status: 'active'
+              }, { onConflict: 'business_id,user_id' })
+          }
+        } else {
+          actualBusinessId = businessUser.business_id
+          setBusinessId(businessUser.business_id)
+          setCurrentUserRole(businessUser.role)
+
+          const { data: business } = await supabase
+            .from('businesses')
+            .select('business_name')
+            .eq('id', businessUser.business_id)
+            .maybeSingle()
+
+          setBusinessName(business?.business_name || 'My Business')
         }
-      } else {
-        actualBusinessId = businessUser.business_id
-        setBusinessId(businessUser.business_id)
-        setCurrentUserRole(businessUser.role)
-
-        const { data: business } = await supabase
-          .from('businesses')
-          .select('business_name')
-          .eq('id', businessUser.business_id)
-          .maybeSingle()
-
-        setBusinessName(business?.business_name || 'My Business')
       }
+      // Coach/admin without activeBusiness: intentionally falls through with
+      // actualBusinessId null — page shows empty state.
 
       // Load team members using local variable to avoid stale state
       if (actualBusinessId) {

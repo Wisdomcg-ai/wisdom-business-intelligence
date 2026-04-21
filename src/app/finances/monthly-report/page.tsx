@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { createClient } from '@/lib/supabase/client'
 import dynamic from 'next/dynamic'
@@ -57,7 +57,8 @@ export default function MonthlyReportPage() {
   const supabase = createClient()
   const searchParams = useSearchParams()
   const router = useRouter()
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
+  const pathname = usePathname()
+  const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext()
   const [mounted, setMounted] = useState(false)
   const [isInitializing, setIsInitializing] = useState(true)
   const hasTriggeredOAuthSync = useRef(false)
@@ -267,16 +268,23 @@ export default function MonthlyReportPage() {
       }
       setUserId(user.id)
 
-      let bizId: string
+      // Role-gated business resolution. A coach/admin without an active client
+      // MUST NOT fall back to owner_id or user.id — both would save to the
+      // wrong business. See src/lib/business/resolveBusinessId.ts.
+      let bizId: string | null = null
       if (activeBusiness?.id) {
         bizId = activeBusiness.id
-      } else {
+      } else if (currentUser?.role === 'client') {
         const { data: business } = await supabase
           .from('businesses')
           .select('id')
           .eq('owner_id', user.id)
           .maybeSingle()
-        bizId = business?.id || user.id
+        bizId = business?.id ?? null
+      }
+      if (!bizId) {
+        setIsInitializing(false)
+        return
       }
       setBusinessId(bizId)
 
@@ -656,6 +664,27 @@ export default function MonthlyReportPage() {
     )
   }
 
+  // Empty state for coach/admin without an active client selection.
+  if (!businessId) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="max-w-md text-center px-6">
+          <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">No client selected</h2>
+          <p className="text-gray-600 mb-4">
+            Open a client from the coach portal to view their monthly report.
+          </p>
+          <a
+            href="/coach/clients"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
+          >
+            Go to Clients
+          </a>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Page Header */}
@@ -911,7 +940,7 @@ export default function MonthlyReportPage() {
           <>
             <FXRateMissingBanner
               missingRates={consolidatedReport?.fx_context?.missing_rates ?? []}
-              onAddRate={() => router.push(`/admin/consolidation/${businessId}`)}
+              onAddRate={() => router.push(`/admin/consolidation/${businessId}?from=${encodeURIComponent(pathname)}`)}
             />
             <ConsolidatedPLTab
               report={consolidatedReport}
@@ -927,7 +956,7 @@ export default function MonthlyReportPage() {
           <>
             <FXRateMissingBanner
               missingRates={consolidatedBS?.fx_context?.missing_rates ?? []}
-              onAddRate={() => router.push(`/admin/consolidation/${businessId}`)}
+              onAddRate={() => router.push(`/admin/consolidation/${businessId}?from=${encodeURIComponent(pathname)}`)}
             />
             <ConsolidatedBSTab
               report={consolidatedBS}
@@ -942,7 +971,7 @@ export default function MonthlyReportPage() {
           <>
             <FXRateMissingBanner
               missingRates={consolidatedCashflow?.fx_context?.missing_rates ?? []}
-              onAddRate={() => router.push(`/admin/consolidation/${businessId}`)}
+              onAddRate={() => router.push(`/admin/consolidation/${businessId}?from=${encodeURIComponent(pathname)}`)}
             />
             <ConsolidatedCashflowTab
               report={consolidatedCashflow}

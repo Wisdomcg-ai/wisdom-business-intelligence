@@ -140,7 +140,7 @@ interface UseQuarterlyReviewReturn {
 
 export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): UseQuarterlyReviewReturn {
   const supabase = createClient();
-  const { activeBusiness } = useBusinessContext();
+  const { activeBusiness, currentUser } = useBusinessContext();
 
   // Quarter/year will be resolved after yearType lookup
   const [resolvedQuarter, setResolvedQuarter] = useState<QuarterNumber>(options.quarter || getCurrentQuarter().quarter);
@@ -531,6 +531,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
           const result = await assemblePlanData({
             supabase,
             activeBusiness: activeBusiness ? { id: activeBusiness.id, ownerId: activeBusiness.ownerId } : null,
+            userRole: currentUser?.role,
           });
           if (result) {
             await planSnapshotService.createSnapshot({
@@ -597,6 +598,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
           const result = await assemblePlanData({
             supabase,
             activeBusiness: activeBusiness ? { id: activeBusiness.id, ownerId: activeBusiness.ownerId } : null,
+            userRole: currentUser?.role,
           });
           if (result) {
             await planSnapshotService.createSnapshot({

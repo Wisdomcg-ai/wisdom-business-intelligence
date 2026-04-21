@@ -39,7 +39,7 @@ import { PlanningSeasonBanner } from './components/PlanningSeasonBanner'
 export default function FinancialForecastPage() {
   const supabase = createClient()
   const searchParams = useSearchParams()
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
+  const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const hasAutoSyncedRef = useRef(false)
@@ -204,20 +204,23 @@ export default function FinancialForecastPage() {
       const uid = user.id
       setUserId(uid)
 
-      // Use activeBusiness if available (supports coach view)
-      // Otherwise fall back to querying user's own business
-      let bizId: string
+      // Role-gated business resolution. Coaches/admins without an active client
+      // selection must NOT resolve to user.id — that was the root cause of
+      // forecast writes landing on the coach's own UUID.
+      let bizId: string | null = null
       if (activeBusiness?.id) {
         bizId = activeBusiness.id
-      } else {
-        // Get business using owner_id (to match xero_connections table)
-        const targetOwnerId = activeBusiness?.ownerId || user.id
+      } else if (currentUser?.role === 'client') {
         const { data: business } = await supabase
           .from('businesses')
           .select('id')
-          .eq('owner_id', targetOwnerId)
+          .eq('owner_id', user.id)
           .maybeSingle()
-        bizId = business?.id || user.id
+        bizId = business?.id ?? null
+      }
+      if (!bizId) {
+        setIsLoading(false)
+        return
       }
       setBusinessId(bizId)
 
@@ -371,6 +374,26 @@ export default function FinancialForecastPage() {
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading financial forecast...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Empty state — coach/admin without an active client selection.
+  if (!businessId) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="max-w-md text-center px-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">No client selected</h2>
+          <p className="text-gray-600 mb-4">
+            Open a client from the coach portal to view their financial forecast.
+          </p>
+          <a
+            href="/coach/clients"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
+          >
+            Go to Clients
+          </a>
         </div>
       </div>
     )
