@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 interface UseUnreadMessagesOptions {
@@ -24,26 +25,18 @@ export function useUnreadMessages({ role, businessId }: UseUnreadMessagesOptions
         // OR sender_type is 'coach' and read is false for their business
         let bId = businessId
 
-        // If no businessId provided, get user's business
+        // If no businessId provided, resolve via the shared role-aware helper.
+        // This branch runs only when role === 'client' (gated above), so the
+        // resolver's coach-no-client safeguards are not exercised here — but
+        // going through the helper keeps a single source of truth for the
+        // businesses.id lookup and picks up the runtime invariant.
         if (!bId) {
-          // First try via business_users
-          const { data: businessUser } = await supabase
-            .from('business_users')
-            .select('business_id')
-            .eq('user_id', user.id)
-            .maybeSingle()
-
-          if (businessUser) {
-            bId = businessUser.business_id
-          } else {
-            // Fallback to owner_id
-            const { data: business } = await supabase
-              .from('businesses')
-              .select('id')
-              .eq('owner_id', user.id)
-              .maybeSingle()
-            bId = business?.id
-          }
+          const resolved = await resolveBusinessId(supabase, {
+            userId: user.id,
+            role: 'client',
+            activeBusinessId: null,
+          })
+          bId = resolved.businessId ?? undefined
         }
 
         if (!bId) {

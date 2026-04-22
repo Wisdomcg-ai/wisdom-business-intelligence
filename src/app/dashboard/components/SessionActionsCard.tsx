@@ -5,6 +5,7 @@ import { Target, CheckCircle2, Clock, AlertTriangle, ChevronRight } from 'lucide
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/contexts/BusinessContext'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 
 interface SessionAction {
   id: string
@@ -30,40 +31,16 @@ export function SessionActionsCard({ userId }: SessionActionsCardProps) {
   useEffect(() => {
     async function loadActions() {
       try {
-        // First try to get business ID from context
-        let businessId = activeBusiness?.id
-
-        // If no context, try to find user's business directly — but ONLY for
-        // confirmed clients. Coaches/admins must rely on activeBusiness.
-        if (!businessId && currentUser?.role === 'client') {
-          const { data: { user } } = await supabase.auth.getUser()
-          if (!user) {
-            setLoading(false)
-            return
-          }
-
-          // Try business_users first
-          const { data: businessUser } = await supabase
-            .from('business_users')
-            .select('business_id')
-            .eq('user_id', user.id)
-            .maybeSingle()
-
-          if (businessUser?.business_id) {
-            businessId = businessUser.business_id
-          } else {
-            // Try direct owner lookup
-            const { data: ownedBusiness } = await supabase
-              .from('businesses')
-              .select('id')
-              .eq('owner_id', user.id)
-              .maybeSingle()
-
-            if (ownedBusiness?.id) {
-              businessId = ownedBusiness.id
-            }
-          }
-        }
+        // Route all businessId resolution through the shared helper. The
+        // resolver handles the full activeBusiness → client-team → client-owner
+        // chain and returns null for coaches with no active client (which
+        // triggers the empty state below — same as before).
+        const { data: { user } } = await supabase.auth.getUser()
+        const { businessId } = await resolveBusinessId(supabase, {
+          userId: user?.id ?? null,
+          role: currentUser?.role ?? null,
+          activeBusinessId: activeBusiness?.id ?? null,
+        })
 
         if (!businessId) {
           setLoading(false)

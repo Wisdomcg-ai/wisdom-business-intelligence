@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useBusinessContext } from '@/contexts/BusinessContext'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 
 interface SessionNote {
   id: string
@@ -53,58 +54,25 @@ export default function ClientSessionsPage() {
         return
       }
 
-      // Use activeBusiness from context if available (coach viewing client).
-      // For coaches/admins without an active client we intentionally do NOT
-      // fall back to `owner_id = user.id` — that would load whichever business
-      // the coach happens to own and pin session writes to it.
-      let bizId: string | undefined
-      if (activeBusiness?.id) {
-        bizId = activeBusiness.id
-        // Get coach ID
-        const { data: business } = await supabase
-          .from('businesses')
-          .select('assigned_coach_id')
-          .eq('id', bizId)
-          .maybeSingle()
-        if (business) setCoachId(business.assigned_coach_id)
-      } else if (currentUser?.role === 'client') {
-        // Client viewing own data — resolve via business_users or owner_id
-        const { data: businessUser } = await supabase
-          .from('business_users')
-          .select('business_id')
-          .eq('user_id', user.id)
-          .maybeSingle()
-
-        bizId = businessUser?.business_id
-
-        if (!bizId) {
-          const { data: business } = await supabase
-            .from('businesses')
-            .select('id, assigned_coach_id')
-            .eq('owner_id', user.id)
-            .maybeSingle()
-
-          if (business) {
-            bizId = business.id
-            setCoachId(business.assigned_coach_id)
-          }
-        } else {
-          const { data: business } = await supabase
-            .from('businesses')
-            .select('assigned_coach_id')
-            .eq('id', bizId)
-            .maybeSingle()
-
-          if (business) {
-            setCoachId(business.assigned_coach_id)
-          }
-        }
-      }
+      // Business resolution via the shared role-aware helper.
+      const { businessId: bizId } = await resolveBusinessId(supabase, {
+        userId: user.id,
+        role: currentUser?.role ?? null,
+        activeBusinessId: activeBusiness?.id ?? null,
+      })
 
       if (!bizId) {
         setLoading(false)
         return
       }
+
+      // Follow-up: fetch assigned coach for UI display.
+      const { data: business } = await supabase
+        .from('businesses')
+        .select('assigned_coach_id')
+        .eq('id', bizId)
+        .maybeSingle()
+      if (business) setCoachId(business.assigned_coach_id)
 
       setBusinessId(bizId)
 

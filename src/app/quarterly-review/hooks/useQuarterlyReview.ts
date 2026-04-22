@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId';
 import { useBusinessContext } from '@/contexts/BusinessContext';
 import { quarterlyReviewService } from '../services/quarterly-review-service';
 import { strategicSyncService } from '../services/strategic-sync-service';
@@ -177,25 +178,21 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
         return;
       }
 
-      let resolvedBusinessId: string | null = null;
-      if (options.businessId) {
-        resolvedBusinessId = options.businessId;
-      } else if (activeBusiness?.id) {
-        resolvedBusinessId = activeBusiness.id;
-      } else {
-        const { data: business } = await supabase
-          .from('businesses')
-          .select('id')
-          .eq('owner_id', user.id)
-          .maybeSingle();
+      let resolvedBusinessId: string | null = options.businessId ?? null;
 
-        if (business) {
-          resolvedBusinessId = business.id;
-        } else {
-          setError('No business found');
-          setIsLoading(false);
-          return;
-        }
+      if (!resolvedBusinessId) {
+        const resolved = await resolveBusinessId(supabase, {
+          userId: user.id,
+          role: currentUser?.role ?? null,
+          activeBusinessId: activeBusiness?.id ?? null,
+        });
+        resolvedBusinessId = resolved.businessId;
+      }
+
+      if (!resolvedBusinessId) {
+        setError('No business found');
+        setIsLoading(false);
+        return;
       }
 
       // Resolve yearType BEFORE setting businessId to avoid race condition

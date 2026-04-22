@@ -20,6 +20,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId';
 import { useCoachView } from '@/hooks/useCoachView';
 import PageHeader from '@/components/ui/PageHeader';
 import Link from 'next/link';
@@ -47,25 +48,12 @@ export default function QuarterlyReviewPage() {
           return;
         }
 
-        // Role-gated: coaches/admins without an active client do not fall back
-        // to owner_id (that would load the coach's own owned business).
-        let bizId: string | null = null;
-        if (activeBusiness?.id) {
-          bizId = activeBusiness.id;
-        } else if (currentUser?.role === 'client') {
-          const { data: business, error: bizError } = await supabase
-            .from('businesses')
-            .select('id')
-            .eq('owner_id', user.id)
-            .maybeSingle();
-
-          if (bizError) {
-            console.error('Error fetching business:', bizError);
-            setIsLoading(false);
-            return;
-          }
-          bizId = business?.id || null;
-        }
+        // Business resolution via the shared role-aware helper.
+        const { businessId: bizId } = await resolveBusinessId(supabase, {
+          userId: user.id,
+          role: currentUser?.role ?? null,
+          activeBusinessId: activeBusiness?.id ?? null,
+        });
 
         if (bizId) {
           setBusinessId(bizId);

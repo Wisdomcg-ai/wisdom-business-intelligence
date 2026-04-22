@@ -20,6 +20,7 @@ import Link from 'next/link'
 import { uploadMessageAttachment, formatFileSize, isAllowedFileType } from '@/lib/services/messageAttachments'
 import PageHeader from '@/components/ui/PageHeader'
 import { useBusinessContext } from '@/contexts/BusinessContext'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 
 interface Message {
   id: string
@@ -66,41 +67,24 @@ export default function MessagesPage() {
     // Set default name - profiles table doesn't have name fields
     setUserName(viewerContext.isViewingAsCoach ? 'Coach' : 'You')
 
-    // When a coach is viewing a client, use activeBusiness from context
-    let businessData = null
-    if (activeBusiness?.id) {
-      const { data } = await supabase
-        .from('businesses')
-        .select('id, assigned_coach_id')
-        .eq('id', activeBusiness.id)
-        .maybeSingle()
-      businessData = data
-    } else if (currentUser?.role === 'client') {
-      // Client viewing own data — resolve via business_users or owner_id.
-      // Coaches/admins without an active client do NOT fall through here —
-      // loading their owned business would show the wrong message thread.
-      const { data: businessUser } = await supabase
-        .from('business_users')
-        .select('business_id')
-        .eq('user_id', user.id)
-        .maybeSingle()
+    // Business resolution via the shared role-aware helper.
+    const { businessId: bizId } = await resolveBusinessId(supabase, {
+      userId: user.id,
+      role: currentUser?.role ?? null,
+      activeBusinessId: activeBusiness?.id ?? null,
+    })
 
-      if (businessUser) {
-        const { data } = await supabase
-          .from('businesses')
-          .select('id, assigned_coach_id')
-          .eq('id', businessUser.business_id)
-          .maybeSingle()
-        businessData = data
-      } else {
-        const { data } = await supabase
-          .from('businesses')
-          .select('id, assigned_coach_id')
-          .eq('owner_id', user.id)
-          .maybeSingle()
-        businessData = data
-      }
+    if (!bizId) {
+      setLoading(false)
+      return
     }
+
+    // Follow-up: fetch assigned coach for UI display.
+    const { data: businessData } = await supabase
+      .from('businesses')
+      .select('id, assigned_coach_id')
+      .eq('id', bizId)
+      .maybeSingle()
 
     if (!businessData) {
       setLoading(false)

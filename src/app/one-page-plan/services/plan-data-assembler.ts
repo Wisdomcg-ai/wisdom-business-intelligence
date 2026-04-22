@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import type { OnePagePlanData } from '../types'
 import type { YearType } from '@/app/goals/types'
 import { calculateQuarters, determinePlanYear } from '@/app/goals/utils/quarters'
@@ -74,29 +75,41 @@ export async function assemblePlanData(params: AssemblePlanDataParams): Promise<
       ownerUserId = bizData?.owner_id || user.id
     }
   } else if (userRole === 'client' || userRole === undefined) {
-    // Client view — look up their own profile by user_id. (`undefined` preserves
-    // backward compat for any legacy callers that haven't been updated to pass
-    // userRole yet; those callers should be updated to explicitly pass 'client'.)
-    ownerUserId = user.id
+    // Client view — route through the shared resolver. It handles the
+    // business_users → owner_id chain internally and returns businesses.id.
+    // `undefined` preserves backward compat for legacy callers that haven't
+    // been updated to pass userRole yet.
+    const resolved = await resolveBusinessId(supabase, {
+      userId: user.id,
+      role: 'client',
+      activeBusinessId: null,
+    })
+
+    if (!resolved.businessId) return null
+    businessesId = resolved.businessId
+
+    // Look up owner_id for SWOT (SWOT stores by the OWNER's user.id — for
+    // team members, that's NOT the current user). Same query the resolver
+    // won't do for us because it's a follow-up concern.
+    const { data: bizData } = await supabase
+      .from('businesses')
+      .select('owner_id')
+      .eq('id', businessesId)
+      .maybeSingle()
+    ownerUserId = bizData?.owner_id || user.id
+
+    // Translate businesses.id → business_profiles.id. This is a correctness
+    // improvement over the previous user_id lookup: team members who don't
+    // own the business_profiles row will now resolve correctly.
     const { data: profileData } = await supabase
       .from('business_profiles')
       .select('id, industry, owner_info, key_roles')
-      .eq('user_id', ownerUserId)
+      .eq('business_id', businessesId)
       .single()
 
     profile = profileData
-    // If no profile found, bail — never use user.id as a business/profile ID.
     if (!profile?.id) return null
     businessId = profile.id
-
-    // Look up businesses.id
-    const { data: bizData } = await supabase
-      .from('businesses')
-      .select('id')
-      .eq('owner_id', ownerUserId)
-      .maybeSingle()
-    if (!bizData?.id) return null
-    businessesId = bizData.id
   } else {
     // Coach/admin without an active client selection — nothing to load.
     return null
