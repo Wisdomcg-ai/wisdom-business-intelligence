@@ -614,6 +614,16 @@ Plans:
 - [ ] 37-05-PLAN.md — Quarterly review (page, history, useQuarterlyReview hook)
 - [ ] 37-06-PLAN.md — Build + push + Vercel preview + manual smoke test + merge gate
 
+### Phase 38: Finish resolver sweep — /client routes + legacy OAuth cleanup
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 37
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 38 to break down)
+
 ---
 
 ### Phase 36: Client Portal

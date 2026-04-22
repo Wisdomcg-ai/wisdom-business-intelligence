@@ -33,28 +33,40 @@ export async function GET(request: Request) {
     if (businessId) {
       query = query.eq('business_id', businessId)
     } else {
-      // Get user's business (for clients)
-      const { data: businessData } = await supabase
-        .from('businesses')
-        .select('id')
-        .eq('owner_id', user.id)
-        .single()
+      // No business specified — check role first to decide scope.
+      // Previously this tried owner_id before assigned_coach_id, which
+      // produced the wrong scope for a coach who also owned a business.
+      const { data: roleRow } = await supabase
+        .from('system_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      const role = roleRow?.role
 
-      if (businessData) {
-        query = query.eq('business_id', businessData.id)
-      } else {
-        // Coach - get all actions for their clients
+      if (role === 'coach' || role === 'super_admin') {
+        // Coach/admin — all actions across assigned clients
         const { data: businesses } = await supabase
           .from('businesses')
           .select('id')
           .eq('assigned_coach_id', user.id)
 
         const businessIds = businesses?.map(b => b.id) || []
-        if (businessIds.length > 0) {
-          query = query.in('business_id', businessIds)
-        } else {
+        if (businessIds.length === 0) {
           return NextResponse.json({ success: true, actions: [] })
         }
+        query = query.in('business_id', businessIds)
+      } else {
+        // Client — their own business
+        const { data: businessData } = await supabase
+          .from('businesses')
+          .select('id')
+          .eq('owner_id', user.id)
+          .maybeSingle()
+
+        if (!businessData) {
+          return NextResponse.json({ success: true, actions: [] })
+        }
+        query = query.eq('business_id', businessData.id)
       }
     }
 
