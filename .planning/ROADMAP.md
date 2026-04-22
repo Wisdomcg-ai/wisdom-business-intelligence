@@ -111,9 +111,9 @@
 - [x] Updated non-forecast files (dashboard, quarterly review, monthly report, live forecast hooks)
 - [x] Quarter logic via getQuarterDefs() / getQuarterForMonth() — fully configurable
 
-### Phase 14: Goals Wizard — First-Time Extended Period
+### Phase 14: Goals Wizard — First-Time Extended Period [COMPLETE]
 **Goal:** New clients within 3 months of year end get 13-15 month first plan
-**Plans:** 3/3 plans complete
+**Plans:** 3/3 plans shipped
 
 Plans:
 - [x] 14-01-PLAN.md — Foundation: DB migration, fiscal year proximity helpers, type + service updates
@@ -127,14 +127,14 @@ Plans:
 - [ ] Sprint planning starts "next 90 days" (may bridge year boundary)
 - [ ] Forecast wizard reads extended period targets
 
-### Phase 15: Q4 Annual Review — Abridged Goals Wizard
+### Phase 15: Q4 Annual Review — Abridged Goals Wizard [COMPLETE]
 **Goal:** Returning clients set next year goals inside the Q4 annual review
-**Plans:** 3/3 plans complete
+**Plans:** 3/3 plans shipped
 
 Plans:
 - [x] 15-01-PLAN.md — Type foundation: extend InitiativeStatus, source types, StepType
 - [x] 15-02-PLAN.md — Sync service: syncAnnualReview method + completeWorkshop wiring
-- [ ] 15-03-PLAN.md — Goals Wizard detection banner + carry-forward fiscal_year filter
+- [x] 15-03-PLAN.md — Goals Wizard detection banner + carry-forward fiscal_year filter (verified at src/app/goals/page.tsx:948)
 
 - [ ] Roll 3-year targets forward: Year 2->Year 1, Year 3->Year 2, set new Year 3
 - [ ] Carry forward incomplete initiatives (show completion status, coach decides carry/drop)
@@ -145,9 +145,9 @@ Plans:
 - [ ] Add status field to strategic_initiatives (planned/in_progress/complete/deferred)
 - [ ] Goals Wizard detects existing next-year data: "Already planned in Q4 review"
 
-### Phase 16: Forecast Rollover & Rolling Periods
+### Phase 16: Forecast Rollover & Rolling Periods [COMPLETE]
 **Goal:** Coaches can build next year's forecast during planning season
-**Plans:** 3/3 plans complete
+**Plans:** 3/3 plans shipped
 
 Plans:
 - [x] 16-01-PLAN.md — Foundation: FY filter fix on getOrCreateForecast, planning-season getForecastFiscalYear, lock enforcement in selector + wizard
@@ -164,11 +164,11 @@ Plans:
 
 ### Phase 17: Quarterly Review <-> Forecast Integration
 **Goal:** Quarterly reviews reference forecast data for variance analysis
-**Plans:** 3/3 plans complete
+**Plans:** 2/3 plans shipped — 17-02 variance panel needs restoration (was shipped in e23a888, removed during Phase 22-02 refactor in e97019f; adjust-forward API endpoint still live)
 
 Plans:
-- [ ] 17-01-PLAN.md — Quarter aggregation helpers + quarterly-summary API endpoint
-- [ ] 17-02-PLAN.md — Variance panel in ConfidenceRealignmentStep + adjust-forward write-back API
+- [x] 17-01-PLAN.md — Quarter aggregation helpers + quarterly-summary API endpoint
+- [ ] 17-02-PLAN.md — Variance panel in ConfidenceRealignmentStep + adjust-forward write-back API (RESTORATION PENDING — cherry-pick from commit e23a888)
 - [x] 17-03-PLAN.md — One Page Plan next-year financial view with year toggle
 
 - [ ] Q review shows: "Q3 forecast: $2.8M | Actual: $2.6M | Variance: -7%"
@@ -187,36 +187,36 @@ Plans:
 - [x] Finance: monthly repayment as liability line over term
 - [x] Lease: monthly payment as liability line over term
 
-### Phase 19: Monthly Reporting
+### Phase 19: Monthly Reporting [COMPLETE]
 **Goal:** Close commentary persistence and FY hardcoding gaps in monthly P&L reports
 **Depends on:** Phase 5 (Y2/Y3 monthly storage — COMPLETE), Phase 13 (fiscal-year-utils — COMPLETE)
-**Plans:** 1/1 plans complete
+**Plans:** 1/1 plans shipped
 
 Plans:
 - [x] 19-01-PLAN.md — Commentary persistence + FY hardcoding fix in generate/full-year routes
 
 - [x] Monthly P&L reads forecast monthly data (from wizard Year 1 monthly storage) — already working
 - [x] Actual vs Forecast variance by line item — already working
-- [ ] Coach commentary per month — persistence gap (notes lost on month change)
+- [x] Coach commentary per month — persistence fixed (commit a41e00f)
 - [x] Branded monthly report output — already working (jsPDF with layout editor)
-- [ ] FY start month parameterized in generate/full-year routes (uses fiscal-year-utils)
+- [x] FY start month parameterized in generate/full-year routes (commit 94c24e2)
 
-### Phase 20: Coaching Sessions
+### Phase 20: Coaching Sessions [COMPLETE]
 **Goal:** Fix coaching_sessions 400 error, reconcile session schema, add rock linkage
-**Plans:** 2/2 plans complete
+**Plans:** 2/2 plans shipped
 
 Plans:
 - [x] 20-01-PLAN.md — Schema migration + fix all 4 broken /api/sessions/ routes
 - [x] 20-02-PLAN.md — Rock linkage UI on session action items
 
-- [ ] Fix coaching_sessions endpoint (schema migration + column reconciliation)
-- [ ] Fix session_actions API routes (wrong column names, invalid enum values, missing NOT NULL fields)
-- [ ] Fix analyze-transcript route (wrong FK column, missing required fields)
-- [ ] Link session actions to quarterly rocks (strategic_initiative_id on session_actions)
+- [x] Fix coaching_sessions endpoint (schema migration + column reconciliation) — commit 31f6f8b
+- [x] Fix session_actions API routes (wrong column names, invalid enum values, missing NOT NULL fields) — commit 5beb176
+- [x] Fix analyze-transcript route (wrong FK column, missing required fields) — commit 5beb176
+- [x] Link session actions to quarterly rocks (strategic_initiative_id on session_actions) — commit 3d015f2
 
-### Phase 21: KPI Dashboards
+### Phase 21: KPI Dashboards [COMPLETE]
 **Goal:** Business KPIs from Xero data with visual dashboards
-**Plans:** 3/3 plans complete
+**Plans:** 3/3 plans shipped
 
 Plans:
 - [x] 21-01-PLAN.md — Financial chart API + Recharts panels on business dashboard
@@ -227,18 +227,20 @@ Plans:
 - [x] Visual dashboards for coach and client views
 - [x] Weekly review integration
 
-### Phase 22: Quarterly Review Completion
+### Phase 22: Quarterly Review Completion [COMPLETE]
 **Goal:** Workshop facilitation tools fully working
 **Depends on:** Phase 15 (initiative status field)
-**Plans:** 2/2 plans complete
+**Plans:** 2/2 plans shipped
 
 Plans:
-- [ ] 22-01-PLAN.md — Bug fixes: status mapping (deferred/planned), decision count display, dual-ID query
-- [ ] 22-02-PLAN.md — Initiative progress panel in step 4.1
+- [x] 22-01-PLAN.md — Bug fixes: status mapping (deferred/planned), decision count display, dual-ID query (commits e18de49, 92c2e88, fc02492)
+- [x] 22-02-PLAN.md — Initiative progress panel in step 4.1 (commit 18ac385)
 
-- [ ] Progress tracking against annual plan
-- [ ] Strategic initiative status updates
-- [ ] Completion tracking linked to initiative status field (from Phase 15)
+- [x] Progress tracking against annual plan
+- [x] Strategic initiative status updates
+- [x] Completion tracking linked to initiative status field (from Phase 15)
+
+**Known side-effect:** Phase 22-02 refactor (commit e97019f) removed the Phase 17-02 variance panel. Restoration tracked under Phase 17-02.
 
 ---
 
@@ -318,12 +320,12 @@ Plans:
 
 ---
 
-### Phase 27: Balance Sheet
+### Phase 27: Balance Sheet [COMPLETE]
 **Goal:** Coaches can view a full balance sheet tab inside the monthly report showing current month, prior year, and variance — matching the Calxa balance sheet format.
 **Depends on:** Phase 19 (monthly reporting foundation — in progress), Phase 23 (templates)
 **Requirements:** BLSH-01, BLSH-02, BLSH-03
 **UI hint:** yes
-**Plans:** TBD
+**Plans:** Shipped — BalanceSheetTab component + /api/monthly-report/consolidated-bs route + useBalanceSheet hook + template gating all live. See src/app/finances/monthly-report/components/BalanceSheetTab.tsx.
 
 **Success Criteria:**
 - Balance sheet tab renders Assets, Liabilities, and Equity sections with Current Month / Prior Year / Var$ / Var% columns
@@ -422,12 +424,13 @@ directly as part of their monthly review.
 
 ---
 
-### Phase 33: CFO Multi-Client Dashboard
+### Phase 33: CFO Multi-Client Dashboard [COMPLETE]
 **Goal:** Matt can see all 5 CFO clients on a single screen at `/cfo`, with at-a-glance financial health, reconciliation status, and report delivery state — eliminating the need to open each client's report individually.
 **Depends on:** Phase 23 (templates — defines report status vocabulary)
 **Requirements:** CFOD-01, CFOD-02, CFOD-03, CFOD-04, CFOD-05, CFOD-06, CFOD-07
 **UI hint:** yes
-**Plans:** TBD
+**Plans:** Iteration 1 shipped in commit `e33c0f5` (2026-04-17). See `.planning/phases/33-cfo-dashboard/33-SUMMARY.md`.
+**Deferred to future iteration:** manual status override UI, flag-client UI toggle on business profile, month-over-month trend arrows, `next_due` computation (waits on Phase 35).
 
 **Scope:**
 - New DB column: `businesses.is_cfo_client boolean DEFAULT false` — flags which businesses appear on the CFO dashboard
@@ -567,7 +570,7 @@ Phase 35 adds the UI controls and automation trigger that move a report through 
 - `approved_by` is recorded as the authenticated user's ID; `approved_at` and `sent_at` are timestamped
 - Webhook URL is configurable per business in the business settings page — not hardcoded
 
-### Phase 37: Resolver adoption — route all pages through resolveBusinessId
+### Phase 37: Resolver adoption — route all pages through resolveBusinessId [COMPLETE]
 
 **Goal:** Eliminate the ~20 duplicated `businessId` resolution blocks in the codebase by routing them through `src/lib/business/resolveBusinessId.ts` (helper created in commit ed9dfa7). Makes the "coach saves to my business" bug class structurally impossible to reintroduce — there becomes one and only one place where a page decides which business it operates on.
 
@@ -614,35 +617,37 @@ Plans:
 - [ ] 37-05-PLAN.md — Quarterly review (page, history, useQuarterlyReview hook)
 - [ ] 37-06-PLAN.md — Build + push + Vercel preview + manual smoke test + merge gate
 
-### Phase 38: Finish resolver sweep — /client routes + legacy OAuth cleanup
+### Phase 38: Finish resolver sweep — /client routes + legacy OAuth cleanup [COMPLETE]
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Finish what Phase 37 started — delete dead `/client/*` routes, remove orphaned dashboard/integrations + xero-connect routes, and fix the final `.eq('owner_id', user.id)` fallthrough bug in `/api/actions/route.ts`. Keep `xero-connect/select-org` (live OAuth multi-tenant redirect).
+**Requirements**: N/A (internal cleanup)
 **Depends on:** Phase 37
-**Plans:** 0 plans
+**Plans:** 1/1 plan shipped (PR #11, merge commit bc41569)
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 38 to break down)
+- [x] 38-01-PLAN.md — Delete orphaned routes + fix api/actions owner_id fallthrough
 
-### Phase 39: Branded types rollout — BusinessId/UserId compile-time safety
+### Phase 39: Branded types rollout — BusinessId/UserId compile-time safety [COMPLETE]
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Introduce `BusinessId`, `UserId`, and `BusinessProfileId` branded string types at the producer points (`resolveBusinessId`, `BusinessContext`) so the compiler catches ID-kind mistakes (e.g., passing a UserId where a BusinessId is expected). Backward-compatible — consumers accepting plain `string` keep working.
+**Requirements**: N/A (internal type-safety)
 **Depends on:** Phase 38
-**Plans:** 0 plans
+**Plans:** 1/1 plan shipped (PR #12, merge commit 80db071)
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 39 to break down)
+- [x] 39-01-PLAN.md — Brand IDs at resolver + context, add compile-time regression test (ids.test-d.ts)
 
-### Phase 40: Playwright E2E — coach-flow test + CI integration
+### Phase 40: Playwright E2E — coach-flow test + CI integration [COMPLETE — infra shipped, CI integration deferred]
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Install Playwright, add smoke tests that run against any URL (local or Vercel preview), and scaffold an auth-based coach-flow test. Deferred to future work: CI integration in GitHub Actions and un-skipping coach-flow tests (blocked on test Supabase project).
+**Requirements**: N/A (testing infrastructure)
 **Depends on:** Phase 39
-**Plans:** 0 plans
+**Plans:** 1/1 plan shipped (PR #13, merge commit 6079a86)
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 40 to break down)
+- [x] 40-01-PLAN.md — Install Playwright + 3 passing smoke tests + coach-flow scaffold (4 skipped tests with un-skip instructions)
+
+**Follow-up (not in Phase 40 scope):** Wire Playwright into GitHub Actions, provision test Supabase project to un-skip coach-flow specs.
 
 ---
 
