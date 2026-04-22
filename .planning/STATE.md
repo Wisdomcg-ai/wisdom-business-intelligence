@@ -209,3 +209,9 @@ progress:
 
 - Phase 37 added: Resolver adoption — route all pages through resolveBusinessId (2026-04-22)
 - Phase 37 COMPLETE (2026-04-22) — merged via PR #10 (5664522). 21 files migrated to shared resolver. "Coach saves to my business" bug class structurally eliminated. Runtime invariant deployed for future regression detection.
+- Phases 38-40 COMPLETE (2026-04-22) — coach-context hardening sprint:
+  - Phase 38: finished resolver sweep (deleted orphaned /client/* + /dashboard/integrations/* + fixed api/actions role-check) — PR #11
+  - Phase 39: branded types rollout (BusinessId/UserId/BusinessProfileId at resolver + context + compile-time test) — PR #12
+  - Phase 40: Playwright E2E infrastructure (smoke spec + coach-flow scaffold with test.skip + 3 scripts) — PR #13
+- Phase 34 COMPLETE (2026-04-23) — bookkeeping: 34-01a (Consolidated BS, PR #2 a80ed62) and 34-02a (Consolidated Cashflow, PR #4 aa27bf2 + patches #8 #9) shipped earlier as part of the consolidation work; roadmap ticks were stale. ROADMAP.md updated to reflect reality.
+- Current active roadmap: Phase 33 (CFO Multi-Client Dashboard) is next natural work — depends only on Phase 23 (done).

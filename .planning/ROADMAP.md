@@ -483,12 +483,12 @@ Client grid (5 cards, 3-col desktop → 2-col tablet → 1-col mobile)
 
 ---
 
-### Phase 34: Dragon Multi-Entity Consolidation
+### Phase 34: Dragon Multi-Entity Consolidation [COMPLETE]
 **Goal:** Dragon and IICT consolidations can be reported as combined multi-entity P&L, Balance Sheet, and Cashflow — with per-entity columns, FX translation (HKD/AUD monthly_average + closing_spot, manual-entry), intercompany elimination engine, and seeded Dragon rules — replacing Matt's manual Calxa PDF process for both real-world groups.
 **Depends on:** Phase 23 (templates), Phase 27 (Balance Sheet), Phase 33 (CFO dashboard — cfo_report_status snapshot target for Phase 35)
 **Requirements:** MLTE-01, MLTE-02, MLTE-03, MLTE-04, MLTE-05
 **UI hint:** yes
-**Plans:** 6/8 plans executed
+**Plans:** 8/8 plans executed [COMPLETE]
 
 Plans:
 - [x] 34-00a-foundation-PLAN.md — shared.ts extraction, Dragon/IICT PDF fixtures, 3 migrations (consolidation_groups + fx_rates + snapshot columns)
@@ -497,8 +497,8 @@ Plans:
 - [x] 34-00d-eliminations-seed-push-PLAN.md — elimination engine + Dragon/IICT seed migration + [BLOCKING] schema push
 - [x] 34-00e-api-ui-PLAN.md — /api/monthly-report/consolidated route + ConsolidatedPLTab + FXRateMissingBanner + page wiring
 - [x] 34-00f-admin-fx-entry-PLAN.md — /admin/consolidation page + FX rate CRUD API + tenant PATCH (post-pivot: tenant model, not groups/members)
-- [ ] 34-01a-consolidated-balance-sheet-PLAN.md — translateBSAtClosingSpot + BS engine with Translation Reserve + intercompany_loan eliminations + BS tab
-- [ ] 34-02a-consolidated-cashflow-PLAN.md — aggregates per-member generateCashflowForecast outputs + consolidated cashflow tab
+- [x] 34-01a-consolidated-balance-sheet-PLAN.md — translateBSAtClosingSpot + BS engine with Translation Reserve + intercompany_loan eliminations + BS tab (shipped via PR #2, a80ed62; plan doc describes pre-pivot group/member model but impl uses post-pivot tenant model)
+- [x] 34-02a-consolidated-cashflow-PLAN.md — aggregates per-tenant generateCashflowForecast outputs + consolidated cashflow tab (shipped via PR #4, aa27bf2; later patched by PR #8 #9)
 
 **Context:**
 Dragon Consolidation is one of the 5 CFO clients. It is not a single Xero org — it is two orgs that must be merged at report time:
