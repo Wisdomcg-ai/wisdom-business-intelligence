@@ -208,3 +208,4 @@ progress:
 ### Roadmap Evolution
 
 - Phase 37 added: Resolver adoption — route all pages through resolveBusinessId (2026-04-22)
+- Phase 37 COMPLETE (2026-04-22) — merged via PR #10 (5664522). 21 files migrated to shared resolver. "Coach saves to my business" bug class structurally eliminated. Runtime invariant deployed for future regression detection.
