@@ -24,15 +24,56 @@ function valueClass(value: number, bold?: boolean): string {
 
 export default function CashflowForecastTable({ data }: CashflowForecastTableProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
+  const [viewMode, setViewMode] = useState<'direct' | 'indirect'>('direct')
 
   const toggleGroup = (group: string) => {
     setCollapsedGroups(prev => ({ ...prev, [group]: !prev[group] }))
   }
 
   const allColumns = data.months
+  const hasIndirectFields = data.months.some(m =>
+    m.net_profit !== undefined
+    || m.depreciation_addback !== undefined
+    || m.company_tax_payment !== undefined
+    || m.capex_payment !== undefined
+  )
 
   return (
     <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      {/* Direct / Indirect method toggle (Phase 28.2) */}
+      <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-gray-200 bg-gray-50">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Method:</span>
+          <div className="inline-flex rounded-md border border-gray-300 bg-white overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setViewMode('direct')}
+              className={`px-3 py-1 text-xs font-medium transition-colors ${
+                viewMode === 'direct' ? 'bg-brand-navy text-white' : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Direct
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('indirect')}
+              disabled={!hasIndirectFields}
+              className={`px-3 py-1 text-xs font-medium transition-colors border-l border-gray-300 ${
+                viewMode === 'indirect' ? 'bg-brand-navy text-white' : 'text-gray-600 hover:bg-gray-50'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={hasIndirectFields ? '' : 'Indirect method requires Phase 28.2 cashflow settings (depreciation, company tax, CapEx)'}
+            >
+              Indirect
+            </button>
+          </div>
+        </div>
+        {viewMode === 'indirect' && (
+          <span className="text-[11px] text-gray-500 italic">
+            Reconciles accrual profit to cash movement via non-cash add-backs and working capital changes
+          </span>
+        )}
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-xs">
           <thead>
@@ -73,63 +114,88 @@ export default function CashflowForecastTable({ data }: CashflowForecastTablePro
             </tr>
           </thead>
           <tbody>
-            {/* Bank at Beginning */}
+            {/* Bank at Beginning (shared by both views) */}
             <BankRow label="Bank at Beginning" columns={allColumns} getValue={(c) => c.bank_at_beginning} variant="beginning" />
 
-            {/* Income Section */}
-            <SectionHeader label="Income" colCount={allColumns.length + 1} />
-            {renderLineRows(getAllIncomeLabels(data), allColumns, (col, label) =>
-              col.income_lines.find(l => l.label === label)?.value || 0
-            )}
-            <SubtotalRow label="Cash Inflows from Operations" columns={allColumns} getValue={(c) => c.cash_inflows} />
-
-            {/* Cost of Sales */}
-            <SectionHeader label="Cost of Sales" colCount={allColumns.length + 1} />
-            {renderLineRows(getAllCOGSLabels(data), allColumns, (col, label) =>
-              col.cogs_lines.find(l => l.label === label)?.value || 0
-            )}
-
-            {/* Expenses */}
-            <SectionHeader label="Expenses" colCount={allColumns.length + 1} />
-            {renderExpenseGroups(data, allColumns, collapsedGroups, toggleGroup)}
-
-            {/* Cash Outflows */}
-            <SubtotalRow label="Cash Outflows from Operations" columns={allColumns} getValue={(c) => -c.cash_outflows} negative />
-
-            {/* Assets */}
-            {hasAssetLines(data) && (
+            {viewMode === 'direct' ? (
               <>
-                <SectionHeader label="Balance Sheet — Assets" colCount={allColumns.length + 1} />
-                {renderLineRows(getAllAssetLabels(data), allColumns, (col, label) =>
-                  col.asset_lines.find(l => l.label === label)?.value || 0
+                {/* Income Section */}
+                <SectionHeader label="Income" colCount={allColumns.length + 1} />
+                {renderLineRows(getAllIncomeLabels(data), allColumns, (col, label) =>
+                  col.income_lines.find(l => l.label === label)?.value || 0
                 )}
-                <SubtotalRow label="Movement in Assets" columns={allColumns} getValue={(c) => c.movement_in_assets} />
+                <SubtotalRow label="Cash Inflows from Operations" columns={allColumns} getValue={(c) => c.cash_inflows} />
+
+                {/* Cost of Sales */}
+                <SectionHeader label="Cost of Sales" colCount={allColumns.length + 1} />
+                {renderLineRows(getAllCOGSLabels(data), allColumns, (col, label) =>
+                  col.cogs_lines.find(l => l.label === label)?.value || 0
+                )}
+
+                {/* Expenses */}
+                <SectionHeader label="Expenses" colCount={allColumns.length + 1} />
+                {renderExpenseGroups(data, allColumns, collapsedGroups, toggleGroup)}
+
+                {/* Cash Outflows */}
+                <SubtotalRow label="Cash Outflows from Operations" columns={allColumns} getValue={(c) => -c.cash_outflows} negative />
+
+                {/* Assets */}
+                {hasAssetLines(data) && (
+                  <>
+                    <SectionHeader label="Balance Sheet — Assets" colCount={allColumns.length + 1} />
+                    {renderLineRows(getAllAssetLabels(data), allColumns, (col, label) =>
+                      col.asset_lines.find(l => l.label === label)?.value || 0
+                    )}
+                    <SubtotalRow label="Movement in Assets" columns={allColumns} getValue={(c) => c.movement_in_assets} />
+                  </>
+                )}
+
+                {/* Liabilities */}
+                {hasLiabilityLines(data) && (
+                  <>
+                    <SectionHeader label="Balance Sheet — Liabilities" colCount={allColumns.length + 1} />
+                    {renderLineRows(getAllLiabilityLabels(data), allColumns, (col, label) =>
+                      col.liability_lines.find(l => l.label === label)?.value || 0
+                    )}
+                    <SubtotalRow label="Movement in Liabilities" columns={allColumns} getValue={(c) => c.movement_in_liabilities} />
+                  </>
+                )}
+
+                {/* Other Income */}
+                {hasOtherIncomeLines(data) && (
+                  <>
+                    <SectionHeader label="Other Income" colCount={allColumns.length + 1} />
+                    {renderLineRows(getAllOtherIncomeLabels(data), allColumns, (col, label) =>
+                      col.other_income_lines.find(l => l.label === label)?.value || 0
+                    )}
+                    <SubtotalRow label="Other Inflows" columns={allColumns} getValue={(c) => c.other_inflows} />
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Indirect method — reconcile accrual Net Profit to cash Net Movement */}
+                <SectionHeader label="Operating — Indirect Reconciliation" colCount={allColumns.length + 1} />
+                <SubtotalRow label="Net Profit (accrual)" columns={allColumns} getValue={(c) => c.net_profit ?? 0} />
+                <SubtotalRow label="+ Depreciation (non-cash add-back)" columns={allColumns} getValue={(c) => c.depreciation_addback ?? 0} />
+                {hasAssetLines(data) && (
+                  <SubtotalRow label="Movement in Assets (working capital)" columns={allColumns} getValue={(c) => c.movement_in_assets} />
+                )}
+                {hasLiabilityLines(data) && (
+                  <SubtotalRow label="Movement in Liabilities (working capital)" columns={allColumns} getValue={(c) => c.movement_in_liabilities} />
+                )}
+
+                <SectionHeader label="Financing / Tax / CapEx" colCount={allColumns.length + 1} />
+                <SubtotalRow label="Company Tax Payment" columns={allColumns} getValue={(c) => -(c.company_tax_payment ?? 0)} negative />
+                <SubtotalRow label="CapEx Payment" columns={allColumns} getValue={(c) => -(c.capex_payment ?? 0)} negative />
+
+                {hasOtherIncomeLines(data) && (
+                  <SubtotalRow label="Other Inflows" columns={allColumns} getValue={(c) => c.other_inflows} />
+                )}
               </>
             )}
 
-            {/* Liabilities */}
-            {hasLiabilityLines(data) && (
-              <>
-                <SectionHeader label="Balance Sheet — Liabilities" colCount={allColumns.length + 1} />
-                {renderLineRows(getAllLiabilityLabels(data), allColumns, (col, label) =>
-                  col.liability_lines.find(l => l.label === label)?.value || 0
-                )}
-                <SubtotalRow label="Movement in Liabilities" columns={allColumns} getValue={(c) => c.movement_in_liabilities} />
-              </>
-            )}
-
-            {/* Other Income */}
-            {hasOtherIncomeLines(data) && (
-              <>
-                <SectionHeader label="Other Income" colCount={allColumns.length + 1} />
-                {renderLineRows(getAllOtherIncomeLabels(data), allColumns, (col, label) =>
-                  col.other_income_lines.find(l => l.label === label)?.value || 0
-                )}
-                <SubtotalRow label="Other Inflows" columns={allColumns} getValue={(c) => c.other_inflows} />
-              </>
-            )}
-
-            {/* Net Movement */}
+            {/* Net Movement (shared — same value in both views) */}
             <SubtotalRow label="Net Movement" columns={allColumns} getValue={(c) => c.net_movement} bold />
 
             {/* Bank at End */}
