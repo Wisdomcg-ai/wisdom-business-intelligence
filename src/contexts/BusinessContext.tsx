@@ -3,10 +3,15 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getUserSystemRole } from '@/lib/auth/roles'
+import type { BusinessId, UserId, BusinessProfileId } from '@/lib/types/ids'
+import { toBusinessId, toUserId, toBusinessProfileId } from '@/lib/types/ids'
 
-// Types
+// Types — IDs are branded to prevent UserId/BusinessId confusion at call sites.
+// See src/lib/types/ids.ts. Brands are assignable to plain string, so
+// consumers that currently accept `string` continue to work; consumers that
+// TYPE their params as BusinessId/UserId get compile-time protection.
 interface CurrentUser {
-  id: string
+  id: UserId
   email: string
   role: 'client' | 'coach' | 'admin'
   firstName?: string
@@ -14,9 +19,9 @@ interface CurrentUser {
 }
 
 interface ActiveBusiness {
-  id: string
+  id: BusinessId
   name: string
-  ownerId: string
+  ownerId: UserId
   industry?: string
   status?: string
 }
@@ -59,7 +64,7 @@ interface BusinessContextType {
   activeBusiness: ActiveBusiness | null
 
   // Cached business_profiles.id for the active business (avoids repeated lookups)
-  businessProfileId: string | null
+  businessProfileId: BusinessProfileId | null
 
   // Context about who is viewing and their permissions
   viewerContext: ViewerContext
@@ -215,7 +220,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
 
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [activeBusiness, setActiveBusinessState] = useState<ActiveBusiness | null>(null)
-  const [businessProfileId, setBusinessProfileId] = useState<string | null>(null)
+  const [businessProfileId, setBusinessProfileId] = useState<BusinessProfileId | null>(null)
   const [viewerContext, setViewerContext] = useState<ViewerContext>(defaultViewerContext)
   // IMPORTANT: Start with isLoading=true because we load user data on mount
   // This prevents race conditions where components render before user/business data is ready
@@ -245,7 +250,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         // Unknown role (transient error or unauthenticated). Surface as an error state
         // so pages show an empty state rather than silently using the wrong business.
         setCurrentUser({
-          id: user.id,
+          id: toUserId(user.id),
           email: user.email || '',
           role: 'client', // placeholder; components gate on activeBusiness anyway
           firstName: user.user_metadata?.first_name,
@@ -257,7 +262,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
       }
 
       setCurrentUser({
-        id: user.id,
+        id: toUserId(user.id),
         email: user.email || '',
         role: mappedRole,
         firstName: user.user_metadata?.first_name,
@@ -309,9 +314,9 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
           const permissions = getPermissionsForRole(businessRole, isOwner)
 
           setActiveBusinessState({
-            id: business.id,
+            id: toBusinessId(business.id),
             name: business.name || 'Unnamed Business',
-            ownerId: business.owner_id,
+            ownerId: toUserId(business.owner_id),
             industry: business.industry || undefined,
             status: business.status || undefined,
           })
@@ -331,7 +336,7 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
             .maybeSingle()
 
           if (profile?.id) {
-            setBusinessProfileId(profile.id)
+            setBusinessProfileId(toBusinessProfileId(profile.id))
           }
         }
       }
@@ -416,14 +421,14 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         .maybeSingle()
 
       setActiveBusinessState({
-        id: business.id,
+        id: toBusinessId(business.id),
         name: business.name || 'Unnamed Business',
-        ownerId: business.owner_id,
+        ownerId: toUserId(business.owner_id),
         industry: business.industry || undefined,
         status: business.status || undefined,
       })
 
-      setBusinessProfileId(profile?.id || null)
+      setBusinessProfileId(profile?.id ? toBusinessProfileId(profile.id) : null)
 
       // Determine the viewer's role
       let viewerRole: ViewerContext['role']

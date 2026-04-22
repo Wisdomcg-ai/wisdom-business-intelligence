@@ -624,6 +624,16 @@ Plans:
 Plans:
 - [ ] TBD (run /gsd:plan-phase 38 to break down)
 
+### Phase 39: Branded types rollout — BusinessId/UserId compile-time safety
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 38
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 39 to break down)
+
 ---
 
 ### Phase 36: Client Portal

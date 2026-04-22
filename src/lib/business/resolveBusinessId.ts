@@ -18,11 +18,15 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { BusinessId, UserId } from '@/lib/types/ids'
+import { toBusinessId } from '@/lib/types/ids'
 
 export type BusinessRole = 'client' | 'coach' | 'admin'
 
 export interface ResolveResult {
-  businessId: string | null
+  /** Resolved businesses.id — branded so consumers can't accidentally pass a
+   *  plain string or a UserId where a BusinessId is expected. */
+  businessId: BusinessId | null
   /**
    * Why we returned the value we did — useful for UI empty states.
    *  - 'active'          activeBusiness from context
@@ -65,14 +69,17 @@ function assertNotUserId(businessId: string, userId: string | null | undefined, 
 export async function resolveBusinessId(
   supabase: SupabaseClient,
   params: {
-    userId: string | null | undefined
+    // Permissive input types (accept branded OR plain string) so callers
+    // that haven't yet adopted UserId/BusinessId don't break. The RETURN
+    // type is strict — that's where the safety lives.
+    userId: UserId | string | null | undefined
     role: BusinessRole | null | undefined
-    activeBusinessId: string | null | undefined
+    activeBusinessId: BusinessId | string | null | undefined
   }
 ): Promise<ResolveResult> {
   if (params.activeBusinessId) {
     assertNotUserId(params.activeBusinessId, params.userId, 'active')
-    return { businessId: params.activeBusinessId, reason: 'active' }
+    return { businessId: toBusinessId(params.activeBusinessId), reason: 'active' }
   }
   if (!params.userId) {
     return { businessId: null, reason: 'unauthenticated' }
@@ -92,7 +99,7 @@ export async function resolveBusinessId(
 
   if (businessUser?.business_id) {
     assertNotUserId(businessUser.business_id, params.userId, 'client-team')
-    return { businessId: businessUser.business_id, reason: 'client-team' }
+    return { businessId: toBusinessId(businessUser.business_id), reason: 'client-team' }
   }
 
   const { data: ownedBusiness } = await supabase
@@ -103,7 +110,7 @@ export async function resolveBusinessId(
 
   if (ownedBusiness?.id) {
     assertNotUserId(ownedBusiness.id, params.userId, 'client-owner')
-    return { businessId: ownedBusiness.id, reason: 'client-owner' }
+    return { businessId: toBusinessId(ownedBusiness.id), reason: 'client-owner' }
   }
 
   return { businessId: null, reason: 'no-business' }
