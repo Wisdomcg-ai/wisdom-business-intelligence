@@ -260,6 +260,7 @@ export interface FullYearMonthData {
   month: string           // 'YYYY-MM'
   actual: number
   budget: number
+  prior_year: number      // actual value from same month one year earlier (Phase 26)
   source: 'actual' | 'forecast'
 }
 
@@ -297,10 +298,13 @@ export interface TrendDataPoint {
   monthLabel: string             // 'Jul', 'Aug', etc.
   revenue_actual: number
   revenue_budget: number
+  revenue_prior_year: number     // Phase 26
   cogs_actual: number
   cogs_budget: number
+  cogs_prior_year: number        // Phase 26
   opex_actual: number
   opex_budget: number
+  opex_prior_year: number        // Phase 26
   gp_percent: number
   np_percent: number
   gp_percent_budget: number

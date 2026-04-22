@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { getPriorYearMonth } from '@/lib/monthly-report/shared'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,6 +43,7 @@ interface FullYearMonthData {
   month: string
   actual: number
   budget: number
+  prior_year: number
   source: 'actual' | 'forecast'
 }
 
@@ -60,6 +62,7 @@ function buildFullYearSubtotal(lines: FullYearLine[], label: string, category: s
     month: m,
     actual: lines.reduce((s, l) => s + l.months[i].actual, 0),
     budget: lines.reduce((s, l) => s + l.months[i].budget, 0),
+    prior_year: lines.reduce((s, l) => s + (l.months[i].prior_year || 0), 0),
     source: lines.length > 0 ? lines[0].months[i].source : 'forecast' as const,
   }))
 
@@ -257,10 +260,12 @@ export async function POST(request: NextRequest) {
       // Build 12 month entries
       const months: FullYearMonthData[] = allFYMonths.map(m => {
         const isActualMonth = m <= lastActualMonth && m >= fyStart
+        const pyMonthKey = getPriorYearMonth(m)
         return {
           month: m,
           actual: isActualMonth ? (monthlyValues[m] || 0) : 0,
           budget: budgetMonths[m] || 0,
+          prior_year: monthlyValues[pyMonthKey] || 0,
           source: isActualMonth ? 'actual' as const : 'forecast' as const,
         }
       })
@@ -316,6 +321,7 @@ export async function POST(request: NextRequest) {
         month: m,
         actual: 0,
         budget: budgetMonths[m] || 0,
+        prior_year: 0, // budget-only lines have no prior-year actuals by definition
         source: (m <= lastActualMonth ? 'actual' : 'forecast') as 'actual' | 'forecast',
       }))
 
@@ -374,13 +380,16 @@ export async function POST(request: NextRequest) {
     const gpMonths: FullYearMonthData[] = allFYMonths.map((m, i) => {
       const revActual = (revSection?.subtotal.months[i].actual || 0) + (otherIncSection?.subtotal.months[i].actual || 0)
       const revBudget = (revSection?.subtotal.months[i].budget || 0) + (otherIncSection?.subtotal.months[i].budget || 0)
+      const revPY = (revSection?.subtotal.months[i].prior_year || 0) + (otherIncSection?.subtotal.months[i].prior_year || 0)
       const cogsActual = cogsSection?.subtotal.months[i].actual || 0
       const cogsBudget = cogsSection?.subtotal.months[i].budget || 0
+      const cogsPY = cogsSection?.subtotal.months[i].prior_year || 0
       const source = revSection?.subtotal.months[i].source || 'forecast' as const
       return {
         month: m,
         actual: revActual - cogsActual,
         budget: revBudget - cogsBudget,
+        prior_year: revPY - cogsPY,
         source,
       }
     })
@@ -402,12 +411,15 @@ export async function POST(request: NextRequest) {
     const npMonths: FullYearMonthData[] = allFYMonths.map((m, i) => {
       const gpActual = gpMonths[i].actual
       const gpBudget = gpMonths[i].budget
+      const gpPY = gpMonths[i].prior_year
       const opexActual = (opexSection?.subtotal.months[i].actual || 0) + (otherExpSection?.subtotal.months[i].actual || 0)
       const opexBudget = (opexSection?.subtotal.months[i].budget || 0) + (otherExpSection?.subtotal.months[i].budget || 0)
+      const opexPY = (opexSection?.subtotal.months[i].prior_year || 0) + (otherExpSection?.subtotal.months[i].prior_year || 0)
       return {
         month: m,
         actual: gpActual - opexActual,
         budget: gpBudget - opexBudget,
+        prior_year: gpPY - opexPY,
         source: gpMonths[i].source,
       }
     })
