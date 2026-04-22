@@ -26,6 +26,7 @@ function fmt(value: number): string {
 interface ChartDataPoint extends TrendDataPoint {
   expenses_actual: number
   expenses_budget: number
+  expenses_prior_year: number
 }
 
 function deriveTrendData(report: FullYearReport): ChartDataPoint[] {
@@ -40,10 +41,13 @@ function deriveTrendData(report: FullYearReport): ChartDataPoint[] {
   return months.map((gpMonth, i) => {
     const revActual = (revSection?.subtotal.months[i].actual || 0) + (otherIncSection?.subtotal.months[i].actual || 0)
     const revBudget = (revSection?.subtotal.months[i].budget || 0) + (otherIncSection?.subtotal.months[i].budget || 0)
+    const revPriorYear = (revSection?.subtotal.months[i].prior_year || 0) + (otherIncSection?.subtotal.months[i].prior_year || 0)
     const cogsActual = cogsSection?.subtotal.months[i].actual || 0
     const cogsBudget = cogsSection?.subtotal.months[i].budget || 0
+    const cogsPriorYear = cogsSection?.subtotal.months[i].prior_year || 0
     const opexActual = (opexSection?.subtotal.months[i].actual || 0) + (otherExpSection?.subtotal.months[i].actual || 0)
     const opexBudget = (opexSection?.subtotal.months[i].budget || 0) + (otherExpSection?.subtotal.months[i].budget || 0)
+    const opexPriorYear = (opexSection?.subtotal.months[i].prior_year || 0) + (otherExpSection?.subtotal.months[i].prior_year || 0)
 
     const gpActual = revActual - cogsActual
     const gpBudget = revBudget - cogsBudget
@@ -62,12 +66,16 @@ function deriveTrendData(report: FullYearReport): ChartDataPoint[] {
       monthLabel: getMonthLabel(gpMonth.month),
       revenue_actual: isActual ? revActual : revBudget,
       revenue_budget: revBudget,
+      revenue_prior_year: revPriorYear,
       cogs_actual: isActual ? cogsActual : cogsBudget,
       cogs_budget: cogsBudget,
+      cogs_prior_year: cogsPriorYear,
       opex_actual: isActual ? opexActual : opexBudget,
       opex_budget: opexBudget,
+      opex_prior_year: opexPriorYear,
       expenses_actual: isActual ? (cogsActual + opexActual) : (cogsBudget + opexBudget),
       expenses_budget: cogsBudget + opexBudget,
+      expenses_prior_year: cogsPriorYear + opexPriorYear,
       gp_percent: isActual ? gpPct : gpPctBudget,
       np_percent: isActual ? npPct : npPctBudget,
       gp_percent_budget: gpPctBudget,
@@ -112,8 +120,10 @@ export default function TrendCharts({ report }: TrendChartsProps) {
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Bar dataKey="revenue_actual" name="Revenue (Actual)" fill="#22c55e" radius={[2, 2, 0, 0]} />
             <Bar dataKey="revenue_budget" name="Revenue (Budget)" fill="#86efac" radius={[2, 2, 0, 0]} />
+            <Bar dataKey="revenue_prior_year" name="Revenue (Prior Year)" fill="#064e3b" radius={[2, 2, 0, 0]} />
             <Bar dataKey="expenses_actual" name="Expenses (Actual)" fill="#ef4444" radius={[2, 2, 0, 0]} />
             <Bar dataKey="expenses_budget" name="Expenses (Budget)" fill="#fca5a5" radius={[2, 2, 0, 0]} />
+            <Bar dataKey="expenses_prior_year" name="Expenses (Prior Year)" fill="#7f1d1d" radius={[2, 2, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
 
