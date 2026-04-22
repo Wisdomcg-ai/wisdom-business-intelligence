@@ -634,6 +634,16 @@ Plans:
 Plans:
 - [ ] TBD (run /gsd:plan-phase 39 to break down)
 
+### Phase 40: Playwright E2E — coach-flow test + CI integration
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 39
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 40 to break down)
+
 ---
 
 ### Phase 36: Client Portal
