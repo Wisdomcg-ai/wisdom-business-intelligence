@@ -540,7 +540,17 @@ Account Name | Entity A Actual | Entity A Budget | Entity B Actual | Entity B Bu
 **Depends on:** Phase 33 (CFO Dashboard — defines `cfo_report_status` table and status vocabulary)
 **Requirements:** APPR-01, APPR-02, APPR-03, APPR-04, APPR-05
 **UI hint:** yes
-**Plans:** TBD
+**Plans:** 7 plans
+
+Plans:
+- [ ] 35-01-PLAN.md — cfo_email_log migration (audit table + RLS)
+- [ ] 35-02-PLAN.md — HMAC token helpers + buildReportUrl + .env.example
+- [ ] 35-03-PLAN.md — sendMonthlyReport Resend wrapper with 15s deadline
+- [ ] 35-04-PLAN.md — POST /api/cfo/report-status + revertReportIfApproved helper
+- [ ] 35-05-PLAN.md — /reports/view/[token] public snapshot page + middleware
+- [ ] 35-06-PLAN.md — ReportStatusBar UI + useReportStatus hook + approve-and-send orchestrator
+- [ ] 35-07-PLAN.md — Edit-revert wiring + ROADMAP.md update + final UAT
+
 
 **Context:**
 The `cfo_report_status` table (created in Phase 33) already models the full status lifecycle:
