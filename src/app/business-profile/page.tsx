@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { BusinessProfileService } from './services/business-profile-service'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import toast, { Toaster } from 'react-hot-toast'
@@ -122,8 +121,7 @@ const BUSINESS_MODELS = [
 export default function EnhancedBusinessProfile() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const supabase = createClient()
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
+  const { activeBusiness, currentUser, viewerContext, isLoading: contextLoading } = useBusinessContext()
 
   // Initialize step from URL param or default to 1
   const initialStep = parseInt(searchParams?.get('step') || '1', 10)
@@ -149,10 +147,22 @@ export default function EnhancedBusinessProfile() {
 
   // Load business data on mount or when active business changes
   useEffect(() => {
-    if (!contextLoading) {
+    // Only load when we have a context-resolved business. If activeBusiness is null
+    // after contextLoading finishes, the render tree handles the empty state and
+    // there is nothing to load.
+    if (!contextLoading && activeBusiness?.id) {
       loadBusiness()
+    } else if (!contextLoading && !activeBusiness?.id) {
+      setIsLoading(false)   // stop the spinner; let the empty state render
     }
   }, [contextLoading, activeBusiness?.id])
+
+  // Auth guard — if context finished loading and there's no user, bounce to login.
+  useEffect(() => {
+    if (!contextLoading && currentUser === null) {
+      router.push('/auth/login')
+    }
+  }, [contextLoading, currentUser, router])
 
   // Update URL when step changes (for persistence)
   useEffect(() => {
@@ -239,20 +249,15 @@ export default function EnhancedBusinessProfile() {
   }
 
   const loadBusiness = async () => {
+    if (!activeBusiness?.id) {
+      // Defensive — effect guard already ensures this, but keep for safety.
+      setIsLoading(false)
+      return
+    }
+
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (!user) {
-        router.push('/auth/login')
-        return
-      }
-
-      // Determine which business to load:
-      // 1. If activeBusiness is set (coach viewing client), use it
-      // 2. Otherwise, load user's own business profile
-      const { data, businessId: bizId, profileId: profId, error } = activeBusiness?.id
-        ? await BusinessProfileService.getBusinessProfileByBusinessId(activeBusiness.id)
-        : await BusinessProfileService.loadBusinessProfile(user.id)
+      const { data, businessId: bizId, profileId: profId, error } =
+        await BusinessProfileService.getBusinessProfileByBusinessId(activeBusiness.id)
 
       if (error) {
         console.error('❌ Error loading business profile:', error)
@@ -442,6 +447,36 @@ export default function EnhancedBusinessProfile() {
     } finally {
       setIsSaving(false)
     }
+  }
+
+  // Empty state — authenticated user with no active business resolved.
+  // Prevents any further data load / lazy-create attempts (Phase 41 fix: the
+  // Jessica @ Oh Nine phantom-row bug lived in the now-removed owner_id path).
+  if (!contextLoading && !activeBusiness?.id && currentUser) {
+    return (
+      <div className="max-w-4xl mx-auto py-16 px-6">
+        <Toaster position="top-right" />
+        <div className="bg-white rounded-2xl border border-brand-navy-200 p-10 text-center shadow-sm">
+          <Building2 className="w-12 h-12 mx-auto text-brand-navy-300 mb-4" />
+          <h2 className="text-2xl font-semibold text-brand-navy-900 mb-2">
+            No business linked to your account
+          </h2>
+          <p className="text-brand-navy-600 mb-6 max-w-md mx-auto">
+            {currentUser.role === 'coach' || currentUser.role === 'admin'
+              ? 'Open a client from your client list to view their business profile.'
+              : 'Please contact your coach to be added to a business, or complete the signup wizard to create your own.'}
+          </p>
+          {currentUser.role === 'client' && (
+            <a
+              href="mailto:support@wisdomcg.com.au"
+              className="inline-flex items-center px-5 py-2.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
+            >
+              Contact my coach
+            </a>
+          )}
+        </div>
+      </div>
+    )
   }
 
   if (isLoading) {
