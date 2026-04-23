@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Mock the Resend SDK before importing the module under test.
+// Use a class so `new Resend(apiKey)` works in the module under test.
 const mockSend = vi.fn()
 vi.mock('resend', () => ({
-  Resend: vi.fn(() => ({ emails: { send: mockSend } })),
+  Resend: class {
+    emails = { send: mockSend }
+  },
 }))
 
 import { sendMonthlyReport } from '../send-report'
