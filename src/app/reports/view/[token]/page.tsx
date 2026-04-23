@@ -7,10 +7,10 @@
 // any live P&L, forecast, or metrics tables. That's the whole point of the
 // snapshot: the client sees exactly what the coach approved, frozen in time
 // (D-19). Live data is deliberately excluded.
-import { notFound } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { verifyReportToken } from '@/lib/reports/report-token'
 import ReportSnapshotView from './ReportSnapshotView'
+import ReportNotFound from './not-found'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -27,7 +27,7 @@ interface PageProps {
 export default async function ReportViewPage({ params }: PageProps) {
   const statusId = verifyReportToken(params.token)
   if (!statusId) {
-    notFound()
+    return <ReportNotFound />
   }
 
   const { data: row, error } = await supabase
@@ -38,10 +38,10 @@ export default async function ReportViewPage({ params }: PageProps) {
 
   if (error) {
     console.error('[report-view] supabase error:', error)
-    notFound()
+    return <ReportNotFound />
   }
   if (!row || !row.snapshot_data) {
-    notFound()
+    return <ReportNotFound />
   }
 
   return (

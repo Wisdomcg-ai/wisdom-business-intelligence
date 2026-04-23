@@ -277,6 +277,8 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   const isHomePage = pathname === '/'
   const isLegalPage = pathname === '/privacy' || pathname === '/terms'
   const isStandalonePage = pathname?.startsWith('/bali-retreat') || pathname?.startsWith('/ai-advantage')
+  // Phase 35: public token-signed report snapshot view — anonymous, no sidebar, no auth splash
+  const isPublicReportView = pathname?.startsWith('/reports/view')
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -424,8 +426,9 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
     }
   }
 
-  // For coach/admin/auth routes, home page, and legal pages, just render children without the client sidebar
-  if (isCoachRoute || isAdminRoute || isAuthRoute || isHomePage || isLegalPage || isStandalonePage) {
+  // For coach/admin/auth routes, home page, legal pages, and public report views,
+  // just render children without the client sidebar (and without waiting on auth).
+  if (isCoachRoute || isAdminRoute || isAuthRoute || isHomePage || isLegalPage || isStandalonePage || isPublicReportView) {
     return <>{children}</>
   }
 
