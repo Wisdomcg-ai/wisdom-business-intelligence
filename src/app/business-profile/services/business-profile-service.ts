@@ -153,7 +153,12 @@ export class BusinessProfileService {
           .from('businesses')
           .insert({
             owner_id: userId,
+            // Both columns MUST be set. `name` is NOT NULL; `business_name` is
+            // what the admin clients list + navbar actually display. Omitting
+            // business_name produces an "unassigned, no-name" orphan in
+            // /admin/clients (see the Jessica incident, 26 Jan 2026).
             name: 'My Business',
+            business_name: 'My Business',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })
