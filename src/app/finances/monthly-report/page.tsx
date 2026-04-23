@@ -48,6 +48,15 @@ import { MonthlyReportPDFService } from './services/monthly-report-pdf-service'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
 import { usePDFLayout } from './hooks/usePDFLayout'
 import type { ReportTab, MonthlyReportSettings, VarianceCommentary, GeneratedReport } from './types'
+// Phase 35 Plan 06: Approval + delivery controls for the monthly report.
+import ReportStatusBar from './components/ReportStatusBar'
+import { useReportStatus } from './hooks/useReportStatus'
+import {
+  approveAndSend,
+  markReady,
+  resendReport,
+  revertToDraft,
+} from './services/approve-and-send'
 
 const PDFLayoutEditorModal = dynamic(
   () => import('./components/layout-editor/PDFLayoutEditorModal'),
@@ -75,6 +84,11 @@ export default function MonthlyReportPage() {
   // Commentary state
   const [commentary, setCommentary] = useState<VarianceCommentary | undefined>(undefined)
   const [commentaryLoading, setCommentaryLoading] = useState(false)
+
+  // Phase 35 Plan 06: owner_email + owner_name (recipient + greeting) are needed by
+  // the approve-and-send flow but not part of the existing ActiveBusiness shape.
+  // Fetched once after businessId resolves.
+  const [ownerInfo, setOwnerInfo] = useState<{ email: string | null; name: string | null }>({ email: null, name: null })
 
   // Cashflow forecast state (shared between cashflow tab, charts tab, and PDF export)
   const [cashflowForecast, setCashflowForecast] = useState<CashflowForecastData | null>(null)
@@ -300,6 +314,42 @@ export default function MonthlyReportPage() {
       loadMappings()
     }
   }, [businessId, loadMappings])
+
+  // Phase 35 Plan 06: fetch owner_email + owner_name for the approve-and-send flow.
+  // One-shot read once businessId is known.
+  useEffect(() => {
+    if (!businessId) return
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase
+        .from('businesses')
+        .select('owner_email, owner_name')
+        .eq('id', businessId)
+        .maybeSingle()
+      if (cancelled) return
+      setOwnerInfo({
+        email: (data?.owner_email as string | null) ?? null,
+        name: (data?.owner_name as string | null) ?? null,
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [businessId, supabase])
+
+  // Phase 35 Plan 06: status pill reads cfo_report_status(business_id, period_month).
+  // period_month is derived from the currently-selected report (YYYY-MM → YYYY-MM-01).
+  const periodMonthKey = report?.report_month ? `${report.report_month}-01` : null
+  const reportStatus = useReportStatus(businessId || null, periodMonthKey)
+
+  // Phase 35 Plan 06: map BusinessContext role → ReportStatusBar role.
+  // context: 'client' | 'coach' | 'admin' (admin is the mapped super_admin)
+  const userRole: 'coach' | 'super_admin' | 'client' =
+    currentUser?.role === 'coach'
+      ? 'coach'
+      : currentUser?.role === 'admin'
+      ? 'super_admin'
+      : 'client'
 
   // Load templates when businessId is set; auto-apply default on first load
   const hasAppliedDefaultTemplate = useRef(false)
@@ -566,6 +616,151 @@ export default function MonthlyReportPage() {
     }
   }
 
+  // ------------------------------------------------------------------
+  // Phase 35 Plan 06: Approve-and-send flow
+  // ------------------------------------------------------------------
+
+  const monthLabel = report?.report_month
+    ? new Date(`${report.report_month}-01T00:00:00`).toLocaleDateString('en-AU', {
+        month: 'long',
+        year: 'numeric',
+      })
+    : ''
+
+  const coachName =
+    (currentUser?.firstName || currentUser?.lastName
+      ? `${currentUser?.firstName ?? ''} ${currentUser?.lastName ?? ''}`.trim()
+      : null) ||
+    (currentUser?.email ? currentUser.email.split('@')[0] : '') ||
+    'Your coach'
+  const coachEmail = currentUser?.email ?? ''
+
+  const clientGreetingName =
+    (ownerInfo.name ? ownerInfo.name.trim().split(/\s+/)[0] : null) || 'there'
+
+  // Reuse the same PDFOptions shape as handleExportPDF — both flows must produce
+  // a byte-identical PDF (D-07 locks this).
+  const buildPdfInput = (): {
+    report: GeneratedReport
+    options: {
+      commentary?: VarianceCommentary
+      fullYearReport?: import('./types').FullYearReport
+      subscriptionDetail?: import('./types').SubscriptionDetailData
+      wagesDetail?: import('./types').WagesDetailData
+      cashflowForecast?: CashflowForecastData
+      sections?: import('./types').ReportSections
+      pdfLayout?: import('./types/pdf-layout').PDFLayout | null
+    }
+  } | null => {
+    if (!report) return null
+    return {
+      report,
+      options: {
+        commentary,
+        fullYearReport: fullYearReport || undefined,
+        subscriptionDetail: subscriptionDetail || undefined,
+        wagesDetail: wagesDetail || undefined,
+        cashflowForecast: cashflowForecast || undefined,
+        sections: settings?.sections,
+        pdfLayout: settings?.pdf_layout ?? null,
+      },
+    }
+  }
+
+  // ReportSnapshotV1 payload assembler — matches the shape Plan 35-05's
+  // ReportSnapshotView expects. Rendering-oriented (pre-computed values), not
+  // raw Xero data (Pitfall 3).
+  const buildSnapshotData = () => {
+    if (!report || !businessId) return null
+    return {
+      schema_version: 1 as const,
+      captured_at: new Date().toISOString(),
+      business: {
+        id: businessId,
+        name: activeBusiness?.name ?? '',
+        slug: null,
+        industry: activeBusiness?.industry ?? null,
+      },
+      period: {
+        month: `${report.report_month}-01`,
+        fiscal_year: report.fiscal_year,
+        label: monthLabel,
+      },
+      coach: {
+        name: coachName,
+        email: coachEmail,
+      },
+      report,
+      commentary: commentary ?? null,
+      settings_applied: {
+        sections: settings?.sections,
+        template_id: activeTemplateId ?? null,
+      },
+    }
+  }
+
+  const buildApproveParams = () => {
+    const pdfInput = buildPdfInput()
+    const snapshot = buildSnapshotData()
+    if (!pdfInput || !snapshot || !businessId || !report) return null
+    return {
+      business_id: businessId,
+      period_month: `${report.report_month}-01`,
+      business_name: activeBusiness?.name ?? '',
+      month_label: monthLabel,
+      client_greeting_name: clientGreetingName,
+      recipient_email: ownerInfo.email ?? '',
+      coach_name: coachName,
+      coach_email: coachEmail,
+      portal_slug: null,
+      pdf_input: pdfInput,
+      snapshot_data: snapshot,
+    }
+  }
+
+  const handleMarkReady = async () => {
+    if (!businessId || !report) return
+    const res = await markReady(businessId, `${report.report_month}-01`)
+    if (!res.ok) throw res
+    await reportStatus.refresh()
+  }
+
+  const handleApproveAndSend = async () => {
+    const params = buildApproveParams()
+    if (!params) {
+      throw { body: { error: 'Report not ready' } }
+    }
+    if (!params.recipient_email) {
+      throw { body: { error: 'No owner_email configured on this business' } }
+    }
+    if (!params.coach_email) {
+      throw { body: { error: 'Coach email unavailable — cannot send' } }
+    }
+    const res = await approveAndSend(params)
+    if (!res.ok) throw res
+    await reportStatus.refresh()
+  }
+
+  const handleResend = async () => {
+    const params = buildApproveParams()
+    if (!params) {
+      throw { body: { error: 'Report not ready' } }
+    }
+    if (!params.recipient_email) {
+      throw { body: { error: 'No owner_email configured on this business' } }
+    }
+    const res = await resendReport(params)
+    if (!res.ok) throw res
+    await reportStatus.refresh()
+  }
+
+  const handleRevertToDraft = async () => {
+    if (!businessId || !report) return
+    const res = await revertToDraft(businessId, `${report.report_month}-01`)
+    if (!res.ok) throw res
+    await reportStatus.refresh()
+  }
+
   const [isExporting, setIsExporting] = useState(false)
 
   const handleExportPDF = async () => {
@@ -738,6 +933,21 @@ export default function MonthlyReportPage() {
       />
 
       <div className="max-w-[1800px] mx-auto p-4 sm:p-6 lg:p-8">
+        {/* Phase 35 Plan 06: Approval + delivery status bar — above the Month Selector */}
+        {report && (
+          <div className="mb-4 bg-white rounded-lg shadow-sm px-4 py-3">
+            <ReportStatusBar
+              status={reportStatus.status}
+              sentAt={reportStatus.sentAt}
+              role={userRole}
+              onMarkReady={handleMarkReady}
+              onApproveAndSend={handleApproveAndSend}
+              onResend={handleResend}
+              onRevertToDraft={handleRevertToDraft}
+            />
+          </div>
+        )}
+
         {/* Month Selector */}
         <MonthSelector
           selectedMonth={selectedMonth}
