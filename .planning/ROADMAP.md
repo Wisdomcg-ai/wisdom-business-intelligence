@@ -675,11 +675,11 @@ Plans:
 - Phantom-row sweep produces a reviewed, approved, deleted list (with user confirmation before any DELETE).
 - tsc clean; vitest green on modified tests.
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [x] 41-01-PLAN.md — Remove lazy-create from business-profile-service (owner_id read path becomes read-only)
-- [ ] 41-02-PLAN.md — Refactor /business-profile page to use BusinessContext with role-aware rendering (owner / admin / member / none)
+- [x] 41-02-PLAN.md — Refactor /business-profile page to use BusinessContext with role-aware rendering (owner / admin / member / none)
 - [ ] 41-03-PLAN.md — Sweep + delete existing phantom rows with explicit user confirmation gate
 
 ---
