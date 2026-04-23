@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 35
-last_updated: "2026-04-23T19:09:02.978Z"
+last_updated: "2026-04-23T19:11:34.777Z"
 progress:
   total_phases: 40
   completed_phases: 14
   total_plans: 51
-  completed_plans: 47
+  completed_plans: 49
 ---
 
 # Project State
@@ -219,7 +219,21 @@ progress:
 
 - Plan 35-01: cfo_email_log append-only audit table — 3 RLS policies (coach_select, super_admin_select, service_role_all). No authenticated INSERT/UPDATE/DELETE — append-only semantics enforced by absence of write policies. Migration file `supabase/migrations/20260424_cfo_email_log.sql` (7377b6c).
 - Plan 35-01: filename `20260424_cfo_email_log.sql` honored per plan spec, even though recent migrations use YYYYMMDDHHMMSS. Sorts correctly after all prior migrations.
+- Plan 35-02: HMAC-SHA256 chosen over JWT (D-20) — matches existing `src/lib/utils/encryption.ts` pattern, zero new deps, shorter URLs via base64url signatures (vs hex in OAuth helper).
+- Plan 35-02: Token payload is ONLY base64url(statusId) — no `exp`, no `iat`, no JSON wrapper (D-21 tokens-never-expire). Global kill-switch is secret rotation.
+- Plan 35-02: `buildReportUrl` strips trailing slashes from `appUrl` (normalizes `https://x.com/` and `https://x.com` to same URL); URL-encodes portal slugs; accepts `periodMonth` as YYYY-MM-DD or YYYY-MM and always emits YYYY-MM in portal URL (D-22).
+- Plan 35-02: `.env.example` was gitignored (pattern `.env*` at line 34); force-added with `-f` per the `.gitignore` comment allowing opt-in.
 
 ## Completed Work (Phase 35)
 
 - Plan 35-01: cfo_email_log table DDL + RLS + composite index on (business_id, period_month) — COMPLETE (7377b6c). Foundation for APPR-02/03/04. Migration APPLY is a deploy-time task for Matt.
+- Plan 35-02: report-token.ts (HMAC sign/verify) + build-report-url.ts (forward-compat URL helper) + .env.example REPORT_LINK_SECRET doc — COMPLETE (490418e, 5a4621b, 7203f79). 19 unit tests passing. Wave 2 (plans 35-04/05/06) unblocked.
+
+## Position
+
+- Current: Phase 35, Plan 02 — COMPLETE (3 tasks done, 19/19 tests passing, tsc clean)
+- Stopped at: Completed 35-02-PLAN.md
+
+## Last Session
+
+- 2026-04-23T19:09:56Z — Completed 35-02-PLAN.md (Report URL primitives shipped; token + URL builder + .env.example)
