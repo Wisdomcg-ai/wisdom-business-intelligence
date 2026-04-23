@@ -649,6 +649,39 @@ Plans:
 
 **Follow-up (not in Phase 40 scope):** Wire Playwright into GitHub Actions, provision test Supabase project to un-skip coach-flow specs.
 
+### Phase 41: Eliminate phantom business orphan rows via active-business routing
+
+**Goal:** Team members, coaches, and admins stop generating phantom "My Business" orphans when they visit `/business-profile`. Switch the page from owner_id lookup to active-business context. Owner → editor; admin → editor with owner-only fields disabled; member → read-only; no business → clean empty state with "contact your coach" CTA. Sweep existing phantoms with user approval before delete.
+
+**Depends on:** Phase 40
+
+**Requirements:** TBD (no REQ-IDs — hot-fix triggered by Jessica @ Oh Nine incident 2026-04-23)
+
+**Trigger:** `jessica@ohnine.com.au` is admin on Oh Nine via `business_users`, but visiting `/business-profile` lazy-created a blank `businesses` row for her (owner_id=Jessica, business_name=NULL). Prior patch (d317442) fixed the NULL name but the root cause — lazy-create firing for non-owners — remains.
+
+**Scope:**
+- `src/app/business-profile/services/business-profile-service.ts` — remove lazy-create on both `businesses` and `business_profiles`. Read path returns null when no business exists for owner; no side-effects on read.
+- `src/app/business-profile/page.tsx` — switch from owner_id lookup to activeBusiness (BusinessContext). Compute user role per active business (owner | admin | member | none) and render appropriate UI: editor / read-only / empty state.
+- DB sweep: identify phantom businesses (name='My Business' OR business_name IS NULL OR business_name='My Business'; zero xero_connections; zero financial_forecasts; zero non-owner business_users; owner is a team-member of a DIFFERENT business). Surface list to user; delete only after explicit confirmation. Same sweep for orphan business_profiles with NULL business_id belonging to users who are team members elsewhere.
+- Verification: tsc clean, vitest green on touched tests, manual smoke test for owner + team-member + no-business flows on /business-profile.
+
+**Out of scope:**
+- Schema NOT NULL migrations on `businesses.business_name` or `business_profiles.business_id` (deliberately deferred — was "Level 3" in user discussion).
+- Changes to signup wizard, /api/admin/clients, /api/coach/clients, demo-client routes — those create businesses at explicit intent and correctly set both `name` and `business_name`.
+
+**Success criteria:**
+- Visiting `/business-profile` as a team-member user produces ZERO new rows in `businesses` or `business_profiles`.
+- `/business-profile` renders correctly for all four role states (owner / admin / member / none).
+- Phantom-row sweep produces a reviewed, approved, deleted list (with user confirmation before any DELETE).
+- tsc clean; vitest green on modified tests.
+
+**Plans:** 1/3 plans executed
+
+Plans:
+- [x] 41-01-PLAN.md — Remove lazy-create from business-profile-service (owner_id read path becomes read-only)
+- [ ] 41-02-PLAN.md — Refactor /business-profile page to use BusinessContext with role-aware rendering (owner / admin / member / none)
+- [ ] 41-03-PLAN.md — Sweep + delete existing phantom rows with explicit user confirmation gate
+
 ---
 
 ### Phase 36: Client Portal

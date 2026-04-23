@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Executing Phase 34
-last_updated: "2026-04-20T03:24:00Z"
+status: Executing Phase 41
+last_updated: "2026-04-23T19:29:22.005Z"
 progress:
-  total_phases: 36
-  completed_phases: 9
-  total_plans: 35
-  completed_plans: 28
-  percent: 80
+  total_phases: 41
+  completed_phases: 14
+  total_plans: 47
+  completed_plans: 47
+  percent: 100
 ---
 
 # Project State
@@ -196,12 +196,23 @@ progress:
 
 ## Position
 
-- Current: Phase 21, Plan 03 — COMPLETE (Phase 21 fully complete)
-- Stopped at: Completed 21-03-PLAN.md
+- Current: Phase 41, Plan 01 — COMPLETE (Wave 1, owner-path lazy-create removed)
+- Stopped at: Completed 41-01-PLAN.md
 
 ## Last Session
 
-- 2026-04-08T04:31:09Z — Completed 21-03-PLAN.md (Phase 21 fully complete)
+- 2026-04-23T19:27:45Z — Completed 41-01-PLAN.md (owner-path lazy-create deleted from BusinessProfileService)
+
+## Phase 41 Decisions
+
+- Plan 41-01: Deleted `loadBusinessProfile` and `getOrCreateBusinessProfile` methods entirely from `BusinessProfileService` (vs leaving as read-only no-ops) — prevents future contributors re-introducing lazy-create by mistake. Only `getBusinessProfileByBusinessId` remains as the public read entrypoint.
+- Plan 41-01: Coach-path `.insert` in `getBusinessProfileByBusinessId` preserved; removed only the dead `|| 'My Business'` fallbacks (businesses.name is NOT NULL and loaded via SELECT before the insert, so the fallback never executed).
+- Plan 41-01: One expected tsc error in `src/app/business-profile/page.tsx:255` (caller of deleted method) is accepted per the plan — Plan 41-02 Wave 2 removes the caller when refactoring the page to read from BusinessContext.
+- Plan 41-01: `'My Business'` literal count in `business-profile-service.ts` is now 0 and serves as a regression sentinel going forward.
+
+## Completed Work (This Session)
+
+- Plan 41-01: Remove owner_id lazy-create from BusinessProfileService — COMPLETE (9a5f34e). File shrunk from 363 → 211 lines (−152 LOC net).
 
 ## Accumulated Context
 
@@ -215,3 +226,4 @@ progress:
   - Phase 40: Playwright E2E infrastructure (smoke spec + coach-flow scaffold with test.skip + 3 scripts) — PR #13
 - Phase 34 COMPLETE (2026-04-23) — bookkeeping: 34-01a (Consolidated BS, PR #2 a80ed62) and 34-02a (Consolidated Cashflow, PR #4 aa27bf2 + patches #8 #9) shipped earlier as part of the consolidation work; roadmap ticks were stale. ROADMAP.md updated to reflect reality.
 - Current active roadmap: Phase 33 (CFO Multi-Client Dashboard) is next natural work — depends only on Phase 23 (done).
+- Phase 41 added (2026-04-23): Eliminate phantom business orphan rows via active-business routing. Removes lazy-create in business-profile-service; switches /business-profile page to read from BusinessContext; sweeps existing phantoms with user approval before delete. Triggered by Jessica @ Oh Nine incident — team-member users accumulating blank "My Business" orphans in admin/clients.
