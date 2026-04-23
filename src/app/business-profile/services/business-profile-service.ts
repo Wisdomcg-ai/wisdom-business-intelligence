@@ -21,9 +21,14 @@ export class BusinessProfileService {
   }
 
   /**
-   * Get business + business_profile by business ID
-   * Use this when you already know the business ID (e.g., from context)
-   * Returns the same structure as loadBusinessProfile for consistency
+   * Get business + business_profile by business ID.
+   * Use this when you already know the business ID (e.g., from BusinessContext).
+   * This is the ONLY read path on /business-profile after Phase 41 — the owner_id
+   * lazy-create path (the load and getOrCreate methods on this class) was
+   * removed because it was creating phantom orphan rows for every
+   * team-member / coach / admin on first visit (Jessica @ Oh Nine incident,
+   * 2026-04-23). Business creation now only happens via explicit intents:
+   * signup wizard, /api/admin/clients, /api/coach/clients, demo-client routes.
    */
   static async getBusinessProfileByBusinessId(businessId: string): Promise<{
     data: any
@@ -71,8 +76,8 @@ export class BusinessProfileService {
           .insert({
             user_id: business.owner_id,
             business_id: business.id,
-            company_name: business.name || 'My Business',
-            business_name: business.name || 'My Business',
+            company_name: business.name,
+            business_name: business.name,
             key_roles: [
               { title: '', name: '', status: '' },
               { title: '', name: '', status: '' },
@@ -96,10 +101,10 @@ export class BusinessProfileService {
         console.log('[Business Profile Service] ⚠️ No profile found and no owner_id - cannot create profile')
       }
 
-      // Merge business + profile data for the UI (same as loadBusinessProfile)
+      // Merge business + profile data for the UI (same shape as the removed loadBusinessProfile)
       const mergedData = {
         ...profile,
-        name: business?.name || profile?.business_name || 'My Business',
+        name: business?.name || profile?.business_name || null,
       }
 
       console.log('[Business Profile Service] ✅ Loaded business + profile successfully')
@@ -114,122 +119,6 @@ export class BusinessProfileService {
         data: null,
         businessId: null,
         profileId: null,
-        error: err instanceof Error ? err.message : 'Unknown error'
-      }
-    }
-  }
-
-  /**
-   * Get or create business + business_profile for a user (legacy method)
-   * @deprecated Use getBusinessProfileByBusinessId when businessId is available from context
-   */
-  static async getOrCreateBusinessProfile(userId: string): Promise<{
-    business: any
-    profile: any
-    error?: string
-  }> {
-    const supabase = this.getSupabase()
-    try {
-      console.log('[Business Profile Service] 📥 Loading business profile for user:', userId)
-
-      // Step 1: Get or create business record
-      let { data: businesses, error: businessError } = await supabase
-        .from('businesses')
-        .select('*')
-        .eq('owner_id', userId)
-        .order('created_at', { ascending: true })
-
-      if (businessError) {
-        console.error('[Business Profile Service] ❌ Error fetching businesses:', businessError)
-        return { business: null, profile: null, error: businessError.message }
-      }
-
-      let business = businesses && businesses.length > 0 ? businesses[0] : null
-
-      // Create business if doesn't exist
-      if (!business) {
-        console.log('[Business Profile Service] 🆕 Creating new business record')
-        const { data: newBusiness, error: createError } = await supabase
-          .from('businesses')
-          .insert({
-            owner_id: userId,
-            // Both columns MUST be set. `name` is NOT NULL; `business_name` is
-            // what the admin clients list + navbar actually display. Omitting
-            // business_name produces an "unassigned, no-name" orphan in
-            // /admin/clients (see the Jessica incident, 26 Jan 2026).
-            name: 'My Business',
-            business_name: 'My Business',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .select()
-          .single()
-
-        if (createError) {
-          console.error('[Business Profile Service] ❌ Error creating business:', createError)
-          return { business: null, profile: null, error: createError.message }
-        }
-
-        business = newBusiness
-        console.log('[Business Profile Service] ✅ Created business:', business.id)
-      }
-
-      // Step 2: Get or create business_profile record
-      // Query by user_id only since one user = one business profile
-      // Use limit(1) with order to handle any duplicate profiles gracefully
-      let { data: profiles, error: profileError } = await supabase
-        .from('business_profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: true })
-        .limit(1)
-
-      if (profileError) {
-        console.error('[Business Profile Service] ❌ Error fetching profile:', profileError)
-        return { business, profile: null, error: profileError.message }
-      }
-
-      let profile = profiles && profiles.length > 0 ? profiles[0] : null
-
-      // Create profile if doesn't exist
-      if (!profile) {
-        console.log('[Business Profile Service] 🆕 Creating new business profile record')
-        const { data: newProfile, error: createProfileError } = await supabase
-          .from('business_profiles')
-          .insert({
-            user_id: userId,
-            business_id: business.id,
-            company_name: business.name || 'My Business', // REQUIRED field
-            business_name: business.name || 'My Business',
-            key_roles: [
-              { title: '', name: '', status: '' },
-              { title: '', name: '', status: '' },
-              { title: '', name: '', status: '' }
-            ],
-            owner_info: {},
-            profile_completed: false,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .select()
-          .single()
-
-        if (createProfileError) {
-          console.error('[Business Profile Service] ❌ Error creating profile:', createProfileError)
-          return { business, profile: null, error: createProfileError.message }
-        }
-
-        profile = newProfile
-        console.log('[Business Profile Service] ✅ Created profile:', profile.id)
-      }
-
-      console.log('[Business Profile Service] ✅ Loaded business + profile successfully')
-      return { business, profile }
-    } catch (err) {
-      console.error('[Business Profile Service] ❌ Unexpected error:', err)
-      return {
-        business: null,
-        profile: null,
         error: err instanceof Error ? err.message : 'Unknown error'
       }
     }
@@ -313,46 +202,6 @@ export class BusinessProfileService {
       console.error('[Business Profile Service] ❌ Error saving:', err)
       return {
         success: false,
-        error: err instanceof Error ? err.message : 'Unknown error'
-      }
-    }
-  }
-
-  /**
-   * Load business profile data
-   * Returns merged data from both tables
-   */
-  static async loadBusinessProfile(userId: string): Promise<{
-    data: any
-    businessId: string | null
-    profileId: string | null
-    error?: string
-  }> {
-    try {
-      const { business, profile, error } = await this.getOrCreateBusinessProfile(userId)
-
-      if (error) {
-        return { data: null, businessId: null, profileId: null, error }
-      }
-
-      // Merge business + profile data for the UI
-      const mergedData = {
-        ...profile,
-        name: business?.name || profile?.business_name || 'My Business',
-        // All other fields come from profile
-      }
-
-      return {
-        data: mergedData,
-        businessId: business?.id || null,
-        profileId: profile?.id || null
-      }
-    } catch (err) {
-      console.error('[Business Profile Service] ❌ Error loading:', err)
-      return {
-        data: null,
-        businessId: null,
-        profileId: null,
         error: err instanceof Error ? err.message : 'Unknown error'
       }
     }
