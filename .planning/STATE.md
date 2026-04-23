@@ -2,14 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Executing Phase 34
-last_updated: "2026-04-20T03:24:00Z"
+status: Executing Phase 35
+last_updated: "2026-04-23T19:09:02.978Z"
 progress:
-  total_phases: 36
-  completed_phases: 9
-  total_plans: 35
-  completed_plans: 28
-  percent: 80
+  total_phases: 40
+  completed_phases: 14
+  total_plans: 51
+  completed_plans: 47
 ---
 
 # Project State
@@ -215,3 +214,12 @@ progress:
   - Phase 40: Playwright E2E infrastructure (smoke spec + coach-flow scaffold with test.skip + 3 scripts) — PR #13
 - Phase 34 COMPLETE (2026-04-23) — bookkeeping: 34-01a (Consolidated BS, PR #2 a80ed62) and 34-02a (Consolidated Cashflow, PR #4 aa27bf2 + patches #8 #9) shipped earlier as part of the consolidation work; roadmap ticks were stale. ROADMAP.md updated to reflect reality.
 - Current active roadmap: Phase 33 (CFO Multi-Client Dashboard) is next natural work — depends only on Phase 23 (done).
+
+## Phase 35 Decisions (executing)
+
+- Plan 35-01: cfo_email_log append-only audit table — 3 RLS policies (coach_select, super_admin_select, service_role_all). No authenticated INSERT/UPDATE/DELETE — append-only semantics enforced by absence of write policies. Migration file `supabase/migrations/20260424_cfo_email_log.sql` (7377b6c).
+- Plan 35-01: filename `20260424_cfo_email_log.sql` honored per plan spec, even though recent migrations use YYYYMMDDHHMMSS. Sorts correctly after all prior migrations.
+
+## Completed Work (Phase 35)
+
+- Plan 35-01: cfo_email_log table DDL + RLS + composite index on (business_id, period_month) — COMPLETE (7377b6c). Foundation for APPR-02/03/04. Migration APPLY is a deploy-time task for Matt.
