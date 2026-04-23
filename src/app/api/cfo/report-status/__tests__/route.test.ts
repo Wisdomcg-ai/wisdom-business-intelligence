@@ -372,7 +372,7 @@ describe('POST /api/cfo/report-status', () => {
       (call: any) => call[0].status === 'sent',
     )
     expect(finalUpdate).toBeTruthy()
-    expect(finalUpdate[0].sent_at).toBeTruthy()
+    expect(finalUpdate![0].sent_at).toBeTruthy()
 
     // Log updated with resend_message_id + status_code=200
     const logUpdateCalls = svc.spies.emailLogUpdateSpy.mock.calls
