@@ -536,49 +536,57 @@ Account Name | Entity A Actual | Entity A Budget | Entity B Actual | Entity B Bu
 ---
 
 ### Phase 35: Report Approval + Delivery Workflow
-**Goal:** Matt can mark a monthly report as approved inside WisdomBI, triggering an automated email to the client via Make.com — replacing the current manual process of exporting from Calxa and sending separately.
+**Goal:** Matt can mark a monthly report as approved inside WisdomBI, triggering an automated email to the client via Resend — replacing the current manual process of exporting from Calxa and sending separately.
 **Depends on:** Phase 33 (CFO Dashboard — defines `cfo_report_status` table and status vocabulary)
 **Requirements:** APPR-01, APPR-02, APPR-03, APPR-04, APPR-05
 **UI hint:** yes
-**Plans:** 4/7 plans executed
+**Plans:** 7/7 plans executed
 
 Plans:
 - [x] 35-01-PLAN.md — cfo_email_log migration (audit table + RLS)
 - [x] 35-02-PLAN.md — HMAC token helpers + buildReportUrl + .env.example
 - [x] 35-03-PLAN.md — sendMonthlyReport Resend wrapper with 15s deadline
 - [x] 35-04-PLAN.md — POST /api/cfo/report-status + revertReportIfApproved helper
-- [ ] 35-05-PLAN.md — /reports/view/[token] public snapshot page + middleware
-- [ ] 35-06-PLAN.md — ReportStatusBar UI + useReportStatus hook + approve-and-send orchestrator
-- [ ] 35-07-PLAN.md — Edit-revert wiring + ROADMAP.md update + final UAT
+- [x] 35-05-PLAN.md — /reports/view/[token] public snapshot page + middleware
+- [x] 35-06-PLAN.md — ReportStatusBar UI + useReportStatus hook + approve-and-send orchestrator
+- [x] 35-07-PLAN.md — Edit-revert wiring + ROADMAP.md update + final UAT
 
+**Scope override (during planning):** The original ROADMAP entry called for a Make.com webhook integration. Pivoted during /gsd:discuss-phase to direct email via Resend — owning deliverability is a cleaner CFO-product story, eliminates per-business webhook URL setup, and keeps audit data in-platform. See `.planning/phases/35-report-approval-delivery-workflow/35-CONTEXT.md` for full decision log (D-01..D-23).
+
+**Scope amendment (during execution):** D-09 (per-coach From email) was further amended during Plan 35-06 UAT to a **single SaaS sender** pattern via `REPORT_FROM_EMAIL` / `REPORT_FROM_NAME` env vars. Per-coach Resend domain verification proved operationally painful; one verified domain (`wisdombi.ai` → `cfo@wisdombi.ai`) is simpler and scales to N coaches without per-coach DNS work. Reply-To still routes to the coach's own email so client replies reach them.
 
 **Context:**
 The `cfo_report_status` table (created in Phase 33) already models the full status lifecycle:
 `draft → ready_for_review → approved → sent`
 
-Phase 35 adds the UI controls and automation trigger that move a report through this lifecycle.
+Phase 35 adds the UI controls + automation trigger + public client view + edit-revert wiring that move a report through this lifecycle.
 
-**Scope:**
-- New DB column: `businesses.make_webhook_url text` — per-client Make.com webhook URL, set in business settings
-- New API: `POST /api/cfo/report-status` — upserts `cfo_report_status` for (business_id, period_month); if transitioning to `approved`, fires the Make.com webhook with report metadata; if webhook succeeds, sets `sent_at` and status → `sent`
-- Modified UI: monthly report page top bar gains a status pill + action button:
-  - `draft` → "Mark Ready for Review" button
-  - `ready_for_review` → "Approve & Send" button (coach only)
-  - `approved` → "Sent ✓" badge with `sent_at` timestamp
-  - `sent` → read-only "Delivered [date]" badge
-- Webhook payload to Make.com: `{ business_name, period_month, report_url, approved_by_name, approved_at }`
+**Scope (as built):**
+- New DB table: `cfo_email_log` — append-only audit of every Resend send attempt (D-14)
+- New API: `POST /api/cfo/report-status` — upserts `cfo_report_status` for (business_id, period_month); on `approved` transition: captures snapshot to `snapshot_data` (D-15), sends email via Resend (D-05/D-08/D-10), writes `cfo_email_log` row (success or failure), sets `status='sent'` only on Resend 2xx (D-11)
+- New helper: `revertReportIfApproved()` (lib/reports/revert-report.ts) — silently flips approved/sent → draft on commentary/snapshot/settings edits, preserves `snapshot_data` (D-16/D-17/D-18)
+- New helpers: `signReportToken` / `verifyReportToken` via existing HMAC utils (D-20), `buildReportUrl` with Phase 36 `portal_slug` forward-compat (D-22)
+- New public route: `/reports/view/[token]` — anonymous read-only snapshot view, no token expiry (D-19/D-21), middleware exempt from `publicRoutes` AND `onboardingExemptRoutes`
+- Modified UI: monthly report page top bar gains a status pill + contextual action buttons (Mark Ready / Approve & Send / Resend / Revert) — coach-only buttons, clients see read-only pill (D-04)
+- Email format: subject `{Business} — {Month Year} financial report` (D-08), body = greeting + "View Report" button + PDF attachment, no headline numbers (D-06), recipient = `businesses.owner_email` only (D-10)
+- Edit-revert: hooked into `/api/monthly-report/{commentary,snapshot,settings}` save routes; Xero ingestion paths explicitly NOT touched (D-17)
 - CFO dashboard (Phase 33) reads `cfo_report_status` — status changes on the report page are immediately reflected on the dashboard
 
-**Make.com automation (Matt configures in Make.com, not in code):**
-- Trigger: Custom Webhook receives payload
-- Action: Send email to client with report link or PDF attachment
+**Required env vars (must be set in dev `.env.local` AND Vercel production env):**
+- `RESEND_API_KEY` — Resend account API key
+- `REPORT_LINK_SECRET` — HMAC signing secret for token URLs
+- `REPORT_FROM_EMAIL` — single verified Resend sender (e.g., `cfo@wisdombi.ai`)
+- `REPORT_FROM_NAME` — display name for the From header
+
+**Required Resend setup:** verify the `REPORT_FROM_EMAIL` domain in Resend dashboard before first production send.
 
 **Success Criteria:**
-- Clicking "Approve & Send" on a report with status `ready_for_review` posts the webhook payload and transitions status to `sent`
-- The CFO dashboard "Pending Approval" count decrements immediately after a report is approved
-- If the Make.com webhook returns an error, the status stays at `approved` (not `sent`) and an error toast is shown
-- `approved_by` is recorded as the authenticated user's ID; `approved_at` and `sent_at` are timestamped
-- Webhook URL is configurable per business in the business settings page — not hardcoded
+- Clicking "Approve & Send" on a draft or ready_for_review report sends a real email via Resend, captures a snapshot, and transitions status to `sent`
+- Email contains subject, "View Report" link, PDF attachment; clicking the link opens the public snapshot view
+- The CFO dashboard "Pending Approval" count decrements immediately after a report is sent
+- If Resend returns an error, status stays at `approved` (not `sent`), error toast surfaces, "Resend" button appears, every attempt logged in `cfo_email_log`
+- `approved_by` recorded as authenticated user; `approved_at` / `sent_at` / `snapshot_taken_at` timestamps written
+- Editing commentary, snapshot, or settings on an already-approved report silently reverts status to `draft`; previously-sent email link continues to render the frozen snapshot
 
 ### Phase 37: Resolver adoption — route all pages through resolveBusinessId [COMPLETE]
 
