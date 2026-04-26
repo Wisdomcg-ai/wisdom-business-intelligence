@@ -254,10 +254,14 @@ async function handleApproveAndSend(userId: string, body: ApproveSendBody) {
     periodMonth: body.period_month,
   })
 
+  // From: single SaaS sender (REPORT_FROM_EMAIL) — wisdombi.ai is the verified
+  // domain in Resend so we don't need every coach's domain verified.
+  // Reply-To stays as the coach's email so client replies route back to them.
+  // Falls back to coach email if env vars aren't set (dev safety).
   const sendResult = await sendMonthlyReport({
     to: body.recipient_email,
-    fromEmail: body.coach_email,
-    fromName: body.coach_name,
+    fromEmail: process.env.REPORT_FROM_EMAIL || body.coach_email,
+    fromName: process.env.REPORT_FROM_NAME || body.coach_name,
     replyToEmail: body.coach_email,
     businessName: body.business_name,
     monthLabel: body.month_label,
@@ -384,10 +388,14 @@ async function handleResend(userId: string, body: ResendBody) {
     periodMonth: body.period_month,
   })
 
+  // From: single SaaS sender (REPORT_FROM_EMAIL) — wisdombi.ai is the verified
+  // domain in Resend so we don't need every coach's domain verified.
+  // Reply-To stays as the coach's email so client replies route back to them.
+  // Falls back to coach email if env vars aren't set (dev safety).
   const sendResult = await sendMonthlyReport({
     to: body.recipient_email,
-    fromEmail: body.coach_email,
-    fromName: body.coach_name,
+    fromEmail: process.env.REPORT_FROM_EMAIL || body.coach_email,
+    fromName: process.env.REPORT_FROM_NAME || body.coach_name,
     replyToEmail: body.coach_email,
     businessName: body.business_name,
     monthLabel: body.month_label,
