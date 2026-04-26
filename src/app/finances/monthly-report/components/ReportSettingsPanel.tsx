@@ -15,6 +15,9 @@ interface ReportSettingsPanelProps {
   businessId: string
   settings: MonthlyReportSettings
   onSettingsChange: (settings: MonthlyReportSettings) => void
+  // Phase 35 D-16: passed through so settings save can revert an approved/sent
+  // report to draft when the coach edits sections / template / pdf layout.
+  reportMonth?: string
   // Template props (optional — graceful degradation when not yet wired)
   templates?: ReportTemplate[]
   activeTemplateId?: string | null
@@ -91,6 +94,7 @@ export default function ReportSettingsPanel({
   businessId,
   settings,
   onSettingsChange,
+  reportMonth,
   templates = [],
   activeTemplateId = null,
   templatesLoading = false,
@@ -191,6 +195,8 @@ export default function ReportSettingsPanel({
           budget_forecast_id: localSettings.budget_forecast_id,
           subscription_account_codes: localSettings.subscription_account_codes,
           wages_account_names: localSettings.wages_account_names,
+          // Phase 35 D-16: enables auto-revert when this save lands on an approved/sent report.
+          report_month: reportMonth,
         }),
       })
 

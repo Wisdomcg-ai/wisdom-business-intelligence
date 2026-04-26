@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { extractVendorInfo } from '@/lib/utils/vendor-normalization'
+import { revertReportIfApproved } from '@/lib/reports/revert-report'
 
 export const dynamic = 'force-dynamic'
 
@@ -322,6 +323,17 @@ export async function POST(request: NextRequest) {
         is_edited: false,
         detail_tab_ref,
       }
+    }
+
+    // Phase 35 D-16: Silently revert an approved or sent report to draft after a coach edit.
+    // Preserves snapshot_data (D-18) so the client's already-sent email link keeps working.
+    // period_month is `${report_month}-01` (cfo_report_status uses date, monthly_report uses YYYY-MM).
+    try {
+      const periodMonth = `${report_month}-01`
+      await revertReportIfApproved(supabase, business_id, periodMonth)
+    } catch (revertErr) {
+      // Do not fail the save if revert tracking fails — log and continue.
+      console.error('[monthly-report/commentary] revertReportIfApproved failed:', revertErr)
     }
 
     return NextResponse.json({ success: true, commentary })

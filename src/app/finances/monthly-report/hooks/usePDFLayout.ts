@@ -14,11 +14,16 @@ interface UsePDFLayoutReturn {
 /**
  * Hook to load/save PDF layout from the monthly_report_settings table.
  * The layout is stored as part of the settings (pdf_layout JSONB column).
+ *
+ * Phase 35 D-16: when `reportMonth` is provided, the settings save triggers
+ * `revertReportIfApproved` server-side so editing the layout on an
+ * approved/sent report silently reverts the pill to draft.
  */
 export function usePDFLayout(
   businessId: string,
   settings: MonthlyReportSettings | null,
-  onSettingsChange: (settings: MonthlyReportSettings) => void
+  onSettingsChange: (settings: MonthlyReportSettings) => void,
+  reportMonth?: string,
 ): UsePDFLayoutReturn {
   const [isSaving, setIsSaving] = useState(false)
 
@@ -43,6 +48,8 @@ export function usePDFLayout(
         subscription_account_codes: settings.subscription_account_codes ?? [],
         wages_account_names: settings.wages_account_names ?? [],
         pdf_layout: newLayout,
+        // Phase 35 D-16: enables auto-revert when this save lands on an approved/sent report.
+        report_month: reportMonth,
       }
       const res = await fetch('/api/monthly-report/settings', {
         method: 'POST',
@@ -70,7 +77,7 @@ export function usePDFLayout(
     } finally {
       setIsSaving(false)
     }
-  }, [businessId, settings, onSettingsChange])
+  }, [businessId, settings, onSettingsChange, reportMonth])
 
   const saveLayout = useCallback(async (newLayout: PDFLayout): Promise<boolean> => {
     const ok = await persistLayout(newLayout)

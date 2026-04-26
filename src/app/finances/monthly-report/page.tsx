@@ -198,7 +198,7 @@ export default function MonthlyReportPage() {
     layout: pdfLayout,
     isSaving: layoutSaving,
     saveLayout,
-  } = usePDFLayout(businessId, settings, setSettings)
+  } = usePDFLayout(businessId, settings, setSettings, selectedMonth)
 
   const {
     templates,
@@ -1214,6 +1214,9 @@ export default function MonthlyReportPage() {
           onClose={() => setShowSettings(false)}
           businessId={businessId}
           settings={settings}
+          // Phase 35 D-16: passed so the settings save triggers auto-revert when
+          // editing an approved/sent report.
+          reportMonth={selectedMonth}
           onSettingsChange={(newSettings) => {
             setSettings(newSettings)
             // Re-generate report if it was already generated
