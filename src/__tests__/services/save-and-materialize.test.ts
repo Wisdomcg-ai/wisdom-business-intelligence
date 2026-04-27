@@ -251,6 +251,81 @@ describe('Save and Materialize (atomic RPC)', () => {
     expect(json.success).not.toBe(true)
   })
 
-  // Task 2 (recompute) tests are appended in plan 44-07's recompute task —
-  // see the recompute describe block below, added when the route ships.
+})
+
+describe('Recompute endpoint (recovery hatch)', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  it('recompute — POST /api/forecast/[id]/recompute calls the RPC with current assumptions', async () => {
+    supabaseMock = buildSupabaseMock(async (fn: string, args: any) => {
+      if (fn === 'save_assumptions_and_materialize') {
+        return {
+          data: {
+            forecast_id: args.p_forecast_id,
+            computed_at: '2026-04-29T13:00:00.000Z',
+            lines_count: args.p_pl_lines.length,
+          },
+          error: null,
+        }
+      }
+      return { data: null, error: null }
+    })
+
+    const { POST } = await import('@/app/api/forecast/[id]/recompute/route')
+    const req = new Request('http://localhost/api/forecast/forecast-1/recompute', {
+      method: 'POST',
+    })
+    const res = await POST(req as any, { params: Promise.resolve({ id: 'forecast-1' }) })
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(json.success).toBe(true)
+    expect(json.computed_at).toBe('2026-04-29T13:00:00.000Z')
+
+    const rpcCalls = supabaseMock.rpc.mock.calls.filter(
+      ([fn]: any[]) => fn === 'save_assumptions_and_materialize',
+    )
+    expect(rpcCalls).toHaveLength(1)
+    const [, args] = rpcCalls[0]
+    expect(args.p_forecast_id).toBe('forecast-1')
+    // Assumptions came from the existing financial_forecasts.assumptions row.
+    expect(args.p_assumptions).toEqual({ revenue: { mode: 'simple', value: 100 } })
+    expect(Array.isArray(args.p_pl_lines)).toBe(true)
+  })
+
+  it('recompute auth — returns 401 when unauthenticated', async () => {
+    supabaseMock = buildSupabaseMock(async () => ({ data: null, error: null }))
+    supabaseMock.auth.getUser = vi.fn(async () => ({ data: { user: null }, error: null }))
+
+    const { POST } = await import('@/app/api/forecast/[id]/recompute/route')
+    const req = new Request('http://localhost/api/forecast/forecast-1/recompute', {
+      method: 'POST',
+    })
+    const res = await POST(req as any, { params: Promise.resolve({ id: 'forecast-1' }) })
+
+    expect(res.status).toBe(401)
+  })
+
+  it('recompute 404 — returns 404 when forecast does not exist', async () => {
+    supabaseMock = buildSupabaseMock(async () => ({ data: null, error: null }))
+    // Override forecast lookup to return null.
+    const origFrom = supabaseMock.from
+    supabaseMock.from = vi.fn((table: string) => {
+      const chain = origFrom(table)
+      if (table === 'financial_forecasts') {
+        chain.maybeSingle = vi.fn(async () => ({ data: null, error: null }))
+      }
+      return chain
+    }) as any
+
+    const { POST } = await import('@/app/api/forecast/[id]/recompute/route')
+    const req = new Request('http://localhost/api/forecast/missing-forecast/recompute', {
+      method: 'POST',
+    })
+    const res = await POST(req as any, { params: Promise.resolve({ id: 'missing-forecast' }) })
+
+    expect(res.status).toBe(404)
+  })
 })
