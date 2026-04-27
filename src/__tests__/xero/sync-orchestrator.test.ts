@@ -203,15 +203,14 @@ async function buildSyntheticFYTotalsFromByMonth(byMonthFixture: any) {
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  vi.useFakeTimers()
+  // Fake timers MUST advance real time too — orchestrator awaits a polite
+  // 300ms sleep between Xero calls; without `shouldAdvanceTime` the test
+  // hangs on the awaited setTimeout.
+  vi.useFakeTimers({ shouldAdvanceTime: true })
   // Pin "today" to a date inside FY26 (yearStartMonth=7) so currentFY=2026,
   // priorFY=2025. Matches the JDS fixture's natural framing.
   vi.setSystemTime(new Date('2026-04-15T00:00:00Z'))
   vi.resetModules()
-  // Wipe any cached resolveBusinessIds entry from prior tests.
-  for (const k of Object.keys(require.cache ?? {})) {
-    if (k.includes('resolve-business-ids')) delete (require.cache as any)[k]
-  }
 })
 
 afterEach(() => {
