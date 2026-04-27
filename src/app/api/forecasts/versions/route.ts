@@ -64,6 +64,20 @@ export async function POST(request: Request) {
       updated_at: undefined
     }
 
+    // Deactivate any other active forecast for the same (business, FY, type)
+    // before inserting the new active row. The partial unique index
+    // unique_active_forecast_per_fy enforces single-active and would otherwise
+    // reject this insert with 23505.
+    if (versionType === 'forecast') {
+      await supabase
+        .from('financial_forecasts')
+        .update({ is_active: false })
+        .eq('business_id', currentForecast.business_id)
+        .eq('fiscal_year', currentForecast.fiscal_year)
+        .eq('forecast_type', 'forecast')
+        .eq('is_active', true)
+    }
+
     const { data: newForecast, error: insertError } = await supabase
       .from('financial_forecasts')
       .insert(newForecastData)

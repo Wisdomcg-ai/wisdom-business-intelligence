@@ -216,16 +216,19 @@ async function syncConnection(connection: any): Promise<SyncResult> {
     }
 
     let totalMonthCols = parsePLResponse(report1);
+    console.log(`[Xero Sync] ${tenantName}: Request 1 returned ${totalMonthCols} month columns (recent 12mo ending ${recentTo})`);
 
-    // Request 2: Older 12 months (non-fatal if it fails)
+    // Request 2: Older 12 months — fail loudly so future investigations have evidence.
+    // The pre-2026-04-27 version silently swallowed errors here, which is how
+    // Envisage's prior-year data (May 2024 → Apr 2025) went missing without trace.
     await new Promise(resolve => setTimeout(resolve, 300));
 
-    // Base period = the month that is 12 months before current month (single month)
-    const olderDate = new Date(currentYear, currentMonth - 13, 1);
-    const olderYear = olderDate.getFullYear();
-    const olderMonthNum = olderDate.getMonth() + 1;
-    const olderFrom = `${olderYear}-${String(olderMonthNum).padStart(2, '0')}-01`;
-    const olderTo = new Date(olderYear, olderMonthNum, 0).toISOString().split('T')[0]; // last day of that month
+    // Use a full 12-month from/to range instead of base+periods. Some Xero
+    // tenants return inconsistent column counts when periods=11 is used with
+    // a far-back base month; an explicit fromDate→toDate range is more reliable.
+    const olderTo = new Date(currentYear, currentMonth - 1, 0).toISOString().split('T')[0]; // last day of (current - 1) month
+    const olderFromDate = new Date(currentYear, currentMonth - 13, 1);
+    const olderFrom = `${olderFromDate.getFullYear()}-${String(olderFromDate.getMonth() + 1).padStart(2, '0')}-01`;
 
     const reportUrl2 = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${olderFrom}&toDate=${olderTo}&periods=11&timeframe=MONTH&standardLayout=false&paymentsOnly=false`;
     try {
@@ -237,15 +240,25 @@ async function syncConnection(connection: any): Promise<SyncResult> {
         }
       });
 
-      if (reportResponse2.ok) {
+      if (!reportResponse2.ok) {
+        const errorText = await reportResponse2.text();
+        console.error(`[Xero Sync] ${tenantName}: Older P&L request failed (${reportResponse2.status}): ${errorText.substring(0, 300)}`);
+      } else {
         const reportData2 = await reportResponse2.json();
         const report2 = reportData2?.Reports?.[0];
-        if (report2) {
-          totalMonthCols += parsePLResponse(report2);
+        if (!report2) {
+          console.warn(`[Xero Sync] ${tenantName}: Older P&L returned 200 but no Reports[0]`);
+        } else {
+          const olderCols = parsePLResponse(report2);
+          totalMonthCols += olderCols;
+          console.log(`[Xero Sync] ${tenantName}: Request 2 returned ${olderCols} month columns (older 12mo: ${olderFrom} → ${olderTo})`);
+          if (olderCols < 6) {
+            console.warn(`[Xero Sync] ${tenantName}: Older P&L returned only ${olderCols} months (expected ~12). Prior-year data will be incomplete in the wizard.`);
+          }
         }
       }
-    } catch (err) {
-      console.warn(`[Xero Sync] Older period fetch failed for ${tenantName}, continuing with recent data`);
+    } catch (err: any) {
+      console.error(`[Xero Sync] ${tenantName}: Older P&L fetch threw:`, err?.message || err);
     }
 
     // ── Reconciliation: verify monthly sums match full-period totals ──────
@@ -335,7 +348,24 @@ async function syncConnection(connection: any): Promise<SyncResult> {
     if (plLines.length > 0) {
       // ids already resolved at top of syncConnection() — use ids.all for cleanup
 
-      // Delete existing lines for this business + verify before inserting
+      // In-memory dedup as belt-and-suspenders. The allAccounts Map keys by
+      // account_name so this is normally a no-op, but keeps the contract
+      // explicit before we hit the DB.
+      const seen = new Set<string>();
+      const dedupedPlLines: any[] = [];
+      for (const line of plLines) {
+        const key = line.account_code || `name:${line.account_name}`;
+        if (seen.has(key)) {
+          console.warn(`[Xero Sync] In-memory duplicate dropped for ${tenantName}: ${line.account_name} (${key})`);
+          continue;
+        }
+        seen.add(key);
+        dedupedPlLines.push(line);
+      }
+
+      // Delete existing lines for this business + verify before inserting.
+      // Fail loud — silent delete failure is what created the Envisage dup
+      // disaster (Apr 2026: 89 rows where 47 should exist).
       const { error: deleteError } = await supabase
         .from('xero_pl_lines')
         .delete()
@@ -343,26 +373,55 @@ async function syncConnection(connection: any): Promise<SyncResult> {
 
       if (deleteError) {
         console.error(`[Xero Sync] Delete failed for ${tenantName}:`, deleteError);
+        return {
+          business_id: businessId,
+          tenant_name: tenantName,
+          status: 'failed',
+          message: `Pre-insert delete failed: ${deleteError.message}`,
+        };
       }
 
       // Verify deletion completed before inserting (prevents duplicates from concurrent syncs)
-      const { count } = await supabase
+      const { count: postDeleteCount } = await supabase
         .from('xero_pl_lines')
         .select('*', { count: 'exact', head: true })
         .in('business_id', ids.all);
 
-      if (count && count > 0) {
-        console.warn(`[Xero Sync] ${count} rows still exist after delete for ${tenantName} — retrying delete`);
-        await supabase
+      if (postDeleteCount && postDeleteCount > 0) {
+        console.warn(`[Xero Sync] ${postDeleteCount} rows still exist after delete for ${tenantName} — retrying delete`);
+        const { error: retryDelErr } = await supabase
           .from('xero_pl_lines')
           .delete()
           .in('business_id', ids.all);
+        if (retryDelErr) {
+          console.error(`[Xero Sync] Retry delete failed for ${tenantName}:`, retryDelErr);
+          return {
+            business_id: businessId,
+            tenant_name: tenantName,
+            status: 'failed',
+            message: `Retry delete failed: ${retryDelErr.message}`,
+          };
+        }
+        const { count: secondCheck } = await supabase
+          .from('xero_pl_lines')
+          .select('*', { count: 'exact', head: true })
+          .in('business_id', ids.all);
+        if (secondCheck && secondCheck > 0) {
+          // Aborting prevents creating new duplicates on top of the leftover rows.
+          console.error(`[Xero Sync] ${secondCheck} rows STILL exist after retry for ${tenantName} — aborting to avoid dup-pile`);
+          return {
+            business_id: businessId,
+            tenant_name: tenantName,
+            status: 'failed',
+            message: `Could not clear xero_pl_lines (${secondCheck} rows remain) — aborting to prevent duplicates`,
+          };
+        }
       }
 
       // Insert new lines (fallback without account_code if column not yet added)
       const { error: firstError } = await supabase
         .from('xero_pl_lines')
-        .insert(plLines);
+        .insert(dedupedPlLines);
 
       if (firstError?.message?.includes('account_code')) {
         const linesWithoutCode = plLines.map(({ account_code, ...rest }: any) => rest);
