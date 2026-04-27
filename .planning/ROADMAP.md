@@ -775,7 +775,7 @@ Plans:
 **Goal:** Make the forecast pipeline (Xero sync → xero_pl_lines → forecast wizard → forecast_pl_lines → monthly report → cashflow forecast) 100% reflective of Xero, deterministic, and resilient. Eliminate the cascading sync bugs (Xero rolling-totals trap, sync-race duplicates, sparse-tenant edge cases, broken reconciliation) and deliver a wizard UX that's correct the first time without coach intervention. World-class best practice across the whole pipeline — sync, data shape, wizard, save flow, and downstream consumers.
 **Requirements**: D-05 through D-18 (per .planning/phases/44-forecast-pipeline-fix/44-CONTEXT.md; ROADMAP-level "Requirements: TBD" left as-is until verification phase confirms outcomes)
 **Depends on:** Phase 43
-**Plans:** 5/11 plans executed
+**Plans:** 6/11 plans executed
 
 Plans:
 - [x] 44-01-PLAN.md — [Sub-phase A] Wave 0: fixture recording (Envisage + JDS) + test scaffolding + duplicate audit script
@@ -783,7 +783,7 @@ Plans:
 - [x] 44-03-PLAN.md — [Sub-phase A] Pure libraries: pl-by-month-parser + pl-reconciler (fail-loud)
 - [x] 44-04-PLAN.md — [Sub-phase A] Sync orchestrator: advisory lock + 2 FY windows + multi-tenant + reconciler + ON CONFLICT upsert + sync_jobs audit
 - [x] 44-05-PLAN.md — [Sub-phase A] Vercel cron + sync-all/refresh-pl thin shims + integration smoke on Envisage + JDS
-- [ ] 44-06-PLAN.md — [Sub-phase B] computed_at column + atomic save_assumptions_and_materialize RPC
+- [x] 44-06-PLAN.md — [Sub-phase B] computed_at column + atomic save_assumptions_and_materialize RPC
 - [ ] 44-07-PLAN.md — [Sub-phase B] Wizard generate route → atomic RPC + recompute endpoint + retire e337a42 non-fatal paths
 - [ ] 44-08-PLAN.md — [Sub-phase C] ForecastReadService + D-18 runtime invariants
 - [ ] 44-09-PLAN.md — [Sub-phase C] Migrate pl-summary, cashflow xero-actuals, monthly-report generate + full-year to ForecastReadService
