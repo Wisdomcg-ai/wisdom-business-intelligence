@@ -73,5 +73,20 @@ export function useReportStatus(
     refresh()
   }, [refresh])
 
+  // Phase 35 D-16: keep the pill in sync with server-side status changes that
+  // fire as side-effects of other actions (commentary/snapshot/settings save
+  // → revertReportIfApproved). Without this, the pill stays stale until the
+  // next page mount.
+  useEffect(() => {
+    if (!businessId || !periodMonth) return
+    const onFocus = () => { refresh() }
+    window.addEventListener('focus', onFocus)
+    const interval = setInterval(refresh, 10_000)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      clearInterval(interval)
+    }
+  }, [businessId, periodMonth, refresh])
+
   return { ...state, refresh }
 }

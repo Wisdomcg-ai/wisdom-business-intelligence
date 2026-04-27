@@ -330,7 +330,8 @@ export async function POST(request: NextRequest) {
     // period_month is `${report_month}-01` (cfo_report_status uses date, monthly_report uses YYYY-MM).
     try {
       const periodMonth = `${report_month}-01`
-      await revertReportIfApproved(supabase, business_id, periodMonth)
+      const result = await revertReportIfApproved(supabase, business_id, periodMonth)
+      console.log('[monthly-report/commentary] revert', { business_id, periodMonth, ...result })
     } catch (revertErr) {
       // Do not fail the save if revert tracking fails — log and continue.
       console.error('[monthly-report/commentary] revertReportIfApproved failed:', revertErr)
