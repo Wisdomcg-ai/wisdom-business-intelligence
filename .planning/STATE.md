@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Executing Phase 35
-last_updated: "2026-04-23T19:20:44.825Z"
+status: Executing Phase 42
+last_updated: "2026-04-27T01:42:46.607Z"
 progress:
-  total_phases: 40
-  completed_phases: 14
-  total_plans: 51
-  completed_plans: 50
+  total_phases: 41
+  completed_phases: 15
+  total_plans: 58
+  completed_plans: 54
 ---
 
 # Project State
@@ -229,11 +229,22 @@ progress:
 - Plan 35-01: cfo_email_log table DDL + RLS + composite index on (business_id, period_month) — COMPLETE (7377b6c). Foundation for APPR-02/03/04. Migration APPLY is a deploy-time task for Matt.
 - Plan 35-02: report-token.ts (HMAC sign/verify) + build-report-url.ts (forward-compat URL helper) + .env.example REPORT_LINK_SECRET doc — COMPLETE (490418e, 5a4621b, 7203f79). 19 unit tests passing. Wave 2 (plans 35-04/05/06) unblocked.
 
+## Phase 42 Decisions (executing)
+
+- Plan 42-00: Lift useDebouncedCallback verbatim from ForecastWizardV4.tsx:23-42 to src/lib/hooks/use-debounced-callback.ts. Pitfall 1 paid down inside the shared hook — useEffect with empty deps clears timeoutRef on unmount. Every future consumer (incl. upcoming useAutoSaveReport in 42-01) inherits the fix automatically.
+- Plan 42-00: Use `it.todo` (not `it.skip`) for Wave 0 scaffolds — todos render as "pending" giving a visible burn-down indicator (28 todos at Wave 0 → 0 at Phase 42 close). Skip would read as a regression risk.
+- Plan 42-00: Sonner mock pre-declared in every scaffold header so downstream plans (42-01..42-04) don't re-derive the import contract from ReportStatusBar.test.tsx.
+- Plan 42-00: Harness component for debounce tests (not @testing-library/react-hooks renderHook) — Pitfall 1 regression test exercises real RTL component lifecycle including the useEffect cleanup.
+
+## Completed Work (Phase 42)
+
+- Plan 42-00: shared useDebouncedCallback hook + 4 it.todo test scaffolds (28 todos enumerating D-01..D-15 + D-17) — COMPLETE (ba90c46, b4f34ea). Full vitest suite green: 323 pass, 28 todo, 0 fail. tsc clean. Wave 0 Nyquist gate satisfied; plans 42-01..42-04 unblocked.
+
 ## Position
 
-- Current: Phase 35, Plan 02 — COMPLETE (3 tasks done, 19/19 tests passing, tsc clean)
-- Stopped at: Completed 35-02-PLAN.md
+- Current: Phase 42, Plan 00 — COMPLETE (2 tasks done, 5 new debounce tests passing, 28 todos pending, tsc clean)
+- Stopped at: Completed 42-00-PLAN.md
 
 ## Last Session
 
-- 2026-04-23T19:09:56Z — Completed 35-02-PLAN.md (Report URL primitives shipped; token + URL builder + .env.example)
+- 2026-04-27T01:41:08Z — Completed 42-00-PLAN.md (Wave 0 foundation: shared debounce hook with unmount cleanup + 4 it.todo scaffolds for downstream Phase 42 plans)

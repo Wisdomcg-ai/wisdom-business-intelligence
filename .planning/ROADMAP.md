@@ -672,8 +672,8 @@ Plans:
 **Depends on:** Phase 35 (revert wiring depends on snapshot save firing on every coach edit; current UX requires manual "Save Draft" click which broke Phase 35 UAT visibly)
 **Requirements:** N/A (UX consolidation — no new functional requirement; existing requirements already cover the persistence contract)
 
-**Plans:** 7 plans
-- [ ] 42-00-PLAN.md — Wave 0 scaffolding: lift useDebouncedCallback to shared lib + create test scaffolds for 4 surfaces
+**Plans:** 1/7 plans executed
+- [x] 42-00-PLAN.md — Wave 0 scaffolding: lift useDebouncedCallback to shared lib + create test scaffolds for 4 surfaces
 - [ ] 42-01-PLAN.md — useAutoSaveReport hook (debounce + blur + retry + queue + lock + onSaveSuccess)
 - [ ] 42-02-PLAN.md — SaveIndicator component (5 status states with retry button)
 - [ ] 42-03-PLAN.md — Refactor CommentaryLine to always-editable inline (remove green ✓ + Cancel)
