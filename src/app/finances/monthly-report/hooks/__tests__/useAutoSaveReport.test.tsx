@@ -631,6 +631,153 @@ describe('useAutoSaveReport (Phase 42)', () => {
 
   // ---------- Pitfall 6: report.report_data churn must NOT trigger save ----------
 
+  // ---------- D-12 / Pitfall 5: beforeunload guard ----------
+
+  describe('beforeunload guard (D-12 / Pitfall 5)', () => {
+    let addSpy: ReturnType<typeof vi.spyOn>
+    let removeSpy: ReturnType<typeof vi.spyOn>
+
+    beforeEach(() => {
+      addSpy = vi.spyOn(window, 'addEventListener')
+      removeSpy = vi.spyOn(window, 'removeEventListener')
+    })
+    afterEach(() => {
+      addSpy.mockRestore()
+      removeSpy.mockRestore()
+    })
+
+    function beforeunloadAddCalls() {
+      return addSpy.mock.calls.filter((c) => c[0] === 'beforeunload')
+    }
+    function beforeunloadRemoveCalls() {
+      return removeSpy.mock.calls.filter((c) => c[0] === 'beforeunload')
+    }
+
+    it('does NOT register beforeunload during normal flow (idle/saving/saved)', async () => {
+      const saveSnapshot = vi.fn().mockResolvedValue({ id: 's1' })
+      const { Harness, apiRef } = makeHarness()
+      render(
+        <Harness
+          report={makeReport()}
+          commentary={{}}
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      // Trigger a normal save → status walks idle → saving → saved.
+      await act(async () => {
+        apiRef.current!.flushImmediately()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(saveSnapshot).toHaveBeenCalledTimes(1)
+      // No beforeunload registration during the happy path.
+      expect(beforeunloadAddCalls()).toHaveLength(0)
+    })
+
+    it('registers beforeunload exactly once when status transitions to failed', async () => {
+      const saveSnapshot = vi.fn().mockRejectedValue(new Error('500'))
+      const { Harness, apiRef, statusRef } = makeHarness()
+      render(
+        <Harness
+          report={makeReport()}
+          commentary={{}}
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      // Fire initial save → fails → enters retry loop.
+      await act(async () => {
+        apiRef.current!.flushImmediately()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      // Walk through the 3 retries (1s + 2s + 4s) → terminal failure.
+      await act(async () => {
+        vi.advanceTimersByTime(1000)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      await act(async () => {
+        vi.advanceTimersByTime(2000)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      await act(async () => {
+        vi.advanceTimersByTime(4000)
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(statusRef.current).toEqual({ kind: 'failed' })
+      // Listener registered exactly once on the failed transition.
+      expect(beforeunloadAddCalls()).toHaveLength(1)
+      // Handler is a function.
+      expect(typeof beforeunloadAddCalls()[0][1]).toBe('function')
+    })
+
+    it('removes beforeunload listener when status leaves failed (retryNow success)', async () => {
+      // 4 failures (initial + 3 retries) → reach failed; then retryNow succeeds.
+      const saveSnapshot = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('500'))
+        .mockRejectedValueOnce(new Error('500'))
+        .mockRejectedValueOnce(new Error('500'))
+        .mockRejectedValueOnce(new Error('500'))
+        .mockResolvedValueOnce({ id: 's-recovered' })
+      const { Harness, apiRef, statusRef } = makeHarness()
+      render(
+        <Harness
+          report={makeReport()}
+          commentary={{}}
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      await act(async () => {
+        apiRef.current!.flushImmediately()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      await act(async () => {
+        vi.advanceTimersByTime(1000)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      await act(async () => {
+        vi.advanceTimersByTime(2000)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      await act(async () => {
+        vi.advanceTimersByTime(4000)
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(statusRef.current).toEqual({ kind: 'failed' })
+      expect(beforeunloadAddCalls()).toHaveLength(1)
+      const registeredHandler = beforeunloadAddCalls()[0][1]
+
+      // User clicks Save Now → succeeds.
+      await act(async () => {
+        apiRef.current!.retryNow()
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(statusRef.current).toMatchObject({ kind: 'saved' })
+      // The same handler reference is now removed.
+      const removeMatches = beforeunloadRemoveCalls().filter(
+        (c) => c[1] === registeredHandler,
+      )
+      expect(removeMatches.length).toBeGreaterThanOrEqual(1)
+    })
+  })
+
   it('Pitfall 6: changes to report (not commentary) do NOT trigger a save', async () => {
     const saveSnapshot = vi.fn().mockResolvedValue({ id: 's1' })
     const { Harness } = makeHarness()
