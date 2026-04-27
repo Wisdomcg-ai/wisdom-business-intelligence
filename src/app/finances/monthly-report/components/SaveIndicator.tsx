@@ -8,24 +8,11 @@
 //   - failed → "Unsaved — click to retry" + Save Now button (rose)
 //
 // This component is purely presentational — no React state hooks, no effects,
-// no fetch calls. All state lives in `useAutoSaveReport` (Plan 42-01). The hook owns the type
-// `SaveStatus`; this file mirrors it locally because 42-01 and 42-02 ship in
-// parallel waves. When 42-01 lands, its export of `SaveStatus` will be
-// structurally identical to the type below; consumers can import from either
-// location and TypeScript's structural typing will keep them compatible.
+// no fetch calls. All state lives in `useAutoSaveReport` (Plan 42-01).
+// The `SaveStatus` discriminated union is owned by the hook and imported here
+// as a type-only import so the indicator and the hook stay in lockstep.
 import { Loader2 } from 'lucide-react'
-
-/**
- * Save lifecycle status — discriminated union mirroring the type owned by
- * `useAutoSaveReport` (Plan 42-01). Both ends define the same shape so they
- * remain assignment-compatible under structural typing.
- */
-export type SaveStatus =
-  | { kind: 'idle' }
-  | { kind: 'saving' }
-  | { kind: 'saved'; at: Date }
-  | { kind: 'retrying'; attempt: 1 | 2 | 3 }
-  | { kind: 'failed' }
+import type { SaveStatus } from '../hooks/useAutoSaveReport'
 
 export interface SaveIndicatorProps {
   status: SaveStatus
