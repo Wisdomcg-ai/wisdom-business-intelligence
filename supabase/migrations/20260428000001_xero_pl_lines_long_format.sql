@@ -41,6 +41,12 @@ END $$;
 -- ----------------------------------------------------------------------------
 -- 2. Create new long-format table (named _v2 initially for safe rollback path)
 -- ----------------------------------------------------------------------------
+-- Schema mirrors prod xero_pl_lines: id, business_id, account_name, account_type,
+-- section, monthly_values, created_at, updated_at, account_code, tenant_id.
+-- The wide column `monthly_values jsonb` is replaced with `period_month date` +
+-- `amount numeric` per D-09. `fiscal_year` is computed from period_month at read
+-- time (AU FY: months 7-12 → year+1, months 1-6 → year). `source` defaults to 'xero'
+-- and exists for future MYOB/HubSpot multi-source support (Phase 30).
 CREATE TABLE IF NOT EXISTS xero_pl_lines_v2 (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   business_id uuid NOT NULL,
@@ -48,9 +54,9 @@ CREATE TABLE IF NOT EXISTS xero_pl_lines_v2 (
   account_code text,
   account_name text,
   account_type text,
+  section text,
   period_month date NOT NULL,           -- first day of the month, e.g. 2025-07-01
   amount numeric(18, 2) NOT NULL DEFAULT 0,
-  fiscal_year integer,
   source text DEFAULT 'xero',
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
@@ -74,14 +80,14 @@ CREATE INDEX IF NOT EXISTS xero_pl_lines_v2_period_idx ON xero_pl_lines_v2 (peri
 -- ON CONFLICT DO NOTHING so re-running this migration on an already-migrated
 -- DB is a no-op (defensive idempotency).
 INSERT INTO xero_pl_lines_v2 (
-  business_id, tenant_id, account_code, account_name, account_type,
-  period_month, amount, fiscal_year, source, created_at, updated_at
+  business_id, tenant_id, account_code, account_name, account_type, section,
+  period_month, amount, created_at, updated_at
 )
 SELECT
-  w.business_id, w.tenant_id, w.account_code, w.account_name, w.account_type,
+  w.business_id, w.tenant_id, w.account_code, w.account_name, w.account_type, w.section,
   (kv.key || '-01')::date AS period_month,
   (kv.value)::numeric AS amount,
-  w.fiscal_year, w.source, w.created_at, w.updated_at
+  w.created_at, w.updated_at
 FROM xero_pl_lines w,
      jsonb_each_text(w.monthly_values) AS kv(key, value)
 WHERE w.monthly_values IS NOT NULL AND w.monthly_values <> '{}'::jsonb
@@ -132,13 +138,12 @@ SELECT
   account_code,
   account_name,
   account_type,
-  fiscal_year,
-  source,
+  section,
   jsonb_object_agg(to_char(period_month, 'YYYY-MM'), amount) AS monthly_values,
   min(created_at) AS created_at,
   max(updated_at) AS updated_at
 FROM xero_pl_lines
-GROUP BY business_id, tenant_id, account_code, account_name, account_type, fiscal_year, source;
+GROUP BY business_id, tenant_id, account_code, account_name, account_type, section;
 
 -- ----------------------------------------------------------------------------
 -- 8. Comments
