@@ -775,10 +775,10 @@ Plans:
 **Goal:** Make the forecast pipeline (Xero sync → xero_pl_lines → forecast wizard → forecast_pl_lines → monthly report → cashflow forecast) 100% reflective of Xero, deterministic, and resilient. Eliminate the cascading sync bugs (Xero rolling-totals trap, sync-race duplicates, sparse-tenant edge cases, broken reconciliation) and deliver a wizard UX that's correct the first time without coach intervention. World-class best practice across the whole pipeline — sync, data shape, wizard, save flow, and downstream consumers.
 **Requirements**: D-05 through D-18 (per .planning/phases/44-forecast-pipeline-fix/44-CONTEXT.md; ROADMAP-level "Requirements: TBD" left as-is until verification phase confirms outcomes)
 **Depends on:** Phase 43
-**Plans:** 11 plans across 4 sequential sub-phases (A: sync rebuild, B: materialization contract, C: read service + consumer migration, D: wizard UX). Plans within each sub-phase serialize; sub-phases are strictly sequential per D-03 ("bottom-up, prove each layer on real tenants").
+**Plans:** 1/11 plans executed
 
 Plans:
-- [ ] 44-01-PLAN.md — [Sub-phase A] Wave 0: fixture recording (Envisage + JDS) + test scaffolding + duplicate audit script
+- [x] 44-01-PLAN.md — [Sub-phase A] Wave 0: fixture recording (Envisage + JDS) + test scaffolding + duplicate audit script
 - [ ] 44-02-PLAN.md — [Sub-phase A] Foundation migrations: xero_pl_lines long-format + sync_jobs audit table + advisory-lock RPC
 - [ ] 44-03-PLAN.md — [Sub-phase A] Pure libraries: pl-by-month-parser + pl-reconciler (fail-loud)
 - [ ] 44-04-PLAN.md — [Sub-phase A] Sync orchestrator: advisory lock + 2 FY windows + multi-tenant + reconciler + ON CONFLICT upsert + sync_jobs audit

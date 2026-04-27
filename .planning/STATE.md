@@ -2,14 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Phase 43 complete (Phase 42 = save flow consolidation merged from origin; Phase 43 = plan period as explicit state, renumbered from local 42 due to phase number collision)
-last_updated: "2026-04-27T06:30:00Z"
+status: Executing Phase 44
+last_updated: "2026-04-27T10:58:29.137Z"
 progress:
-  total_phases: 43
+  total_phases: 44
   completed_phases: 17
-  total_plans: 68
-  completed_plans: 68
-  percent: 100
+  total_plans: 75
+  completed_plans: 66
 ---
 
 # Project State
@@ -291,6 +290,7 @@ progress:
   - Phase 40: Playwright E2E infrastructure (smoke spec + coach-flow scaffold with test.skip + 3 scripts) — PR #13
 - Phase 34 COMPLETE (2026-04-23) — bookkeeping: 34-01a (Consolidated BS, PR #2 a80ed62) and 34-02a (Consolidated Cashflow, PR #4 aa27bf2 + patches #8 #9) shipped earlier as part of the consolidation work; roadmap ticks were stale. ROADMAP.md updated to reflect reality.
 - Current active roadmap: Phase 33 (CFO Multi-Client Dashboard) is next natural work — depends only on Phase 23 (done).
+
 ## Phase 35 Decisions (executing)
 
 - Plan 35-01: cfo_email_log append-only audit table — 3 RLS policies (coach_select, super_admin_select, service_role_all). No authenticated INSERT/UPDATE/DELETE — append-only semantics enforced by absence of write policies. Migration file `supabase/migrations/20260424_cfo_email_log.sql` (7377b6c).
@@ -342,12 +342,24 @@ progress:
 
 ## Position
 
-- Current: Phase 43 [COMPLETE]. Phase 42 (save flow) also [COMPLETE] (origin/main work).
-- Stopped at: Completed 43-03-SUMMARY.md + Phase 43 closeout commit (0d8010b).
+- Current: Phase 44, Plan 44-01 [COMPLETE]. Ready for Plan 44-02 (Sub-phase A foundation migrations).
+- Stopped at: Completed 44-01-PLAN.md (Wave 0 test infrastructure shipped; audit confirms 44-02 unique constraint will apply cleanly).
 
 ## Last Session
 
-- 2026-04-27T06:30:00Z — Completed Phase 43 closeout. Resolved phase-number collision with origin's Phase 42 by renumbering local work forward to 43 (forward-only, no history rewrite).
+- 2026-04-27T10:56:00Z — Plan 44-01 closeout. 4 atomic commits (Task 1: f95aaf1 capture utility; Task 2: 75b8b9d fixtures; Task 3: 6b77d0d audit script; Task 4: 997813b test scaffolds). Audit ran across 369 xero_pl_lines rows — 0 wide-format dupes + 0 future long-format conflicts → 44-02 unique constraint applies cleanly without a dedup pre-step. 7 vitest scaffolds compile + register 22 it.todos. Pre-existing TZ failure in plan-period-banner.test.tsx logged to deferred-items.md (out of scope, Phase 43 territory).
+
+## Phase 44 Decisions
+
+- Plan 44-01: Audit confirms 0 duplicate xero_pl_lines rows across 369 total — UNIQUE constraint in 44-02 will apply cleanly without dedup pre-step.
+- Plan 44-01: Fixtures captured — Envisage FY26 (9 top-level rows, Malouf Family Trust) + JDS FY26 (18 top-level rows, Aeris Solutions Pty Ltd); period bounds May 2025 → Apr 2026 via one-month base + periods=11 (D-05 post-research clarification).
+- Plan 44-01: 22 it.todo placeholders across 7 scaffolds — test names match -t flags in 44-VALIDATION.md verbatim so plans 44-{03..11} can fill bodies without renaming.
+- Plan 44-01: Audit script exits 0 always — its job is to surface state, not gate CI. Audit reports gitignored as runtime artifacts (regenerated each run).
+- Plan 44-01: Pre-existing TZ failure in plan-period-banner.test.tsx (line 78) NOT auto-fixed per scope-boundary rule. Logged to phases/44-.../deferred-items.md for separate Phase 43 follow-up plan.
+
+## Completed Work (Phase 44)
+
+- Plan 44-01: Wave 0 test infrastructure — Xero fixture capture utility + 4 recorded fixtures + pre-migration duplicate audit script + 7 vitest scaffolds with 22 todos — COMPLETE (f95aaf1, 75b8b9d, 6b77d0d, 997813b).
 
 ## Roadmap Evolution
 
