@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Refresh Envisage Xero P&L</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
+    button { padding: 12px 24px; font-size: 16px; cursor: pointer; background: #0070f3; color: white; border: none; border-radius: 6px; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    pre { background: #f5f5f5; padding: 16px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+    .status { margin: 16px 0; padding: 12px; border-radius: 6px; }
+    .running { background: #fef3c7; }
+    .ok { background: #d1fae5; }
+    .err { background: #fee2e2; }
+  </style>
+</head>
+<body>
+  <h1>Refresh Envisage Xero P&amp;L</h1>
+  <p>You must be logged into the app first. This calls <code>/api/Xero/refresh-pl</code> which uses your normal session cookie.</p>
+  <button id="run">Run refresh-pl for Envisage</button>
+  <div id="status"></div>
+  <pre id="out"></pre>
+  <script>
+    const btn = document.getElementById('run');
+    const statusEl = document.getElementById('status');
+    const outEl = document.getElementById('out');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      statusEl.className = 'status running';
+      statusEl.textContent = 'Calling refresh-pl... wait ~15 seconds for Xero round-trips...';
+      outEl.textContent = '';
+      try {
+        const r = await fetch('/api/Xero/refresh-pl', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ business_id: '8c8c63b2-bdc4-4115-9375-8d0fd89acc00' }),
+          credentials: 'include',
+        });
+        const text = await r.text();
+        let parsed;
+        try { parsed = JSON.parse(text); } catch { parsed = null; }
+        if (r.ok && parsed) {
+          statusEl.className = 'status ok';
+          statusEl.textContent = 'OK — copy the response below and paste back to Claude.';
+          outEl.textContent = JSON.stringify(parsed, null, 2);
+        } else {
+          statusEl.className = 'status err';
+          statusEl.textContent = 'HTTP ' + r.status + (parsed?.error ? ' - ' + parsed.error : '');
+          outEl.textContent = text;
+        }
+      } catch (e) {
+        statusEl.className = 'status err';
+        statusEl.textContent = 'Network error: ' + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
