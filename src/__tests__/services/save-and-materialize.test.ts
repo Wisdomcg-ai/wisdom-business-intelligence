@@ -311,7 +311,7 @@ describe('Recompute endpoint (recovery hatch)', () => {
   it('recompute 404 — returns 404 when forecast does not exist', async () => {
     supabaseMock = buildSupabaseMock(async () => ({ data: null, error: null }))
     // Override forecast lookup to return null.
-    const origFrom = supabaseMock.from
+    const origFrom = supabaseMock.from as unknown as (t: string) => any
     supabaseMock.from = vi.fn((table: string) => {
       const chain = origFrom(table)
       if (table === 'financial_forecasts') {

@@ -48,3 +48,7 @@ Fix needed before Phase 45 / future migrations:
 - Add a unit test against a fixture with intentional NULL-collisions
 
 Logged from Phase 44 Plan 44-02 SUMMARY.
+
+## Plan 44-07 — out-of-scope discoveries
+
+- `src/app/api/Xero/reconciliation/route.ts:156` contains a `// Non-fatal` comment. Not in 44-07's scope (Plan 44-07 retires non-fatal patterns only in the wizard generate route + sync-forecast). Reconciliation route is owned by Plan 44-04/44-05; if the pattern needs retiring there, raise as follow-up.
