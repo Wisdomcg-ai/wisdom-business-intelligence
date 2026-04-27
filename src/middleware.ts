@@ -90,7 +90,8 @@ export async function middleware(request: NextRequest) {
     '/auth/update-password',
     '/coach/login',
     '/admin/login',
-    '/login'
+    '/login',
+    '/reports/view'  // Phase 35 — public token-signed report view
   ]
   // Check if it's a public route OR the home page OR legal pages OR standalone public pages
   const isPublicRoute = pathname === '/' || pathname === '/privacy' || pathname === '/terms' || pathname.startsWith('/bali-retreat') || pathname.startsWith('/ai-advantage') || publicRoutes.some(route => pathname.startsWith(route))
@@ -147,7 +148,8 @@ export async function middleware(request: NextRequest) {
       '/coach',        // Coach portal doesn't require client onboarding
       '/admin',        // Admin portal doesn't require client onboarding
       '/cfo',          // CFO dashboard — coach/super_admin only (layout enforces)
-      '/dashboard'     // Allow dashboard access - it handles its own auth/data
+      '/dashboard',    // Allow dashboard access - it handles its own auth/data
+      '/reports/view'  // Phase 35 — public token-signed report view (also in publicRoutes)
     ]
     // Also exempt public marketing pages from onboarding checks
     const isExemptRoute = isPublicRoute || onboardingExemptRoutes.some(route => pathname.startsWith(route))

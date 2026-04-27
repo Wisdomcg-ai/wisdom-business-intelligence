@@ -154,14 +154,23 @@ export default function CoachForecastPage() {
         return
       }
 
-      // Verify this user is the assigned coach for this business
+      // Check if user is super_admin — super_admins can view any client
+      const { data: roleData } = await supabase
+        .from('system_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      const isSuperAdmin = roleData?.role === 'super_admin'
+
+      // Verify this user is the assigned coach for this business (or super_admin)
       const { data: business, error: businessError } = await supabase
         .from('businesses')
         .select('id, owner_id, assigned_coach_id')
         .eq('id', clientId)
         .maybeSingle()
 
-      if (businessError || !business || business.assigned_coach_id !== user.id) {
+      if (businessError || !business || (!isSuperAdmin && business.assigned_coach_id !== user.id)) {
         console.error('Coach access denied:', businessError)
         router.push('/coach/clients')
         return

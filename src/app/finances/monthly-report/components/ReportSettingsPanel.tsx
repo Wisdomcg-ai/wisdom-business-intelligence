@@ -15,6 +15,13 @@ interface ReportSettingsPanelProps {
   businessId: string
   settings: MonthlyReportSettings
   onSettingsChange: (settings: MonthlyReportSettings) => void
+  // Phase 35 D-16: passed through so settings save can revert an approved/sent
+  // report to draft when the coach edits sections / template / pdf layout.
+  reportMonth?: string
+  // Phase 42 D-17: optional callback fired after a 2xx settings save — the
+  // page wires this to useReportStatus.refresh() so the status pill updates
+  // within ~500ms of the save (parity with auto-save / layout saves).
+  onSaveSuccess?: () => void
   // Template props (optional — graceful degradation when not yet wired)
   templates?: ReportTemplate[]
   activeTemplateId?: string | null
@@ -91,6 +98,8 @@ export default function ReportSettingsPanel({
   businessId,
   settings,
   onSettingsChange,
+  reportMonth,
+  onSaveSuccess,
   templates = [],
   activeTemplateId = null,
   templatesLoading = false,
@@ -191,6 +200,8 @@ export default function ReportSettingsPanel({
           budget_forecast_id: localSettings.budget_forecast_id,
           subscription_account_codes: localSettings.subscription_account_codes,
           wages_account_names: localSettings.wages_account_names,
+          // Phase 35 D-16: enables auto-revert when this save lands on an approved/sent report.
+          report_month: reportMonth,
         }),
       })
 
@@ -198,6 +209,9 @@ export default function ReportSettingsPanel({
       if (!res.ok) throw new Error(data.error)
 
       onSettingsChange(data.settings)
+      // Phase 42 D-17: notify caller (page wires this to reportStatus.refresh()
+      // so the status pill updates within ~500ms of the save).
+      onSaveSuccess?.()
       toast.success('Settings saved')
       onClose()
     } catch (err) {
