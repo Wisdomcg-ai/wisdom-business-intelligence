@@ -672,14 +672,14 @@ Plans:
 **Depends on:** Phase 35 (revert wiring depends on snapshot save firing on every coach edit; current UX requires manual "Save Draft" click which broke Phase 35 UAT visibly)
 **Requirements:** N/A (UX consolidation — no new functional requirement; existing requirements already cover the persistence contract)
 
-**Plans:** 6/7 plans executed
+**Plans:** 7/7 plans complete
 - [x] 42-00-PLAN.md — Wave 0 scaffolding: lift useDebouncedCallback to shared lib + create test scaffolds for 4 surfaces
 - [x] 42-01-PLAN.md — useAutoSaveReport hook (debounce + blur + retry + queue + lock + onSaveSuccess)
 - [x] 42-02-PLAN.md — SaveIndicator component (5 status states with retry button)
 - [x] 42-03-PLAN.md — Refactor CommentaryLine to always-editable inline (remove green ✓ + Cancel)
 - [x] 42-04-PLAN.md — Wire page.tsx: mount hook, render indicator, remove Save Draft button, thread onCommitBlur
 - [x] 42-05-PLAN.md — Finalise lock + Unfinalise button + D-17 settings/layout save → pill refresh wiring
-- [ ] 42-06-PLAN.md — beforeunload guard + un-skip Playwright E2E + manual UAT sign-off
+- [x] 42-06-PLAN.md — beforeunload guard + un-skip Playwright E2E + manual UAT sign-off
 
 **Context:**
 Surfaced during Phase 35 Plan 35-07 UAT. Phase 35's `revertReportIfApproved()` is wired correctly into `/api/monthly-report/snapshot`, but only fires when the page-level "Save Draft" button is clicked. The per-note ✓ button only updates local React state; the UI gives the impression that saving has happened when nothing has been persisted. Result: coach edits a note → ✓ click → believes saved → no DB write → no revert → pill stays "Sent". From the coach's POV, "the revert doesn't work" — actually the trigger never fired.
