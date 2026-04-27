@@ -647,10 +647,10 @@ describe('useAutoSaveReport (Phase 42)', () => {
     })
 
     function beforeunloadAddCalls() {
-      return addSpy.mock.calls.filter((c) => c[0] === 'beforeunload')
+      return addSpy.mock.calls.filter((c: unknown[]) => c[0] === 'beforeunload')
     }
     function beforeunloadRemoveCalls() {
-      return removeSpy.mock.calls.filter((c) => c[0] === 'beforeunload')
+      return removeSpy.mock.calls.filter((c: unknown[]) => c[0] === 'beforeunload')
     }
 
     it('does NOT register beforeunload during normal flow (idle/saving/saved)', async () => {
@@ -772,7 +772,7 @@ describe('useAutoSaveReport (Phase 42)', () => {
       expect(statusRef.current).toMatchObject({ kind: 'saved' })
       // The same handler reference is now removed.
       const removeMatches = beforeunloadRemoveCalls().filter(
-        (c) => c[1] === registeredHandler,
+        (c: unknown[]) => c[1] === registeredHandler,
       )
       expect(removeMatches.length).toBeGreaterThanOrEqual(1)
     })

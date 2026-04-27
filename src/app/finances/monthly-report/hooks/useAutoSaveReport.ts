@@ -248,6 +248,26 @@ export function useAutoSaveReport(
   }, [args.commentary, schedule])
 
   // ------------------------------------------------------------------
+  // beforeunload guard — Phase 42 D-12 / Pitfall 5.
+  // ------------------------------------------------------------------
+  // When status is 'failed', the user has unsaved data and the auto-save
+  // retries are exhausted. Register a `beforeunload` listener so the browser
+  // shows its native confirm dialog if the user tries to close the tab or
+  // navigate away. The listener is removed as soon as status leaves 'failed'
+  // (e.g. retryNow succeeds → 'saved'), so no spurious dialogs in normal use.
+  useEffect(() => {
+    if (status.kind !== 'failed') return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      // Legacy Chrome/Edge requires a non-empty returnValue; modern browsers
+      // ignore the string and show their generic message.
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [status.kind])
+
+  // ------------------------------------------------------------------
   // Month-change cancel guard — Pitfall 2.
   // When the coach switches months, drop any pending queue + retry timer
   // and reset status. Re-arm the init guard so the post-load setReport
