@@ -3,7 +3,7 @@
 import { ChevronDown, ChevronUp, DollarSign, Calculator } from 'lucide-react'
 import { FinancialData, CoreMetricsData, YearType } from '../../types'
 import { formatDollar, parseDollarInput } from '../../utils/formatting'
-import { getYearLabel, FINANCIAL_METRICS } from './types'
+import { getYearLabel, FINANCIAL_METRICS, PlanPeriodForLabel } from './types'
 import { ProfitCalculatorModal } from '../ProfitCalculatorModal'
 import { useState } from 'react'
 
@@ -17,6 +17,7 @@ interface FinancialGoalsSectionProps {
   coreMetrics: CoreMetricsData
   updateCoreMetric: (metric: keyof CoreMetricsData, period: 'current' | 'year1' | 'year2' | 'year3', value: number) => void
   extendedPeriodInfo?: { isExtendedPeriod: boolean; year1Months: number; currentYearRemainingMonths: number }
+  planPeriod?: PlanPeriodForLabel  // Phase 42 — date-driven labels
 }
 
 export default function FinancialGoalsSection({
@@ -28,9 +29,9 @@ export default function FinancialGoalsSection({
   industry,
   coreMetrics,
   updateCoreMetric,
-  extendedPeriodInfo
+  extendedPeriodInfo: _extendedPeriodInfo,
+  planPeriod
 }: FinancialGoalsSectionProps) {
-  const currentYear = new Date().getFullYear()
   const [showCalculator, setShowCalculator] = useState(false)
 
   const handleApplyCalculator = (calculatedFinancialData: FinancialData, calculatedCoreMetrics: CoreMetricsData) => {
@@ -103,7 +104,7 @@ export default function FinancialGoalsSection({
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     {(['current', 'year1', 'year2', 'year3'] as const).map((period, idx) => {
-                      const label = getYearLabel(idx, yearType, currentYear, extendedPeriodInfo)
+                      const label = getYearLabel(idx, yearType, planPeriod)
                       return (
                         <div key={period}>
                           <label className="text-xs text-gray-500 block mb-1">
@@ -141,7 +142,7 @@ export default function FinancialGoalsSection({
                       Financial Metric
                     </th>
                     {[0, 1, 2, 3].map(idx => {
-                      const label = getYearLabel(idx, yearType, currentYear, extendedPeriodInfo)
+                      const label = getYearLabel(idx, yearType, planPeriod)
                       return (
                         <th key={idx} className="text-center p-3 text-sm font-bold text-gray-700 w-[150px]">
                           <div>{label.main}</div>

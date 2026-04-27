@@ -1,4 +1,5 @@
-import { FinancialData, CoreMetricsData, KPIData, YearType } from '../../types'
+import { YearType } from '../../types'
+import { getFiscalYear } from '@/lib/utils/fiscal-year-utils'
 
 export interface YearLabel {
   main: string
@@ -11,60 +12,79 @@ export interface MetricConfig {
   isPercentage: boolean
 }
 
-export interface YearLabelProps {
-  yearType: YearType
-  currentYear: number
+export interface PlanPeriodForLabel {
+  planStartDate: Date
+  planEndDate: Date
+  year1EndDate: Date
+  fiscalYearStart: number  // 1-12
 }
 
+const MONTH_ABBREVS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function formatEndDate(d: Date): string {
+  return `${d.getDate()} ${MONTH_ABBREVS[d.getMonth()]} ${d.getFullYear()}`
+}
+
+function monthDiffInclusive(start: Date, end: Date): number {
+  return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1
+}
+
+/**
+ * Phase 42: Year labels are derived purely from the persisted plan period dates.
+ * No runtime date calls, no `currentYear` parameter, no extended-period flag.
+ *
+ * Defensive default: if planPeriod is undefined (initial render before hook
+ * load completes), returns a generic "Year N" label so labels are stable.
+ */
 export function getYearLabel(
   idx: number,
   yearType: YearType,
-  currentYear: number,
-  extendedPeriodInfo?: { isExtendedPeriod: boolean; year1Months: number; currentYearRemainingMonths: number }
+  planPeriod?: PlanPeriodForLabel
 ): YearLabel {
   if (idx === 0) return { main: 'Current', subtitle: null }
 
-  const today = new Date()
-  const currentMonth = today.getMonth()
+  if (!planPeriod) {
+    // Defensive default for the brief moment before hook load completes.
+    return { main: `Year ${idx}`, subtitle: null }
+  }
 
-  if (yearType === 'FY') {
-    let fyYear = currentYear
-    if (currentMonth >= 3) {
-      fyYear += 1
-    }
-    const year = fyYear + idx - 1
+  const { planStartDate, planEndDate, year1EndDate, fiscalYearStart } = planPeriod
+  const prefix = yearType === 'CY' ? 'CY' : 'FY'
 
-    // Extended period: Year 1 spans current FY remainder + next full FY
-    if (idx === 1 && extendedPeriodInfo?.isExtendedPeriod) {
+  if (idx === 1) {
+    const startFY = getFiscalYear(planStartDate, fiscalYearStart)
+    const endFY = getFiscalYear(year1EndDate, fiscalYearStart)
+    const months = monthDiffInclusive(planStartDate, year1EndDate)
+
+    if (startFY !== endFY) {
+      // Extended: Year 1 spans two FYs (e.g., FY26 rem + FY27)
       return {
-        main: `FY${(year - 1).toString().slice(-2)} rem + FY${year.toString().slice(-2)}`,
-        subtitle: `${extendedPeriodInfo.year1Months} months`
+        main: `${prefix}${startFY.toString().slice(-2)} rem + ${prefix}${endFY.toString().slice(-2)}`,
+        subtitle: `${months} months`,
       }
     }
-
+    // Standard 12-month
     return {
-      main: `FY${year.toString().slice(-2)}`,
-      subtitle: `Ending 30 June ${year}`
+      main: `${prefix}${endFY.toString().slice(-2)}`,
+      subtitle: `Ending ${formatEndDate(year1EndDate)}`,
     }
   }
 
-  let cyYear = currentYear
-  if (currentMonth >= 9) {
-    cyYear += 1
-  }
-  const year = cyYear + idx - 1
+  // Year 2 / Year 3 — derive from year1EndDate forward (12 months each).
+  const year1FY = getFiscalYear(year1EndDate, fiscalYearStart)
+  const targetFY = year1FY + (idx - 1)  // idx=2 -> +1, idx=3 -> +2
 
-  // Extended period: Year 1 spans current CY remainder + next full CY
-  if (idx === 1 && extendedPeriodInfo?.isExtendedPeriod) {
+  // For Year 3 specifically, the actual end date is planEndDate (computed once
+  // at suggest time). For Year 2 we synthesize a label only.
+  if (idx === 3) {
     return {
-      main: `CY${(year - 1).toString().slice(-2)} rem + CY${year.toString().slice(-2)}`,
-      subtitle: `${extendedPeriodInfo.year1Months} months`
+      main: `${prefix}${targetFY.toString().slice(-2)}`,
+      subtitle: `Ending ${formatEndDate(planEndDate)}`,
     }
   }
-
   return {
-    main: `CY${year.toString().slice(-2)}`,
-    subtitle: `Ending 31 Dec ${year}`
+    main: `${prefix}${targetFY.toString().slice(-2)}`,
+    subtitle: null,
   }
 }
 

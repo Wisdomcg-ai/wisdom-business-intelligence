@@ -3,7 +3,7 @@
 import { ChevronDown, ChevronUp, TrendingUp } from 'lucide-react'
 import { FinancialData, CoreMetricsData, YearType } from '../../types'
 import { formatDollar, parseDollarInput } from '../../utils/formatting'
-import { getYearLabel } from './types'
+import { getYearLabel, PlanPeriodForLabel } from './types'
 
 interface CoreMetricsSectionProps {
   coreMetrics: CoreMetricsData
@@ -12,6 +12,7 @@ interface CoreMetricsSectionProps {
   yearType: YearType
   isCollapsed: boolean
   onToggle: () => void
+  planPeriod?: PlanPeriodForLabel
 }
 
 export default function CoreMetricsSection({
@@ -20,9 +21,9 @@ export default function CoreMetricsSection({
   financialData,
   yearType,
   isCollapsed,
-  onToggle
+  onToggle,
+  planPeriod
 }: CoreMetricsSectionProps) {
-  const currentYear = new Date().getFullYear()
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -56,7 +57,7 @@ export default function CoreMetricsSection({
               values={coreMetrics.leadsPerMonth}
               onChange={(period, value) => updateCoreMetric('leadsPerMonth', period, value)}
               yearType={yearType}
-              currentYear={currentYear}
+              planPeriod={planPeriod}
             />
             <MobileMetricCard
               label="Conversion Rate (%)"
@@ -64,7 +65,7 @@ export default function CoreMetricsSection({
               values={coreMetrics.conversionRate}
               onChange={(period, value) => updateCoreMetric('conversionRate', period, value)}
               yearType={yearType}
-              currentYear={currentYear}
+              planPeriod={planPeriod}
             />
             <MobileMetricCard
               label="Avg Transaction Value ($)"
@@ -72,7 +73,7 @@ export default function CoreMetricsSection({
               values={coreMetrics.avgTransactionValue}
               onChange={(period, value) => updateCoreMetric('avgTransactionValue', period, value)}
               yearType={yearType}
-              currentYear={currentYear}
+              planPeriod={planPeriod}
             />
             <MobileMetricCard
               label="Team Headcount (FTE)"
@@ -80,7 +81,7 @@ export default function CoreMetricsSection({
               values={coreMetrics.teamHeadcount}
               onChange={(period, value) => updateCoreMetric('teamHeadcount', period, value)}
               yearType={yearType}
-              currentYear={currentYear}
+              planPeriod={planPeriod}
             />
             {/* Revenue per Employee (Calculated) */}
             <div className="bg-brand-orange-50/50 rounded-lg border border-gray-200 p-4">
@@ -88,7 +89,7 @@ export default function CoreMetricsSection({
               <div className="text-xs text-gray-500 italic mb-3">(calculated)</div>
               <div className="grid grid-cols-2 gap-3">
                 {(['current', 'year1', 'year2', 'year3'] as const).map((period, idx) => {
-                  const label = getYearLabel(idx, yearType, currentYear)
+                  const label = getYearLabel(idx, yearType, planPeriod)
                   return (
                     <div key={period}>
                       <label className="text-xs text-gray-500 block mb-1">{label.main}</label>
@@ -108,7 +109,7 @@ export default function CoreMetricsSection({
               values={coreMetrics.ownerHoursPerWeek}
               onChange={(period, value) => updateCoreMetric('ownerHoursPerWeek', period, value)}
               yearType={yearType}
-              currentYear={currentYear}
+              planPeriod={planPeriod}
             />
           </div>
 
@@ -121,7 +122,7 @@ export default function CoreMetricsSection({
                     Core Metric
                   </th>
                   {[0, 1, 2, 3].map(idx => {
-                    const label = getYearLabel(idx, yearType, currentYear)
+                    const label = getYearLabel(idx, yearType, planPeriod)
                     return (
                       <th key={idx} className="text-center p-3 text-sm font-bold text-gray-700 w-[150px]">
                         <div>{label.main}</div>
@@ -212,10 +213,10 @@ interface MobileMetricCardProps {
   values: { current: number; year1: number; year2: number; year3: number }
   onChange: (period: 'current' | 'year1' | 'year2' | 'year3', value: number) => void
   yearType: YearType
-  currentYear: number
+  planPeriod?: PlanPeriodForLabel
 }
 
-function MobileMetricCard({ label, type, values, onChange, yearType, currentYear }: MobileMetricCardProps) {
+function MobileMetricCard({ label, type, values, onChange, yearType, planPeriod }: MobileMetricCardProps) {
   const formatValue = (value: number) => {
     switch (type) {
       case 'percentage': return `${value || 0}%`
@@ -237,7 +238,7 @@ function MobileMetricCard({ label, type, values, onChange, yearType, currentYear
       <div className="font-semibold text-gray-900 text-sm mb-3">{label}</div>
       <div className="grid grid-cols-2 gap-3">
         {(['current', 'year1', 'year2', 'year3'] as const).map((period, idx) => {
-          const yearLabel = getYearLabel(idx, yearType, currentYear)
+          const yearLabel = getYearLabel(idx, yearType, planPeriod)
           return (
             <div key={period}>
               <label className="text-xs text-gray-500 block mb-1">{yearLabel.main}</label>

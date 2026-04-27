@@ -2,7 +2,7 @@
 
 import { ChevronDown, ChevronUp, Activity, Plus, Trash2, X, Search, AlertCircle, Sparkles, HelpCircle, ChevronRight } from 'lucide-react'
 import { KPIData, YearType } from '../../types'
-import { getYearLabel } from './types'
+import { getYearLabel, PlanPeriodForLabel } from './types'
 import { useKPIs } from '../../hooks/useKPIs'
 import { useState, useMemo, useEffect } from 'react'
 import CreateCustomKPIModal from '../CreateCustomKPIModal'
@@ -20,6 +20,7 @@ interface KPISectionProps {
   showKPIModal: boolean
   setShowKPIModal: (show: boolean) => void
   businessId?: string
+  planPeriod?: PlanPeriodForLabel
 }
 
 export default function KPISection({
@@ -32,9 +33,9 @@ export default function KPISection({
   onToggle,
   showKPIModal,
   setShowKPIModal,
-  businessId
+  businessId,
+  planPeriod
 }: KPISectionProps) {
-  const currentYear = new Date().getFullYear()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
 
@@ -199,7 +200,7 @@ export default function KPISection({
               <KPITable
                 kpis={kpis}
                 yearType={yearType}
-                currentYear={currentYear}
+                planPeriod={planPeriod}
                 updateKPIValue={updateKPIValue}
                 deleteKPI={deleteKPI}
                 onAddClick={() => {
@@ -275,13 +276,13 @@ function EmptyKPIState({ onAddClick }: { onAddClick: () => void }) {
 interface KPITableProps {
   kpis: KPIData[]
   yearType: YearType
-  currentYear: number
+  planPeriod?: PlanPeriodForLabel
   updateKPIValue: (kpiId: string, field: 'currentValue' | 'year1Target' | 'year2Target' | 'year3Target', value: number) => void
   deleteKPI: (kpiId: string) => void
   onAddClick: () => void
 }
 
-function KPITable({ kpis, yearType, currentYear, updateKPIValue, deleteKPI, onAddClick }: KPITableProps) {
+function KPITable({ kpis, yearType, planPeriod, updateKPIValue, deleteKPI, onAddClick }: KPITableProps) {
   const fieldToIndex: Record<string, number> = {
     'currentValue': 0,
     'year1Target': 1,
@@ -323,7 +324,7 @@ function KPITable({ kpis, yearType, currentYear, updateKPIValue, deleteKPI, onAd
             {/* Year Inputs Grid */}
             <div className="grid grid-cols-2 gap-3">
               {(['currentValue', 'year1Target', 'year2Target', 'year3Target'] as const).map((field) => {
-                const label = getYearLabel(fieldToIndex[field], yearType, currentYear)
+                const label = getYearLabel(fieldToIndex[field], yearType, planPeriod)
                 return (
                   <div key={field}>
                     <label className="text-xs text-gray-500 block mb-1">{label.main}</label>
@@ -351,7 +352,7 @@ function KPITable({ kpis, yearType, currentYear, updateKPIValue, deleteKPI, onAd
                 KPI / Category
               </th>
               {[0, 1, 2, 3].map(idx => {
-                const label = getYearLabel(idx, yearType, currentYear)
+                const label = getYearLabel(idx, yearType, planPeriod)
                 return (
                   <th key={idx} className="text-center p-3 text-sm font-bold text-gray-700 w-[150px]">
                     <div>{label.main}</div>
