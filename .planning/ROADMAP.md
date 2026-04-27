@@ -682,7 +682,7 @@ Plans:
 - [x] 41-02-PLAN.md — Refactor /business-profile page to use BusinessContext with role-aware rendering (owner / admin / member / none)
 - [ ] 41-03-PLAN.md — Sweep + delete existing phantom rows with explicit user confirmation gate
 
-### Phase 42: Plan period as explicit state — replace inference-based extended period detection
+### Phase 42: Plan period as explicit state — replace inference-based extended period detection [COMPLETE]
 
 **Goal:** Make plan period an explicit, persisted property of the plan record. Eliminate runtime inference in the goals wizard. Coach view and owner view render identical plans regardless of who is logged in.
 
@@ -715,7 +715,7 @@ Plans:
 Plans:
 - [x] 42-01-PLAN.md — Foundation: migration + plan-period helpers + service/API persistence (fixes Phase 14 silent-drop bug) — COMPLETE (df0c007, b6e3272, f9d8f09, 417848f, 92eb5a7, bdcded1, f500116). Migration applied to prod via Management API; 3 columns + 11 rows backfilled; 0 rows missing.
 - [x] 42-02-PLAN.md — Hook refactor + Step 1 banner/modal + getYearLabel rewrite + coach goals page bug fix — COMPLETE (c55e20e, 2acb2a7, a312324, 5f52d01, dc0581b, 7950f58, 9e77000). 7 atomic tasks; all 5 sentinels green; tsc baseline preserved at 16 pre-existing errors.
-- [ ] 42-03-PLAN.md — Tests (helpers, components, coach/owner equivalence, persistence) + Vercel preview Fit2Shine smoke test — Tasks 1-5 COMPLETE (b2011de, 2767b8f, a8ad838, 9f95bc3, 99b6cb7, bab8a4d) — 38/38 goals tests pass; full suite 299/299; awaiting Task 6 Vercel preview smoke test
+- [x] 42-03-PLAN.md — Tests (helpers, components, coach/owner equivalence, persistence) + Vercel preview Fit2Shine smoke test — COMPLETE (b2011de, 2767b8f, a8ad838, 9f95bc3, bab8a4d, 99b6cb7, dc2f194). 38/38 goals tests pass; full suite 299/299; smoke test approved on Fit2Shine 2026-04-27.
 
 ---
 
