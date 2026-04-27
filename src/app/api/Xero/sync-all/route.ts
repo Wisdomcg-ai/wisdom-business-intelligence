@@ -222,12 +222,16 @@ async function syncConnection(connection: any): Promise<SyncResult> {
     totalMonthCols += recentCols;
     console.log(`[Xero Sync] ${tenantName}: Recent request returned ${recentCols} columns`);
 
-    // Older 12 months: best-effort, fail-loud
+    // Older 12 months: best-effort. CRITICAL — base period must be ONE month,
+    // otherwise Xero returns 12-month-rolling cumulative totals instead of
+    // single-month values when periods=11+timeframe=MONTH is combined with a
+    // wide fromDate→toDate base. (The whole sync gets garbled.)
     await new Promise(resolve => setTimeout(resolve, 300));
-    const olderDate = new Date(currentYear, currentMonth - 13, 1);
-    const olderFrom = `${olderDate.getFullYear()}-${String(olderDate.getMonth() + 1).padStart(2, '0')}-01`;
-    const olderToDate = new Date(currentYear, currentMonth - 1, 0);
-    const olderTo = `${olderToDate.getFullYear()}-${String(olderToDate.getMonth() + 1).padStart(2, '0')}-${String(olderToDate.getDate()).padStart(2, '0')}`;
+    const olderBase = new Date(currentYear, currentMonth - 13, 1);
+    const olderYear = olderBase.getFullYear();
+    const olderMonthNum = olderBase.getMonth() + 1;
+    const olderFrom = `${olderYear}-${String(olderMonthNum).padStart(2, '0')}-01`;
+    const olderTo = new Date(olderYear, olderMonthNum, 0).toISOString().split('T')[0];
 
     const reportUrl2 = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${olderFrom}&toDate=${olderTo}&periods=11&timeframe=MONTH&standardLayout=false&paymentsOnly=false`;
     try {

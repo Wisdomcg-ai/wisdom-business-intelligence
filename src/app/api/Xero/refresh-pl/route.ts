@@ -135,16 +135,19 @@ export async function POST(request: NextRequest) {
     const currentYear = now.getFullYear()
     const currentMonth = now.getMonth() + 1
 
-    // Use periods=11 with current month as base (12 monthly columns) — Xero
-    // requires periods to return monthly breakdown. Plus an older window
-    // best-effort. Older fetches may return only 1 column for tenants whose
-    // Xero org doesn't go back that far.
+    // Use periods=11 with a ONE-MONTH base period (current month for recent,
+    // 12-months-ago for older). CRITICAL — if the base period spans multiple
+    // months, Xero returns 12-month rolling cumulative totals instead of
+    // single-month values for each comparative column. Numbers look ~5x
+    // inflated and reconciliation dumps a huge negative diff onto the last
+    // month. The wide-base bug burned us once already.
     const recentFrom = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`
     const recentTo = new Date(currentYear, currentMonth, 0).toISOString().split('T')[0]
-    const olderDate = new Date(currentYear, currentMonth - 13, 1)
-    const olderFrom = `${olderDate.getFullYear()}-${String(olderDate.getMonth() + 1).padStart(2, '0')}-01`
-    const olderToDate = new Date(currentYear, currentMonth - 1, 0)
-    const olderTo = `${olderToDate.getFullYear()}-${String(olderToDate.getMonth() + 1).padStart(2, '0')}-${String(olderToDate.getDate()).padStart(2, '0')}`
+    const olderBase = new Date(currentYear, currentMonth - 13, 1)
+    const olderYear = olderBase.getFullYear()
+    const olderMonthNum = olderBase.getMonth() + 1
+    const olderFrom = `${olderYear}-${String(olderMonthNum).padStart(2, '0')}-01`
+    const olderTo = new Date(olderYear, olderMonthNum, 0).toISOString().split('T')[0]
 
     const windows = [
       { label: 'Recent 12mo', from: recentFrom, to: recentTo, periods: 11 },
