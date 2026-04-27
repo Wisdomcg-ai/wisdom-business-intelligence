@@ -682,6 +682,41 @@ Plans:
 - [x] 41-02-PLAN.md — Refactor /business-profile page to use BusinessContext with role-aware rendering (owner / admin / member / none)
 - [ ] 41-03-PLAN.md — Sweep + delete existing phantom rows with explicit user confirmation gate
 
+### Phase 42: Plan period as explicit state — replace inference-based extended period detection
+
+**Goal:** Make plan period an explicit, persisted property of the plan record. Eliminate runtime inference in the goals wizard. Coach view and owner view render identical plans regardless of who is logged in.
+
+**Why now:** Phase 14's runtime detection at [src/app/goals/hooks/useStrategicPlanning.ts:752-770](src/app/goals/hooks/useStrategicPlanning.ts#L752-L770) has a `ownerUser === user.id` guard at line 759 that explicitly excludes coach view. Every coach-led planning session in Q4 falls through to standard 12-month Year 1 = mostly-past quarters. Surfaced 2026-04-24 in the Fit2Shine planning session (Shari Bremner, businesses.id `389167dc-acb9-4a56-a594-aa77eae15745`) — Shari was being asked to set targets into FY26 with only ~2 months left.
+
+**Design principle:** Inference-based plan periods are a code smell. Anaplan / Adaptive / Planful all make plan period explicit, declarative state. Detection runs once at plan creation as a *suggestion*, the user confirms, and that becomes the immutable plan record. Coach view, owner view, returning client, first-time client all collapse to one read path.
+
+**Depends on:** Phase 14 (extended period feature this replaces) — see [.planning/phases/14-goals-wizard-first-time-extended-period/](.planning/phases/14-goals-wizard-first-time-extended-period/)
+
+**Requirements:**
+- New columns on `business_financial_goals`: `plan_start_date`, `plan_end_date`, `year1_end_date`. Migration includes a one-time backfill from current `is_extended_period` + `year1_months` semantics.
+- Single `suggestPlanPeriod()` helper computes recommended dates using existing `isNearYearEnd` / `getMonthsUntilYearEnd`. Runs ONLY at plan creation (or "Reset Plan Period" user action). Never consulted at render time.
+- Step 1 surfaces the suggestion visibly: e.g. "Your plan: Apr 2026 → Jun 2029 · Year 1 is 14 months · [Adjust]". User confirms or adjusts before save. No silent behavior changes.
+- Year 1/2/3 labels everywhere derive from persisted period columns, not `new Date()`.
+- `isExtendedPeriod` becomes a derived getter (`year1_end_date - plan_start_date > 365 days`); not a stored flag the future can disagree with.
+- The `ownerUser === user.id` guard at [useStrategicPlanning.ts:759](src/app/goals/hooks/useStrategicPlanning.ts#L759) is removed; coach view sees the same plan period as owner view.
+- Existing Phase 14 tests pass; new tests cover: plan period persists across reloads, coach view and owner view render identical periods, suggestion is shown visibly at creation, "Adjust" lets user override.
+
+**Out of scope:**
+- Forecast period logic (`calculateForecastPeriods` in [src/lib/utils/fiscal-year-utils.ts:194-271](src/lib/utils/fiscal-year-utils.ts#L194-L271)) — separate flow that already works correctly
+- Multi-year plan templates beyond 3-year horizon
+- Removing legacy `is_extended_period` / `year1_months` / `current_year_remaining_months` columns (deferred to a cleanup phase after one release of dual-write)
+
+**Risk / mitigation:**
+- Existing client plans must not silently change shape. Migration backfill must produce dates equivalent to what current detection would compute. Verification query post-migration.
+- Coach-view-equality is a behavior change for coaches viewing clients with empty `business_financial_goals` rows — they'll start seeing the suggested extended period instead of standard. Acceptable; matches design intent of Phase 14 that the role-guard accidentally undid.
+
+**Plans:** 3 plans
+
+Plans:
+- [~] 42-01-PLAN.md — Foundation: migration + plan-period helpers + service/API persistence (fixes Phase 14 silent-drop bug) — Tasks 1-5 done locally (df0c007, b6e3272, f9d8f09, 417848f, 92eb5a7); Task 6 [BLOCKING] schema-push to preview branch awaiting human action via PR-first Supabase Branching
+- [ ] 42-02-PLAN.md — Hook refactor + Step 1 banner/modal + getYearLabel rewrite + coach goals page bug fix
+- [ ] 42-03-PLAN.md — Tests (helpers, components, coach/owner equivalence, persistence) + Vercel preview Fit2Shine smoke test
+
 ---
 
 ### Phase 36: Client Portal

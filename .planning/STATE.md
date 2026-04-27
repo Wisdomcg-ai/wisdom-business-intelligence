@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Executing Phase 41
-last_updated: "2026-04-23T22:20:00.000Z"
+status: Executing Phase 42 — Plan 42-01 Tasks 1-5 done; checkpoint at Task 6 (schema push)
+last_updated: "2026-04-27T04:08:00.000Z"
 progress:
-  total_phases: 41
+  total_phases: 42
   completed_phases: 14
-  total_plans: 47
-  completed_plans: 47
-  percent: 100
+  total_plans: 50
+  completed_plans: 48
+  percent: 96
 ---
 
 # Project State
@@ -196,12 +196,12 @@ progress:
 
 ## Position
 
-- Current: Phase 41, Plan 02 of 3 complete (Wave 2, /business-profile now BusinessContext-driven and role-gated). Plan 41-03 (phantom-row sweep) pending.
-- Stopped at: Completed 41-02-PLAN.md
+- Current: Phase 42, Plan 01 of 3 — Tasks 1-5 complete and committed locally; Task 6 ([BLOCKING] schema-push checkpoint) awaiting human action via PR-first Supabase Branching workflow.
+- Stopped at: 42-01-PLAN.md Task 6 (checkpoint:human-action) — schema push to preview branch
 
 ## Last Session
 
-- 2026-04-23T22:20:00Z — Completed 41-02-PLAN.md (/business-profile routed through BusinessContext, role-gated UI, empty-state branch — Task 3 approved via mechanical verification Option A per user direction)
+- 2026-04-27T04:03:00Z — Plan 42-01 Tasks 1-5 implemented (migration + suggestPlanPeriod + derivePeriodInfo + FinancialService planPeriod read/write + /api/goals/save bug fix). Awaiting schema push to preview branch before continuing to Plan 42-02.
 
 ## Phase 41 Decisions
 
@@ -220,6 +220,25 @@ progress:
 - Plan 41-01: Remove owner_id lazy-create from BusinessProfileService — COMPLETE (9a5f34e). File shrunk from 363 → 211 lines (−152 LOC net).
 - Plan 41-02: Refactor /business-profile page to use BusinessContext with role-aware rendering — COMPLETE (24f7b76, f095f97). +202 / −39 LOC across two task commits.
 
+## Phase 42 Decisions
+
+- Plan 42-01 Task 1: Migration uses `date_trunc('month', updated_at)::date` for is_extended_period=true rows (proxy for the date detection ran), and snaps to FY start (Jul 1 / Jan 1) for standard rows based on year_type column. Skips zero-revenue placeholder rows so suggestPlanPeriod() generates fresh dates on their first save.
+- Plan 42-01 Task 1: Backfill gated on `plan_start_date IS NULL` so the migration is a re-runnable no-op against the production DB once preview verification clears.
+- Plan 42-01 Task 2: `suggestPlanPeriod()` is a pure function — `today` is passed as a parameter (no `new Date()` inside the body) for deterministic testing in Plan 42-03.
+- Plan 42-01 Task 3: `derivePeriodInfo()` uses `days > 366` (NOT 365) as the extended-period threshold so leap-year FYs (365 or 366 day Year 1s) are NOT mis-classified as extended.
+- Plan 42-01 Task 4: `planPeriod` parameter on `saveFinancialGoals` is OPTIONAL (8th positional arg) — existing call site at useStrategicPlanning.ts:430 still type-checks without modification.
+- Plan 42-01 Task 4: `loadFinancialGoals` returns `planPeriod` as `string | null` shape (raw YYYY-MM-DD from Supabase date columns); the hook (Plan 42-02) converts to Date when constructing in-memory state.
+- Plan 42-01 Task 5: Phase 14 silent-drop bug confirmed and fixed — `/api/goals/save` was destructuring only `{ financialData, coreMetrics, yearType, quarterlyTargets }`; now also destructures `extendedPeriod` (bug fix) and `planPeriod` (new) and writes both to `business_financial_goals`. Sentinel: `is_extended_period` count in `route.ts` is now exactly 1 (was 0 before this plan).
+
+## Plan 42-01 Progress
+
+- Task 1 (migration): COMPLETE (df0c007)
+- Task 2 (suggestPlanPeriod helper): COMPLETE (b6e3272)
+- Task 3 (derivePeriodInfo helper): COMPLETE (f9d8f09)
+- Task 4 (FinancialService planPeriod read/write): COMPLETE (417848f)
+- Task 5 (/api/goals/save bug fix + planPeriod): COMPLETE (92eb5a7)
+- Task 6 ([BLOCKING] schema-push to preview branch): AWAITING HUMAN ACTION (PR-first Supabase Branching workflow)
+
 ## Accumulated Context
 
 ### Roadmap Evolution
@@ -233,3 +252,4 @@ progress:
 - Phase 34 COMPLETE (2026-04-23) — bookkeeping: 34-01a (Consolidated BS, PR #2 a80ed62) and 34-02a (Consolidated Cashflow, PR #4 aa27bf2 + patches #8 #9) shipped earlier as part of the consolidation work; roadmap ticks were stale. ROADMAP.md updated to reflect reality.
 - Current active roadmap: Phase 33 (CFO Multi-Client Dashboard) is next natural work — depends only on Phase 23 (done).
 - Phase 41 added (2026-04-23): Eliminate phantom business orphan rows via active-business routing. Removes lazy-create in business-profile-service; switches /business-profile page to read from BusinessContext; sweeps existing phantoms with user approval before delete. Triggered by Jessica @ Oh Nine incident — team-member users accumulating blank "My Business" orphans in admin/clients.
+- Phase 42 added (2026-04-27): Plan period as explicit state — replace inference-based extended period detection. Phase 14's runtime detection in useStrategicPlanning.ts (lines 752-770) excludes coach view via `ownerUser === user.id` guard, so coach-led planning sessions in Q4 fall through to standard 12-month Year 1 (= mostly-past quarters). Replace with explicit `plan_start_date` / `plan_end_date` / `year1_end_date` columns, one-time `suggestPlanPeriod()` helper at creation, and visible "Adjust" affordance in Step 1. Triggered by Fit2Shine planning session 2026-04-24 (Shari Bremner, businesses.id 389167dc-acb9-4a56-a594-aa77eae15745).
