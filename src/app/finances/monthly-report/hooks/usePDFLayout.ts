@@ -18,12 +18,17 @@ interface UsePDFLayoutReturn {
  * Phase 35 D-16: when `reportMonth` is provided, the settings save triggers
  * `revertReportIfApproved` server-side so editing the layout on an
  * approved/sent report silently reverts the pill to draft.
+ *
+ * Phase 42 D-17: optional `onSaveSuccess` callback fires after every 2xx
+ * response so the page can call `useReportStatus.refresh()` to refresh the
+ * pill within ~500ms of a layout save (parity with auto-save / commentary).
  */
 export function usePDFLayout(
   businessId: string,
   settings: MonthlyReportSettings | null,
   onSettingsChange: (settings: MonthlyReportSettings) => void,
   reportMonth?: string,
+  onSaveSuccess?: () => void,
 ): UsePDFLayoutReturn {
   const [isSaving, setIsSaving] = useState(false)
 
@@ -65,6 +70,8 @@ export function usePDFLayout(
       const data = await res.json()
       if (data.success && data.settings) {
         onSettingsChange(data.settings)
+        // Phase 42 D-17: notify caller (page wires this to reportStatus.refresh()).
+        onSaveSuccess?.()
         return true
       }
       console.error('[usePDFLayout] Save failed:', data.error)
@@ -77,7 +84,7 @@ export function usePDFLayout(
     } finally {
       setIsSaving(false)
     }
-  }, [businessId, settings, onSettingsChange, reportMonth])
+  }, [businessId, settings, onSettingsChange, reportMonth, onSaveSuccess])
 
   const saveLayout = useCallback(async (newLayout: PDFLayout): Promise<boolean> => {
     const ok = await persistLayout(newLayout)
