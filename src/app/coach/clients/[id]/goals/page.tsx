@@ -233,11 +233,28 @@ export default function CoachGoalsPage() {
     year1Months,
     currentYearRemainingMonths,
     fiscalYearStart,
+    // Plan period (Phase 42)
+    planStartDate,
+    planEndDate,
+    year1EndDate,
+    setPlanStartDate,
+    setPlanEndDate,
+    setYear1EndDate,
     // Annual review detection (Phase 15)
     hasNextYearAnnualPlan,
     annualReviewYear,
-    saveAllData
+    saveAllData,
+    markDirty
   } = useStrategicPlanning(clientId)
+
+  // Phase 42 — assemble planPeriod object for Step 1 banner / getYearLabel
+  const planPeriod = (planStartDate && planEndDate && year1EndDate)
+    ? { planStartDate, planEndDate, year1EndDate, fiscalYearStart: fiscalYearStart ?? 7 }
+    : undefined
+
+  const planPeriodRationale = isExtendedPeriod
+    ? `Year 1 spans ${year1Months} months — the rest of the current year plus the full next year.`
+    : `Year 1 is the current fiscal year (12 months). Years 2 and 3 follow.`
 
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   const [showKPIModal, setShowKPIModal] = useState(false)
@@ -746,6 +763,19 @@ export default function CoachGoalsPage() {
                   showKPIModal={showKPIModal}
                   setShowKPIModal={setShowKPIModal}
                   businessId={businessId}
+                  extendedPeriodInfo={{
+                    isExtendedPeriod,
+                    year1Months,
+                    currentYearRemainingMonths
+                  }}
+                  planPeriod={planPeriod}
+                  rationale={planPeriodRationale}
+                  onPlanPeriodChange={(p) => {
+                    setPlanStartDate(p.planStartDate)
+                    setPlanEndDate(p.planEndDate)
+                    setYear1EndDate(p.year1EndDate)
+                    markDirty?.()
+                  }}
                 />
               </div>
             )}
