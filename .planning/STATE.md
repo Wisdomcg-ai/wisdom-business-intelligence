@@ -240,17 +240,22 @@ progress:
 - Plan 42-01: Terminal-failure toast uses BOTH `duration: Infinity` AND `dismissible: false` for D-12 non-dismissable defence-in-depth across sonner default-theme variations.
 - Plan 42-01: Pitfall 6 enforced — useEffect watches `args.commentary` ONLY, never `report.report_data`. Explicit `// INTENTIONALLY does not include args.report` comment prevents future "fix" reverts. Xero refresh cannot trigger a save.
 - Plan 42-01: Consolidation guard checked in 4 places (performSave + schedule + flushImmediately + retryNow) — defence in depth so no path produces a POST that saveSnapshot would reject.
+- Plan 42-02: SaveIndicator is purely presentational (no useState / useEffect / fetch) — all state lives in useAutoSaveReport (Plan 42-01). Type-only `import type { SaveStatus }` keeps indicator and hook in lockstep without runtime cost.
+- Plan 42-02: Tailwind colour escalation gray-500 (idle/saved) → gray-600 (saving) → amber-600 (retrying) → rose-700 (failed) — matches Notion/Linear UX precedent for D-08; escalating visual weight only when something needs the user's attention.
+- Plan 42-02: Exhaustiveness guard via `default: const _: never = status` — adding a future SaveStatus variant without updating the indicator switch is a compile-time error rather than a silent runtime hole.
+- Plan 42-02: Did NOT surface attempt count in retrying label — D-08 wording is "Unsaved — retrying..." verbatim; surfacing `(2/3)` would leak hook internals into the UX.
 
 ## Completed Work (Phase 42)
 
 - Plan 42-00: shared useDebouncedCallback hook + 4 it.todo test scaffolds (28 todos enumerating D-01..D-15 + D-17) — COMPLETE (ba90c46, b4f34ea). Full vitest suite green: 323 pass, 28 todo, 0 fail. tsc clean. Wave 0 Nyquist gate satisfied; plans 42-01..42-04 unblocked.
 - Plan 42-01: useAutoSaveReport hook with 500ms debounce + onBlur flush + 3-attempt exponential backoff (1s/2s/4s) + single-flight queue + Finalise/consolidation guards + Pitfall 6 commentary-only watch — COMPLETE (245ec3a). 15 vitest tests pass (≥13 required). Full suite: 345 pass / 0 fail / 9 todo. tsc clean. Plans 42-02..42-04 unblocked.
+- Plan 42-02: SaveIndicator presentational component + 7 RTL tests covering D-08 / D-09 / D-12 — COMPLETE (c1980b5 RED, ad1aa4b GREEN, 9aaa6aa REFACTOR). 5 status kinds with exact D-08 wording, Loader2 spinner on saving/retrying, Save Now button on failed-state. Type-only import of SaveStatus from useAutoSaveReport. Full vitest suite: 345 pass / 9 todo / 0 fail. tsc --noEmit clean.
 
 ## Position
 
-- Current: Phase 42, Plan 01 — COMPLETE (1 task done, 15 tests passing, tsc clean)
-- Stopped at: Completed 42-01-PLAN.md
+- Current: Phase 42, Plan 02 — COMPLETE (1 task, TDD triplet, 7 tests passing, tsc clean). Plans 42-01 and 42-02 both shipped in parallel Wave 1. Plans 42-03 / 42-04 next.
+- Stopped at: Completed 42-02-PLAN.md
 
 ## Last Session
 
-- 2026-04-23T11:48:00Z — Completed 42-01-PLAN.md (useAutoSaveReport hook — keystone of Phase 42 auto-save lifecycle)
+- 2026-04-27T01:48:40Z — Completed 42-02-PLAN.md (SaveIndicator presentational component for D-08/D-09/D-12; 7 RTL tests; 78-line component; type-only import from 42-01)
