@@ -11,6 +11,9 @@ interface BudgetVsActualTableProps {
   onCommentaryChange?: (accountName: string, text: string) => void
   onCommitBlur?: (accountName: string) => void
   onTabChange?: (tab: ReportTab) => void
+  /** Phase 42 D-06: when the snapshot is finalised, the commentary textareas
+   *  remain visible (so coaches can read their notes) but are not editable. */
+  readOnly?: boolean
 }
 
 function fmt(value: number | null, dash = false): string {
@@ -249,6 +252,7 @@ function CommentaryLine({
   onNoteChange,
   onCommitBlur,
   onTabChange,
+  readOnly,
 }: {
   accountName: string
   variance: number
@@ -258,6 +262,9 @@ function CommentaryLine({
   onNoteChange?: (accountName: string, note: string) => void
   onCommitBlur?: (accountName: string) => void
   onTabChange?: (tab: ReportTab) => void
+  /** Phase 42 D-06: when true, the textarea renders as readOnly so coaches can
+   *  still read their notes while the report is finalised. Edits are blocked. */
+  readOnly?: boolean
 }) {
   const tabLabel = detailTabRef === 'subscriptions' ? 'Subscriptions' : detailTabRef === 'wages' ? 'Wages' : null
 
@@ -291,7 +298,10 @@ function CommentaryLine({
       {/* Coach note section — Phase 42 D-04, D-14: always-editable inline textarea.
           Parent controls value via coachNote (D-14 optimistic UI); every keystroke
           flows up via onNoteChange; blur triggers onCommitBlur so parent can flush
-          the debounced auto-save (D-01). */}
+          the debounced auto-save (D-01).
+          Phase 42 D-06: when `readOnly` is true (snapshot status === 'final'), the
+          textarea remains visible so coaches can read their notes, but edits are
+          blocked. Pair with the page-level Unfinalise button to resume editing. */}
       {onNoteChange && (
         <div className="mt-2">
           <textarea
@@ -299,7 +309,10 @@ function CommentaryLine({
             onChange={(e) => onNoteChange(accountName, e.target.value)}
             onBlur={() => onCommitBlur?.(accountName)}
             placeholder="Add your coaching note — what caused this variance? What should the client do about it?"
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-brand-orange resize-none"
+            readOnly={readOnly}
+            className={`w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-brand-orange resize-none ${
+              readOnly ? 'bg-gray-50 text-gray-700 cursor-not-allowed' : 'bg-white'
+            }`}
             rows={2}
             data-testid={`commentary-textarea-${accountName}`}
           />
@@ -313,7 +326,7 @@ function CommentaryLine({
 // the function to make the test-only rationale explicit.
 export { CommentaryLine }
 
-export default function BudgetVsActualTable({ report, commentary, commentaryLoading, onCommentaryChange, onCommitBlur, onTabChange }: BudgetVsActualTableProps) {
+export default function BudgetVsActualTable({ report, commentary, commentaryLoading, onCommentaryChange, onCommitBlur, onTabChange, readOnly }: BudgetVsActualTableProps) {
   const settings = report.settings
 
   const colCount =
@@ -476,6 +489,7 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                             onNoteChange={onCommentaryChange}
                             onCommitBlur={onCommitBlur}
                             onTabChange={onTabChange}
+                            readOnly={readOnly}
                           />
                         )
                       })}

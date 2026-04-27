@@ -206,7 +206,14 @@ export default function MonthlyReportPage() {
     layout: pdfLayout,
     isSaving: layoutSaving,
     saveLayout,
-  } = usePDFLayout(businessId, settings, setSettings, selectedMonth)
+  } = usePDFLayout(
+    businessId,
+    settings,
+    setSettings,
+    selectedMonth,
+    // Phase 42 D-17: every layout save triggers the pill auto-revert chain.
+    () => { reportStatus.refresh() },
+  )
 
   const {
     templates,
@@ -647,9 +654,33 @@ export default function MonthlyReportPage() {
     if (!report) return
     try {
       await saveSnapshot(report, { status, generatedBy: userId, commentary })
-      toast.success(status === 'final' ? 'Report finalised' : 'Draft saved')
+      // Phase 42 D-06: when finalising, lock the report locally so auto-save no-ops
+      // and the textareas flip to readOnly. Refresh the pill in parallel (parity
+      // with auto-save's onSaveSuccess wiring).
+      if (status === 'final') {
+        setLoadedSnapshotStatus('final')
+        await reportStatus.refresh()
+        toast.success('Report finalised — auto-save locked')
+      } else {
+        toast.success('Draft saved')
+      }
     } catch (err) {
       toast.error('Failed to save report')
+    }
+  }
+
+  // Phase 42 D-06: companion to handleSaveSnapshot('final'). Saves the snapshot
+  // back to status='draft', clears the local lock, and refreshes the pill so
+  // auto-save resumes immediately.
+  const handleUnfinalise = async () => {
+    if (!report) return
+    try {
+      await saveSnapshot(report, { status: 'draft', generatedBy: userId, commentary })
+      setLoadedSnapshotStatus('draft')
+      await reportStatus.refresh()
+      toast.success('Report unlocked for editing')
+    } catch (err) {
+      toast.error('Failed to unfinalise')
     }
   }
 
@@ -943,16 +974,30 @@ export default function MonthlyReportPage() {
             {report && (
               <>
                 {/* Phase 42 D-05: the legacy draft-save button was removed — auto-save replaces it.
-                    The visible reassurance lives in <SaveIndicator/> next to the pill. */}
-                <button
-                  onClick={() => handleSaveSnapshot('final')}
-                  disabled={report.is_draft}
-                  title={report.is_draft ? 'Reconcile all transactions before finalising' : 'Save as final report'}
-                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Save className="w-4 h-4" />
-                  <span className="hidden sm:inline">Finalise</span>
-                </button>
+                    The visible reassurance lives in <SaveIndicator/> next to the pill.
+                    Phase 42 D-06: Finalise toggles to "Unfinalise to edit" once the snapshot
+                    is locked (loadedSnapshotStatus === 'final'). The Unfinalise button calls
+                    handleUnfinalise which saves status='draft' + refreshes the pill. */}
+                {!isLocked ? (
+                  <button
+                    onClick={() => handleSaveSnapshot('final')}
+                    disabled={report.is_draft}
+                    title={report.is_draft ? 'Reconcile all transactions before finalising' : 'Lock report and stop auto-save'}
+                    className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span className="hidden sm:inline">Finalise</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleUnfinalise}
+                    title="Unlock report for editing — auto-save will resume"
+                    className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span className="hidden sm:inline">Unfinalise to edit</span>
+                  </button>
+                )}
                 <button
                   onClick={handleExportPDF}
                   disabled={isExporting}
@@ -1067,6 +1112,10 @@ export default function MonthlyReportPage() {
             onCommentaryChange={handleCommentaryChange}
             onCommitBlur={() => autoSave.flushImmediately()}
             onTabChange={setActiveTab}
+            // Phase 42 D-06: when the snapshot is finalised, render commentary
+            // textareas as readOnly so coaches can read but not edit. Pair with
+            // the Unfinalise button above to resume editing.
+            readOnly={isLocked}
           />
         )}
 
@@ -1255,6 +1304,9 @@ export default function MonthlyReportPage() {
           // Phase 35 D-16: passed so the settings save triggers auto-revert when
           // editing an approved/sent report.
           reportMonth={selectedMonth}
+          // Phase 42 D-17: settings save → pill refresh (parity with auto-save
+          // and PDF layout save). Closes the revert chain on every coach action.
+          onSaveSuccess={() => reportStatus.refresh()}
           onSettingsChange={(newSettings) => {
             setSettings(newSettings)
             // Re-generate report if it was already generated
