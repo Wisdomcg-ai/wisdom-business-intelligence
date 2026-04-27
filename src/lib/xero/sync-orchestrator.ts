@@ -186,8 +186,21 @@ function byMonthUrl(base: BaseMonth, periods: number = 11): string {
 
 /** Build the single-period FY-total URL for reconciliation. No periods=, no
  * timeframe= — single column FY total per account. */
-function fyTotalUrl(fy: number, fyStartMonth: number): string {
-  const qs = `fromDate=${getFYStart(fy, fyStartMonth)}&toDate=${getFYEnd(fy, fyStartMonth)}&standardLayout=false&paymentsOnly=false`
+function fyTotalUrl(
+  fy: number,
+  fyStartMonth: number,
+  base?: BaseMonth,
+): string {
+  // The reconciler oracle MUST cover the same date window as the by-month
+  // query, otherwise reconciliation flags every account where Xero has any
+  // entry posted outside the by-month window (e.g. future-dated quarterly
+  // super accruals, post-EOY adjustments for prior FY) — even though the
+  // by-month data is correct.
+  //
+  // toDate = the last day of the by-month window (= base.end). If `base` is
+  // omitted (test backwards-compat), fall back to the FY end date.
+  const toDate = base?.end ?? getFYEnd(fy, fyStartMonth)
+  const qs = `fromDate=${getFYStart(fy, fyStartMonth)}&toDate=${toDate}&standardLayout=false&paymentsOnly=false`
   return `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?${qs}`
 }
 
@@ -366,9 +379,13 @@ export async function syncBusinessXeroPL(
         const byMonthJson = await byMonthResp.json()
         await sleep(XERO_REQUEST_DELAY_MS)
 
-        // 3c. Fetch single-period FY total for reconciliation.
+        // 3c. Fetch single-period FY total for reconciliation. toDate is the
+        // by-month window's last day so both queries cover identical date
+        // ranges (otherwise future-dated accruals in Xero make the totals
+        // over-report vs the by-month sum, creating false-positive
+        // discrepancies).
         const fyTotalResp = await fetch(
-          fyTotalUrl(window.fy, fyStartMonth),
+          fyTotalUrl(window.fy, fyStartMonth, window.base),
           { headers },
         )
         xeroRequestCount++
