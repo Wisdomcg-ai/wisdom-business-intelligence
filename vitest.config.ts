@@ -1,18 +1,11 @@
 import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
-  // Override the project tsconfig's `jsx: "preserve"` for the vitest build
-  // pipeline. preserve leaves JSX literals in the output, which the SSR
-  // module-runner transform (called by vitest) then fails to parse.
-  // For tests we transpile JSX to React.createElement calls via the classic
-  // runtime — this matches what Next.js does at runtime and avoids needing
-  // an extra @vitejs/plugin-react dependency.
-  oxc: {
-    jsx: {
-      runtime: 'automatic',
-    },
-  },
+  // @vitejs/plugin-react handles JSX transform for tests (origin/main pattern).
+  // Phase 43 component tests use this — earlier oxc.jsx override is unnecessary.
+  plugins: [react()],
   test: {
     environment: 'jsdom',
     globals: true,

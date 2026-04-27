@@ -906,7 +906,14 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
               {cogsLines.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
-                    No COGS lines added. Click &quot;Add Line&quot; above.
+                    {priorYear && priorYear.cogs.byLine.length === 0 ? (
+                      <>
+                        <div className="font-medium text-gray-700 mb-1">No Cost of Sales accounts found in Xero</div>
+                        <div className="text-xs">Service businesses often don&apos;t have COGS. If you have direct product or service-delivery costs, click &quot;Add Line&quot; above to enter them manually.</div>
+                      </>
+                    ) : (
+                      <>No COGS lines added. Click &quot;Add Line&quot; above.</>
+                    )}
                   </td>
                 </tr>
               )}
@@ -1183,7 +1190,14 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                 {cogsLines.length === 0 && (
                   <tr>
                     <td colSpan={15} className="px-4 py-8 text-center text-sm text-gray-500">
-                      No COGS lines added. Click &quot;Add Line&quot; to add cost of goods sold items.
+                      {priorYear && priorYear.cogs.byLine.length === 0 ? (
+                        <>
+                          <div className="font-medium text-gray-700 mb-1">No Cost of Sales accounts found in Xero</div>
+                          <div className="text-xs">Service businesses often don&apos;t have COGS. If you have direct product or service-delivery costs, click &quot;Add Line&quot; to enter them manually.</div>
+                        </>
+                      ) : (
+                        <>No COGS lines added. Click &quot;Add Line&quot; to add cost of goods sold items.</>
+                      )}
                     </td>
                   </tr>
                 )}

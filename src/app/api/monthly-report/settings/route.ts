@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { revertReportIfApproved } from '@/lib/reports/revert-report'
 
 export const dynamic = 'force-dynamic'
 
@@ -113,6 +114,11 @@ export async function POST(request: NextRequest) {
       subscription_account_codes,
       wages_account_names,
       pdf_layout,
+      // Optional: month being edited (YYYY-MM). When provided, an approved/sent report
+      // for that month silently reverts to draft per Phase 35 D-16. Settings are business-
+      // level so without a month we cannot scope the revert; callers that have a current
+      // month should pass it.
+      report_month,
     } = body
 
     if (!business_id) {
@@ -174,6 +180,21 @@ export async function POST(request: NextRequest) {
         { error: error.message || 'Failed to save settings' },
         { status: 500 }
       )
+    }
+
+    // Phase 35 D-16: Silently revert an approved or sent report to draft after a coach edit
+    // (template / section toggle / pdf layout). Preserves snapshot_data (D-18) so the
+    // already-sent email link keeps rendering the version the client received.
+    // Settings are business-level, so we only revert when the caller passes the current
+    // report_month; callers without that context are no-ops here.
+    if (report_month) {
+      try {
+        const periodMonth = `${report_month}-01`
+        await revertReportIfApproved(supabase, business_id, periodMonth)
+      } catch (revertErr) {
+        // Do not fail the save if revert tracking fails — log and continue.
+        console.error('[monthly-report/settings] revertReportIfApproved failed:', revertErr)
+      }
     }
 
     return NextResponse.json({ success: true, settings })

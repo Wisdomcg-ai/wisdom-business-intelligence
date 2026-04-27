@@ -1,5 +1,5 @@
 ---
-phase: 42-plan-period-as-explicit-state-replace-inference-based-extend
+phase: 43-plan-period-as-explicit-state-replace-inference-based-extend
 plan: "02"
 subsystem: goals-wizard
 tags: [hook-refactor, plan-period, ui, banner, modal, phase-14-bug-fix, role-guard-removal]

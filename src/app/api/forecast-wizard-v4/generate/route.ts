@@ -132,6 +132,17 @@ export async function POST(request: Request) {
 
       resultForecastId = updated.id
     } else {
+      // Deactivate any existing active forecast for the same (business, FY, type)
+      // before inserting. The partial unique index unique_active_forecast_per_fy
+      // would otherwise reject the insert with 23505.
+      await supabase
+        .from('financial_forecasts')
+        .update({ is_active: false })
+        .eq('business_id', profileId)
+        .eq('fiscal_year', fiscalYear)
+        .eq('forecast_type', 'forecast')
+        .eq('is_active', true)
+
       // INSERT new forecast
       const { data: inserted, error: insertError } = await supabase
         .from('financial_forecasts')
@@ -150,9 +161,13 @@ export async function POST(request: Request) {
       resultForecastId = inserted.id
     }
 
-    // Generate P&L lines from assumptions (only on final generate, not drafts)
+    // Generate P&L lines from assumptions on every save (drafts included).
+    // Previously only materialised on final Generate, which left downstream
+    // tools (monthly report, cashflow forecast, dashboard) reading 0 P&L
+    // lines for any forecast where the user hadn't clicked the final button —
+    // even though they'd been editing for hours and assumptions were saved.
     let plLinesGenerated = 0
-    if (!isDraft && assumptions) {
+    if (assumptions) {
       try {
         const { data: existingPLLines } = await supabase
           .from('forecast_pl_lines')

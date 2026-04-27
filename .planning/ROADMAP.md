@@ -536,39 +536,57 @@ Account Name | Entity A Actual | Entity A Budget | Entity B Actual | Entity B Bu
 ---
 
 ### Phase 35: Report Approval + Delivery Workflow
-**Goal:** Matt can mark a monthly report as approved inside WisdomBI, triggering an automated email to the client via Make.com — replacing the current manual process of exporting from Calxa and sending separately.
+**Goal:** Matt can mark a monthly report as approved inside WisdomBI, triggering an automated email to the client via Resend — replacing the current manual process of exporting from Calxa and sending separately.
 **Depends on:** Phase 33 (CFO Dashboard — defines `cfo_report_status` table and status vocabulary)
 **Requirements:** APPR-01, APPR-02, APPR-03, APPR-04, APPR-05
 **UI hint:** yes
-**Plans:** TBD
+**Plans:** 7/7 plans executed
+
+Plans:
+- [x] 35-01-PLAN.md — cfo_email_log migration (audit table + RLS)
+- [x] 35-02-PLAN.md — HMAC token helpers + buildReportUrl + .env.example
+- [x] 35-03-PLAN.md — sendMonthlyReport Resend wrapper with 15s deadline
+- [x] 35-04-PLAN.md — POST /api/cfo/report-status + revertReportIfApproved helper
+- [x] 35-05-PLAN.md — /reports/view/[token] public snapshot page + middleware
+- [x] 35-06-PLAN.md — ReportStatusBar UI + useReportStatus hook + approve-and-send orchestrator
+- [x] 35-07-PLAN.md — Edit-revert wiring + ROADMAP.md update + final UAT
+
+**Scope override (during planning):** The original ROADMAP entry called for a Make.com webhook integration. Pivoted during /gsd:discuss-phase to direct email via Resend — owning deliverability is a cleaner CFO-product story, eliminates per-business webhook URL setup, and keeps audit data in-platform. See `.planning/phases/35-report-approval-delivery-workflow/35-CONTEXT.md` for full decision log (D-01..D-23).
+
+**Scope amendment (during execution):** D-09 (per-coach From email) was further amended during Plan 35-06 UAT to a **single SaaS sender** pattern via `REPORT_FROM_EMAIL` / `REPORT_FROM_NAME` env vars. Per-coach Resend domain verification proved operationally painful; one verified domain (`wisdombi.ai` → `cfo@wisdombi.ai`) is simpler and scales to N coaches without per-coach DNS work. Reply-To still routes to the coach's own email so client replies reach them.
 
 **Context:**
 The `cfo_report_status` table (created in Phase 33) already models the full status lifecycle:
 `draft → ready_for_review → approved → sent`
 
-Phase 35 adds the UI controls and automation trigger that move a report through this lifecycle.
+Phase 35 adds the UI controls + automation trigger + public client view + edit-revert wiring that move a report through this lifecycle.
 
-**Scope:**
-- New DB column: `businesses.make_webhook_url text` — per-client Make.com webhook URL, set in business settings
-- New API: `POST /api/cfo/report-status` — upserts `cfo_report_status` for (business_id, period_month); if transitioning to `approved`, fires the Make.com webhook with report metadata; if webhook succeeds, sets `sent_at` and status → `sent`
-- Modified UI: monthly report page top bar gains a status pill + action button:
-  - `draft` → "Mark Ready for Review" button
-  - `ready_for_review` → "Approve & Send" button (coach only)
-  - `approved` → "Sent ✓" badge with `sent_at` timestamp
-  - `sent` → read-only "Delivered [date]" badge
-- Webhook payload to Make.com: `{ business_name, period_month, report_url, approved_by_name, approved_at }`
+**Scope (as built):**
+- New DB table: `cfo_email_log` — append-only audit of every Resend send attempt (D-14)
+- New API: `POST /api/cfo/report-status` — upserts `cfo_report_status` for (business_id, period_month); on `approved` transition: captures snapshot to `snapshot_data` (D-15), sends email via Resend (D-05/D-08/D-10), writes `cfo_email_log` row (success or failure), sets `status='sent'` only on Resend 2xx (D-11)
+- New helper: `revertReportIfApproved()` (lib/reports/revert-report.ts) — silently flips approved/sent → draft on commentary/snapshot/settings edits, preserves `snapshot_data` (D-16/D-17/D-18)
+- New helpers: `signReportToken` / `verifyReportToken` via existing HMAC utils (D-20), `buildReportUrl` with Phase 36 `portal_slug` forward-compat (D-22)
+- New public route: `/reports/view/[token]` — anonymous read-only snapshot view, no token expiry (D-19/D-21), middleware exempt from `publicRoutes` AND `onboardingExemptRoutes`
+- Modified UI: monthly report page top bar gains a status pill + contextual action buttons (Mark Ready / Approve & Send / Resend / Revert) — coach-only buttons, clients see read-only pill (D-04)
+- Email format: subject `{Business} — {Month Year} financial report` (D-08), body = greeting + "View Report" button + PDF attachment, no headline numbers (D-06), recipient = `businesses.owner_email` only (D-10)
+- Edit-revert: hooked into `/api/monthly-report/{commentary,snapshot,settings}` save routes; Xero ingestion paths explicitly NOT touched (D-17)
 - CFO dashboard (Phase 33) reads `cfo_report_status` — status changes on the report page are immediately reflected on the dashboard
 
-**Make.com automation (Matt configures in Make.com, not in code):**
-- Trigger: Custom Webhook receives payload
-- Action: Send email to client with report link or PDF attachment
+**Required env vars (must be set in dev `.env.local` AND Vercel production env):**
+- `RESEND_API_KEY` — Resend account API key
+- `REPORT_LINK_SECRET` — HMAC signing secret for token URLs
+- `REPORT_FROM_EMAIL` — single verified Resend sender (e.g., `cfo@wisdombi.ai`)
+- `REPORT_FROM_NAME` — display name for the From header
+
+**Required Resend setup:** verify the `REPORT_FROM_EMAIL` domain in Resend dashboard before first production send.
 
 **Success Criteria:**
-- Clicking "Approve & Send" on a report with status `ready_for_review` posts the webhook payload and transitions status to `sent`
-- The CFO dashboard "Pending Approval" count decrements immediately after a report is approved
-- If the Make.com webhook returns an error, the status stays at `approved` (not `sent`) and an error toast is shown
-- `approved_by` is recorded as the authenticated user's ID; `approved_at` and `sent_at` are timestamped
-- Webhook URL is configurable per business in the business settings page — not hardcoded
+- Clicking "Approve & Send" on a draft or ready_for_review report sends a real email via Resend, captures a snapshot, and transitions status to `sent`
+- Email contains subject, "View Report" link, PDF attachment; clicking the link opens the public snapshot view
+- The CFO dashboard "Pending Approval" count decrements immediately after a report is sent
+- If Resend returns an error, status stays at `approved` (not `sent`), error toast surfaces, "Resend" button appears, every attempt logged in `cfo_email_log`
+- `approved_by` recorded as authenticated user; `approved_at` / `sent_at` / `snapshot_taken_at` timestamps written
+- Editing commentary, snapshot, or settings on an already-approved report silently reverts status to `draft`; previously-sent email link continues to render the frozen snapshot
 
 ### Phase 37: Resolver adoption — route all pages through resolveBusinessId [COMPLETE]
 
@@ -682,15 +700,50 @@ Plans:
 - [x] 41-02-PLAN.md — Refactor /business-profile page to use BusinessContext with role-aware rendering (owner / admin / member / none)
 - [ ] 41-03-PLAN.md — Sweep + delete existing phantom rows with explicit user confirmation gate
 
-### Phase 42: Plan period as explicit state — replace inference-based extended period detection [COMPLETE]
+### Phase 42: Monthly Report Save Flow Consolidation [COMPLETE]
+**Goal:** Collapse the multiple save buttons + intermediate local-state saves on the monthly report page into a single auto-save-on-blur path. Eliminate the per-note green ✓ button (saves only to local React state) + the page-level "Save Draft" button (POSTs to /api/monthly-report/snapshot). End state: coach types → focus leaves the field → server save fires → cfo_report_status reflects new state immediately.
+**Depends on:** Phase 35 (revert wiring depends on snapshot save firing on every coach edit; current UX requires manual "Save Draft" click which broke Phase 35 UAT visibly)
+**Requirements:** N/A (UX consolidation — no new functional requirement; existing requirements already cover the persistence contract)
+
+**Plans:** 7/7 plans complete
+- [x] 42-00-PLAN.md — Wave 0 scaffolding: lift useDebouncedCallback to shared lib + create test scaffolds for 4 surfaces
+- [x] 42-01-PLAN.md — useAutoSaveReport hook (debounce + blur + retry + queue + lock + onSaveSuccess)
+- [x] 42-02-PLAN.md — SaveIndicator component (5 status states with retry button)
+- [x] 42-03-PLAN.md — Refactor CommentaryLine to always-editable inline (remove green ✓ + Cancel)
+- [x] 42-04-PLAN.md — Wire page.tsx: mount hook, render indicator, remove Save Draft button, thread onCommitBlur
+- [x] 42-05-PLAN.md — Finalise lock + Unfinalise button + D-17 settings/layout save → pill refresh wiring
+- [x] 42-06-PLAN.md — beforeunload guard + un-skip Playwright E2E + manual UAT sign-off
+
+**Final scope (as built):**
+- Single source of truth for "saved" state via auto-save → `/api/monthly-report/snapshot` (no separate state machines).
+- Coach typing → debounce 500ms after last keystroke OR onBlur → fires snapshot POST → server triggers Phase 35's `revertReportIfApproved()` chain.
+- Per-note green ✓ Save button removed entirely.
+- "Save Draft" button removed.
+- Finalise button KEPT (D-06): now locks auto-save when status='final' and surfaces an "Unfinalise to edit" button to resume editing. Locked-state textareas render read-only (visible) so coaches retain access to past notes.
+- "Saved/unsaved" indicator (`<SaveIndicator />`) sibling of the status pill: idle / saving / saved / retrying / failed states.
+- 3-attempt exponential backoff (1s/2s/4s) on save failure; manual "Save Now" button on terminal failure; durable error toast.
+- `beforeunload` guard fires while in retry-exhausted state to prevent silent loss of unsaved edits.
+- Pill state remains the single visible source of truth for lifecycle (`Draft | Ready for Review | Approved | Sent`).
+
+**Success Criteria (verified):**
+- Typing a coach note → blur → DB row updates within ~500ms; no manual save button required ✓
+- After save lands, status pill auto-flips Draft (if previously Approved/Sent) within ~1s — Phase 35 revert chain visible end-to-end without user intervention ✓
+- Top toolbar lifecycle buttons: Approve & Send / Mark Ready / Resend / Revert to Draft / Finalise (or Unfinalise) — Save Draft removed, per-note ✓ removed ✓
+- Coach onboarding test: a first-time user types a note + closes the page; reopening shows the note persisted ✓
+
+---
+
+### Phase 43: Plan period as explicit state — replace inference-based extended period detection [COMPLETE]
 
 **Goal:** Make plan period an explicit, persisted property of the plan record. Eliminate runtime inference in the goals wizard. Coach view and owner view render identical plans regardless of who is logged in.
 
-**Why now:** Phase 14's runtime detection at [src/app/goals/hooks/useStrategicPlanning.ts:752-770](src/app/goals/hooks/useStrategicPlanning.ts#L752-L770) has a `ownerUser === user.id` guard at line 759 that explicitly excludes coach view. Every coach-led planning session in Q4 falls through to standard 12-month Year 1 = mostly-past quarters. Surfaced 2026-04-24 in the Fit2Shine planning session (Shari Bremner, businesses.id `389167dc-acb9-4a56-a594-aa77eae15745`) — Shari was being asked to set targets into FY26 with only ~2 months left.
+**Why now:** Phase 14's runtime detection at [src/app/goals/hooks/useStrategicPlanning.ts:752-770](src/app/goals/hooks/useStrategicPlanning.ts#L752-L770) had a `ownerUser === user.id` guard at line 759 that explicitly excluded coach view. Every coach-led planning session in Q4 fell through to standard 12-month Year 1 = mostly-past quarters. Surfaced 2026-04-24 in the Fit2Shine planning session (Shari Bremner, businesses.id `389167dc-acb9-4a56-a594-aa77eae15745`) — Shari was being asked to set targets into FY26 with only ~2 months left.
 
 **Design principle:** Inference-based plan periods are a code smell. Anaplan / Adaptive / Planful all make plan period explicit, declarative state. Detection runs once at plan creation as a *suggestion*, the user confirms, and that becomes the immutable plan record. Coach view, owner view, returning client, first-time client all collapse to one read path.
 
 **Depends on:** Phase 14 (extended period feature this replaces) — see [.planning/phases/14-goals-wizard-first-time-extended-period/](.planning/phases/14-goals-wizard-first-time-extended-period/)
+
+**Note on numbering:** This phase was originally drafted locally as Phase 42 (commits use `feat(42-XX)` / `test(42-XX)` / `docs(42-XX)` prefixes) before discovering that origin's Phase 42 was already merged for the Monthly Report Save Flow work above. Renumbered forward-only on 2026-04-27 — historical commit messages remain at 42-XX, current artifacts at 43-XX. Phase directory: `.planning/phases/43-plan-period-as-explicit-state-replace-inference-based-extend/`.
 
 **Requirements:**
 - New columns on `business_financial_goals`: `plan_start_date`, `plan_end_date`, `year1_end_date`. Migration includes a one-time backfill from current `is_extended_period` + `year1_months` semantics.
@@ -713,9 +766,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [x] 42-01-PLAN.md — Foundation: migration + plan-period helpers + service/API persistence (fixes Phase 14 silent-drop bug) — COMPLETE (df0c007, b6e3272, f9d8f09, 417848f, 92eb5a7, bdcded1, f500116). Migration applied to prod via Management API; 3 columns + 11 rows backfilled; 0 rows missing.
-- [x] 42-02-PLAN.md — Hook refactor + Step 1 banner/modal + getYearLabel rewrite + coach goals page bug fix — COMPLETE (c55e20e, 2acb2a7, a312324, 5f52d01, dc0581b, 7950f58, 9e77000). 7 atomic tasks; all 5 sentinels green; tsc baseline preserved at 16 pre-existing errors.
-- [x] 42-03-PLAN.md — Tests (helpers, components, coach/owner equivalence, persistence) + Vercel preview Fit2Shine smoke test — COMPLETE (b2011de, 2767b8f, a8ad838, 9f95bc3, bab8a4d, 99b6cb7, dc2f194). 38/38 goals tests pass; full suite 299/299; smoke test approved on Fit2Shine 2026-04-27.
+- [x] 43-01-PLAN.md (`feat(42-01)` commits) — Foundation: migration + plan-period helpers + service/API persistence (fixes Phase 14 silent-drop bug) — COMPLETE (df0c007, b6e3272, f9d8f09, 417848f, 92eb5a7, bdcded1, f500116). Migration applied to prod via Management API; 3 columns + 11 rows backfilled; 0 rows missing.
+- [x] 43-02-PLAN.md (`feat(42-02)` commits) — Hook refactor + Step 1 banner/modal + getYearLabel rewrite + coach goals page bug fix — COMPLETE (c55e20e, 2acb2a7, a312324, 5f52d01, dc0581b, 7950f58, 9e77000). 7 atomic tasks; all 5 sentinels green; tsc baseline preserved at 16 pre-existing errors.
+- [x] 43-03-PLAN.md (`test(42-03)` / `docs(42-03)` commits) — Tests (helpers, components, coach/owner equivalence, persistence) + Vercel preview Fit2Shine smoke test — COMPLETE (b2011de, 2767b8f, a8ad838, 9f95bc3, bab8a4d, 99b6cb7, dc2f194). 38/38 goals tests pass; full suite 299/299; smoke test approved on Fit2Shine 2026-04-27.
 
 ---
 

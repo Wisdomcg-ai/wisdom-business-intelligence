@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Executing Phase 42 — Plans 42-01 + 42-02 COMPLETE; Plan 42-03 Tasks 1-5 COMPLETE; awaiting Task 6 Vercel preview Fit2Shine smoke test
-last_updated: "2026-04-27T06:00:00Z"
+status: Phase 43 complete (Phase 42 = save flow consolidation merged from origin; Phase 43 = plan period as explicit state, renumbered from local 42 due to phase number collision)
+last_updated: "2026-04-27T06:30:00Z"
 progress:
-  total_phases: 42
-  completed_phases: 14
-  total_plans: 51
-  completed_plans: 50
-  percent: 98
+  total_phases: 43
+  completed_phases: 17
+  total_plans: 68
+  completed_plans: 68
+  percent: 100
 ---
 
 # Project State
@@ -291,5 +291,66 @@ progress:
   - Phase 40: Playwright E2E infrastructure (smoke spec + coach-flow scaffold with test.skip + 3 scripts) — PR #13
 - Phase 34 COMPLETE (2026-04-23) — bookkeeping: 34-01a (Consolidated BS, PR #2 a80ed62) and 34-02a (Consolidated Cashflow, PR #4 aa27bf2 + patches #8 #9) shipped earlier as part of the consolidation work; roadmap ticks were stale. ROADMAP.md updated to reflect reality.
 - Current active roadmap: Phase 33 (CFO Multi-Client Dashboard) is next natural work — depends only on Phase 23 (done).
-- Phase 41 added (2026-04-23): Eliminate phantom business orphan rows via active-business routing. Removes lazy-create in business-profile-service; switches /business-profile page to read from BusinessContext; sweeps existing phantoms with user approval before delete. Triggered by Jessica @ Oh Nine incident — team-member users accumulating blank "My Business" orphans in admin/clients.
-- Phase 42 added (2026-04-27): Plan period as explicit state — replace inference-based extended period detection. Phase 14's runtime detection in useStrategicPlanning.ts (lines 752-770) excludes coach view via `ownerUser === user.id` guard, so coach-led planning sessions in Q4 fall through to standard 12-month Year 1 (= mostly-past quarters). Replace with explicit `plan_start_date` / `plan_end_date` / `year1_end_date` columns, one-time `suggestPlanPeriod()` helper at creation, and visible "Adjust" affordance in Step 1. Triggered by Fit2Shine planning session 2026-04-24 (Shari Bremner, businesses.id 389167dc-acb9-4a56-a594-aa77eae15745).
+## Phase 35 Decisions (executing)
+
+- Plan 35-01: cfo_email_log append-only audit table — 3 RLS policies (coach_select, super_admin_select, service_role_all). No authenticated INSERT/UPDATE/DELETE — append-only semantics enforced by absence of write policies. Migration file `supabase/migrations/20260424_cfo_email_log.sql` (7377b6c).
+- Plan 35-01: filename `20260424_cfo_email_log.sql` honored per plan spec, even though recent migrations use YYYYMMDDHHMMSS. Sorts correctly after all prior migrations.
+- Plan 35-02: HMAC-SHA256 chosen over JWT (D-20) — matches existing `src/lib/utils/encryption.ts` pattern, zero new deps, shorter URLs via base64url signatures (vs hex in OAuth helper).
+- Plan 35-02: Token payload is ONLY base64url(statusId) — no `exp`, no `iat`, no JSON wrapper (D-21 tokens-never-expire). Global kill-switch is secret rotation.
+- Plan 35-02: `buildReportUrl` strips trailing slashes from `appUrl`; URL-encodes portal slugs; accepts `periodMonth` as YYYY-MM-DD or YYYY-MM and always emits YYYY-MM in portal URL (D-22).
+- Plan 35-02: `.env.example` was gitignored (pattern `.env*` at line 34); force-added with `-f` per the `.gitignore` comment allowing opt-in.
+
+## Completed Work (Phase 35)
+
+- Plan 35-01: cfo_email_log table DDL + RLS + composite index — COMPLETE (7377b6c).
+- Plan 35-02: report-token.ts + build-report-url.ts + .env.example — COMPLETE (490418e, 5a4621b, 7203f79). 19 unit tests passing.
+
+## Phase 42 Decisions (Save Flow Consolidation — origin/main work)
+
+- Plan 42-00: Lift useDebouncedCallback verbatim from ForecastWizardV4.tsx:23-42 to src/lib/hooks/use-debounced-callback.ts. Pitfall 1 paid down inside the shared hook.
+- Plan 42-01: useAutoSaveReport hook — debounce + blur + retry + queue + Finalise/consolidation guards.
+- Plan 42-02: SaveIndicator purely presentational (no useState / useEffect / fetch).
+- Plan 42-03: Replaced 88-line edit/view-mode CommentaryLine with 55-line always-editable variant. D-04 fully satisfied.
+
+## Completed Work (Phase 42)
+
+- Plan 42-00: shared useDebouncedCallback hook + 4 it.todo test scaffolds — COMPLETE (ba90c46, b4f34ea).
+- Plan 42-01: useAutoSaveReport hook with 500ms debounce + 3-attempt backoff — COMPLETE (245ec3a). 15 vitest tests pass.
+- Plan 42-02: SaveIndicator presentational component + 7 RTL tests — COMPLETE (c1980b5, ad1aa4b, 9aaa6aa).
+- Plan 42-03: CommentaryLine refactored to always-editable inline textarea + 7 RTL tests — COMPLETE (1e243f3, 082ba8f).
+- Plans 42-04 through 42-06 — COMPLETE (origin/main; merged via PR #18).
+
+## Phase 43 Decisions (Plan period as explicit state — local work, completed 2026-04-27)
+
+- Drafted locally as Phase 42 before discovering origin's Phase 42 (save flow above) was already merged via PR #18. Renumbered forward-only on 2026-04-27 — historical commit messages remain `feat(42-XX)` / `test(42-XX)` / `docs(42-XX)`, current artifacts (directory + ROADMAP entry + SUMMARY frontmatter) are 43-XX.
+- Plan 43-01 (committed as 42-01): Three nullable date columns added to business_financial_goals via additive migration. Idempotent backfill gated on `plan_start_date IS NULL`; skips zero-revenue placeholder rows. Migration applied to prod 2026-04-27 via Supabase Management API with explicit user authorization.
+- Plan 43-01: Phase 14 silent-drop bug fixed at /api/goals/save/route.ts:96 — extendedPeriod was being silently dropped from request body for every coach save since Phase 14 shipped.
+- Plan 43-01: derivePeriodInfo helper preserves the legacy ExtendedPeriodInfo shape so Phase 14 component contract stays intact — zero breaking changes downstream. isExtendedPeriod threshold = days > 366 (leap-year safe).
+- Plan 43-02 (committed as 42-02): The `ownerUser === user.id` role guard at useStrategicPlanning.ts:759 was the ONLY coach-vs-owner divergence in the load sequence. Removed in this plan. Coach view and owner view now collapse to one read path.
+- Plan 43-02: PlanPeriodAdjustModal clamps year1Months to [12, 15] for v1 — relaxing the range requires Step 4/5 UI broader change.
+- Plan 43-02: getYearLabel refactored to read planPeriod dates instead of `new Date()` — sentinel `grep -c "new Date()" src/app/goals/components/step1/types.ts` is now 0 (was 4).
+- Plan 43-02: Phase 14 coach-page bug fixed — coach goals page now passes `extendedPeriodInfo` prop to Step1GoalsAndKPIs, parity with regular `/goals/page.tsx`.
+- Plan 43-03 (committed as 42-03): Two REGRESSION FENCES live in CI permanently — coach/owner equivalence (source-text sentinel of `ownerUser === user.id` absence) + planPeriod persistence round-trip.
+- Plan 43-03: derivePeriodInfo for Apr 2026 → Jun 2027 returns `year1Months = 15` per inclusive-end month-diff formula. Tests assert helper contract, not prose narrative.
+- Plan 43-03: Vercel preview smoke test approved by user 2026-04-27 — Fit2Shine coach view shows the PlanPeriodBanner with date-driven Year 1 label, original 2026-04-24 incident structurally resolved.
+
+## Completed Work (Phase 43)
+
+- Plan 43-01: migration applied to prod (3 columns + 11 rows backfilled, 0 rows missing) + suggestPlanPeriod helper + derivePeriodInfo helper + FinancialService planPeriod r/w + /api/goals/save Phase 14 bug fix — COMPLETE (df0c007, b6e3272, f9d8f09, 417848f, 92eb5a7, bdcded1, f500116).
+- Plan 43-02: hook detection block replaced with date-driven read; ownerUser guard removed; PlanPeriodBanner + PlanPeriodAdjustModal added; getYearLabel reads planPeriod dates; both goals pages thread planPeriod through; coach-page Phase 14 bug fixed — COMPLETE (c55e20e, 2acb2a7, a312324, 5f52d01, dc0581b, 7950f58, 9e77000, 553c0c9). 7 atomic tasks; all 5 sentinels green.
+- Plan 43-03: 5 vitest test files (38 tests pass); full suite 299/299; smoke test approved on Fit2Shine — COMPLETE (b2011de, 2767b8f, a8ad838, 9f95bc3, bab8a4d, 99b6cb7, dc2f194, 0d8010b).
+
+## Position
+
+- Current: Phase 43 [COMPLETE]. Phase 42 (save flow) also [COMPLETE] (origin/main work).
+- Stopped at: Completed 43-03-SUMMARY.md + Phase 43 closeout commit (0d8010b).
+
+## Last Session
+
+- 2026-04-27T06:30:00Z — Completed Phase 43 closeout. Resolved phase-number collision with origin's Phase 42 by renumbering local work forward to 43 (forward-only, no history rewrite).
+
+## Roadmap Evolution
+
+- Phase 41 added (2026-04-23): Eliminate phantom business orphan rows via active-business routing. Triggered by Jessica @ Oh Nine incident.
+- Phase 42 added (2026-04-27): Monthly Report Save Flow Consolidation. Auto-save-on-blur replacing 4 confusing save buttons. Surfaced during Phase 35 Plan 35-07 UAT.
+- Phase 43 added (2026-04-27): Plan period as explicit state — replace inference-based extended period detection. Triggered by Fit2Shine planning session 2026-04-24. Originally drafted locally as Phase 42; renumbered to 43 forward-only after discovering origin's Phase 42 was the save flow work above. Historical commit prefixes remain `42-XX`; current artifacts are `43-XX`.

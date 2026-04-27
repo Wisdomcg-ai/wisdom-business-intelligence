@@ -167,6 +167,15 @@ export default function CoachGoalsPage() {
         return
       }
 
+      // Check if user is super_admin — super_admins can view any client
+      const { data: roleData } = await supabase
+        .from('system_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      const isSuperAdmin = roleData?.role === 'super_admin'
+
       // Check if user is a coach with access to this business
       const { data: business, error } = await supabase
         .from('businesses')
@@ -174,7 +183,7 @@ export default function CoachGoalsPage() {
         .eq('id', clientId)
         .maybeSingle()
 
-      if (error || !business || business.assigned_coach_id !== user.id) {
+      if (error || !business || (!isSuperAdmin && business.assigned_coach_id !== user.id)) {
         router.push('/coach/clients')
         return
       }

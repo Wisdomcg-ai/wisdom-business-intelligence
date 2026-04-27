@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { X, Loader2, ChevronLeft, ChevronRight, Check, RefreshCw, Cloud, CloudOff, CheckCircle2, AlertCircle, Copy, Pencil, Save, Lock } from 'lucide-react';
 import { toast } from 'sonner';
+import { useDebouncedCallback } from '@/lib/hooks/use-debounced-callback';
 import { useForecastWizard } from './useForecastWizard';
 import { StepBar } from './components/StepBar';
 import { YearTabs } from './components/YearTabs';
@@ -18,28 +19,6 @@ import { Step6CapEx } from './steps/Step6CapEx'; // Now Step 7
 import { Step8GrowthPlan } from './steps/Step8GrowthPlan';
 import { Step8Review } from './steps/Step8Review';
 import { WIZARD_STEPS, PriorYearData, TeamMember, Goals } from './types';
-
-// Debounce helper
-function useDebouncedCallback<T extends (...args: any[]) => any>(
-  callback: T,
-  delay: number
-): T {
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const callbackRef = useRef(callback);
-  callbackRef.current = callback;
-
-  return useCallback(
-    ((...args: Parameters<T>) => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-      timeoutRef.current = setTimeout(() => {
-        callbackRef.current(...args);
-      }, delay);
-    }) as T,
-    [delay]
-  );
-}
 
 interface ForecastWizardV4Props {
   businessId: string;

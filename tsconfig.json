@@ -44,6 +44,7 @@
   "exclude": [
     "node_modules",
     "supabase/functions",
-    "_archive"
+    "_archive",
+    "vitest.config.ts"
   ]
 }

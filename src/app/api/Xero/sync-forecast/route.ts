@@ -104,7 +104,28 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Build forecast_pl_lines from xero_pl_lines ───────────────────────
-    const plLines = xeroLines
+    // Dedupe by account_code (or account_name when code missing) to satisfy the
+    // unique_forecast_account constraint on (forecast_id, account_code). When
+    // sync-all races against itself, xero_pl_lines can contain duplicate rows
+    // for the same account; without this, the insert below fails atomically
+    // with a 23505 violation and no Xero data lands in the forecast.
+    const dedupMap = new Map<string, any>()
+    for (const xl of xeroLines as any[]) {
+      const key = xl.account_code || `name:${xl.account_name}`
+      const existing = dedupMap.get(key)
+      // Keep the row with more months of data; tie-break by longer monthly_values
+      const existingMonths = existing ? Object.keys(existing.monthly_values || {}).length : -1
+      const candidateMonths = Object.keys(xl.monthly_values || {}).length
+      if (!existing || candidateMonths > existingMonths) {
+        dedupMap.set(key, xl)
+      }
+    }
+    const dedupedXero = Array.from(dedupMap.values())
+    if (dedupedXero.length !== xeroLines.length) {
+      console.warn(`[Sync Forecast] Deduplicated xero_pl_lines: ${xeroLines.length} → ${dedupedXero.length} for forecast ${forecast_id}`)
+    }
+
+    const plLines = dedupedXero
       .filter((xl: any) => {
         // Only include lines that have data
         const values = xl.monthly_values || {}
@@ -131,6 +152,9 @@ export async function POST(request: NextRequest) {
     })
 
     // ── Delete existing Xero-synced lines ────────────────────────────────
+    // Fail loudly: if delete is silently swallowed, the subsequent insert
+    // collides with the unique_forecast_account constraint and the whole
+    // sync is wasted. Better to surface the problem.
     const { error: deleteError } = await supabase
       .from('forecast_pl_lines')
       .delete()
@@ -139,6 +163,10 @@ export async function POST(request: NextRequest) {
 
     if (deleteError) {
       console.error('[Sync Forecast] Delete error:', deleteError)
+      return NextResponse.json(
+        { error: 'Failed to clear existing Xero-synced lines', detail: deleteError.message },
+        { status: 500 },
+      )
     }
 
     // ── Insert new lines with full 24-month actual_months ────────────────

@@ -7,6 +7,9 @@ import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { createClient } from '@/lib/supabase/client'
 import dynamic from 'next/dynamic'
 import { Loader2, BarChart3, Settings, Download, Save, LayoutGrid } from 'lucide-react'
+// Phase 42 Plan 04: auto-save lifecycle (D-01..D-15) + visible save indicator (D-08, D-09).
+import { useAutoSaveReport } from './hooks/useAutoSaveReport'
+import SaveIndicator from './components/SaveIndicator'
 import { toast } from 'sonner'
 import PageHeader from '@/components/ui/PageHeader'
 import MonthlyReportTabs from './components/MonthlyReportTabs'
@@ -48,6 +51,15 @@ import { MonthlyReportPDFService } from './services/monthly-report-pdf-service'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
 import { usePDFLayout } from './hooks/usePDFLayout'
 import type { ReportTab, MonthlyReportSettings, VarianceCommentary, GeneratedReport } from './types'
+// Phase 35 Plan 06: Approval + delivery controls for the monthly report.
+import ReportStatusBar from './components/ReportStatusBar'
+import { useReportStatus } from './hooks/useReportStatus'
+import {
+  approveAndSend,
+  markReady,
+  resendReport,
+  revertToDraft,
+} from './services/approve-and-send'
 
 const PDFLayoutEditorModal = dynamic(
   () => import('./components/layout-editor/PDFLayoutEditorModal'),
@@ -75,6 +87,16 @@ export default function MonthlyReportPage() {
   // Commentary state
   const [commentary, setCommentary] = useState<VarianceCommentary | undefined>(undefined)
   const [commentaryLoading, setCommentaryLoading] = useState(false)
+
+  // Phase 42 Plan 04: track loaded snapshot status to drive isLocked (D-06).
+  // Plan 42-05 will give Finalise full lock UX; this plan only sets it up so
+  // useAutoSaveReport receives a correct isLocked flag.
+  const [loadedSnapshotStatus, setLoadedSnapshotStatus] = useState<'draft' | 'final' | null>(null)
+
+  // Phase 35 Plan 06: owner_email + owner_name (recipient + greeting) are needed by
+  // the approve-and-send flow but not part of the existing ActiveBusiness shape.
+  // Fetched once after businessId resolves.
+  const [ownerInfo, setOwnerInfo] = useState<{ email: string | null; name: string | null }>({ email: null, name: null })
 
   // Cashflow forecast state (shared between cashflow tab, charts tab, and PDF export)
   const [cashflowForecast, setCashflowForecast] = useState<CashflowForecastData | null>(null)
@@ -184,7 +206,14 @@ export default function MonthlyReportPage() {
     layout: pdfLayout,
     isSaving: layoutSaving,
     saveLayout,
-  } = usePDFLayout(businessId, settings, setSettings)
+  } = usePDFLayout(
+    businessId,
+    settings,
+    setSettings,
+    selectedMonth,
+    // Phase 42 D-17: every layout save triggers the pill auto-revert chain.
+    () => { reportStatus.refresh() },
+  )
 
   const {
     templates,
@@ -300,6 +329,61 @@ export default function MonthlyReportPage() {
       loadMappings()
     }
   }, [businessId, loadMappings])
+
+  // Phase 35 Plan 06: fetch owner_email + owner_name for the approve-and-send flow.
+  // One-shot read once businessId is known.
+  useEffect(() => {
+    if (!businessId) return
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase
+        .from('businesses')
+        .select('owner_email, owner_name')
+        .eq('id', businessId)
+        .maybeSingle()
+      if (cancelled) return
+      setOwnerInfo({
+        email: (data?.owner_email as string | null) ?? null,
+        name: (data?.owner_name as string | null) ?? null,
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [businessId, supabase])
+
+  // Phase 35 Plan 06: status pill reads cfo_report_status(business_id, period_month).
+  // period_month is derived from the currently-selected report (YYYY-MM → YYYY-MM-01).
+  const periodMonthKey = report?.report_month ? `${report.report_month}-01` : null
+  const reportStatus = useReportStatus(businessId || null, periodMonthKey)
+
+  // Phase 42 Plan 04: mount the auto-save lifecycle. Watches commentary only
+  // (Pitfall 6 / Phase 35 D-17) — typing fires schedule() (debounced 500ms,
+  // D-01/D-02), blur fires flushImmediately(), and every 2xx triggers
+  // reportStatus.refresh() (D-15) so the pill auto-reverts within ~500ms of a
+  // save settling. isLocked is derived from loadedSnapshotStatus
+  // (snapshot.status === 'final' → D-06) — Plan 42-05 will wire the full
+  // Finalise lock UX (toast on completion + button disabled state).
+  const isLocked = loadedSnapshotStatus === 'final'
+  const autoSave = useAutoSaveReport({
+    report,
+    commentary,
+    userId,
+    isLocked,
+    onSaveSuccess: () => {
+      reportStatus.refresh()
+    },
+    saveSnapshot,
+  })
+
+  // Phase 35 Plan 06: map BusinessContext role → ReportStatusBar role.
+  // context: 'client' | 'coach' | 'admin' (admin is the mapped super_admin)
+  const userRole: 'coach' | 'super_admin' | 'client' =
+    currentUser?.role === 'coach'
+      ? 'coach'
+      : currentUser?.role === 'admin'
+      ? 'super_admin'
+      : 'client'
 
   // Load templates when businessId is set; auto-apply default on first load
   const hasAppliedDefaultTemplate = useRef(false)
@@ -526,6 +610,10 @@ export default function MonthlyReportPage() {
       // Load persisted commentary to merge with fresh vendor data
       const snapshot = await loadSnapshot(selectedMonth)
       const persistedCommentary = snapshot?.commentary || undefined
+      // Phase 42 Plan 04: a freshly-generated report should reflect the loaded
+      // snapshot status (or 'draft' if there's no snapshot yet). Without this,
+      // a regenerate after a prior 'final' month would inherit stale lock state.
+      setLoadedSnapshotStatus((snapshot?.status as 'draft' | 'final' | undefined) ?? 'draft')
       fetchCommentary(result, persistedCommentary)
     }
   }, [selectedMonth, fiscalYear, reconciliation, generateReport, fetchCommentary, loadSnapshot])
@@ -540,6 +628,9 @@ export default function MonthlyReportPage() {
     if (snapshot?.commentary) {
       setCommentary(snapshot.commentary)
     }
+    // Phase 42 Plan 04: track loaded snapshot status so isLocked reflects the
+    // newly-loaded month (D-06 setup). Snapshot may be null (no save yet).
+    setLoadedSnapshotStatus((snapshot?.status as 'draft' | 'final' | undefined) ?? null)
   }
 
   const handleCommentaryChange = (accountName: string, note: string) => {
@@ -554,16 +645,188 @@ export default function MonthlyReportPage() {
         },
       }
     })
+    // Phase 42 Plan 04 (D-01/D-02): schedule a debounced auto-save. The hook
+    // reads the latest commentary via refs at fire-time, so no stale-closure risk.
+    autoSave.schedule()
   }
 
   const handleSaveSnapshot = async (status: 'draft' | 'final' = 'draft') => {
     if (!report) return
     try {
       await saveSnapshot(report, { status, generatedBy: userId, commentary })
-      toast.success(status === 'final' ? 'Report finalised' : 'Draft saved')
+      // Phase 42 D-06: when finalising, lock the report locally so auto-save no-ops
+      // and the textareas flip to readOnly. Refresh the pill in parallel (parity
+      // with auto-save's onSaveSuccess wiring).
+      if (status === 'final') {
+        setLoadedSnapshotStatus('final')
+        await reportStatus.refresh()
+        toast.success('Report finalised — auto-save locked')
+      } else {
+        toast.success('Draft saved')
+      }
     } catch (err) {
       toast.error('Failed to save report')
     }
+  }
+
+  // Phase 42 D-06: companion to handleSaveSnapshot('final'). Saves the snapshot
+  // back to status='draft', clears the local lock, and refreshes the pill so
+  // auto-save resumes immediately.
+  const handleUnfinalise = async () => {
+    if (!report) return
+    try {
+      await saveSnapshot(report, { status: 'draft', generatedBy: userId, commentary })
+      setLoadedSnapshotStatus('draft')
+      await reportStatus.refresh()
+      toast.success('Report unlocked for editing')
+    } catch (err) {
+      toast.error('Failed to unfinalise')
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Phase 35 Plan 06: Approve-and-send flow
+  // ------------------------------------------------------------------
+
+  const monthLabel = report?.report_month
+    ? new Date(`${report.report_month}-01T00:00:00`).toLocaleDateString('en-AU', {
+        month: 'long',
+        year: 'numeric',
+      })
+    : ''
+
+  const coachName =
+    (currentUser?.firstName || currentUser?.lastName
+      ? `${currentUser?.firstName ?? ''} ${currentUser?.lastName ?? ''}`.trim()
+      : null) ||
+    (currentUser?.email ? currentUser.email.split('@')[0] : '') ||
+    'Your coach'
+  const coachEmail = currentUser?.email ?? ''
+
+  const clientGreetingName =
+    (ownerInfo.name ? ownerInfo.name.trim().split(/\s+/)[0] : null) || 'there'
+
+  // Reuse the same PDFOptions shape as handleExportPDF — both flows must produce
+  // a byte-identical PDF (D-07 locks this).
+  const buildPdfInput = (): {
+    report: GeneratedReport
+    options: {
+      commentary?: VarianceCommentary
+      fullYearReport?: import('./types').FullYearReport
+      subscriptionDetail?: import('./types').SubscriptionDetailData
+      wagesDetail?: import('./types').WagesDetailData
+      cashflowForecast?: CashflowForecastData
+      sections?: import('./types').ReportSections
+      pdfLayout?: import('./types/pdf-layout').PDFLayout | null
+    }
+  } | null => {
+    if (!report) return null
+    return {
+      report,
+      options: {
+        commentary,
+        fullYearReport: fullYearReport || undefined,
+        subscriptionDetail: subscriptionDetail || undefined,
+        wagesDetail: wagesDetail || undefined,
+        cashflowForecast: cashflowForecast || undefined,
+        sections: settings?.sections,
+        pdfLayout: settings?.pdf_layout ?? null,
+      },
+    }
+  }
+
+  // ReportSnapshotV1 payload assembler — matches the shape Plan 35-05's
+  // ReportSnapshotView expects. Rendering-oriented (pre-computed values), not
+  // raw Xero data (Pitfall 3).
+  const buildSnapshotData = () => {
+    if (!report || !businessId) return null
+    return {
+      schema_version: 1 as const,
+      captured_at: new Date().toISOString(),
+      business: {
+        id: businessId,
+        name: activeBusiness?.name ?? '',
+        slug: null,
+        industry: activeBusiness?.industry ?? null,
+      },
+      period: {
+        month: `${report.report_month}-01`,
+        fiscal_year: report.fiscal_year,
+        label: monthLabel,
+      },
+      coach: {
+        name: coachName,
+        email: coachEmail,
+      },
+      report,
+      commentary: commentary ?? null,
+      settings_applied: {
+        sections: settings?.sections,
+        template_id: activeTemplateId ?? null,
+      },
+    }
+  }
+
+  const buildApproveParams = () => {
+    const pdfInput = buildPdfInput()
+    const snapshot = buildSnapshotData()
+    if (!pdfInput || !snapshot || !businessId || !report) return null
+    return {
+      business_id: businessId,
+      period_month: `${report.report_month}-01`,
+      business_name: activeBusiness?.name ?? '',
+      month_label: monthLabel,
+      client_greeting_name: clientGreetingName,
+      recipient_email: ownerInfo.email ?? '',
+      coach_name: coachName,
+      coach_email: coachEmail,
+      portal_slug: null,
+      pdf_input: pdfInput,
+      snapshot_data: snapshot,
+    }
+  }
+
+  const handleMarkReady = async () => {
+    if (!businessId || !report) return
+    const res = await markReady(businessId, `${report.report_month}-01`)
+    if (!res.ok) throw res
+    await reportStatus.refresh()
+  }
+
+  const handleApproveAndSend = async () => {
+    const params = buildApproveParams()
+    if (!params) {
+      throw { body: { error: 'Report not ready' } }
+    }
+    if (!params.recipient_email) {
+      throw { body: { error: 'No owner_email configured on this business' } }
+    }
+    if (!params.coach_email) {
+      throw { body: { error: 'Coach email unavailable — cannot send' } }
+    }
+    const res = await approveAndSend(params)
+    if (!res.ok) throw res
+    await reportStatus.refresh()
+  }
+
+  const handleResend = async () => {
+    const params = buildApproveParams()
+    if (!params) {
+      throw { body: { error: 'Report not ready' } }
+    }
+    if (!params.recipient_email) {
+      throw { body: { error: 'No owner_email configured on this business' } }
+    }
+    const res = await resendReport(params)
+    if (!res.ok) throw res
+    await reportStatus.refresh()
+  }
+
+  const handleRevertToDraft = async () => {
+    if (!businessId || !report) return
+    const res = await revertToDraft(businessId, `${report.report_month}-01`)
+    if (!res.ok) throw res
+    await reportStatus.refresh()
   }
 
   const [isExporting, setIsExporting] = useState(false)
@@ -637,11 +900,14 @@ export default function MonthlyReportPage() {
       } else {
         setCommentary(undefined)
       }
+      // Phase 42 Plan 04: track loaded snapshot status (D-06 setup).
+      setLoadedSnapshotStatus((snapshot.status as 'draft' | 'final' | undefined) ?? null)
       setActiveTab('report')
       toast.success(`Loaded ${reportMonth} report`)
     } else {
       // No snapshot, generate fresh
       setCommentary(undefined)
+      setLoadedSnapshotStatus(null)
       setActiveTab('report')
       handleGenerateReport()
     }
@@ -707,22 +973,31 @@ export default function MonthlyReportPage() {
 
             {report && (
               <>
-                <button
-                  onClick={() => handleSaveSnapshot('draft')}
-                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-brand-orange hover:bg-brand-orange-600 rounded-lg transition-colors"
-                >
-                  <Save className="w-4 h-4" />
-                  <span className="hidden sm:inline">Save Draft</span>
-                </button>
-                <button
-                  onClick={() => handleSaveSnapshot('final')}
-                  disabled={report.is_draft}
-                  title={report.is_draft ? 'Reconcile all transactions before finalising' : 'Save as final report'}
-                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Save className="w-4 h-4" />
-                  <span className="hidden sm:inline">Finalise</span>
-                </button>
+                {/* Phase 42 D-05: the legacy draft-save button was removed — auto-save replaces it.
+                    The visible reassurance lives in <SaveIndicator/> next to the pill.
+                    Phase 42 D-06: Finalise toggles to "Unfinalise to edit" once the snapshot
+                    is locked (loadedSnapshotStatus === 'final'). The Unfinalise button calls
+                    handleUnfinalise which saves status='draft' + refreshes the pill. */}
+                {!isLocked ? (
+                  <button
+                    onClick={() => handleSaveSnapshot('final')}
+                    disabled={report.is_draft}
+                    title={report.is_draft ? 'Reconcile all transactions before finalising' : 'Lock report and stop auto-save'}
+                    className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span className="hidden sm:inline">Finalise</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleUnfinalise}
+                    title="Unlock report for editing — auto-save will resume"
+                    className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span className="hidden sm:inline">Unfinalise to edit</span>
+                  </button>
+                )}
                 <button
                   onClick={handleExportPDF}
                   disabled={isExporting}
@@ -738,6 +1013,23 @@ export default function MonthlyReportPage() {
       />
 
       <div className="max-w-[1800px] mx-auto p-4 sm:p-6 lg:p-8">
+        {/* Phase 35 Plan 06: Approval + delivery status bar — above the Month Selector */}
+        {/* Phase 42 Plan 04 (D-09): flex-row wrapper hosts both the pill and the SaveIndicator. */}
+        {report && (
+          <div className="mb-4 bg-white rounded-lg shadow-sm px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+            <ReportStatusBar
+              status={reportStatus.status}
+              sentAt={reportStatus.sentAt}
+              role={userRole}
+              onMarkReady={handleMarkReady}
+              onApproveAndSend={handleApproveAndSend}
+              onResend={handleResend}
+              onRevertToDraft={handleRevertToDraft}
+            />
+            <SaveIndicator status={autoSave.status} onRetry={autoSave.retryNow} />
+          </div>
+        )}
+
         {/* Month Selector */}
         <MonthSelector
           selectedMonth={selectedMonth}
@@ -818,7 +1110,12 @@ export default function MonthlyReportPage() {
             commentary={commentary}
             commentaryLoading={commentaryLoading}
             onCommentaryChange={handleCommentaryChange}
+            onCommitBlur={() => autoSave.flushImmediately()}
             onTabChange={setActiveTab}
+            // Phase 42 D-06: when the snapshot is finalised, render commentary
+            // textareas as readOnly so coaches can read but not edit. Pair with
+            // the Unfinalise button above to resume editing.
+            readOnly={isLocked}
           />
         )}
 
@@ -1004,6 +1301,12 @@ export default function MonthlyReportPage() {
           onClose={() => setShowSettings(false)}
           businessId={businessId}
           settings={settings}
+          // Phase 35 D-16: passed so the settings save triggers auto-revert when
+          // editing an approved/sent report.
+          reportMonth={selectedMonth}
+          // Phase 42 D-17: settings save → pill refresh (parity with auto-save
+          // and PDF layout save). Closes the revert chain on every coach action.
+          onSaveSuccess={() => reportStatus.refresh()}
           onSettingsChange={(newSettings) => {
             setSettings(newSettings)
             // Re-generate report if it was already generated

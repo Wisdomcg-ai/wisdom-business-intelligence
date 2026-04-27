@@ -159,6 +159,7 @@ export async function POST(request: NextRequest) {
         .select('id, name')
         .in('business_id', ids.all)
         .eq('is_active', true)
+        .eq('fiscal_year', fiscal_year)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
