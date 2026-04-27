@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Pencil, Check, X, Plus, ChevronDown, ChevronRight, MessageSquarePlus, FileText, Landmark } from 'lucide-react'
+import { ChevronDown, ChevronRight, FileText, Landmark } from 'lucide-react'
 import type { GeneratedReport, ReportLine, ReportSection, MonthlyReportSettings, VarianceCommentary, VendorSummary, VendorTransaction, ReportTab } from '../types'
 
 interface BudgetVsActualTableProps {
@@ -9,6 +9,7 @@ interface BudgetVsActualTableProps {
   commentary?: VarianceCommentary
   commentaryLoading?: boolean
   onCommentaryChange?: (accountName: string, text: string) => void
+  onCommitBlur?: (accountName: string) => void
   onTabChange?: (tab: ReportTab) => void
 }
 
@@ -246,6 +247,7 @@ function CommentaryLine({
   coachNote,
   detailTabRef,
   onNoteChange,
+  onCommitBlur,
   onTabChange,
 }: {
   accountName: string
@@ -254,21 +256,9 @@ function CommentaryLine({
   coachNote: string
   detailTabRef?: 'subscriptions' | 'wages' | null
   onNoteChange?: (accountName: string, note: string) => void
+  onCommitBlur?: (accountName: string) => void
   onTabChange?: (tab: ReportTab) => void
 }) {
-  const [editing, setEditing] = useState(false)
-  const [editText, setEditText] = useState(coachNote)
-
-  const handleSave = () => {
-    onNoteChange?.(accountName, editText)
-    setEditing(false)
-  }
-
-  const handleCancel = () => {
-    setEditText(coachNote)
-    setEditing(false)
-  }
-
   const tabLabel = detailTabRef === 'subscriptions' ? 'Subscriptions' : detailTabRef === 'wages' ? 'Wages' : null
 
   return (
@@ -298,56 +288,32 @@ function CommentaryLine({
       {/* Vendor drill-down */}
       <TransactionDrillDown vendors={vendors} />
 
-      {/* Coach note section */}
-      <div className="mt-2">
-        {editing ? (
-          <div className="flex items-start gap-2">
-            <textarea
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              placeholder="Add your coaching note — what caused this variance? What should the client do about it?"
-              className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
-              rows={3}
-              autoFocus
-            />
-            <div className="flex flex-col gap-1">
-              <button onClick={handleSave} className="p-1.5 text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 rounded" title="Save note">
-                <Check className="w-4 h-4" />
-              </button>
-              <button onClick={handleCancel} className="p-1.5 text-gray-400 hover:text-gray-600 bg-gray-50 hover:bg-gray-100 rounded" title="Cancel">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        ) : coachNote ? (
-          <div className="flex items-start gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
-            <MessageSquarePlus className="w-3.5 h-3.5 text-brand-orange mt-0.5 flex-shrink-0" />
-            <p className="flex-1 text-sm text-gray-800">{coachNote}</p>
-            {onNoteChange && (
-              <button
-                onClick={() => setEditing(true)}
-                className="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0"
-                title="Edit note"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-        ) : onNoteChange ? (
-          <button
-            onClick={() => setEditing(true)}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-orange transition-colors px-1 py-0.5"
-          >
-            <MessageSquarePlus className="w-4 h-4" />
-            Add coaching note
-          </button>
-        ) : null}
-      </div>
+      {/* Coach note section — Phase 42 D-04, D-14: always-editable inline textarea.
+          Parent controls value via coachNote (D-14 optimistic UI); every keystroke
+          flows up via onNoteChange; blur triggers onCommitBlur so parent can flush
+          the debounced auto-save (D-01). */}
+      {onNoteChange && (
+        <div className="mt-2">
+          <textarea
+            value={coachNote}
+            onChange={(e) => onNoteChange(accountName, e.target.value)}
+            onBlur={() => onCommitBlur?.(accountName)}
+            placeholder="Add your coaching note — what caused this variance? What should the client do about it?"
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-brand-orange resize-none"
+            rows={2}
+            data-testid={`commentary-textarea-${accountName}`}
+          />
+        </div>
+      )}
     </div>
   )
 }
 
-export default function BudgetVsActualTable({ report, commentary, commentaryLoading, onCommentaryChange, onTabChange }: BudgetVsActualTableProps) {
+// Test-only export — RTL tests render this directly. Keep export at bottom of
+// the function to make the test-only rationale explicit.
+export { CommentaryLine }
+
+export default function BudgetVsActualTable({ report, commentary, commentaryLoading, onCommentaryChange, onCommitBlur, onTabChange }: BudgetVsActualTableProps) {
   const settings = report.settings
 
   const colCount =
@@ -508,6 +474,7 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                             coachNote={entry.coach_note || ''}
                             detailTabRef={entry.detail_tab_ref}
                             onNoteChange={onCommentaryChange}
+                            onCommitBlur={onCommitBlur}
                             onTabChange={onTabChange}
                           />
                         )
