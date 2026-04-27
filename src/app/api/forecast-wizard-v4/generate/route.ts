@@ -161,58 +161,72 @@ export async function POST(request: Request) {
       resultForecastId = inserted.id
     }
 
-    // Generate P&L lines from assumptions on every save (drafts included).
-    // Previously only materialised on final Generate, which left downstream
-    // tools (monthly report, cashflow forecast, dashboard) reading 0 P&L
-    // lines for any forecast where the user hadn't clicked the final button —
-    // even though they'd been editing for hours and assumptions were saved.
+    // ── Phase 44 D-12 — atomic save + materialize via Postgres RPC ─────────
+    //
+    // Replaces the legacy serial UPDATE-then-INSERT (which had silent-failure
+    // catch-blocks: assumption saved but pl_lines silently failed → downstream
+    // consumers saw stale data forever). The RPC writes assumptions AND
+    // forecast_pl_lines in a single transaction — derivation failure rolls
+    // back the assumption write. See migration
+    // supabase/migrations/20260429000002_save_assumptions_and_materialize_rpc.sql.
     let plLinesGenerated = 0
+    let computedAt: string | null = null
     if (assumptions) {
-      try {
-        const { data: existingPLLines } = await supabase
-          .from('forecast_pl_lines')
-          .select('*')
-          .eq('forecast_id', resultForecastId)
-          .order('sort_order', { ascending: true })
+      const { data: existingPLLines } = await supabase
+        .from('forecast_pl_lines')
+        .select('*')
+        .eq('forecast_id', resultForecastId)
+        .order('sort_order', { ascending: true })
 
-        const generatedLines = convertAssumptionsToPLLines({
-          assumptions,
-          forecastStartMonth: forecastData.forecast_start_month as string,
-          forecastEndMonth: forecastData.forecast_end_month as string,
-          fiscalYear,
-          forecastDuration: forecastDuration || 1,
-          existingLines: existingPLLines || [],
-        })
+      const generatedLines = convertAssumptionsToPLLines({
+        assumptions,
+        forecastStartMonth: forecastData.forecast_start_month as string,
+        forecastEndMonth: forecastData.forecast_end_month as string,
+        fiscalYear,
+        forecastDuration: forecastDuration || 1,
+        existingLines: existingPLLines || [],
+      })
 
-        if (generatedLines.length > 0) {
-          const linesToUpsert = generatedLines.map((line, i) => ({
-            id: line.id || crypto.randomUUID(),
-            forecast_id: resultForecastId,
-            account_name: line.account_name,
-            account_code: line.account_code,
-            category: line.category,
-            subcategory: line.subcategory,
-            sort_order: line.sort_order ?? i,
-            actual_months: line.actual_months || {},
-            forecast_months: line.forecast_months || {},
-            is_from_xero: line.is_from_xero || false,
-            is_manual: false,
-          }))
+      // Shape pl_lines for the RPC — the RPC owns the INSERT (and the DELETE
+      // of existing is_manual=false rows), so we pass plain objects, not the
+      // legacy id-keyed upsert payload.
+      const rpcPLLines = generatedLines.map((line, i) => ({
+        account_name: line.account_name,
+        account_code: line.account_code ?? null,
+        category: line.category,
+        subcategory: line.subcategory ?? null,
+        sort_order: line.sort_order ?? i,
+        actual_months: line.actual_months || {},
+        forecast_months: line.forecast_months || {},
+        is_from_xero: line.is_from_xero || false,
+      }))
 
-          const { error: plError } = await supabase
-            .from('forecast_pl_lines')
-            .upsert(linesToUpsert, { onConflict: 'id' })
+      const { data: rpcResult, error: rpcError } = await supabase.rpc(
+        'save_assumptions_and_materialize',
+        {
+          p_forecast_id: resultForecastId,
+          p_assumptions: assumptions,
+          p_pl_lines: rpcPLLines,
+        },
+      )
 
-          if (plError) {
-            console.error('[wizard-v4/generate] P&L lines error:', plError)
-            // Non-fatal — forecast was saved, P&L lines just failed
-          } else {
-            plLinesGenerated = generatedLines.length
-          }
-        }
-      } catch (plErr) {
-        console.error('[wizard-v4/generate] P&L lines generation error:', plErr)
-        // Non-fatal
+      if (rpcError) {
+        console.error('[wizard-v4/generate] Atomic save failed:', rpcError)
+        return NextResponse.json(
+          {
+            error: `Atomic save failed: ${rpcError.message}`,
+            code: (rpcError as { code?: string }).code,
+          },
+          { status: 500 },
+        )
+      }
+
+      const result = rpcResult as
+        | { forecast_id: string; computed_at: string; lines_count: number }
+        | null
+      if (result) {
+        plLinesGenerated = result.lines_count ?? generatedLines.length
+        computedAt = result.computed_at ?? null
       }
     }
 
@@ -220,6 +234,7 @@ export async function POST(request: Request) {
       success: true,
       forecastId: resultForecastId,
       plLinesGenerated,
+      computed_at: computedAt,
     })
   } catch (error) {
     console.error('[wizard-v4/generate] Error:', error)
