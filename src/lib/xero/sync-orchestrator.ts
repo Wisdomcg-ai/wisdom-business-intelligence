@@ -172,10 +172,15 @@ function aggregateCoverage(
  * without preserving the substring; the acceptance grep at the bottom of
  * 44-04-PLAN.md depends on it being readable in source.
  */
-function byMonthUrl(base: BaseMonth): string {
-  // Canonical: periods=11&timeframe=MONTH (D-05) — one-month base period,
-  // 11 prior periods, single-month columns.
-  const qs = `fromDate=${base.start}&toDate=${base.end}&periods=11&timeframe=MONTH&standardLayout=false&paymentsOnly=false`
+function byMonthUrl(base: BaseMonth, periods: number = 11): string {
+  // Canonical D-05: 1-month base period (avoids the rolling-totals trap from
+  // commit 5d0c792) + variable `periods`. With base = last month of an FY and
+  // periods=11, returns 12 single-month columns covering that FY exactly.
+  // For a current-FY YTD query (base = current calendar month), periods is
+  // computed as (months_elapsed_in_current_FY - 1) so the returned columns
+  // stay INSIDE the current FY (no overlap into prior FY's tail months,
+  // which would double-count against the per-FY reconciler oracle).
+  const qs = `fromDate=${base.start}&toDate=${base.end}&periods=${periods}&timeframe=MONTH&standardLayout=false&paymentsOnly=false`
   return `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?${qs}`
 }
 
@@ -272,16 +277,29 @@ export async function syncBusinessXeroPL(
     const currentFY = opts.fyOverride ?? getCurrentFY(today, fyStartMonth)
     const priorFY = currentFY - 1
 
-    const fyWindows: Array<{ fy: number; base: BaseMonth; expectedMonths: number }> = [
+    // Current FY YTD: months elapsed since FY start (inclusive of base month).
+    // For Apr 2026 in FY26 (Jul start): months 1..10 of FY26 = 10 months.
+    // periods = monthsElapsed - 1 so the by-month query returns exactly those
+    // months and stops at the FY start (no overlap into prior FY's tail).
+    const currentMonth = today.getMonth() + 1
+    const currentMonthsElapsed =
+      ((currentMonth - fyStartMonth + 12) % 12) + 1
+    const fyWindows: Array<{
+      fy: number
+      base: BaseMonth
+      periods: number
+      expectedMonths: number
+    }> = [
       {
         fy: currentFY,
         base: currentFYBaseMonth(today),
-        // Current FY YTD: 12 months of expected coverage at most.
-        expectedMonths: 12,
+        periods: currentMonthsElapsed - 1,
+        expectedMonths: currentMonthsElapsed,
       },
       {
         fy: priorFY,
         base: priorFYBaseMonth(priorFY, fyStartMonth),
+        periods: 11,
         expectedMonths: 12,
       },
     ]
@@ -335,8 +353,10 @@ export async function syncBusinessXeroPL(
       }
 
       for (const window of fyWindows) {
-        // 3b. Fetch canonical by-month.
-        const byMonthResp = await fetch(byMonthUrl(window.base), { headers })
+        // 3b. Fetch canonical by-month. `periods` is per-window: 11 for prior
+        // FY (full 12 months); (months_elapsed_in_FY - 1) for current FY YTD,
+        // so columns stay inside the FY and the reconciler oracle aligns.
+        const byMonthResp = await fetch(byMonthUrl(window.base, window.periods), { headers })
         xeroRequestCount++
         if (!byMonthResp.ok) {
           throw new Error(
@@ -412,7 +432,7 @@ export async function syncBusinessXeroPL(
 
     // 4. Compute final status. Coverage aggregated across windows.
     //    Reconciliation discrepancies determine partial vs success.
-    const expectedTotal = fyWindows.length * 12
+    const expectedTotal = fyWindows.reduce((sum, w) => sum + w.expectedMonths, 0)
     coverage = aggregateCoverage(coveragePerWindow, expectedTotal)
     finalStatus = allDiscrepancies.length === 0 ? 'success' : 'partial'
     finalError =

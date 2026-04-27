@@ -219,8 +219,8 @@ describe('Sync Orchestrator', () => {
     })
     const fyTotals = await buildSyntheticFYTotalsFromByMonth(jdsByMonthFixture)
     const fetchSpy = mockFetchByUrl([
-      { match: (u) => u.includes('periods=11'), body: jdsByMonthFixture },
-      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('periods='), body: fyTotals },
+      { match: (u) => u.includes('timeframe=MONTH'), body: jdsByMonthFixture },
+      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('timeframe=MONTH'), body: fyTotals },
     ])
 
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
@@ -275,8 +275,8 @@ describe('Sync Orchestrator', () => {
     })
     const fyTotals = await buildSyntheticFYTotalsFromByMonth(jdsByMonthFixture)
     mockFetchByUrl([
-      { match: (u) => u.includes('periods=11'), body: jdsByMonthFixture },
-      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('periods='), body: fyTotals },
+      { match: (u) => u.includes('timeframe=MONTH'), body: jdsByMonthFixture },
+      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('timeframe=MONTH'), body: fyTotals },
     ])
 
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
@@ -330,8 +330,8 @@ describe('Sync Orchestrator', () => {
     })
     const fyTotals = await buildSyntheticFYTotalsFromByMonth(jdsByMonthFixture)
     mockFetchByUrl([
-      { match: (u) => u.includes('periods=11'), body: jdsByMonthFixture },
-      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('periods='), body: fyTotals },
+      { match: (u) => u.includes('timeframe=MONTH'), body: jdsByMonthFixture },
+      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('timeframe=MONTH'), body: fyTotals },
     ])
 
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
@@ -364,8 +364,8 @@ describe('Sync Orchestrator', () => {
     })
     const fyTotals = await buildSyntheticFYTotalsFromByMonth(jdsByMonthFixture)
     mockFetchByUrl([
-      { match: (u) => u.includes('periods=11'), body: jdsByMonthFixture },
-      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('periods='), body: fyTotals },
+      { match: (u) => u.includes('timeframe=MONTH'), body: jdsByMonthFixture },
+      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('timeframe=MONTH'), body: fyTotals },
     ])
 
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
@@ -400,8 +400,8 @@ describe('Sync Orchestrator', () => {
     })
     const fyTotals = await buildSyntheticFYTotalsFromByMonth(sparse)
     mockFetchByUrl([
-      { match: (u) => u.includes('periods=11'), body: sparse },
-      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('periods='), body: fyTotals },
+      { match: (u) => u.includes('timeframe=MONTH'), body: sparse },
+      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('timeframe=MONTH'), body: fyTotals },
     ])
 
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
@@ -409,7 +409,12 @@ describe('Sync Orchestrator', () => {
 
     expect(result.coverage.months_covered).toBeLessThanOrEqual(8) // ≤ 4 per FY × 2 FYs
     expect(result.coverage.months_covered).toBeGreaterThan(0)
-    expect(result.coverage.expected_months).toBe(24)
+    // expected_months = current FY YTD (months elapsed in FY) + prior FY (12).
+    // Range: 13 (just after FY start, 1 month elapsed) up to 24 (mid-FY end, 12 months).
+    // Asserted as a range, not a literal, since the orchestrator computes from `today`
+    // (the periods=11 cross-FY-boundary bug is fixed in 44-05.5).
+    expect(result.coverage.expected_months).toBeGreaterThanOrEqual(13)
+    expect(result.coverage.expected_months).toBeLessThanOrEqual(24)
 
     // finalize call carries the coverage record.
     const finalizeCall = callLog.find((c) => c.kind === 'rpc:finalize_xero_sync_job')
@@ -454,8 +459,8 @@ describe('Sync Orchestrator', () => {
       ],
     })
     mockFetchByUrl([
-      { match: (u) => u.includes('periods=11'), body: jdsByMonthFixture },
-      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('periods='), body: fyTotals },
+      { match: (u) => u.includes('timeframe=MONTH'), body: jdsByMonthFixture },
+      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('timeframe=MONTH'), body: fyTotals },
     ])
 
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
@@ -484,8 +489,8 @@ describe('Sync Orchestrator', () => {
     })
     const fyTotals = await buildSyntheticFYTotalsFromByMonth(jdsByMonthFixture)
     const fetchSpy = mockFetchByUrl([
-      { match: (u) => u.includes('periods=11'), body: jdsByMonthFixture },
-      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('periods='), body: fyTotals },
+      { match: (u) => u.includes('timeframe=MONTH'), body: jdsByMonthFixture },
+      { match: (u) => u.includes('ProfitAndLoss') && !u.includes('timeframe=MONTH'), body: fyTotals },
     ])
 
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
