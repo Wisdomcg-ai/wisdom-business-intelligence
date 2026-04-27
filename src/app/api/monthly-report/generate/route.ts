@@ -131,7 +131,10 @@ export async function POST(request: NextRequest) {
         .single()
       budgetForecast = fc
     } else {
-      // Try both profile ID and direct business_id to handle both FK patterns
+      // Try both profile ID and direct business_id to handle both FK patterns.
+      // Also filter by fiscal_year — businesses can have multiple is_active=true
+      // forecasts spanning different FYs; without this filter, the latest-created
+      // wins regardless of which FY the report is for.
       const idsToTry = profile?.id ? [profile.id, business_id] : [business_id]
 
       for (const id of idsToTry) {
@@ -140,6 +143,7 @@ export async function POST(request: NextRequest) {
           .select('id, name')
           .eq('business_id', id)
           .eq('is_active', true)
+          .eq('fiscal_year', fiscal_year)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle()
