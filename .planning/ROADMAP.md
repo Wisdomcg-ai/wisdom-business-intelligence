@@ -713,8 +713,8 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [~] 42-01-PLAN.md — Foundation: migration + plan-period helpers + service/API persistence (fixes Phase 14 silent-drop bug) — Tasks 1-5 done locally (df0c007, b6e3272, f9d8f09, 417848f, 92eb5a7); Task 6 [BLOCKING] schema-push to preview branch awaiting human action via PR-first Supabase Branching
-- [ ] 42-02-PLAN.md — Hook refactor + Step 1 banner/modal + getYearLabel rewrite + coach goals page bug fix
+- [x] 42-01-PLAN.md — Foundation: migration + plan-period helpers + service/API persistence (fixes Phase 14 silent-drop bug) — COMPLETE (df0c007, b6e3272, f9d8f09, 417848f, 92eb5a7, bdcded1, f500116). Migration applied to prod via Management API; 3 columns + 11 rows backfilled; 0 rows missing.
+- [x] 42-02-PLAN.md — Hook refactor + Step 1 banner/modal + getYearLabel rewrite + coach goals page bug fix — COMPLETE (c55e20e, 2acb2a7, a312324, 5f52d01, dc0581b, 7950f58, 9e77000). 7 atomic tasks; all 5 sentinels green; tsc baseline preserved at 16 pre-existing errors.
 - [ ] 42-03-PLAN.md — Tests (helpers, components, coach/owner equivalence, persistence) + Vercel preview Fit2Shine smoke test
 
 ---

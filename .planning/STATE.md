@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Executing Phase 42 — Plan 42-01 Tasks 1-5 done; checkpoint at Task 6 (schema push)
-last_updated: "2026-04-27T04:08:00.000Z"
+status: Executing Phase 42 — Plan 42-01 COMPLETE; Plan 42-02 COMPLETE (sequential, on main); 42-03 next
+last_updated: "2026-04-27T05:42:00Z"
 progress:
   total_phases: 42
   completed_phases: 14
-  total_plans: 50
-  completed_plans: 48
-  percent: 96
+  total_plans: 51
+  completed_plans: 50
+  percent: 98
 ---
 
 # Project State
@@ -196,12 +196,12 @@ progress:
 
 ## Position
 
-- Current: Phase 42, Plan 01 of 3 — Tasks 1-5 complete and committed locally; Task 6 ([BLOCKING] schema-push checkpoint) awaiting human action via PR-first Supabase Branching workflow.
-- Stopped at: 42-01-PLAN.md Task 6 (checkpoint:human-action) — schema push to preview branch
+- Current: Phase 42, Plan 02 of 3 — COMPLETE (7 tasks, all atomic commits, sentinels green, tsc clean). Plan 42-03 (test coverage) is now unblocked.
+- Stopped at: Completed 42-02-PLAN.md
 
 ## Last Session
 
-- 2026-04-27T04:03:00Z — Plan 42-01 Tasks 1-5 implemented (migration + suggestPlanPeriod + derivePeriodInfo + FinancialService planPeriod read/write + /api/goals/save bug fix). Awaiting schema push to preview branch before continuing to Plan 42-02.
+- 2026-04-27T05:42:00Z — Plan 42-02 implemented (hook refactor with role-guard removal + 2 new components + getYearLabel refactor + Step 1 wiring + owner page + coach page Phase 14 bug fix). All 5 sentinels green; tsc baseline preserved at 16 errors (all pre-existing in `.next/types/`).
 
 ## Phase 41 Decisions
 
@@ -235,9 +235,31 @@ progress:
 - Task 1 (migration): COMPLETE (df0c007)
 - Task 2 (suggestPlanPeriod helper): COMPLETE (b6e3272)
 - Task 3 (derivePeriodInfo helper): COMPLETE (f9d8f09)
-- Task 4 (FinancialService planPeriod read/write): COMPLETE (417848f)
+- Task 4 (FinancialService planPeriod read/write): COMPLETE (417affe1d4)
 - Task 5 (/api/goals/save bug fix + planPeriod): COMPLETE (92eb5a7)
-- Task 6 ([BLOCKING] schema-push to preview branch): AWAITING HUMAN ACTION (PR-first Supabase Branching workflow)
+- Task 6 (schema-push to prod): COMPLETE — applied via Supabase Management API with explicit user authorization (see 42-01-SUMMARY.md)
+
+## Plan 42-02 Decisions
+
+- Plan 42-02 Task 1: Removed `ownerUser === user.id` role guard entirely from `useStrategicPlanning.ts` resolution branch — coach view and owner view now follow identical date-driven path. Replaces the Phase 14 inference block (formerly lines 744-771).
+- Plan 42-02 Task 1: Three new useState hooks (`planStartDate`, `planEndDate`, `year1EndDate`) added — populated from persisted columns OR `suggestPlanPeriod()` (new plan) OR fallback (legacy non-backfilled row). Legacy `isExtendedPeriod` / `year1Months` / `currentYearRemainingMonths` state preserved as derived backwards-compat (computed via `derivePeriodInfo()` on every load).
+- Plan 42-02 Task 1: Removed unused imports `isNearYearEnd`, `getMonthsUntilYearEnd`, `ExtendedPeriodInfo` from useStrategicPlanning.ts after the inference block was deleted.
+- Plan 42-02 Task 4: `getYearLabel` signature changed from `(idx, yearType, currentYear, extendedPeriodInfo)` to `(idx, yearType, planPeriod?: PlanPeriodForLabel)`. All FY/CY boundaries derive from `planStartDate` / `year1EndDate` / `planEndDate`. Defensive `Year ${idx}` fallback when `planPeriod` is undefined.
+- Plan 42-02 Task 4 (Rule 3 cascade): `CoreMetricsSection` and `KPISection` updated to accept and propagate `planPeriod` — required because their existing `getYearLabel(idx, yearType, currentYear)` call sites would have type-errored after the signature change. Also fixed downstream helpers `MobileMetricCard` (in CoreMetricsSection) and `KPITable` (in KPISection).
+- Plan 42-02 Task 4 (Rule 1 cleanup): Removed unused legacy `YearLabelProps` interface from step1/types.ts — it contained the stale `currentYear: number` field that was tripping the regression sentinel.
+- Plan 42-02 Task 5: `Step1GoalsAndKPIs` accepts new optional props `planPeriod`, `rationale`, `onPlanPeriodChange`. Banner mounts between year-type selector and "Required Section Header" only when `planPeriod` is non-null. Modal mounts conditionally on `showAdjustModal && planPeriod`. Existing `extendedPeriodInfo` prop preserved for one release of dual-prop-write.
+- Plan 42-02 Task 5: `PlanPeriodAdjustModal` v1 clamps Year 1 length to `[12, 15]` months (Open Question 1 from 42-RESEARCH.md). Out-of-range disables Save and shows red validation message. "Reset to suggestion" button calls `suggestPlanPeriod(new Date(), fiscalYearStart)` and writes returned dates to local component state — user can still edit before pressing Save. Pitfall 5 warning rendered inline as amber Note.
+- Plan 42-02 Task 7: **Phase 14 bug fix (Pitfall 2)** — coach goals page (`/coach/clients/[id]/goals/page.tsx`) Step1 render block now passes `extendedPeriodInfo` prop. Sentinel went from 0 to exactly 1. Without this, even after Phase 42 fixes persistence, the coach Step 1 banner / Year 1 label would not render the extended-period state correctly.
+
+## Plan 42-02 Progress
+
+- Task 1 (hook refactor + role guard removal): COMPLETE (c55e20e)
+- Task 2 (PlanPeriodBanner component): COMPLETE (2acb2a7)
+- Task 3 (PlanPeriodAdjustModal component): COMPLETE (a312324)
+- Task 4 (getYearLabel refactor + cascading section component updates): COMPLETE (5f52d01)
+- Task 5 (Step1GoalsAndKPIs banner + modal wiring): COMPLETE (dc0581b)
+- Task 6 (owner goals page wiring): COMPLETE (7950f58)
+- Task 7 (coach goals page wiring + Phase 14 bug fix): COMPLETE (9e77000)
 
 ## Accumulated Context
 
