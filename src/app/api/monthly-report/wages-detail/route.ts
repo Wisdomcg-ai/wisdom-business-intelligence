@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     const [plResult, budgetResult, mappingsResult, forecastEmpResult, forecastSettingsResult] = await Promise.all([
       // Actuals from xero_pl_lines (search both ID formats)
       supabase
-        .from('xero_pl_lines')
+        .from('xero_pl_lines_wide_compat')
         .select('account_name, monthly_values')
         .in('business_id', ids.all),
       // Budget from forecast_pl_lines

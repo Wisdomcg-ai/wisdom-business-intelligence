@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
     const accountNameToCode = new Map<string, string>()
     try {
       const { data: plLines } = await supabase
-        .from('xero_pl_lines')
+        .from('xero_pl_lines_wide_compat')
         .select('account_name, account_code')
         .eq('business_id', business_id)
 

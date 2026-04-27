@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     const ids = await resolveBusinessIds(supabase, businessId)
 
     const { data: xeroLines, error } = await supabase
-      .from('xero_pl_lines')
+      .from('xero_pl_lines_wide_compat')
       .select('account_name, account_code, account_type, monthly_values')
       .in('business_id', ids.all)
 

@@ -53,7 +53,7 @@ export async function getHistoricalSummary(
 
   // Fetch raw Xero P&L lines — the source of truth
   const { data: xeroLines, error } = await supabase
-    .from('xero_pl_lines')
+    .from('xero_pl_lines_wide_compat')
     .select('account_name, account_type, monthly_values')
     .in('business_id', ids.all)
 

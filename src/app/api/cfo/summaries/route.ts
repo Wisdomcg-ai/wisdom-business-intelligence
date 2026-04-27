@@ -170,7 +170,7 @@ export async function GET(request: NextRequest) {
 
     // Xero P&L actuals for the requested month (keyed by businesses.id)
     const { data: xeroLines } = await supabase
-      .from('xero_pl_lines')
+      .from('xero_pl_lines_wide_compat')
       .select('business_id, account_type, monthly_values')
       .in('business_id', allRelatedIds)
 

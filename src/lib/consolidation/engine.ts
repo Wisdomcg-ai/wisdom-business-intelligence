@@ -155,7 +155,7 @@ export async function loadTenantSnapshots(
   const tenantIds = tenants.map((t) => t.tenant_id)
 
   const { data: lines, error } = await supabase
-    .from('xero_pl_lines')
+    .from('xero_pl_lines_wide_compat')
     .select('business_id, tenant_id, account_name, account_code, account_type, section, monthly_values')
     .in('business_id', ids.all)
     .in('tenant_id', tenantIds)

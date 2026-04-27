@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
 
     // 4. Load xero_pl_lines (actuals) — deduplicate by account_name
     const { data: rawXeroLines, error: xeroErr } = await supabase
-      .from('xero_pl_lines')
+      .from('xero_pl_lines_wide_compat')
       .select('account_name, account_type, section, monthly_values')
       .in('business_id', ids.all)
 

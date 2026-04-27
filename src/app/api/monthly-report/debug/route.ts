@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
 
     // 3. Get xero_pl_lines
     const { data: xeroLines } = await supabaseAdmin
-      .from('xero_pl_lines')
+      .from('xero_pl_lines_wide_compat')
       .select('account_name, account_type, section, monthly_values')
       .eq('business_id', business_id)
 
