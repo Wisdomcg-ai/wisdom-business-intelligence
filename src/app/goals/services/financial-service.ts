@@ -22,7 +22,8 @@ export class FinancialService {
     yearType: 'FY' | 'CY',
     coreMetrics?: CoreMetricsData,
     quarterlyTargets?: Record<string, { q1: string; q2: string; q3: string; q4: string }>,
-    extendedPeriod?: { isExtendedPeriod: boolean; year1Months: number; currentYearRemainingMonths: number }
+    extendedPeriod?: { isExtendedPeriod: boolean; year1Months: number; currentYearRemainingMonths: number },
+    planPeriod?: { planStartDate: Date; planEndDate: Date; year1EndDate: Date }  // Phase 42
   ): Promise<{ success: boolean; error?: string }> {
     try {
       if (!businessId || !userId) {
@@ -112,6 +113,11 @@ export class FinancialService {
         year1_months: extendedPeriod?.year1Months ?? 12,
         current_year_remaining_months: extendedPeriod?.currentYearRemainingMonths ?? 0,
 
+        // Phase 42: Persist plan period as ISO date strings (YYYY-MM-DD)
+        plan_start_date: planPeriod?.planStartDate ? planPeriod.planStartDate.toISOString().slice(0, 10) : null,
+        plan_end_date:   planPeriod?.planEndDate   ? planPeriod.planEndDate.toISOString().slice(0, 10)   : null,
+        year1_end_date:  planPeriod?.year1EndDate  ? planPeriod.year1EndDate.toISOString().slice(0, 10)  : null,
+
         updated_at: new Date().toISOString()
       }
 
@@ -144,11 +150,12 @@ export class FinancialService {
     yearType: 'FY' | 'CY'
     quarterlyTargets: Record<string, { q1: string; q2: string; q3: string; q4: string }>
     extendedPeriod: { isExtendedPeriod: boolean; year1Months: number; currentYearRemainingMonths: number }
+    planPeriod: { planStartDate: string | null; planEndDate: string | null; year1EndDate: string | null }  // Phase 42
     error?: string
   }> {
     try {
       if (!businessId) {
-        return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 }, error: 'Business ID required' }
+        return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 }, planPeriod: { planStartDate: null, planEndDate: null, year1EndDate: null }, error: 'Business ID required' }
       }
 
       console.log(`[Financial Service] 📥 Loading financial goals for business ${businessId}`)
@@ -163,15 +170,15 @@ export class FinancialService {
         // If no data found, return null (not an error)
         if (error.code === 'PGRST116') {
           console.log('[Financial Service] ℹ️ No financial goals found (first time user)')
-          return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 } }
+          return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 }, planPeriod: { planStartDate: null, planEndDate: null, year1EndDate: null } }
         }
 
         console.error('[Financial Service] ❌ Error loading financial goals:', error)
-        return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 }, error: error.message }
+        return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 }, planPeriod: { planStartDate: null, planEndDate: null, year1EndDate: null }, error: error.message }
       }
 
       if (!data) {
-        return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 } }
+        return { financialData: null, coreMetrics: null, yearType: 'FY', quarterlyTargets: {}, extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 }, planPeriod: { planStartDate: null, planEndDate: null, year1EndDate: null } }
       }
 
       const financialData: FinancialData = {
@@ -260,12 +267,21 @@ export class FinancialService {
         currentYearRemainingMonths: data.current_year_remaining_months ?? 0
       }
 
+      // Phase 42: planPeriod returned as raw YYYY-MM-DD strings from the date columns.
+      // The hook (Plan 42-02) converts to Date when constructing in-memory state.
+      const planPeriod = {
+        planStartDate: (data.plan_start_date as string | null) ?? null,
+        planEndDate:   (data.plan_end_date   as string | null) ?? null,
+        year1EndDate:  (data.year1_end_date  as string | null) ?? null,
+      }
+
       return {
         financialData,
         coreMetrics,
         yearType: (data.year_type as 'FY' | 'CY') || 'FY',
         quarterlyTargets: (data.quarterly_targets as Record<string, { q1: string; q2: string; q3: string; q4: string }>) || {},
-        extendedPeriod
+        extendedPeriod,
+        planPeriod
       }
     } catch (err) {
       console.error('[Financial Service] ❌ Error loading financial goals:', err)
@@ -275,6 +291,7 @@ export class FinancialService {
         yearType: 'FY',
         quarterlyTargets: {},
         extendedPeriod: { isExtendedPeriod: false, year1Months: 12, currentYearRemainingMonths: 0 },
+        planPeriod: { planStartDate: null, planEndDate: null, year1EndDate: null },
         error: err instanceof Error ? err.message : 'Unknown error'
       }
     }
