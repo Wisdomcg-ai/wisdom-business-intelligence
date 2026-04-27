@@ -212,10 +212,12 @@ function aggregatePeriod(
     }
   }
 
-  // Build OpEx by category (top accounts)
+  // Build OpEx by category — return ALL accounts so the wizard reflects 100% of Xero.
+  // Was capped at top 10 historically; that meant any business with >10 OpEx
+  // accounts had silent gaps in the wizard's breakdown (totals were correct,
+  // but per-line data was incomplete).
   const opexCategories: OpExCategory[] = Object.values(opexAccounts)
     .sort((a, b) => Math.abs(b.total) - Math.abs(a.total))
-    .slice(0, 10)
     .map(acc => ({
       category: 'Operating Expenses',
       account_name: acc.account_name,

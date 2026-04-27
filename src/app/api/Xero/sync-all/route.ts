@@ -174,92 +174,98 @@ async function syncConnection(connection: any): Promise<SyncResult> {
       return cols.length;
     };
 
-    // Request 1: Recent 12 months (periods=11)
-    // Use single-month base period (current month) so each column is one month
+    // ── Multi-window P&L fetch ────────────────────────────────────────────
+    // Pre-2026-04-27 used `periods=11` with a far-back base month, which
+    // Xero unreliably returns only the base column for. Switched to explicit
+    // fromDate→toDate ranges with timeframe=MONTH; Xero returns one column
+    // per month spanning the range. 3 windows give us the entire prior FY +
+    // current FY YTD + prior-prior FY where data exists.
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1; // 1-based
-    const recentFrom = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
-    const recentTo = new Date(currentYear, currentMonth, 0).toISOString().split('T')[0]; // last day of current month
+    const fyStartMonth: number = 7; // AU default (July). Per-tenant override is a future enhancement.
 
-    console.log(`[Xero Sync] Syncing ${tenantName}: base month ${recentFrom}`);
+    // Compute current FY: if we're in Jul-Dec, FY = next year; if Jan-Jun, FY = current year.
+    const currentFY = currentMonth >= fyStartMonth ? currentYear + 1 : currentYear;
 
-    const reportUrl1 = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${recentFrom}&toDate=${recentTo}&periods=11&timeframe=MONTH&standardLayout=false&paymentsOnly=false`;
-    const reportResponse1 = await fetch(reportUrl1, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'xero-tenant-id': connection.tenant_id,
-        'Accept': 'application/json'
-      }
-    });
+    // FY{n} runs from {n-1}-fyStartMonth → {n}-(fyStartMonth-1).
+    const fyRange = (fy: number) => {
+      const startY = fy - 1;
+      const startM = fyStartMonth;
+      const endY = fy;
+      const endM = fyStartMonth - 1 || 12;
+      const endYAdj = fyStartMonth === 1 ? endY - 1 : endY;
+      const fromDate = `${startY}-${String(startM).padStart(2, '0')}-01`;
+      const lastDay = new Date(endYAdj, endM, 0).getDate();
+      const toDate = `${endYAdj}-${String(endM).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      return { fromDate, toDate };
+    };
 
-    if (!reportResponse1.ok) {
-      const errorText = await reportResponse1.text();
-      console.error(`[Xero Sync] P&L fetch failed for ${tenantName}:`, errorText);
-      return {
-        business_id: businessId,
-        tenant_name: tenantName,
-        status: 'failed',
-        message: `API error: ${reportResponse1.status}`
-      };
-    }
+    // Current FY YTD: from FY start through end of current month
+    const ytdStartY = currentMonth >= fyStartMonth ? currentYear : currentYear - 1;
+    const ytdFrom = `${ytdStartY}-${String(fyStartMonth).padStart(2, '0')}-01`;
+    const ytdLastDay = new Date(currentYear, currentMonth, 0).getDate();
+    const ytdTo = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(ytdLastDay).padStart(2, '0')}`;
 
-    const reportData1 = await reportResponse1.json();
-    const report1 = reportData1?.Reports?.[0];
+    const priorFY = fyRange(currentFY - 1);
+    const priorPriorFY = fyRange(currentFY - 2);
 
-    if (!report1) {
-      return {
-        business_id: businessId,
-        tenant_name: tenantName,
-        status: 'failed',
-        message: 'No P&L report returned'
-      };
-    }
+    const windows = [
+      { label: `FY${currentFY} YTD`, from: ytdFrom, to: ytdTo, required: true },
+      { label: `FY${currentFY - 1}`, from: priorFY.fromDate, to: priorFY.toDate, required: true },
+      { label: `FY${currentFY - 2}`, from: priorPriorFY.fromDate, to: priorPriorFY.toDate, required: false },
+    ];
 
-    let totalMonthCols = parsePLResponse(report1);
-    console.log(`[Xero Sync] ${tenantName}: Request 1 returned ${totalMonthCols} month columns (recent 12mo ending ${recentTo})`);
+    console.log(`[Xero Sync] Syncing ${tenantName}: ${windows.map(w => w.label).join(', ')}`);
 
-    // Request 2: Older 12 months — fail loudly so future investigations have evidence.
-    // The pre-2026-04-27 version silently swallowed errors here, which is how
-    // Envisage's prior-year data (May 2024 → Apr 2025) went missing without trace.
-    await new Promise(resolve => setTimeout(resolve, 300));
+    let totalMonthCols = 0;
+    const fetchedRanges: string[] = [];
+    const failedRequiredWindows: string[] = [];
 
-    // Use a full 12-month from/to range instead of base+periods. Some Xero
-    // tenants return inconsistent column counts when periods=11 is used with
-    // a far-back base month; an explicit fromDate→toDate range is more reliable.
-    const olderTo = new Date(currentYear, currentMonth - 1, 0).toISOString().split('T')[0]; // last day of (current - 1) month
-    const olderFromDate = new Date(currentYear, currentMonth - 13, 1);
-    const olderFrom = `${olderFromDate.getFullYear()}-${String(olderFromDate.getMonth() + 1).padStart(2, '0')}-01`;
+    for (let i = 0; i < windows.length; i++) {
+      const w = windows[i];
+      if (i > 0) await new Promise(resolve => setTimeout(resolve, 300));
 
-    const reportUrl2 = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${olderFrom}&toDate=${olderTo}&periods=11&timeframe=MONTH&standardLayout=false&paymentsOnly=false`;
-    try {
-      const reportResponse2 = await fetch(reportUrl2, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'xero-tenant-id': connection.tenant_id,
-          'Accept': 'application/json'
+      const url = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${w.from}&toDate=${w.to}&timeframe=MONTH&standardLayout=false&paymentsOnly=false`;
+      try {
+        const resp = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'xero-tenant-id': connection.tenant_id,
+            'Accept': 'application/json',
+          },
+        });
+
+        if (!resp.ok) {
+          const errorText = await resp.text();
+          console.error(`[Xero Sync] ${tenantName}: ${w.label} P&L request failed (${resp.status}): ${errorText.substring(0, 300)}`);
+          if (w.required) failedRequiredWindows.push(w.label);
+          continue;
         }
-      });
 
-      if (!reportResponse2.ok) {
-        const errorText = await reportResponse2.text();
-        console.error(`[Xero Sync] ${tenantName}: Older P&L request failed (${reportResponse2.status}): ${errorText.substring(0, 300)}`);
-      } else {
-        const reportData2 = await reportResponse2.json();
-        const report2 = reportData2?.Reports?.[0];
-        if (!report2) {
-          console.warn(`[Xero Sync] ${tenantName}: Older P&L returned 200 but no Reports[0]`);
-        } else {
-          const olderCols = parsePLResponse(report2);
-          totalMonthCols += olderCols;
-          console.log(`[Xero Sync] ${tenantName}: Request 2 returned ${olderCols} month columns (older 12mo: ${olderFrom} → ${olderTo})`);
-          if (olderCols < 6) {
-            console.warn(`[Xero Sync] ${tenantName}: Older P&L returned only ${olderCols} months (expected ~12). Prior-year data will be incomplete in the wizard.`);
-          }
+        const data = await resp.json();
+        const report = data?.Reports?.[0];
+        if (!report) {
+          console.warn(`[Xero Sync] ${tenantName}: ${w.label} returned 200 but no Reports[0]`);
+          if (w.required) failedRequiredWindows.push(w.label);
+          continue;
         }
+
+        const cols = parsePLResponse(report);
+        totalMonthCols += cols;
+        fetchedRanges.push(`${w.label}=${cols}mo`);
+        console.log(`[Xero Sync] ${tenantName}: ${w.label} returned ${cols} month columns (${w.from} → ${w.to})`);
+      } catch (err: any) {
+        console.error(`[Xero Sync] ${tenantName}: ${w.label} fetch threw:`, err?.message || err);
+        if (w.required) failedRequiredWindows.push(w.label);
       }
-    } catch (err: any) {
-      console.error(`[Xero Sync] ${tenantName}: Older P&L fetch threw:`, err?.message || err);
     }
+
+    if (failedRequiredWindows.length > 0) {
+      // Don't fail the whole sync — partial data is better than none — but
+      // surface clearly so coaches know to investigate.
+      console.error(`[Xero Sync] ${tenantName}: REQUIRED windows failed: ${failedRequiredWindows.join(', ')}. Sync will proceed with partial data.`);
+    }
+    console.log(`[Xero Sync] ${tenantName}: Total fetched ranges: ${fetchedRanges.join(', ')} (${totalMonthCols} columns total)`);
 
     // ── Reconciliation: verify monthly sums match full-period totals ──────
     // Xero's monthly breakdown can differ from the full-period total due to
@@ -267,14 +273,16 @@ async function syncConnection(connection: any): Promise<SyncResult> {
     // Fetch authoritative full-period totals and adjust if needed.
     await new Promise(resolve => setTimeout(resolve, 300));
 
-    // Determine the two FY periods to verify (current FY and prior FY)
-    const fyStartMonth = 7; // July (AU default)
+    // Determine the two FY periods to verify (current FY and prior FY).
+    // fyStartMonth declared above for the multi-window fetch; reused here.
     const verifyPeriods = [
       // Prior FY
       { from: `${currentYear - 2}-07-01`, to: `${currentYear - 1}-06-30`, label: `FY${currentYear - 1}` },
       // Current FY (YTD)
       { from: `${currentYear - 1}-07-01`, to: `${currentYear}-${String(currentMonth).padStart(2, '0')}-${new Date(currentYear, currentMonth, 0).getDate()}`, label: `FY${currentYear}` },
     ];
+
+    const reconStats = { adjusted: 0, missingFromMonthly: 0, totalDiff: 0 };
 
     for (const period of verifyPeriods) {
       try {
@@ -287,51 +295,92 @@ async function syncConnection(connection: any): Promise<SyncResult> {
           }
         });
 
-        if (verifyRes.ok) {
-          const verifyData = await verifyRes.json();
-          const verifyReport = verifyData?.Reports?.[0];
-          if (verifyReport?.Rows) {
-            // Parse the full-period totals (single column, no periods)
-            for (const section of verifyReport.Rows) {
-              if (section.RowType !== 'Section' || !section.Rows) continue;
-              for (const row of section.Rows) {
-                if (row.RowType !== 'Row' || !row.Cells) continue;
-                const accountName = row.Cells[0]?.Value;
-                if (!accountName || SUMMARY_ROW_NAMES.has(accountName.toLowerCase())) continue;
-                const authoritativeTotal = parseFloat(row.Cells[1]?.Value || '0');
-                if (isNaN(authoritativeTotal)) continue;
+        if (!verifyRes.ok) {
+          console.warn(`[Xero Sync] ${tenantName}: ${period.label} reconciliation request failed (${verifyRes.status})`);
+          await new Promise(resolve => setTimeout(resolve, 300));
+          continue;
+        }
 
-                const account = allAccounts.get(accountName);
-                if (!account) continue;
+        const verifyData = await verifyRes.json();
+        const verifyReport = verifyData?.Reports?.[0];
+        if (!verifyReport?.Rows) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+          continue;
+        }
 
-                // Sum monthly values within this FY period
-                const fyStart = new Date(period.from);
-                const fyEnd = new Date(period.to);
-                let monthlySum = 0;
-                const monthKeysInPeriod: string[] = [];
-                let cur = new Date(fyStart);
-                while (cur <= fyEnd) {
-                  const mk = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`;
-                  monthKeysInPeriod.push(mk);
-                  monthlySum += account.monthly_values[mk] || 0;
-                  cur.setMonth(cur.getMonth() + 1);
-                }
+        // Parse the full-period totals (single column, no periods)
+        for (const section of verifyReport.Rows) {
+          if (section.RowType !== 'Section' || !section.Rows) continue;
+          const sectionTitle = section.Title || 'Other';
 
-                // If there's a discrepancy, adjust the most recent month
-                const diff = authoritativeTotal - monthlySum;
-                if (Math.abs(diff) > 0.01 && monthKeysInPeriod.length > 0) {
-                  const lastMonth = monthKeysInPeriod[monthKeysInPeriod.length - 1];
-                  account.monthly_values[lastMonth] = (account.monthly_values[lastMonth] || 0) + diff;
-                }
+          for (const row of section.Rows) {
+            if (row.RowType !== 'Row' || !row.Cells) continue;
+            const accountName = row.Cells[0]?.Value;
+            if (!accountName || SUMMARY_ROW_NAMES.has(accountName.toLowerCase())) continue;
+            const authoritativeTotal = parseFloat(row.Cells[1]?.Value || '0');
+            if (isNaN(authoritativeTotal)) continue;
+
+            // Compute month keys spanning this FY period.
+            const fyStart = new Date(period.from);
+            const fyEnd = new Date(period.to);
+            const monthKeysInPeriod: string[] = [];
+            let cur = new Date(fyStart);
+            while (cur <= fyEnd) {
+              monthKeysInPeriod.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`);
+              cur.setMonth(cur.getMonth() + 1);
+            }
+
+            let account = allAccounts.get(accountName);
+            if (!account) {
+              // Account exists in Xero's authoritative totals but not in our
+              // monthly breakdown. This means the per-month requests missed
+              // it (Xero quirk for accounts with very few transactions, or
+              // a section the parser didn't recognize). Synthesize the
+              // account so totals reconcile — we'll attribute the full
+              // value to the last month of the period as the best available
+              // approximation; coaches see the right TOTAL.
+              if (Math.abs(authoritativeTotal) < 0.01) continue;
+              account = {
+                business_id: businessId,
+                account_name: accountName,
+                account_code: accountCodeLookup.get(accountName) || null,
+                account_type: mapSectionToType(sectionTitle),
+                section: sectionTitle,
+                monthly_values: {} as Record<string, number>,
+                updated_at: new Date().toISOString(),
+              };
+              allAccounts.set(accountName, account);
+              reconStats.missingFromMonthly++;
+              console.warn(`[Xero Sync] ${tenantName}: ${period.label} account "${accountName}" missing from monthly breakdown — added with total $${authoritativeTotal} on ${monthKeysInPeriod[monthKeysInPeriod.length - 1]}`);
+            }
+
+            // Sum monthly values within this FY period
+            let monthlySum = 0;
+            for (const mk of monthKeysInPeriod) {
+              monthlySum += account.monthly_values[mk] || 0;
+            }
+
+            // If there's a discrepancy, adjust the most recent month
+            const diff = authoritativeTotal - monthlySum;
+            if (Math.abs(diff) > 0.01 && monthKeysInPeriod.length > 0) {
+              const lastMonth = monthKeysInPeriod[monthKeysInPeriod.length - 1];
+              account.monthly_values[lastMonth] = (account.monthly_values[lastMonth] || 0) + diff;
+              reconStats.adjusted++;
+              reconStats.totalDiff += Math.abs(diff);
+              if (Math.abs(diff) > 100) {
+                // Surface non-trivial reconciliation gaps so coaches/devs can
+                // investigate (back-dated journals, deleted txns, etc.).
+                console.warn(`[Xero Sync] ${tenantName}: ${period.label} "${accountName}" diff $${diff.toFixed(2)} (Xero: $${authoritativeTotal}, monthly sum: $${monthlySum.toFixed(2)}) — applied to ${lastMonth}`);
               }
             }
           }
         }
       } catch (err) {
-        console.warn(`[Xero Sync] ${period.label} reconciliation failed for ${tenantName}, continuing`);
+        console.warn(`[Xero Sync] ${period.label} reconciliation threw for ${tenantName}:`, (err as any)?.message || err);
       }
       await new Promise(resolve => setTimeout(resolve, 300));
     }
+    console.log(`[Xero Sync] ${tenantName}: Reconciliation summary — ${reconStats.adjusted} accounts adjusted, ${reconStats.missingFromMonthly} synthesized, total diff applied $${reconStats.totalDiff.toFixed(2)}`);
 
     // Convert map to array for insert
     for (const entry of allAccounts.values()) {
