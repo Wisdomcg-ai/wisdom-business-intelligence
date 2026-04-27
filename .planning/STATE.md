@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 42
-last_updated: "2026-04-27T01:50:25.149Z"
+last_updated: "2026-04-27T01:57:44.917Z"
 progress:
   total_phases: 41
   completed_phases: 15
   total_plans: 58
-  completed_plans: 56
+  completed_plans: 57
 ---
 
 # Project State
@@ -244,17 +244,22 @@ progress:
 - Plan 42-02: Tailwind colour escalation gray-500 (idle/saved) → gray-600 (saving) → amber-600 (retrying) → rose-700 (failed) — matches Notion/Linear UX precedent for D-08; escalating visual weight only when something needs the user's attention.
 - Plan 42-02: Exhaustiveness guard via `default: const _: never = status` — adding a future SaveStatus variant without updating the indicator switch is a compile-time error rather than a silent runtime hole.
 - Plan 42-02: Did NOT surface attempt count in retrying label — D-08 wording is "Unsaved — retrying..." verbatim; surfacing `(2/3)` would leak hook internals into the UX.
+- Plan 42-03: Replaced 88-line edit/view-mode CommentaryLine with 55-line always-editable variant (Pattern 3). D-04 fully satisfied — green Save (Check), Cancel (X), Pencil-edit, and "Add coaching note" buttons all removed; orange-bg display surface gone. Net delta -33 lines.
+- Plan 42-03: Test-only named export `export { CommentaryLine }` placed at the bottom of the function (with explanatory comment). Avoided extracting the component to its own file — single invocation lives in the same file, so extraction would be churn for zero gain.
+- Plan 42-03: Used `data-testid={\`commentary-textarea-${accountName}\`}` for the test query (not getByRole/getByLabel) — supports multiple commentary lines coexisting and scales to future E2E.
+- Plan 42-03: Pruned 5 unused lucide-react imports (Pencil, Check, X, Plus, MessageSquarePlus). Kept ChevronDown / ChevronRight / FileText / Landmark — still used by TransactionDrillDown.
 
 ## Completed Work (Phase 42)
 
 - Plan 42-00: shared useDebouncedCallback hook + 4 it.todo test scaffolds (28 todos enumerating D-01..D-15 + D-17) — COMPLETE (ba90c46, b4f34ea). Full vitest suite green: 323 pass, 28 todo, 0 fail. tsc clean. Wave 0 Nyquist gate satisfied; plans 42-01..42-04 unblocked.
 - Plan 42-01: useAutoSaveReport hook with 500ms debounce + onBlur flush + 3-attempt exponential backoff (1s/2s/4s) + single-flight queue + Finalise/consolidation guards + Pitfall 6 commentary-only watch — COMPLETE (245ec3a). 15 vitest tests pass (≥13 required). Full suite: 345 pass / 0 fail / 9 todo. tsc clean. Plans 42-02..42-04 unblocked.
 - Plan 42-02: SaveIndicator presentational component + 7 RTL tests covering D-08 / D-09 / D-12 — COMPLETE (c1980b5 RED, ad1aa4b GREEN, 9aaa6aa REFACTOR). 5 status kinds with exact D-08 wording, Loader2 spinner on saving/retrying, Save Now button on failed-state. Type-only import of SaveStatus from useAutoSaveReport. Full vitest suite: 345 pass / 9 todo / 0 fail. tsc --noEmit clean.
+- Plan 42-03: CommentaryLine refactored to always-editable inline textarea + 7 RTL tests covering D-04 / D-14 / D-01 / Pattern 3 — COMPLETE (1e243f3 RED, 082ba8f GREEN). D-04 buttons removed (Save/Cancel/Pencil/Add-note), every keystroke fires onNoteChange (D-14), onBlur fires new onCommitBlur prop (D-01). Test-only named export added. BudgetVsActualTableProps gains onCommitBlur — forwarded to single CommentaryLine invocation. Full vitest suite: 352 pass / 0 fail / 3 todo. tsc clean. Plan 42-04 unblocked.
 
 ## Position
 
-- Current: Phase 42, Plan 02 — COMPLETE (1 task, TDD triplet, 7 tests passing, tsc clean). Plans 42-01 and 42-02 both shipped in parallel Wave 1. Plans 42-03 / 42-04 next.
-- Stopped at: Completed 42-02-PLAN.md
+- Current: Phase 42, Plan 03 — COMPLETE (1 task, TDD pair RED+GREEN, 7 new tests passing, full suite 352/0/3, tsc clean). Plan 42-04 (page.tsx wiring of useAutoSaveReport.schedule + flushImmediately) is next.
+- Stopped at: Completed 42-03-PLAN.md
 
 ## Last Session
 
