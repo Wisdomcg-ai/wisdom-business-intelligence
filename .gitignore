@@ -52,3 +52,8 @@ supabase/.temp/
 /test-results/
 /playwright-report/
 /playwright/.cache/
+.env*.local
+
+# Phase 44 audit script runtime artifacts (read-only reports from
+# scripts/audit-xero-pl-lines-duplicates.ts — regenerated on every run)
+scripts/audit-xero-pl-lines-duplicates-report-*.md
