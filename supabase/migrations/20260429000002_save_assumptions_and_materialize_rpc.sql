@@ -45,18 +45,18 @@ SET search_path = public
 AS $save_body$
 DECLARE
   v_now timestamp with time zone := now();
-  v_forecast_exists int := 0;
   v_lines_count int := 0;
 BEGIN
   -- 1. Verify the forecast exists. We do not check ownership here — the calling
   --    API route MUST verify the user has access to p_forecast_id BEFORE calling.
   --    (Mirrors Phase 35 helper pattern. SECURITY DEFINER bypasses RLS so this
   --    cannot be left to RLS policies.)
-  SELECT count(*) INTO v_forecast_exists
-  FROM "public"."financial_forecasts"
-  WHERE "id" = p_forecast_id;
-
-  IF v_forecast_exists = 0 THEN
+  --
+  --    IF EXISTS pattern (not SELECT INTO) — Studio's parser dislikes SELECT INTO
+  --    inside DO/function bodies; per 44-05 lessons we avoid it.
+  IF NOT EXISTS (
+    SELECT 1 FROM "public"."financial_forecasts" WHERE "id" = p_forecast_id
+  ) THEN
     RAISE EXCEPTION 'save_assumptions_and_materialize: forecast % not found', p_forecast_id
       USING ERRCODE = 'P0002';
   END IF;
