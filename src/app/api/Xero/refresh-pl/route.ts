@@ -134,25 +134,21 @@ export async function POST(request: NextRequest) {
     const now = new Date()
     const currentYear = now.getFullYear()
     const currentMonth = now.getMonth() + 1
-    const fyStartMonth: number = 7
 
-    const currentFY = currentMonth >= fyStartMonth ? currentYear + 1 : currentYear
-    const fyRange = (fy: number) => {
-      const startY = fy - 1, startM = fyStartMonth
-      const endM = fyStartMonth - 1 || 12
-      const endY = fyStartMonth === 1 ? fy - 1 : fy
-      const lastDay = new Date(endY, endM, 0).getDate()
-      return {
-        fromDate: `${startY}-${String(startM).padStart(2, '0')}-01`,
-        toDate: `${endY}-${String(endM).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
-      }
-    }
-    const ytdStartY = currentMonth >= fyStartMonth ? currentYear : currentYear - 1
-    const ytdLastDay = new Date(currentYear, currentMonth, 0).getDate()
+    // Use periods=11 with current month as base (12 monthly columns) — Xero
+    // requires periods to return monthly breakdown. Plus an older window
+    // best-effort. Older fetches may return only 1 column for tenants whose
+    // Xero org doesn't go back that far.
+    const recentFrom = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`
+    const recentTo = new Date(currentYear, currentMonth, 0).toISOString().split('T')[0]
+    const olderDate = new Date(currentYear, currentMonth - 13, 1)
+    const olderFrom = `${olderDate.getFullYear()}-${String(olderDate.getMonth() + 1).padStart(2, '0')}-01`
+    const olderToDate = new Date(currentYear, currentMonth - 1, 0)
+    const olderTo = `${olderToDate.getFullYear()}-${String(olderToDate.getMonth() + 1).padStart(2, '0')}-${String(olderToDate.getDate()).padStart(2, '0')}`
+
     const windows = [
-      { label: `FY${currentFY} YTD`, from: `${ytdStartY}-${String(fyStartMonth).padStart(2, '0')}-01`, to: `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(ytdLastDay).padStart(2, '0')}` },
-      { label: `FY${currentFY - 1}`, ...fyRange(currentFY - 1) },
-      { label: `FY${currentFY - 2}`, ...fyRange(currentFY - 2) },
+      { label: 'Recent 12mo', from: recentFrom, to: recentTo, periods: 11 },
+      { label: 'Older 12mo', from: olderFrom, to: olderTo, periods: 11 },
     ]
 
     const parsePLResponse = (report: any) => {
@@ -193,7 +189,7 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < windows.length; i++) {
       const w = windows[i]
       if (i > 0) await new Promise(r => setTimeout(r, 300))
-      const url = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${w.from}&toDate=${w.to}&timeframe=MONTH&standardLayout=false&paymentsOnly=false`
+      const url = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${w.from}&toDate=${w.to}&periods=${w.periods}&timeframe=MONTH&standardLayout=false&paymentsOnly=false`
       try {
         const resp = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}`, 'xero-tenant-id': connection.tenant_id, 'Accept': 'application/json' } })
         if (!resp.ok) {
@@ -213,12 +209,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Reconciliation
+    // Reconciliation — gated by coverage. If we don't have monthly data for
+    // most of a period, the diff is too large to attribute to a single
+    // month responsibly. Skip rather than dump a full FY total onto June.
+    const ytdLastDay2 = new Date(currentYear, currentMonth, 0).getDate()
     const verifyPeriods = [
       { from: `${currentYear - 2}-07-01`, to: `${currentYear - 1}-06-30`, label: `FY${currentYear - 1}` },
-      { from: `${currentYear - 1}-07-01`, to: `${currentYear}-${String(currentMonth).padStart(2, '0')}-${ytdLastDay}`, label: `FY${currentYear}` },
+      { from: `${currentYear - 1}-07-01`, to: `${currentYear}-${String(currentMonth).padStart(2, '0')}-${ytdLastDay2}`, label: `FY${currentYear}` },
     ]
-    const reconStats = { adjusted: 0, synthesized: 0, totalDiff: 0 }
+    const MIN_COVERAGE_PCT = 0.5
+    const reconStats = { adjusted: 0, synthesized: 0, totalDiff: 0, skippedSparse: 0 }
     for (const period of verifyPeriods) {
       await new Promise(r => setTimeout(r, 300))
       try {
@@ -244,6 +244,20 @@ export async function POST(request: NextRequest) {
               monthKeysInPeriod.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`)
               cur.setMonth(cur.getMonth() + 1)
             }
+
+            // Coverage check: how many months in this period do we have?
+            const monthsCovered = new Set<string>()
+            for (const a of allAccounts.values()) {
+              for (const mk of Object.keys(a.monthly_values)) {
+                if (monthKeysInPeriod.includes(mk)) monthsCovered.add(mk)
+              }
+            }
+            const coverage = monthKeysInPeriod.length > 0 ? monthsCovered.size / monthKeysInPeriod.length : 0
+            if (coverage < MIN_COVERAGE_PCT) {
+              reconStats.skippedSparse++
+              continue
+            }
+
             let acct = allAccounts.get(accountName)
             if (!acct) {
               if (Math.abs(auth) < 0.01) continue
