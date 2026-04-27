@@ -1,7 +1,11 @@
 'use client'
 
+import { useState } from 'react'
 import { FinancialData, CoreMetricsData, KPIData, YearType } from '../types'
 import { FinancialGoalsSection, CoreMetricsSection, KPISection } from './step1'
+import { PlanPeriodBanner } from './PlanPeriodBanner'
+import { PlanPeriodAdjustModal } from './PlanPeriodAdjustModal'
+import { PlanPeriodForLabel } from './step1/types'
 import { HelpCircle } from 'lucide-react'
 
 interface Step1Props {
@@ -22,6 +26,10 @@ interface Step1Props {
   setShowKPIModal: (show: boolean) => void
   businessId?: string
   extendedPeriodInfo?: { isExtendedPeriod: boolean; year1Months: number; currentYearRemainingMonths: number }
+  // Phase 42 — plan period state from useStrategicPlanning
+  planPeriod?: PlanPeriodForLabel
+  rationale?: string
+  onPlanPeriodChange?: (period: { planStartDate: Date; planEndDate: Date; year1EndDate: Date }) => void
 }
 
 export default function Step1GoalsAndKPIs({
@@ -41,8 +49,13 @@ export default function Step1GoalsAndKPIs({
   showKPIModal,
   setShowKPIModal,
   businessId,
-  extendedPeriodInfo
+  extendedPeriodInfo,
+  planPeriod,
+  rationale,
+  onPlanPeriodChange,
 }: Step1Props) {
+  const [showAdjustModal, setShowAdjustModal] = useState(false)
+
   return (
     <div className="space-y-6">
       {/* Task Banner */}
@@ -85,6 +98,33 @@ export default function Step1GoalsAndKPIs({
         </div>
       </div>
 
+      {/* Phase 42 — Plan Period Banner */}
+      {planPeriod && (
+        <PlanPeriodBanner
+          planStartDate={planPeriod.planStartDate}
+          planEndDate={planPeriod.planEndDate}
+          year1EndDate={planPeriod.year1EndDate}
+          rationale={rationale ?? ''}
+          year1Months={extendedPeriodInfo?.year1Months ?? 12}
+          onAdjust={() => setShowAdjustModal(true)}
+        />
+      )}
+
+      {/* Phase 42 — Plan Period Adjust Modal */}
+      {showAdjustModal && planPeriod && (
+        <PlanPeriodAdjustModal
+          initialPlanStart={planPeriod.planStartDate}
+          initialPlanEnd={planPeriod.planEndDate}
+          initialYear1End={planPeriod.year1EndDate}
+          fiscalYearStart={planPeriod.fiscalYearStart}
+          onClose={() => setShowAdjustModal(false)}
+          onSave={(p) => {
+            onPlanPeriodChange?.(p)
+            setShowAdjustModal(false)
+          }}
+        />
+      )}
+
       {/* Required Section Header */}
       <div className="flex items-center gap-2">
         <span className="px-3 py-1 bg-brand-orange text-white text-xs font-bold rounded-full uppercase tracking-wide">
@@ -104,6 +144,7 @@ export default function Step1GoalsAndKPIs({
         coreMetrics={coreMetrics}
         updateCoreMetric={updateCoreMetric}
         extendedPeriodInfo={extendedPeriodInfo}
+        planPeriod={planPeriod}
       />
 
       {/* Optional Section Header */}
@@ -128,6 +169,7 @@ export default function Step1GoalsAndKPIs({
         yearType={yearType}
         isCollapsed={collapsedSections.has('core-metrics')}
         onToggle={() => toggleSection('core-metrics')}
+        planPeriod={planPeriod}
       />
 
       {/* KPI Section */}
@@ -142,6 +184,7 @@ export default function Step1GoalsAndKPIs({
         showKPIModal={showKPIModal}
         setShowKPIModal={setShowKPIModal}
         businessId={businessId}
+        planPeriod={planPeriod}
       />
 
       {/* Tip Box */}
