@@ -93,7 +93,7 @@ export async function POST(request: Request) {
     // ========================
     if (data.financial) {
       try {
-        const { financialData, coreMetrics, yearType, quarterlyTargets } = data.financial
+        const { financialData, coreMetrics, yearType, quarterlyTargets, extendedPeriod, planPeriod } = data.financial
         const financialPayload: Record<string, any> = {
           business_id: saveProfileId,
           user_id: saveUserId,
@@ -135,6 +135,20 @@ export async function POST(request: Request) {
               financialPayload[`${dbKey}_year3`] = coreMetrics[jsKey].year3 || 0
             }
           }
+        }
+
+        // Phase 14 columns (was missing — Phase 42 fixes the bug per 42-RESEARCH.md Pitfall 1)
+        if (extendedPeriod) {
+          financialPayload.is_extended_period            = extendedPeriod.isExtendedPeriod ?? false
+          financialPayload.year1_months                  = extendedPeriod.year1Months ?? 12
+          financialPayload.current_year_remaining_months = extendedPeriod.currentYearRemainingMonths ?? 0
+        }
+
+        // Phase 42 columns
+        if (planPeriod) {
+          financialPayload.plan_start_date = planPeriod.planStartDate
+          financialPayload.plan_end_date   = planPeriod.planEndDate
+          financialPayload.year1_end_date  = planPeriod.year1EndDate
         }
 
         const { error } = await admin
