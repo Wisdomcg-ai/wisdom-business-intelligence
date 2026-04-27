@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 42
-last_updated: "2026-04-27T01:42:46.607Z"
+last_updated: "2026-04-27T01:50:25.149Z"
 progress:
   total_phases: 41
   completed_phases: 15
   total_plans: 58
-  completed_plans: 54
+  completed_plans: 56
 ---
 
 # Project State
@@ -235,16 +235,22 @@ progress:
 - Plan 42-00: Use `it.todo` (not `it.skip`) for Wave 0 scaffolds — todos render as "pending" giving a visible burn-down indicator (28 todos at Wave 0 → 0 at Phase 42 close). Skip would read as a regression risk.
 - Plan 42-00: Sonner mock pre-declared in every scaffold header so downstream plans (42-01..42-04) don't re-derive the import contract from ReportStatusBar.test.tsx.
 - Plan 42-00: Harness component for debounce tests (not @testing-library/react-hooks renderHook) — Pitfall 1 regression test exercises real RTL component lifecycle including the useEffect cleanup.
+- Plan 42-01: Init-guard threshold set to <2 (not <3 like ForecastWizardV4) — useAutoSaveReport watches single state (commentary), so first invocation = mount and second = post-loadSnapshot; both skipped.
+- Plan 42-01: Retry sleep stored in retryTimeoutRef (cancellable setTimeout) — a raw `await new Promise(r => setTimeout(r, ms))` cannot be cancelled, so unmount mid-backoff would leak.
+- Plan 42-01: Terminal-failure toast uses BOTH `duration: Infinity` AND `dismissible: false` for D-12 non-dismissable defence-in-depth across sonner default-theme variations.
+- Plan 42-01: Pitfall 6 enforced — useEffect watches `args.commentary` ONLY, never `report.report_data`. Explicit `// INTENTIONALLY does not include args.report` comment prevents future "fix" reverts. Xero refresh cannot trigger a save.
+- Plan 42-01: Consolidation guard checked in 4 places (performSave + schedule + flushImmediately + retryNow) — defence in depth so no path produces a POST that saveSnapshot would reject.
 
 ## Completed Work (Phase 42)
 
 - Plan 42-00: shared useDebouncedCallback hook + 4 it.todo test scaffolds (28 todos enumerating D-01..D-15 + D-17) — COMPLETE (ba90c46, b4f34ea). Full vitest suite green: 323 pass, 28 todo, 0 fail. tsc clean. Wave 0 Nyquist gate satisfied; plans 42-01..42-04 unblocked.
+- Plan 42-01: useAutoSaveReport hook with 500ms debounce + onBlur flush + 3-attempt exponential backoff (1s/2s/4s) + single-flight queue + Finalise/consolidation guards + Pitfall 6 commentary-only watch — COMPLETE (245ec3a). 15 vitest tests pass (≥13 required). Full suite: 345 pass / 0 fail / 9 todo. tsc clean. Plans 42-02..42-04 unblocked.
 
 ## Position
 
-- Current: Phase 42, Plan 00 — COMPLETE (2 tasks done, 5 new debounce tests passing, 28 todos pending, tsc clean)
-- Stopped at: Completed 42-00-PLAN.md
+- Current: Phase 42, Plan 01 — COMPLETE (1 task done, 15 tests passing, tsc clean)
+- Stopped at: Completed 42-01-PLAN.md
 
 ## Last Session
 
-- 2026-04-27T01:41:08Z — Completed 42-00-PLAN.md (Wave 0 foundation: shared debounce hook with unmount cleanup + 4 it.todo scaffolds for downstream Phase 42 plans)
+- 2026-04-23T11:48:00Z — Completed 42-01-PLAN.md (useAutoSaveReport hook — keystone of Phase 42 auto-save lifecycle)
