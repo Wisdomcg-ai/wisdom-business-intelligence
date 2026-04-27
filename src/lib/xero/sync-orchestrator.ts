@@ -1,26 +1,32 @@
 /**
- * Phase 44 Plan 44-04 — Canonical Xero P&L sync orchestrator.
+ * Phase 44 Plan 44-04 / 44-05 — Canonical Xero P&L sync orchestrator.
  *
  * The single, named entry point for every Xero sync flow. All other routes
- * (sync-all, refresh-pl, sync-forecast, the 02:00 AEST cron) become thin
- * shims around this function in plan 44-05.
+ * (sync-all, refresh-pl, sync-forecast, the 02:00 AEST cron) are thin shims
+ * around this function.
  *
  * Contract (locked in 44-CONTEXT.md decisions D-05 through D-10):
- *   1. Acquire a per-business advisory lock (concurrent calls serialize).
- *   2. Open a sync_jobs audit row in 'running' state.
- *   3. Iterate every active xero_connections row for the business (multi-org
+ *   1. Atomically claim a sync_jobs row via begin_xero_sync_job RPC
+ *      (returns NULL if another non-stale 'running' sync exists for this
+ *      business — single-flight guarantee per 44-05 migration 5; replaces
+ *      the broken pg_advisory_xact_lock approach from 44-02).
+ *   2. Iterate every active xero_connections row for the business (multi-org
  *      per D-09).
- *   4. For each (tenant, fiscal_year) ∈ {current FY YTD, prior FY} (D-06):
+ *   3. For each (tenant, fiscal_year) ∈ {current FY YTD, prior FY} (D-06):
  *        a. Get a valid access token via token-manager.
  *        b. Fetch the canonical by-month report (one-month base + periods=11
  *           per D-05).
  *        c. Fetch the single-period FY total for reconciliation.
  *        d. parsePLByMonth → reconcilePL (fail-loud per D-08).
  *        e. Upsert long-format rows via ON CONFLICT
- *           (business_id, tenant_id, account_code, period_month).
+ *           (business_id, tenant_id, account_code, period_month). Targets
+ *           the plain unique constraint `xero_pl_lines_natural_key_uniq`
+ *           added in 44-05 migration 4 (replaces the functional index from
+ *           44-02 which Supabase upsert could not reach).
  *        f. Compute coverage record (D-10 — sparse-aware, NEVER zero-padded).
- *   5. Update sync_jobs to final status (success | partial | error) with
- *      coverage, reconciliation discrepancies, request count, error.
+ *   4. Always finalize via finalize_xero_sync_job RPC inside a try/finally
+ *      so crashed runs leave a non-running row for operators (terminal
+ *      status: success | partial | error).
  *
  * Pure-ish: all I/O is at well-defined boundaries (fetch, supabase) so the
  * test suite mocks them directly. NO silent auto-correct, NO non-fatal swallow.
@@ -180,6 +186,28 @@ function fyTotalUrl(fy: number, fyStartMonth: number): string {
   return `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?${qs}`
 }
 
+/** Standard "no work" SyncResult — used when begin_xero_sync_job rejects the
+ * claim because another sync is already in flight (D-07 single-flight guard). */
+function inFlightRejectionResult(businessId: string): SyncResult {
+  return {
+    business_id: businessId,
+    status: 'error',
+    sync_job_id: '',
+    rows_inserted: 0,
+    rows_updated: 0,
+    xero_request_count: 0,
+    coverage: {
+      months_covered: 0,
+      first_period: '',
+      last_period: '',
+      expected_months: 24,
+    },
+    reconciliation: { status: 'ok', discrepancy_count: 0 },
+    error:
+      'Another sync for this business is already in progress (within 15-minute staleness window).',
+  }
+}
+
 // ─── Main orchestrator ──────────────────────────────────────────────────────
 
 export async function syncBusinessXeroPL(
@@ -190,33 +218,55 @@ export async function syncBusinessXeroPL(
   const ids = await resolveBusinessIds(supabase as any, businessId)
   const profileId = ids.profileId
 
-  // 1. Advisory lock — first DB call, before any Xero I/O.
-  // The acquire_xero_sync_lock RPC wraps pg_advisory_xact_lock per 44-02.
-  // (See SUMMARY: this RPC's serialization semantics need a follow-up fix in 44-05.)
-  await supabase.rpc('acquire_xero_sync_lock', { p_business_id: profileId })
-
-  // 2. Open sync_jobs row (status='running'). Capture id for the final UPDATE.
-  const insertResult = await supabase
-    .from('sync_jobs')
-    .insert({
-      business_id: profileId,
-      job_type: 'xero_pl_sync',
-      status: 'running',
-      started_at: new Date().toISOString(),
-    })
-    .select('id')
-    .single()
-  const syncJobId: string =
-    (insertResult as any)?.data?.id ?? 'unknown-sync-job'
+  // 1. Atomically claim a sync_jobs row. begin_xero_sync_job is the canonical
+  //    single-flight guard per 44-05 migration 5. Replaces the broken
+  //    pg_advisory_xact_lock RPC from 44-02 (which released its lock on RPC
+  //    return, providing zero serialization across fetch/parse/upsert).
+  //    Returns the new row's id, or NULL if another non-stale running sync
+  //    exists for this business (15-min staleness window).
+  const { data: jobIdData, error: beginErr } = await supabase.rpc(
+    'begin_xero_sync_job',
+    { p_business_id: profileId },
+  )
+  if (beginErr) {
+    // Begin RPC errored — surface immediately. No sync_jobs row to finalize.
+    Sentry.captureException(beginErr, {
+      tags: {
+        invariant: 'xero_sync_orchestrator',
+        phase: 'begin_xero_sync_job',
+        business_id: profileId,
+      },
+    } as any)
+    throw new Error(
+      `begin_xero_sync_job failed: ${(beginErr as any)?.message ?? String(beginErr)}`,
+    )
+  }
+  if (jobIdData === null || jobIdData === undefined) {
+    // Another sync is in flight; bail with a structured "lock contention"
+    // result. NO fetches issued, NO upserts, NO sync_jobs row to finalize
+    // (the in-flight sync owns the existing row).
+    return inFlightRejectionResult(businessId)
+  }
+  const syncJobId: string = String(jobIdData)
 
   let xeroRequestCount = 0
   let rowsInserted = 0
   let rowsUpdated = 0
   const allDiscrepancies: Discrepancy[] = []
   const coveragePerWindow: CoverageRecord[] = []
+  let finalStatus: 'success' | 'partial' | 'error' = 'error'
+  let finalError: string | null = null
+  let coverage: CoverageRecord = {
+    months_covered: 0,
+    first_period: '',
+    last_period: '',
+    expected_months: 24,
+  }
+  let didThrow = false
+  let thrownErr: unknown = null
 
   try {
-    // 3. Resolve FY windows.
+    // 2. Resolve FY windows.
     const today = new Date()
     const fyStartMonth = DEFAULT_FY_START_MONTH
     const currentFY = opts.fyOverride ?? getCurrentFY(today, fyStartMonth)
@@ -236,7 +286,7 @@ export async function syncBusinessXeroPL(
       },
     ]
 
-    // 4. Iterate active xero_connections for this business (multi-org per D-09).
+    // 3. Iterate active xero_connections for this business (multi-org per D-09).
     const { data: connections } = await supabase
       .from('xero_connections')
       .select('id, tenant_id, tenant_name, business_id')
@@ -245,18 +295,9 @@ export async function syncBusinessXeroPL(
 
     if (!Array.isArray(connections) || connections.length === 0) {
       // No connections = error per D-09. Surface clearly; do not throw.
-      const errMsg =
+      finalStatus = 'error'
+      finalError =
         'No active xero_connections for this business. Connect Xero before syncing.'
-      await supabase
-        .from('sync_jobs')
-        .update({
-          status: 'error',
-          finished_at: new Date().toISOString(),
-          xero_request_count: xeroRequestCount,
-          error: errMsg,
-        })
-        .eq('id', syncJobId)
-
       return {
         business_id: businessId,
         status: 'error',
@@ -264,30 +305,24 @@ export async function syncBusinessXeroPL(
         rows_inserted: 0,
         rows_updated: 0,
         xero_request_count: 0,
-        coverage: {
-          months_covered: 0,
-          first_period: '',
-          last_period: '',
-          expected_months: 24,
-        },
+        coverage,
         reconciliation: { status: 'ok', discrepancy_count: 0 },
-        error: errMsg,
+        error: finalError,
       }
     }
 
     for (const conn of connections) {
       if (opts.tenantIdFilter && conn.tenant_id !== opts.tenantIdFilter) continue
 
-      // 4a. Get a valid access token for this specific connection.
+      // 3a. Get a valid access token for this specific connection.
       const tokenResult = await getValidAccessToken(
         { id: conn.id },
         supabase as any,
       )
       if (!tokenResult.success || !tokenResult.accessToken) {
-        // Token failure for one connection is a partial failure — record it
-        // as a discrepancy-like signal but continue with other connections.
-        // This is NOT a silent swallow; it surfaces in sync_jobs.error if
-        // ALL connections fail (the throw at end of try block).
+        // Token failure for one connection is treated as a hard error for
+        // that connection — surfaces in sync_jobs.error via the catch below
+        // (NOT a silent swallow).
         throw new Error(
           `Token refresh failed for connection ${conn.id}: ${tokenResult.message ?? tokenResult.error ?? 'unknown'}`,
         )
@@ -300,7 +335,7 @@ export async function syncBusinessXeroPL(
       }
 
       for (const window of fyWindows) {
-        // 4b. Fetch canonical by-month.
+        // 3b. Fetch canonical by-month.
         const byMonthResp = await fetch(byMonthUrl(window.base), { headers })
         xeroRequestCount++
         if (!byMonthResp.ok) {
@@ -311,7 +346,7 @@ export async function syncBusinessXeroPL(
         const byMonthJson = await byMonthResp.json()
         await sleep(XERO_REQUEST_DELAY_MS)
 
-        // 4c. Fetch single-period FY total for reconciliation.
+        // 3c. Fetch single-period FY total for reconciliation.
         const fyTotalResp = await fetch(
           fyTotalUrl(window.fy, fyStartMonth),
           { headers },
@@ -325,7 +360,7 @@ export async function syncBusinessXeroPL(
         const fyTotalJson = await fyTotalResp.json()
         await sleep(XERO_REQUEST_DELAY_MS)
 
-        // 4d. Parse + reconcile (D-08 fail-loud — collect discrepancies, do
+        // 3d. Parse + reconcile (D-08 fail-loud — collect discrepancies, do
         // NOT auto-correct, do NOT abort the loop).
         const monthlyRows = parsePLByMonth(byMonthJson)
         const fyTotals = parseFYTotalResponse(fyTotalJson)
@@ -336,8 +371,11 @@ export async function syncBusinessXeroPL(
           }
         }
 
-        // 4e. Upsert long-format rows. ON CONFLICT
-        // (business_id, tenant_id, account_code, period_month).
+        // 3e. Upsert long-format rows. ON CONFLICT
+        // (business_id, tenant_id, account_code, period_month) — targets the
+        // plain unique constraint `xero_pl_lines_natural_key_uniq` (44-05
+        // migration 4). The constraint is plain (no COALESCE), so Supabase
+        // upsert can match it by column list.
         const dbRows = monthlyRows.map((r: ParsedPLRow) => ({
           business_id: profileId,
           tenant_id: conn.tenant_id,
@@ -367,38 +405,20 @@ export async function syncBusinessXeroPL(
           rowsInserted += dbRows.length
         }
 
-        // 4f. Coverage record per (tenant, fy).
+        // 3f. Coverage record per (tenant, fy).
         coveragePerWindow.push(computeCoverage(monthlyRows, window.expectedMonths))
       }
     }
 
-    // 5. Final status. Coverage aggregated across windows. Reconciliation
-    // discrepancies determine partial vs success.
+    // 4. Compute final status. Coverage aggregated across windows.
+    //    Reconciliation discrepancies determine partial vs success.
     const expectedTotal = fyWindows.length * 12
-    const coverage = aggregateCoverage(coveragePerWindow, expectedTotal)
-    const finalStatus: 'success' | 'partial' =
-      allDiscrepancies.length === 0 ? 'success' : 'partial'
-
-    await supabase
-      .from('sync_jobs')
-      .update({
-        status: finalStatus,
-        finished_at: new Date().toISOString(),
-        fy_range: { current_fy: currentFY, prior_fy: priorFY, fy_start_month: fyStartMonth },
-        coverage,
-        rows_inserted: rowsInserted,
-        rows_updated: rowsUpdated,
-        xero_request_count: xeroRequestCount,
-        reconciliation:
-          allDiscrepancies.length > 0
-            ? { status: 'mismatch', discrepancies: allDiscrepancies }
-            : { status: 'ok' },
-        error:
-          allDiscrepancies.length > 0
-            ? `Reconciliation mismatch on ${allDiscrepancies.length} accounts`
-            : null,
-      })
-      .eq('id', syncJobId)
+    coverage = aggregateCoverage(coveragePerWindow, expectedTotal)
+    finalStatus = allDiscrepancies.length === 0 ? 'success' : 'partial'
+    finalError =
+      allDiscrepancies.length > 0
+        ? `Reconciliation mismatch on ${allDiscrepancies.length} accounts`
+        : null
 
     if (allDiscrepancies.length > 0) {
       // D-18 invariant pattern: structured Sentry tag on reconciliation gap.
@@ -426,17 +446,12 @@ export async function syncBusinessXeroPL(
     }
   } catch (err: any) {
     // D-12 anti-pattern explicitly avoided: NO silent error swallowing.
-    // Update sync_jobs to error, capture in Sentry, and re-throw so the
-    // caller sees the failure (route handler converts to 500, cron logs it).
-    await supabase
-      .from('sync_jobs')
-      .update({
-        status: 'error',
-        finished_at: new Date().toISOString(),
-        xero_request_count: xeroRequestCount,
-        error: String(err?.message ?? err),
-      })
-      .eq('id', syncJobId)
+    // Mark final state as error; finalize_xero_sync_job in finally writes the
+    // terminal sync_jobs row, then we re-throw.
+    didThrow = true
+    thrownErr = err
+    finalStatus = 'error'
+    finalError = String(err?.message ?? err)
 
     Sentry.captureException(err, {
       tags: {
@@ -446,7 +461,51 @@ export async function syncBusinessXeroPL(
       },
     } as any)
 
+    // Re-throw AFTER the finally block runs (so finalize_xero_sync_job is
+    // still invoked on every code path the orchestrator can control).
     throw err
+  } finally {
+    // 5. Always finalize. Whether the run succeeded, partially succeeded, or
+    //    threw, the sync_jobs row gets a terminal status (no orphaned
+    //    'running' rows from code paths the orchestrator controls).
+    try {
+      await supabase.rpc('finalize_xero_sync_job', {
+        p_job_id: syncJobId,
+        p_status: finalStatus,
+        p_rows_inserted: rowsInserted,
+        p_rows_updated: rowsUpdated,
+        p_xero_request_count: xeroRequestCount,
+        p_coverage:
+          finalStatus === 'error' && coveragePerWindow.length === 0
+            ? null
+            : coverage,
+        p_reconciliation:
+          allDiscrepancies.length > 0
+            ? { status: 'mismatch', discrepancies: allDiscrepancies }
+            : finalStatus === 'error'
+              ? null
+              : { status: 'ok' },
+        p_error: finalError,
+      })
+    } catch (finalizeErr) {
+      // Finalize failed — log via Sentry so the operator can patch the row
+      // by hand. We do NOT want to mask the original throw if there was one.
+      Sentry.captureException(finalizeErr, {
+        tags: {
+          invariant: 'xero_sync_orchestrator',
+          phase: 'finalize_xero_sync_job',
+          business_id: profileId,
+          sync_job_id: syncJobId,
+        },
+      } as any)
+      if (!didThrow) {
+        // No prior error — surface this one.
+        throw finalizeErr
+      }
+      // Otherwise let the original throw propagate.
+    }
+    // No-op reference to keep TS happy when only used in a comment.
+    void thrownErr
   }
 }
 
@@ -456,7 +515,7 @@ export async function syncBusinessXeroPL(
  * Iterate every business with at least one active xero_connection and sync
  * each in sequence. Sequential — concurrency limit 1 — to stay within
  * Vercel function maxDuration and Xero rate limits. The 02:00 AEST cron
- * (plan 44-05) calls this directly.
+ * (plan 44-05 cron route) calls this directly.
  */
 export async function runSyncForAllBusinesses(): Promise<SyncResult[]> {
   const supabase = createServiceRoleClient()
@@ -474,7 +533,7 @@ export async function runSyncForAllBusinesses(): Promise<SyncResult[]> {
     try {
       results.push(await syncBusinessXeroPL(businessId))
     } catch (err: any) {
-      // syncBusinessXeroPL already wrote sync_jobs.status='error' before
+      // syncBusinessXeroPL already finalized sync_jobs.status='error' before
       // throwing. We collect a placeholder result so the cron's overall
       // report shows every business attempted.
       results.push({

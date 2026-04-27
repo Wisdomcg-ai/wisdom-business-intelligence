@@ -1,20 +1,23 @@
 /**
- * Phase 44 Plan 44-04 — Sync orchestrator tests.
+ * Phase 44 Plan 44-04 / 44-05 — Sync orchestrator tests.
  *
- * Validates the canonical sync entry point: advisory lock → fetch (current FY
- * YTD + prior FY) per active xero_connection → parse → reconcile → upsert →
- * sync_jobs audit row. All I/O is mocked at the boundary:
+ * Validates the canonical sync entry point: begin_xero_sync_job (single-flight
+ * guard) → fetch (current FY YTD + prior FY) per active xero_connection →
+ * parse → reconcile → upsert → finalize_xero_sync_job. All I/O is mocked at
+ * the boundary:
  *   - vi.spyOn(global, 'fetch') for Xero HTTP
  *   - vi.mock('@/lib/supabase/admin') for the service-role client
  *   - vi.mock('@/lib/xero/token-manager') for getValidAccessToken
- *   - vi.mock('@/lib/utils/encryption') (the orchestrator does not call decrypt
- *     directly, but token-manager imports it; mocking the boundary is enough)
  *
- * Test names mirror 44-VALIDATION.md exactly so `vitest -t '<name>'` filters resolve.
+ * Test names mirror 44-VALIDATION.md exactly so `vitest -t '<name>'` filters
+ * still resolve. The 'advisory lock' test from the original 44-04 suite
+ * was renamed/reshaped to 'rejects when another sync is in progress' because
+ * 44-05 migration 5 dropped the broken pg_advisory_xact_lock RPC and replaced
+ * it with the begin_xero_sync_job DB-state guard. The orchestrator now asserts
+ * single-flight via NULL return from begin_xero_sync_job, not via lock RPC.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import jdsByMonthFixture from './fixtures/jds-fy26.json'
-import jdsReconcilerFixture from './fixtures/jds-fy26-reconciler.json'
 
 // ─── Module-level mocks ─────────────────────────────────────────────────────
 
@@ -37,20 +40,36 @@ vi.mock('@/lib/xero/token-manager', () => ({
 
 type CallLogEntry = { kind: string; arg?: any }
 
+type RpcReturn =
+  | { data: any; error: any | null }
+  | ((args: any) => { data: any; error: any | null })
+
+/**
+ * Build a stub of the supabase service-role client.
+ *
+ * `rpcReturns` lets tests dictate per-RPC behaviour. By default:
+ *   - begin_xero_sync_job returns 'sync-job-id-1' (a fresh job claim).
+ *   - finalize_xero_sync_job returns void (success).
+ * Tests override either one to simulate "another sync in flight" (begin
+ * returns NULL) or finalize errors.
+ */
 function makeSupabaseStub(opts: {
   connections?: any[]
-  syncJobInsertReturn?: { id: string; error: any | null }
-  upsertCounts?: { inserted: number; updated: number }
+  rpcReturns?: Record<string, RpcReturn>
   upsertError?: any | null
-  rpcError?: any | null
 }) {
   const callLog: CallLogEntry[] = []
   const connections = opts.connections ?? []
-  const syncJobReturn = opts.syncJobInsertReturn ?? { id: 'sync-job-id-1', error: null }
   const upsertError = opts.upsertError ?? null
   const upsertedRowsCapture: any[][] = []
 
-  // .from('table') returns a query builder that records every chained call
+  const defaultRpcReturns: Record<string, RpcReturn> = {
+    begin_xero_sync_job: { data: 'sync-job-id-1', error: null },
+    finalize_xero_sync_job: { data: null, error: null },
+  }
+  const rpcReturns = { ...defaultRpcReturns, ...(opts.rpcReturns ?? {}) }
+
+  // .from('table') returns a query builder that records every chained call.
   const fromBuilder = (table: string) => {
     const ctx: any = { _filters: [] as any[], _table: table, _select: null }
 
@@ -77,37 +96,16 @@ function makeSupabaseStub(opts: {
       return { data: null, error: null }
     }
     ctx.single = async () => {
-      callLog.push({ kind: `from:${table}:single`, arg: ctx._lastInsertPayload })
-      if (ctx._isInsert && table === 'sync_jobs') {
-        return { data: { id: syncJobReturn.id }, error: syncJobReturn.error }
-      }
+      callLog.push({ kind: `from:${table}:single` })
       return { data: null, error: null }
     }
 
-    ctx.insert = (payload: any) => {
-      ctx._isInsert = true
-      ctx._lastInsertPayload = payload
-      callLog.push({ kind: `from:${table}:insert`, arg: payload })
-      return ctx
-    }
-
-    ctx.update = (payload: any) => {
-      callLog.push({ kind: `from:${table}:update`, arg: payload })
-      // .update returns ctx so .eq() can chain; final await of .eq returns {data,error}
-      ctx._isUpdate = true
-      // Make .eq awaitable as terminal call returning {data,error}
-      const finishUpdate = (col: string, val: any) => {
-        ctx._filters.push({ kind: 'eq', col, val })
-        return Promise.resolve({ data: null, error: null })
-      }
-      ctx.eq = finishUpdate as any
-      return ctx
-    }
-
     ctx.upsert = (rows: any[], upsertOpts: any) => {
-      callLog.push({ kind: `from:${table}:upsert`, arg: { rowCount: rows.length, opts: upsertOpts } })
+      callLog.push({
+        kind: `from:${table}:upsert`,
+        arg: { rowCount: rows.length, opts: upsertOpts },
+      })
       upsertedRowsCapture.push(rows)
-      // Mock returns { data, error, count } — orchestrator may inspect count
       return Promise.resolve({
         data: rows,
         error: upsertError,
@@ -118,11 +116,9 @@ function makeSupabaseStub(opts: {
     // Terminal awaitable for SELECT chains (xero_connections list, etc.)
     ctx.then = (resolve: any, reject: any) => {
       callLog.push({ kind: `from:${table}:select-list`, arg: ctx._filters })
-      // Routing by table name:
       if (table === 'xero_connections') {
         return Promise.resolve({ data: connections, error: null }).then(resolve, reject)
       }
-      // sync_jobs select (none expected during run); business_profiles already handled.
       return Promise.resolve({ data: [], error: null }).then(resolve, reject)
     }
 
@@ -133,21 +129,19 @@ function makeSupabaseStub(opts: {
 
   supabaseMock.rpc = vi.fn(async (name: string, args: any) => {
     callLog.push({ kind: `rpc:${name}`, arg: args })
-    if (opts.rpcError) return { data: null, error: opts.rpcError }
+    const ret = rpcReturns[name]
+    if (typeof ret === 'function') return ret(args)
+    if (ret) return ret
     return { data: null, error: null }
   })
 
   return { callLog, upsertedRowsCapture }
 }
 
-// Stub a sequence of fetch responses keyed by URL substring. Helpers compose
-// canonical-by-month responses (returns parsed monthly fixture) and
-// reconciler responses (returns synthetic FY total derived from fixture).
+// Stub a sequence of fetch responses keyed by URL substring.
 function mockFetchByUrl(handlers: Array<{ match: (url: string) => boolean; body: any }>) {
-  let callIdx = 0
   return vi.spyOn(global, 'fetch').mockImplementation(async (url: any) => {
     const u = String(url)
-    callIdx += 1
     for (const h of handlers) {
       if (h.match(u)) {
         return new Response(JSON.stringify(h.body), {
@@ -164,8 +158,7 @@ function mockFetchByUrl(handlers: Array<{ match: (url: string) => boolean; body:
 
 // Minimal synthetic reconciler-shaped JSON: a valid Xero single-period response
 // whose per-account totals exactly equal the parser's monthly_sum for the
-// given by-month fixture. This guarantees reconciler.status='ok' for the
-// happy path so we can exercise the orchestrator's success branch.
+// given by-month fixture. Guarantees reconciler.status='ok' for the happy path.
 async function buildSyntheticFYTotalsFromByMonth(byMonthFixture: any) {
   const { parsePLByMonth } = await import('@/lib/xero/pl-by-month-parser')
   const rows = parsePLByMonth(byMonthFixture)
@@ -177,7 +170,6 @@ async function buildSyntheticFYTotalsFromByMonth(byMonthFixture: any) {
     }
     totals[key].total += r.amount
   }
-  // Round each to 2dp to mirror Xero cents-precision and the reconciler's rounding.
   const xeroRows = Object.values(totals).map((t) => ({
     RowType: 'Row',
     Cells: [
@@ -238,12 +230,44 @@ describe('Sync Orchestrator', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(4)
     expect(result.status).toBe('success')
     expect(result.xero_request_count).toBe(4)
-    // sync_jobs row must have been opened then updated.
-    expect(callLog.some((c) => c.kind === 'from:sync_jobs:insert')).toBe(true)
-    expect(callLog.some((c) => c.kind === 'from:sync_jobs:update')).toBe(true)
+    // begin + finalize RPCs MUST both have been recorded.
+    expect(callLog.some((c) => c.kind === 'rpc:begin_xero_sync_job')).toBe(true)
+    expect(callLog.some((c) => c.kind === 'rpc:finalize_xero_sync_job')).toBe(true)
   })
 
-  it('advisory lock', async () => {
+  it('rejects when another sync is in progress', async () => {
+    // begin_xero_sync_job returns NULL → orchestrator must short-circuit.
+    // No fetches, no upserts, no finalize call (the in-flight sync owns the
+    // existing sync_jobs row).
+    makeSupabaseStub({
+      connections: [
+        { id: 'conn-1', tenant_id: 'tenant-A', tenant_name: 'JDS', business_id: 'profile-id-1' },
+      ],
+      rpcReturns: {
+        begin_xero_sync_job: { data: null, error: null },
+      },
+    })
+    const fetchSpy = mockFetchByUrl([])
+
+    const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
+    const result = await syncBusinessXeroPL('biz-id-1')
+
+    expect(result.status).toBe('error')
+    expect(result.error ?? '').toMatch(/already in progress|in flight|in-flight/i)
+    expect(fetchSpy).not.toHaveBeenCalled()
+    // begin RPC was called with the resolved profile id.
+    expect(supabaseMock.rpc).toHaveBeenCalledWith(
+      'begin_xero_sync_job',
+      expect.objectContaining({ p_business_id: 'profile-id-1' }),
+    )
+    // finalize MUST NOT be called — the existing in-flight sync owns the row.
+    const finalizeCalls = (supabaseMock.rpc as any).mock.calls.filter(
+      (c: any[]) => c[0] === 'finalize_xero_sync_job',
+    )
+    expect(finalizeCalls.length).toBe(0)
+  })
+
+  it('finalize on success', async () => {
     const { callLog } = makeSupabaseStub({
       connections: [
         { id: 'conn-1', tenant_id: 'tenant-A', tenant_name: 'JDS', business_id: 'profile-id-1' },
@@ -256,23 +280,46 @@ describe('Sync Orchestrator', () => {
     ])
 
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
-    await syncBusinessXeroPL('biz-id-1')
+    const result = await syncBusinessXeroPL('biz-id-1')
 
-    // The advisory lock RPC MUST appear in the call log AND it MUST appear
-    // before any fetch call. Fetch is not in the supabase callLog, so we
-    // assert the lock is recorded; the orchestrator's source enforces order.
-    const lockIdx = callLog.findIndex(
-      (c) => c.kind === 'rpc:acquire_xero_sync_lock',
+    expect(result.status).toBe('success')
+    // finalize_xero_sync_job called with status='success', rows_inserted > 0,
+    // matching xero_request_count.
+    const finalizeCall = callLog.find((c) => c.kind === 'rpc:finalize_xero_sync_job')
+    expect(finalizeCall).toBeTruthy()
+    expect(finalizeCall?.arg.p_status).toBe('success')
+    expect(finalizeCall?.arg.p_job_id).toBe('sync-job-id-1')
+    expect(finalizeCall?.arg.p_xero_request_count).toBe(4)
+    expect(finalizeCall?.arg.p_rows_inserted).toBeGreaterThan(0)
+    expect(finalizeCall?.arg.p_error).toBeNull()
+  })
+
+  it('finalize on thrown error', async () => {
+    // Mock fetch to throw on the first call → orchestrator catches in the try
+    // block, calls finalize_xero_sync_job with status='error' from the finally
+    // block, and re-throws.
+    makeSupabaseStub({
+      connections: [
+        { id: 'conn-1', tenant_id: 'tenant-A', tenant_name: 'JDS', business_id: 'profile-id-1' },
+      ],
+    })
+    vi.spyOn(global, 'fetch').mockImplementation(async () => {
+      throw new Error('synthetic xero fetch failure')
+    })
+
+    const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
+    await expect(syncBusinessXeroPL('biz-id-1')).rejects.toThrow(
+      /synthetic xero fetch failure/,
     )
-    expect(lockIdx).toBeGreaterThanOrEqual(0)
-    // The first DB write (sync_jobs insert) must come AFTER the lock.
-    const insertIdx = callLog.findIndex((c) => c.kind === 'from:sync_jobs:insert')
-    expect(insertIdx).toBeGreaterThan(lockIdx)
-    // The lock must be called with the resolved profile id.
-    expect(supabaseMock.rpc).toHaveBeenCalledWith(
-      'acquire_xero_sync_lock',
-      expect.objectContaining({ p_business_id: 'profile-id-1' }),
+
+    // finalize MUST have been called with status='error' + the error message.
+    const finalizeCalls = (supabaseMock.rpc as any).mock.calls.filter(
+      (c: any[]) => c[0] === 'finalize_xero_sync_job',
     )
+    expect(finalizeCalls.length).toBe(1)
+    const args = finalizeCalls[0][1]
+    expect(args.p_status).toBe('error')
+    expect(args.p_error).toMatch(/synthetic xero fetch failure/)
   })
 
   it('idempotent upsert', async () => {
@@ -291,6 +338,8 @@ describe('Sync Orchestrator', () => {
     await syncBusinessXeroPL('biz-id-1')
 
     // Find the upsert call to xero_pl_lines and assert ON CONFLICT shape.
+    // 44-05 migration 4 made the constraint plain (no COALESCE); the
+    // onConflict column list reaches it directly.
     const upsertCalls = callLog.filter((c) => c.kind === 'from:xero_pl_lines:upsert')
     expect(upsertCalls.length).toBeGreaterThan(0)
     for (const call of upsertCalls) {
@@ -298,16 +347,16 @@ describe('Sync Orchestrator', () => {
         'business_id,tenant_id,account_code,period_month',
       )
     }
-    // Idempotency: the same fixture upserted twice produces the same payload.
     const firstPayloadCount = upsertedRowsCapture[0]?.length ?? 0
     expect(firstPayloadCount).toBeGreaterThan(0)
   })
 
   it('natural key uniqueness', async () => {
     // Mock supabase to surface a unique-violation on upsert. Orchestrator
-    // must NOT swallow it — it must mark sync_jobs.status='error' and re-throw.
+    // must NOT swallow it — it must finalize sync_jobs with status='error'
+    // and re-throw.
     const violation = { code: '23505', message: 'duplicate key value violates unique constraint' }
-    const { callLog } = makeSupabaseStub({
+    makeSupabaseStub({
       connections: [
         { id: 'conn-1', tenant_id: 'tenant-A', tenant_name: 'JDS', business_id: 'profile-id-1' },
       ],
@@ -322,23 +371,18 @@ describe('Sync Orchestrator', () => {
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
     await expect(syncBusinessXeroPL('biz-id-1')).rejects.toThrow(/duplicate key|unique|23505/i)
 
-    // The error path must update sync_jobs to status='error' before re-throwing.
-    const errorUpdate = callLog.find(
-      (c) =>
-        c.kind === 'from:sync_jobs:update' &&
-        c.arg &&
-        c.arg.status === 'error',
+    // finalize MUST be called with status='error' (no silent swallow).
+    const finalizeCalls = (supabaseMock.rpc as any).mock.calls.filter(
+      (c: any[]) => c[0] === 'finalize_xero_sync_job',
     )
-    expect(errorUpdate).toBeTruthy()
+    expect(finalizeCalls.length).toBe(1)
+    expect(finalizeCalls[0][1].p_status).toBe('error')
   })
 
   it('coverage record', async () => {
-    // Sparse fixture: slice JDS to first 4 months only. The orchestrator
-    // must report months_covered reflecting what was actually returned,
-    // NOT zero-pad to 24.
+    // Sparse fixture: slice JDS to first 4 months only.
     const sparse = JSON.parse(JSON.stringify(jdsByMonthFixture))
     const headerRow = sparse.Reports[0].Rows.find((r: any) => r.RowType === 'Header')
-    // Keep the empty leading cell + first 4 month columns.
     headerRow.Cells = headerRow.Cells.slice(0, 5)
     for (const sec of sparse.Reports[0].Rows) {
       if (sec.RowType !== 'Section' || !Array.isArray(sec.Rows)) continue
@@ -363,27 +407,21 @@ describe('Sync Orchestrator', () => {
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
     const result = await syncBusinessXeroPL('biz-id-1')
 
-    // The coverage record is sparse — first FY window's by-month base is
-    // April 2026 sliced to 4 cols, so months_covered per-window <= 4.
     expect(result.coverage.months_covered).toBeLessThanOrEqual(8) // ≤ 4 per FY × 2 FYs
     expect(result.coverage.months_covered).toBeGreaterThan(0)
-    // expected_months reflects the orchestrator's intent (24 for the 2-FY window).
     expect(result.coverage.expected_months).toBe(24)
 
-    // sync_jobs.update payload must include the coverage object.
-    const finalUpdate = callLog.find(
-      (c) =>
-        c.kind === 'from:sync_jobs:update' &&
-        c.arg &&
-        c.arg.coverage,
+    // finalize call carries the coverage record.
+    const finalizeCall = callLog.find((c) => c.kind === 'rpc:finalize_xero_sync_job')
+    expect(finalizeCall).toBeTruthy()
+    expect(finalizeCall?.arg.p_coverage?.months_covered).toBe(
+      result.coverage.months_covered,
     )
-    expect(finalUpdate).toBeTruthy()
-    expect(finalUpdate?.arg.coverage.months_covered).toBe(result.coverage.months_covered)
   })
 
   it('reconciliation mismatch fails loud', async () => {
-    // Reconciler stub that ALWAYS returns a discrepancy. We achieve this
-    // by providing FY totals that don't match the parser's monthly sum.
+    // Reconciler stub that ALWAYS returns a discrepancy (FY totals don't
+    // match parser output).
     const fyTotals = {
       Reports: [
         {
@@ -400,7 +438,7 @@ describe('Sync Orchestrator', () => {
                       Value: 'Sales - General',
                       Attributes: [{ Id: 'account', Value: 'BOGUS-ACCT' }],
                     },
-                    { Value: '999999.99' }, // intentionally wrong
+                    { Value: '999999.99' },
                   ],
                 },
               ],
@@ -423,7 +461,6 @@ describe('Sync Orchestrator', () => {
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
     const result = await syncBusinessXeroPL('biz-id-1')
 
-    // D-08: surface but do not abort mid-flight. status='partial' or 'error'.
     expect(['partial', 'error']).toContain(result.status)
     expect(result.reconciliation.status).toBe('mismatch')
     expect(result.reconciliation.discrepancy_count).toBeGreaterThanOrEqual(1)
@@ -432,20 +469,13 @@ describe('Sync Orchestrator', () => {
     const upsertCalls = callLog.filter((c) => c.kind === 'from:xero_pl_lines:upsert')
     expect(upsertCalls.length).toBeGreaterThan(0)
 
-    // sync_jobs.reconciliation field captures the discrepancy.
-    const finalUpdate = callLog.find(
-      (c) =>
-        c.kind === 'from:sync_jobs:update' &&
-        c.arg &&
-        c.arg.reconciliation &&
-        c.arg.reconciliation.status === 'mismatch',
-    )
-    expect(finalUpdate).toBeTruthy()
+    // finalize.p_reconciliation captures the discrepancy.
+    const finalizeCall = callLog.find((c) => c.kind === 'rpc:finalize_xero_sync_job')
+    expect(finalizeCall).toBeTruthy()
+    expect(finalizeCall?.arg.p_reconciliation?.status).toBe('mismatch')
   })
 
   it('multi-org per business', async () => {
-    // Two active xero_connections rows → orchestrator iterates both →
-    // 2 tenants × 2 FYs × 2 fetches = 8 fetches; tenant_id stamped on rows.
     const { callLog, upsertedRowsCapture } = makeSupabaseStub({
       connections: [
         { id: 'conn-1', tenant_id: 'tenant-A', tenant_name: 'JDS Org A', business_id: 'profile-id-1' },
@@ -464,7 +494,6 @@ describe('Sync Orchestrator', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(8)
     expect(result.xero_request_count).toBe(8)
 
-    // Both tenants represented in the upserted rows.
     const tenantIds = new Set<string>()
     for (const batch of upsertedRowsCapture) {
       for (const row of batch) tenantIds.add(row.tenant_id)
@@ -472,9 +501,6 @@ describe('Sync Orchestrator', () => {
     expect(tenantIds.has('tenant-A')).toBe(true)
     expect(tenantIds.has('tenant-B')).toBe(true)
 
-    // Per-tenant upsert calls: ≥ 2 (one per FY × tenant) — orchestrator may
-    // batch within a tenant but cannot collapse across tenants because rows
-    // tagged with different tenant_id values land in different conflict groups.
     const upsertCount = callLog.filter(
       (c) => c.kind === 'from:xero_pl_lines:upsert',
     ).length
@@ -491,5 +517,12 @@ describe('Sync Orchestrator', () => {
     expect(result.status).toBe('error')
     expect(result.error ?? '').toMatch(/no active|no connection/i)
     expect(fetchSpy).not.toHaveBeenCalled()
+    // finalize MUST be called even on the no-connections path (we claimed a
+    // sync_jobs row via begin and need to finalize it to terminal state).
+    const finalizeCalls = (supabaseMock.rpc as any).mock.calls.filter(
+      (c: any[]) => c[0] === 'finalize_xero_sync_job',
+    )
+    expect(finalizeCalls.length).toBe(1)
+    expect(finalizeCalls[0][1].p_status).toBe('error')
   })
 })
