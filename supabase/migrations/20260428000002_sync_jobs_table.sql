@@ -12,8 +12,10 @@
 -- D-08 (reconciliation contract): per-account discrepancies surfaced via the
 -- reconciliation JSONB column when the by-month sum disagrees with the
 -- single-period FY total.
-
-BEGIN;
+--
+-- Compatibility: omits explicit BEGIN/COMMIT (Supabase Studio uses an implicit
+-- transaction; every statement uses IF NOT EXISTS / CREATE OR REPLACE so partial
+-- re-runs are safe).
 
 CREATE TABLE IF NOT EXISTS sync_jobs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -46,6 +48,7 @@ ALTER TABLE sync_jobs ENABLE ROW LEVEL SECURITY;
 
 -- Coach + business members SELECT for businesses they have access to via
 -- business_users membership OR direct ownership (businesses.owner_id).
+DROP POLICY IF EXISTS sync_jobs_coach_select ON sync_jobs;
 CREATE POLICY sync_jobs_coach_select ON sync_jobs
   FOR SELECT TO authenticated
   USING (
@@ -58,6 +61,7 @@ CREATE POLICY sync_jobs_coach_select ON sync_jobs
   );
 
 -- Service role: full access (cron + sync orchestrator)
+DROP POLICY IF EXISTS sync_jobs_service_role_all ON sync_jobs;
 CREATE POLICY sync_jobs_service_role_all ON sync_jobs
   FOR ALL TO service_role
   USING (true) WITH CHECK (true);
@@ -69,5 +73,3 @@ COMMENT ON TABLE sync_jobs IS 'Phase 44 — per-sync-run audit log. Append-only 
 COMMENT ON COLUMN sync_jobs.coverage IS 'D-10 coverage record: {months_covered, first_period (YYYY-MM), last_period (YYYY-MM), expected_months}';
 COMMENT ON COLUMN sync_jobs.reconciliation IS 'D-08 fail-loud results: {discrepant_accounts: [{code, name, monthly_sum, fy_total, diff}]}';
 COMMENT ON COLUMN sync_jobs.fy_range IS 'D-06 sync window descriptor: {current_fy, prior_fy, fy_start_month}';
-
-COMMIT;
