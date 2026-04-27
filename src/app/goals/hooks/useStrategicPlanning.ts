@@ -51,8 +51,9 @@ import { StrategicPlanningService } from '../services/strategic-planning-service
 import { OperationalActivitiesService, OperationalActivity } from '../services/operational-activities-service'
 import { createClient } from '@/lib/supabase/client'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
-import { isNearYearEnd, getMonthsUntilYearEnd, DEFAULT_YEAR_START_MONTH, getCurrentFiscalYear, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils'
-import { ExtendedPeriodInfo } from '../types'
+import { DEFAULT_YEAR_START_MONTH, getCurrentFiscalYear, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils'
+import { suggestPlanPeriod } from '../utils/suggest-plan-period'
+import { derivePeriodInfo } from '../utils/derive-period-info'
 
 interface KeyAction {
   id: string
@@ -116,11 +117,16 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
 
   const [yearType, setYearType] = useState<YearType>('FY')
 
-  // Extended period state (Phase 14)
+  // Extended period state (Phase 14) — kept as derived backwards-compat state
   const [isExtendedPeriod, setIsExtendedPeriod] = useState(false)
   const [year1Months, setYear1Months] = useState(12)
   const [currentYearRemainingMonths, setCurrentYearRemainingMonths] = useState(0)
   const [fiscalYearStart, setFiscalYearStart] = useState(DEFAULT_YEAR_START_MONTH)
+
+  // Plan period state (Phase 42) — explicit dates, source of truth
+  const [planStartDate, setPlanStartDate] = useState<Date | null>(null)
+  const [planEndDate, setPlanEndDate] = useState<Date | null>(null)
+  const [year1EndDate, setYear1EndDate] = useState<Date | null>(null)
 
   // Annual review detection (Phase 15)
   const [hasNextYearAnnualPlan, setHasNextYearAnnualPlan] = useState(false)
@@ -316,7 +322,13 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
                 isExtendedPeriod,
                 year1Months,
                 currentYearRemainingMonths
-              }
+              },
+              // Phase 42: send plan period as ISO date strings (YYYY-MM-DD)
+              planPeriod: planStartDate && planEndDate && year1EndDate ? {
+                planStartDate: planStartDate.toISOString().slice(0, 10),
+                planEndDate:   planEndDate.toISOString().slice(0, 10),
+                year1EndDate:  year1EndDate.toISOString().slice(0, 10),
+              } : undefined,
             },
             kpis,
             initiatives: {
@@ -353,6 +365,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
     businessId, businessesId, overrideBusinessId, ownerUserId,
     financialData, coreMetrics, yearType, quarterlyTargets,
     isExtendedPeriod, year1Months, currentYearRemainingMonths,
+    planStartDate, planEndDate, year1EndDate,
     kpis, strategicIdeas, roadmapSuggestions, twelveMonthInitiatives,
     annualPlanByQuarter, sprintFocus, sprintKeyActions, operationalActivities
   ])
@@ -429,7 +442,10 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
       // Save financial data
       const financialResult = await FinancialService.saveFinancialGoals(
         businessId, saveUserId, financialData, yearType, coreMetrics, quarterlyTargets,
-        { isExtendedPeriod, year1Months, currentYearRemainingMonths }
+        { isExtendedPeriod, year1Months, currentYearRemainingMonths },
+        planStartDate && planEndDate && year1EndDate
+          ? { planStartDate, planEndDate, year1EndDate }
+          : undefined,
       )
       if (!financialResult.success) {
         console.error('[Strategic Planning] ❌ Financial save failed:', financialResult.error)
@@ -527,6 +543,9 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
     isExtendedPeriod,
     year1Months,
     currentYearRemainingMonths,
+    planStartDate,
+    planEndDate,
+    year1EndDate,
     strategicIdeas,
     roadmapSuggestions,
     twelveMonthInitiatives,
@@ -728,7 +747,8 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           coreMetrics: loadedCoreMetrics,
           yearType: loadedYearType,
           quarterlyTargets: loadedQuarterlyTargets,
-          extendedPeriod: loadedExtendedPeriod
+          extendedPeriod: loadedExtendedPeriod,
+          planPeriod: loadedPlanPeriod
         } = await FinancialService.loadFinancialGoals(bizId)
 
         // Load KPIs from Supabase
@@ -741,34 +761,57 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           loadedKPIs = await KPIService.getUserKPIs(bizId)
         }
 
-        // ── Extended Period Detection (Phase 14) ────────────────────
-        // Use localFiscalYearStart (synchronously set above) rather than
-        // the useState value (which is async and may not have updated yet).
+        // ── Plan Period Resolution (Phase 42) ───────────────────────
+        // Source of truth: persisted plan_start_date / plan_end_date / year1_end_date.
+        // If absent (truly new plan, no save yet), call suggestPlanPeriod() and use
+        // the suggested dates as state. The Step 1 banner shows them visibly so the
+        // user can [Adjust] before any auto-save fires. No role guard — coach view
+        // and owner view follow this branch identically (REQ-42-06).
         const effectiveYearStart = localFiscalYearStart
 
-        // Track detected state locally (useState is async)
-        let detectedExtended = false
+        let resolvedPlanStart: Date
+        let resolvedPlanEnd: Date
+        let resolvedYear1End: Date
 
-        if (loadedExtendedPeriod?.isExtendedPeriod) {
-          // Returning user — restore saved extended period state
-          console.log('[Strategic Planning] Restoring saved extended period:', loadedExtendedPeriod)
-          setIsExtendedPeriod(true)
-          setYear1Months(loadedExtendedPeriod.year1Months)
-          setCurrentYearRemainingMonths(loadedExtendedPeriod.currentYearRemainingMonths)
-          detectedExtended = true
-        } else if (ownerUser === user.id && !loadedFinancialData) {
-          // First-time user (client's own view only, not coach viewing) — check if near year end
-          const nearEnd = isNearYearEnd(new Date(), effectiveYearStart)
-          if (nearEnd) {
-            const monthsLeft = getMonthsUntilYearEnd(new Date(), effectiveYearStart)
-            console.log(`[Strategic Planning] First-time client near year end — ${monthsLeft} months remaining, activating extended period`)
-            setIsExtendedPeriod(true)
-            setCurrentYearRemainingMonths(monthsLeft)
-            setYear1Months(monthsLeft + 12)
-            detectedExtended = true
-          }
+        if (loadedPlanPeriod?.planStartDate) {
+          // Existing plan — use persisted dates regardless of who is viewing.
+          resolvedPlanStart = new Date(loadedPlanPeriod.planStartDate as string)
+          resolvedPlanEnd   = new Date((loadedPlanPeriod.planEndDate ?? loadedPlanPeriod.planStartDate) as string)
+          resolvedYear1End  = new Date((loadedPlanPeriod.year1EndDate ?? loadedPlanPeriod.planStartDate) as string)
+          console.log('[Strategic Planning] Loaded persisted plan period:', loadedPlanPeriod)
+        } else if (!loadedFinancialData) {
+          // Truly new plan — generate suggestion. Both coach and owner view see the same.
+          const suggestion = suggestPlanPeriod(new Date(), effectiveYearStart)
+          resolvedPlanStart = suggestion.planStartDate
+          resolvedPlanEnd   = suggestion.planEndDate
+          resolvedYear1End  = suggestion.year1EndDate
+          console.log('[Strategic Planning] Generated plan period suggestion (new plan):', suggestion.rationale)
+        } else {
+          // Legacy row that wasn't backfilled (zero-revenue placeholder, or local dev
+          // without migration applied per 42-RESEARCH.md Open Question 2).
+          // Fall back to fresh suggestion from yearType + today.
+          const fallback = suggestPlanPeriod(new Date(), effectiveYearStart)
+          resolvedPlanStart = fallback.planStartDate
+          resolvedPlanEnd   = fallback.planEndDate
+          resolvedYear1End  = fallback.year1EndDate
+          console.log('[Strategic Planning] Legacy row without plan period — using fresh suggestion')
         }
-        // ── End Extended Period Detection ────────────────────────────
+
+        setPlanStartDate(resolvedPlanStart)
+        setPlanEndDate(resolvedPlanEnd)
+        setYear1EndDate(resolvedYear1End)
+
+        // Derive backwards-compat state for components that consume isExtendedPeriod / year1Months / currentYearRemainingMonths.
+        const derived = derivePeriodInfo({
+          planStartDate: resolvedPlanStart,
+          planEndDate: resolvedPlanEnd,
+          year1EndDate: resolvedYear1End,
+        })
+        setIsExtendedPeriod(derived.isExtendedPeriod)
+        setYear1Months(derived.year1Months)
+        setCurrentYearRemainingMonths(derived.currentYearRemainingMonths)
+        const detectedExtended = derived.isExtendedPeriod
+        // ── End Plan Period Resolution ─────────────────────────────
 
         // Set loaded data or defaults
         if (loadedFinancialData) {
@@ -1116,6 +1159,14 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
     year1Months,
     currentYearRemainingMonths,
     fiscalYearStart,
+
+    // Plan period (Phase 42) — Date or null while loading
+    planStartDate,
+    planEndDate,
+    year1EndDate,
+    setPlanStartDate,
+    setPlanEndDate,
+    setYear1EndDate,
 
     // Annual review detection (Phase 15)
     hasNextYearAnnualPlan,
