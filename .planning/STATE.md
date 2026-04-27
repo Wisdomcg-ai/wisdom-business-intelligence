@@ -2,13 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Executing Phase 42
+status: Phase 42 complete
 last_updated: "2026-04-27T02:15:51.708Z"
 progress:
-  total_phases: 41
-  completed_phases: 15
-  total_plans: 58
-  completed_plans: 59
+  total_phases: 42
+  completed_phases: 16
+  total_plans: 65
+  completed_plans: 66
+  percent: 100
 ---
 
 # Project State
@@ -195,12 +196,29 @@ progress:
 
 ## Position
 
-- Current: Phase 21, Plan 03 — COMPLETE (Phase 21 fully complete)
-- Stopped at: Completed 21-03-PLAN.md
+- Current: Phase 41, Plan 02 of 3 complete (Wave 2, /business-profile now BusinessContext-driven and role-gated). Plan 41-03 (phantom-row sweep) pending.
+- Stopped at: Completed 41-02-PLAN.md
 
 ## Last Session
 
-- 2026-04-08T04:31:09Z — Completed 21-03-PLAN.md (Phase 21 fully complete)
+- 2026-04-23T22:20:00Z — Completed 41-02-PLAN.md (/business-profile routed through BusinessContext, role-gated UI, empty-state branch — Task 3 approved via mechanical verification Option A per user direction)
+
+## Phase 41 Decisions
+
+- Plan 41-01: Deleted `loadBusinessProfile` and `getOrCreateBusinessProfile` methods entirely from `BusinessProfileService` (vs leaving as read-only no-ops) — prevents future contributors re-introducing lazy-create by mistake. Only `getBusinessProfileByBusinessId` remains as the public read entrypoint.
+- Plan 41-01: Coach-path `.insert` in `getBusinessProfileByBusinessId` preserved; removed only the dead `|| 'My Business'` fallbacks (businesses.name is NOT NULL and loaded via SELECT before the insert, so the fallback never executed).
+- Plan 41-01: One expected tsc error in `src/app/business-profile/page.tsx:255` (caller of deleted method) is accepted per the plan — Plan 41-02 Wave 2 removes the caller when refactoring the page to read from BusinessContext.
+- Plan 41-01: `'My Business'` literal count in `business-profile-service.ts` is now 0 and serves as a regression sentinel going forward.
+- Plan 41-02: Rewrote `/business-profile/page.tsx` to read solely from `BusinessContext` (`activeBusiness`, `currentUser`, `viewerContext`). Eliminated `supabase.auth.getUser()` + `createClient` usage from the page. Single load path: `getBusinessProfileByBusinessId(activeBusiness.id)` — no owner_id fallback.
+- Plan 41-02: Role matrix implemented via three derived booleans (`canEditProfile` / `isReadOnly` / `isAdminRestricted`) computed from `viewerContext.role` at top of component. Every `<input>`/`<select>`/`<textarea>` gated with `disabled={isReadOnly}`. Both `autoSave()` and `handleFieldChange()` short-circuit with `if (isReadOnly) return` as first statement.
+- Plan 41-02: Admin scoping bounded to 1 direct `<input>` reference (business_name) + a `<fieldset disabled={isAdminRestricted || isReadOnly}>` wrapper for owner_info. Sentinel count of 1 is well under the plan's ≤3 cap. Admin retains edit access to industry, annual_revenue, gross_profit, net_profit, cash_in_bank, employee_count, and all other finance/team/situation fields (structurally confirmed — none carry `isAdminRestricted`).
+- Plan 41-02: Empty-state branch added for authenticated-but-no-business users. Role-aware copy: coach/admin see "Open a client from your client list"; client sees "Please contact your coach" with `mailto:support@wisdomcg.com.au` CTA. No call to `loadBusiness` in this branch — lazy-create on visit is structurally impossible.
+- Plan 41-02: Task 3 human-verify approved via mechanical verification (Option A) per user direction — tsc clean + code-level role-matrix audit accepted in lieu of browser smoke test; DB sweep in Plan 41-03 will empirically re-confirm no new phantoms are created.
+
+## Completed Work (This Session)
+
+- Plan 41-01: Remove owner_id lazy-create from BusinessProfileService — COMPLETE (9a5f34e). File shrunk from 363 → 211 lines (−152 LOC net).
+- Plan 41-02: Refactor /business-profile page to use BusinessContext with role-aware rendering — COMPLETE (24f7b76, f095f97). +202 / −39 LOC across two task commits.
 
 ## Accumulated Context
 
@@ -264,3 +282,8 @@ progress:
 ## Last Session
 
 - 2026-04-27T01:48:40Z — Completed 42-02-PLAN.md (SaveIndicator presentational component for D-08/D-09/D-12; 7 RTL tests; 78-line component; type-only import from 42-01)
+
+## Roadmap Evolution
+
+- Phase 41 added (2026-04-23): Eliminate phantom business orphan rows via active-business routing. Triggered by Jessica @ Oh Nine incident — team-member users accumulating blank "My Business" orphans in admin/clients. (Origin/main work — merged in via PR #18.)
+- Phase 42 added (2026-04-27): Monthly Report Save Flow Consolidation. Auto-save-on-blur replacing 4 confusing save buttons. Surfaced during Phase 35 Plan 35-07 UAT — revert chain wired correctly but trigger required manual Save Draft click.

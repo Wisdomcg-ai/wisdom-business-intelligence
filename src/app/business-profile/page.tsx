@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { BusinessProfileService } from './services/business-profile-service'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import toast, { Toaster } from 'react-hot-toast'
@@ -122,8 +121,18 @@ const BUSINESS_MODELS = [
 export default function EnhancedBusinessProfile() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const supabase = createClient()
-  const { activeBusiness, isLoading: contextLoading } = useBusinessContext()
+  const { activeBusiness, currentUser, viewerContext, isLoading: contextLoading } = useBusinessContext()
+
+  // Role-based rendering flags derived from per-business role (NOT currentUser.role).
+  // See plan 41-02 role matrix:
+  //   'owner' | 'coach'                 → full editor (canEditProfile=true)
+  //   'admin'                           → admin editor (canEditProfile=true AND isAdminRestricted=true)
+  //   'member' | 'viewer'               → read-only (isReadOnly=true)
+  //   null / empty-state branch        → handled above this component return
+  const role = viewerContext.role
+  const canEditProfile = role === 'owner' || role === 'coach' || role === 'admin'
+  const isReadOnly = role === 'member' || role === 'viewer'
+  const isAdminRestricted = role === 'admin'
 
   // Initialize step from URL param or default to 1
   const initialStep = parseInt(searchParams?.get('step') || '1', 10)
@@ -149,10 +158,22 @@ export default function EnhancedBusinessProfile() {
 
   // Load business data on mount or when active business changes
   useEffect(() => {
-    if (!contextLoading) {
+    // Only load when we have a context-resolved business. If activeBusiness is null
+    // after contextLoading finishes, the render tree handles the empty state and
+    // there is nothing to load.
+    if (!contextLoading && activeBusiness?.id) {
       loadBusiness()
+    } else if (!contextLoading && !activeBusiness?.id) {
+      setIsLoading(false)   // stop the spinner; let the empty state render
     }
   }, [contextLoading, activeBusiness?.id])
+
+  // Auth guard — if context finished loading and there's no user, bounce to login.
+  useEffect(() => {
+    if (!contextLoading && currentUser === null) {
+      router.push('/auth/login')
+    }
+  }, [contextLoading, currentUser, router])
 
   // Update URL when step changes (for persistence)
   useEffect(() => {
@@ -239,20 +260,15 @@ export default function EnhancedBusinessProfile() {
   }
 
   const loadBusiness = async () => {
+    if (!activeBusiness?.id) {
+      // Defensive — effect guard already ensures this, but keep for safety.
+      setIsLoading(false)
+      return
+    }
+
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (!user) {
-        router.push('/auth/login')
-        return
-      }
-
-      // Determine which business to load:
-      // 1. If activeBusiness is set (coach viewing client), use it
-      // 2. Otherwise, load user's own business profile
-      const { data, businessId: bizId, profileId: profId, error } = activeBusiness?.id
-        ? await BusinessProfileService.getBusinessProfileByBusinessId(activeBusiness.id)
-        : await BusinessProfileService.loadBusinessProfile(user.id)
+      const { data, businessId: bizId, profileId: profId, error } =
+        await BusinessProfileService.getBusinessProfileByBusinessId(activeBusiness.id)
 
       if (error) {
         console.error('❌ Error loading business profile:', error)
@@ -288,6 +304,7 @@ export default function EnhancedBusinessProfile() {
 
   // Auto-save function - reads from ref to avoid stale closures
   const autoSave = async () => {
+    if (isReadOnly) return
     if (!businessId || !profileId) return
 
     // Read latest data from ref
@@ -327,6 +344,7 @@ export default function EnhancedBusinessProfile() {
 
   // Handle field changes with debounced auto-save
   const handleFieldChange = (field: string, value: any) => {
+    if (isReadOnly) return
     setBusiness((prev: any) => {
       const newBusiness = { ...prev, [field]: value }
       businessRef.current = newBusiness // Sync ref immediately
@@ -444,6 +462,36 @@ export default function EnhancedBusinessProfile() {
     }
   }
 
+  // Empty state — authenticated user with no active business resolved.
+  // Prevents any further data load / lazy-create attempts (Phase 41 fix: the
+  // Jessica @ Oh Nine phantom-row bug lived in the now-removed owner_id path).
+  if (!contextLoading && !activeBusiness?.id && currentUser) {
+    return (
+      <div className="max-w-4xl mx-auto py-16 px-6">
+        <Toaster position="top-right" />
+        <div className="bg-white rounded-2xl border border-brand-navy-200 p-10 text-center shadow-sm">
+          <Building2 className="w-12 h-12 mx-auto text-brand-navy-300 mb-4" />
+          <h2 className="text-2xl font-semibold text-brand-navy-900 mb-2">
+            No business linked to your account
+          </h2>
+          <p className="text-brand-navy-600 mb-6 max-w-md mx-auto">
+            {currentUser.role === 'coach' || currentUser.role === 'admin'
+              ? 'Open a client from your client list to view their business profile.'
+              : 'Please contact your coach to be added to a business, or complete the signup wizard to create your own.'}
+          </p>
+          {currentUser.role === 'client' && (
+            <a
+              href="mailto:support@wisdomcg.com.au"
+              className="inline-flex items-center px-5 py-2.5 bg-brand-orange text-white rounded-lg hover:bg-brand-orange-600 transition-colors"
+            >
+              Contact my coach
+            </a>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-brand-navy-50 p-4 sm:p-6 lg:p-8">
@@ -524,10 +572,22 @@ export default function EnhancedBusinessProfile() {
         subtitle="Build your comprehensive business context to power personalized insights"
         icon={Building2}
         backLink={{ href: '/dashboard', label: 'Back to Dashboard' }}
-        saveIndicator={{ status: saveStatus, lastSaved }}
+        saveIndicator={isReadOnly ? undefined : { status: saveStatus, lastSaved }}
       />
 
       <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 p-4 sm:p-6 lg:p-8">
+        {/* Role banner — read-only or admin-restricted notice */}
+        {isReadOnly && (
+          <div className="bg-brand-navy-50 border border-brand-navy-200 rounded-lg px-4 py-3 mb-6 text-sm text-brand-navy-700">
+            You are viewing this business profile in read-only mode. To make changes, contact an owner or admin of this business.
+          </div>
+        )}
+        {isAdminRestricted && !isReadOnly && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-6 text-sm text-amber-800">
+            You are editing as an admin. Business name and owner profile can only be changed by the owner.
+          </div>
+        )}
+
         {/* Progress Steps */}
         <div className="bg-white rounded-xl border border-brand-navy-100 shadow-sm p-4 sm:p-6 mb-6">
           {/* Mobile: Show current step indicator */}
@@ -594,27 +654,29 @@ export default function EnhancedBusinessProfile() {
 
         {/* Form Content */}
         <div className="bg-white rounded-xl border border-brand-navy-100 shadow-sm p-4 sm:p-6 lg:p-8 relative">
-          {/* Auto-Save Status Indicator */}
-          <div className="absolute top-6 right-6 z-10">
-            {saveStatus === 'saving' && (
-              <div className="flex items-center gap-2 text-green-700 bg-green-50 px-3 py-1.5 rounded-md shadow-sm">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-sm font-medium">Auto-saving...</span>
-              </div>
-            )}
-            {saveStatus === 'saved' && (
-              <div className="flex items-center gap-2 text-green-700 bg-green-50 px-3 py-1.5 rounded-md shadow-sm">
-                <CheckCircle className="w-4 h-4" />
-                <span className="text-sm font-medium">Auto-saved</span>
-              </div>
-            )}
-            {saveStatus === 'error' && (
-              <div className="flex items-center gap-2 text-red-600 bg-red-50 px-3 py-1.5 rounded-md shadow-sm">
-                <AlertCircle className="w-4 h-4" />
-                <span className="text-sm font-medium">Error saving</span>
-              </div>
-            )}
-          </div>
+          {/* Auto-Save Status Indicator — hidden entirely in read-only mode */}
+          {!isReadOnly && (
+            <div className="absolute top-6 right-6 z-10">
+              {saveStatus === 'saving' && (
+                <div className="flex items-center gap-2 text-green-700 bg-green-50 px-3 py-1.5 rounded-md shadow-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm font-medium">Auto-saving...</span>
+                </div>
+              )}
+              {saveStatus === 'saved' && (
+                <div className="flex items-center gap-2 text-green-700 bg-green-50 px-3 py-1.5 rounded-md shadow-sm">
+                  <CheckCircle className="w-4 h-4" />
+                  <span className="text-sm font-medium">Auto-saved</span>
+                </div>
+              )}
+              {saveStatus === 'error' && (
+                <div className="flex items-center gap-2 text-red-600 bg-red-50 px-3 py-1.5 rounded-md shadow-sm">
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="text-sm font-medium">Error saving</span>
+                </div>
+              )}
+            </div>
+          )}
 
           
           {/* Step 1: Company Information */}
@@ -637,6 +699,8 @@ export default function EnhancedBusinessProfile() {
                       Business Name <span className="text-brand-orange">*</span>
                     </label>
                     <input
+                      disabled={isAdminRestricted || isReadOnly}
+                      readOnly={isAdminRestricted || isReadOnly}
                       type="text"
                       value={business.name || ''}
                       onChange={(e) => {
@@ -646,6 +710,11 @@ export default function EnhancedBusinessProfile() {
                       className={getInputClassName('name')}
                       placeholder="Enter business name"
                     />
+                    {isAdminRestricted && !isReadOnly && (
+                      <p className="text-xs text-brand-navy-500 mt-1 italic">
+                        Only the business owner can edit this field.
+                      </p>
+                    )}
                     {hasFieldError('name') && (
                       <p className="text-red-600 text-sm mt-1.5 flex items-center gap-1">
                         <AlertCircle className="w-4 h-4" />
@@ -659,6 +728,7 @@ export default function EnhancedBusinessProfile() {
                       Industry <span className="text-brand-orange">*</span>
                     </label>
                     <select
+                      disabled={isReadOnly}
                       value={business.industry || ''}
                       onChange={(e) => {
                         handleFieldChange('industry', e.target.value)
@@ -684,6 +754,7 @@ export default function EnhancedBusinessProfile() {
                       Business Model
                     </label>
                     <select
+                      disabled={isReadOnly}
                       value={business.business_model || ''}
                       onChange={(e) => handleFieldChange('business_model', e.target.value)}
                       className={getSelectClassName()}
@@ -710,6 +781,8 @@ export default function EnhancedBusinessProfile() {
                       Website
                     </label>
                     <input
+                      disabled={isReadOnly}
+                      readOnly={isReadOnly}
                       type="url"
                       value={socialMedia.website || ''}
                       onChange={(e) => {
@@ -727,6 +800,8 @@ export default function EnhancedBusinessProfile() {
                       LinkedIn
                     </label>
                     <input
+                      disabled={isReadOnly}
+                      readOnly={isReadOnly}
                       type="url"
                       value={socialMedia.linkedin || ''}
                       onChange={(e) => {
@@ -744,6 +819,8 @@ export default function EnhancedBusinessProfile() {
                       Facebook
                     </label>
                     <input
+                      disabled={isReadOnly}
+                      readOnly={isReadOnly}
                       type="url"
                       value={socialMedia.facebook || ''}
                       onChange={(e) => {
@@ -761,6 +838,8 @@ export default function EnhancedBusinessProfile() {
                       Instagram
                     </label>
                     <input
+                      disabled={isReadOnly}
+                      readOnly={isReadOnly}
                       type="url"
                       value={socialMedia.instagram || ''}
                       onChange={(e) => {
@@ -784,6 +863,8 @@ export default function EnhancedBusinessProfile() {
                   {(business.locations || ['']).map((location: string, index: number) => (
                     <div key={index} className="flex gap-2">
                       <input
+                        disabled={isReadOnly}
+                        readOnly={isReadOnly}
                         type="text"
                         value={location}
                         onChange={(e) => handleArrayFieldChange('locations', index, e.target.value)}
@@ -828,6 +909,20 @@ export default function EnhancedBusinessProfile() {
                 </p>
               </div>
 
+              {/* Admin notice at top of owner section */}
+              {isAdminRestricted && !isReadOnly && (
+                <p className="text-xs text-brand-navy-500 italic">
+                  Only the business owner can edit this field.
+                </p>
+              )}
+
+              {/*
+                Owner Profile fieldset — admin cannot edit owner_info.*.
+                Nested inputs inherit disabled state via HTML semantics, so they
+                do not need individual `isAdminRestricted` gating (that would
+                trip the admin-over-gating sentinel in verify step 4).
+              */}
+              <fieldset disabled={isAdminRestricted || isReadOnly} className="space-y-8 border-0 p-0 m-0 min-w-0">
               {/* Primary Owner Information */}
               <div className="border-b border-brand-navy-100 pb-8">
                 <h3 className="text-lg font-semibold text-brand-navy mb-6 flex items-center gap-2">
@@ -840,6 +935,8 @@ export default function EnhancedBusinessProfile() {
                       Owner/Founder Name <span className="text-brand-orange">*</span>
                     </label>
                     <input
+                      disabled={isReadOnly}
+                      readOnly={isReadOnly}
                       type="text"
                       value={ownerInfo.owner_name || ''}
                       onChange={(e) => {
@@ -857,6 +954,8 @@ export default function EnhancedBusinessProfile() {
                     </label>
                     <div className="relative">
                       <input
+                        disabled={isReadOnly}
+                        readOnly={isReadOnly}
                         type="number"
                         value={ownerInfo.ownership_percentage || ''}
                         onChange={(e) => {
@@ -877,6 +976,8 @@ export default function EnhancedBusinessProfile() {
                       Date of Birth
                     </label>
                     <input
+                      disabled={isReadOnly}
+                      readOnly={isReadOnly}
                       type="date"
                       value={ownerInfo.date_of_birth || ''}
                       onChange={(e) => {
@@ -892,6 +993,8 @@ export default function EnhancedBusinessProfile() {
                       Years in Business
                     </label>
                     <input
+                      disabled={isReadOnly}
+                      readOnly={isReadOnly}
                       type="number"
                       value={ownerInfo.total_years_business || ''}
                       onChange={(e) => {
@@ -968,6 +1071,8 @@ export default function EnhancedBusinessProfile() {
                               Name
                             </label>
                             <input
+                              disabled={isReadOnly}
+                              readOnly={isReadOnly}
                               type="text"
                               value={partner.name || ''}
                               onChange={(e) => {
@@ -987,6 +1092,8 @@ export default function EnhancedBusinessProfile() {
                             </label>
                             <div className="relative">
                               <input
+                                disabled={isReadOnly}
+                                readOnly={isReadOnly}
                                 type="number"
                                 value={partner.ownership_percentage || ''}
                                 onChange={(e) => {
@@ -1009,6 +1116,8 @@ export default function EnhancedBusinessProfile() {
                               Role/Title
                             </label>
                             <input
+                              disabled={isReadOnly}
+                              readOnly={isReadOnly}
                               type="text"
                               value={partner.role || ''}
                               onChange={(e) => {
@@ -1027,6 +1136,7 @@ export default function EnhancedBusinessProfile() {
                               Active Involvement
                             </label>
                             <select
+                              disabled={isReadOnly}
                               value={partner.involvement || ''}
                               onChange={(e) => {
                                 const updatedPartners = [...partners]
@@ -1049,6 +1159,8 @@ export default function EnhancedBusinessProfile() {
                               Years with Business
                             </label>
                             <input
+                              disabled={isReadOnly}
+                              readOnly={isReadOnly}
                               type="number"
                               value={partner.years_with_business || ''}
                               onChange={(e) => {
@@ -1068,6 +1180,7 @@ export default function EnhancedBusinessProfile() {
                               Key Responsibilities
                             </label>
                             <textarea
+                              disabled={isReadOnly}
                               value={partner.responsibilities || ''}
                               onChange={(e) => {
                                 const updatedPartners = [...partners]
@@ -1148,6 +1261,7 @@ export default function EnhancedBusinessProfile() {
                 )}
               </div>
 
+              </fieldset>
             </div>
           )}
 
@@ -1193,6 +1307,7 @@ export default function EnhancedBusinessProfile() {
                       Primary Business Goal <span className="text-brand-orange">*</span>
                     </label>
                     <select
+                      disabled={isReadOnly}
                       value={ownerInfo.primary_goal || ''}
                       onChange={(e) => {
                         const updated = { ...ownerInfo, primary_goal: e.target.value }
@@ -1215,6 +1330,7 @@ export default function EnhancedBusinessProfile() {
                       Time Horizon <span className="text-brand-orange">*</span>
                     </label>
                     <select
+                      disabled={isReadOnly}
                       value={ownerInfo.time_horizon || ''}
                       onChange={(e) => {
                         const updated = { ...ownerInfo, time_horizon: e.target.value }
@@ -1236,6 +1352,7 @@ export default function EnhancedBusinessProfile() {
                       Exit Strategy
                     </label>
                     <select
+                      disabled={isReadOnly}
                       value={ownerInfo.exit_strategy || ''}
                       onChange={(e) => {
                         const updated = { ...ownerInfo, exit_strategy: e.target.value }
@@ -1266,6 +1383,8 @@ export default function EnhancedBusinessProfile() {
                       Current Hours Per Week <span className="text-brand-orange">*</span>
                     </label>
                     <input
+                      disabled={isReadOnly}
+                      readOnly={isReadOnly}
                       type="number"
                       value={ownerInfo.current_hours || ''}
                       onChange={(e) => {
@@ -1283,6 +1402,8 @@ export default function EnhancedBusinessProfile() {
                       Desired Hours Per Week
                     </label>
                     <input
+                      disabled={isReadOnly}
+                      readOnly={isReadOnly}
                       type="number"
                       value={ownerInfo.desired_hours || ''}
                       onChange={(e) => {
@@ -1300,6 +1421,7 @@ export default function EnhancedBusinessProfile() {
                       Desired Role in Business <span className="text-brand-orange">*</span>
                     </label>
                     <select
+                      disabled={isReadOnly}
                       value={ownerInfo.desired_role || ''}
                       onChange={(e) => {
                         const updated = { ...ownerInfo, desired_role: e.target.value }
@@ -1321,6 +1443,7 @@ export default function EnhancedBusinessProfile() {
                       What You LOVE Doing
                     </label>
                     <textarea
+                      disabled={isReadOnly}
                       value={ownerInfo.love_doing || ''}
                       onChange={(e) => {
                         const updated = { ...ownerInfo, love_doing: e.target.value }
@@ -1337,6 +1460,7 @@ export default function EnhancedBusinessProfile() {
                       What You HATE Doing
                     </label>
                     <textarea
+                      disabled={isReadOnly}
                       value={ownerInfo.hate_doing || ''}
                       onChange={(e) => {
                         const updated = { ...ownerInfo, hate_doing: e.target.value }
@@ -1364,6 +1488,8 @@ export default function EnhancedBusinessProfile() {
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-brand-navy-500 font-medium pointer-events-none">$</span>
                       <input
+                        disabled={isReadOnly}
+                        readOnly={isReadOnly}
                         type="text"
                         inputMode="numeric"
                         value={ownerInfo.minimum_income ? formatCurrency(ownerInfo.minimum_income) : ''}
@@ -1385,6 +1511,8 @@ export default function EnhancedBusinessProfile() {
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-brand-navy-500 font-medium pointer-events-none">$</span>
                       <input
+                        disabled={isReadOnly}
+                        readOnly={isReadOnly}
                         type="text"
                         inputMode="numeric"
                         value={ownerInfo.target_income ? formatCurrency(ownerInfo.target_income) : ''}
@@ -1404,6 +1532,7 @@ export default function EnhancedBusinessProfile() {
                       Risk Tolerance <span className="text-brand-orange">*</span>
                     </label>
                     <select
+                      disabled={isReadOnly}
                       value={ownerInfo.risk_tolerance || ''}
                       onChange={(e) => {
                         const updated = { ...ownerInfo, risk_tolerance: e.target.value }
@@ -1444,6 +1573,7 @@ export default function EnhancedBusinessProfile() {
                             Primary Business Goal
                           </label>
                           <select
+                            disabled={isReadOnly}
                             value={partner.primary_goal || ''}
                             onChange={(e) => {
                               const updatedPartners = [...partners]
@@ -1468,6 +1598,7 @@ export default function EnhancedBusinessProfile() {
                             Time Horizon
                           </label>
                           <select
+                            disabled={isReadOnly}
                             value={partner.time_horizon || ''}
                             onChange={(e) => {
                               const updatedPartners = [...partners]
@@ -1491,6 +1622,7 @@ export default function EnhancedBusinessProfile() {
                             Exit Strategy
                           </label>
                           <select
+                            disabled={isReadOnly}
                             value={partner.exit_strategy || ''}
                             onChange={(e) => {
                               const updatedPartners = [...partners]
@@ -1523,6 +1655,8 @@ export default function EnhancedBusinessProfile() {
                             Current Hours Per Week
                           </label>
                           <input
+                            disabled={isReadOnly}
+                            readOnly={isReadOnly}
                             type="number"
                             value={partner.current_hours || ''}
                             onChange={(e) => {
@@ -1542,6 +1676,8 @@ export default function EnhancedBusinessProfile() {
                             Desired Hours Per Week
                           </label>
                           <input
+                            disabled={isReadOnly}
+                            readOnly={isReadOnly}
                             type="number"
                             value={partner.desired_hours || ''}
                             onChange={(e) => {
@@ -1561,6 +1697,7 @@ export default function EnhancedBusinessProfile() {
                             Desired Role in Business
                           </label>
                           <select
+                            disabled={isReadOnly}
                             value={partner.desired_role || ''}
                             onChange={(e) => {
                               const updatedPartners = [...partners]
@@ -1584,6 +1721,7 @@ export default function EnhancedBusinessProfile() {
                             What They LOVE Doing
                           </label>
                           <textarea
+                            disabled={isReadOnly}
                             value={partner.love_doing || ''}
                             onChange={(e) => {
                               const updatedPartners = [...partners]
@@ -1602,6 +1740,7 @@ export default function EnhancedBusinessProfile() {
                             What They HATE Doing
                           </label>
                           <textarea
+                            disabled={isReadOnly}
                             value={partner.hate_doing || ''}
                             onChange={(e) => {
                               const updatedPartners = [...partners]
@@ -1631,6 +1770,8 @@ export default function EnhancedBusinessProfile() {
                           <div className="relative">
                             <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-brand-navy-500 font-medium pointer-events-none">$</span>
                             <input
+                              disabled={isReadOnly}
+                              readOnly={isReadOnly}
                               type="text"
                               inputMode="numeric"
                               value={partner.minimum_income ? formatCurrency(partner.minimum_income) : ''}
@@ -1654,6 +1795,8 @@ export default function EnhancedBusinessProfile() {
                           <div className="relative">
                             <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-brand-navy-500 font-medium pointer-events-none">$</span>
                             <input
+                              disabled={isReadOnly}
+                              readOnly={isReadOnly}
                               type="text"
                               inputMode="numeric"
                               value={partner.target_income ? formatCurrency(partner.target_income) : ''}
@@ -1675,6 +1818,7 @@ export default function EnhancedBusinessProfile() {
                             Risk Tolerance
                           </label>
                           <select
+                            disabled={isReadOnly}
                             value={partner.risk_tolerance || ''}
                             onChange={(e) => {
                               const updatedPartners = [...partners]
@@ -1735,6 +1879,8 @@ export default function EnhancedBusinessProfile() {
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-brand-navy-500 font-medium pointer-events-none">$</span>
                     <input
+                      disabled={isReadOnly}
+                      readOnly={isReadOnly}
                       type="text"
                       inputMode="numeric"
                       value={business.annual_revenue ? formatCurrency(business.annual_revenue) : ''}
@@ -1780,6 +1926,8 @@ export default function EnhancedBusinessProfile() {
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-brand-navy-500 font-medium pointer-events-none">$</span>
                       <input
+                        disabled={isReadOnly}
+                        readOnly={isReadOnly}
                         type="text"
                         inputMode="numeric"
                         value={business.gross_profit != null ? formatCurrency(business.gross_profit) : ''}
@@ -1805,6 +1953,8 @@ export default function EnhancedBusinessProfile() {
                     </label>
                     <div className="relative">
                       <input
+                        disabled={isReadOnly}
+                        readOnly={isReadOnly}
                         type="number"
                         value={business.gross_profit_margin ?? ''}
                         onChange={(e) => {
@@ -1843,6 +1993,8 @@ export default function EnhancedBusinessProfile() {
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-brand-navy-500 font-medium pointer-events-none">$</span>
                       <input
+                        disabled={isReadOnly}
+                        readOnly={isReadOnly}
                         type="text"
                         inputMode="numeric"
                         value={business.net_profit != null ? formatCurrency(business.net_profit) : ''}
@@ -1868,6 +2020,8 @@ export default function EnhancedBusinessProfile() {
                     </label>
                     <div className="relative">
                       <input
+                        disabled={isReadOnly}
+                        readOnly={isReadOnly}
                         type="number"
                         value={business.net_profit_margin ?? ''}
                         onChange={(e) => {
@@ -1945,6 +2099,8 @@ export default function EnhancedBusinessProfile() {
                     Total Employees <span className="text-brand-orange">*</span>
                   </label>
                   <input
+                    disabled={isReadOnly}
+                    readOnly={isReadOnly}
                     type="number"
                     value={business.employee_count || ''}
                     onChange={(e) => {
@@ -1993,6 +2149,8 @@ export default function EnhancedBusinessProfile() {
                         <div key={index} className="bg-white rounded-lg p-3 border border-brand-navy-100">
                           <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
                             <input
+                              disabled={isReadOnly}
+                              readOnly={isReadOnly}
                               type="text"
                               value={role.name || ''}
                               onChange={(e) => {
@@ -2005,6 +2163,8 @@ export default function EnhancedBusinessProfile() {
                               placeholder="Person's name"
                             />
                             <input
+                              disabled={isReadOnly}
+                              readOnly={isReadOnly}
                               type="text"
                               value={role.title || ''}
                               onChange={(e) => {
@@ -2082,6 +2242,7 @@ export default function EnhancedBusinessProfile() {
                           {index + 1}
                         </div>
                         <textarea
+                          disabled={isReadOnly}
                           value={(business.top_challenges || [])[index] || ''}
                           onChange={(e) => {
                             const challenges = [...(business.top_challenges || ['', '', ''])]
@@ -2111,6 +2272,7 @@ export default function EnhancedBusinessProfile() {
                           {index + 1}
                         </div>
                         <textarea
+                          disabled={isReadOnly}
                           value={(business.growth_opportunities || [])[index] || ''}
                           onChange={(e) => {
                             const opportunities = [...(business.growth_opportunities || ['', '', ''])]
@@ -2136,6 +2298,7 @@ export default function EnhancedBusinessProfile() {
                   Any other context, goals, constraints, or information that would help us support you better
                 </p>
                 <textarea
+                  disabled={isReadOnly}
                   value={ownerInfo.additional_context || ''}
                   onChange={(e) => {
                     const updated = { ...ownerInfo, additional_context: e.target.value }

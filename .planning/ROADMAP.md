@@ -667,8 +667,41 @@ Plans:
 
 **Follow-up (not in Phase 40 scope):** Wire Playwright into GitHub Actions, provision test Supabase project to un-skip coach-flow specs.
 
-### Phase 42: Monthly Report Save Flow Consolidation
-**Goal:** Collapse the multiple save buttons + intermediate local-state saves on the monthly report page into a single auto-save-on-blur path. Eliminate the per-note green ✓ button (saves only to local React state) + the page-level "Save Draft" button (POSTs to /api/monthly-report/snapshot) + standalone "Finalise" button. End state: coach types → focus leaves the field → server save fires → cfo_report_status reflects new state immediately.
+### Phase 41: Eliminate phantom business orphan rows via active-business routing
+
+**Goal:** Team members, coaches, and admins stop generating phantom "My Business" orphans when they visit `/business-profile`. Switch the page from owner_id lookup to active-business context. Owner → editor; admin → editor with owner-only fields disabled; member → read-only; no business → clean empty state with "contact your coach" CTA. Sweep existing phantoms with user approval before delete.
+
+**Depends on:** Phase 40
+
+**Requirements:** TBD (no REQ-IDs — hot-fix triggered by Jessica @ Oh Nine incident 2026-04-23)
+
+**Trigger:** `jessica@ohnine.com.au` is admin on Oh Nine via `business_users`, but visiting `/business-profile` lazy-created a blank `businesses` row for her (owner_id=Jessica, business_name=NULL). Prior patch (d317442) fixed the NULL name but the root cause — lazy-create firing for non-owners — remains.
+
+**Scope:**
+- `src/app/business-profile/services/business-profile-service.ts` — remove lazy-create on both `businesses` and `business_profiles`. Read path returns null when no business exists for owner; no side-effects on read.
+- `src/app/business-profile/page.tsx` — switch from owner_id lookup to activeBusiness (BusinessContext). Compute user role per active business (owner | admin | member | none) and render appropriate UI: editor / read-only / empty state.
+- DB sweep: identify phantom businesses (name='My Business' OR business_name IS NULL OR business_name='My Business'; zero xero_connections; zero financial_forecasts; zero non-owner business_users; owner is a team-member of a DIFFERENT business). Surface list to user; delete only after explicit confirmation. Same sweep for orphan business_profiles with NULL business_id belonging to users who are team members elsewhere.
+- Verification: tsc clean, vitest green on touched tests, manual smoke test for owner + team-member + no-business flows on /business-profile.
+
+**Out of scope:**
+- Schema NOT NULL migrations on `businesses.business_name` or `business_profiles.business_id` (deliberately deferred — was "Level 3" in user discussion).
+- Changes to signup wizard, /api/admin/clients, /api/coach/clients, demo-client routes — those create businesses at explicit intent and correctly set both `name` and `business_name`.
+
+**Success criteria:**
+- Visiting `/business-profile` as a team-member user produces ZERO new rows in `businesses` or `business_profiles`.
+- `/business-profile` renders correctly for all four role states (owner / admin / member / none).
+- Phantom-row sweep produces a reviewed, approved, deleted list (with user confirmation before any DELETE).
+- tsc clean; vitest green on modified tests.
+
+**Plans:** 2/3 plans executed
+
+Plans:
+- [x] 41-01-PLAN.md — Remove lazy-create from business-profile-service (owner_id read path becomes read-only)
+- [x] 41-02-PLAN.md — Refactor /business-profile page to use BusinessContext with role-aware rendering (owner / admin / member / none)
+- [ ] 41-03-PLAN.md — Sweep + delete existing phantom rows with explicit user confirmation gate
+
+### Phase 42: Monthly Report Save Flow Consolidation [COMPLETE]
+**Goal:** Collapse the multiple save buttons + intermediate local-state saves on the monthly report page into a single auto-save-on-blur path. Eliminate the per-note green ✓ button (saves only to local React state) + the page-level "Save Draft" button (POSTs to /api/monthly-report/snapshot). End state: coach types → focus leaves the field → server save fires → cfo_report_status reflects new state immediately.
 **Depends on:** Phase 35 (revert wiring depends on snapshot save firing on every coach edit; current UX requires manual "Save Draft" click which broke Phase 35 UAT visibly)
 **Requirements:** N/A (UX consolidation — no new functional requirement; existing requirements already cover the persistence contract)
 
@@ -681,26 +714,22 @@ Plans:
 - [x] 42-05-PLAN.md — Finalise lock + Unfinalise button + D-17 settings/layout save → pill refresh wiring
 - [x] 42-06-PLAN.md — beforeunload guard + un-skip Playwright E2E + manual UAT sign-off
 
-**Context:**
-Surfaced during Phase 35 Plan 35-07 UAT. Phase 35's `revertReportIfApproved()` is wired correctly into `/api/monthly-report/snapshot`, but only fires when the page-level "Save Draft" button is clicked. The per-note ✓ button only updates local React state; the UI gives the impression that saving has happened when nothing has been persisted. Result: coach edits a note → ✓ click → believes saved → no DB write → no revert → pill stays "Sent". From the coach's POV, "the revert doesn't work" — actually the trigger never fired.
+**Final scope (as built):**
+- Single source of truth for "saved" state via auto-save → `/api/monthly-report/snapshot` (no separate state machines).
+- Coach typing → debounce 500ms after last keystroke OR onBlur → fires snapshot POST → server triggers Phase 35's `revertReportIfApproved()` chain.
+- Per-note green ✓ Save button removed entirely.
+- "Save Draft" button removed.
+- Finalise button KEPT (D-06): now locks auto-save when status='final' and surfaces an "Unfinalise to edit" button to resume editing. Locked-state textareas render read-only (visible) so coaches retain access to past notes.
+- "Saved/unsaved" indicator (`<SaveIndicator />`) sibling of the status pill: idle / saving / saved / retrying / failed states.
+- 3-attempt exponential backoff (1s/2s/4s) on save failure; manual "Save Now" button on terminal failure; durable error toast.
+- `beforeunload` guard fires while in retry-exhausted state to prevent silent loss of unsaved edits.
+- Pill state remains the single visible source of truth for lifecycle (`Draft | Ready for Review | Approved | Sent`).
 
-This is a pre-existing UX problem that Phase 35 only made visible.
-
-**Scope (initial sketch — refined during /gsd:discuss-phase):**
-- Single source of truth for "saved" state: `cfo_report_status.snapshot_data` + `monthly_report_snapshots`
-- Coach typing in any commentary field → debounce 500ms after last keystroke OR onBlur → fire `/api/monthly-report/snapshot` POST
-- Remove the per-note green ✓ Save button entirely (or repurpose as a manual "save now" with same endpoint)
-- Remove "Save Draft" button from top toolbar (no longer needed — every edit auto-persists)
-- Merge "Finalise" into the existing Phase 35 "Approve & Send" button (Finalise is functionally a status transition without delivery; Approve & Send already does both)
-- Surface "saved/unsaved" indicator near the pill (small "All changes saved" / "Saving..." / "Unsaved" text)
-- Pill state remains the single visible source of truth for lifecycle (`Draft | Ready for Review | Approved | Sent`)
-
-**Success Criteria:**
-- Typing a coach note → blur → DB row updates within 500ms; no manual save button required
-- After save lands, status pill polls back as Draft (if previously Approved/Sent) within 10s — Phase 35 revert chain visible end-to-end without user intervention
-- Top toolbar shows at most 2 lifecycle buttons: "Approve & Send" (or "Resend"/"Revert" depending on state) plus the existing "Export PDF" / "Settings" utility buttons
-- Net button-count delta vs Phase 35 end state: −2 (Save Draft + Finalise removed), green per-note ✓ removed
-- Coach onboarding test: a first-time user types a note + closes the page; reopening shows the note persisted
+**Success Criteria (verified):**
+- Typing a coach note → blur → DB row updates within ~500ms; no manual save button required ✓
+- After save lands, status pill auto-flips Draft (if previously Approved/Sent) within ~1s — Phase 35 revert chain visible end-to-end without user intervention ✓
+- Top toolbar lifecycle buttons: Approve & Send / Mark Ready / Resend / Revert to Draft / Finalise (or Unfinalise) — Save Draft removed, per-note ✓ removed ✓
+- Coach onboarding test: a first-time user types a note + closes the page; reopening shows the note persisted ✓
 
 ---
 

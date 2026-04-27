@@ -76,7 +76,7 @@ const getClientNavigation = (clientId: string): NavSection[] => [
       { label: 'Roadmap', href: `/coach/clients/${clientId}/view/business-roadmap`, icon: Compass },
       { label: 'Vision, Mission & Values', href: `/coach/clients/${clientId}/view/vision-mission`, icon: Target },
       { label: 'SWOT Analysis', href: `/coach/clients/${clientId}/view/swot`, icon: FileText },
-      { label: 'Goals & Targets', href: `/coach/clients/${clientId}/goals`, icon: Award },
+      { label: 'Goals & Targets', href: `/coach/clients/${clientId}/view/goals`, icon: Award },
       { label: 'One-Page Plan', href: `/coach/clients/${clientId}/view/one-page-plan`, icon: FileText },
     ],
   },
