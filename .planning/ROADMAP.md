@@ -667,6 +667,34 @@ Plans:
 
 **Follow-up (not in Phase 40 scope):** Wire Playwright into GitHub Actions, provision test Supabase project to un-skip coach-flow specs.
 
+### Phase 42: Monthly Report Save Flow Consolidation
+**Goal:** Collapse the multiple save buttons + intermediate local-state saves on the monthly report page into a single auto-save-on-blur path. Eliminate the per-note green ✓ button (saves only to local React state) + the page-level "Save Draft" button (POSTs to /api/monthly-report/snapshot) + standalone "Finalise" button. End state: coach types → focus leaves the field → server save fires → cfo_report_status reflects new state immediately.
+**Depends on:** Phase 35 (revert wiring depends on snapshot save firing on every coach edit; current UX requires manual "Save Draft" click which broke Phase 35 UAT visibly)
+**Requirements:** N/A (UX consolidation — no new functional requirement; existing requirements already cover the persistence contract)
+
+**Plans:** TBD
+
+**Context:**
+Surfaced during Phase 35 Plan 35-07 UAT. Phase 35's `revertReportIfApproved()` is wired correctly into `/api/monthly-report/snapshot`, but only fires when the page-level "Save Draft" button is clicked. The per-note ✓ button only updates local React state; the UI gives the impression that saving has happened when nothing has been persisted. Result: coach edits a note → ✓ click → believes saved → no DB write → no revert → pill stays "Sent". From the coach's POV, "the revert doesn't work" — actually the trigger never fired.
+
+This is a pre-existing UX problem that Phase 35 only made visible.
+
+**Scope (initial sketch — refined during /gsd:discuss-phase):**
+- Single source of truth for "saved" state: `cfo_report_status.snapshot_data` + `monthly_report_snapshots`
+- Coach typing in any commentary field → debounce 500ms after last keystroke OR onBlur → fire `/api/monthly-report/snapshot` POST
+- Remove the per-note green ✓ Save button entirely (or repurpose as a manual "save now" with same endpoint)
+- Remove "Save Draft" button from top toolbar (no longer needed — every edit auto-persists)
+- Merge "Finalise" into the existing Phase 35 "Approve & Send" button (Finalise is functionally a status transition without delivery; Approve & Send already does both)
+- Surface "saved/unsaved" indicator near the pill (small "All changes saved" / "Saving..." / "Unsaved" text)
+- Pill state remains the single visible source of truth for lifecycle (`Draft | Ready for Review | Approved | Sent`)
+
+**Success Criteria:**
+- Typing a coach note → blur → DB row updates within 500ms; no manual save button required
+- After save lands, status pill polls back as Draft (if previously Approved/Sent) within 10s — Phase 35 revert chain visible end-to-end without user intervention
+- Top toolbar shows at most 2 lifecycle buttons: "Approve & Send" (or "Resend"/"Revert" depending on state) plus the existing "Export PDF" / "Settings" utility buttons
+- Net button-count delta vs Phase 35 end state: −2 (Save Draft + Finalise removed), green per-note ✓ removed
+- Coach onboarding test: a first-time user types a note + closes the page; reopening shows the note persisted
+
 ---
 
 ### Phase 36: Client Portal
