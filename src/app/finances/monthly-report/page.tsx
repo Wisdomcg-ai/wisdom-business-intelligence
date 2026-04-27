@@ -7,6 +7,9 @@ import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { createClient } from '@/lib/supabase/client'
 import dynamic from 'next/dynamic'
 import { Loader2, BarChart3, Settings, Download, Save, LayoutGrid } from 'lucide-react'
+// Phase 42 Plan 04: auto-save lifecycle (D-01..D-15) + visible save indicator (D-08, D-09).
+import { useAutoSaveReport } from './hooks/useAutoSaveReport'
+import SaveIndicator from './components/SaveIndicator'
 import { toast } from 'sonner'
 import PageHeader from '@/components/ui/PageHeader'
 import MonthlyReportTabs from './components/MonthlyReportTabs'
@@ -84,6 +87,11 @@ export default function MonthlyReportPage() {
   // Commentary state
   const [commentary, setCommentary] = useState<VarianceCommentary | undefined>(undefined)
   const [commentaryLoading, setCommentaryLoading] = useState(false)
+
+  // Phase 42 Plan 04: track loaded snapshot status to drive isLocked (D-06).
+  // Plan 42-05 will give Finalise full lock UX; this plan only sets it up so
+  // useAutoSaveReport receives a correct isLocked flag.
+  const [loadedSnapshotStatus, setLoadedSnapshotStatus] = useState<'draft' | 'final' | null>(null)
 
   // Phase 35 Plan 06: owner_email + owner_name (recipient + greeting) are needed by
   // the approve-and-send flow but not part of the existing ActiveBusiness shape.
@@ -342,6 +350,25 @@ export default function MonthlyReportPage() {
   const periodMonthKey = report?.report_month ? `${report.report_month}-01` : null
   const reportStatus = useReportStatus(businessId || null, periodMonthKey)
 
+  // Phase 42 Plan 04: mount the auto-save lifecycle. Watches commentary only
+  // (Pitfall 6 / Phase 35 D-17) — typing fires schedule() (debounced 500ms,
+  // D-01/D-02), blur fires flushImmediately(), and every 2xx triggers
+  // reportStatus.refresh() (D-15) so the pill auto-reverts within ~500ms of a
+  // save settling. isLocked is derived from loadedSnapshotStatus
+  // (snapshot.status === 'final' → D-06) — Plan 42-05 will wire the full
+  // Finalise lock UX (toast on completion + button disabled state).
+  const isLocked = loadedSnapshotStatus === 'final'
+  const autoSave = useAutoSaveReport({
+    report,
+    commentary,
+    userId,
+    isLocked,
+    onSaveSuccess: () => {
+      reportStatus.refresh()
+    },
+    saveSnapshot,
+  })
+
   // Phase 35 Plan 06: map BusinessContext role → ReportStatusBar role.
   // context: 'client' | 'coach' | 'admin' (admin is the mapped super_admin)
   const userRole: 'coach' | 'super_admin' | 'client' =
@@ -576,6 +603,10 @@ export default function MonthlyReportPage() {
       // Load persisted commentary to merge with fresh vendor data
       const snapshot = await loadSnapshot(selectedMonth)
       const persistedCommentary = snapshot?.commentary || undefined
+      // Phase 42 Plan 04: a freshly-generated report should reflect the loaded
+      // snapshot status (or 'draft' if there's no snapshot yet). Without this,
+      // a regenerate after a prior 'final' month would inherit stale lock state.
+      setLoadedSnapshotStatus((snapshot?.status as 'draft' | 'final' | undefined) ?? 'draft')
       fetchCommentary(result, persistedCommentary)
     }
   }, [selectedMonth, fiscalYear, reconciliation, generateReport, fetchCommentary, loadSnapshot])
@@ -590,6 +621,9 @@ export default function MonthlyReportPage() {
     if (snapshot?.commentary) {
       setCommentary(snapshot.commentary)
     }
+    // Phase 42 Plan 04: track loaded snapshot status so isLocked reflects the
+    // newly-loaded month (D-06 setup). Snapshot may be null (no save yet).
+    setLoadedSnapshotStatus((snapshot?.status as 'draft' | 'final' | undefined) ?? null)
   }
 
   const handleCommentaryChange = (accountName: string, note: string) => {
@@ -604,6 +638,9 @@ export default function MonthlyReportPage() {
         },
       }
     })
+    // Phase 42 Plan 04 (D-01/D-02): schedule a debounced auto-save. The hook
+    // reads the latest commentary via refs at fire-time, so no stale-closure risk.
+    autoSave.schedule()
   }
 
   const handleSaveSnapshot = async (status: 'draft' | 'final' = 'draft') => {
@@ -832,11 +869,14 @@ export default function MonthlyReportPage() {
       } else {
         setCommentary(undefined)
       }
+      // Phase 42 Plan 04: track loaded snapshot status (D-06 setup).
+      setLoadedSnapshotStatus((snapshot.status as 'draft' | 'final' | undefined) ?? null)
       setActiveTab('report')
       toast.success(`Loaded ${reportMonth} report`)
     } else {
       // No snapshot, generate fresh
       setCommentary(undefined)
+      setLoadedSnapshotStatus(null)
       setActiveTab('report')
       handleGenerateReport()
     }
@@ -902,13 +942,8 @@ export default function MonthlyReportPage() {
 
             {report && (
               <>
-                <button
-                  onClick={() => handleSaveSnapshot('draft')}
-                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-brand-orange hover:bg-brand-orange-600 rounded-lg transition-colors"
-                >
-                  <Save className="w-4 h-4" />
-                  <span className="hidden sm:inline">Save Draft</span>
-                </button>
+                {/* Phase 42 D-05: the legacy draft-save button was removed — auto-save replaces it.
+                    The visible reassurance lives in <SaveIndicator/> next to the pill. */}
                 <button
                   onClick={() => handleSaveSnapshot('final')}
                   disabled={report.is_draft}
@@ -934,8 +969,9 @@ export default function MonthlyReportPage() {
 
       <div className="max-w-[1800px] mx-auto p-4 sm:p-6 lg:p-8">
         {/* Phase 35 Plan 06: Approval + delivery status bar — above the Month Selector */}
+        {/* Phase 42 Plan 04 (D-09): flex-row wrapper hosts both the pill and the SaveIndicator. */}
         {report && (
-          <div className="mb-4 bg-white rounded-lg shadow-sm px-4 py-3">
+          <div className="mb-4 bg-white rounded-lg shadow-sm px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
             <ReportStatusBar
               status={reportStatus.status}
               sentAt={reportStatus.sentAt}
@@ -945,6 +981,7 @@ export default function MonthlyReportPage() {
               onResend={handleResend}
               onRevertToDraft={handleRevertToDraft}
             />
+            <SaveIndicator status={autoSave.status} onRetry={autoSave.retryNow} />
           </div>
         )}
 
@@ -1028,6 +1065,7 @@ export default function MonthlyReportPage() {
             commentary={commentary}
             commentaryLoading={commentaryLoading}
             onCommentaryChange={handleCommentaryChange}
+            onCommitBlur={() => autoSave.flushImmediately()}
             onTabChange={setActiveTab}
           />
         )}
