@@ -37,3 +37,14 @@ Boundary rule, only auto-fix issues directly caused by current task changes.
 **Phase 44 baseline:** With this single failure, full suite is 395 passed /
 22 todo / 1 failed. The 22 todos are intentional — they belong to Plan 44-01's
 seven new scaffold files and will be filled in by Plans 44-03 through 44-11.
+
+## Audit-script bug from 44-02 deployment (2026-04-27)
+
+`scripts/audit-xero-pl-lines-duplicates.ts` reported 0 duplicate groups in 44-01, but Migration 1's pre-flight caught a real collision (IICT Group: 2 rows with account_code=NULL on different accounts). The script's grouping logic is NULL-unaware and missed it. Also, the script reads via Supabase's default 1000-row limit which truncates against tables larger than that.
+
+Fix needed before Phase 45 / future migrations:
+- Mirror SQL GROUP BY semantics (treat NULL=NULL as same group)
+- Paginate through full row sets, not just first 1000
+- Add a unit test against a fixture with intentional NULL-collisions
+
+Logged from Phase 44 Plan 44-02 SUMMARY.
