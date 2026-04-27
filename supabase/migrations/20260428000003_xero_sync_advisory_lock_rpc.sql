@@ -16,23 +16,23 @@
 --   Coaches and business members must NOT be able to acquire advisory locks
 --   directly (they could DoS sync by holding locks). Only the cron + sync
 --   orchestrator (service-role caller) can call this RPC.
-
-BEGIN;
+--
+-- Compatibility: omits explicit BEGIN/COMMIT (Supabase Studio uses an implicit
+-- transaction; CREATE OR REPLACE is idempotent so re-runs are safe). Uses
+-- uniquely-tagged $rpc_body$ dollar quote to avoid Studio parser ambiguity.
 
 CREATE OR REPLACE FUNCTION acquire_xero_sync_lock(p_business_id uuid)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $rpc_body$
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtext(p_business_id::text));
 END;
-$$;
+$rpc_body$;
 
 REVOKE ALL ON FUNCTION acquire_xero_sync_lock(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION acquire_xero_sync_lock(uuid) TO service_role;
 
 COMMENT ON FUNCTION acquire_xero_sync_lock(uuid) IS 'Phase 44 D-07 — single-flight Xero sync per business via pg_advisory_xact_lock(hashtext). Service-role only. Lock released on transaction commit/rollback. pgBouncer transaction-mode safe.';
-
-COMMIT;
