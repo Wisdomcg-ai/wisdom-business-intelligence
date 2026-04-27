@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Executing Phase 42 — Plan 42-01 COMPLETE; Plan 42-02 COMPLETE (sequential, on main); 42-03 next
-last_updated: "2026-04-27T05:42:00Z"
+status: Executing Phase 42 — Plans 42-01 + 42-02 COMPLETE; Plan 42-03 Tasks 1-5 COMPLETE; awaiting Task 6 Vercel preview Fit2Shine smoke test
+last_updated: "2026-04-27T06:00:00Z"
 progress:
   total_phases: 42
   completed_phases: 14
@@ -196,12 +196,12 @@ progress:
 
 ## Position
 
-- Current: Phase 42, Plan 02 of 3 — COMPLETE (7 tasks, all atomic commits, sentinels green, tsc clean). Plan 42-03 (test coverage) is now unblocked.
-- Stopped at: Completed 42-02-PLAN.md
+- Current: Phase 42, Plan 03 of 3 — Tasks 1-5 COMPLETE (5 atomic test commits + 1 stability fix). Awaiting Task 6 = `checkpoint:human-action` Vercel preview Fit2Shine smoke test.
+- Stopped at: Plan 42-03 Task 6 (Vercel preview smoke test) — checkpoint awaiting human
 
 ## Last Session
 
-- 2026-04-27T05:42:00Z — Plan 42-02 implemented (hook refactor with role-guard removal + 2 new components + getYearLabel refactor + Step 1 wiring + owner page + coach page Phase 14 bug fix). All 5 sentinels green; tsc baseline preserved at 16 errors (all pre-existing in `.next/types/`).
+- 2026-04-27T06:00:00Z — Plan 42-03 Tasks 1-5 implemented (5 vitest test files: suggestPlanPeriod 10 tests, derivePeriodInfo 7 tests, banner+modal 13 tests, coach/owner equivalence regression fence 4 source-code sentinels, persistence round-trip 4 tests). 38/38 goals tests pass; full repo test suite 299/299 pass. Vitest config gained `oxc.jsx` runtime override (project tsconfig sets `jsx: 'preserve'` which Rolldown's SSR transform cannot parse) and `@testing-library/dom` was installed (peer dep of @testing-library/react). Hook behavioural test deemed too flaky in Vitest 4 (worker rpc reports unhandled rejections from the hook's lingering async chain at teardown) — replaced with structural source-code sentinels per Plan 42-03 Task 4 fallback note.
 
 ## Phase 41 Decisions
 
@@ -260,6 +260,24 @@ progress:
 - Task 5 (Step1GoalsAndKPIs banner + modal wiring): COMPLETE (dc0581b)
 - Task 6 (owner goals page wiring): COMPLETE (7950f58)
 - Task 7 (coach goals page wiring + Phase 14 bug fix): COMPLETE (9e77000)
+
+## Plan 42-03 Decisions
+
+- Plan 42-03 Task 1 (suggestPlanPeriod tests): Use a local-TZ safe formatter (`fmt(d) = YYYY-MM-DD via getFullYear/getMonth/getDate`) instead of `toISOString().slice(0,10)` to keep the assertions stable across timezones. The codespaces CI runs in UTC but this future-proofs the test for any env.
+- Plan 42-03 Task 2 (derivePeriodInfo tests): Confirmed the helper returns **year1Months=15** for the Apr 1 2026 → Jun 30 2027 case (inclusive month diff: `(2027-2026)*12 + (5-3) + 1 = 15`). The narrative description "14 months" in the Fit2Shine context is the count of FY26-remainder + FY27 *without* counting the boundary month twice; the helper's contract is the inclusive-end calendar diff. Plan 42-03 explicitly accepted whichever value the helper returns; tests assert 15.
+- Plan 42-03 Task 3 (banner + modal tests): The modal's `monthDiffInclusive(planStart, year1End)` returns 15 for the default Apr→Jun (15-month) case — out-of-range threshold is `<12 || >15` so 15 IS in range. The default Save button is enabled, validation shows for ≥16 month spans (e.g. setting year1End to Jan 31 2028).
+- Plan 42-03 Task 3 (infra Rule 3): vitest.config.ts gained `oxc: { jsx: { runtime: 'automatic' } }` because the project's tsconfig has `jsx: 'preserve'` which Vite 8/Rolldown's SSR module-runner transform cannot parse. Without this, ALL `.tsx` test files fail at load with `RolldownError: Unexpected JSX expression`. Also installed `@testing-library/dom` (peer dep of `@testing-library/react` that wasn't in package.json — runtime require failed).
+- Plan 42-03 Task 4 (coach/owner equivalence): Behavioural `renderHook` test was flaky in Vitest 4 because the hook chain leaves async work pending past the test boundary (4 service calls + supabase auth) which the worker rpc reports as `EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was pending`. Replaced with 4 source-code sentinels per the plan's Task 4 fallback note: (1) literal `ownerUser === user.id` absent; (2) `if (ownerUser === user.id)` guard pattern absent (regex defensive); (3) suggestPlanPeriod + derivePeriodInfo imports present; (4) `FinancialService.loadFinancialGoals(bizId)` + `setPlanStartDate/setPlanEndDate/setYear1EndDate` calls present (structural role-agnostic invariant). This is the **irreducible** REQ-42-06 regression fence — a future PR re-introducing the role guard will fail tests in CI.
+- Plan 42-03 Task 5 (persistence round-trip): Mock at `@/lib/supabase/client` boundary BEFORE FinancialService import (because `private static supabase = createClient()` runs at class-load time). 4 cases: full save→reload identical ISO strings; legacy un-backfilled row returns null planPeriod fields; save without planPeriod argument writes nulls; loadFinancialGoals('') returns 'Business ID required' error.
+
+## Plan 42-03 Progress
+
+- Task 1 (suggestPlanPeriod unit tests, 10 cases): COMPLETE (b2011de)
+- Task 2 (derivePeriodInfo unit tests, 7 cases): COMPLETE (2767b8f)
+- Task 3 (PlanPeriodBanner + PlanPeriodAdjustModal component tests, 13 cases + vitest jsx infra fix): COMPLETE (a8ad838)
+- Task 4 (coach/owner equivalence regression fence, 4 source-code sentinels): COMPLETE (9f95bc3 + bab8a4d)
+- Task 5 (plan period persistence round-trip, 4 cases): COMPLETE (99b6cb7)
+- Task 6 (Vercel preview Fit2Shine smoke test): AWAITING — `checkpoint:human-action`. User opens Vercel preview, logs in as coach, navigates to Fit2Shine goals wizard, confirms PlanPeriodBanner displays the suggested extended period, optionally clicks Adjust + verifies modal validation. Resume signal `approved — Fit2Shine reproduced + resolved` triggers SUMMARY.md creation and Phase 42 close-out.
 
 ## Accumulated Context
 
