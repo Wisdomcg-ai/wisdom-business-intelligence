@@ -137,13 +137,15 @@ function convertRevenue(
   for (const revLine of assumptions.revenue.lines) {
     const existing = findMatchingLine(existingLines, revLine.accountName, revLine.accountId)
 
-    const forecastMonths: Record<string, number> = {}
+    // D-44.1-06 vector 2/3 — start from existing forecast_months so unmentioned keys (Y2/Y3,
+    // or Y1 keys when input has no year1Monthly) survive. Input wins per-key for in-range months.
+    const newForecastMonths: Record<string, number> = { ...(existing?.forecast_months || {}) }
 
     // Year 1 — use year1Monthly directly
     if (revLine.year1Monthly) {
       for (const [mk, val] of Object.entries(revLine.year1Monthly)) {
         if (forecastMonthKeys.includes(mk)) {
-          forecastMonths[mk] = round2(val)
+          newForecastMonths[mk] = round2(val)
         }
       }
     }
@@ -154,7 +156,7 @@ function convertRevenue(
       const expanded = expandQuarterlyToMonthly(revLine.year2Quarterly, y2Start)
       for (const [mk, val] of Object.entries(expanded)) {
         if (forecastMonthKeys.includes(mk)) {
-          forecastMonths[mk] = round2(val)
+          newForecastMonths[mk] = round2(val)
         }
       }
     }
@@ -165,7 +167,7 @@ function convertRevenue(
       const expanded = expandQuarterlyToMonthly(revLine.year3Quarterly, y3Start)
       for (const [mk, val] of Object.entries(expanded)) {
         if (forecastMonthKeys.includes(mk)) {
-          forecastMonths[mk] = round2(val)
+          newForecastMonths[mk] = round2(val)
         }
       }
     }
@@ -178,7 +180,7 @@ function convertRevenue(
       subcategory: existing?.subcategory,
       sort_order: existing?.sort_order,
       actual_months: existing?.actual_months || {},
-      forecast_months: forecastMonths,
+      forecast_months: newForecastMonths,
       is_from_xero: existing?.is_from_xero || false,
       is_manual: false,
     })
@@ -204,13 +206,14 @@ function convertCOGS(
   for (const cogsLine of assumptions.cogs.lines) {
     const existing = findMatchingLine(existingLines, cogsLine.accountName, cogsLine.accountId)
 
-    const forecastMonths: Record<string, number> = {}
+    // D-44.1-06 vector 2/3 — start from existing forecast_months so unmentioned keys survive.
+    const newForecastMonths: Record<string, number> = { ...(existing?.forecast_months || {}) }
 
     // If year1Monthly exists, use it directly (same pattern as revenue)
     if (cogsLine.year1Monthly) {
       for (const [mk, val] of Object.entries(cogsLine.year1Monthly)) {
         if (forecastMonthKeys.includes(mk)) {
-          forecastMonths[mk] = round2(val)
+          newForecastMonths[mk] = round2(val)
         }
       }
 
@@ -220,7 +223,7 @@ function convertCOGS(
         const expanded = expandQuarterlyToMonthly(cogsLine.year2Quarterly, y2Start)
         for (const [mk, val] of Object.entries(expanded)) {
           if (forecastMonthKeys.includes(mk)) {
-            forecastMonths[mk] = round2(val)
+            newForecastMonths[mk] = round2(val)
           }
         }
       }
@@ -231,7 +234,7 @@ function convertCOGS(
         const expanded = expandQuarterlyToMonthly(cogsLine.year3Quarterly, y3Start)
         for (const [mk, val] of Object.entries(expanded)) {
           if (forecastMonthKeys.includes(mk)) {
-            forecastMonths[mk] = round2(val)
+            newForecastMonths[mk] = round2(val)
           }
         }
       }
@@ -240,11 +243,11 @@ function convertCOGS(
       const pct = cogsLine.percentOfRevenue / 100
       for (const mk of forecastMonthKeys) {
         const rev = revenueByMonth[mk] || 0
-        forecastMonths[mk] = round2(rev * pct)
+        newForecastMonths[mk] = round2(rev * pct)
       }
     } else if (cogsLine.costBehavior === 'fixed' && cogsLine.monthlyAmount) {
       for (const mk of forecastMonthKeys) {
-        forecastMonths[mk] = round2(cogsLine.monthlyAmount!)
+        newForecastMonths[mk] = round2(cogsLine.monthlyAmount!)
       }
     }
 
@@ -256,7 +259,7 @@ function convertCOGS(
       subcategory: existing?.subcategory,
       sort_order: existing?.sort_order,
       actual_months: existing?.actual_months || {},
-      forecast_months: forecastMonths,
+      forecast_months: newForecastMonths,
       is_from_xero: existing?.is_from_xero || false,
       is_manual: false,
     })
@@ -282,7 +285,8 @@ function convertOpEx(
   for (const opexLine of assumptions.opex.lines) {
     const existing = findMatchingLine(existingLines, opexLine.accountName, opexLine.accountId)
 
-    const forecastMonths: Record<string, number> = {}
+    // D-44.1-06 vector 2/3 — start from existing forecast_months so unmentioned keys survive.
+    const newForecastMonths: Record<string, number> = { ...(existing?.forecast_months || {}) }
 
     switch (opexLine.costBehavior) {
       case 'fixed': {
@@ -292,7 +296,7 @@ function convertOpEx(
           const yearNum = getFYYear(mk, fiscalYear)
           // Compound increase for years 2+
           const multiplier = yearNum > 1 ? Math.pow(1 + annualInc, yearNum - 1) : 1
-          forecastMonths[mk] = round2(baseAmount * multiplier)
+          newForecastMonths[mk] = round2(baseAmount * multiplier)
         }
         break
       }
@@ -301,7 +305,7 @@ function convertOpEx(
         const pct = (opexLine.percentOfRevenue || 0) / 100
         for (const mk of forecastMonthKeys) {
           const rev = revenueByMonth[mk] || 0
-          forecastMonths[mk] = round2(rev * pct)
+          newForecastMonths[mk] = round2(rev * pct)
         }
         break
       }
@@ -330,7 +334,7 @@ function convertOpEx(
               const yearNum = getFYYear(mk, fiscalYear)
               const yearMultiplier = yearNum > 1 ? Math.pow(1 + growthPct, yearNum - 1) : 1
               const proportion = (pattern[m] || patternTotal / 12) / patternTotal
-              forecastMonths[mk] = round2((targetAmount / 12) * (proportion * 12) * yearMultiplier)
+              newForecastMonths[mk] = round2((targetAmount / 12) * (proportion * 12) * yearMultiplier)
             }
           }
         } else {
@@ -338,7 +342,7 @@ function convertOpEx(
           const targetAmount = opexLine.seasonalTargetAmount || opexLine.monthlyAmount || 0
           const monthly = targetAmount / 12
           for (const mk of forecastMonthKeys) {
-            forecastMonths[mk] = round2(monthly)
+            newForecastMonths[mk] = round2(monthly)
           }
         }
         break
@@ -351,7 +355,7 @@ function convertOpEx(
           const perMonth = round2(annual / months.length)
           for (const mk of months) {
             if (forecastMonthKeys.includes(mk)) {
-              forecastMonths[mk] = perMonth
+              newForecastMonths[mk] = perMonth
             }
           }
         }
@@ -368,7 +372,7 @@ function convertOpEx(
       subcategory: existing?.subcategory,
       sort_order: existing?.sort_order,
       actual_months: existing?.actual_months || {},
-      forecast_months: forecastMonths,
+      forecast_months: newForecastMonths,
       is_from_xero: existing?.is_from_xero || false,
       is_manual: false,
     })
@@ -549,6 +553,12 @@ function convertTeam(
 
     const existing = findMatchingLine(existingLines, tl.name)
 
+    // D-44.1-06 vector 2/3 — merge tl.data over existing forecast_months. tl.data covers
+    // every key in forecastMonthKeys (initialised to 0 then accumulated), so it overwrites
+    // in-range keys; out-of-range keys (e.g., Y2/Y3 when forecastDuration=1) survive from
+    // existing.
+    const newForecastMonths: Record<string, number> = { ...(existing?.forecast_months || {}), ...tl.data }
+
     result.push({
       ...(existing ? { id: existing.id } : {}),
       account_name: existing?.account_name || tl.name,
@@ -557,7 +567,7 @@ function convertTeam(
       subcategory: existing?.subcategory,
       sort_order: existing?.sort_order,
       actual_months: existing?.actual_months || {},
-      forecast_months: tl.data,
+      forecast_months: newForecastMonths,
       is_from_xero: existing?.is_from_xero || false,
       is_manual: false,
     })
@@ -587,12 +597,13 @@ function convertCapExDepreciation(
 
   if (totalMonthlyDepreciation <= 0) return []
 
-  const forecastMonths: Record<string, number> = {}
-  for (const mk of forecastMonthKeys) {
-    forecastMonths[mk] = round2(totalMonthlyDepreciation)
-  }
-
   const existing = findMatchingLine(existingLines, 'Depreciation')
+
+  // D-44.1-06 vector 2/3 — start from existing so out-of-range keys survive.
+  const newForecastMonths: Record<string, number> = { ...(existing?.forecast_months || {}) }
+  for (const mk of forecastMonthKeys) {
+    newForecastMonths[mk] = round2(totalMonthlyDepreciation)
+  }
 
   return [{
     ...(existing ? { id: existing.id } : {}),
@@ -602,7 +613,7 @@ function convertCapExDepreciation(
     subcategory: existing?.subcategory,
     sort_order: existing?.sort_order,
     actual_months: existing?.actual_months || {},
-    forecast_months: forecastMonths,
+    forecast_months: newForecastMonths,
     is_from_xero: existing?.is_from_xero || false,
     is_manual: false,
   }]
