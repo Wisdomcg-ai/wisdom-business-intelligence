@@ -100,12 +100,49 @@ These were identified in the audit but deferred to a later milestone — too dis
 
 | Requirement | Phase | Notes |
 |---|---|---|
-| TEST-01..06 | TBD | Filled by roadmapper |
-| CLEAN-01..09 | TBD | Filled by roadmapper |
-| SEC-01..08 | TBD | Filled by roadmapper |
-| VALID-01..06 | TBD | Filled by roadmapper |
-| MONEY-01..08 | TBD | Filled by roadmapper |
-| DB-01..06 | TBD | Filled by roadmapper |
+| TEST-01 | Phase 44 | Test Gate & CI Hardening |
+| TEST-02 | Phase 44 | Test Gate & CI Hardening |
+| TEST-03 | Phase 44 | Test Gate & CI Hardening |
+| TEST-04 | Phase 44 | Test Gate & CI Hardening |
+| TEST-05 | Phase 44 | Test Gate & CI Hardening |
+| TEST-06 | Phase 44 | Test Gate & CI Hardening |
+| CLEAN-01 | Phase 45 | Invisible Cleanup |
+| CLEAN-02 | Phase 45 | Invisible Cleanup |
+| CLEAN-03 | Phase 45 | Invisible Cleanup |
+| CLEAN-04 | Phase 45 | Invisible Cleanup |
+| CLEAN-05 | Phase 45 | Invisible Cleanup |
+| CLEAN-06 | Phase 45 | Invisible Cleanup |
+| CLEAN-07 | Phase 45 | Invisible Cleanup |
+| CLEAN-08 | Phase 45 | Invisible Cleanup |
+| CLEAN-09 | Phase 45 | Invisible Cleanup |
+| SEC-01 | Phase 46 | Server-Side Hardening |
+| SEC-02 | Phase 46 | Server-Side Hardening |
+| SEC-03 | Phase 46 | Server-Side Hardening |
+| SEC-04 | Phase 46 | Server-Side Hardening |
+| SEC-05 | Phase 46 | Server-Side Hardening |
+| SEC-06 | Phase 46 | Server-Side Hardening |
+| SEC-07 | Phase 46 | Server-Side Hardening |
+| SEC-08 | Phase 46 | Server-Side Hardening |
+| VALID-01 | Phase 47 | Input Validation Rollout |
+| VALID-02 | Phase 47 | Input Validation Rollout |
+| VALID-03 | Phase 47 | Input Validation Rollout |
+| VALID-04 | Phase 47 | Input Validation Rollout |
+| VALID-05 | Phase 47 | Input Validation Rollout |
+| VALID-06 | Phase 47 | Input Validation Rollout |
+| MONEY-01 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-02 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-03 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-04 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-05 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-06 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-07 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-08 | Phase 48 | Decimal Money Arithmetic |
+| DB-01 | Phase 49 | Database Integrity Hygiene |
+| DB-02 | Phase 49 | Database Integrity Hygiene |
+| DB-03 | Phase 49 | Database Integrity Hygiene |
+| DB-04 | Phase 49 | Database Integrity Hygiene |
+| DB-05 | Phase 49 | Database Integrity Hygiene |
+| DB-06 | Phase 49 | Database Integrity Hygiene |
 
 ---
 

@@ -796,3 +796,122 @@ Plans:
 - The URL `/portal/urban-road?month=2026-03` deep-links directly to Urban Road's March 2026 report
 - Portal client cannot access any coach route (`/coach/*`, `/cfo`, `/finances/*`) — middleware redirects to portal login
 - Disconnecting or revoking portal access (deleting the system_roles row) immediately prevents login
+
+---
+
+## Milestone v1.1 — Codebase Hardening
+
+**Source:** `CODEBASE-AUDIT.md` at repo root (production readiness 55/100, written 2026-04-28)
+**Goal:** Take the codebase from 55/100 to ~75/100 (Series-A defensible) over 6 phases (Phase 44–49), with zero client disruption.
+**Sequence:** blast-radius first, scope second — Phase 44 (zero risk) → Phase 49 (DB hygiene).
+**Constraint:** every requirement either makes no observable client change, or ships behind a feature flag, observe-mode, or shadow-compute pattern.
+
+### Phase Summary (v1.1)
+
+- [ ] **Phase 44 — Test Gate & CI Hardening** — every PR is automatically blocked on lint + typecheck + tests + build; nightly Playwright smoke. Precondition for everything else. ([phase dir](phases/44-test-gate-ci-hardening/PHASE.md))
+- [ ] **Phase 45 — Invisible Cleanup** — delete what no one references (~192 files / 2.1 MB / ~6,000 LOC), drop `axios`, rewrite README, archive stale `docs/*.md`. ([phase dir](phases/45-invisible-cleanup/PHASE.md))
+- [ ] **Phase 46 — Server-Side Hardening** — delete dead `/api/migrate` routes, fix Xero cron-secret fail-open, harden encryption keys, adopt Sentry as the structured-logging sink, decide the onboarding gate. ([phase dir](phases/46-server-side-hardening/PHASE.md))
+- [ ] **Phase 47 — Input Validation Rollout** — `withSchema()` middleware + Zod schemas across 120 API routes in observe → enforce mode. ([phase dir](phases/47-input-validation-rollout/PHASE.md))
+- [ ] **Phase 48 — Decimal Money Arithmetic** — `consolidatePrecise()` shadow-compute + reconciliation log + per-tenant flag rollout (Fit2Shine → Dragon → IICT). ([phase dir](phases/48-decimal-money-arithmetic/PHASE.md))
+- [ ] **Phase 49 — Database Integrity Hygiene** — additive soft-delete + audit columns on 8 financial tables, ON DELETE clauses on 56 orphan-prone FKs, migration-naming hygiene, RLS intent documentation. ([phase dir](phases/49-database-integrity-hygiene/PHASE.md))
+
+### Phase Details (v1.1)
+
+#### Phase 44: Test Gate & CI Hardening
+**Goal:** every PR is automatically blocked on quality. Precondition for everything else.
+**Depends on:** Nothing (precondition phase)
+**Requirements:** TEST-01, TEST-02, TEST-03, TEST-04, TEST-05, TEST-06
+**Blast Radius:** Zero — no source code changed, only CI gates added.
+**Success Criteria** (what must be TRUE):
+  1. Vitest green on `main` — fresh checkout + `npm install && npm test` exits 0.
+  2. A no-source PR with a lint violation is blocked by the required `next lint` check.
+  3. A no-source PR with a `tsc --noEmit` error or a failing `next build` is blocked.
+  4. The four required checks (lint, typecheck, vitest, build) appear on every PR's status panel and are configured as required in `main` branch protection.
+  5. Nightly Playwright smoke run produces a green report against a Vercel preview URL for at least 3 consecutive nights.
+**Plans:** TBD
+**Phase dir:** [.planning/phases/44-test-gate-ci-hardening/](phases/44-test-gate-ci-hardening/PHASE.md)
+
+#### Phase 45: Invisible Cleanup
+**Goal:** delete what no one references. ~192 files / 2.1 MB / ~6,000 LOC removed without behaviour change.
+**Depends on:** Phase 44 (CI must be enforcing before deletes happen — that's how we prove "nothing references this" rather than relying on grep alone).
+**Requirements:** CLEAN-01, CLEAN-02, CLEAN-03, CLEAN-04, CLEAN-05, CLEAN-06, CLEAN-07, CLEAN-08, CLEAN-09
+**Blast Radius:** Zero — pure deletion of unreferenced code/archives/dependencies, validated by typecheck + lint + build + vitest. The Urban Roads PDF is relocated to client-secure storage before its archive directory is removed.
+**Success Criteria** (what must be TRUE):
+  1. `grep -rln "wizard-v3\|wizard-steps" src/` returns 0 results and `npm run build` succeeds.
+  2. `_archive/`, `.archive/`, `supabase/archive/` are gone, and a Supabase storage object exists for the relocated Urban Roads PDF.
+  3. `npm ls axios` returns "(empty)" and `git ls-files | grep tsconfig.tsbuildinfo` returns nothing.
+  4. The root `README.md` describes how to clone, install, and run WisdomBI locally — i.e. a new contributor could onboard from it.
+  5. `npm run analyze` (or equivalent) produces a bundle-analyzer HTML report giving future bundle-size work a measurable baseline.
+**Plans:** TBD
+**Phase dir:** [.planning/phases/45-invisible-cleanup/](phases/45-invisible-cleanup/PHASE.md)
+
+#### Phase 46: Server-Side Hardening
+**Goal:** close internal-only security gaps with no contract change. Clients can't tell the difference; the next pen-test can.
+**Depends on:** Phase 44 (CI must be enforcing before security refactors land — encryption-key changes and middleware edits need the typecheck/build/test gate to catch regressions).
+**Requirements:** SEC-01, SEC-02, SEC-03, SEC-04, SEC-05, SEC-06, SEC-07, SEC-08
+**Blast Radius:** Low — internal only. SEC-01 deletes routes that already return errors today. SEC-02/04/08 fail closed where they previously failed open (correctness, not contract change). SEC-07 changes log destinations, not log content. SEC-04 requires `APP_SECRET_KEY` set explicitly in production — coordinate with Vercel env-var deploy step.
+**Success Criteria** (what must be TRUE):
+  1. `/api/migrate/*` returns 404 in production (routes are deleted).
+  2. `POST /api/Xero/sync-all` without `CRON_SECRET` set returns 500 with no Xero work executed (verified by deliberately unsetting on a preview deploy and replaying the cron payload).
+  3. The migration-window script reports 100% of `xero_connections` rows have `:` in both tokens before SEC-04 ships; afterward `decrypt('plaintext-no-colon')` throws (unit test).
+  4. `Sentry.captureException` count climbs from 2 to 28+ within a week of SEC-07 deploy; `console.error` calls in `src/app/api/` drop at least 80%.
+  5. Production boot fails fast if `APP_SECRET_KEY` or `SENTRY_DSN` is missing; the middleware onboarding branch either runs behind `ONBOARDING_ENFORCED=true` or the dead code is gone.
+**Plans:** TBD
+**Phase dir:** [.planning/phases/46-server-side-hardening/](phases/46-server-side-hardening/PHASE.md)
+
+#### Phase 47: Input Validation Rollout
+**Goal:** every API boundary validates its input. Use observe → enforce — log violations 1-2 weeks per route before rejecting.
+**Depends on:** Phase 44 (so middleware refactors are caught by CI), Phase 46 (specifically SEC-07 — `zod:would-reject` events use `Sentry.captureException`; Sentry must be the standard logging sink first for observe-mode logging to be useful).
+**Requirements:** VALID-01, VALID-02, VALID-03, VALID-04, VALID-05, VALID-06
+**Blast Radius:** Observe mode: zero — every parse failure is logged but the request continues with the raw body. Enforce mode: low — gated by per-route allowlist (`ZOD_ENFORCE_ROUTES` env var), flipped after 1-2 weeks of zero `zod:would-reject` events on that route. Rollback by removing the route from the env-var list — no code change needed.
+**Success Criteria** (what must be TRUE):
+
+*Observe-mode adoption (VALID-01..05):*
+  1. `grep -rln "withSchema(" src/app/api/ | wc -l` reports 120 routes — every route has a schema attached.
+  2. Sentry's `zod:would-reject` events show baseline traffic across all 120 routes within 7 days of full observe rollout, giving us the data needed to refine schemas before flipping to enforce.
+
+*Enforce-mode adoption (VALID-06):*
+  3. Every read-only route in VALID-02 reports zero `zod:would-reject` events for 7 consecutive days before being added to `ZOD_ENFORCE_ROUTES`.
+  4. Every admin write route in VALID-03 is in `ZOD_ENFORCE_ROUTES` with the same 7-days-zero-events evidence per route.
+  5. `ZOD_ENFORCE_ROUTES` contains all 120 routes by phase end — an unknown-shape body to any route returns 400 with a Zod `error.flatten()`, not a 500 or silent acceptance.
+**Plans:** TBD
+**Phase dir:** [.planning/phases/47-input-validation-rollout/](phases/47-input-validation-rollout/PHASE.md)
+
+#### Phase 48: Decimal Money Arithmetic
+**Goal:** replace JS `number` summation in financial paths with `decimal.js`. Use shadow-compute + reconciliation log + per-tenant flag rollout.
+**Depends on:** Phase 47 (every consolidation/forecast write route must be in observe mode at minimum — we need to know the input shape is what we expect before swapping the arithmetic layer).
+**Requirements:** MONEY-01, MONEY-02, MONEY-03, MONEY-04, MONEY-05, MONEY-06, MONEY-07, MONEY-08
+**Blast Radius:** Medium — financial number changes ≤ $1 per cell, behind per-tenant flag, with 48-hour client communication before each tenant flip. Per-tenant rollout order: Fit2Shine first (coaching, lowest stakes, AUD only), then Dragon (AUD-only, 2-entity), then IICT (multi-currency, highest stakes). Shadow-compute runs against all 3 tenants for 2-4 weeks before any tenant flips. Rollback = flip the per-tenant flag back to false.
+**Success Criteria** (written around the **shadow-compute reconciliation log**, not "the engine works correctly" — the engine is already validated by 11 unit-test files):
+  1. `consolidation_precision_log` populates with rows on every monthly-report load for all 3 production tenants — i.e. shadow-compute is wired and running.
+  2. The `/admin/precision-log` dashboard shows deltas grouped by tenant + period, surfacing which cells differ and by how much.
+  3. `consolidation_precision_log` shows zero deltas > $1 for 14 consecutive days across all tenants before any tenant is flipped to precise mode.
+  4. Fit2Shine flipped to precise mode without a client report change > $1 — verified by comparing Fit2Shine's most recent monthly report pre- and post-flip and by Shari's sign-off. Same gate for Dragon and IICT.
+  5. All 3 tenants on precise mode for 60 consecutive days with zero finance-team-flagged discrepancies, after which legacy `consolidate()` is deleted and the precision-log insertion is removed.
+**Plans:** TBD
+**Phase dir:** [.planning/phases/48-decimal-money-arithmetic/](phases/48-decimal-money-arithmetic/PHASE.md)
+
+#### Phase 49: Database Integrity Hygiene
+**Goal:** additive-only DB improvements. ON DELETE clauses on 56 orphan-prone FKs, soft-delete + audit columns on 8 most-mutated financial tables, migration-naming hygiene. No destructive schema changes.
+**Depends on:** Phase 44 (preview-branch testing per migration is the validation pattern — without enforcing CI we can't trust the per-migration sign-off).
+**Requirements:** DB-01, DB-02, DB-03, DB-04, DB-05, DB-06
+**Blast Radius:** Low — additive-only migrations and constraint additions, tested against seeded preview branches before merge. Soft-delete and audit columns added as nullable; existing inserts/updates need no change. RLS tightening only narrows policies if intent is per-business. Rollback per migration is `DROP CONSTRAINT` or `DROP COLUMN`; no data loss.
+**Success Criteria** (what must be TRUE):
+  1. The 8 financial tables expose `deleted_at`, `deleted_by`, `created_by`, `updated_by` columns; existing inserts continue working unchanged.
+  2. `docs/db/fk-policy.md` exists and documents the CASCADE vs SET NULL decision for each of the 56 FKs, signed off before any DB-04 migration ships.
+  3. A seeded preview-branch test deleting a test user shows zero orphan rows in the 56 target child tables, with each FK's behaviour matching the documented policy.
+  4. `ls supabase/migrations/` shows every migration file in `YYYYMMDDHHMMSS_*.sql` form — no date-only filenames remain.
+  5. The 3 `USING (true)` RLS policies (`swot_templates`, `kpi_benchmarks`, `kpi_definitions`) carry an explicit migration comment recording the intent. Any policy narrowed has a regression test confirming a non-owner cannot read another tenant's row.
+**Plans:** TBD
+**Phase dir:** [.planning/phases/49-database-integrity-hygiene/](phases/49-database-integrity-hygiene/PHASE.md)
+
+### v1.1 Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 44. Test Gate & CI Hardening | 0/0 | Not started | - |
+| 45. Invisible Cleanup | 0/0 | Not started | - |
+| 46. Server-Side Hardening | 0/0 | Not started | - |
+| 47. Input Validation Rollout | 0/0 | Not started | - |
+| 48. Decimal Money Arithmetic | 0/0 | Not started | - |
+| 49. Database Integrity Hygiene | 0/0 | Not started | - |
