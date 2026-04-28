@@ -1,15 +1,16 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.1
-milestone_name: Codebase Hardening
-status: Ready to plan Phase 44
-last_updated: "2026-04-28T00:00:00Z"
+milestone_name: — Codebase Hardening
+status: executing
+last_updated: "2026-04-28T22:03:39.536Z"
+last_activity: 2026-04-28 -- Phase 44 planning complete
 progress:
-  total_phases: 6
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 49
+  completed_phases: 17
+  total_plans: 69
+  completed_plans: 65
+  percent: 94
 ---
 
 # Project State
@@ -18,8 +19,8 @@ progress:
 
 Phase: **Phase 44 — Test Gate & CI Hardening — ready to discuss/plan**
 Plan: —
-Status: Ready to plan Phase 44
-Last activity: 2026-04-28 — Roadmap drafted for v1.1 (Phases 44-49); 43/43 v1.1 REQ-IDs mapped 1:1 to phases; phase directories scaffolded with PHASE.md per phase.
+Status: Ready to execute
+Last activity: 2026-04-28 -- Phase 44 planning complete
 
 ## Current Milestone: v1.1 — Codebase Hardening
 
@@ -41,12 +42,14 @@ Goal: take the codebase from 55/100 to ~75/100 (Series-A defensible) over 6 phas
 ## Accumulated Context (Carried Over from v1.0)
 
 ### Active production tenants
+
 - **Dragon** (AUD, 2 entities) — consolidation
 - **IICT** (NZ + HK FX, 3 entities) — consolidation, multi-currency
 - **Fit2Shine** — coaching, strategy session content seeded 2026-04-27
 - **Just Digital Signage** (Aeris Solutions Pty Ltd) — original active client
 
 ### Architectural strengths preserved from v1.0
+
 - All 154 tables have RLS enabled; 397 policies; 41 SECURITY DEFINER functions hardened with `SET search_path`
 - AES-256-GCM encryption for Xero OAuth tokens
 - Real CSP, HSTS, security headers; cron secrets enforced (with one fail-open exception flagged in audit, addressed by SEC-02)
@@ -55,6 +58,7 @@ Goal: take the codebase from 55/100 to ~75/100 (Series-A defensible) over 6 phas
 - Centralised `resolveBusinessId()` tenant resolver
 
 ### Known gaps to remediate (from audit — now mapped to phases)
+
 - 0 of 120 API routes validate input (Zod in deps but unused) → **Phase 47**
 - Money summed as JS `number` (IEEE 754) for multi-currency consolidation → **Phase 48**
 - 2,012 `console.*` calls vs 2 `Sentry.captureException` calls → **Phase 46 (SEC-07)**
