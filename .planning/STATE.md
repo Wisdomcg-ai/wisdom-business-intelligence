@@ -391,10 +391,14 @@ progress:
 
 - Plan 44.1-01: Pre-DDL audit of `forecast_pl_lines` shows N=236 NULL `account_code` rows where `is_manual=false`, M=0 duplicate `(forecast_id, account_code)` groups (382 total rows; 0 manual). D-44.1-05 verdict: 44.1-02 MUST add a backfill prologue `UPDATE forecast_pl_lines SET account_code = 'ACCT-MISSING-' || id::text WHERE account_code IS NULL AND is_manual = false` before creating the partial unique index. The index itself is safe to create after backfill (M=0).
 - Plan 44.1-01: Audit script (`scripts/audit-forecast-pl-lines-account-codes.ts`) honors both `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_SERVICE_KEY` env-var spellings (sibling audit scripts use the latter, plan spec uses the former). Always exits 0 per D-44.1-04.
+- Plan 44.1-08: convertAssumptionsToPLLines now MERGES existing `forecast_months` per-key in all 5 sub-converters (Revenue, COGS, OpEx, Team, CapEx Depreciation) — replacing the prior REPLACE semantics. Pattern: `newForecastMonths = { ...(existing?.forecast_months || {}) }` then overlay input keys. Closes D-44.1-06 vectors 2 (no `year1Monthly` blanks Y1 keys) and 3 (shrunk `forecastDuration` drops Y2/Y3 keys) at the upstream root cause.
+- Plan 44.1-08: Team converter applies the merge at the per-line push site (line 560) since `tl.data` is pre-initialised across `forecastMonthKeys` and accumulated — out-of-range months survive from existing, in-range months overwritten by aggregated `tl.data`. CapEx Depreciation `findMatchingLine` call moved to before the loop so the seed object can read existing.forecast_months.
+- Plan 44.1-08: Pre-condition unblocked for 44.1-03 — vector 2 + vector 3 assertions can now flip from "documents current behavior" to STRICT preservation.
 
 ## Completed Work (Phase 44.1)
 
 - Plan 44.1-01: Pre-DDL audit script for forecast_pl_lines.account_code; surfaces null/duplicate counts + D-44.1-05 recommendation block — COMPLETE (2fcf2d3). Verdict: ship backfill prologue in 44.1-02.
+- Plan 44.1-08: convertAssumptionsToPLLines per-key forecast_months merge across 5 sub-converters — COMPLETE (5c29b49). 1 file changed (+36 / −25 LOC). `npx tsc --noEmit` clean. Acceptance grep verified: 5 merge sites, 0 stale `forecastMonths` declarations, 5 `forecast_months: newForecastMonths` push sites.
 
 ## Position
 
