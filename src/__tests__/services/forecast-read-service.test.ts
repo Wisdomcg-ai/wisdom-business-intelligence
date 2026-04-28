@@ -22,7 +22,15 @@
  * Wave 9 consumers is documented in 44-08-SUMMARY.md.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
+// Plan 44.1-04 — existing tests target strict-on behavior. Use vi.hoisted so the
+// env var is set BEFORE the service module's top-level `STRICT_INVARIANTS`
+// constant is evaluated (vi.mock + ESM imports hoist above plain statements).
+vi.hoisted(() => {
+  process.env.FORECAST_INVARIANTS_STRICT = 'true'
+})
+
 import * as Sentry from '@sentry/nextjs'
 
 // Hoist the resolveBusinessIds mock so it applies before service import.
@@ -36,6 +44,8 @@ vi.mock('@/lib/utils/resolve-business-ids', () => ({
 
 vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
+  captureMessage: vi.fn(),
+  addBreadcrumb: vi.fn(),
 }))
 
 import { ForecastReadService, createForecastReadService } from '@/lib/services/forecast-read-service'
@@ -438,5 +448,257 @@ describe('ForecastReadService', () => {
     // Net = +10000 (revenue) -3000 (cogs) -1000 (opex) = 6000
     expect(cf.monthly_net['2025-07']).toBe(6000)
     expect(cf.forecast_id).toBe(FORECAST_ID)
+  })
+})
+
+// ───────────────────────────────────────────────────────────────────────────
+// Plan 44.1-04 — Soft-fail invariant mode (D-44.1-08 through D-44.1-12)
+//
+// Re-imports the service module with `process.env.FORECAST_INVARIANTS_STRICT`
+// flipped before each test (vi.resetModules + new env var) so the
+// module-load-time `STRICT_INVARIANTS` constant re-evaluates.
+//
+// Per W3, all soft-fail / strict-on invariant tests run END-TO-END through the
+// public `getMonthlyComposite` surface — they do NOT call private
+// `assertCoverageNonNegative` / `assertComputedAtIsFresh` directly.
+// ───────────────────────────────────────────────────────────────────────────
+
+// Builds a MockSupabase preloaded with rows that trip the freshness invariant
+// when read via getMonthlyComposite (computed_at < financial_forecasts.updated_at).
+function makeStaleSupabaseMock() {
+  const supabase = new MockSupabase()
+  supabase.setFixture('financial_forecasts', {
+    data: [
+      {
+        id: 'forecast-stale-1',
+        business_id: BUSINESS_ID,
+        fiscal_year: FY,
+        is_active: true,
+        // updated_at AFTER computed_at → freshness violation.
+        updated_at: '2026-04-10T00:00:00Z',
+      },
+    ],
+  })
+  supabase.setFixture('forecast_pl_lines', {
+    data: [
+      {
+        account_code: '200',
+        account_name: 'Sales',
+        category: 'Revenue',
+        forecast_months: { '2025-07': 1000 },
+        // STALE — older than updated_at above.
+        computed_at: '2026-04-01T00:00:00Z',
+      },
+    ],
+  })
+  supabase.setFixture('xero_pl_lines', { data: [] })
+  return supabase
+}
+
+// Builds a MockSupabase that produces months_covered=-1 when run through
+// getMonthlyComposite. We honor W3 (test goes through public surface) by still
+// invoking the public method; the only change is forcing the internal coverage
+// calc to a negative value via a per-instance subclass override. The
+// invariant-assertion code path that consumes `coverage` is exercised end-to-end.
+function makeNegativeCoverageSupabaseMock() {
+  const supabase = new MockSupabase()
+  supabase.setFixture('financial_forecasts', {
+    data: [
+      {
+        id: 'forecast-neg-cov-1',
+        business_id: BUSINESS_ID,
+        fiscal_year: FY,
+        is_active: true,
+        updated_at: '2026-03-01T00:00:00Z', // older than computed_at → freshness OK
+      },
+    ],
+  })
+  supabase.setFixture('forecast_pl_lines', {
+    data: [
+      {
+        account_code: '200',
+        account_name: 'Sales',
+        category: 'Revenue',
+        forecast_months: {},
+        computed_at: '2026-04-02T00:00:00Z',
+      },
+    ],
+  })
+  supabase.setFixture('xero_pl_lines', { data: [] })
+  return supabase
+}
+
+// Builds a MockSupabase with computed_at >= updated_at and at least one
+// month of coverage — used as the no-violation sentinel for soft-fail mode.
+function makeFreshSupabaseMock() {
+  const supabase = new MockSupabase()
+  supabase.setFixture('financial_forecasts', {
+    data: [
+      {
+        id: 'forecast-fresh-1',
+        business_id: BUSINESS_ID,
+        fiscal_year: FY,
+        is_active: true,
+        updated_at: '2026-03-01T00:00:00Z',
+      },
+    ],
+  })
+  supabase.setFixture('forecast_pl_lines', {
+    data: [
+      {
+        account_code: '200',
+        account_name: 'Sales',
+        category: 'Revenue',
+        forecast_months: { '2025-07': 1000 },
+        computed_at: '2026-04-02T00:00:00Z',
+      },
+    ],
+  })
+  supabase.setFixture('xero_pl_lines', {
+    data: [makeXeroRow('200', 'Sales', 'revenue', '2025-07-01', 1000, 'org-A')],
+  })
+  return supabase
+}
+
+describe('Soft-fail invariant mode — D-44.1-08', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    process.env.FORECAST_INVARIANTS_STRICT = 'false'
+  })
+
+  afterEach(() => {
+    process.env.FORECAST_INVARIANTS_STRICT = 'true'
+  })
+
+  it('strict-off — stale computed_at logs to Sentry but does NOT throw via getMonthlyComposite (D-44.1-09)', async () => {
+    const captureMessageSpy = vi.fn()
+    const addBreadcrumbSpy = vi.fn()
+    vi.doMock('@sentry/nextjs', () => ({
+      captureException: vi.fn(),
+      captureMessage: captureMessageSpy,
+      addBreadcrumb: addBreadcrumbSpy,
+    }))
+
+    // Re-import the service AFTER resetModules + env flip so STRICT_INVARIANTS=false.
+    const { createForecastReadService: createSvc } = await import(
+      '@/lib/services/forecast-read-service'
+    )
+    const supabase = makeStaleSupabaseMock()
+    const svc = createSvc(supabase as any)
+
+    // MUST NOT throw — soft-fail returns the row.
+    const result = await svc.getMonthlyComposite('forecast-stale-1')
+    expect(result).toBeDefined()
+    expect(result.forecast_id).toBe('forecast-stale-1')
+
+    // Sentry was notified with the soft-fail tag.
+    expect(captureMessageSpy).toHaveBeenCalledWith(
+      expect.stringContaining('forecast_freshness violation'),
+      expect.objectContaining({
+        tags: expect.objectContaining({ invariant_violation_logged: 'forecast_freshness' }),
+      }),
+    )
+    expect(addBreadcrumbSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'invariant',
+        data: expect.objectContaining({ forecast_id: 'forecast-stale-1' }),
+      }),
+    )
+  })
+
+  it('strict-off — negative coverage logs to Sentry but does NOT throw via getMonthlyComposite (D-44.1-09, W3)', async () => {
+    // W3 fix: this test is INTEGRATION-style — pipes a negative-coverage
+    // scenario through the public getMonthlyComposite surface end-to-end.
+    // It does NOT call the private `assertCoverageNonNegative` directly.
+    const captureMessageSpy = vi.fn()
+    const addBreadcrumbSpy = vi.fn()
+    vi.doMock('@sentry/nextjs', () => ({
+      captureException: vi.fn(),
+      captureMessage: captureMessageSpy,
+      addBreadcrumb: addBreadcrumbSpy,
+    }))
+
+    const { ForecastReadService: SvcCtor } = await import(
+      '@/lib/services/forecast-read-service'
+    )
+    const supabase = makeNegativeCoverageSupabaseMock()
+    const svc = new SvcCtor(supabase as any)
+    // Force the internal coverage computation to emit months_covered=-1 so the
+    // invariant guard fires when the public getMonthlyComposite call reaches
+    // assertCoverageNonNegative. The public surface still drives the call.
+    const orig = (svc as any).computeCoverage.bind(svc)
+    ;(svc as any).computeCoverage = (rows: unknown) => ({
+      ...orig(rows),
+      months_covered: -1,
+    })
+
+    // MUST NOT throw — soft-fail mode returns the row.
+    const result = await svc.getMonthlyComposite('forecast-neg-cov-1')
+    expect(result).toBeDefined()
+    expect(result.forecast_id).toBe('forecast-neg-cov-1')
+
+    // Sentry was notified with the soft-fail tag for negative-coverage.
+    expect(captureMessageSpy).toHaveBeenCalledWith(
+      expect.stringContaining('coverage_non_negative violation'),
+      expect.objectContaining({
+        tags: expect.objectContaining({ invariant_violation_logged: 'coverage_non_negative' }),
+      }),
+    )
+    expect(addBreadcrumbSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'invariant',
+        message: expect.stringContaining('coverage_non_negative'),
+      }),
+    )
+  })
+
+  it('strict-on — negative coverage THROWS via getMonthlyComposite (sentinel — confirms strict mode still works through public surface)', async () => {
+    // Mirror of the above but with strict-on, asserting the throw path exists end-to-end.
+    process.env.FORECAST_INVARIANTS_STRICT = 'true'
+    vi.resetModules()
+    const captureExceptionSpy = vi.fn()
+    vi.doMock('@sentry/nextjs', () => ({
+      captureException: captureExceptionSpy,
+      captureMessage: vi.fn(),
+      addBreadcrumb: vi.fn(),
+    }))
+
+    const { ForecastReadService: SvcCtor } = await import(
+      '@/lib/services/forecast-read-service'
+    )
+    const supabase = makeNegativeCoverageSupabaseMock()
+    const svc = new SvcCtor(supabase as any)
+    const orig = (svc as any).computeCoverage.bind(svc)
+    ;(svc as any).computeCoverage = (rows: unknown) => ({
+      ...orig(rows),
+      months_covered: -1,
+    })
+
+    await expect(svc.getMonthlyComposite('forecast-neg-cov-1')).rejects.toThrow(
+      /coverage\.months_covered/,
+    )
+    expect(captureExceptionSpy).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        tags: expect.objectContaining({ invariant: 'coverage_non_negative' }),
+      }),
+    )
+  })
+
+  it('strict-off — fresh computed_at does NOT log invariant_violation_logged (sentinel)', async () => {
+    const captureMessageSpy = vi.fn()
+    vi.doMock('@sentry/nextjs', () => ({
+      captureException: vi.fn(),
+      captureMessage: captureMessageSpy,
+      addBreadcrumb: vi.fn(),
+    }))
+    const { createForecastReadService: createSvc } = await import(
+      '@/lib/services/forecast-read-service'
+    )
+    const supabase = makeFreshSupabaseMock()
+    const svc = createSvc(supabase as any)
+    await svc.getMonthlyComposite('forecast-fresh-1')
+    // No invariant_violation_logged should fire.
+    expect(captureMessageSpy).not.toHaveBeenCalled()
   })
 })

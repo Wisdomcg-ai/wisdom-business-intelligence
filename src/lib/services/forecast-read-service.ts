@@ -22,11 +22,26 @@
  * for any forecast saved via the RPC path. Legacy serial-save rows may have
  * computed_at < financial_forecasts.updated_at and will throw — Wave 9
  * consumers must handle this surface (see 44-08-SUMMARY.md).
+ *
+ * Phase 44.1 D-44.1-08: invariants are gated by env var FORECAST_INVARIANTS_STRICT.
+ * Default = false. Violations log to Sentry with tag `invariant_violation_logged`
+ * and the service returns the row. Set to 'true' after 24-48h clean Sentry soak.
  */
 
 import * as Sentry from '@sentry/nextjs'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+
+/**
+ * Phase 44.1 D-44.1-08 — soft-fail invariant gate.
+ *
+ * Default = false (any value other than the literal string 'true'). When false,
+ * invariant violations log to Sentry with tag `invariant_violation_logged` and
+ * the service RETURNS the row anyway. When true, current strict behavior:
+ * throw + Sentry tag `invariant`. The flip is operator-driven via Vercel env
+ * vars (D-44.1-11 — 24-48h clean Sentry soak window before strict-on).
+ */
+const STRICT_INVARIANTS = process.env.FORECAST_INVARIANTS_STRICT === 'true'
 
 export type AccountType =
   | 'revenue'
@@ -304,29 +319,76 @@ export class ForecastReadService {
     forecastId: string,
   ): void {
     if (!assumptionsUpdatedAt) return
-    if (!computedAt || new Date(computedAt) < new Date(assumptionsUpdatedAt)) {
-      const err = new Error(
-        `[ForecastReadService] INVARIANT VIOLATED: forecast_pl_lines.computed_at (${computedAt}) ` +
-          `is older than financial_forecasts.updated_at (${assumptionsUpdatedAt}) ` +
-          `for forecast=${forecastId}. POST /api/forecast/${forecastId}/recompute to remediate.`,
-      )
+    if (computedAt && new Date(computedAt) >= new Date(assumptionsUpdatedAt)) return
+
+    const message =
+      `[ForecastReadService] INVARIANT VIOLATED: forecast_pl_lines.computed_at (${computedAt}) ` +
+      `is older than financial_forecasts.updated_at (${assumptionsUpdatedAt}) ` +
+      `for forecast=${forecastId}. POST /api/forecast/${forecastId}/recompute to remediate.`
+
+    const deltaSeconds =
+      computedAt && assumptionsUpdatedAt
+        ? Math.round(
+            (new Date(assumptionsUpdatedAt).getTime() - new Date(computedAt).getTime()) / 1000,
+          )
+        : null
+
+    if (STRICT_INVARIANTS) {
+      const err = new Error(message)
       Sentry.captureException(err, {
         tags: { invariant: 'forecast_freshness', forecast_id: forecastId },
       })
       throw err
+    } else {
+      // Soft-fail: log + breadcrumb, then fall through to return the row.
+      Sentry.addBreadcrumb({
+        category: 'invariant',
+        level: 'warning',
+        message: 'forecast_freshness violation (logging-only)',
+        data: {
+          forecast_id: forecastId,
+          computed_at: computedAt,
+          assumptions_updated_at: assumptionsUpdatedAt,
+          delta_seconds: deltaSeconds,
+        },
+      })
+      Sentry.captureMessage('forecast_freshness violation (logging-only)', {
+        level: 'warning',
+        tags: { invariant_violation_logged: 'forecast_freshness', forecast_id: forecastId },
+        extra: {
+          delta_seconds: deltaSeconds,
+          computed_at: computedAt,
+          assumptions_updated_at: assumptionsUpdatedAt,
+        },
+      })
     }
   }
 
   private assertCoverageNonNegative(coverage: CoverageRecord, forecastId: string): void {
-    if (coverage.months_covered < 0) {
-      const err = new Error(
-        `[ForecastReadService] INVARIANT VIOLATED: coverage.months_covered=${coverage.months_covered} ` +
-          `for forecast=${forecastId}`,
-      )
+    if (coverage.months_covered >= 0) return
+
+    const message =
+      `[ForecastReadService] INVARIANT VIOLATED: coverage.months_covered=${coverage.months_covered} ` +
+      `for forecast=${forecastId}`
+
+    if (STRICT_INVARIANTS) {
+      const err = new Error(message)
       Sentry.captureException(err, {
         tags: { invariant: 'coverage_non_negative', forecast_id: forecastId },
       })
       throw err
+    } else {
+      Sentry.addBreadcrumb({
+        category: 'invariant',
+        level: 'warning',
+        message: 'coverage_non_negative violation (logging-only)',
+        data: { forecast_id: forecastId, months_covered: coverage.months_covered },
+      })
+      Sentry.captureMessage('coverage_non_negative violation (logging-only)', {
+        level: 'warning',
+        tags: { invariant_violation_logged: 'coverage_non_negative', forecast_id: forecastId },
+        extra: { months_covered: coverage.months_covered },
+      })
     }
   }
 }
