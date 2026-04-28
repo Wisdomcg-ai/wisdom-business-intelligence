@@ -153,19 +153,19 @@ export class ForecastReadService {
     // `fiscal_year` column — period_month is the time dimension. We do NOT
     // filter by date here — consumers (getHistoricalSummary's aggregatePeriod)
     // need to look back to the BASELINE fiscal year, which in planning-season
-    // mode (within 3 months of FY end, forecasting next FY) is currentFY-1
-    // (i.e. up to 3 fiscal years before forecast.fiscal_year). A narrow date
-    // filter excludes the baseline range and silently zeros prior_fy totals.
-    // Single-tenant row counts are bounded; the unfiltered fetch is fine.
-    const [plLinesRes, xeroRowsRes] = await Promise.all([
+    // mode is currentFY-1 (up to 3 fiscal years before forecast.fiscal_year).
+    //
+    // Pagination is REQUIRED: PostgREST/Supabase JS client caps a single
+    // SELECT at 1000 rows by default. Multi-year tenants (e.g. JDS has ~1830
+    // rows over 22 months) silently truncate without pagination, dropping
+    // COGS/OpEx accounts that fall after the first page and producing
+    // zeroed-out aggregates that don't reconcile to Xero.
+    const [plLinesRes, xeroRowsAll] = await Promise.all([
       this.supabase
         .from('forecast_pl_lines')
         .select('account_code, account_name, category, forecast_months, computed_at')
         .eq('forecast_id', forecastId),
-      this.supabase
-        .from('xero_pl_lines')
-        .select('account_code, account_name, account_type, period_month, amount, tenant_id')
-        .in('business_id', ids.all),
+      this.fetchAllXeroRows(ids.all),
     ])
 
     const assumptionsUpdatedAt: string | null = (forecast.updated_at as string) ?? null
@@ -184,8 +184,7 @@ export class ForecastReadService {
     this.assertComputedAtIsFresh(assumptionsUpdatedAt, computedAt, forecastId)
 
     // 5. Aggregate xero_pl_lines from long → wide shape (D-09).
-    const xeroRows: RawXeroRow[] = (xeroRowsRes.data ?? []) as RawXeroRow[]
-    const rows = this.aggregateXeroRows(xeroRows)
+    const rows = this.aggregateXeroRows(xeroRowsAll)
 
     // 6. Coverage from the aggregated wide shape.
     const coverage = this.computeCoverage(rows)
@@ -261,6 +260,33 @@ export class ForecastReadService {
   // ────────────────────────────────────────────────────────────────────────
   // Internal helpers
   // ────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Paginated fetch of xero_pl_lines for all resolved business IDs.
+   *
+   * Supabase/PostgREST caps a single SELECT at 1000 rows. Without pagination,
+   * multi-year tenants silently truncate — see Phase 44.1 hotfix
+   * (2026-04-29) and the Step 2 reconciliation gap diagnosed via JDS (1830
+   * rows total, 1000-row cap was dropping ~$5.3M COGS + $3.8M OpEx).
+   */
+  private async fetchAllXeroRows(businessIds: string[]): Promise<RawXeroRow[]> {
+    const all: RawXeroRow[] = []
+    const pageSize = 1000
+    let from = 0
+    while (true) {
+      const { data, error } = await this.supabase
+        .from('xero_pl_lines')
+        .select('account_code, account_name, account_type, period_month, amount, tenant_id')
+        .in('business_id', businessIds)
+        .range(from, from + pageSize - 1)
+      if (error) throw error
+      if (!data || data.length === 0) break
+      all.push(...(data as RawXeroRow[]))
+      if (data.length < pageSize) break
+      from += pageSize
+    }
+    return all
+  }
 
   /**
    * Long → wide aggregation. Group by account_code (with account_name fallback
