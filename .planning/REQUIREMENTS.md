@@ -15,7 +15,7 @@
 - [ ] **TEST-03**: CI workflow blocks merges on `tsc --noEmit` passing (already runs; confirm staying green).
 - [ ] **TEST-04**: CI workflow blocks merges on `vitest run` passing (already configured but currently broken — see TEST-01).
 - [ ] **TEST-05**: CI workflow blocks merges on `next build` succeeding.
-- [ ] **TEST-06**: Nightly Playwright job runs `e2e/smoke.spec.ts` against a Vercel preview URL.
+- [x] **TEST-06**: Nightly Playwright job runs `e2e/smoke.spec.ts` against a Vercel preview URL.
 
 ### Invisible Cleanup (CLEAN)
 *Goal: delete what no one references. ~192 files / 2.1 MB / ~6,000 LOC removed without behaviour change.*
