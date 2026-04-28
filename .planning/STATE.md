@@ -441,8 +441,12 @@ progress:
 
 ## Position
 
-- Current: Phase 44.1, Plan 44.1-05 [COMPLETE]. Wave 4 canary protocol shipped + executed; 2/2 canaries PASSED. Remaining 44.1 plans: 44.1-07 (staged push protocol checkpoint) — only outstanding Phase 44.1 plan, awaiting human gate to push main per D-44.1-20.
-- Stopped at: Completed 44.1-05-PLAN.md (canary PASS x2 — JDS FY27 84 derived rows + JDS FY26 87→89 derived rows; T1-T5 fully green; OVERALL: PASS).
+- Current: Phase 44.1, Plan 44.1-07 — EXECUTING. 5 sequential `human-action` checkpoints (staged push protocol per D-44.1-20). Skeleton SUMMARY seeded; awaiting checkpoint 1 resume-signal (push 44.1 commits to main).
+- Stopped at: Plan 44.1-07 Task 1 (`checkpoint:human-action`) — awaiting user authorization to execute the 44.1-only push.
+
+## Plan 44.1-07 Decisions (in flight)
+
+- Plan 44.1-07: Topology surfaced at checkpoint 1 — the 6 Wave 8/9 commits (`c7d8b56`, `76595c4`, `9a38759`, `d6c90bb`, `bc17883`, `e4f89d3`) sit at the BASE of unpushed `main` (parented on `origin/main` = `f6789d8`); the 20 × 44.1-* commits sit on top. A vanilla `git push origin main` would ship Wave 8/9 prematurely. Recovery path requires interactive rebase (move Wave 8/9 to the tip) OR cherry-pick onto a temporary branch — user decision required at checkpoint 1.
 
 ## Last Session
 
