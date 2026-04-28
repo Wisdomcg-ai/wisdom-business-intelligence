@@ -81,23 +81,28 @@ export default function SVGPortPopover({
     setShowReplaceTypes(false)
   }, [snapshot])
 
-  if (!sourceStep) return null
-
-  const isDecision = sourceStep.step_type === 'decision'
-  const outgoingFlows = snapshot.flows.filter((f) => f.from_step_id === state.stepId)
-  const hasConflict = !isDecision && outgoingFlows.length > 0
-  const showLanePicker = sortedLanes.length > 1
-
   // Bottom/top port on a non-decision step with existing outgoing flows:
   // auto-convert to decision so the user can branch without replacing.
   // The existing connection becomes the Yes path; the new one becomes No.
+  // NOTE: declared above the `if (!sourceStep) return null` early-return so
+  // the hooks run on every render (rules-of-hooks).
   const [autoConverted, setAutoConverted] = useState(false)
+
+  const isDecision = sourceStep?.step_type === 'decision'
+  const outgoingFlows = sourceStep
+    ? snapshot.flows.filter((f) => f.from_step_id === state.stepId)
+    : []
+  const hasConflict = !!sourceStep && !isDecision && outgoingFlows.length > 0
+  const showLanePicker = sortedLanes.length > 1
+
   useEffect(() => {
     if (hasConflict && (state.port === 'bottom' || state.port === 'top') && !autoConverted) {
       onConvertToDecision(state.stepId)
       setAutoConverted(true)
     }
   }, [hasConflict, state.port, state.stepId, onConvertToDecision, autoConverted])
+
+  if (!sourceStep) return null
 
   const menuStyle: React.CSSProperties = {
     position: 'absolute',

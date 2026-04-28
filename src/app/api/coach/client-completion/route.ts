@@ -24,7 +24,6 @@ interface ClientCompletion {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Wrap a Supabase query so one failure doesn't kill the whole batch */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function safeQuery<T>(
   fn: () => PromiseLike<{ data: T | null; error: any }>
 ): Promise<T | null> {
@@ -207,7 +206,6 @@ export async function GET() {
     const ownerIds = businesses.map((b) => b.owner_id).filter(Boolean) as string[]
 
     // Get business_profiles.id (profileIds) for tables that use that FK
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     type ProfileRow = { id: string; business_id: string; user_id: string; business_name: string; mission: string | null; vision: string | null; owner_info: any }
     const profilesResult = await safeQuery<ProfileRow[]>(() =>
       supabase
@@ -220,7 +218,6 @@ export async function GET() {
 
     // Build lookup maps
     const profileByBusinessId = new Map(profiles.map((p: ProfileRow) => [p.business_id, p]))
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const profileByUserId = new Map(profiles.map((p: ProfileRow) => [p.user_id, p]))
 
     // ── Step 3: Pre-build OR filter strings ────────────────────────
@@ -236,7 +233,6 @@ export async function GET() {
     const qrIds = [...profileIds, ...ownerIds]
 
     // ── Row type aliases for safeQuery generics ──────────────────
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     type R = Record<string, any>
 
     // ── Step 3b: Parallel batch queries ──────────────────────────
