@@ -179,11 +179,15 @@ In the meantime, **`npm run lint` is verified clean (exit 0)** — and `next bui
 |---|---|---|---|
 | `8bf4a99` | chore | Remove eslint.ignoreDuringBuilds from next.config.js | `next.config.js` |
 | `e94f1a2` | fix | Resolve eslint violations surfaced by removing ignoreDuringBuilds | `client-completion/route.ts`, `AssumptionsTab.tsx`, `SVGPortPopover.tsx` |
+| `bc57d44` | docs | Tracking-only metadata commit for plan completion | `STATE.md`, `ROADMAP.md`, `REQUIREMENTS.md`, `44-02-SUMMARY.md` |
 
 ## Self-Check: PASSED
 
 - next.config.js modified (commit `8bf4a99`): `ignoreDuringBuilds` removed, Sentry wrapper preserved — verified by grep
 - 3 source files modified (commit `e94f1a2`): 7 lint errors → 0 — verified by `npm run lint` exit 0
-- Both commits exist in git log — verified
-- Vitest still passes 37 files / 396 tests — verified
+- All three commits exist in git log — verified
+- Vitest still passes 37 files / 396 tests — verified (re-run 2026-04-28T23:27:41Z)
 - `.eslintrc.json` untouched — verified by `git diff -- .eslintrc.json` (empty)
+- ROADMAP.md Phase 44 progress updated to 3/5 In Progress (commit `bc57d44`)
+- REQUIREMENTS.md TEST-02 marked `[x]` (commit `bc57d44`)
+- `next build` lint stage observably runs (lint output preceded "Collecting page data" in build attempt 2026-04-28T23:32Z); full build aborted at the page-data stage on missing Supabase env vars — pre-existing Codespace env limit, not in scope for 44-02 and matches the 44-01 build-environment caveat.
