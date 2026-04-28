@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 44
-last_updated: "2026-04-27T20:07:57.748Z"
+last_updated: "2026-04-28T02:25:57.995Z"
 progress:
   total_phases: 44
   completed_phases: 17
   total_plans: 75
-  completed_plans: 69
+  completed_plans: 72
 ---
 
 # Project State
@@ -342,12 +342,12 @@ progress:
 
 ## Position
 
-- Current: Phase 44, Plan 44-03 [COMPLETE]. Ready for Plan 44-04 (Sub-phase A sync orchestrator).
-- Stopped at: Completed 44-03-PLAN.md (parser + reconciler libs shipped; 15 tests green against recorded JDS + Envisage fixtures).
+- Current: Phase 44, Plan 44-08 [COMPLETE]. Ready for Plan 44-09 (consumer migration: wizard / monthly report / cashflow → ForecastReadService).
+- Stopped at: Completed 44-08-PLAN.md (ForecastReadService shipped + 7/7 tests green; D-18 invariants live).
 
 ## Last Session
 
-- 2026-04-27T11:45:00Z — Plan 44-03 closeout. 4 atomic commits (Task 1 RED 4022bfb + GREEN b42587d; Task 2 RED 4098598 + GREEN 29715fc). Pure-function parser at src/lib/xero/pl-by-month-parser.ts (parsePLByMonth + computeCoverage + parseAmount + parsePeriodHeader + classifyAccountType). Pure-function reconciler at src/lib/xero/pl-reconciler.ts (reconcilePL + parseFYTotalResponse). 15 tests pass; replaced all 6 it.todo placeholders from 44-01. Validation -t filters all resolve. Pre-existing TZ failure remains deferred (out of scope, Phase 43 territory).
+- 2026-04-28T12:25:00Z — Plan 44-08 closeout. 2 atomic commits (RED c7d8b56, GREEN 76595c4). `src/lib/services/forecast-read-service.ts` ships the canonical wide-DTO read API (`getMonthlyComposite`, `getCategorySubtotalsForMonth`, `getCashflowProjection`) backed by long-format `xero_pl_lines` (Wave 2/5) + `forecast_pl_lines.computed_at` (Wave 6). D-18 runtime invariants (`forecast_freshness` + `coverage_non_negative`) throw structured errors + tag Sentry. Compares `forecast_pl_lines.computed_at` against `financial_forecasts.updated_at` (no `forecast_assumptions` table — Wave 6 deviation honored). 7/7 tests green replacing 4 it.todo from Wave 0. Plan 44-07 was abandoned; Wave 9 consumers must call `/api/forecast/{id}/recompute` for legacy serial-saved forecasts that trip the freshness invariant.
 
 ## Phase 44 Decisions
 
@@ -360,12 +360,24 @@ progress:
 - Plan 44-03: Account-key strategy is AccountID-first with NAME:`<account_name>` fallback. Same key formula in parsePLByMonth groups + parseFYTotalResponse output → reconcilePL alignment is automatic.
 - Plan 44-03: Section title carry-forward only updates from non-empty titles. Empty-title sections (Xero's Gross Profit / Total Operating Expenses wrappers) MUST NOT clobber inheritance, otherwise sub-sections (Think Bigger / VCFO under Operating Expenses) lose classification.
 - Plan 44-03: Reconciler signature uses ReadonlyArray + Readonly<Record> to compile-time-enforce the D-08 no-mutation contract that explicitly replaces sync-all/route.ts:386 silent last-month auto-correct.
+- Plan 44-07 (ABANDONED): Atomic-save RPC wiring caused a data-loss incident and was rolled back. Wave 6 schema + RPC remain live; wizard save remains legacy serial path. Implication for Wave 8+: legacy rows have `forecast_pl_lines.computed_at` < `financial_forecasts.updated_at` and will trip the D-18 freshness invariant — by design.
+- Plan 44-08: Service compares forecast_pl_lines.computed_at against financial_forecasts.updated_at (no forecast_assumptions table; assumptions live on financial_forecasts.assumptions JSONB per Wave 6 deviation 44-06-SUMMARY.md:42-44).
+- Plan 44-08: D-18 invariants will throw on legacy serial-saved forecasts. Wave 9 consumers MUST call POST /api/forecast/{id}/recompute or surface a stale-data UI banner — invariant intentionally NOT weakened.
+- Plan 44-08: historical-pl-summary.ts retained as parallel surface; 13 existing readers stay on xero_pl_lines_wide_compat until 44-09 consumer cut-over.
+- Plan 44-08: computed_at = MIN across forecast_pl_lines rows (oldest derivation wins — any single stale row trips the freshness invariant by design).
+- Plan 44-08: Long → wide grouping key is account_code with `NAME:<account_name>` fallback for null codes (matches the Wave 3 parser's account-key strategy).
+- Plan 44-08: Cashflow sign convention — revenue + other_income are +1; cogs + opex + other_expense are -1 (case-insensitive category match).
 
 ## Completed Work (Phase 44)
 
 - Plan 44-01: Wave 0 test infrastructure — Xero fixture capture utility + 4 recorded fixtures + pre-migration duplicate audit script + 7 vitest scaffolds with 22 todos — COMPLETE (f95aaf1, 75b8b9d, 6b77d0d, 997813b).
 - Plan 44-02: Sub-phase A foundation migrations live in prod (long-format xero_pl_lines schema; unique constraint applied; 369 rows migrated cleanly) — COMPLETE (5155eb1, 6553f0f, prior task commits).
 - Plan 44-03: Sub-phase A pure-function libs — parsePLByMonth + reconcilePL with 15 tests green against recorded fixtures — COMPLETE (4022bfb, b42587d, 4098598, 29715fc).
+- Plan 44-04: Sub-phase A sync orchestrator — COMPLETE (per existing summary).
+- Plan 44-05: Sub-phase A xero_pl_lines.tenant_id NOT NULL DEFAULT '' + plain unique constraint — COMPLETE (per existing summary).
+- Plan 44-06: Sub-phase B forecast_pl_lines.computed_at + save_assumptions_and_materialize RPC — COMPLETE (per existing summary).
+- Plan 44-07: ABANDONED + ROLLED BACK (atomic-save wiring incident).
+- Plan 44-08: Sub-phase C ForecastReadService — canonical wide-DTO read API + D-18 invariants (forecast_freshness + coverage_non_negative), 7/7 tests green replacing 4 Wave 0 it.todos — COMPLETE (c7d8b56, 76595c4).
 
 ## Roadmap Evolution
 
