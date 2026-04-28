@@ -1,0 +1,73 @@
+name: Playwright Nightly Smoke
+
+# Runs e2e/smoke.spec.ts (3 tests, no DB seed, no auth) against a deployed
+# environment every night.
+#
+# Schedule: 14:00 UTC = 00:00 Sydney (AEDT) = 02:00 Auckland (NZDT in summer).
+# Picked deliberately AFTER Australia/NZ business hours so a failure is
+# discovered the next morning rather than mid-day. Production tenants
+# (Dragon AUD, IICT NZ/HK, Fit2Shine, JDS) all sit in AU/NZ time zones.
+#
+# Time-zone math (cron is UTC):
+#   Southern summer: AEDT UTC+11 / NZDT UTC+13 → ~01:00 Sydney / ~03:00 Auckland
+#   Southern winter: AEST UTC+10 / NZST UTC+12 → ~00:00 Sydney / ~02:00 Auckland
+#
+# Target URL is controlled by PLAYWRIGHT_BASE_URL secret (set this to the
+# production URL or a stable Vercel preview URL). When set, playwright.config.ts
+# skips its built-in webServer block and tests the external URL directly.
+
+on:
+  schedule:
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Override target URL (defaults to PLAYWRIGHT_BASE_URL secret)'
+        required: false
+        type: string
+
+jobs:
+  smoke:
+    name: smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run smoke tests
+        env:
+          # workflow_dispatch input takes precedence; fall back to repository secret
+          PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.base_url || secrets.PLAYWRIGHT_BASE_URL }}
+          CI: 'true'
+        run: npx playwright test e2e/smoke.spec.ts --reporter=html
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: playwright-report/
+          retention-days: 14
+
+      # TODO(phase 44+): Wire failure notification to Slack/email once webhook is provisioned.
+      # When ready, add a step like:
+      #   - name: Notify on failure
+      #     if: failure()
+      #     uses: slackapi/slack-github-action@v1.27.0
+      #     with:
+      #       webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #       webhook-type: incoming-webhook
+      #       payload: |
+      #         { "text": "Nightly smoke FAILED — see ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" }
+      # Do NOT add this step in Phase 44 — the SLACK_WEBHOOK_URL secret has not been provisioned.
