@@ -797,14 +797,14 @@ Plans:
 **Goal:** Close out the abandoned 44-07 atomic save with a structural fix (UPSERT semantics, not count-threshold patch), then stage Wave 8/9 deploy behind a soft-fail invariant window so production read paths cannot go red on legacy stale rows.
 **Requirements**: PHASE-44-D-12 (atomic save), PHASE-44-D-18 (read invariants — softened during soak)
 **Depends on:** Phase 44
-**Plans:** 6/8 plans executed
+**Plans:** 7/8 plans executed
 
 Plans:
 - [x] 44.1-01-PLAN.md — Audit forecast_pl_lines for null/duplicate account_code
 - [x] 44.1-02-PLAN.md — Migration: partial unique index + UPSERT RPC + force_full_replace
 - [x] 44.1-03-PLAN.md — 6 loss-vector regression tests (includes vector 6 force_full_replace)
 - [x] 44.1-04-PLAN.md — Soft-fail invariant gate behind FORECAST_INVARIANTS_STRICT env flag
-- [ ] 44.1-05-PLAN.md — Single-tenant canary: snapshot/diff utility + canary E2E checkpoint
+- [x] 44.1-05-PLAN.md — Single-tenant canary: snapshot/diff utility + canary E2E checkpoint
 - [x] 44.1-06-PLAN.md — PITR rollback runbook + 44-07 retroactive close-out
 - [ ] 44.1-07-PLAN.md — Staged push protocol checkpoint
 - [x] 44.1-08-PLAN.md — Converter passthrough fix: assumptions-to-pl-lines merges existing forecast_months (closes D-44.1-06 vectors 2 + 3 at root cause)

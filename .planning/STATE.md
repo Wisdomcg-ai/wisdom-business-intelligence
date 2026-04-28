@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 44.1
-last_updated: "2026-04-28T08:10:54.658Z"
+last_updated: "2026-04-28T20:31:14.550Z"
 progress:
   total_phases: 45
   completed_phases: 17
   total_plans: 83
-  completed_plans: 79
+  completed_plans: 80
 ---
 
 # Project State
@@ -424,3 +424,26 @@ progress:
 ## Completed Work (Phase 44.1, Wave 1 — 44.1-06)
 
 - Plan 44.1-06: PITR-RUNBOOK.md (200 lines, 8 steps) + 44-07-SUMMARY.md retroactive close-out (109 lines) + ROADMAP.md update (44-07 [x] + Phase 44 plan count 8/11) — COMPLETE (62a72f3, 6564ef1, a7c9b16). All 3 commits use --no-verify per Wave 1 parallel-executor protocol. Checkpoint pending: PITR dashboard verification.
+
+## Plan 44.1-05 Decisions
+
+- Plan 44.1-05: Canary executed HEADLESSLY via `scripts/canary-headless-save.ts` (service-role client, no HTTP/UI/auth). Same `convertAssumptionsToPLLines()` + `supabase.rpc('save_assumptions_and_materialize')` calls the wizard generate route uses — only the unchanged plumbing layers above the data path (request parsing, auth, browser state) are bypassed. Risk assessed LOW; documented as Methodology Deviation in 44.1-05-SUMMARY.md.
+- Plan 44.1-05: TWO canaries on Just Digital Signage (FY27 = 84 derived rows; FY26 = 87 → 89 derived rows after a 2-row growth from converter producing 2 new team-derived lines). BOTH PASSED T1-T5 — manual rows preserved (0 → 0), zero derived row losses by id, zero blanked forecast_months, manual rows untouched, zero stale computed_at on derived rows. OVERALL: PASS x2 — green light for D-44.1-20 step (1).
+- Plan 44.1-05: Diversity is across fiscal years on the same physical client (no other test tenant volunteered, Matt's coaching practice has no forecast). Acceptable for a structural-correctness contract — RPC + converter don't branch on tenant identity.
+- Plan 44.1-05: Migration 20260429000003 verified live via `scripts/verify-44.1-02-migration.ts` (RPC signature probe). 4-arg form exists. Legacy 3-arg form ALSO still resolves through PostgREST default-arg routing — the W1 plan-checker fix called for DROP of the 3-arg form, but in practice `p_force_full_replace boolean DEFAULT false` makes 3-arg callers transparently work; non-blocking.
+- Plan 44.1-05: 4 helper scripts (`canary-pick-candidate`, `canary-check-ownership`, `canary-headless-save`, `verify-44.1-02-migration`) committed under `scripts/canary-*` + `scripts/verify-44.1-*` namespaces for D-44.1-15 reproducibility. Precedent (`diag-envisage*.ts`) is uncommitted forensic tools, but reproducibility of the protocol is itself a Plan 44.1-05 deliverable so the opposite default applies.
+- Plan 44.1-05: Snapshot JSONs (40-75KB each) NOT committed — they fall under the plan-spec'd gitignored `.planning/phases/<phase>/canary-snapshot-*.json` runtime-artifact pattern. The durable evidence is the SUMMARY file (rows + counts captured verbatim).
+- Plan 44.1-05: Two pre-existing data-quality observations surfaced (NOT regressions): (1) `ACCT-MISSING-*` placeholders are sticky because the converter prefers `existing.account_code` over `revLine.accountId`; (2) team-derived rows can have null `account_code` which the partial unique index permits via NULL ≠ NULL semantics. Both pre-date 44.1; flagged for follow-up cleanup phase, NOT auto-fixed (out of scope).
+
+## Completed Work (Phase 44.1, Wave 4 — 44.1-05)
+
+- Plan 44.1-05: scripts/canary-forecast-save.ts (snapshot/diff CLI, 16/16 acceptance greps pass) + 4 helper scripts (canary-pick-candidate / canary-check-ownership / canary-headless-save / verify-44.1-02-migration) + 44.1-05-SUMMARY.md — COMPLETE (bee9a88, 63d51a3, plus close-out commit). Two canaries on JDS FY27 + FY26 BOTH PASSED T1-T5. Greenlights D-44.1-20 step (1) — push 44.1 commits to main.
+
+## Position
+
+- Current: Phase 44.1, Plan 44.1-05 [COMPLETE]. Wave 4 canary protocol shipped + executed; 2/2 canaries PASSED. Remaining 44.1 plans: 44.1-07 (staged push protocol checkpoint) — only outstanding Phase 44.1 plan, awaiting human gate to push main per D-44.1-20.
+- Stopped at: Completed 44.1-05-PLAN.md (canary PASS x2 — JDS FY27 84 derived rows + JDS FY26 87→89 derived rows; T1-T5 fully green; OVERALL: PASS).
+
+## Last Session
+
+- 2026-04-28T20:25:40Z — Plan 44.1-05 close-out. Canary toolkit + 2 production canaries shipped. (a) `scripts/canary-forecast-save.ts` snapshot/diff CLI committed Wave 4 entry (bee9a88). (b) Migration 20260429000003 verified live via RPC signature probe. (c) JDS FY27 (`1a03be71-...`) headlessly saved through `convertAssumptionsToPLLines()` + `supabase.rpc('save_assumptions_and_materialize', ...)` with service-role client; T1-T5 PASS (84 → 84 derived, 0 manual mutations, 0 stale computed_at). (d) JDS FY26 (`58f5a43c-...`) same path; T1-T5 PASS (87 → 89 derived after converter added 2 new team-derived rows; existing rows preserved by id). Methodology deviation: headless instead of browser canary — same data path, only HTTP/UI/auth plumbing skipped. 4 forensic helper scripts committed (63d51a3) for D-44.1-15 reproducibility. Snapshots gitignored per plan spec; evidence captured verbatim in 44.1-05-SUMMARY.md. Pre-existing observations flagged: ACCT-MISSING-* stickiness + null account_code on team-derived rows. Greenlights staged push to main per D-44.1-20 step (1).
