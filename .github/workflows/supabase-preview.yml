@@ -1,11 +1,17 @@
 name: Supabase Preview Branch
 
-# Sanity-check PRs before Supabase auto-creates a preview branch:
-# - Verify migrations have valid filenames
-# - Verify tsc + vitest pass
-# The actual preview-branch database is spun up by Supabase's GitHub integration,
-# not this workflow. This workflow just gates PR quality so preview branches
-# don't spin up for obviously-broken work.
+# Sanity-check PRs before Supabase auto-creates a preview branch.
+# Each job below is a separate required status check on `main`:
+#   - migration-check: migration filenames are well-formed
+#   - lint:            next lint passes (TEST-02)
+#   - typecheck:       tsc --noEmit passes (TEST-03)
+#   - vitest:          vitest run passes (TEST-04)
+#   - build:           next build succeeds (TEST-05)
+# Jobs run in parallel; each fails independently so PR authors see exactly
+# which gate broke.
+#
+# The actual preview-branch DB is spun up by Supabase's GitHub integration,
+# not this workflow.
 
 on:
   pull_request:
@@ -15,23 +21,19 @@ on:
       - 'src/**'
       - 'package.json'
       - 'package-lock.json'
+      - 'next.config.js'
+      - 'tsconfig.json'
+      - '.eslintrc.json'
+      - 'vitest.config.ts'
+      - '.github/workflows/supabase-preview.yml'
 
 jobs:
-  validate:
+  migration-check:
+    name: migration filenames
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
+    timeout-minutes: 2
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
       - name: Check migration filenames
         run: |
           INVALID=$(find supabase/migrations -maxdepth 1 -name '*.sql' -type f \
@@ -44,8 +46,69 @@ jobs:
           fi
           echo "All migration filenames are valid."
 
-      - name: TypeScript check
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: ESLint (next lint)
+        run: npm run lint
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: TypeScript (tsc --noEmit)
         run: npx tsc --noEmit
 
+  vitest:
+    name: vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
       - name: Vitest
         run: npx vitest run --reporter=dot
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Next build
+        run: npm run build
+        env:
+          # next build needs SOME value for the public Sentry DSN to bundle without
+          # warnings; provide a placeholder. The Sentry source-map upload is
+          # disabled in next.config.js when SENTRY_AUTH_TOKEN is unset.
+          NEXT_PUBLIC_SENTRY_DSN: 'https://example@sentry.io/0'
+          # Skip Sentry CLI work in CI builds (no auth token available)
+          SENTRY_AUTH_TOKEN: ''
