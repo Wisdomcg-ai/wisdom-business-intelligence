@@ -828,8 +828,8 @@ Plans:
   3. A no-source PR with a `tsc --noEmit` error or a failing `next build` is blocked.
   4. The four required checks (lint, typecheck, vitest, build) appear on every PR's status panel and are configured as required in `main` branch protection.
   5. Nightly Playwright smoke run produces a green report against a Vercel preview URL for at least 3 consecutive nights.
-**Plans:** 1/5 plans executed
-- [ ] 44-01-PLAN.md — Repair vitest (install missing @vitejs/plugin-react, restore green test suite)
+**Plans:** 2/5 plans executed
+- [x] 44-01-PLAN.md — Repair vitest (install missing @vitejs/plugin-react, restore green test suite)
 - [ ] 44-02-PLAN.md — Remove `eslint.ignoreDuringBuilds` from `next.config.js` and fix any lint fallout
 - [ ] 44-03-PLAN.md — Expand `supabase-preview.yml` into 5 parallel jobs: migration-check + lint + typecheck + vitest + build
 - [x] 44-04-PLAN.md — Create `playwright-nightly.yml` (cron 14:00 UTC, manual dispatch, HTML report on failure)
@@ -914,7 +914,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 44. Test Gate & CI Hardening | 1/5 | In Progress|  |
+| 44. Test Gate & CI Hardening | 2/5 | In Progress|  |
 | 45. Invisible Cleanup | 0/0 | Not started | - |
 | 46. Server-Side Hardening | 0/0 | Not started | - |
 | 47. Input Validation Rollout | 0/0 | Not started | - |

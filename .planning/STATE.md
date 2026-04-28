@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: executing
-last_updated: "2026-04-28T22:07:54.810Z"
-last_activity: 2026-04-28
+last_updated: "2026-04-28T22:16:22.649Z"
+last_activity: 2026-04-28 -- Plan 44-01 complete (vitest test gate repaired — 37 files / 396 tests pass)
 progress:
   total_phases: 49
   completed_phases: 17
   total_plans: 69
-  completed_plans: 66
-  percent: 96
+  completed_plans: 67
+  percent: 97
 ---
 
 # Project State
@@ -18,9 +18,9 @@ progress:
 ## Current Position
 
 Phase: 44 (Test Gate & CI Hardening) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5 (next; plans 1 and 4 complete, plans 2/3/5 remaining)
 Status: Ready to execute
-Last activity: 2026-04-28
+Last activity: 2026-04-28 -- Plan 44-01 complete (vitest gate green: 37 files / 396 tests pass)
 
 ## Current Milestone: v1.1 — Codebase Hardening
 
@@ -85,6 +85,7 @@ Goal: take the codebase from 55/100 to ~75/100 (Series-A defensible) over 6 phas
 - Phase 49 (DB) is additive-only in this milestone; FK ON DELETE constraints added one-or-two per migration with preview-branch testing
 - Each phase commits to its own atomic PR; no bundled changes
 - Risky deploys (47, 48, 49) outside Australia/NZ business hours
+- **Plan 44-01 (2026-04-28):** Vitest gate restored. Root cause was `node_modules` drift, NOT a stale lockfile or missing devDependency. `package.json` and `package-lock.json` already had `@vitejs/plugin-react@^6.0.1` correctly resolved; only the working tree's `node_modules/` was missing the package. Fix: `npm install` (with no args) — zero tracked-file changes. **Caveat for Plan 44-03:** Mid-execution test of `rm -rf node_modules && npm ci` reproduced the broken state intermittently in this codespace (vitest's package directory ended up incomplete). `npm install` reliably repaired it. CI workflows should validate this before relying on `npm ci`.
 
 ## Coverage
 
