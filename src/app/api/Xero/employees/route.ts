@@ -83,6 +83,8 @@ export async function GET(request: NextRequest) {
       .select('*')
       .eq('business_id', business_id)
       .eq('is_active', true)
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
     if (conn1) connection = conn1;
 
@@ -157,6 +159,20 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResult.success) {
       console.error('[Xero Employees] Token refresh failed:', tokenResult.error, tokenResult.message);
+
+      // If the token-manager flagged the connection for deactivation (e.g. refresh
+      // token expired beyond Xero's 60-day window), actually deactivate it here so
+      // future requests stop picking it up. Without this the dead connection stays
+      // is_active=true and competes with the user's reconnected fresh row in the
+      // Try-N connection lookup.
+      if (tokenResult.shouldDeactivate && connection?.id) {
+        console.log('[Xero Employees] Deactivating connection with permanent token error:', connection.id);
+        await supabase
+          .from('xero_connections')
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .eq('id', connection.id);
+      }
+
       return NextResponse.json(
         {
           error: tokenResult.message || 'Xero connection expired. Please reconnect Xero from the Integrations page.',
