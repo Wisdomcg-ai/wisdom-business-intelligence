@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Executing Phase 44.1
-last_updated: "2026-04-28T07:54:01.811Z"
+last_updated: "2026-04-28T08:01:50.002Z"
 progress:
   total_phases: 45
   completed_phases: 17
   total_plans: 83
-  completed_plans: 75
+  completed_plans: 78
 ---
 
 # Project State
@@ -391,6 +391,10 @@ progress:
 
 - Plan 44.1-01: Pre-DDL audit of `forecast_pl_lines` shows N=236 NULL `account_code` rows where `is_manual=false`, M=0 duplicate `(forecast_id, account_code)` groups (382 total rows; 0 manual). D-44.1-05 verdict: 44.1-02 MUST add a backfill prologue `UPDATE forecast_pl_lines SET account_code = 'ACCT-MISSING-' || id::text WHERE account_code IS NULL AND is_manual = false` before creating the partial unique index. The index itself is safe to create after backfill (M=0).
 - Plan 44.1-01: Audit script (`scripts/audit-forecast-pl-lines-account-codes.ts`) honors both `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_SERVICE_KEY` env-var spellings (sibling audit scripts use the latter, plan spec uses the former). Always exits 0 per D-44.1-04.
+- Plan 44.1-02: Migration `20260429000003_save_assumptions_and_materialize_upsert.sql` ships the structural UPSERT fix in one atomic deploy unit — backfill prologue + partial unique index `(forecast_id, account_code) WHERE is_manual = false` + new 4-arg RPC `(uuid, jsonb, jsonb, boolean DEFAULT false)` + DROP of legacy 3-arg overload + tail `computed_at` bump for non-manual carry-forward rows. Existing 3-arg callers (forecast-wizard-v4/generate, forecast/[id]/recompute) unchanged via DEFAULT false on `p_force_full_replace`.
+- Plan 44.1-02: Tail `computed_at` bump (Section 5 of the body) is the non-obvious correctness step — UPSERT preserves untouched rows but they keep their old `computed_at`, which would trip the D-18 freshness invariant in ForecastReadService on legitimate carry-forward. Tail UPDATE moves their `computed_at` to `v_now`.
+- Plan 44.1-02: Legacy 3-arg overload DROPPED via `DROP FUNCTION IF EXISTS save_assumptions_and_materialize(uuid, jsonb, jsonb)` — necessary to remove PostgREST best-match resolution preferring the stale 3-arg form for 3-key bodies. Migration applies idempotently; can re-run safely.
+- Plan 44.1-02: Migration NOT auto-applied. Plan 44.1-07 staged push protocol governs production application after Plan 44.1-03 tests lock the contract and Plan 44.1-05 canary exercises it on a real tenant.
 - Plan 44.1-08: convertAssumptionsToPLLines now MERGES existing `forecast_months` per-key in all 5 sub-converters (Revenue, COGS, OpEx, Team, CapEx Depreciation) — replacing the prior REPLACE semantics. Pattern: `newForecastMonths = { ...(existing?.forecast_months || {}) }` then overlay input keys. Closes D-44.1-06 vectors 2 (no `year1Monthly` blanks Y1 keys) and 3 (shrunk `forecastDuration` drops Y2/Y3 keys) at the upstream root cause.
 - Plan 44.1-08: Team converter applies the merge at the per-line push site (line 560) since `tl.data` is pre-initialised across `forecastMonthKeys` and accumulated — out-of-range months survive from existing, in-range months overwritten by aggregated `tl.data`. CapEx Depreciation `findMatchingLine` call moved to before the loop so the seed object can read existing.forecast_months.
 - Plan 44.1-08: Pre-condition unblocked for 44.1-03 — vector 2 + vector 3 assertions can now flip from "documents current behavior" to STRICT preservation.
@@ -398,16 +402,17 @@ progress:
 ## Completed Work (Phase 44.1)
 
 - Plan 44.1-01: Pre-DDL audit script for forecast_pl_lines.account_code; surfaces null/duplicate counts + D-44.1-05 recommendation block — COMPLETE (2fcf2d3). Verdict: ship backfill prologue in 44.1-02.
+- Plan 44.1-02: Migration shipping partial unique index + restructured UPSERT RPC + DROP of legacy 3-arg overload — COMPLETE (4d0211a). 1 file created (192 lines). 16/16 acceptance grep checks pass. Migration NOT applied to prod — staged push in 44.1-07 governs.
 - Plan 44.1-08: convertAssumptionsToPLLines per-key forecast_months merge across 5 sub-converters — COMPLETE (5c29b49). 1 file changed (+36 / −25 LOC). `npx tsc --noEmit` clean. Acceptance grep verified: 5 merge sites, 0 stale `forecastMonths` declarations, 5 `forecast_months: newForecastMonths` push sites.
 
 ## Position
 
-- Current: Phase 44.1, Plan 44.1-01 [COMPLETE]. Wave 1 parallel executors (44.1-04, 44.1-06, 44.1-08) running concurrently. 44.1-02 unblocked with concrete backfill verdict.
-- Stopped at: Completed 44.1-01-PLAN.md (audit ran clean against prod; N=236, M=0).
+- Current: Phase 44.1, Plan 44.1-02 [COMPLETE]. Wave 1 plans 44.1-04, 44.1-06, 44.1-08 also complete; 44.1-03, 44.1-05, 44.1-07 incomplete.
+- Stopped at: Completed 44.1-02-PLAN.md (UPSERT migration committed; 16/16 acceptance grep checks pass).
 
 ## Last Session
 
-- 2026-04-28T07:51:24Z — Plan 44.1-01 closeout. 1 atomic commit (audit script 2fcf2d3). `scripts/audit-forecast-pl-lines-account-codes.ts` surfaced 236 NULL account_code rows in production forecast_pl_lines (is_manual=false) and 0 duplicate (forecast_id, account_code) groups. D-44.1-05 verdict locked: 44.1-02 needs a backfill prologue before the partial unique index migration. Output captured verbatim in 44.1-01-SUMMARY.md for downstream consumption.
+- 2026-04-28T07:59:50Z — Plan 44.1-02 closeout. 1 atomic commit (UPSERT migration 4d0211a). `supabase/migrations/20260429000003_save_assumptions_and_materialize_upsert.sql` (192 lines) ships the backfill prologue (236 null account_codes), partial unique index `(forecast_id, account_code) WHERE is_manual = false`, new 4-arg RPC body with UPSERT semantics + `p_force_full_replace boolean DEFAULT false`, tail `computed_at` bump for non-manual carry-forward rows, REVOKE/GRANT on the new form (Section 5a), and DROP of the legacy 3-arg overload (Section 5b). Existing 3-arg callers unchanged via DEFAULT false on the new param. 16/16 acceptance grep checks pass. Migration NOT applied to prod — staged push protocol in 44.1-07 governs.
 
 ## Plan 44.1-06 Decisions
 
