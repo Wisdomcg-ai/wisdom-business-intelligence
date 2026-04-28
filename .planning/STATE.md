@@ -408,3 +408,14 @@ progress:
 ## Last Session
 
 - 2026-04-28T07:51:24Z — Plan 44.1-01 closeout. 1 atomic commit (audit script 2fcf2d3). `scripts/audit-forecast-pl-lines-account-codes.ts` surfaced 236 NULL account_code rows in production forecast_pl_lines (is_manual=false) and 0 duplicate (forecast_id, account_code) groups. D-44.1-05 verdict locked: 44.1-02 needs a backfill prologue before the partial unique index migration. Output captured verbatim in 44.1-01-SUMMARY.md for downstream consumption.
+
+## Plan 44.1-06 Decisions
+
+- Plan 44.1-06: PITR runbook ships fully executable — 8 steps with literal SQL (BEGIN/COMMIT, ON CONFLICT (id) DO UPDATE SET, computed_at = now() bump for D-18 freshness, post-restore RLS check). 200 lines. Step 7 (computed_at + financial_forecasts.updated_at - 1 second) is the operational fix that prevents restored rows from tripping the D-18 freshness invariant in ForecastReadService.
+- Plan 44.1-06: 44-07 retroactive close-out per D-44.1-19 — marked complete (not abandoned). SUMMARY documents Apr 28 timeline (06:05 deploy → 10:39 hotfixes), the misdiagnosis (read-path break + RLS drop, NOT atomic save), and a forward-pointer table mapping each 44-07 residual risk to its 44.1 mitigation. Hotfixes 29730f6, ec5055e, e641a8b referenced verbatim.
+- Plan 44.1-06: ROADMAP edits scoped down — prior commit 611bf1f had already populated Phase 44.1's goal/requirements/8-plan list. Task 3 only flipped 44-07 to [x] and bumped Phase 44 plan count 7/11 → 8/11.
+- Plan 44.1-06: PITR enablement verification is the sole human-action checkpoint (autonomous: false). Runbook complete; production push of Wave 8/9 must wait on Supabase dashboard confirmation of `Enabled` + RPO documentation.
+
+## Completed Work (Phase 44.1, Wave 1 — 44.1-06)
+
+- Plan 44.1-06: PITR-RUNBOOK.md (200 lines, 8 steps) + 44-07-SUMMARY.md retroactive close-out (109 lines) + ROADMAP.md update (44-07 [x] + Phase 44 plan count 8/11) — COMPLETE (62a72f3, 6564ef1, a7c9b16). All 3 commits use --no-verify per Wave 1 parallel-executor protocol. Checkpoint pending: PITR dashboard verification.
