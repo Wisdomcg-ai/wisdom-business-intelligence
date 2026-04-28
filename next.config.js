@@ -1,10 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Suppress ESLint warnings during builds (they're shown during development)
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-
   // Image optimization
   images: {
     formats: ['image/avif', 'image/webp'],
