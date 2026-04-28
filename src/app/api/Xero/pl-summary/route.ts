@@ -1,11 +1,25 @@
 /**
- * Xero P&L Summary API Route
+ * Xero P&L Summary API Route — Phase 44 D-13 thin shim.
  *
- * Thin wrapper around getHistoricalSummary().
  * Returns prior FY and current YTD data for the forecast wizard.
  *
- * Data source: xero_pl_lines (raw 24-month Xero data, synced daily by sync-all)
- * NOT forecast_pl_lines (which is a working copy for forecasts).
+ * Response shape (preserved verbatim from pre-Phase-44 contract — wizard UI
+ * components in src/app/finances/forecast/ consume specific fields):
+ *   {
+ *     summary: HistoricalPLSummary {
+ *       has_xero_data, prior_fy?, current_ytd?, coverage?
+ *     }
+ *   }
+ *
+ * Data flow:
+ *   1. Authenticate + verify business access.
+ *   2. Resolve Xero connection. If absent → return has_xero_data: false.
+ *   3. Delegate to getHistoricalSummary(), which itself routes through
+ *      ForecastReadService.getMonthlyComposite when an active forecast
+ *      exists (D-13). The D-18 freshness invariant fires inside the service;
+ *      this route catches it and returns a structured 500 with the
+ *      invariant-violation message so the wizard can surface a recompute
+ *      banner (Plan 44-10).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -21,13 +35,11 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createRouteHandlerClient()
 
-    // Auth
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Params
     const searchParams = request.nextUrl.searchParams
     const businessId = searchParams.get('business_id')
     const fiscalYearParam = searchParams.get('fiscal_year')
@@ -36,7 +48,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 })
     }
 
-    // Access check
     const hasAccess = await verifyBusinessAccess(user.id, businessId)
     if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
@@ -44,7 +55,6 @@ export async function GET(request: NextRequest) {
 
     const fiscalYear = fiscalYearParam ? parseInt(fiscalYearParam) : new Date().getFullYear() + 1
 
-    // Check Xero connection exists
     const { connection } = await resolveXeroBusinessId(supabase, businessId)
     if (!connection) {
       return NextResponse.json({
@@ -52,12 +62,21 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Get historical summary from xero_pl_lines (source of truth)
     const summary = await getHistoricalSummary(supabase, businessId, fiscalYear)
 
     return NextResponse.json({ summary })
-  } catch (error) {
+  } catch (error: any) {
+    // D-18 invariant violations from ForecastReadService surface here.
+    // Return a structured 500 — never silently fall back to legacy logic.
+    const message = String(error?.message ?? error)
+    const isInvariant = message.includes('INVARIANT VIOLATED')
     console.error('[Xero P&L Summary] Error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: isInvariant ? message : 'Internal server error',
+        invariant_violation: isInvariant || undefined,
+      },
+      { status: 500 },
+    )
   }
 }
