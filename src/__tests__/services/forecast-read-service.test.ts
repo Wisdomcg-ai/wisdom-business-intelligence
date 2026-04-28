@@ -365,9 +365,20 @@ describe('ForecastReadService', () => {
   // Sanity: getCategorySubtotalsForMonth + getCashflowProjection delegate to getMonthlyComposite.
   it('getCategorySubtotalsForMonth returns correct subtotals', async () => {
     const supabase = new MockSupabase()
-    supabase.setFixture('financial_forecasts', { data: [activeForecastRow()] })
+    // updated_at older than computed_at so the freshness invariant passes.
+    supabase.setFixture('financial_forecasts', {
+      data: [activeForecastRow({ updated_at: '2026-03-01T00:00:00Z' })],
+    })
     supabase.setFixture('forecast_pl_lines', {
-      data: [],
+      data: [
+        {
+          account_code: '200',
+          account_name: 'Sales',
+          category: 'Revenue',
+          forecast_months: { '2025-07': 10000 },
+          computed_at: '2026-04-02T00:00:00Z',
+        },
+      ],
     })
     supabase.setFixture('xero_pl_lines', {
       data: [
