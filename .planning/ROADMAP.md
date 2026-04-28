@@ -792,6 +792,16 @@ Plans:
 
 ---
 
+### Phase 44.1: atomic-save-hardening-and-staged-rollout (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 44
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 44.1 to break down)
+
 ### Phase 36: Client Portal
 **Goal:** Each CFO client can log in to a read-only portal and view their approved monthly reports without needing a coach login — giving clients self-serve access to their financials between sessions.
 **Depends on:** Phase 35 (Approval workflow — only approved/sent reports are visible in the portal)

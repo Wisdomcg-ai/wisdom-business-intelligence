@@ -290,6 +290,7 @@ progress:
   - Phase 40: Playwright E2E infrastructure (smoke spec + coach-flow scaffold with test.skip + 3 scripts) — PR #13
 - Phase 34 COMPLETE (2026-04-23) — bookkeeping: 34-01a (Consolidated BS, PR #2 a80ed62) and 34-02a (Consolidated Cashflow, PR #4 aa27bf2 + patches #8 #9) shipped earlier as part of the consolidation work; roadmap ticks were stale. ROADMAP.md updated to reflect reality.
 - Current active roadmap: Phase 33 (CFO Multi-Client Dashboard) is next natural work — depends only on Phase 23 (done).
+- Phase 44.1 inserted after Phase 44: atomic-save-hardening-and-staged-rollout (URGENT) — 2026-04-28. Reason: Apr 28 morning Phase 44 deploy caused a misdiagnosed incident (read paths broke + RLS dropped, hotfixed same day). Atomic-save RPC has latent DELETE-then-INSERT-from-derived-array data-loss risk. 44.1 restructures RPC → UPSERT, adds multi-vector regression tests, gates Wave 8/9 freshness invariants behind soft-fail flag during soak, runs single-tenant canary, documents PITR rollback runbook. Wave 8/9 commits (76595c4–e4f89d3) held local until 44.1 ships.
 
 ## Phase 35 Decisions (executing)
 
