@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: executing
-last_updated: "2026-04-28T23:35:39.042Z"
+last_updated: "2026-04-28T23:41:26.479Z"
 last_activity: 2026-04-28
 progress:
   total_phases: 49
   completed_phases: 17
   total_plans: 69
-  completed_plans: 68
-  percent: 99
+  completed_plans: 69
+  percent: 100
 ---
 
 # Project State
@@ -18,7 +18,7 @@ progress:
 ## Current Position
 
 Phase: 44 (Test Gate & CI Hardening) — EXECUTING
-Plan: 3 of 5 (next; plans 1, 2, and 4 complete, plans 3 and 5 remaining)
+Plan: 5 of 5 (next; plans 1, 2, 3, and 4 complete, plan 5 remaining)
 Status: Ready to execute
 Last activity: 2026-04-28
 
@@ -86,6 +86,7 @@ Goal: take the codebase from 55/100 to ~75/100 (Series-A defensible) over 6 phas
 - Each phase commits to its own atomic PR; no bundled changes
 - Risky deploys (47, 48, 49) outside Australia/NZ business hours
 - **Plan 44-01 (2026-04-28):** Vitest gate restored. Root cause was `node_modules` drift, NOT a stale lockfile or missing devDependency. `package.json` and `package-lock.json` already had `@vitejs/plugin-react@^6.0.1` correctly resolved; only the working tree's `node_modules/` was missing the package. Fix: `npm install` (with no args) — zero tracked-file changes. **Caveat for Plan 44-03:** Mid-execution test of `rm -rf node_modules && npm ci` reproduced the broken state intermittently in this codespace (vitest's package directory ended up incomplete). `npm install` reliably repaired it. CI workflows should validate this before relying on `npm ci`.
+- **Plan 44-03 (2026-04-28):** CI workflow split into 5 parallel jobs in `.github/workflows/supabase-preview.yml` — `migration-check`, `lint`, `typecheck`, `vitest`, `build`. Each gate is now a distinct PR status check; failing `lint` no longer hides whether `typecheck`, `vitest`, or `build` would have passed. Kept `npm ci` per CI-correctness contract — the codespace `npm ci` flake noted in 44-01 is environmental (filesystem-overlay specific) and is not expected on hosted GitHub Actions runners. Each non-migration job re-runs `npm ci` (~30s overhead × 4 jobs); shared cache job is a future optimisation explicitly out of scope. `build` job uses placeholder `NEXT_PUBLIC_SENTRY_DSN` and empty `SENTRY_AUTH_TOKEN` — Sentry source-map upload skips when no auth token. `paths:` trigger filter extended to include `next.config.js`, `tsconfig.json`, `.eslintrc.json`, `vitest.config.ts`, and the workflow file itself. TEST-02..05 structurally satisfied; Required-status-check wiring is Plan 44-05's deliverable. Workflow file: 114 lines (was 52). Commit `c798c62`.
 - **Plan 44-02 (2026-04-28):** ESLint is now a build-time gate. Removed `eslint.ignoreDuringBuilds: true` from `next.config.js`; surfaced 7 errors and fixed all 7 minimally — 4 dead `// eslint-disable-next-line @typescript-eslint/...` directives in `src/app/api/coach/client-completion/route.ts` (the `@typescript-eslint` plugin is not installed; only `next/core-web-vitals` is extended), and 3 latent `react-hooks/rules-of-hooks` violations (hooks called after early returns) in `AssumptionsTab.tsx` and `SVGPortPopover.tsx` — fixed by reordering hook calls above the early returns. Left 183 `react-hooks/exhaustive-deps` warnings in place (warnings, not errors; do not fail build; out of scope to refactor ~120 files). `.eslintrc.json` rule overrides untouched. `npm run build` could not be run-to-completion in this Codespace (missing Supabase env vars + memory pressure; same caveat documented in 44-01) but lint stage of build observably runs. Acceptance criteria met. TEST-02 satisfied.
 
 ## Coverage

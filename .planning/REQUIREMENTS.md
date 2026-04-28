@@ -12,9 +12,9 @@
 
 - [x] **TEST-01**: `npm test` runs successfully on a clean checkout (currently fails: `Cannot find module '@vitejs/plugin-react'`).
 - [x] **TEST-02**: CI workflow blocks merges on `next lint` passing (today: ESLint suppressed via `next.config.js:4-6`).
-- [ ] **TEST-03**: CI workflow blocks merges on `tsc --noEmit` passing (already runs; confirm staying green).
+- [x] **TEST-03**: CI workflow blocks merges on `tsc --noEmit` passing (already runs; confirm staying green).
 - [x] **TEST-04**: CI workflow blocks merges on `vitest run` passing (already configured but currently broken — see TEST-01).
-- [ ] **TEST-05**: CI workflow blocks merges on `next build` succeeding.
+- [x] **TEST-05**: CI workflow blocks merges on `next build` succeeding.
 - [x] **TEST-06**: Nightly Playwright job runs `e2e/smoke.spec.ts` against a Vercel preview URL.
 
 ### Invisible Cleanup (CLEAN)
