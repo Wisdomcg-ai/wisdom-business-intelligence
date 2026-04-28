@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Executing Phase 44
-last_updated: "2026-04-28T02:25:57.995Z"
+status: Executing Phase 44.1
+last_updated: "2026-04-28T07:54:01.811Z"
 progress:
-  total_phases: 44
+  total_phases: 45
   completed_phases: 17
-  total_plans: 75
-  completed_plans: 72
+  total_plans: 83
+  completed_plans: 75
 ---
 
 # Project State
@@ -386,3 +386,21 @@ progress:
 - Phase 42 added (2026-04-27): Monthly Report Save Flow Consolidation. Auto-save-on-blur replacing 4 confusing save buttons. Surfaced during Phase 35 Plan 35-07 UAT.
 - Phase 43 added (2026-04-27): Plan period as explicit state — replace inference-based extended period detection. Triggered by Fit2Shine planning session 2026-04-24. Originally drafted locally as Phase 42; renumbered to 43 forward-only after discovering origin's Phase 42 was the save flow work above. Historical commit prefixes remain `42-XX`; current artifacts are `43-XX`.
 - Phase 44 added (2026-04-27): Forecast Pipeline End-to-End Fix. Triggered by Envisage Australia diagnostic surfacing cascading sync bugs (xero_pl_lines duplicates from race, broken multi-window logic returning 12-month rolling cumulative totals instead of monthly values, broken reconciliation dumping FY totals onto a single month, sparse-tenant edge cases). Scope: whole pipeline — Xero sync architecture, wizard data flow, wizard UX, save flow, downstream consumers (monthly report + cashflow). Goal: 100% reflective of Xero + deterministic + world-class UX correct first time.
+
+## Phase 44.1 Decisions
+
+- Plan 44.1-01: Pre-DDL audit of `forecast_pl_lines` shows N=236 NULL `account_code` rows where `is_manual=false`, M=0 duplicate `(forecast_id, account_code)` groups (382 total rows; 0 manual). D-44.1-05 verdict: 44.1-02 MUST add a backfill prologue `UPDATE forecast_pl_lines SET account_code = 'ACCT-MISSING-' || id::text WHERE account_code IS NULL AND is_manual = false` before creating the partial unique index. The index itself is safe to create after backfill (M=0).
+- Plan 44.1-01: Audit script (`scripts/audit-forecast-pl-lines-account-codes.ts`) honors both `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_SERVICE_KEY` env-var spellings (sibling audit scripts use the latter, plan spec uses the former). Always exits 0 per D-44.1-04.
+
+## Completed Work (Phase 44.1)
+
+- Plan 44.1-01: Pre-DDL audit script for forecast_pl_lines.account_code; surfaces null/duplicate counts + D-44.1-05 recommendation block — COMPLETE (2fcf2d3). Verdict: ship backfill prologue in 44.1-02.
+
+## Position
+
+- Current: Phase 44.1, Plan 44.1-01 [COMPLETE]. Wave 1 parallel executors (44.1-04, 44.1-06, 44.1-08) running concurrently. 44.1-02 unblocked with concrete backfill verdict.
+- Stopped at: Completed 44.1-01-PLAN.md (audit ran clean against prod; N=236, M=0).
+
+## Last Session
+
+- 2026-04-28T07:51:24Z — Plan 44.1-01 closeout. 1 atomic commit (audit script 2fcf2d3). `scripts/audit-forecast-pl-lines-account-codes.ts` surfaced 236 NULL account_code rows in production forecast_pl_lines (is_manual=false) and 0 duplicate (forecast_id, account_code) groups. D-44.1-05 verdict locked: 44.1-02 needs a backfill prologue before the partial unique index migration. Output captured verbatim in 44.1-01-SUMMARY.md for downstream consumption.
