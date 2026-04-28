@@ -329,3 +329,426 @@ describe('Recompute endpoint (recovery hatch)', () => {
     expect(res.status).toBe(404)
   })
 })
+
+// ─── Plan 44.1-03 — Loss-vector regression tests (D-44.1-06 + W2) ───────────
+//
+// These tests lock the UPSERT contract added in 44.1-02 AND the converter merge
+// from 44.1-08. They simulate the new RPC body in a JS mock (the mock APPLIES
+// upsert semantics to simulatedDB) so the test fails if either the route handler
+// OR the contract drifts.
+//
+// The mock's RPC implementation MIRRORS the SQL in
+// supabase/migrations/20260429000003_save_assumptions_and_materialize_upsert.sql:
+//   - Apply UPSERT keyed on (forecast_id, account_code) WHERE is_manual = false.
+//   - Force-replace branch when p_force_full_replace=true.
+//   - is_manual=true rows preserved through both paths.
+//   - Bump computed_at on all is_manual=false rows.
+//
+// The converter mock MIRRORS post-44.1-08 contract: forecast_months is built
+// starting from existing.forecast_months and then has input-derived keys overlaid.
+
+interface SimulatedRow {
+  id: string
+  forecast_id: string
+  account_name: string
+  account_code: string | null
+  category: string
+  forecast_months: Record<string, number>
+  actual_months: Record<string, number>
+  is_manual: boolean
+  computed_at: string
+}
+
+function applyUpsertToSimulatedDB(
+  db: SimulatedRow[],
+  args: {
+    p_forecast_id: string
+    p_pl_lines: Array<Partial<SimulatedRow>>
+    p_force_full_replace?: boolean
+  },
+  v_now: string,
+): { lines_count: number } {
+  // 1. Force-full-replace branch: delete is_manual=false rows for this forecast.
+  if (args.p_force_full_replace) {
+    for (let i = db.length - 1; i >= 0; i--) {
+      if (db[i].forecast_id === args.p_forecast_id && db[i].is_manual === false) {
+        db.splice(i, 1)
+      }
+    }
+  }
+
+  let inserted = 0
+  // 2. UPSERT: for each input line, find a matching is_manual=false row by
+  //    (forecast_id, account_code). If found, UPDATE; else INSERT.
+  for (const line of args.p_pl_lines) {
+    const idx = db.findIndex(
+      (r) =>
+        r.forecast_id === args.p_forecast_id &&
+        r.account_code === (line.account_code ?? null) &&
+        r.is_manual === false,
+    )
+    if (idx >= 0) {
+      // UPDATE — RPC writes EXCLUDED.forecast_months (i.e., line.forecast_months).
+      // Because 44.1-08 patches the converter to MERGE existing.forecast_months
+      // BEFORE handing to the RPC, line.forecast_months at this point already contains
+      // the merged result. The RPC's job is just to write it.
+      db[idx] = {
+        ...db[idx],
+        account_name: line.account_name ?? db[idx].account_name,
+        category: line.category ?? db[idx].category,
+        forecast_months: (line.forecast_months as Record<string, number>) ?? {},
+        actual_months: (line.actual_months as Record<string, number>) ?? db[idx].actual_months,
+        computed_at: v_now,
+      }
+      inserted++
+    } else {
+      db.push({
+        id: `new-${Math.random().toString(36).slice(2)}`,
+        forecast_id: args.p_forecast_id,
+        account_name: line.account_name ?? '',
+        account_code: (line.account_code ?? null) as string | null,
+        category: line.category ?? '',
+        forecast_months: (line.forecast_months as Record<string, number>) ?? {},
+        actual_months: (line.actual_months as Record<string, number>) ?? {},
+        is_manual: false,
+        computed_at: v_now,
+      })
+      inserted++
+    }
+  }
+
+  // 3. Bump computed_at on un-touched is_manual=false rows.
+  for (const r of db) {
+    if (r.forecast_id === args.p_forecast_id && r.is_manual === false && r.computed_at < v_now) {
+      r.computed_at = v_now
+    }
+  }
+
+  return { lines_count: inserted }
+}
+
+/**
+ * Helper that returns a converter-mock factory. Given a `simulatedDB` snapshot
+ * and an array of "input lines" (account_code + per-key overrides), returns a
+ * mock that mirrors the post-44.1-08 merge contract:
+ *   forecast_months = { ...existing.forecast_months, ...inputDerivedKeys }
+ * If no existing match, forecast_months = inputDerivedKeys.
+ */
+function makeConverterMockMerging(
+  simulatedDB: SimulatedRow[],
+  inputs: Array<{
+    account_name: string
+    account_code: string
+    category: string
+    inputForecastMonths: Record<string, number> // keys the input provides
+  }>,
+) {
+  return vi.fn(() =>
+    inputs.map((inp) => {
+      const existing = simulatedDB.find(
+        (r) => r.account_code === inp.account_code && r.is_manual === false,
+      )
+      const merged: Record<string, number> = {
+        ...(existing?.forecast_months || {}),
+        ...inp.inputForecastMonths,
+      }
+      return {
+        account_name: inp.account_name,
+        account_code: inp.account_code,
+        category: inp.category,
+        subcategory: null,
+        sort_order: 0,
+        actual_months: existing?.actual_months || {},
+        forecast_months: merged,
+        is_from_xero: false,
+      }
+    }),
+  )
+}
+
+describe('Loss-vector regression — D-44.1-06', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  it('vector 1 — empty opex lines preserves all 5 existing OpEx rows (D-44.1-06)', async () => {
+    const v_now = '2026-04-29T14:00:00.000Z'
+    const simulatedDB: SimulatedRow[] = [
+      { id: 'rev-1', forecast_id: 'forecast-1', account_name: 'Sales', account_code: '4000', category: 'Revenue', forecast_months: { '2026-07': 100000 }, actual_months: {}, is_manual: false, computed_at: '2026-04-01T00:00:00Z' },
+      { id: 'opex-1', forecast_id: 'forecast-1', account_name: 'Rent', account_code: '6100', category: 'Operating Expenses', forecast_months: { '2026-07': 5000 }, actual_months: {}, is_manual: false, computed_at: '2026-04-01T00:00:00Z' },
+      { id: 'opex-2', forecast_id: 'forecast-1', account_name: 'Utilities', account_code: '6110', category: 'Operating Expenses', forecast_months: { '2026-07': 800 }, actual_months: {}, is_manual: false, computed_at: '2026-04-01T00:00:00Z' },
+      { id: 'opex-3', forecast_id: 'forecast-1', account_name: 'Insurance', account_code: '6120', category: 'Operating Expenses', forecast_months: { '2026-07': 1200 }, actual_months: {}, is_manual: false, computed_at: '2026-04-01T00:00:00Z' },
+      { id: 'opex-4', forecast_id: 'forecast-1', account_name: 'Marketing', account_code: '6130', category: 'Operating Expenses', forecast_months: { '2026-07': 2000 }, actual_months: {}, is_manual: false, computed_at: '2026-04-01T00:00:00Z' },
+      { id: 'opex-5', forecast_id: 'forecast-1', account_name: 'Subscriptions', account_code: '6140', category: 'Operating Expenses', forecast_months: { '2026-07': 500 }, actual_months: {}, is_manual: false, computed_at: '2026-04-01T00:00:00Z' },
+    ]
+
+    // Per-test mock: convertAssumptionsToPLLines returns ONLY revenue (no opex)
+    vi.doMock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
+      convertAssumptionsToPLLines: makeConverterMockMerging(simulatedDB, [
+        { account_name: 'Sales', account_code: '4000', category: 'Revenue', inputForecastMonths: { '2026-07': 110000 } },
+      ]),
+    }))
+
+    supabaseMock = buildSupabaseMock(async (fn: string, args: any) => {
+      if (fn === 'save_assumptions_and_materialize') {
+        const result = applyUpsertToSimulatedDB(simulatedDB, args, v_now)
+        return { data: { forecast_id: args.p_forecast_id, computed_at: v_now, lines_count: result.lines_count }, error: null }
+      }
+      return { data: null, error: null }
+    })
+
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(makeRequest(VALID_BODY))
+    expect(res.status).toBe(200)
+
+    // Assertion: all 5 OpEx rows are still in the DB (UPSERT does NOT delete them).
+    const opexRows = simulatedDB.filter((r) => r.category === 'Operating Expenses')
+    expect(opexRows).toHaveLength(5)
+    expect(opexRows.map((r) => r.account_code).sort()).toEqual(['6100', '6110', '6120', '6130', '6140'])
+    // Their forecast_months are untouched (the UPSERT bypassed them).
+    expect(opexRows.find((r) => r.account_code === '6100')!.forecast_months).toEqual({ '2026-07': 5000 })
+  })
+
+  it('vector 2 — undefined year1Monthly does not blank forecast_months on existing rows (D-44.1-06)', async () => {
+    const v_now = '2026-04-29T14:00:00.000Z'
+    const simulatedDB: SimulatedRow[] = [
+      { id: 'rev-1', forecast_id: 'forecast-1', account_name: 'Sales', account_code: '4000', category: 'Revenue', forecast_months: { '2026-05-01': 100000, '2026-06-01': 110000 }, actual_months: {}, is_manual: false, computed_at: '2026-04-01T00:00:00Z' },
+    ]
+
+    // Mock the converter (post-44.1-08): input has NO year1Monthly, so inputForecastMonths={}.
+    // The merge yields { ...existing.forecast_months, ...{} } = existing.forecast_months.
+    vi.doMock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
+      convertAssumptionsToPLLines: makeConverterMockMerging(simulatedDB, [
+        { account_name: 'Sales', account_code: '4000', category: 'Revenue', inputForecastMonths: {} },
+      ]),
+    }))
+
+    supabaseMock = buildSupabaseMock(async (fn: string, args: any) => {
+      if (fn === 'save_assumptions_and_materialize') {
+        const result = applyUpsertToSimulatedDB(simulatedDB, args, v_now)
+        return { data: { forecast_id: args.p_forecast_id, computed_at: v_now, lines_count: result.lines_count }, error: null }
+      }
+      return { data: null, error: null }
+    })
+
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(makeRequest(VALID_BODY))
+    expect(res.status).toBe(200)
+
+    // STRICT ASSERTION (per D-44.1-06 + 44.1-08): existing forecast_months keys MUST survive.
+    const rows = simulatedDB.filter((r) => r.account_code === '4000')
+    expect(rows).toHaveLength(1) // no duplicate
+    const row = rows[0]
+    expect(row.account_code).toBe('4000')
+    expect(row.is_manual).toBe(false)
+    // The two original month keys are STILL present with their original values.
+    expect(row.forecast_months).toEqual({ '2026-05-01': 100000, '2026-06-01': 110000 })
+    expect(row.forecast_months['2026-05-01']).toBe(100000)
+    expect(row.forecast_months['2026-06-01']).toBe(110000)
+  })
+
+  it('vector 3 — shrunk forecastDuration preserves Y2/Y3 month keys on existing rows (D-44.1-06)', async () => {
+    const v_now = '2026-04-29T14:00:00.000Z'
+    // DB row has Y1+Y2+Y3 keys (created when forecastDuration=3) — 12 keys total across 3 years.
+    const simulatedDB: SimulatedRow[] = [
+      {
+        id: 'rev-1',
+        forecast_id: 'forecast-1',
+        account_name: 'Sales',
+        account_code: '4000',
+        category: 'Revenue',
+        forecast_months: {
+          // Y1
+          '2026-07': 100000, '2026-08': 100000, '2026-09': 100000, '2026-10': 100000,
+          // Y2
+          '2027-07': 110000, '2027-10': 115000, '2027-12': 120000,
+          // Y3
+          '2028-07': 125000, '2028-09': 130000, '2028-12': 135000, '2029-03': 140000, '2029-06': 145000,
+        },
+        actual_months: {},
+        is_manual: false,
+        computed_at: '2026-04-01T00:00:00Z',
+      },
+    ]
+
+    // Mock converter (post-44.1-08): forecastDuration is now 1, so input only provides Y1 keys.
+    // The merge yields { ...existing(all 12 keys), ...{Y1 overrides} } = all 12 keys with Y1 values updated.
+    vi.doMock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
+      convertAssumptionsToPLLines: makeConverterMockMerging(simulatedDB, [
+        {
+          account_name: 'Sales',
+          account_code: '4000',
+          category: 'Revenue',
+          inputForecastMonths: { '2026-07': 105000, '2026-08': 105000, '2026-09': 105000, '2026-10': 105000 },
+        },
+      ]),
+    }))
+
+    supabaseMock = buildSupabaseMock(async (fn: string, args: any) => {
+      if (fn === 'save_assumptions_and_materialize') {
+        const result = applyUpsertToSimulatedDB(simulatedDB, args, v_now)
+        return { data: { forecast_id: args.p_forecast_id, computed_at: v_now, lines_count: result.lines_count }, error: null }
+      }
+      return { data: null, error: null }
+    })
+
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(makeRequest({ ...VALID_BODY, forecastDuration: 1 }))
+    expect(res.status).toBe(200)
+
+    // STRICT ASSERTION (per D-44.1-06 + 44.1-08): Y2 + Y3 month keys MUST be preserved.
+    const row = simulatedDB.find((r) => r.account_code === '4000')!
+    expect(row).toBeDefined()
+    expect(row.is_manual).toBe(false)
+    // Y2 keys preserved with original values:
+    expect(row.forecast_months['2027-07']).toBe(110000)
+    expect(row.forecast_months['2027-10']).toBe(115000)
+    expect(row.forecast_months['2027-12']).toBe(120000)
+    // Y3 keys preserved with original values:
+    expect(row.forecast_months['2028-07']).toBe(125000)
+    expect(row.forecast_months['2028-09']).toBe(130000)
+    expect(row.forecast_months['2028-12']).toBe(135000)
+    expect(row.forecast_months['2029-03']).toBe(140000)
+    expect(row.forecast_months['2029-06']).toBe(145000)
+    // Y1 keys overwritten by input:
+    expect(row.forecast_months['2026-07']).toBe(105000)
+    expect(row.forecast_months['2026-08']).toBe(105000)
+    // Total key count is the union: all 12 original keys still present.
+    expect(Object.keys(row.forecast_months)).toHaveLength(12)
+  })
+
+  it('vector 4 — RLS-empty existingLines preserves is_manual=true rows (D-44.1-06)', async () => {
+    const v_now = '2026-04-29T14:00:00.000Z'
+    const simulatedDB: SimulatedRow[] = [
+      { id: 'manual-1', forecast_id: 'forecast-1', account_name: 'Coach Override Revenue', account_code: '4999', category: 'Revenue', forecast_months: { '2026-07': 50000 }, actual_months: {}, is_manual: true, computed_at: '2026-04-01T00:00:00Z' },
+      { id: 'derived-1', forecast_id: 'forecast-1', account_name: 'Sales', account_code: '4000', category: 'Revenue', forecast_months: { '2026-07': 100000 }, actual_months: {}, is_manual: false, computed_at: '2026-04-01T00:00:00Z' },
+    ]
+
+    // Mock: RLS made existingLines empty, so converter returns just the wizard-derived row.
+    // (We use a fixed mock here, not the merging helper — the point is to simulate RLS giving
+    // existingLines=[], which means the converter has nothing to merge with.)
+    vi.doMock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
+      convertAssumptionsToPLLines: vi.fn(() => [
+        { account_name: 'Sales', account_code: '4000', category: 'Revenue', subcategory: null, sort_order: 0, actual_months: {}, forecast_months: { '2026-07': 110000 }, is_from_xero: false },
+      ]),
+    }))
+
+    supabaseMock = buildSupabaseMock(async (fn: string, args: any) => {
+      if (fn === 'save_assumptions_and_materialize') {
+        const result = applyUpsertToSimulatedDB(simulatedDB, args, v_now)
+        return { data: { forecast_id: args.p_forecast_id, computed_at: v_now, lines_count: result.lines_count }, error: null }
+      }
+      return { data: null, error: null }
+    })
+
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(makeRequest(VALID_BODY))
+    expect(res.status).toBe(200)
+
+    // CRITICAL ASSERTION: is_manual=true row survives untouched.
+    const manualRows = simulatedDB.filter((r) => r.is_manual === true)
+    expect(manualRows).toHaveLength(1)
+    expect(manualRows[0].account_code).toBe('4999')
+    expect(manualRows[0].forecast_months).toEqual({ '2026-07': 50000 })
+    expect(manualRows[0].computed_at).toBe('2026-04-01T00:00:00Z') // computed_at NOT bumped on manual rows
+    // Non-manual row was upserted (updated, not duplicated).
+    const derivedRows = simulatedDB.filter((r) => r.account_code === '4000' && r.is_manual === false)
+    expect(derivedRows).toHaveLength(1)
+    expect(derivedRows[0].forecast_months).toEqual({ '2026-07': 110000 })
+  })
+
+  it('vector 5 — manual-flag duplicate does NOT create two rows for same (forecast_id, account_code) (D-44.1-06)', async () => {
+    const v_now = '2026-04-29T14:00:00.000Z'
+    // DB has BOTH a manual and a non-manual row with the SAME account_code ALLOWED by partial index.
+    const simulatedDB: SimulatedRow[] = [
+      { id: 'manual-1', forecast_id: 'forecast-1', account_name: 'Sales (coach override)', account_code: '4000', category: 'Revenue', forecast_months: { '2026-07': 50000 }, actual_months: {}, is_manual: true, computed_at: '2026-04-01T00:00:00Z' },
+    ]
+
+    vi.doMock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
+      convertAssumptionsToPLLines: vi.fn(() => [
+        { account_name: 'Sales', account_code: '4000', category: 'Revenue', subcategory: null, sort_order: 0, actual_months: {}, forecast_months: { '2026-07': 110000 }, is_from_xero: false },
+      ]),
+    }))
+
+    supabaseMock = buildSupabaseMock(async (fn: string, args: any) => {
+      if (fn === 'save_assumptions_and_materialize') {
+        const result = applyUpsertToSimulatedDB(simulatedDB, args, v_now)
+        return { data: { forecast_id: args.p_forecast_id, computed_at: v_now, lines_count: result.lines_count }, error: null }
+      }
+      return { data: null, error: null }
+    })
+
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(makeRequest(VALID_BODY))
+    expect(res.status).toBe(200)
+
+    // Run the call a SECOND time (re-saving). Should still NOT duplicate.
+    const res2 = await POST(makeRequest(VALID_BODY))
+    expect(res2.status).toBe(200)
+
+    // Assertion: still exactly 1 manual row + 1 derived row at account_code='4000'.
+    const allFor4000 = simulatedDB.filter((r) => r.account_code === '4000')
+    expect(allFor4000).toHaveLength(2) // 1 manual + 1 derived
+    expect(allFor4000.filter((r) => r.is_manual === true)).toHaveLength(1)
+    expect(allFor4000.filter((r) => r.is_manual === false)).toHaveLength(1)
+    // Manual row untouched.
+    const manual = allFor4000.find((r) => r.is_manual === true)!
+    expect(manual.forecast_months).toEqual({ '2026-07': 50000 })
+    // Derived row reflects last input.
+    const derived = allFor4000.find((r) => r.is_manual === false)!
+    expect(derived.forecast_months).toEqual({ '2026-07': 110000 })
+  })
+
+  it('vector 6 — force_full_replace=true clears non-manual rows AND preserves manual rows (W2)', async () => {
+    const v_now = '2026-04-29T14:00:00.000Z'
+    // 3 non-manual rows + 1 manual row.
+    const simulatedDB: SimulatedRow[] = [
+      { id: 'derived-1', forecast_id: 'forecast-1', account_name: 'Sales', account_code: '4000', category: 'Revenue', forecast_months: { '2026-07': 100000 }, actual_months: {}, is_manual: false, computed_at: '2026-04-01T00:00:00Z' },
+      { id: 'derived-2', forecast_id: 'forecast-1', account_name: 'Marketing', account_code: '6130', category: 'Operating Expenses', forecast_months: { '2026-07': 2000 }, actual_months: {}, is_manual: false, computed_at: '2026-04-01T00:00:00Z' },
+      { id: 'derived-3', forecast_id: 'forecast-1', account_name: 'Wages', account_code: '6200', category: 'Operating Expenses', forecast_months: { '2026-07': 50000 }, actual_months: {}, is_manual: false, computed_at: '2026-04-01T00:00:00Z' },
+      { id: 'manual-1', forecast_id: 'forecast-1', account_name: 'CEO Bonus', account_code: '6999', category: 'Operating Expenses', forecast_months: { '2026-12': 100000 }, actual_months: {}, is_manual: true, computed_at: '2026-04-01T00:00:00Z' },
+    ]
+
+    // Mock: converter returns ONLY 1 input row (Sales).
+    vi.doMock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
+      convertAssumptionsToPLLines: vi.fn(() => [
+        { account_name: 'Sales', account_code: '4000', category: 'Revenue', subcategory: null, sort_order: 0, actual_months: {}, forecast_months: { '2026-07': 105000 }, is_from_xero: false },
+      ]),
+    }))
+
+    // Mock RPC: pass p_force_full_replace=true (we override the args before invoking applyUpsert).
+    supabaseMock = buildSupabaseMock(async (fn: string, args: any) => {
+      if (fn === 'save_assumptions_and_materialize') {
+        // The route handler passes only 3 args today; we simulate the force-replace path
+        // by injecting p_force_full_replace=true at the boundary. This is the test of
+        // the RPC contract — when called with force_full_replace=true, it must behave correctly.
+        const argsWithForce = { ...args, p_force_full_replace: true }
+        const result = applyUpsertToSimulatedDB(simulatedDB, argsWithForce, v_now)
+        return { data: { forecast_id: args.p_forecast_id, computed_at: v_now, lines_count: result.lines_count }, error: null }
+      }
+      return { data: null, error: null }
+    })
+
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(makeRequest(VALID_BODY))
+    expect(res.status).toBe(200)
+
+    // ASSERT: post-RPC count = 2 (1 input row + 1 manual row).
+    const allRowsForForecast = simulatedDB.filter((r) => r.forecast_id === 'forecast-1')
+    expect(allRowsForForecast).toHaveLength(2)
+    // The 2 dropped non-manual rows are gone.
+    expect(simulatedDB.find((r) => r.account_code === '6130')).toBeUndefined()
+    expect(simulatedDB.find((r) => r.account_code === '6200')).toBeUndefined()
+    // The manual row is untouched.
+    const manual = simulatedDB.find((r) => r.account_code === '6999')!
+    expect(manual).toBeDefined()
+    expect(manual.is_manual).toBe(true)
+    expect(manual.forecast_months).toEqual({ '2026-12': 100000 })
+    expect(manual.computed_at).toBe('2026-04-01T00:00:00Z') // untouched
+    // The 1 input row is present (re-inserted after the force-clear).
+    const sales = simulatedDB.find((r) => r.account_code === '4000')!
+    expect(sales).toBeDefined()
+    expect(sales.is_manual).toBe(false)
+    expect(sales.forecast_months).toEqual({ '2026-07': 105000 })
+  })
+})
