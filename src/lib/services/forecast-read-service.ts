@@ -150,13 +150,13 @@ export class ForecastReadService {
     // 3. Load forecast_pl_lines + xero_pl_lines in parallel.
     //
     // xero_pl_lines is long-format (per Wave 2/5 migration); it has no
-    // `fiscal_year` column — period_month is the time dimension. Filter by a
-    // date range covering prior FY + current FY (July yyyy-2 through June yyyy
-    // for Australian July-June FY). Consumers (getHistoricalSummary)
-    // aggregate prior-FY and current-YTD windows from these rows.
-    const fy = forecast.fiscal_year as number
-    const xeroRangeStart = `${fy - 2}-07-01`
-    const xeroRangeEnd = `${fy}-06-30`
+    // `fiscal_year` column — period_month is the time dimension. We do NOT
+    // filter by date here — consumers (getHistoricalSummary's aggregatePeriod)
+    // need to look back to the BASELINE fiscal year, which in planning-season
+    // mode (within 3 months of FY end, forecasting next FY) is currentFY-1
+    // (i.e. up to 3 fiscal years before forecast.fiscal_year). A narrow date
+    // filter excludes the baseline range and silently zeros prior_fy totals.
+    // Single-tenant row counts are bounded; the unfiltered fetch is fine.
     const [plLinesRes, xeroRowsRes] = await Promise.all([
       this.supabase
         .from('forecast_pl_lines')
@@ -165,9 +165,7 @@ export class ForecastReadService {
       this.supabase
         .from('xero_pl_lines')
         .select('account_code, account_name, account_type, period_month, amount, tenant_id')
-        .in('business_id', ids.all)
-        .gte('period_month', xeroRangeStart)
-        .lte('period_month', xeroRangeEnd),
+        .in('business_id', ids.all),
     ])
 
     const assumptionsUpdatedAt: string | null = (forecast.updated_at as string) ?? null
