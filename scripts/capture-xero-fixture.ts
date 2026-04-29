@@ -43,6 +43,9 @@ interface CliArgs {
   businessId: string
   fy: number
   label: string
+  combinedOutput?: string
+  includeInactive?: boolean
+  tenantId?: string
 }
 
 function parseArgs(argv: string[]): CliArgs | { help: true } {
@@ -52,6 +55,9 @@ function parseArgs(argv: string[]): CliArgs | { help: true } {
     if (a.startsWith('--business-id=')) out.businessId = a.slice('--business-id='.length)
     else if (a.startsWith('--fy=')) out.fy = parseInt(a.slice('--fy='.length), 10)
     else if (a.startsWith('--label=')) out.label = a.slice('--label='.length)
+    else if (a.startsWith('--combined-output=')) out.combinedOutput = a.slice('--combined-output='.length)
+    else if (a === '--include-inactive') out.includeInactive = true
+    else if (a.startsWith('--tenant-id=')) out.tenantId = a.slice('--tenant-id='.length)
   }
   if (!out.businessId || !out.fy || !out.label) {
     return { help: true }
@@ -61,19 +67,31 @@ function parseArgs(argv: string[]): CliArgs | { help: true } {
 
 function printHelp() {
   console.log(`Usage:
-  npx tsx scripts/capture-xero-fixture.ts --business-id=<uuid> --fy=<2026> --label=<slug>
+  npx tsx scripts/capture-xero-fixture.ts --business-id=<uuid> --fy=<2026> --label=<slug> [options]
 
 Required:
-  --business-id  Supabase businesses.id UUID (the business to query)
+  --business-id  Supabase businesses.id OR business_profiles.id UUID
   --fy           Fiscal year to capture (e.g. 2026 = Jul 2025 – Jun 2026)
   --label        Filename slug (e.g. envisage-fy26 → envisage-fy26.json + envisage-fy26-reconciler.json)
+
+Optional:
+  --combined-output=<slug>   Also write src/__tests__/xero/fixtures/<slug>.json
+                              with both queries wrapped in a single fixture
+                              (Phase 44.2-01 D-44.2-07 contract).
+  --include-inactive          Allow capture even if xero_connections.is_active=false.
+                              Useful for diagnostic captures when the orchestrator
+                              has flipped the connection inactive between runs.
+  --tenant-id=<uuid>          Disambiguate when a business has multiple connections
+                              (consolidated entities). Selects only the matching
+                              xero_connections.tenant_id.
 
 Output:
   src/__tests__/xero/fixtures/{label}.json            Raw Xero P&L by Month response
   src/__tests__/xero/fixtures/{label}-reconciler.json Raw Xero single-period FY total
+  src/__tests__/xero/fixtures/{combined-output}.json  Combined FY+by-month wrapper (if --combined-output)
 
 Notes:
-  - Uses the FIRST active xero_connections row for the business.
+  - Uses the FIRST active xero_connections row for the business (or any row when --include-inactive).
   - For the by-month report, the base month is:
       * Current FY → first day of current calendar month, last day of current month
       * Other FYs  → the LAST month of that FY (FY end month)
@@ -89,7 +107,7 @@ async function main() {
     process.exit(parsed.help && process.argv.length <= 2 ? 0 : 1)
   }
 
-  const { businessId, fy, label } = parsed
+  const { businessId, fy, label, combinedOutput, includeInactive, tenantId: tenantIdFilter } = parsed
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY
@@ -101,33 +119,43 @@ async function main() {
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
   console.log(`[capture-xero-fixture] business_id=${businessId} FY=${fy} label=${label}`)
+  if (combinedOutput) console.log(`[capture-xero-fixture] combined-output=${combinedOutput}`)
+  if (includeInactive) console.log('[capture-xero-fixture] --include-inactive: connection is_active filter relaxed')
+  if (tenantIdFilter) console.log(`[capture-xero-fixture] --tenant-id=${tenantIdFilter}`)
 
-  // 1. Look up active xero_connections for this business.
+  // 1. Look up xero_connections for this business.
   // xero_connections.business_id can reference businesses.id OR business_profiles.id
-  // (dual-ID system). Resolve both possibilities.
+  // (dual-ID system). Resolve both possibilities. The reverse lookup (when caller
+  // passes a profile.id) is also handled by checking business_profiles.id directly.
   const { data: profile } = await supabase
     .from('business_profiles')
-    .select('id')
-    .eq('business_id', businessId)
+    .select('id, business_id')
+    .or(`business_id.eq.${businessId},id.eq.${businessId}`)
     .maybeSingle()
-  const candidateIds = profile ? [businessId, profile.id] : [businessId]
+  const candidateIds = profile
+    ? Array.from(new Set([businessId, profile.id, profile.business_id].filter(Boolean) as string[]))
+    : [businessId]
 
-  const { data: connections, error: connErr } = await supabase
+  let connQuery = supabase
     .from('xero_connections')
     .select('*')
     .in('business_id', candidateIds)
-    .eq('is_active', true)
     .order('updated_at', { ascending: false })
+  if (!includeInactive) connQuery = connQuery.eq('is_active', true)
+  if (tenantIdFilter) connQuery = connQuery.eq('tenant_id', tenantIdFilter)
+  const { data: connections, error: connErr } = await connQuery
   if (connErr) {
     console.error('[capture-xero-fixture] Failed to load xero_connections:', connErr)
     process.exit(1)
   }
   if (!connections || connections.length === 0) {
-    console.error(`[capture-xero-fixture] No active xero_connections for business_id=${businessId}`)
+    console.error(
+      `[capture-xero-fixture] No xero_connections for business_id=${businessId} (active=${!includeInactive ? 'true' : 'any'}${tenantIdFilter ? `, tenant_id=${tenantIdFilter}` : ''})`
+    )
     process.exit(1)
   }
   const connection = connections[0]
-  console.log(`[capture-xero-fixture] Using connection.id=${connection.id} tenant=${connection.tenant_name} (of ${connections.length} active)`)
+  console.log(`[capture-xero-fixture] Using connection.id=${connection.id} tenant=${connection.tenant_name} is_active=${connection.is_active} (of ${connections.length} matching)`)
 
   // 2. Get a valid access token via the canonical helper.
   const tokenResult = await getValidAccessToken({ id: connection.id }, supabase as any)
@@ -221,6 +249,48 @@ async function main() {
 
   console.log(`[capture-xero-fixture] Wrote ${byMonthPath}`)
   console.log(`[capture-xero-fixture] Wrote ${reconcilerPath}`)
+
+  // 6b. Optional combined fixture (Phase 44.2-01, D-44.2-07).
+  // A single file wraps both queries with audit metadata so reconciliation
+  // tests can assert FY-total == sum-of-monthly-columns from one fixture.
+  if (combinedOutput) {
+    const combined = {
+      label,
+      business_id: businessId,
+      tenant_id: tenantId,
+      tenant_name: connection.tenant_name,
+      fiscal_year: fy,
+      captured_at: new Date().toISOString(),
+      fy_query: {
+        url: reconcilerUrl,
+        params: {
+          fromDate: fyStartStr,
+          toDate: fyEndStr,
+          standardLayout: 'false',
+          paymentsOnly: 'false',
+        },
+        response: reconcilerJson,
+      },
+      by_month_query: {
+        url: byMonthUrl,
+        params: {
+          fromDate: baseFrom,
+          toDate: baseTo,
+          periods: 11,
+          timeframe: 'MONTH',
+          standardLayout: 'false',
+          paymentsOnly: 'false',
+        },
+        response: byMonthJson,
+      },
+      // Current state per 44.2-CONTEXT.md: JDS reconciler reports 66 mismatched
+      // accounts ($359,779 total). Flip to 'ok' once Phase 44.2 fixes ship.
+      expected_reconciliation: 'mismatch' as const,
+    }
+    const combinedPath = path.join(fixtureDir, `${combinedOutput}.json`)
+    writeFileSync(combinedPath, JSON.stringify(combined, null, 2))
+    console.log(`[capture-xero-fixture] Wrote ${combinedPath}`)
+  }
 
   // 7. Print summary so the user can paste expected values into test assertions.
   const byMonthReport = byMonthJson?.Reports?.[0]
