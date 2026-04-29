@@ -792,26 +792,33 @@ Plans:
 
 ---
 
-### Phase 44.2: cfo-grade-xero-reconciliation (INSERTED)
+### Phase 44.2: cfo-grade-xero-reconciliation (INSERTED, RESTRUCTURED 2026-04-30)
 
-**Goal:** Establish a CFO-grade data integrity contract — numbers we display equal numbers Xero displays, exactly, every account, every month, every tenant. Fix the parser classification bug (Software Development - PK Costs misclassified as opex), close the $6,839 by-month vs FY-total reconciliation gap, gate user-facing reads behind sync_jobs.status='success' (DataIntegrityBanner on wizard + monthly report), make per-tenant reconciliation first-class for consolidated entities, and add a daily continuous reconciliation cron.
+**Goal:** Establish a CFO-grade data integrity contract — numbers we display equal numbers Xero displays, exactly, every account, every month, every tenant. **Restructured 2026-04-30** after empirical proof that Xero's `?periods=N&timeframe=MONTH` aggregation is structurally broken (documented in Xero's own developer docs). Old plans 04, 05, 06 (standardLayout / classification / absorber) are obsolete; replaced by 06A-06F (Path A: per-month single-period queries for both PL and BS, with full Calxa-grade reconciliation gates). Plans 07-12 (data integrity UI, daily cron, UAT) extended to cover both PL and BS.
 **Requirements**: PHASE-44-D-08, PHASE-44-D-11, PHASE-44-D-18, D-44.2-00 through D-44.2-20
 **Depends on:** Phase 44
-**Plans:** 3/12 plans executed
+**Plans:** 3/15 plans executed (3 obsoleted, 6 new, 6 preserved)
+**See:** [.planning/phases/44.2-cfo-grade-xero-reconciliation/44.2-RESTRUCTURE-NOTE.md](phases/44.2-cfo-grade-xero-reconciliation/44.2-RESTRUCTURE-NOTE.md) for the why behind the restructure.
 
 Plans:
 - [x] 44.2-01-PLAN.md — Multi-tenant fixture capture (JDS + Envisage FY+by-month combined) + sync_jobs.tenant_id audit
 - [x] 44.2-02-PLAN.md — sync_jobs.tenant_id NOT NULL migration + sync orchestrator per-tenant writes
-- [x] 44.2-03-PLAN.md — Diagnose JDS Sales-Hardware $6,839 gap; record fix-path decision
-- [ ] 44.2-04-PLAN.md — standardLayout=true vs false comparison + decision for sync orchestrator
-- [ ] 44.2-05-PLAN.md — Parser classification fix (D-44.2-12 / D-44.2-14): nested sub-section carry-forward
-- [ ] 44.2-06-PLAN.md — JDS reconciliation gap closure (parser fix OR adjustment-row absorber per 44.2-03)
-- [ ] 44.2-07-PLAN.md — data_quality field on ForecastReadService.getMonthlyComposite (worst-of multi-tenant)
-- [ ] 44.2-08-PLAN.md — Propagate data_quality through historical-pl-summary + 4 consumer routes
-- [ ] 44.2-09-PLAN.md — DataIntegrityBanner + DataIntegrityDetailDrawer + 5 mount sites (Step 2, Step 3, monthly-report, cashflow forecast, coach dashboard)
-- [ ] 44.2-10-PLAN.md — Daily continuous reconciliation cron (Vercel cron + CRON_SECRET)
-- [ ] 44.2-11-PLAN.md — Re-sync JDS + Envisage; verify all sync_jobs return 'success'; cross-check Xero web report
-- [ ] 44.2-12-PLAN.md — Cross-tenant UAT (3+ tenants × 4 surfaces) + open PR
+- [x] 44.2-03-PLAN.md — Diagnose JDS Sales-Hardware $6,839 gap; record fix-path decision (DECISION SUPERSEDED — empirical Path A test 2026-04-29)
+- [~] 44.2-04-PLAN.md — OBSOLETE (standardLayout investigation; settled empirically — both layouts return same single-period totals)
+- [~] 44.2-05-PLAN.md — OBSOLETE (classification fix — folded into 06B)
+- [~] 44.2-06-PLAN.md — OBSOLETE (FY-vs-by-month absorber — wrong layer; replaced by Path A rebuild)
+- [ ] 44.2-06A-PLAN.md — P&L schema rebuild (account_id GUID first-class + dual-key + business_id FK + basis stamp + xero_accounts catalog)
+- [ ] 44.2-06B-PLAN.md — P&L sync orchestrator rebuild (per-month single-period queries + classification fix + FXGROUPID + tz + fy_start + Calxa-spec rate-limit handler)
+- [ ] 44.2-06C-PLAN.md — Balance Sheet schema (xero_bs_lines table + wide-compat view, mirrors PL discipline)
+- [ ] 44.2-06D-PLAN.md — Balance Sheet sync orchestrator (per-month-end single-period queries + Net Assets == Equity invariant)
+- [ ] 44.2-06E-PLAN.md — 5-gate reconciliation harness (single-period vs aggregated, PL↔BS articulation, TB balanced, BS in balance, web parity) × 3 tenants × 3 months
+- [ ] 44.2-06F-PLAN.md — Production migration runbook + rollback protocol + verify-production-migration.ts
+- [ ] 44.2-07-PLAN.md — data_quality field on ForecastReadService.getMonthlyComposite (extend to PL + BS post-06D)
+- [ ] 44.2-08-PLAN.md — Propagate data_quality through historical-pl-summary + 4 consumer routes (extend to BS consumers)
+- [ ] 44.2-09-PLAN.md — DataIntegrityBanner + DataIntegrityDetailDrawer + 5 mount sites
+- [ ] 44.2-10-PLAN.md — Daily continuous reconciliation cron + structured audit log (PL + BS, runs verify-production-migration.ts gates)
+- [ ] 44.2-11-PLAN.md — Re-sync JDS + Envisage + IICT (PL + BS); verify all sync_jobs return 'success'; cross-check Xero web report
+- [ ] 44.2-12-PLAN.md — Cross-tenant UAT (3+ tenants × 4 surfaces, IICT for FX coverage) + open PR + merge
 
 ### Phase 44.1: atomic-save-hardening-and-staged-rollout (INSERTED)
 
