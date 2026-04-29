@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch all distinct Xero accounts from xero_pl_lines for this business
     const { data: xeroAccounts, error: xeroError } = await supabase
-      .from('xero_pl_lines')
+      .from('xero_pl_lines_wide_compat')
       .select('account_name, account_type, section')
       .in('business_id', ids.all)
 

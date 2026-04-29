@@ -4,6 +4,8 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import {
   calcVariance,
   buildSubtotal,
@@ -164,33 +166,63 @@ export async function POST(request: NextRequest) {
       budgetPLLines = bLines || []
     }
 
-    // 4. Load xero_pl_lines (actuals) — deduplicate by account_name
-    //    Duplicate rows can occur if sync-xero and sync-all race against each other
-    const { data: rawXeroLines, error: xeroErr } = await supabase
-      .from('xero_pl_lines')
-      .select('account_name, account_type, section, monthly_values')
-      .eq('business_id', business_id)
+    // 4. Load xero_pl_lines (actuals).
+    //    Phase 44 D-13 — route through ForecastReadService when an active forecast
+    //    exists for (business_id, fiscal_year). The service does long→wide
+    //    aggregation across tenants and asserts the D-18 freshness invariant.
+    //    Fall back to a direct xero_pl_lines_wide_compat read only when no active
+    //    forecast exists (e.g. very new business).
+    const ids = await resolveBusinessIds(supabase, business_id)
+    let xeroLines: { account_name: string; account_type: string; section: string; monthly_values: Record<string, number> }[] = []
 
-    if (xeroErr) {
-      console.error('[Report Generate] Error loading xero_pl_lines:', xeroErr)
-      return NextResponse.json({ error: 'Failed to load Xero actuals' }, { status: 500 })
-    }
+    // The active forecast for actuals routing is independent of `budgetForecast`
+    // (which may be a custom non-active forecast via settings.budget_forecast_id).
+    const { data: actualsForecast } = await supabase
+      .from('financial_forecasts')
+      .select('id')
+      .in('business_id', ids.all)
+      .eq('fiscal_year', fiscal_year)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-    // Deduplicate: keep one row per account_name (merge monthly_values if needed)
-    const xeroDedup = new Map<string, { account_name: string; account_type: string; section: string; monthly_values: Record<string, number> }>()
-    for (const row of (rawXeroLines || [])) {
-      const existing = xeroDedup.get(row.account_name)
-      if (existing) {
-        // Merge monthly_values — later values overwrite earlier ones
-        existing.monthly_values = { ...existing.monthly_values, ...row.monthly_values }
-      } else {
-        xeroDedup.set(row.account_name, { ...row })
+    if (actualsForecast?.id) {
+      // D-13 path. D-18 invariant violations propagate to the outer catch.
+      const composite = await createForecastReadService(supabase).getMonthlyComposite(actualsForecast.id)
+      xeroLines = composite.rows.map(r => ({
+        account_name: r.account_name,
+        account_type: r.account_type,
+        section: '',
+        monthly_values: r.monthly_values,
+      }))
+    } else {
+      // Fallback: no active forecast → read raw Xero rows.
+      const { data: rawXeroLines, error: xeroErr } = await supabase
+        .from('xero_pl_lines_wide_compat')
+        .select('account_name, account_type, section, monthly_values')
+        .in('business_id', ids.all)
+
+      if (xeroErr) {
+        console.error('[Report Generate] Error loading xero_pl_lines:', xeroErr)
+        return NextResponse.json({ error: 'Failed to load Xero actuals' }, { status: 500 })
       }
-    }
-    const xeroLines = Array.from(xeroDedup.values())
 
-    if (rawXeroLines && rawXeroLines.length !== xeroLines.length) {
-      console.warn(`[Report Generate] Deduplicated xero_pl_lines: ${rawXeroLines.length} rows → ${xeroLines.length} unique accounts`)
+      // Deduplicate (legacy paths only — service path is already pre-deduplicated).
+      const xeroDedup = new Map<string, { account_name: string; account_type: string; section: string; monthly_values: Record<string, number> }>()
+      for (const row of (rawXeroLines || [])) {
+        const existing = xeroDedup.get(row.account_name)
+        if (existing) {
+          existing.monthly_values = { ...existing.monthly_values, ...row.monthly_values }
+        } else {
+          xeroDedup.set(row.account_name, { ...row })
+        }
+      }
+      xeroLines = Array.from(xeroDedup.values())
+
+      if (rawXeroLines && rawXeroLines.length !== xeroLines.length) {
+        console.warn(`[Report Generate] Deduplicated xero_pl_lines: ${rawXeroLines.length} rows → ${xeroLines.length} unique accounts`)
+      }
     }
 
     // 5. Build lookup maps
@@ -591,8 +623,16 @@ export async function POST(request: NextRequest) {
       }
     })
 
-  } catch (error) {
+  } catch (error: any) {
+    const message = String(error?.message ?? error)
+    const isInvariant = message.includes('INVARIANT VIOLATED')
     console.error('[Report Generate] Error:', error)
-    return NextResponse.json({ error: 'Failed to generate report' }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: isInvariant ? message : 'Failed to generate report',
+        invariant_violation: isInvariant || undefined,
+      },
+      { status: 500 },
+    )
   }
 }

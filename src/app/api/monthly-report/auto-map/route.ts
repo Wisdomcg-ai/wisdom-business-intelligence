@@ -49,14 +49,14 @@ export async function POST(request: NextRequest) {
 
     // 1. Query all Xero accounts including account_code (if column exists)
     let { data: xeroAccounts, error: xeroError } = await supabase
-      .from('xero_pl_lines')
+      .from('xero_pl_lines_wide_compat')
       .select('account_name, account_code, account_type, section')
       .in('business_id', ids.all)
 
     // Fallback: if account_code column doesn't exist yet
     if (xeroError?.message?.includes('account_code')) {
       const fallback = await supabase
-        .from('xero_pl_lines')
+        .from('xero_pl_lines_wide_compat')
         .select('account_name, account_type, section')
         .in('business_id', ids.all)
       xeroAccounts = (fallback.data || []).map(a => ({ ...a, account_code: null })) as any

@@ -770,7 +770,44 @@ Plans:
 - [x] 43-02-PLAN.md (`feat(42-02)` commits) — Hook refactor + Step 1 banner/modal + getYearLabel rewrite + coach goals page bug fix — COMPLETE (c55e20e, 2acb2a7, a312324, 5f52d01, dc0581b, 7950f58, 9e77000). 7 atomic tasks; all 5 sentinels green; tsc baseline preserved at 16 pre-existing errors.
 - [x] 43-03-PLAN.md (`test(42-03)` / `docs(42-03)` commits) — Tests (helpers, components, coach/owner equivalence, persistence) + Vercel preview Fit2Shine smoke test — COMPLETE (b2011de, 2767b8f, a8ad838, 9f95bc3, bab8a4d, 99b6cb7, dc2f194). 38/38 goals tests pass; full suite 299/299; smoke test approved on Fit2Shine 2026-04-27.
 
+### Phase 44: Forecast Pipeline End-to-End Fix
+
+**Goal:** Make the forecast pipeline (Xero sync → xero_pl_lines → forecast wizard → forecast_pl_lines → monthly report → cashflow forecast) 100% reflective of Xero, deterministic, and resilient. Eliminate the cascading sync bugs (Xero rolling-totals trap, sync-race duplicates, sparse-tenant edge cases, broken reconciliation) and deliver a wizard UX that's correct the first time without coach intervention. World-class best practice across the whole pipeline — sync, data shape, wizard, save flow, and downstream consumers.
+**Requirements**: D-05 through D-18 (per .planning/phases/44-forecast-pipeline-fix/44-CONTEXT.md; ROADMAP-level "Requirements: TBD" left as-is until verification phase confirms outcomes)
+**Depends on:** Phase 43
+**Plans:** 8/11 plans executed
+
+Plans:
+- [x] 44-01-PLAN.md — [Sub-phase A] Wave 0: fixture recording (Envisage + JDS) + test scaffolding + duplicate audit script
+- [x] 44-02-PLAN.md — [Sub-phase A] Foundation migrations: xero_pl_lines long-format + sync_jobs audit table + advisory-lock RPC
+- [x] 44-03-PLAN.md — [Sub-phase A] Pure libraries: pl-by-month-parser + pl-reconciler (fail-loud)
+- [x] 44-04-PLAN.md — [Sub-phase A] Sync orchestrator: advisory lock + 2 FY windows + multi-tenant + reconciler + ON CONFLICT upsert + sync_jobs audit
+- [x] 44-05-PLAN.md — [Sub-phase A] Vercel cron + sync-all/refresh-pl thin shims + integration smoke on Envisage + JDS
+- [x] 44-06-PLAN.md — [Sub-phase B] computed_at column + atomic save_assumptions_and_materialize RPC
+- [x] 44-07-PLAN.md — [Sub-phase B] Wizard generate route → atomic RPC + recompute endpoint + retire e337a42 non-fatal paths (closed-out retroactively in 44-07-SUMMARY.md per D-44.1-19; structural close-out in Phase 44.1)
+- [x] 44-08-PLAN.md — [Sub-phase C] ForecastReadService + D-18 runtime invariants
+- [ ] 44-09-PLAN.md — [Sub-phase C] Migrate pl-summary, cashflow xero-actuals, monthly-report generate + full-year to ForecastReadService
+- [ ] 44-10-PLAN.md — [Sub-phase D] XeroCoverageBanner component + Step 3 mount
+- [ ] 44-11-PLAN.md — [Sub-phase D] Cell render branch (em-dash for missing, $0 for real-zero) + safe-default subtext + Phase 44 closeout
+
 ---
+
+### Phase 44.1: atomic-save-hardening-and-staged-rollout (INSERTED)
+
+**Goal:** Close out the abandoned 44-07 atomic save with a structural fix (UPSERT semantics, not count-threshold patch), then stage Wave 8/9 deploy behind a soft-fail invariant window so production read paths cannot go red on legacy stale rows.
+**Requirements**: PHASE-44-D-12 (atomic save), PHASE-44-D-18 (read invariants — softened during soak)
+**Depends on:** Phase 44
+**Plans:** 7/8 plans executed
+
+Plans:
+- [x] 44.1-01-PLAN.md — Audit forecast_pl_lines for null/duplicate account_code
+- [x] 44.1-02-PLAN.md — Migration: partial unique index + UPSERT RPC + force_full_replace
+- [x] 44.1-03-PLAN.md — 6 loss-vector regression tests (includes vector 6 force_full_replace)
+- [x] 44.1-04-PLAN.md — Soft-fail invariant gate behind FORECAST_INVARIANTS_STRICT env flag
+- [x] 44.1-05-PLAN.md — Single-tenant canary: snapshot/diff utility + canary E2E checkpoint
+- [x] 44.1-06-PLAN.md — PITR rollback runbook + 44-07 retroactive close-out
+- [ ] 44.1-07-PLAN.md — Staged push protocol checkpoint
+- [x] 44.1-08-PLAN.md — Converter passthrough fix: assumptions-to-pl-lines merges existing forecast_months (closes D-44.1-06 vectors 2 + 3 at root cause)
 
 ### Phase 36: Client Portal
 **Goal:** Each CFO client can log in to a read-only portal and view their approved monthly reports without needing a coach login — giving clients self-serve access to their financials between sessions.

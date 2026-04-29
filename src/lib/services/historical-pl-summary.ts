@@ -2,8 +2,19 @@
  * Historical P&L Summary Service
  *
  * Single source of truth for historical financial data.
- * Reads directly from xero_pl_lines (raw 24-month Xero data),
- * NOT from forecast_pl_lines (which is a working copy for forecasts).
+ *
+ * Phase 44 (Plan 44-09) — this service now delegates to ForecastReadService
+ * (D-13) when an active forecast exists for `(business_id, fiscal_year)`. The
+ * D-18 freshness invariant (forecast_pl_lines.computed_at vs
+ * financial_forecasts.updated_at) is asserted by the service layer; this
+ * function lets invariant errors propagate so the route handler can surface
+ * them as a structured 500 to the wizard.
+ *
+ * When NO active forecast exists (e.g. brand-new business onboarding before
+ * the wizard has ever been generated), the service falls back to a direct
+ * read of `xero_pl_lines` rows so the wizard can still render Step 2's prior
+ * FY card. This is a deliberate, narrow fallback — it does NOT bypass any
+ * D-18 invariant because there are no forecast rows to be stale against.
  *
  * Used by: /api/Xero/pl-summary → Forecast Wizard Step 2
  */
@@ -11,25 +22,23 @@
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import {
   calculateForecastPeriods,
-  generateFiscalMonthKeys,
-  getCurrentFiscalYear,
   DEFAULT_YEAR_START_MONTH,
 } from '@/lib/utils/fiscal-year-utils'
-import type { HistoricalPLSummary, PeriodSummary, OpExCategory, PLLineItem } from '@/app/finances/forecast/types'
+import {
+  createForecastReadService,
+  type MonthlyComposite,
+  type CoverageRecord,
+} from '@/lib/services/forecast-read-service'
+import type { HistoricalPLSummary, PeriodSummary, OpExCategory, PLLineItem, XeroCoverage } from '@/app/finances/forecast/types'
 
 // Account type enum from xero_pl_lines (set by sync-all's mapSectionToType)
 type XeroAccountType = 'revenue' | 'cogs' | 'opex' | 'other_income' | 'other_expense'
 
-// Map account_type enum to display category
-const CATEGORY_MAP: Record<XeroAccountType, string> = {
-  revenue: 'Revenue',
-  cogs: 'Cost of Sales',
-  opex: 'Operating Expenses',
-  other_income: 'Other Income',
-  other_expense: 'Other Expenses',
-}
-
-interface XeroPLLine {
+// Internal wide-shape row used for aggregation. Matches the legacy
+// xero_pl_lines_wide_compat shape so the aggregatePeriod() helper below works
+// with rows from EITHER ForecastReadService (preferred path) OR a direct
+// fallback query.
+interface WideXeroRow {
   account_name: string
   account_type: XeroAccountType
   monthly_values: Record<string, number>
@@ -41,44 +50,93 @@ interface XeroPLLine {
  * Automatically detects extended forecast (planning season) and returns:
  * - Extended: prior = FY before current (complete 12mo), YTD = current FY actuals
  * - Standard: prior = FY-1, YTD = current FY if we're in it
+ *
+ * Coverage is sourced from ForecastReadService when an active forecast exists
+ * for `(business_id, fiscal_year)`; otherwise computed inline.
  */
 export async function getHistoricalSummary(
-  supabase: { from: (table: string) => any },
+  supabase: any,
   businessId: string,
   fiscalYear: number,
   yearStartMonth: number = DEFAULT_YEAR_START_MONTH,
 ): Promise<HistoricalPLSummary> {
-  // Resolve dual business IDs
+  // Resolve dual business IDs (Phase 21+ pattern).
   const ids = await resolveBusinessIds(supabase, businessId)
 
-  // Fetch raw Xero P&L lines — the source of truth
-  const { data: xeroLines, error } = await supabase
-    .from('xero_pl_lines')
-    .select('account_name, account_type, monthly_values')
+  // Try the canonical D-13 path first: route through ForecastReadService.
+  // We need an active forecast for (business_id, fiscal_year) to do that.
+  let composite: MonthlyComposite | null = null
+  const { data: activeForecast } = await supabase
+    .from('financial_forecasts')
+    .select('id')
     .in('business_id', ids.all)
+    .eq('fiscal_year', fiscalYear)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-  if (error || !xeroLines || xeroLines.length === 0) {
+  if (activeForecast?.id) {
+    // Let any D-18 invariant violation propagate — the route handler surfaces it as a 500.
+    const service = createForecastReadService(supabase)
+    composite = await service.getMonthlyComposite(activeForecast.id)
+  }
+
+  // Source the wide-shaped Xero rows.
+  let xeroLines: WideXeroRow[] = []
+  let coverage: XeroCoverage | undefined
+
+  if (composite) {
+    // Preferred: convert composite rows to the wide shape aggregatePeriod() expects.
+    xeroLines = composite.rows.map(r => ({
+      account_name: r.account_name,
+      account_type: r.account_type as XeroAccountType,
+      monthly_values: r.monthly_values,
+    }))
+    coverage = {
+      months_covered: composite.coverage.months_covered,
+      first_period: composite.coverage.first_period,
+      last_period: composite.coverage.last_period,
+      expected_months: composite.coverage.expected_months,
+    }
+  } else {
+    // Fallback (no active forecast): read xero_pl_lines_wide_compat directly.
+    // No D-18 freshness check applies — there are no forecast_pl_lines rows
+    // to be stale against.
+    const { data: rawLines, error } = await supabase
+      .from('xero_pl_lines_wide_compat')
+      .select('account_name, account_type, monthly_values')
+      .in('business_id', ids.all)
+
+    if (error || !rawLines || rawLines.length === 0) {
+      return { has_xero_data: false }
+    }
+    xeroLines = rawLines as WideXeroRow[]
+    coverage = computeCoverageFromRows(xeroLines)
+  }
+
+  if (xeroLines.length === 0) {
     return { has_xero_data: false }
   }
 
-  // Determine periods using centralized fiscal year logic
+  // Determine periods using centralized fiscal year logic.
   const periods = calculateForecastPeriods(fiscalYear, yearStartMonth)
 
-  // Calculate prior FY summary
+  // Calculate prior FY summary.
   const priorFY = aggregatePeriod(
-    xeroLines as XeroPLLine[],
+    xeroLines,
     periods.baseline_start_month,
     periods.baseline_end_month,
     `Prior FY`,
     yearStartMonth,
   )
 
-  // Calculate current YTD summary (if we have actuals in the period)
+  // Calculate current YTD summary (if we have actuals in the period).
   let currentYTD: HistoricalPLSummary['current_ytd'] = undefined
 
   if (periods.is_rolling && periods.actual_start_month && periods.actual_end_month) {
     const ytdSummary = aggregatePeriod(
-      xeroLines as XeroPLLine[],
+      xeroLines,
       periods.actual_start_month,
       periods.actual_end_month,
       `Current FY YTD`,
@@ -106,6 +164,25 @@ export async function getHistoricalSummary(
     has_xero_data: true,
     prior_fy: priorFY || undefined,
     current_ytd: currentYTD,
+    coverage,
+  }
+}
+
+/**
+ * Compute coverage from wide-shaped rows (fallback path, no forecast).
+ * Mirrors ForecastReadService.computeCoverage so behaviour is identical.
+ */
+function computeCoverageFromRows(rows: WideXeroRow[]): XeroCoverage {
+  const allMonths = new Set<string>()
+  for (const r of rows) {
+    for (const m of Object.keys(r.monthly_values || {})) allMonths.add(m)
+  }
+  const sorted = [...allMonths].sort()
+  return {
+    months_covered: sorted.length,
+    first_period: sorted[0] ?? null,
+    last_period: sorted.at(-1) ?? null,
+    expected_months: 12,
   }
 }
 
@@ -114,13 +191,13 @@ export async function getHistoricalSummary(
  * Uses account_type enum directly — no string pattern matching.
  */
 function aggregatePeriod(
-  lines: XeroPLLine[],
+  lines: WideXeroRow[],
   startMonth: string,
   endMonth: string,
   label: string,
   yearStartMonth: number,
 ): PeriodSummary | null {
-  // Generate month keys for the range
+  // Generate month keys for the range.
   const monthKeys: string[] = []
   let current = new Date(startMonth + '-01')
   const end = new Date(endMonth + '-01')
@@ -132,7 +209,7 @@ function aggregatePeriod(
 
   if (monthKeys.length === 0) return null
 
-  // Initialize accumulators
+  // Initialize accumulators.
   let totalRevenue = 0
   let totalCogs = 0
   let totalOpex = 0
@@ -155,7 +232,7 @@ function aggregatePeriod(
     otherExpensesByMonth[mk] = 0
   }
 
-  // Aggregate by account_type enum — no string matching
+  // Aggregate by account_type enum — no string matching.
   for (const line of lines) {
     const values = line.monthly_values || {}
     let lineTotal = 0
@@ -188,7 +265,7 @@ function aggregatePeriod(
       }
     }
 
-    // Build line items for revenue and COGS
+    // Build line items for revenue and COGS.
     if (line.account_type === 'revenue' && lineTotal !== 0) {
       revenueLines.push({
         account_name: line.account_name,
@@ -212,10 +289,7 @@ function aggregatePeriod(
     }
   }
 
-  // Build OpEx by category — return ALL accounts so the wizard reflects 100% of Xero.
-  // Was capped at top 10 historically; that meant any business with >10 OpEx
-  // accounts had silent gaps in the wizard's breakdown (totals were correct,
-  // but per-line data was incomplete).
+  // Build OpEx by category — return ALL accounts.
   const opexCategories: OpExCategory[] = Object.values(opexAccounts)
     .sort((a, b) => Math.abs(b.total) - Math.abs(a.total))
     .map(acc => ({
@@ -225,15 +299,13 @@ function aggregatePeriod(
       monthly_average: monthKeys.length > 0 ? acc.total / monthKeys.length : 0,
     }))
 
-  // Calculate seasonality pattern (12 FY month percentages)
+  // Calculate seasonality pattern (12 FY month percentages).
   const seasonality: number[] = []
   if (totalRevenue > 0) {
-    // Generate the 12 FY month keys for seasonality
     const fyMonthKeys = monthKeys.length === 12 ? monthKeys : monthKeys.slice(0, 12)
     for (const mk of fyMonthKeys) {
       seasonality.push((revenueByMonth[mk] || 0) / totalRevenue * 100)
     }
-    // Pad to 12 if less
     while (seasonality.length < 12) {
       seasonality.push(100 / 12)
     }

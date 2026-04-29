@@ -46,7 +46,7 @@ import type {
 } from './types/assumptions';
 
 // Bump this to force all users to re-init from APIs (invalidates stale localStorage)
-const WIZARD_VERSION = 9; // Bumped to force fresh load after dual-ID fix
+const WIZARD_VERSION = 10; // Phase 44 Sub-phase A — long-format xero_pl_lines + new pl-summary read path. Old caches showed stale "Xero not connected" state.
 
 // Remap month keys from prior year to forecast year (same position, different year)
 // e.g., { "2024-07": 50000 } → { "2025-07": 50000 } when targetFYStart=2025

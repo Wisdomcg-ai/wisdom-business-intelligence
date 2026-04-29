@@ -536,6 +536,16 @@ export interface PeriodSummary {
   cogs_lines?: PLLineItem[]
 }
 
+// Coverage record (Phase 44 D-15) — drives the wizard's sparse-tenant banner.
+// Sourced from ForecastReadService.getMonthlyComposite when an active forecast
+// exists; computed inline from raw Xero rows otherwise.
+export interface XeroCoverage {
+  months_covered: number
+  first_period: string | null
+  last_period: string | null
+  expected_months: number
+}
+
 // Historical P&L summary for AI context
 export interface HistoricalPLSummary {
   has_xero_data: boolean
@@ -553,6 +563,9 @@ export interface HistoricalPLSummary {
     revenue_vs_prior_percent: number
     opex_vs_prior_percent: number
   }
+
+  // Phase 44 D-15: coverage for sparse-tenant banner (Plan 44-10 consumer)
+  coverage?: XeroCoverage
 
   // Forecast period - what we're planning
   forecast_period?: {

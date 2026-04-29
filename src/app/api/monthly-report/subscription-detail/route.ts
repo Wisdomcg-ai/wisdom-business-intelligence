@@ -236,7 +236,7 @@ export async function POST(request: NextRequest) {
 
       if (accountNames.length > 0) {
         const { data: plLines } = await supabase
-          .from('xero_pl_lines')
+          .from('xero_pl_lines_wide_compat')
           .select('account_name, monthly_values')
           .eq('business_id', business_id)
           .in('account_name', accountNames)

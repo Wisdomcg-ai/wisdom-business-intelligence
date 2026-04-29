@@ -52,3 +52,12 @@ supabase/.temp/
 /test-results/
 /playwright-report/
 /playwright/.cache/
+.env*.local
+
+# Phase 44 audit script runtime artifacts (read-only reports from
+# scripts/audit-xero-pl-lines-duplicates.ts — regenerated on every run)
+scripts/audit-xero-pl-lines-duplicates-report-*.md
+
+# Phase 44.1 canary snapshot files (runtime artifacts containing business data;
+# emitted by scripts/canary-forecast-save.ts — never committed)
+.planning/phases/44.1-atomic-save-hardening-and-staged-rollout/canary-snapshot-*.json
