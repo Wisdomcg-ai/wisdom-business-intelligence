@@ -26,6 +26,11 @@ on:
       - '.eslintrc.json'
       - 'vitest.config.ts'
       - '.github/workflows/supabase-preview.yml'
+      # Docs-only PRs (e.g. landing planning artifacts on main) must still
+      # report the four required checks, otherwise branch protection blocks
+      # them indefinitely waiting for jobs that never trigger.
+      - '.planning/**'
+      - '**.md'
 
 jobs:
   migration-check:
