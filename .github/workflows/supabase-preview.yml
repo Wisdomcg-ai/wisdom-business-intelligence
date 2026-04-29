@@ -121,3 +121,8 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: 'placeholder-anon-key'
           SUPABASE_SERVICE_KEY: 'placeholder-service-key'
           SUPABASE_SERVICE_ROLE_KEY: 'placeholder-service-role-key'
+          # Third-party SDK clients instantiated at module load (Resend, OpenAI)
+          # throw when the key arg is undefined. Routes never execute during
+          # page-data collection, so any non-empty value works.
+          RESEND_API_KEY: 're_placeholder'
+          OPENAI_API_KEY: 'sk-placeholder'
