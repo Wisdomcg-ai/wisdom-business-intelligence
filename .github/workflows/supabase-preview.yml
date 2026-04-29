@@ -112,3 +112,11 @@ jobs:
           NEXT_PUBLIC_SENTRY_DSN: 'https://example@sentry.io/0'
           # Skip Sentry CLI work in CI builds (no auth token available)
           SENTRY_AUTH_TOKEN: ''
+          # next build collects page data, which loads route handlers that
+          # instantiate Supabase clients at module load (e.g. /api/Xero/*).
+          # No network calls happen during page-data collection — clients just
+          # need to construct without throwing, so well-formed placeholders
+          # are sufficient. Real values are wired via Vercel project env vars.
+          NEXT_PUBLIC_SUPABASE_URL: 'https://placeholder.supabase.co'
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'placeholder-anon-key'
+          SUPABASE_SERVICE_KEY: 'placeholder-service-key'

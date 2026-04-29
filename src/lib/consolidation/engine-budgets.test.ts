@@ -279,7 +279,7 @@ describe('buildConsolidation integration — budget piping via tenantBudgets opt
             }),
           }
         }
-        if (table === 'xero_pl_lines') {
+        if (table === 'xero_pl_lines_wide_compat') {
           return {
             select: () => ({
               in: (_c: string, _v: any) => ({

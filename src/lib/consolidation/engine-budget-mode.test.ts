@@ -95,7 +95,7 @@ function makeFakeSupabase(mode: Mode) {
           }),
         }
       }
-      if (table === 'xero_pl_lines') {
+      if (table === 'xero_pl_lines_wide_compat') {
         return {
           select: () => ({
             in: () => ({

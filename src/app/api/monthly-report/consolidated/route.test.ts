@@ -190,7 +190,7 @@ function buildState(opts: { withBudgetA: boolean; withBudgetB: boolean }) {
       { id: 'c-a', business_id: BIZ, tenant_id: T_A, tenant_name: 'Tenant A', display_name: 'Tenant A', display_order: 0, functional_currency: 'AUD', include_in_consolidation: true, is_active: true },
       { id: 'c-b', business_id: BIZ, tenant_id: T_B, tenant_name: 'Tenant B', display_name: 'Tenant B', display_order: 1, functional_currency: 'AUD', include_in_consolidation: true, is_active: true },
     ],
-    xero_pl_lines: plLines,
+    xero_pl_lines_wide_compat: plLines,
     consolidation_elimination_rules: [],
     financial_forecasts: forecasts,
     forecast_pl_lines: forecastPlLines,
