@@ -792,6 +792,16 @@ Plans:
 
 ---
 
+### Phase 44.2: cfo-grade-xero-reconciliation (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 44
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 44.2 to break down)
+
 ### Phase 44.1: atomic-save-hardening-and-staged-rollout (INSERTED)
 
 **Goal:** Close out the abandoned 44-07 atomic save with a structural fix (UPSERT semantics, not count-threshold patch), then stage Wave 8/9 deploy behind a soft-fail invariant window so production read paths cannot go red on legacy stale rows.
