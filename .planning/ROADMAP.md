@@ -795,7 +795,7 @@ Plans:
 ### Phase 44.2: cfo-grade-xero-reconciliation (INSERTED)
 
 **Goal:** Establish a CFO-grade data integrity contract — numbers we display equal numbers Xero displays, exactly, every account, every month, every tenant. Fix the parser classification bug (Software Development - PK Costs misclassified as opex), close the $6,839 by-month vs FY-total reconciliation gap, gate user-facing reads behind sync_jobs.status='success' (DataIntegrityBanner on wizard + monthly report), make per-tenant reconciliation first-class for consolidated entities, and add a daily continuous reconciliation cron.
-**Requirements**: D-44.2-00 (foundational principle) through D-44.2-20; reuses PHASE-44-D-08 (reconciler), PHASE-44-D-11 (sync orchestrator), PHASE-44-D-12 (atomic save derivative), PHASE-44-D-18 (read invariants extension)
+**Requirements**: PHASE-44-D-08, PHASE-44-D-11, PHASE-44-D-18, D-44.2-00 through D-44.2-20
 **Depends on:** Phase 44
 **Plans:** 12 plans
 
@@ -808,7 +808,7 @@ Plans:
 - [ ] 44.2-06-PLAN.md — JDS reconciliation gap closure (parser fix OR adjustment-row absorber per 44.2-03)
 - [ ] 44.2-07-PLAN.md — data_quality field on ForecastReadService.getMonthlyComposite (worst-of multi-tenant)
 - [ ] 44.2-08-PLAN.md — Propagate data_quality through historical-pl-summary + 4 consumer routes
-- [ ] 44.2-09-PLAN.md — DataIntegrityBanner + DataIntegrityDetailDrawer + 3 mount sites (Step 2, Step 3, monthly-report)
+- [ ] 44.2-09-PLAN.md — DataIntegrityBanner + DataIntegrityDetailDrawer + 5 mount sites (Step 2, Step 3, monthly-report, cashflow forecast, coach dashboard)
 - [ ] 44.2-10-PLAN.md — Daily continuous reconciliation cron (Vercel cron + CRON_SECRET)
 - [ ] 44.2-11-PLAN.md — Re-sync JDS + Envisage; verify all sync_jobs return 'success'; cross-check Xero web report
 - [ ] 44.2-12-PLAN.md — Cross-tenant UAT (3+ tenants × 4 surfaces) + open PR
