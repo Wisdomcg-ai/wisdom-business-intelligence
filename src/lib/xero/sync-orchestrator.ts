@@ -342,120 +342,242 @@ export async function syncBusinessXeroPL(
       }
     }
 
+    // Phase 44.2-02 (D-44.2-04): per-tenant sync_jobs rows. The outer
+    // sync_jobs row claimed by begin_xero_sync_job above remains for D-07
+    // single-flight semantics (per-business 15-min staleness window); each
+    // tenant's iteration ALSO writes its own sync_jobs row so the
+    // ForecastReadService data_quality lookup (44.2-07) can resolve
+    // per-tenant reconciliation status. The outer row's tenant_id falls back
+    // to the empty-string default added in migration
+    // 20260429000010_sync_jobs_tenant_id_not_null.sql.
+    let tenantErrorCount = 0
+    let tenantPartialCount = 0
+    let tenantSuccessCount = 0
+
     for (const conn of connections) {
       if (opts.tenantIdFilter && conn.tenant_id !== opts.tenantIdFilter) continue
 
-      // 3a. Get a valid access token for this specific connection.
-      const tokenResult = await getValidAccessToken(
-        { id: conn.id },
-        supabase as any,
-      )
-      if (!tokenResult.success || !tokenResult.accessToken) {
-        // Token failure for one connection is treated as a hard error for
-        // that connection — surfaces in sync_jobs.error via the catch below
-        // (NOT a silent swallow).
-        throw new Error(
-          `Token refresh failed for connection ${conn.id}: ${tokenResult.message ?? tokenResult.error ?? 'unknown'}`,
-        )
-      }
-      const accessToken = tokenResult.accessToken
-      const headers = {
-        Authorization: `Bearer ${accessToken}`,
-        'xero-tenant-id': conn.tenant_id,
-        Accept: 'application/json',
-      }
-
-      for (const window of fyWindows) {
-        // 3b. Fetch canonical by-month. `periods` is per-window: 11 for prior
-        // FY (full 12 months); (months_elapsed_in_FY - 1) for current FY YTD,
-        // so columns stay inside the FY and the reconciler oracle aligns.
-        const byMonthResp = await fetch(byMonthUrl(window.base, window.periods), { headers })
-        xeroRequestCount++
-        if (!byMonthResp.ok) {
-          throw new Error(
-            `Xero PL-by-month ${byMonthResp.status} for tenant ${conn.tenant_id} fy ${window.fy}`,
-          )
-        }
-        const byMonthJson = await byMonthResp.json()
-        await sleep(XERO_REQUEST_DELAY_MS)
-
-        // 3c. Fetch single-period FY total for reconciliation. toDate is the
-        // by-month window's last day so both queries cover identical date
-        // ranges (otherwise future-dated accruals in Xero make the totals
-        // over-report vs the by-month sum, creating false-positive
-        // discrepancies).
-        const fyTotalResp = await fetch(
-          fyTotalUrl(window.fy, fyStartMonth, window.base),
-          { headers },
-        )
-        xeroRequestCount++
-        if (!fyTotalResp.ok) {
-          throw new Error(
-            `Xero FY-total ${fyTotalResp.status} for tenant ${conn.tenant_id} fy ${window.fy}`,
-          )
-        }
-        const fyTotalJson = await fyTotalResp.json()
-        await sleep(XERO_REQUEST_DELAY_MS)
-
-        // 3d. Parse + reconcile (D-08 fail-loud — collect discrepancies, do
-        // NOT auto-correct, do NOT abort the loop).
-        const monthlyRows = parsePLByMonth(byMonthJson)
-        const fyTotals = parseFYTotalResponse(fyTotalJson)
-        const recResult = reconcilePL(monthlyRows, fyTotals, 0.01)
-        if (recResult.status === 'mismatch') {
-          for (const d of recResult.discrepancies) {
-            allDiscrepancies.push({ ...d })
-          }
-        }
-
-        // 3e. Upsert long-format rows. ON CONFLICT
-        // (business_id, tenant_id, account_code, period_month) — targets the
-        // plain unique constraint `xero_pl_lines_natural_key_uniq` (44-05
-        // migration 4). The constraint is plain (no COALESCE), so Supabase
-        // upsert can match it by column list.
-        const dbRows = monthlyRows.map((r: ParsedPLRow) => ({
+      // 3a. Per-tenant sync_jobs row at status='running'. (D-44.2-05.) This
+      // is the audit row that 44.2-07 reads to gate the wizard / monthly
+      // report on per-tenant reconciliation status. Insert is direct
+      // (not via RPC) — single-flight at the BUSINESS level is already
+      // owned by begin_xero_sync_job; per-tenant rows are pure audit log.
+      const { data: tenantJobRow } = await supabase
+        .from('sync_jobs')
+        .insert({
           business_id: profileId,
-          tenant_id: conn.tenant_id,
-          account_code: r.account_code,
-          account_name: r.account_name,
-          account_type: r.account_type,
-          period_month: r.period_month,
-          amount: r.amount,
-          source: 'xero',
-          updated_at: new Date().toISOString(),
-        }))
+          tenant_id: conn.tenant_id, // D-44.2-05 — NEVER null/empty for per-tenant rows
+          job_type: 'xero_pl_sync',
+          status: 'running',
+          started_at: new Date().toISOString(),
+          fy_range: {
+            current_fy: currentFY,
+            prior_fy: priorFY,
+            fy_start_month: fyStartMonth,
+          },
+        })
+        .select('id')
+        .single()
+      const tenantJobId: string | null = (tenantJobRow as any)?.id ?? null
 
-        if (dbRows.length > 0) {
-          const upsertResult = (await supabase
-            .from('xero_pl_lines')
-            .upsert(dbRows, {
-              onConflict: 'business_id,tenant_id,account_code,period_month',
-              ignoreDuplicates: false,
-            })) as any
-          if (upsertResult?.error) {
+      // Per-tenant accumulators (scoped inside the loop so one tenant's
+      // failure can NOT pollute the next tenant's metrics).
+      const tenantDiscrepancies: Array<Discrepancy & { tenant_id: string }> = []
+      const tenantCoveragePerWindow: CoverageRecord[] = []
+      let tenantRowsInserted = 0
+      let tenantXeroRequestCount = 0
+
+      try {
+        // 3b. Get a valid access token for this specific connection. Token
+        // failure is a tenant-level error — caught below, marks this tenant
+        // 'error', the for-loop continues to the next tenant (W3).
+        const tokenResult = await getValidAccessToken(
+          { id: conn.id },
+          supabase as any,
+        )
+        if (!tokenResult.success || !tokenResult.accessToken) {
+          throw new Error(
+            `Token refresh failed for connection ${conn.id}: ${tokenResult.message ?? tokenResult.error ?? 'unknown'}`,
+          )
+        }
+        const accessToken = tokenResult.accessToken
+        const headers = {
+          Authorization: `Bearer ${accessToken}`,
+          'xero-tenant-id': conn.tenant_id,
+          Accept: 'application/json',
+        }
+
+        for (const window of fyWindows) {
+          // 3c. Fetch canonical by-month. `periods` is per-window: 11 for prior
+          // FY (full 12 months); (months_elapsed_in_FY - 1) for current FY YTD.
+          const byMonthResp = await fetch(byMonthUrl(window.base, window.periods), { headers })
+          xeroRequestCount++
+          tenantXeroRequestCount++
+          if (!byMonthResp.ok) {
             throw new Error(
-              `xero_pl_lines upsert: ${upsertResult.error.message ?? upsertResult.error.code ?? 'unknown'}`,
+              `Xero PL-by-month ${byMonthResp.status} for tenant ${conn.tenant_id} fy ${window.fy}`,
             )
           }
-          // Supabase upsert doesn't distinguish insert vs update; track
-          // total affected as inserted (operators can audit via sync_jobs).
-          rowsInserted += dbRows.length
+          const byMonthJson = await byMonthResp.json()
+          await sleep(XERO_REQUEST_DELAY_MS)
+
+          // 3d. Fetch single-period FY total for reconciliation.
+          const fyTotalResp = await fetch(
+            fyTotalUrl(window.fy, fyStartMonth, window.base),
+            { headers },
+          )
+          xeroRequestCount++
+          tenantXeroRequestCount++
+          if (!fyTotalResp.ok) {
+            throw new Error(
+              `Xero FY-total ${fyTotalResp.status} for tenant ${conn.tenant_id} fy ${window.fy}`,
+            )
+          }
+          const fyTotalJson = await fyTotalResp.json()
+          await sleep(XERO_REQUEST_DELAY_MS)
+
+          // 3e. Parse + reconcile.
+          const monthlyRows = parsePLByMonth(byMonthJson)
+          const fyTotals = parseFYTotalResponse(fyTotalJson)
+          const recResult = reconcilePL(monthlyRows, fyTotals, 0.01)
+          if (recResult.status === 'mismatch') {
+            for (const d of recResult.discrepancies) {
+              // D-44.2-06: tenant_id stamped on every discrepancy entry
+              tenantDiscrepancies.push({ ...d, tenant_id: conn.tenant_id })
+              allDiscrepancies.push({ ...d })
+            }
+          }
+
+          // 3f. Upsert long-format rows.
+          const dbRows = monthlyRows.map((r: ParsedPLRow) => ({
+            business_id: profileId,
+            tenant_id: conn.tenant_id,
+            account_code: r.account_code,
+            account_name: r.account_name,
+            account_type: r.account_type,
+            period_month: r.period_month,
+            amount: r.amount,
+            source: 'xero',
+            updated_at: new Date().toISOString(),
+          }))
+
+          if (dbRows.length > 0) {
+            const upsertResult = (await supabase
+              .from('xero_pl_lines')
+              .upsert(dbRows, {
+                onConflict: 'business_id,tenant_id,account_code,period_month',
+                ignoreDuplicates: false,
+              })) as any
+            if (upsertResult?.error) {
+              throw new Error(
+                `xero_pl_lines upsert: ${upsertResult.error.message ?? upsertResult.error.code ?? 'unknown'}`,
+              )
+            }
+            rowsInserted += dbRows.length
+            tenantRowsInserted += dbRows.length
+          }
+
+          // 3g. Coverage record per (tenant, fy).
+          const cov = computeCoverage(monthlyRows, window.expectedMonths)
+          coveragePerWindow.push(cov)
+          tenantCoveragePerWindow.push(cov)
         }
 
-        // 3f. Coverage record per (tenant, fy).
-        coveragePerWindow.push(computeCoverage(monthlyRows, window.expectedMonths))
+        // 3h. Per-tenant terminal UPDATE — happy/partial path. (D-44.2-04.)
+        const tenantExpectedTotal = fyWindows.reduce(
+          (s, w) => s + w.expectedMonths,
+          0,
+        )
+        const tenantCoverage = aggregateCoverage(
+          tenantCoveragePerWindow,
+          tenantExpectedTotal,
+        )
+        const tenantStatus: 'success' | 'partial' =
+          tenantDiscrepancies.length === 0 ? 'success' : 'partial'
+        const tenantErrorMsg =
+          tenantDiscrepancies.length > 0
+            ? `Reconciliation mismatch on ${tenantDiscrepancies.length} accounts for tenant ${conn.tenant_id}`
+            : null
+
+        if (tenantStatus === 'success') tenantSuccessCount++
+        else tenantPartialCount++
+
+        if (tenantJobId !== null) {
+          await supabase
+            .from('sync_jobs')
+            .update({
+              status: tenantStatus,
+              finished_at: new Date().toISOString(),
+              coverage: tenantCoverage,
+              reconciliation:
+                tenantDiscrepancies.length > 0
+                  ? {
+                      tenant_id: conn.tenant_id,
+                      status: 'mismatch',
+                      discrepant_accounts: tenantDiscrepancies,
+                    }
+                  : null,
+              rows_inserted: tenantRowsInserted,
+              xero_request_count: tenantXeroRequestCount,
+              error: tenantErrorMsg,
+            })
+            .eq('id', tenantJobId)
+        }
+      } catch (err) {
+        // (W3) Per-tenant exception handler. A single tenant failing — Xero
+        // API timeout/500, parser threw, supabase upsert rejected — must NOT
+        // abort the loop. Mark this tenant 'error', log via Sentry, continue.
+        const errMessage = err instanceof Error ? err.message : String(err)
+        tenantErrorCount++
+        if (tenantJobId !== null) {
+          await supabase
+            .from('sync_jobs')
+            .update({
+              status: 'error',
+              finished_at: new Date().toISOString(),
+              error: errMessage.slice(0, 500), // bounded length for the column
+              rows_inserted: tenantRowsInserted,
+              xero_request_count: tenantXeroRequestCount,
+            })
+            .eq('id', tenantJobId)
+        }
+        try {
+          Sentry.captureException(err, {
+            tags: {
+              invariant: 'xero_sync_orchestrator_tenant',
+              phase: '44.2',
+              business_id: profileId,
+              tenant_id: conn.tenant_id,
+              sync_job_id: tenantJobId ?? syncJobId,
+            },
+          } as any)
+        } catch {
+          // Sentry failure must never mask the original tenant error path.
+        }
+        // Continue to the next tenant — do NOT re-throw.
+        continue
       }
     }
 
-    // 4. Compute final status. Coverage aggregated across windows.
-    //    Reconciliation discrepancies determine partial vs success.
+    // 4. Compute final status across tenants. The outer SyncResult reflects
+    //    the WORST per-tenant outcome (D-44.2-04: business-level data_quality
+    //    is the worst of all tenant statuses).
     const expectedTotal = fyWindows.reduce((sum, w) => sum + w.expectedMonths, 0)
     coverage = aggregateCoverage(coveragePerWindow, expectedTotal)
-    finalStatus = allDiscrepancies.length === 0 ? 'success' : 'partial'
-    finalError =
-      allDiscrepancies.length > 0
-        ? `Reconciliation mismatch on ${allDiscrepancies.length} accounts`
-        : null
+    if (tenantErrorCount > 0 && tenantSuccessCount === 0 && tenantPartialCount === 0) {
+      finalStatus = 'error'
+      finalError = `All ${tenantErrorCount} tenants errored`
+    } else if (tenantErrorCount > 0 || tenantPartialCount > 0) {
+      finalStatus = 'partial'
+      const parts: string[] = []
+      if (tenantErrorCount > 0) parts.push(`${tenantErrorCount} tenant(s) errored`)
+      if (tenantPartialCount > 0)
+        parts.push(`${tenantPartialCount} tenant(s) had reconciliation mismatches`)
+      finalError = parts.join('; ')
+    } else {
+      finalStatus = 'success'
+      finalError = null
+    }
 
     if (allDiscrepancies.length > 0) {
       // D-18 invariant pattern: structured Sentry tag on reconciliation gap.
@@ -480,6 +602,9 @@ export async function syncBusinessXeroPL(
         status: allDiscrepancies.length === 0 ? 'ok' : 'mismatch',
         discrepancy_count: allDiscrepancies.length,
       },
+      // Phase 44.2-02 (W3): outer error message reflects per-tenant error
+      // aggregation when tenants failed but the orchestrator did not throw.
+      ...(finalError ? { error: finalError } : {}),
     }
   } catch (err: any) {
     // D-12 anti-pattern explicitly avoided: NO silent error swallowing.

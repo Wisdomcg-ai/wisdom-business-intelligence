@@ -79,6 +79,16 @@ function makeSupabaseStub(opts: {
     }
     ctx.eq = (col: string, val: any) => {
       ctx._filters.push({ kind: 'eq', col, val })
+      // Phase 44.2-02: sync_jobs.update().eq() resolves the pending update.
+      if (table === 'sync_jobs' && ctx._pendingUpdate) {
+        const payload = ctx._pendingUpdate
+        ctx._pendingUpdate = null
+        callLog.push({
+          kind: `from:sync_jobs:update`,
+          arg: { payload, filter: { col, val } },
+        })
+        return Promise.resolve({ data: null, error: null }) as any
+      }
       return ctx
     }
     ctx.in = (col: string, val: any[]) => {
@@ -97,7 +107,32 @@ function makeSupabaseStub(opts: {
     }
     ctx.single = async () => {
       callLog.push({ kind: `from:${table}:single` })
+      // Phase 44.2-02: sync_jobs INSERT chain returns the new row's id.
+      if (table === 'sync_jobs' && ctx._pendingInsertId) {
+        const id = ctx._pendingInsertId
+        ctx._pendingInsertId = null
+        return { data: { id }, error: null }
+      }
       return { data: null, error: null }
+    }
+
+    // Phase 44.2-02 — per-tenant sync_jobs INSERT support.
+    let _syncJobIdCursor = 0
+    ctx.insert = (payload: any) => {
+      callLog.push({ kind: `from:${table}:insert`, arg: payload })
+      if (table === 'sync_jobs') {
+        _syncJobIdCursor++
+        ctx._pendingInsertId = `tenant-job-${_syncJobIdCursor}`
+      }
+      return ctx
+    }
+
+    // Phase 44.2-02 — per-tenant sync_jobs UPDATE support.
+    ctx.update = (payload: any) => {
+      if (table === 'sync_jobs') {
+        ctx._pendingUpdate = payload
+      }
+      return ctx
     }
 
     ctx.upsert = (rows: any[], upsertOpts: any) => {
@@ -295,9 +330,12 @@ describe('Sync Orchestrator', () => {
   })
 
   it('finalize on thrown error', async () => {
-    // Mock fetch to throw on the first call → orchestrator catches in the try
-    // block, calls finalize_xero_sync_job with status='error' from the finally
-    // block, and re-throws.
+    // Phase 44.2-02 (W3): per-tenant try/catch absorbs tenant-level errors —
+    // a single tenant failing must not abort the orchestrator. Result:
+    //   - The orchestrator does NOT throw on a fetch failure (per-tenant
+    //     errors stay scoped to that tenant's sync_jobs row).
+    //   - The outer SyncResult.status is 'error' when ALL tenants errored.
+    //   - finalize_xero_sync_job is called with p_status='error'.
     makeSupabaseStub({
       connections: [
         { id: 'conn-1', tenant_id: 'tenant-A', tenant_name: 'JDS', business_id: 'profile-id-1' },
@@ -308,18 +346,17 @@ describe('Sync Orchestrator', () => {
     })
 
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
-    await expect(syncBusinessXeroPL('biz-id-1')).rejects.toThrow(
-      /synthetic xero fetch failure/,
-    )
+    const result = await syncBusinessXeroPL('biz-id-1')
 
-    // finalize MUST have been called with status='error' + the error message.
+    expect(result.status).toBe('error')
+    expect(result.error ?? '').toMatch(/tenant.*errored|synthetic|fetch failure/i)
+
+    // finalize_xero_sync_job is still called for the outer business-level row.
     const finalizeCalls = (supabaseMock.rpc as any).mock.calls.filter(
       (c: any[]) => c[0] === 'finalize_xero_sync_job',
     )
     expect(finalizeCalls.length).toBe(1)
-    const args = finalizeCalls[0][1]
-    expect(args.p_status).toBe('error')
-    expect(args.p_error).toMatch(/synthetic xero fetch failure/)
+    expect(finalizeCalls[0][1].p_status).toBe('error')
   })
 
   it('idempotent upsert', async () => {
@@ -352,11 +389,13 @@ describe('Sync Orchestrator', () => {
   })
 
   it('natural key uniqueness', async () => {
-    // Mock supabase to surface a unique-violation on upsert. Orchestrator
-    // must NOT swallow it — it must finalize sync_jobs with status='error'
-    // and re-throw.
+    // Phase 44.2-02 (W3): a unique-violation on upsert is now scoped to the
+    // tenant whose iteration triggered it — the orchestrator catches it,
+    // marks that tenant's sync_jobs row 'error', and continues. No silent
+    // swallow: the per-tenant row carries the error, AND the outer SyncResult
+    // reflects 'error' (single tenant, all-errored case).
     const violation = { code: '23505', message: 'duplicate key value violates unique constraint' }
-    makeSupabaseStub({
+    const { callLog } = makeSupabaseStub({
       connections: [
         { id: 'conn-1', tenant_id: 'tenant-A', tenant_name: 'JDS', business_id: 'profile-id-1' },
       ],
@@ -369,9 +408,18 @@ describe('Sync Orchestrator', () => {
     ])
 
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
-    await expect(syncBusinessXeroPL('biz-id-1')).rejects.toThrow(/duplicate key|unique|23505/i)
+    const result = await syncBusinessXeroPL('biz-id-1')
 
-    // finalize MUST be called with status='error' (no silent swallow).
+    expect(result.status).toBe('error')
+
+    // The per-tenant sync_jobs UPDATE carries the violation message.
+    const tenantUpdates = callLog.filter((c) => c.kind === 'from:sync_jobs:update')
+    expect(tenantUpdates.length).toBeGreaterThan(0)
+    const errorUpdate = tenantUpdates.find((u) => u.arg.payload.status === 'error')
+    expect(errorUpdate).toBeTruthy()
+    expect(String(errorUpdate?.arg.payload.error)).toMatch(/duplicate key|unique|23505/i)
+
+    // finalize_xero_sync_job still called for the outer row.
     const finalizeCalls = (supabaseMock.rpc as any).mock.calls.filter(
       (c: any[]) => c[0] === 'finalize_xero_sync_job',
     )
