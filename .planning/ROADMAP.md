@@ -797,12 +797,12 @@ Plans:
 **Goal:** Establish a CFO-grade data integrity contract — numbers we display equal numbers Xero displays, exactly, every account, every month, every tenant. Fix the parser classification bug (Software Development - PK Costs misclassified as opex), close the $6,839 by-month vs FY-total reconciliation gap, gate user-facing reads behind sync_jobs.status='success' (DataIntegrityBanner on wizard + monthly report), make per-tenant reconciliation first-class for consolidated entities, and add a daily continuous reconciliation cron.
 **Requirements**: PHASE-44-D-08, PHASE-44-D-11, PHASE-44-D-18, D-44.2-00 through D-44.2-20
 **Depends on:** Phase 44
-**Plans:** 2/12 plans executed
+**Plans:** 3/12 plans executed
 
 Plans:
 - [x] 44.2-01-PLAN.md — Multi-tenant fixture capture (JDS + Envisage FY+by-month combined) + sync_jobs.tenant_id audit
 - [x] 44.2-02-PLAN.md — sync_jobs.tenant_id NOT NULL migration + sync orchestrator per-tenant writes
-- [ ] 44.2-03-PLAN.md — Diagnose JDS Sales-Hardware $6,839 gap; record fix-path decision
+- [x] 44.2-03-PLAN.md — Diagnose JDS Sales-Hardware $6,839 gap; record fix-path decision
 - [ ] 44.2-04-PLAN.md — standardLayout=true vs false comparison + decision for sync orchestrator
 - [ ] 44.2-05-PLAN.md — Parser classification fix (D-44.2-12 / D-44.2-14): nested sub-section carry-forward
 - [ ] 44.2-06-PLAN.md — JDS reconciliation gap closure (parser fix OR adjustment-row absorber per 44.2-03)
