@@ -794,13 +794,24 @@ Plans:
 
 ### Phase 44.2: cfo-grade-xero-reconciliation (INSERTED)
 
-**Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
+**Goal:** Establish a CFO-grade data integrity contract — numbers we display equal numbers Xero displays, exactly, every account, every month, every tenant. Fix the parser classification bug (Software Development - PK Costs misclassified as opex), close the $6,839 by-month vs FY-total reconciliation gap, gate user-facing reads behind sync_jobs.status='success' (DataIntegrityBanner on wizard + monthly report), make per-tenant reconciliation first-class for consolidated entities, and add a daily continuous reconciliation cron.
+**Requirements**: D-44.2-00 (foundational principle) through D-44.2-20; reuses PHASE-44-D-08 (reconciler), PHASE-44-D-11 (sync orchestrator), PHASE-44-D-12 (atomic save derivative), PHASE-44-D-18 (read invariants extension)
 **Depends on:** Phase 44
-**Plans:** 0 plans
+**Plans:** 12 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 44.2 to break down)
+- [ ] 44.2-01-PLAN.md — Multi-tenant fixture capture (JDS + Envisage FY+by-month combined) + sync_jobs.tenant_id audit
+- [ ] 44.2-02-PLAN.md — sync_jobs.tenant_id NOT NULL migration + sync orchestrator per-tenant writes
+- [ ] 44.2-03-PLAN.md — Diagnose JDS Sales-Hardware $6,839 gap; record fix-path decision
+- [ ] 44.2-04-PLAN.md — standardLayout=true vs false comparison + decision for sync orchestrator
+- [ ] 44.2-05-PLAN.md — Parser classification fix (D-44.2-12 / D-44.2-14): nested sub-section carry-forward
+- [ ] 44.2-06-PLAN.md — JDS reconciliation gap closure (parser fix OR adjustment-row absorber per 44.2-03)
+- [ ] 44.2-07-PLAN.md — data_quality field on ForecastReadService.getMonthlyComposite (worst-of multi-tenant)
+- [ ] 44.2-08-PLAN.md — Propagate data_quality through historical-pl-summary + 4 consumer routes
+- [ ] 44.2-09-PLAN.md — DataIntegrityBanner + DataIntegrityDetailDrawer + 3 mount sites (Step 2, Step 3, monthly-report)
+- [ ] 44.2-10-PLAN.md — Daily continuous reconciliation cron (Vercel cron + CRON_SECRET)
+- [ ] 44.2-11-PLAN.md — Re-sync JDS + Envisage; verify all sync_jobs return 'success'; cross-check Xero web report
+- [ ] 44.2-12-PLAN.md — Cross-tenant UAT (3+ tenants × 4 surfaces) + open PR
 
 ### Phase 44.1: atomic-save-hardening-and-staged-rollout (INSERTED)
 
