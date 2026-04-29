@@ -35,6 +35,18 @@ function SectionHeader({ title, icon: Icon, onEdit }: { title: string; icon: Rea
 }
 
 export default function AssumptionsTab({ assumptions, onEditStep, fiscalYear }: AssumptionsTabProps) {
+  // Revenue calculations — must run unconditionally to satisfy rules-of-hooks.
+  // Returns [] when assumptions is null; the early-return below still handles the empty UI case.
+  const revenueData = useMemo(() => {
+    const lines = assumptions?.revenue?.lines || []
+    return lines.map(line => {
+      const forecastTotal = line.growthType === 'fixed_amount'
+        ? line.priorYearTotal + (line.fixedGrowthAmount || 0)
+        : line.priorYearTotal * (1 + (line.growthPct || 0) / 100)
+      return { ...line, forecastTotal }
+    })
+  }, [assumptions?.revenue])
+
   if (!assumptions) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center">
@@ -47,17 +59,6 @@ export default function AssumptionsTab({ assumptions, onEditStep, fiscalYear }: 
 
   const baselineFY = `FY${(fiscalYear - 1) % 100}`
   const currentFY = `FY${fiscalYear % 100}`
-
-  // Revenue calculations
-  const revenueData = useMemo(() => {
-    const lines = assumptions.revenue?.lines || []
-    return lines.map(line => {
-      const forecastTotal = line.growthType === 'fixed_amount'
-        ? line.priorYearTotal + (line.fixedGrowthAmount || 0)
-        : line.priorYearTotal * (1 + (line.growthPct || 0) / 100)
-      return { ...line, forecastTotal }
-    })
-  }, [assumptions.revenue])
 
   const totalPriorRevenue = revenueData.reduce((s, l) => s + l.priorYearTotal, 0)
   const totalForecastRevenue = revenueData.reduce((s, l) => s + l.forecastTotal, 0)

@@ -95,6 +95,20 @@ class MockSupabase {
         filters.ins.push([col, vals])
         return builder
       },
+      // Plan 44.1 hotfix added .range() pagination to fetchAllXeroRows.
+      // Fixtures are < 1000 rows so a single range(0, 999) call returns everything;
+      // subsequent calls (from > 0) return [] so the paginator's break condition fires.
+      range: (from: number, _to: number) => ({
+        then: (onFulfilled: any, onRejected: any) => {
+          const f = resolveFixture()
+          const fullData = Array.isArray(f.data) ? f.data : []
+          const data = from === 0 ? fullData : []
+          return Promise.resolve({ data, error: f.error ?? null }).then(
+            onFulfilled,
+            onRejected,
+          )
+        },
+      }),
       maybeSingle: async () => {
         const f = resolveFixture()
         const arr = Array.isArray(f.data) ? f.data : [f.data].filter(Boolean)

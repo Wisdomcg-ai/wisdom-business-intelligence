@@ -1,288 +1,153 @@
 # WisdomBI — Requirements
 
-## Milestone 1: Stabilise & Fix (Immediate)
+## Milestone v1.1: Codebase Hardening (Active)
 
-### R1.1 Fix OpEx double-counting of team costs [CRITICAL]
-- When Xero P&L includes "Wages and Salaries" in OpEx, these are double-counted (once in Team Costs, once in OpEx)
-- OpEx lines flagged by `isTeamCost()` classifier must be excluded from OpEx sum in forecast calculations
-- Budget tracker, Step 5, Step 7, and Step 8 Review must all reflect correct numbers
-- **Success:** CapEx shows reasonable % (not 461%), Net Profit matches manual calculation
+**Source:** `CODEBASE-AUDIT.md` at repo root (production readiness 55/100, written 2026-04-28)
+**Goal:** Take the codebase from 55/100 to ~75/100 (Series-A defensible) over 6 phases (Phase 44–49), with zero client disruption.
 
-### R1.2 Fix coach shell context preservation
-- Navigating within coach view must stay inside `/coach/clients/[id]/view/` layout
-- All Xero OAuth redirects must return to coach view URL
-- Org selection page must link back to coach view
-- **Success:** Coach never loses orange banner/sidebar during any workflow
+**Guiding constraint:** Every requirement either (a) makes no observable change to clients, or (b) ships behind a feature flag, observe-mode, or shadow-compute pattern. **Phases ordered by blast radius — smallest first.**
 
-### R1.3 Stabilise Xero connection for all businesses
-- All Xero API routes must handle dual business ID system
-- Connection must be findable regardless of which ID format is stored
-- **Success:** Xero connect, sync, employees, subscriptions all work for any business
+### Test Gate & CI Hardening (TEST)
+*Goal: every PR is automatically blocked on quality. Precondition for everything else.*
 
-## Milestone 2: Forecast Builder Enhancements
+- [x] **TEST-01**: `npm test` runs successfully on a clean checkout (currently fails: `Cannot find module '@vitejs/plugin-react'`).
+- [x] **TEST-02**: CI workflow blocks merges on `next lint` passing (today: ESLint suppressed via `next.config.js:4-6`).
+- [x] **TEST-03**: CI workflow blocks merges on `tsc --noEmit` passing (already runs; confirm staying green).
+- [x] **TEST-04**: CI workflow blocks merges on `vitest run` passing (already configured but currently broken — see TEST-01).
+- [x] **TEST-05**: CI workflow blocks merges on `next build` succeeding.
+- [x] **TEST-06**: Nightly Playwright job runs `e2e/smoke.spec.ts` against a Vercel preview URL.
 
-### R2.1 Step 2 tabbed P&L view (Prior Year + Current Year)
-- Already partially built — needs testing and polish
-- Prior Year tab: full P&L by month
-- Current Year tab: YTD actuals + run rate
-- **Success:** Coach sees complete financial picture before forecasting
+### Invisible Cleanup (CLEAN)
+*Goal: delete what no one references. ~192 files / 2.1 MB / ~6,000 LOC removed without behaviour change.*
 
-### R2.2 Step 4 team data accuracy
-- Employment type mapping from Xero (full-time, part-time, casual, contractor)
-- Hours per week from Xero OrdinaryHoursPerWeek
-- Correct salary annualisation for casuals
-- **Success:** Step 4 shows accurate team with correct costs
+- [ ] **CLEAN-01**: Delete `src/app/finances/forecast/components/wizard-v3/` and `wizard-steps/` (zero importers, ~4,400 LOC).
+- [ ] **CLEAN-02**: Delete `_archive/`, `.archive/`, `supabase/archive/` directories. Move `_archive/Urban Roads Finance Report Jan 2026.pdf` to client-secure storage first.
+- [ ] **CLEAN-03**: Delete root-level cruft: `dwa_resources.html`, `mockup-step4-actuals.html`, `check_spm_kpis.mjs`, `packaged.yaml`, `template.yml` (AWS SAM remnants), `eslint.config.mjs` (dead flat config), the four root-level `*_PLAN.md`/`UI_UX_*.md` files.
+- [ ] **CLEAN-04**: Remove `axios` from `package.json` (0 imports in `src/`, 2 known HIGH CVEs).
+- [ ] **CLEAN-05**: Untrack committed `tsconfig.tsbuildinfo` (`git rm --cached`); already in `.gitignore`.
+- [ ] **CLEAN-06**: Rewrite root `README.md` to project-specific onboarding (currently default `create-next-app` boilerplate).
+- [ ] **CLEAN-07**: Move stale `docs/*.md` files (executed plans from v1.0) to `docs/archive/` — preserve history, lose noise.
+- [ ] **CLEAN-08**: Delete `database/migrations/` after confirming `supabase/migrations/` is canonical.
+- [ ] **CLEAN-09**: Add `@next/bundle-analyzer` script to `package.json` so future bundle work is measurable.
 
-### R2.3 Multi-year forecast support
-- FY26 remaining months + FY27 full year + FY28/29
-- Current year actuals inform forecast targets
-- **Success:** Coach can build 3-year forecast from current position
+### Server-Side Hardening (SEC)
+*Goal: close internal-only security gaps with no contract change. Clients can't tell the difference.*
 
-## Milestone 3: Platform Features
+- [ ] **SEC-01**: Delete `/api/migrate/route.ts` and `/api/migrate/opex-fields/route.ts` — both call non-existent Supabase RPCs (`exec_sql`, `exec`); dead today, prepared attack surface if those RPCs are ever added.
+- [ ] **SEC-02**: Fix `/api/Xero/sync-all/route.ts:573-580` cron-secret fail-open. Match the daily-health-report pattern — fail closed if `CRON_SECRET` is unset.
+- [ ] **SEC-03**: Validate plaintext-token migration window in `xero_connections` (one-shot script that asserts every row's `access_token`/`refresh_token` contains `:`).
+- [ ] **SEC-04**: Remove plaintext-fallback branch from `src/lib/utils/encryption.ts:79-83` (`decrypt()` returns `encryptedData` if it doesn't contain `:`); require `APP_SECRET_KEY` to be set explicitly in production (no `SUPABASE_SERVICE_KEY` derivation).
+- [ ] **SEC-05**: Add input validation to two SECURITY DEFINER SQL functions: `create_test_user(role)` rejects unknown roles; `create_quarterly_swot(quarter)` rejects out-of-range quarters.
+- [ ] **SEC-06**: Decide and document the onboarding gate at `src/middleware.ts:173-201` — either re-enable behind `process.env.ONBOARDING_ENFORCED === 'true'`, or delete the dead branch entirely.
+- [ ] **SEC-07**: Adopt structured logging — pick `Sentry.captureException` as the production error sink; sweep `console.error` calls in `/api/` routes (start with the 28 service-role-using routes); leave `console.log` only behind `NODE_ENV !== 'production'` guards. Delete the unused `src/lib/utils/logger.ts` if not adopted.
+- [ ] **SEC-08**: Remove the hardcoded fallback Sentry DSN from `sentry.client.config.ts:3`, `sentry.server.config.ts:3`, `sentry.edge.config.ts:3` — fail loudly if `NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_DSN` is missing in production.
 
-### R3.1 Coaching session management
-- Fix coaching_sessions 400 error on dashboard
-- Session notes, action items, follow-ups
+### Input Validation Rollout (VALID)
+*Goal: every API boundary validates its input. Use observe→enforce pattern — log violations 1-2 weeks per route before rejecting.*
 
-### R3.2 Monthly reporting
-- Xero data flows into monthly P&L reports
-- Variance analysis vs forecast
-- Coach commentary
+- [ ] **VALID-01**: Build `src/lib/api/with-schema.ts` middleware. `withSchema(schema, handler)` wrapper that, on parse failure, logs to Sentry as `zod:would-reject` and (in observe mode) continues with raw body, or (in enforce mode, gated by `ZOD_ENFORCE_ROUTES` env list) returns 400 with `error.flatten()`.
+- [ ] **VALID-02**: Add Zod schemas (in observe mode) to the 5 highest-risk read-only routes: `/api/coach/stats`, `/api/notifications`, `/api/health`, `/api/admin/check-auth`, `/api/cfo/summaries`.
+- [ ] **VALID-03**: Add Zod schemas (in observe mode) to the 8 highest-risk admin write routes: `/api/admin/clients` (POST/PATCH/DELETE), `/api/admin/coaches`, `/api/admin/reset-password`, `/api/admin/clients/resend-invitation`, `/api/team/invite`, `/api/team/remove-member`, `/api/clients/send-invitation`, `/api/coach/clients/[id]`.
+- [ ] **VALID-04**: Add Zod schemas (in observe mode) to forecast/consolidation/Xero write routes (~25 routes including `/api/forecasts/*`, `/api/forecast/*`, `/api/Xero/sync*`, `/api/consolidation/*`, `/api/cfo/report-status`).
+- [ ] **VALID-05**: Sweep the remaining ~80 API routes — any route with a request body gets a Zod schema (in observe mode).
+- [ ] **VALID-06**: After 1-2 weeks of zero `zod:would-reject` events per route, flip routes to enforce mode by adding their paths to `ZOD_ENFORCE_ROUTES`. Read-only routes flip first; admin write routes second; forecast/consolidation last.
 
-### R3.3 KPI tracking and dashboards
-- Business KPIs from Xero data
-- Visual dashboards for coach and client views
-- Weekly review integration
+### Decimal Money Arithmetic (MONEY)
+*Goal: replace JavaScript `number` summation in financial paths with `decimal.js`. Use shadow-compute + reconciliation log + per-tenant flag rollout. **The most delicate phase — must not change client-visible numbers without notice.***
 
-### R3.4 Quarterly review workflow
-- Workshop facilitation tools
-- Progress tracking against annual plan
-- Strategic initiative updates
+- [ ] **MONEY-01**: Add `decimal.js` to dependencies. No refactor yet.
+- [ ] **MONEY-02**: Build a parallel `consolidatePrecise()` function alongside `src/lib/consolidation/engine.ts:consolidate()` — same inputs, same output shape, internal arithmetic via `Decimal`.
+- [ ] **MONEY-03**: Create `consolidation_precision_log` table (additive migration). Schema: `id, business_id, period, cell_key, legacy_value numeric, precise_value numeric, delta numeric, computed_at`.
+- [ ] **MONEY-04**: Wire `/api/monthly-report/consolidated` to call both `consolidate()` (used) and `consolidatePrecise()` (logged). Insert per-cell deltas where `|delta| > 0.001`.
+- [ ] **MONEY-05**: Build a one-page admin dashboard at `/admin/precision-log` showing delta volume per tenant per period.
+- [ ] **MONEY-06**: After 2-4 weeks of shadow-compute across all 3 production tenants, review the precision log with a finance hat. Resolve any deltas > $1.
+- [ ] **MONEY-07**: Per-tenant flag rollout — `consolidation_precise_mode_enabled` boolean on `businesses` table. Enable for Fit2Shine first (coaching, lowest stakes), then Dragon (AUD-only), then IICT (multi-currency, highest stakes). 48-hour client communication before each flip.
+- [ ] **MONEY-08**: After all 3 tenants on precise mode for 2 months and stable, delete legacy `consolidate()` and unwind `consolidation_precision_log` insertion.
 
-## Milestone 5: Financial Report Pack (Calxa Replacement)
+### Database Integrity Hygiene (DB)
+*Goal: additive-only DB improvements. ON DELETE clauses on the 56 orphan-prone FKs and audit columns. No destructive schema changes.*
 
-### TMPL — Report Template System
-- **TMPL-01**: User can save current report settings as a named template
-- **TMPL-02**: User can apply a saved template to any client's monthly report in one action
-- **TMPL-03**: User can set a default template per business
-- **TMPL-04**: User can create, rename, and delete templates
-
-### CMNT — AI Commentary + Trend Tables
-- **CMNT-01**: AI generates narrative bullet points for each expense account that is over budget
-- **CMNT-02**: User can edit AI-generated commentary text before finalising
-- **CMNT-03**: Commentary section includes 6-month rolling metric trend tables (metric $ and % of revenue)
-
-### CNTR — Contractors Payment Summary
-- **CNTR-01**: Report shows individual contractor payments with 4-month rolling history
-- **CNTR-02**: Contractors are grouped by department/category with subtotals
-- **CNTR-03**: Each row shows Budget | Month-3 | Month-2 | Month-1 | Current | Variance
-- **CNTR-04**: Contractors section is enabled/disabled per template
-
-### PRYR — Prior Year Chart Series
-- **PRYR-01**: Income, COGS, and Expense bar charts show 3 series: Actuals, Budget, Prior Year Actuals
-- **PRYR-02**: Prior year data sourced from xero_pl_lines for the previous fiscal year
-
-### BLSH — Balance Sheet
-- **BLSH-01**: Balance sheet tab shows Assets, Liabilities, Equity with Current Month / Prior Year / Var$ / Var%
-- **BLSH-02**: Balance sheet data fetched from Xero /Reports/BalanceSheet API with prior year compare
-- **BLSH-03**: Balance sheet is enabled/disabled per template
-
-### CASH-C — Cashflow Engine Calxa Standard Rebuild (Phase 28)
-
-**Sub-phase 28.0: Quick Wins + Tests**
-- **CASH-C-01**: OpEx paid in month accrued (remove DPO delay on non-employment, non-bank-fee accounts) — Calxa Rule 7
-- **CASH-C-02**: `getTimingSplit` returns splits summing to exactly 100% (fix overlap bug at day ranges >30)
-- **CASH-C-03**: Depreciation and amortisation accounts excluded from cash outflows (keyword-match as interim)
-- **CASH-C-04**: Engine test suite covers ≥15 core scenarios (opening balances, DSO/DPO, GST, super, PAYG, loans, stock, actuals override, depreciation exclusion)
-- **CASH-C-05**: All tests pass; zero TypeScript errors
-
-**Sub-phase 28.1: Settings Foundation**
-- **CASH-C-10**: New table `cashflow_settings` stores explicit Xero account IDs per forecast
-- **CASH-C-11**: New table `cashflow_account_profiles` for per-account Type 1-5 overrides
-- **CASH-C-12**: New table `cashflow_statement_classification` for AASB 107 four-list classification
-- **CASH-C-13**: New table `xero_accounts` caches full Chart of Accounts with type/class/status
-- **CASH-C-14**: `/api/Xero/chart-of-accounts-full` endpoint fetches and caches COA
-- **CASH-C-15**: `/api/forecast/cashflow/settings` GET/POST endpoint for settings
-- **CASH-C-16**: `useXeroAccounts` hook provides grouped account lists (bank, fixed assets, etc.)
-- **CASH-C-17**: `CashflowAccountsPanel` UI with dropdowns for all important account categories
-- **CASH-C-18**: Auto-populate sensible defaults based on `xero_type` (BANK → bank list, etc.)
-- **CASH-C-19**: Feature flag `use_explicit_accounts` gates new behaviour (defaults false)
-- **CASH-C-20**: Engine falls back to keyword matching when `use_explicit_accounts=false`
-
-**Sub-phase 28.2: Algorithm Completeness**
-- **CASH-C-25**: Depreciation identification uses account ID when settings configured, keyword otherwise
-- **CASH-C-26**: Depreciation shown as non-cash add-back above Net Movement in indirect view
-- **CASH-C-27**: Company Tax module computes annual tax = net profit × rate
-- **CASH-C-28**: Company Tax distributed across schedule months (quarterly PAYG instalments or annual)
-- **CASH-C-29**: CapEx module pulls Fixed Asset movements from Xero balance sheet for actual months
-- **CASH-C-30**: CapEx module uses `forecast_investments` for forecast months
-- **CASH-C-31**: `CashflowForecastMonth` type extended with indirect-method fields (net_profit, depreciation_addback, debtor_adjustment, etc.)
-- **CASH-C-32**: `CashflowForecastTable` has Direct/Indirect toggle
-- **CASH-C-33**: Both methods reconcile to same Net Cash Movement
-- **CASH-C-34**: Engine test suite extended with depreciation/tax/capex scenarios
-- **CASH-C-35**: Direct method behaviour preserved for backwards compat
-
-**Sub-phase 28.3: Schedule + Distribution Model**
-- **CASH-C-40**: New table `cashflow_schedules` stores BasePeriods[12] arrays
-- **CASH-C-41**: 6 AU-standard schedules seeded (Monthly, Feb Apr Jul Oct BAS, etc.)
-- **CASH-C-42**: `daysToDistribution(days)` helper produces distribution[12] summing to 100
-- **CASH-C-43**: `resolveSchedule(name)` returns BasePeriods for named schedule
-- **CASH-C-44**: Settings use schedule name (not frequency string) for GST/PAYG/Super/Tax
-- **CASH-C-45**: `/api/forecast/cashflow/profiles` CRUD endpoint for per-account profiles
-- **CASH-C-46**: `AccountProfileEditor` UI allows coach to set Type 1-5 per account
-- **CASH-C-47**: Type 1 Immediate = pays in accrual month (100% bucket 0)
-- **CASH-C-48**: Type 3 CreditorDays / Type 4 DebtorDays accept float precision
-- **CASH-C-49**: Type 5 Schedule uses named BasePeriods lookup
-- **CASH-C-50**: Engine prefers per-account profile over global DSO/DPO when configured
-
-**Sub-phase 28.4: Cashflow Statement (AASB 107)** — REMOVED 2026-04-17
-  Xero produces this natively; coach narrates cash movements from the
-  existing cashflow table during monthly review. Full infrastructure
-  removed: `statement.ts`, `classifications` route, `statement` route,
-  `CashflowStatementTab`, `StatementClassificationEditor`,
-  `useCashflowStatement`, `cashflow_statement_classification` table.
-
-### MYOB — MYOB AccountRight Integration
-- **MYOB-01**: User can connect MYOB AccountRight company file via OAuth 2.0
-- **MYOB-02**: MYOB P&L actuals sync into xero_pl_lines table (source: 'myob' flag)
-- **MYOB-03**: MYOB balance sheet data available for balance sheet report
-- **MYOB-04**: Monthly report generation works identically for MYOB-connected businesses as Xero
-
-### HBSF — HubStaff Integration
-- **HBSF-01**: User can connect HubStaff organisation via OAuth 2.0
-- **HBSF-02**: HubStaff contractor payment data enriches Contractors tab when connected
-- **HBSF-03**: HubStaff data merges with Xero contractor data by name match
-
-### CFOD — CFO Multi-Client Dashboard
-- **CFOD-01**: Page at `/cfo` shows all CFO-flagged client businesses in a card grid (coach/super_admin only)
-- **CFOD-02**: Each client card shows revenue vs budget %, gross profit %, net profit $, cash balance, reconciliation status, and report status
-- **CFOD-03**: Status badge (On Track / Watch / Alert) computed from net profit vs budget variance and unreconciled transaction count
-- **CFOD-04**: Top bar shows 4 summary stat cards: clients on track, reports pending approval, recon alerts, next report due
-- **CFOD-05**: Month selector defaults to previous month; changing it reloads all cards for the selected period
-- **CFOD-06**: "Review Report" button on each card navigates to that client's monthly report for the selected period
-- **CFOD-07**: Dashboard data loads from DB only (xero_pl_lines + financial_metrics + cfo_report_status) — no live Xero API calls
-
-### MLTE — Dragon Multi-Entity Consolidation
-- **MLTE-01**: Consolidation groups can be defined (name + list of member Xero businesses) and stored in DB
-- **MLTE-02**: Consolidated P&L shows three column groups: Entity A | Entity B | Combined for every P&L row
-- **MLTE-03**: Account alignment is by account_type (revenue / cogs / opex) — not by account name; absent accounts show $0
-- **MLTE-04**: Selecting a consolidation group from the monthly report business selector loads the consolidated view automatically
-- **MLTE-05**: Template system (section toggles, column settings) applies identically to consolidated groups as to single-entity businesses
-
-### APPR — Report Approval + Delivery Workflow
-- **APPR-01**: Monthly report page shows a status pill reflecting current cfo_report_status (draft / ready_for_review / approved / sent)
-- **APPR-02**: "Approve & Send" button transitions status to approved and fires a Make.com webhook with report metadata
-- **APPR-03**: Successful webhook delivery sets sent_at timestamp and transitions status to sent
-- **APPR-04**: Webhook failure leaves status at approved with an error toast — not silently dropped
-- **APPR-05**: Make.com webhook URL is configurable per business in settings — not hardcoded
-
-### CPRT — Client Portal
-- **CPRT-01**: Clients can log in at /portal with their own credentials (separate from coach login)
-- **CPRT-02**: Portal shows only reports with status approved or sent — draft and ready_for_review are hidden
-- **CPRT-03**: All edit controls are hidden in portal view; no data can be modified by a portal client
-- **CPRT-04**: Deep-link URL /portal/[businessSlug]?month=YYYY-MM opens that business's report for the specified period
-- **CPRT-05**: Portal clients cannot access coach routes (/coach/*, /cfo, /finances/*) — middleware redirects to portal login
-
-### EXCL — Excel Report Pack Export
-- **EXCL-01**: User can export full report pack as a single multi-sheet Excel file on demand
-- **EXCL-02**: Only sheets enabled in the active template are included in the export
-- **EXCL-03**: Summary P&L sheet uses 9-column Calxa format with colour-coded section headers
-- **EXCL-04**: Income Detail, COGS Detail, Expenses Detail each have their own sheet
-- **EXCL-05**: Subscriptions, Wages/Payroll, Contractors sheets included when template enables them
-- **EXCL-06**: Full Year Budget, Balance Sheet, Cashflow, Cash Movement sheets conditional on template
+- [ ] **DB-01**: Add nullable `deleted_at`, `deleted_by` columns to the 8 most-mutated financial tables: `financial_forecasts`, `forecast_employees`, `forecast_pl_lines`, `monthly_actuals`, `xero_pl_lines`, `cfo_report_status`, `cfo_email_log`, `account_mappings`. Single additive migration.
+- [ ] **DB-02**: Add nullable `created_by`, `updated_by` columns to the same 8 tables. Backfill `created_by` from `forecast_audit_log` where possible. Single additive migration.
+- [ ] **DB-03**: Audit each of the 56 orphan-prone FKs (per audit Section D #1). Decide CASCADE vs SET NULL per FK; document the choice in `docs/db/fk-policy.md`.
+- [ ] **DB-04**: Apply `ON DELETE` clauses one-or-two per migration, tested against a seeded preview branch by deleting a test user and confirming downstream rows behave correctly. Target: all 56 FKs covered by phase end.
+- [ ] **DB-05**: Rename the two date-only migration files (`20260424_cfo_email_log.sql`, `20260427_unique_active_forecast_per_fy.sql`) to full `YYYYMMDDHHMMSS` form for ordering consistency.
+- [ ] **DB-06**: Tighten the 3 over-permissive RLS policies (`swot_templates`, `kpi_benchmarks`, `kpi_definitions` use `USING (true)`) — confirm intent (system reference data vs per-business). Add comments to the migration; only narrow if intent is per-business.
 
 ---
 
-## Milestone 5: Traceability Matrix
+## Future Requirements (Deferred Beyond v1.1)
 
-| REQ-ID | Description | Phase |
-|--------|-------------|-------|
-| TMPL-01 | Save current report settings as a named template | Phase 23 |
-| TMPL-02 | Apply a saved template to any client's monthly report in one action | Phase 23 |
-| TMPL-03 | Set a default template per business | Phase 23 |
-| TMPL-04 | Create, rename, and delete templates | Phase 23 |
-| CMNT-01 | AI generates narrative bullet points for each over-budget expense account | Phase 24 |
-| CMNT-02 | User can edit AI-generated commentary text before finalising | Phase 24 |
-| CMNT-03 | Commentary section includes 6-month rolling metric trend tables ($ and % of revenue) | Phase 24 |
-| CNTR-01 | Report shows individual contractor payments with 4-month rolling history | Phase 25 |
-| CNTR-02 | Contractors grouped by department/category with subtotals | Phase 25 |
-| CNTR-03 | Each row shows Budget | Month-3 | Month-2 | Month-1 | Current | Variance | Phase 25 |
-| CNTR-04 | Contractors section enabled/disabled per template | Phase 25 |
-| PRYR-01 | Income, COGS, and Expense bar charts show 3 series: Actuals, Budget, Prior Year Actuals | Phase 26 |
-| PRYR-02 | Prior year data sourced from xero_pl_lines for the previous fiscal year | Phase 26 |
-| BLSH-01 | Balance sheet tab shows Assets, Liabilities, Equity with Current Month / Prior Year / Var$ / Var% | Phase 27 |
-| BLSH-02 | Balance sheet data fetched from Xero /Reports/BalanceSheet API with prior year compare | Phase 27 |
-| BLSH-03 | Balance sheet enabled/disabled per template | Phase 27 |
-| CASH-C-01 | OpEx paid in month accrued (Calxa Rule 7) | Phase 28.0 |
-| CASH-C-02 | `getTimingSplit` returns splits summing to exactly 100% | Phase 28.0 |
-| CASH-C-03 | Depreciation excluded from cash outflows (keyword-match interim) | Phase 28.0 |
-| CASH-C-04 | Engine test suite covers ≥15 core scenarios | Phase 28.0 |
-| CASH-C-05 | All tests pass; zero TypeScript errors | Phase 28.0 |
-| CASH-C-10 | `cashflow_settings` table stores explicit Xero account IDs | Phase 28.1 |
-| CASH-C-11 | `cashflow_account_profiles` table for per-account Type 1-5 overrides | Phase 28.1 |
-| CASH-C-12 | `cashflow_statement_classification` table for AASB 107 classification | Phase 28.1 |
-| CASH-C-13 | `xero_accounts` caches full Chart of Accounts | Phase 28.1 |
-| CASH-C-14 | `/api/Xero/chart-of-accounts-full` endpoint fetches and caches COA | Phase 28.1 |
-| CASH-C-15 | `/api/forecast/cashflow/settings` GET/POST endpoint | Phase 28.1 |
-| CASH-C-16 | `useXeroAccounts` hook provides grouped account lists | Phase 28.1 |
-| CASH-C-17 | `CashflowAccountsPanel` UI with dropdowns for each category | Phase 28.1 |
-| CASH-C-18 | Auto-populate defaults based on `xero_type` | Phase 28.1 |
-| CASH-C-19 | Feature flag `use_explicit_accounts` gates new behaviour | Phase 28.1 |
-| CASH-C-20 | Engine falls back to keyword matching when flag off | Phase 28.1 |
-| CASH-C-25 | Depreciation uses account ID when configured, keyword otherwise | Phase 28.2 |
-| CASH-C-26 | Depreciation shown as non-cash add-back in indirect view | Phase 28.2 |
-| CASH-C-27 | Company Tax module: annual tax = net profit × rate | Phase 28.2 |
-| CASH-C-28 | Company Tax distributed across schedule months | Phase 28.2 |
-| CASH-C-29 | CapEx pulls Fixed Asset movements from Xero balance sheet | Phase 28.2 |
-| CASH-C-30 | CapEx uses `forecast_investments` for forecast months | Phase 28.2 |
-| CASH-C-31 | Type extended with indirect-method fields | Phase 28.2 |
-| CASH-C-32 | Direct/Indirect toggle on CashflowForecastTable | Phase 28.2 |
-| CASH-C-33 | Both methods reconcile to same Net Cash Movement | Phase 28.2 |
-| CASH-C-34 | Engine tests cover depreciation/tax/capex | Phase 28.2 |
-| CASH-C-35 | Direct method behaviour preserved (backwards compat) | Phase 28.2 |
-| CASH-C-40 | `cashflow_schedules` table with BasePeriods[12] | Phase 28.3 |
-| CASH-C-41 | 6 AU-standard schedules seeded | Phase 28.3 |
-| CASH-C-42 | `daysToDistribution(days)` produces dist[12] summing to 100 | Phase 28.3 |
-| CASH-C-43 | `resolveSchedule(name)` returns BasePeriods | Phase 28.3 |
-| CASH-C-44 | Settings use schedule name (not frequency string) | Phase 28.3 |
-| CASH-C-45 | `/api/forecast/cashflow/profiles` CRUD endpoint | Phase 28.3 |
-| CASH-C-46 | `AccountProfileEditor` Type 1-5 UI | Phase 28.3 |
-| CASH-C-47 | Type 1 Immediate pays in accrual month | Phase 28.3 |
-| CASH-C-48 | Type 3/4 accept float-precision days | Phase 28.3 |
-| CASH-C-49 | Type 5 uses named BasePeriods lookup | Phase 28.3 |
-| CASH-C-50 | Engine prefers profile over global DSO/DPO | Phase 28.3 |
-| MYOB-01 | User can connect MYOB AccountRight company file via OAuth 2.0 | Phase 30 |
-| MYOB-02 | MYOB P&L actuals sync into xero_pl_lines table (source: 'myob' flag) | Phase 30 |
-| MYOB-03 | MYOB balance sheet data available for balance sheet report | Phase 30 |
-| MYOB-04 | Monthly report generation works identically for MYOB-connected businesses as Xero | Phase 30 |
-| HBSF-01 | User can connect HubStaff organisation via OAuth 2.0 | Phase 31 |
-| HBSF-02 | HubStaff contractor payment data enriches Contractors tab when connected | Phase 31 |
-| HBSF-03 | HubStaff data merges with Xero contractor data by name match | Phase 31 |
-| EXCL-01 | User can export full report pack as a single multi-sheet Excel file on demand | Phase 32 |
-| EXCL-02 | Only sheets enabled in the active template are included in the export | Phase 32 |
-| EXCL-03 | Summary P&L sheet uses 9-column Calxa format with colour-coded section headers | Phase 32 |
-| EXCL-04 | Income Detail, COGS Detail, Expenses Detail each have their own sheet | Phase 32 |
-| EXCL-05 | Subscriptions, Wages/Payroll, Contractors sheets included when template enables them | Phase 32 |
-| EXCL-06 | Full Year Budget, Balance Sheet, Cashflow, Cash Movement sheets conditional on template | Phase 32 |
-| CFOD-01 | Page at /cfo shows all CFO-flagged clients in a card grid (coach/super_admin only) | Phase 33 |
-| CFOD-02 | Each card shows revenue vs budget %, GP%, net profit $, cash balance, recon status, report status | Phase 33 |
-| CFOD-03 | Status badge (On Track / Watch / Alert) computed from NP vs budget variance and recon count | Phase 33 |
-| CFOD-04 | Top bar: 4 stat cards — on track, pending approval, recon alerts, next report due | Phase 33 |
-| CFOD-05 | Month selector defaults to previous month; changes reload all client cards | Phase 33 |
-| CFOD-06 | "Review Report" button navigates to that client's monthly report for the selected period | Phase 33 |
-| CFOD-07 | Dashboard reads from DB only — no live Xero API calls | Phase 33 |
-| MLTE-01 | Consolidation groups defined (name + member businesses) stored in DB | Phase 34 |
-| MLTE-02 | Consolidated P&L shows Entity A / Entity B / Combined column groups | Phase 34 |
-| MLTE-03 | Account alignment by account_type; absent accounts show $0 | Phase 34 |
-| MLTE-04 | Selecting a consolidation group loads consolidated view automatically | Phase 34 |
-| MLTE-05 | Template system applies identically to consolidated groups as to single businesses | Phase 34 |
-| APPR-01 | Monthly report page shows status pill (draft / ready_for_review / approved / sent) | Phase 35 |
-| APPR-02 | "Approve & Send" fires Make.com webhook with report metadata | Phase 35 |
-| APPR-03 | Successful webhook sets sent_at and transitions status to sent | Phase 35 |
-| APPR-04 | Webhook failure leaves status at approved with error toast | Phase 35 |
-| APPR-05 | Make.com webhook URL configurable per business in settings | Phase 35 |
-| CPRT-01 | Clients log in at /portal with own credentials, separate from coach login | Phase 36 |
-| CPRT-02 | Portal shows only approved/sent reports — draft and ready_for_review hidden | Phase 36 |
-| CPRT-03 | All edit controls hidden in portal view; no data modifications possible | Phase 36 |
-| CPRT-04 | Deep-link /portal/[slug]?month=YYYY-MM opens that business's report | Phase 36 |
-| CPRT-05 | Portal clients cannot access coach routes — middleware redirects to portal login | Phase 36 |
+These were identified in the audit but deferred to a later milestone — too disruptive for a hardening sprint, or only worth doing once Phases 44-49 land.
+
+- **Distributed rate limiting** (Redis or Supabase-backed) — replace the in-memory `Map` in `src/lib/utils/rate-limiter.ts`. Defer to v1.2.
+- **CSRF middleware enforcement** — middleware sets the cookie but routes don't validate. Defer until VALID-* lands so Zod can validate the CSRF header alongside the body.
+- **`@supabase/auth-helpers-nextjs` → `@supabase/ssr` migration** for the 5 remaining callsites. Defer to v1.2.
+- **RSC migration** for the 86 client-rendered pages — only when next touching the page anyway.
+- **God-file extraction** for the 6 files >2,000 LOC — only when next touching the feature.
+- **Major dependency upgrades** (Next 14→16, React 18→19, Anthropic SDK 0.39→0.91) — separate milestone with dedicated test budget.
+- **Persistent audit log table for super_admin actions** — currently `console.log` only. Defer to v1.2.
+
+## Out of Scope (Explicit Exclusions)
+
+- **Architectural rewrites.** No moving from App Router to Pages Router, no changing the multi-tenant model, no replacing Supabase. The audit found these foundations sound.
+- **New features.** This is a hardening milestone — zero new user-facing capabilities.
+- **Touching the consolidation domain logic itself.** The engine in `src/lib/consolidation/` is the strongest part of the codebase; v1.1 only swaps its arithmetic layer (MONEY-*) without altering FX, eliminations, or balance-sheet rules.
+- **Removing Sentry.** It's wired correctly; just underused. SEC-07 makes it actually used.
+- **Migrating away from Vercel or Supabase.** Both are working as designed.
+
+## Traceability (filled by roadmapper)
+
+| Requirement | Phase | Notes |
+|---|---|---|
+| TEST-01 | Phase 44 | Test Gate & CI Hardening |
+| TEST-02 | Phase 44 | Test Gate & CI Hardening |
+| TEST-03 | Phase 44 | Test Gate & CI Hardening |
+| TEST-04 | Phase 44 | Test Gate & CI Hardening |
+| TEST-05 | Phase 44 | Test Gate & CI Hardening |
+| TEST-06 | Phase 44 | Test Gate & CI Hardening |
+| CLEAN-01 | Phase 45 | Invisible Cleanup |
+| CLEAN-02 | Phase 45 | Invisible Cleanup |
+| CLEAN-03 | Phase 45 | Invisible Cleanup |
+| CLEAN-04 | Phase 45 | Invisible Cleanup |
+| CLEAN-05 | Phase 45 | Invisible Cleanup |
+| CLEAN-06 | Phase 45 | Invisible Cleanup |
+| CLEAN-07 | Phase 45 | Invisible Cleanup |
+| CLEAN-08 | Phase 45 | Invisible Cleanup |
+| CLEAN-09 | Phase 45 | Invisible Cleanup |
+| SEC-01 | Phase 46 | Server-Side Hardening |
+| SEC-02 | Phase 46 | Server-Side Hardening |
+| SEC-03 | Phase 46 | Server-Side Hardening |
+| SEC-04 | Phase 46 | Server-Side Hardening |
+| SEC-05 | Phase 46 | Server-Side Hardening |
+| SEC-06 | Phase 46 | Server-Side Hardening |
+| SEC-07 | Phase 46 | Server-Side Hardening |
+| SEC-08 | Phase 46 | Server-Side Hardening |
+| VALID-01 | Phase 47 | Input Validation Rollout |
+| VALID-02 | Phase 47 | Input Validation Rollout |
+| VALID-03 | Phase 47 | Input Validation Rollout |
+| VALID-04 | Phase 47 | Input Validation Rollout |
+| VALID-05 | Phase 47 | Input Validation Rollout |
+| VALID-06 | Phase 47 | Input Validation Rollout |
+| MONEY-01 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-02 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-03 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-04 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-05 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-06 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-07 | Phase 48 | Decimal Money Arithmetic |
+| MONEY-08 | Phase 48 | Decimal Money Arithmetic |
+| DB-01 | Phase 49 | Database Integrity Hygiene |
+| DB-02 | Phase 49 | Database Integrity Hygiene |
+| DB-03 | Phase 49 | Database Integrity Hygiene |
+| DB-04 | Phase 49 | Database Integrity Hygiene |
+| DB-05 | Phase 49 | Database Integrity Hygiene |
+| DB-06 | Phase 49 | Database Integrity Hygiene |
+
+---
+
+## Validated (Milestone v1.0 — shipped)
+
+The v1.0 milestone (Phases 1–43) shipped 17 phases of foundational work including OpEx double-counting fix, coach shell stability, Xero connection reliability, forecast wizard v4 (Steps 1-8), Phase 14 extended-period detection, Phase 19 monthly reporting, Phases 23-32 (Calxa replacement / monthly report pack), Phase 33 (CFO multi-client dashboard), Phase 34 (Dragon multi-entity consolidation), Phase 35 (report approval delivery workflow), Phases 37-40 (resolveBusinessId rollout + branded types + Playwright E2E), Phase 41 (phantom business orphan rows), Phase 42 (monthly report save flow), Phase 43 (plan period as explicit state).
+
+See `.planning/ROADMAP.md` for the full v1.0 phase history.
