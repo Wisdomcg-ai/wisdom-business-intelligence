@@ -54,6 +54,7 @@ config({ path: path.resolve(process.cwd(), '.env.local') })
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { v5 as uuidv5 } from 'uuid'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 
 // Stable Phase-44.2-06A namespace for synthetic AccountID derivation.
 // Generated once and frozen here so re-runs produce identical UUIDs for the
@@ -216,19 +217,32 @@ async function backfillAccountIds(
   tenantId: string,
   dryRun: boolean
 ): Promise<{ backfilled: number; synth_aid: number }> {
-  // Pull all rows for this (business_id, tenant_id) where account_id is still NULL.
-  const { data: pendingRows, error: selectErr } = await supabase
-    .from('xero_pl_lines')
-    .select('id, account_code, account_name')
-    .eq('business_id', businessId)
-    .eq('tenant_id', tenantId)
-    .is('account_id', null)
-
-  if (selectErr) {
-    throw new Error(`xero_pl_lines select (account_id IS NULL) failed: ${selectErr.message}`)
+  // Resolve dual-ID: xero_connections.business_id may be either businesses.id
+  // (legacy) or business_profiles.id; xero_pl_lines.business_id is always
+  // business_profiles.id per orchestrator convention. Search across both.
+  const ids = await resolveBusinessIds(supabase as any, businessId)
+  // Paginate via .range() — PostgREST caps a single SELECT at 1000 rows.
+  // Tenants like Efficient Living have 1800+ rows; without pagination the
+  // backfill silently skips the tail.
+  const PAGE_SIZE = 1000
+  const rows: Array<{ id: string; account_code: string | null; account_name: string | null }> = []
+  let from = 0
+  while (true) {
+    const { data: pageRows, error: selectErr } = await supabase
+      .from('xero_pl_lines')
+      .select('id, account_code, account_name')
+      .in('business_id', ids.all)
+      .eq('tenant_id', tenantId)
+      .is('account_id', null)
+      .range(from, from + PAGE_SIZE - 1)
+    if (selectErr) {
+      throw new Error(`xero_pl_lines select (account_id IS NULL) failed: ${selectErr.message}`)
+    }
+    if (!pageRows || pageRows.length === 0) break
+    rows.push(...(pageRows as any))
+    if (pageRows.length < PAGE_SIZE) break
+    from += PAGE_SIZE
   }
-
-  const rows = pendingRows ?? []
   if (rows.length === 0) return { backfilled: 0, synth_aid: 0 }
 
   let backfilled = 0
@@ -287,11 +301,16 @@ async function repurposeAccountCodes(
   tenantId: string,
   dryRun: boolean
 ): Promise<{ repurposed: number; unchanged: number }> {
+  // Resolve dual-ID for both catalog (xero_accounts) and P&L (xero_pl_lines)
+  // queries. Catalog rows are keyed by xero_connections.business_id (whichever
+  // form it stores); xero_pl_lines is keyed by orchestrator's profile_id.
+  const ids = await resolveBusinessIds(supabase as any, businessId)
+
   // 1. Catalog snapshot keyed by xero_account_id (cast lower for case safety).
   const { data: catalog, error: catErr } = await supabase
     .from('xero_accounts')
     .select('xero_account_id, account_code')
-    .eq('business_id', businessId)
+    .in('business_id', ids.all)
     .eq('tenant_id', tenantId)
   if (catErr) {
     throw new Error(`xero_accounts select for repurpose failed: ${catErr.message}`)
@@ -304,19 +323,30 @@ async function repurposeAccountCodes(
   }
 
   // 2. P&L rows for this tenant (now have account_id NOT NULL post-step-2).
-  const { data: plRows, error: plErr } = await supabase
-    .from('xero_pl_lines')
-    .select('id, account_id, account_code')
-    .eq('business_id', businessId)
-    .eq('tenant_id', tenantId)
-    .not('account_id', 'is', null)
-  if (plErr) {
-    throw new Error(`xero_pl_lines select for repurpose failed: ${plErr.message}`)
+  // Paginate to avoid PostgREST 1000-row cap (see backfillAccountIds for context).
+  const PAGE_SIZE = 1000
+  const plRows: Array<{ id: string; account_id: string | null; account_code: string | null }> = []
+  let from = 0
+  while (true) {
+    const { data: page, error: plErr } = await supabase
+      .from('xero_pl_lines')
+      .select('id, account_id, account_code')
+      .in('business_id', ids.all)
+      .eq('tenant_id', tenantId)
+      .not('account_id', 'is', null)
+      .range(from, from + PAGE_SIZE - 1)
+    if (plErr) {
+      throw new Error(`xero_pl_lines select for repurpose failed: ${plErr.message}`)
+    }
+    if (!page || page.length === 0) break
+    plRows.push(...(page as any))
+    if (page.length < PAGE_SIZE) break
+    from += PAGE_SIZE
   }
 
   let repurposed = 0
   let unchanged = 0
-  for (const row of plRows ?? []) {
+  for (const row of plRows) {
     const aidKey = String(row.account_id).toLowerCase()
     const targetCode = lookup.get(aidKey)
     if (targetCode === undefined) {
@@ -457,7 +487,6 @@ async function main() {
   let q = supabase
     .from('xero_connections')
     .select('id, business_id, tenant_id, tenant_name, is_active')
-    .eq('is_active', true)
     .order('updated_at', { ascending: false })
   if (args.tenantIdFilter) {
     q = q.eq('tenant_id', args.tenantIdFilter)
@@ -483,6 +512,58 @@ async function main() {
     // Polite delay between tenants to stay clear of Xero rate limits.
     await new Promise(r => setTimeout(r, 300))
   }
+
+  // Orphan sweep — handle xero_pl_lines rows that have no matching xero_connections
+  // entry at all. Pre-multi-tenant data with empty tenant_id falls into this bucket.
+  // We can't pull /Accounts for these (no token), but we can still assign synthetic
+  // uuid-v5 account_ids so migration 000003's NOT NULL constraint can land.
+  console.log('\n[backfill] Orphan sweep — rows with account_id IS NULL and no matching xero_connections')
+  const PAGE_SIZE = 1000
+  let orphanRows: Array<{ id: string; business_id: string; tenant_id: string | null; account_code: string | null; account_name: string | null }> = []
+  let from = 0
+  while (true) {
+    const { data: page, error: orphErr } = await supabase
+      .from('xero_pl_lines')
+      .select('id, business_id, tenant_id, account_code, account_name')
+      .is('account_id', null)
+      .range(from, from + PAGE_SIZE - 1)
+    if (orphErr) {
+      console.error('[backfill]   orphan sweep select failed:', orphErr.message)
+      break
+    }
+    if (!page || page.length === 0) break
+    orphanRows.push(...(page as any))
+    if (page.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  console.log(`[backfill]   orphan sweep found ${orphanRows.length} row(s) with NULL account_id`)
+  let orphanFixed = 0
+  for (const row of orphanRows) {
+    const code = (row.account_code ?? '').trim()
+    let accountId: string
+    let synthNote: string | null = null
+    if (GUID_RE.test(code)) {
+      accountId = code.toLowerCase()
+    } else {
+      const seed = `${row.business_id}|${row.tenant_id ?? ''}|${(row.account_name ?? '').trim().toLowerCase()}`
+      accountId = uuidv5(seed, SYNTH_AID_NAMESPACE)
+      synthNote = `SYNTH-AID: orphan-tenant cleanup, no xero_connections row at backfill time. Original account_code='${code}'.`
+    }
+    if (!args.dryRun) {
+      const update: Record<string, unknown> = { account_id: accountId }
+      if (synthNote) update.notes = synthNote
+      const { error: updErr } = await supabase
+        .from('xero_pl_lines')
+        .update(update)
+        .eq('id', row.id)
+      if (updErr) {
+        console.error(`[backfill]   orphan update failed for id=${row.id}: ${updErr.message}`)
+        continue
+      }
+    }
+    orphanFixed++
+  }
+  console.log(`[backfill]   orphan sweep ${args.dryRun ? '(dry-run) would update' : 'updated'}: ${orphanFixed}`)
 
   // Summary table.
   console.log('\n=== BACKFILL SUMMARY ===')
