@@ -58,6 +58,7 @@ function formatGrowth(pct: number | null): string {
 const emptySummary: YearlySummary = {
   revenue: 0, cogs: 0, grossProfit: 0, grossProfitPct: 0,
   teamCosts: 0, opex: 0, depreciation: 0, otherExpenses: 0,
+  otherIncome: 0, xeroOtherExpense: 0,
   netProfit: 0, netProfitPct: 0,
 };
 

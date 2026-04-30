@@ -141,6 +141,14 @@ async function syncXeroData(business_id: string) {
       }
     }
 
+    // DEPRECATED (Tier 3 cleanup, 2026-04-30): the 3-bucket net_profit_month
+    // formula below omits the Xero `other_income` and `other_expense` buckets,
+    // so it can disagree with the canonical 5-bucket net profit produced by
+    // forecast-read-service.ts and historical-pl-summary.ts. We retained it
+    // because no current consumer reads `financial_metrics.net_profit_month`
+    // (verified via codebase grep — only `total_cash`, `unreconciled_count`,
+    // and `metric_date` are read). Treat as dead-write; remove in a future
+    // migration if no consumer surfaces by 2026-08.
     monthlyMetrics.net_profit_month = monthlyMetrics.revenue_month - monthlyMetrics.cogs_month - monthlyMetrics.expenses_month;
 
     // Save to financial_metrics table

@@ -51,6 +51,7 @@ type HealthStatus = 'good' | 'ok' | 'concern';
 const emptySummary: YearlySummary = {
   revenue: 0, cogs: 0, grossProfit: 0, grossProfitPct: 0,
   teamCosts: 0, opex: 0, depreciation: 0, investments: 0, otherExpenses: 0,
+  otherIncome: 0, xeroOtherExpense: 0,
   netProfit: 0, netProfitPct: 0,
 };
 
@@ -509,7 +510,11 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
     const teamCosts = yearData.teamCosts + totalTeamAdj;
     const opex = yearData.opex + totalOpexAdj;
     const otherExpenses = yearData.otherExpenses + totalOtherAdj;
-    const netProfit = grossProfit - teamCosts - opex - otherExpenses;
+    // Carry the Xero buckets through unchanged from yearData — what-if toggles
+    // don't currently adjust other_income or xero_other_expense.
+    const otherIncome = yearData.otherIncome ?? 0;
+    const xeroOtherExpense = yearData.xeroOtherExpense ?? 0;
+    const netProfit = grossProfit - teamCosts - opex - otherExpenses + otherIncome - xeroOtherExpense;
 
     return {
       revenue,
@@ -520,6 +525,8 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
       opex,
       depreciation: yearData.depreciation,
       otherExpenses,
+      otherIncome,
+      xeroOtherExpense,
       netProfit,
       netProfitPct: revenue > 0 ? (netProfit / revenue) * 100 : 0,
     };
@@ -914,6 +921,16 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
               {/* Other */}
               {adjustedData.otherExpenses > 0 && (
                 <PLRow label="Other Expenses" amount={-adjustedData.otherExpenses} />
+              )}
+
+              {/* Plus Other Income (Xero bucket — interest, grants, etc.) */}
+              {(adjustedData.otherIncome ?? 0) > 0 && (
+                <PLRow label="Plus Other Income" amount={adjustedData.otherIncome ?? 0} />
+              )}
+
+              {/* Less Other Expenses (Xero bucket — rare; only if tenant has OTHEREXPENSE accounts) */}
+              {(adjustedData.xeroOtherExpense ?? 0) > 0 && (
+                <PLRow label="Less Other Expenses" amount={-(adjustedData.xeroOtherExpense ?? 0)} />
               )}
 
               {/* Net Profit */}
