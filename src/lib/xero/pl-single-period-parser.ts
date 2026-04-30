@@ -29,6 +29,7 @@ import { v5 as uuidv5 } from 'uuid'
 import {
   parseAmount,
   classifyAccountType,
+  titleClassifiesToKnownType,
   type AccountType,
 } from './pl-by-month-parser'
 
@@ -191,27 +192,6 @@ function walkSection(
       basis: ctx.basis,
     })
   }
-}
-
-/**
- * D-44.2-14 fix predicate: returns true iff `title` matches one of the
- * recognized top-level section substrings. Mirrors classifyAccountType
- * but distinguishes "yes, classified" from "fell through to default 'opex'".
- */
-function titleClassifiesToKnownType(title: string): boolean {
-  const t = title.toLowerCase()
-  return (
-    t.includes('other income') ||
-    t.includes('other expense') ||
-    t.includes('cost of sales') ||
-    t.includes('cogs') ||
-    t.includes('direct cost') ||
-    t.includes('operating expense') ||
-    t.includes('expense') ||
-    t.includes('income') ||
-    t.includes('revenue') ||
-    t.includes('sales')
-  )
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────

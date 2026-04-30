@@ -134,6 +134,33 @@ export function classifyAccountType(sectionTitle: string): AccountType {
 }
 
 /**
+ * D-44.2-14 fix predicate (Phase 44.2-06B). Returns true iff `title`
+ * matches one of the recognized top-level section substrings used by
+ * classifyAccountType. The fix uses this to refuse parent-title
+ * carry-forward for sub-sections whose title would otherwise fall through
+ * to the default 'opex' bucket — preserving inherited classification.
+ *
+ * Used by parsePLByMonth (this module) AND the new parsePLSinglePeriod
+ * (44.2-06B Task 4) — kept together with classifyAccountType so the two
+ * stay in sync.
+ */
+export function titleClassifiesToKnownType(title: string): boolean {
+  const t = title.toLowerCase()
+  return (
+    t.includes('other income') ||
+    t.includes('other expense') ||
+    t.includes('cost of sales') ||
+    t.includes('cogs') ||
+    t.includes('direct cost') ||
+    t.includes('operating expense') ||
+    t.includes('expense') ||
+    t.includes('income') ||
+    t.includes('revenue') ||
+    t.includes('sales')
+  )
+}
+
+/**
  * Xero's calculated/summary row names that must never be stored as account
  * lines. These are computed totals, not real chart-of-accounts entries.
  */
@@ -210,12 +237,18 @@ export function parsePLByMonth(report: unknown): ParsedPLRow[] {
     if (section.RowType !== 'Section' || !Array.isArray(section.Rows)) continue
 
     const ownTitle = (section.Title ?? '').trim()
-    // Only update the carry-forward when the section's own title classifies
-    // to a *known* type. Empty-title sections (Gross Profit / Net Profit /
-    // Total Operating Expenses wrappers in Xero's tree) must NOT clobber
-    // the inheritance chain — otherwise the sub-sections that follow would
-    // lose their parent context.
-    if (ownTitle) {
+    // D-44.2-14 fix: only update the carry-forward when the section's title
+    // classifies to a known top-level type (revenue|cogs|opex|other_income|
+    // other_expense). Sub-sections like "Software Development" — which used
+    // to fall through to the default 'opex' bucket — must NOT clobber the
+    // inherited "Less Cost of Sales" classification, otherwise rows like
+    // "PK Costs" land in opex when they belong in cogs.
+    //
+    // Empty-title sections (Gross Profit / Net Profit / Total Operating
+    // Expenses wrappers in Xero's tree) ALSO must not clobber, which is
+    // why the original `if (ownTitle)` guard already covered that case.
+    // We tighten it: only classifying titles update the chain.
+    if (ownTitle && titleClassifiesToKnownType(ownTitle)) {
       currentParentTitle = ownTitle
     }
 
