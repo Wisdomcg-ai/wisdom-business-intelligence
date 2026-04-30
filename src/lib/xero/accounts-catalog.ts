@@ -19,6 +19,7 @@
 import {
   fetchXeroWithRateLimit,
 } from './xero-api-client'
+import type { AccountType } from './pl-by-month-parser'
 
 // ─── Public types ───────────────────────────────────────────────────────────
 
@@ -35,6 +36,45 @@ export type CatalogEntry = {
 }
 
 export type CatalogMap = Map<string, CatalogEntry>
+
+// ─── Classification (catalog-based, layout-independent) ─────────────────────
+
+/**
+ * Classify a row into our 5-bucket P&L taxonomy based on the Xero AccountID's
+ * `xero_type` from the catalog. This is layout-independent: it consults the
+ * chart-of-accounts truth (what Xero says the account IS) rather than the
+ * report-layout intent (where the user dragged the row in their custom report).
+ *
+ * Returns null when the type isn't a P&L type (assets/liabilities/equity) OR
+ * when xero_type is unknown — the caller should fall back to the parser's
+ * section-based classification in those cases.
+ *
+ * Mapping references Xero's documented account types:
+ * https://developer.xero.com/documentation/api/accounting/types#account-types
+ */
+export function classifyByXeroType(xeroType: string | undefined | null): AccountType | null {
+  if (!xeroType) return null
+  const t = xeroType.toUpperCase()
+  switch (t) {
+    case 'SALES':
+    case 'REVENUE':
+      return 'revenue'
+    case 'OTHERINCOME':
+      return 'other_income'
+    case 'DIRECTCOSTS':
+      return 'cogs'
+    case 'OVERHEADS':
+    case 'EXPENSE':
+    case 'DEPRECIATN':
+    case 'SUPERANNUATIONEXPENSE':
+    case 'WAGESEXPENSE':
+      return 'opex'
+    case 'OTHEREXPENSE':
+      return 'other_expense'
+    default:
+      return null // assets/liabilities/equity/unknown — not a P&L row
+  }
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
