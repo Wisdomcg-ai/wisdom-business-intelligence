@@ -344,4 +344,165 @@ describe('parsePLSinglePeriod', () => {
     expect(rows[0]!.period_month).toBe('2025-12-01') // NOT inferred from header
     expect(rows[0]!.basis).toBe('cash')
   })
+
+  describe('forward-carry across flat sibling sub-sections (JDS custom layout)', () => {
+    // Xero's standardLayout=false flattens user-defined sub-headers into
+    // top-level Sections. JDS's response has e.g.
+    //   "Less Operating Expenses"   (classifies → opex)
+    //   "Admin Expenses"            (classifies → opex)
+    //   "Advertising & Marketing"   (does NOT classify) ← rows would be dropped
+    //   "Office Expenses"           (classifies → opex)
+    // Without forward-carry the "Advertising & Marketing" rows had no
+    // effective parent type and were dropped by walkSection's orphan guard.
+    // Forward-carry inherits from the most recent classifying sibling.
+    const flatFixture = {
+      Reports: [
+        {
+          Rows: [
+            {
+              RowType: 'Section',
+              Title: 'Less Operating Expenses',
+              Rows: [
+                { RowType: 'Row', Cells: [
+                  { Value: 'Bank Charges', Attributes: [{ Id: 'account', Value: 'bbbbbbbb-1111-1111-1111-bbbbbbbbbbbb' }] },
+                  { Value: '500.00' },
+                ]},
+              ],
+            },
+            {
+              RowType: 'Section',
+              Title: 'Admin Expenses', // contains "expense" — classifies opex
+              Rows: [
+                { RowType: 'Row', Cells: [
+                  { Value: 'Accountancy Fees', Attributes: [{ Id: 'account', Value: 'cccccccc-2222-2222-2222-cccccccccccc' }] },
+                  { Value: '1000.00' },
+                ]},
+              ],
+            },
+            {
+              RowType: 'Section',
+              Title: 'Advertising & Marketing', // does NOT classify
+              Rows: [
+                { RowType: 'Row', Cells: [
+                  { Value: 'JDS Trade Show Exhibitions', Attributes: [{ Id: 'account', Value: 'dddddddd-3333-3333-3333-dddddddddddd' }] },
+                  { Value: '90447.23' },
+                ]},
+                { RowType: 'Row', Cells: [
+                  { Value: 'Advertising/Marketing', Attributes: [{ Id: 'account', Value: 'eeeeeeee-4444-4444-4444-eeeeeeeeeeee' }] },
+                  { Value: '63871.70' },
+                ]},
+              ],
+            },
+            {
+              RowType: 'Section',
+              Title: 'Office Expenses',
+              Rows: [
+                { RowType: 'Row', Cells: [
+                  { Value: 'Rent', Attributes: [{ Id: 'account', Value: 'ffffffff-5555-5555-5555-ffffffffffff' }] },
+                  { Value: '5972.80' },
+                ]},
+              ],
+            },
+          ],
+        },
+      ],
+    }
+
+    it('captures rows under non-classifying sibling sub-sections', async () => {
+      const { parsePLSinglePeriod } = await import('@/lib/xero/pl-single-period-parser')
+      const rows = parsePLSinglePeriod(flatFixture, '2026-03-01', 'accruals', TENANT_A)
+      const names = rows.map((r: any) => r.account_name).sort()
+      expect(names).toContain('JDS Trade Show Exhibitions')
+      expect(names).toContain('Advertising/Marketing')
+      expect(rows.length).toBe(5) // 1 + 1 + 2 + 1
+    })
+
+    it('inherits opex from the most recent classifying sibling', async () => {
+      const { parsePLSinglePeriod } = await import('@/lib/xero/pl-single-period-parser')
+      const rows = parsePLSinglePeriod(flatFixture, '2026-03-01', 'accruals', TENANT_A)
+      const tradeshow = rows.find((r: any) => r.account_name === 'JDS Trade Show Exhibitions')
+      const advert = rows.find((r: any) => r.account_name === 'Advertising/Marketing')
+      expect(tradeshow?.account_type).toBe('opex')
+      expect(advert?.account_type).toBe('opex')
+    })
+
+    it('still classifies own-title sections correctly when title classifies', async () => {
+      const { parsePLSinglePeriod } = await import('@/lib/xero/pl-single-period-parser')
+      const rows = parsePLSinglePeriod(flatFixture, '2026-03-01', 'accruals', TENANT_A)
+      const accountancy = rows.find((r: any) => r.account_name === 'Accountancy Fees')
+      const rent = rows.find((r: any) => r.account_name === 'Rent')
+      expect(accountancy?.account_type).toBe('opex')
+      expect(rent?.account_type).toBe('opex')
+    })
+
+    it('forward-carry resets when a new classifying section is encountered', async () => {
+      const { parsePLSinglePeriod } = await import('@/lib/xero/pl-single-period-parser')
+      // Income → siblings inherit revenue. Less Cost of Sales → siblings inherit cogs.
+      const orderingFixture = {
+        Reports: [
+          {
+            Rows: [
+              { RowType: 'Section', Title: 'Income', Rows: [
+                { RowType: 'Row', Cells: [
+                  { Value: 'Sales-Hardware', Attributes: [{ Id: 'account', Value: 'aaaaaaaa-0001-0001-0001-aaaaaaaaaaaa' }] },
+                  { Value: '1000' },
+                ]},
+              ]},
+              { RowType: 'Section', Title: 'Software Dept Income', Rows: [ // classifies (income)
+                { RowType: 'Row', Cells: [
+                  { Value: 'Sales-Software', Attributes: [{ Id: 'account', Value: 'aaaaaaaa-0002-0002-0002-aaaaaaaaaaaa' }] },
+                  { Value: '500' },
+                ]},
+              ]},
+              { RowType: 'Section', Title: 'Less Cost of Sales', Rows: [
+                { RowType: 'Row', Cells: [
+                  { Value: 'Purchases-Hardware', Attributes: [{ Id: 'account', Value: 'bbbbbbbb-0001-0001-0001-bbbbbbbbbbbb' }] },
+                  { Value: '300' },
+                ]},
+              ]},
+              { RowType: 'Section', Title: 'Software Development Dept', Rows: [ // does NOT classify → inherits cogs
+                { RowType: 'Row', Cells: [
+                  { Value: 'PK Costs', Attributes: [{ Id: 'account', Value: 'bbbbbbbb-0002-0002-0002-bbbbbbbbbbbb' }] },
+                  { Value: '50' },
+                ]},
+              ]},
+            ],
+          },
+        ],
+      }
+      const rows = parsePLSinglePeriod(orderingFixture, '2026-03-01', 'accruals', TENANT_A)
+      const types = Object.fromEntries(rows.map((r: any) => [r.account_name, r.account_type]))
+      expect(types['Sales-Hardware']).toBe('revenue')
+      expect(types['Sales-Software']).toBe('revenue')
+      expect(types['Purchases-Hardware']).toBe('cogs')
+      expect(types['PK Costs']).toBe('cogs') // critical: forward-carry switched to cogs
+    })
+
+    it('parses the real JDS fixture and recovers expense accounts that were previously dropped', async () => {
+      const { parsePLSinglePeriod } = await import('@/lib/xero/pl-single-period-parser')
+      const fs = await import('node:fs')
+      const path = await import('node:path')
+      const fixturePath = path.resolve(
+        __dirname,
+        'fixtures/jds-recon-2026-04.json',
+      )
+      if (!fs.existsSync(fixturePath)) return // fixture optional in CI
+      const raw = fs.readFileSync(fixturePath, 'utf8')
+      const fixture = JSON.parse(raw)
+      const rows = parsePLSinglePeriod(fixture, '2026-04-01', 'accruals', TENANT_A)
+      const opexNames = new Set(
+        rows.filter((r: any) => r.account_type === 'opex').map((r: any) => r.account_name),
+      )
+      // These are the high-value accounts that pre-fix were dropped because
+      // they live under flat sibling sub-sections that don't classify.
+      const mustHave = [
+        'JDS Trade Show Exhibitions',
+        'Advertising/Marketing',
+        'Travelling Expenses',
+      ]
+      for (const name of mustHave) {
+        expect(opexNames).toContain(name)
+      }
+    })
+  })
 })

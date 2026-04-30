@@ -48,7 +48,7 @@ import {
   RateLimitDailyExceededError,
 } from './xero-api-client'
 import { getXeroOrgTimezone } from './organisation'
-import { refreshXeroAccountsCatalog, type CatalogMap } from './accounts-catalog'
+import { refreshXeroAccountsCatalog, classifyByXeroType, type CatalogMap } from './accounts-catalog'
 
 // ─── Public types ───────────────────────────────────────────────────────────
 
@@ -588,16 +588,23 @@ export async function syncBusinessXeroPL(
             }
           }
 
-          // 4f. Map → DB rows; account_code from catalog Map.
+          // 4f. Map → DB rows.
+          // - account_code: from catalog (user-facing Xero Code, e.g. '200')
+          // - account_type: catalog xero_type FIRST (chart-of-accounts truth,
+          //   layout-independent — works for any tenant's custom report layout
+          //   including JDS-style flat sibling sub-sections). Parser's
+          //   section-based type is the fallback for FXGROUPID / SYNTH-AID
+          //   rows that don't have a catalog entry.
           const dbRows = monthlyRows.map((r) => {
             const catEntry = catalog.get(r.account_id)
+            const catalogType = classifyByXeroType(catEntry?.account_type)
             return {
               business_id: profileId,
               tenant_id: conn.tenant_id,
               account_id: r.account_id,
               account_code: catEntry?.account_code ?? null,
               account_name: r.account_name,
-              account_type: r.account_type,
+              account_type: catalogType ?? r.account_type,
               period_month: r.period_month,
               amount: r.amount,
               basis: r.basis,

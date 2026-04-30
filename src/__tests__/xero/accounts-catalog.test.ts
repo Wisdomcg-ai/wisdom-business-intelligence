@@ -230,3 +230,61 @@ describe('refreshXeroAccountsCatalog', () => {
     ).rejects.toBeInstanceOf(RateLimitDailyExceededError)
   })
 })
+
+describe('classifyByXeroType', () => {
+  // Layout-independent classifier — uses Xero's chart-of-accounts xero_type
+  // as source of truth. Tested against the production xero_type distribution
+  // observed across 18 tenants.
+  it('maps SALES and REVENUE to revenue', async () => {
+    const { classifyByXeroType } = await import('@/lib/xero/accounts-catalog')
+    expect(classifyByXeroType('SALES')).toBe('revenue')
+    expect(classifyByXeroType('REVENUE')).toBe('revenue')
+  })
+
+  it('maps OTHERINCOME to other_income', async () => {
+    const { classifyByXeroType } = await import('@/lib/xero/accounts-catalog')
+    expect(classifyByXeroType('OTHERINCOME')).toBe('other_income')
+  })
+
+  it('maps DIRECTCOSTS to cogs', async () => {
+    const { classifyByXeroType } = await import('@/lib/xero/accounts-catalog')
+    expect(classifyByXeroType('DIRECTCOSTS')).toBe('cogs')
+  })
+
+  it('maps EXPENSE/OVERHEADS/DEPRECIATN/SUPER/WAGES to opex', async () => {
+    const { classifyByXeroType } = await import('@/lib/xero/accounts-catalog')
+    expect(classifyByXeroType('EXPENSE')).toBe('opex')
+    expect(classifyByXeroType('OVERHEADS')).toBe('opex')
+    expect(classifyByXeroType('DEPRECIATN')).toBe('opex')
+    expect(classifyByXeroType('SUPERANNUATIONEXPENSE')).toBe('opex')
+    expect(classifyByXeroType('WAGESEXPENSE')).toBe('opex')
+  })
+
+  it('maps OTHEREXPENSE to other_expense', async () => {
+    const { classifyByXeroType } = await import('@/lib/xero/accounts-catalog')
+    expect(classifyByXeroType('OTHEREXPENSE')).toBe('other_expense')
+  })
+
+  it('returns null for non-P&L types (assets, liabilities, equity)', async () => {
+    const { classifyByXeroType } = await import('@/lib/xero/accounts-catalog')
+    for (const t of ['BANK', 'CURRENT', 'FIXED', 'INVENTORY', 'NONCURRENT', 'PREPAYMENT',
+                     'CURRLIAB', 'LIABILITY', 'TERMLIAB', 'EQUITY']) {
+      expect(classifyByXeroType(t)).toBeNull()
+    }
+  })
+
+  it('returns null for null/undefined/unknown', async () => {
+    const { classifyByXeroType } = await import('@/lib/xero/accounts-catalog')
+    expect(classifyByXeroType(null)).toBeNull()
+    expect(classifyByXeroType(undefined)).toBeNull()
+    expect(classifyByXeroType('')).toBeNull()
+    expect(classifyByXeroType('NONSENSE')).toBeNull()
+  })
+
+  it('is case-insensitive', async () => {
+    const { classifyByXeroType } = await import('@/lib/xero/accounts-catalog')
+    expect(classifyByXeroType('expense')).toBe('opex')
+    expect(classifyByXeroType('Expense')).toBe('opex')
+    expect(classifyByXeroType('directcosts')).toBe('cogs')
+  })
+})

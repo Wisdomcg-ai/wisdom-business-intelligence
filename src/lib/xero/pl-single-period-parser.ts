@@ -211,12 +211,29 @@ export function parsePLSinglePeriod(
   if (!top || !Array.isArray(top.Rows)) return []
 
   const out: ParsedPLRow[] = []
+
+  // Forward-carry classification across top-level sibling sections. Xero's
+  // custom layouts (standardLayout=false) flatten user-defined sub-headers
+  // into top-level Sections — e.g. JDS returns "Less Operating Expenses",
+  // "Admin Expenses", "Advertising & Marketing", "Office Expenses" as flat
+  // siblings. Without forward-carry, "Advertising & Marketing" doesn't match
+  // any classifier keyword and all rows under it get dropped.
+  //
+  // Note: this is a fallback. The orchestrator overrides account_type using
+  // xero_accounts.xero_type (catalog) for any row whose account_id has a
+  // catalog entry — that path is layout-independent. This forward-carry is
+  // only the fallback for FXGROUPID / SYNTH-AID rows without catalog matches.
+  let currentTopLevelType: AccountType | null = null
   for (const node of top.Rows) {
     if (node.RowType !== 'Section') continue
+    const ownTitle = (node.Title ?? '').trim()
+    if (ownTitle && titleClassifiesToKnownType(ownTitle)) {
+      currentTopLevelType = classifyAccountType(ownTitle)
+    }
     walkSection(
       node,
-      null /* inherited type */,
-      null /* inherited title */,
+      currentTopLevelType,
+      ownTitle || null,
       { periodMonth, basis, tenantId, out },
     )
   }
