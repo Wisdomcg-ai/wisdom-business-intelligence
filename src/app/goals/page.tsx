@@ -9,7 +9,7 @@ import Step3PrioritizeInitiatives from './components/Step3PrioritizeInitiatives'
 import Step4AnnualPlan from './components/Step4AnnualPlan'
 import Step5SprintPlanning from './components/Step5SprintPlanning'
 import { Target, Calendar, Brain, Rocket, ChevronLeft, ChevronRight, CheckCircle, Loader2, TrendingUp, AlertCircle, HelpCircle, ChevronDown, Shield, AlertTriangle as AlertTriangleIcon, Lightbulb, Save, Cloud, CloudOff, CheckCircle2 } from 'lucide-react'
-import { getQuarterForMonth, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils'
+import { getFiscalYear, getQuarterForMonth, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils'
 // Note: Coach view is at /coach/clients/[id]/goals
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -269,6 +269,15 @@ function StrategicPlanningContent() {
   // Phase 42 — assemble planPeriod object for Step 1 banner / getYearLabel
   const planPeriod = (planStartDate && planEndDate && year1EndDate)
     ? { planStartDate, planEndDate, year1EndDate, fiscalYearStart: fiscalYearStart ?? 7 }
+    : undefined
+
+  // Plan year is derived from the saved year1EndDate so the displayed plan
+  // year is anchored to the persisted plan, not to today's calendar position
+  // (avoids planYear flipping mid-session if the user edits across midnight
+  // on FY rollover, and avoids depending on the buggy `determinePlanYear` for
+  // AU-FY planning season — see Step4AnnualPlan currentRemainderInfo).
+  const planYearFromSavedDates = year1EndDate
+    ? getFiscalYear(year1EndDate, fiscalYearStart ?? 7)
     : undefined
 
   // Banner rationale: derive a simple one based on extended/standard.
@@ -1043,6 +1052,7 @@ function StrategicPlanningContent() {
                 isExtendedPeriod={isExtendedPeriod}
                 currentYearRemainingMonths={currentYearRemainingMonths}
                 fiscalYearStart={fiscalYearStart}
+                planYear={planYearFromSavedDates}
               />
             </div>
           )}

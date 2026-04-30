@@ -5,9 +5,8 @@ import { ChevronDown, ChevronUp, AlertCircle, GripVertical, TrendingUp, X, UserP
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatDollar, parseDollarInput } from '../utils/formatting'
-import { calculateQuarters, determinePlanYear, QuarterInfo } from '../utils/quarters'
+import { calculateQuarters, deriveCurrentRemainderColumn, determinePlanYear, QuarterInfo } from '../utils/quarters'
 import { TeamMember, getInitials, getColorForName } from '../utils/team'
-import { getFiscalYear, getFiscalYearEndDate } from '@/lib/utils/fiscal-year-utils'
 
 interface Step4Props {
   twelveMonthInitiatives: StrategicInitiative[]
@@ -21,9 +20,22 @@ interface Step4Props {
   kpis: KPIData[]
   yearType: YearType
   businessId: string
+  /**
+   * Phase 14 legacy props — retained on the interface so existing callers don't
+   * break, but the column-display logic below no longer reads them. Column
+   * visibility is driven entirely by today's date relative to `planYear` and
+   * `fiscalYearStart`. See `currentRemainderInfo` below.
+   */
   isExtendedPeriod?: boolean
   currentYearRemainingMonths?: number
   fiscalYearStart?: number
+  /**
+   * The fiscal year being planned (e.g. 2027 = FY27). When provided, overrides
+   * `determinePlanYear(yearType)`. Callers should derive this from the saved
+   * `year1EndDate` so the displayed plan year is anchored to the persisted
+   * plan, not to today's calendar position.
+   */
+  planYear?: number
 }
 
 const MAX_PER_QUARTER = 5
@@ -41,47 +53,24 @@ export default function Step4AnnualPlan({
   kpis,
   yearType,
   businessId,
-  isExtendedPeriod,
-  currentYearRemainingMonths,
-  fiscalYearStart
+  isExtendedPeriod: _isExtendedPeriod, // Phase 14 legacy — see interface comment
+  currentYearRemainingMonths: _currentYearRemainingMonths,
+  fiscalYearStart,
+  planYear: planYearProp,
 }: Step4Props) {
-  // Calculate dynamic quarters based on year type
-  const planYear = determinePlanYear(yearType)
+  // Calculate dynamic quarters. planYearProp (derived from saved year1EndDate)
+  // takes precedence; fallback is determinePlanYear(yearType) for the case
+  // where the plan period hasn't been persisted yet (brand-new plan).
+  const planYear = planYearProp ?? determinePlanYear(yearType)
   const QUARTERS = useMemo(() => calculateQuarters(yearType, planYear), [yearType, planYear])
   const yearLabel = `${yearType} ${planYear}`
 
-  // Extended period: create a "Current Year Remainder" pseudo-quarter
-  const currentRemainderInfo = useMemo(() => {
-    if (!isExtendedPeriod || !currentYearRemainingMonths) return null
-
-    const today = new Date()
-    const yearStart = fiscalYearStart ?? 7
-    const currentFY = getFiscalYear(today, yearStart)
-    const fyEnd = getFiscalYearEndDate(currentFY, yearStart)
-
-    const startMonth = today.getMonth() + 1 // current month
-    const endMonth = fyEnd.getMonth() + 1
-
-    const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    const monthRange = currentYearRemainingMonths === 1
-      ? MONTH_NAMES[endMonth - 1]
-      : `${MONTH_NAMES[startMonth - 1]}-${MONTH_NAMES[endMonth - 1]}`
-
-    return {
-      id: 'current_remainder',
-      label: 'Now',
-      months: `${monthRange} ${fyEnd.getFullYear()}`,
-      title: `Remaining ${currentYearRemainingMonths}mo`,
-      isPast: false,
-      isCurrent: true,
-      isNextQuarter: false,
-      isLocked: false,
-      startMonth: startMonth,
-      endMonth: endMonth,
-      startDate: today,
-      endDate: fyEnd,
-    } as QuarterInfo
-  }, [isExtendedPeriod, currentYearRemainingMonths, fiscalYearStart])
+  // "Current FY remainder" pseudo-column — purely date-driven.
+  // See deriveCurrentRemainderColumn for the visibility rules.
+  const currentRemainderInfo = useMemo(
+    () => deriveCurrentRemainderColumn(new Date(), planYear, fiscalYearStart ?? 7),
+    [planYear, fiscalYearStart],
+  )
 
   // Combined column list for initiative sections: [current_remainder] + Q1-Q4
   const allPeriods = useMemo(() => {
