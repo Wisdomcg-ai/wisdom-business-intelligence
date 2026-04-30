@@ -225,56 +225,70 @@ export function ForecastWizardV4({
             if (freshPriorFY && freshPriorFY.total_revenue != null) {
               const cachedRevenue = state.priorYear?.revenue?.total || 0;
               const freshRevenue = freshPriorFY.total_revenue;
-              // Update if the data has changed (or if cache seems wrong)
+              const totalRevenue = freshPriorFY.total_revenue;
+              const totalCogs = freshPriorFY.total_cogs;
+              const totalOpex = freshPriorFY.operating_expenses;
+
+              // Preserve full precision — no rounding in data layer
+              const revenueByLine = (freshPriorFY.revenue_lines || []).map((line: any, idx: number) => ({
+                id: `revenue-${idx}`, name: line.account_name, total: line.total, byMonth: line.by_month || {},
+              }));
+              const cogsByLine = (freshPriorFY.cogs_lines || []).map((line: any, idx: number) => ({
+                id: `cogs-${idx}`, name: line.account_name, total: line.total,
+                byMonth: line.by_month || {}, percentOfRevenue: line.percent_of_revenue || 0,
+              }));
+              const opexByLine = (freshPriorFY.operating_expenses_by_category || []).map((cat: any, idx: number) => ({
+                id: `opex-${idx}`, name: cat.account_name || cat.category,
+                total: cat.total, monthlyAvg: cat.monthly_average || cat.total / 12, isOneOff: false,
+              }));
+
+              const freshPriorYear: PriorYearData = {
+                revenue: { total: totalRevenue, byMonth: freshPriorFY.revenue_by_month || {}, byLine: revenueByLine },
+                cogs: {
+                  total: totalCogs,
+                  percentOfRevenue: totalRevenue ? (totalCogs / totalRevenue) * 100 : 0,
+                  byMonth: freshPriorFY.cogs_by_month || {}, byLine: cogsByLine,
+                },
+                grossProfit: {
+                  total: freshPriorFY.gross_profit || (totalRevenue - totalCogs),
+                  percent: freshPriorFY.gross_margin_percent || (totalRevenue ? ((totalRevenue - totalCogs) / totalRevenue) * 100 : 0),
+                  byMonth: {},
+                },
+                opex: {
+                  total: totalOpex, byLine: opexByLine,
+                  byMonth: freshPriorFY.opex_by_month || {},
+                },
+                otherIncome: freshPriorFY.other_income ? {
+                  total: freshPriorFY.other_income,
+                  byMonth: freshPriorFY.other_income_by_month || {},
+                } : undefined,
+                otherExpenses: freshPriorFY.other_expenses ? {
+                  total: freshPriorFY.other_expenses,
+                  byMonth: freshPriorFY.other_expenses_by_month || {},
+                } : undefined,
+                seasonalityPattern: freshPriorFY.seasonality_pattern?.length === 12
+                  ? freshPriorFY.seasonality_pattern : Array(12).fill(100 / 12),
+              };
+
+              // ALWAYS replace cached priorYear with fresh API data. The prior
+              // gate (`Math.abs(cachedRevenue - freshRevenue) > 1`) only checked
+              // revenue, so when downstream fields (other_income, other_expense,
+              // opex composition, etc.) changed but revenue stayed identical,
+              // the cache was kept and the fresh data discarded — that hid the
+              // Phase 44.2 other_income recovery for any tenant whose Xero
+              // revenue total didn't move (e.g. JDS FY25: same $9.91M revenue
+              // pre/post Path A but other_income went from missing → $651,
+              // making net profit display -$651 instead of $0).
+              // priorYear is read-only display state — replacing it never
+              // clobbers user inputs.
+              actionsRef.current.setPriorYear(freshPriorYear);
+
+              // Re-initialize revenue/COGS lines from fresh data ONLY when
+              // cached data is genuinely stale or missing — gating prevents
+              // overwriting user-customized line splits (which is why this
+              // optimization existed in the first place; keep it).
               if (Math.abs((cachedRevenue || 0) - freshRevenue) > 1 || !state.priorYear) {
-                console.log('[ForecastWizardV4] Refreshing priorYear from Xero (cached:', cachedRevenue, 'fresh:', freshRevenue, ')');
-                const totalRevenue = freshPriorFY.total_revenue;
-                const totalCogs = freshPriorFY.total_cogs;
-                const totalOpex = freshPriorFY.operating_expenses;
-
-                // Preserve full precision — no rounding in data layer
-                const revenueByLine = (freshPriorFY.revenue_lines || []).map((line: any, idx: number) => ({
-                  id: `revenue-${idx}`, name: line.account_name, total: line.total, byMonth: line.by_month || {},
-                }));
-                const cogsByLine = (freshPriorFY.cogs_lines || []).map((line: any, idx: number) => ({
-                  id: `cogs-${idx}`, name: line.account_name, total: line.total,
-                  byMonth: line.by_month || {}, percentOfRevenue: line.percent_of_revenue || 0,
-                }));
-                const opexByLine = (freshPriorFY.operating_expenses_by_category || []).map((cat: any, idx: number) => ({
-                  id: `opex-${idx}`, name: cat.account_name || cat.category,
-                  total: cat.total, monthlyAvg: cat.monthly_average || cat.total / 12, isOneOff: false,
-                }));
-
-                const freshPriorYear: PriorYearData = {
-                  revenue: { total: totalRevenue, byMonth: freshPriorFY.revenue_by_month || {}, byLine: revenueByLine },
-                  cogs: {
-                    total: totalCogs,
-                    percentOfRevenue: totalRevenue ? (totalCogs / totalRevenue) * 100 : 0,
-                    byMonth: freshPriorFY.cogs_by_month || {}, byLine: cogsByLine,
-                  },
-                  grossProfit: {
-                    total: freshPriorFY.gross_profit || (totalRevenue - totalCogs),
-                    percent: freshPriorFY.gross_margin_percent || (totalRevenue ? ((totalRevenue - totalCogs) / totalRevenue) * 100 : 0),
-                    byMonth: {},
-                  },
-                  opex: {
-                    total: totalOpex, byLine: opexByLine,
-                    byMonth: freshPriorFY.opex_by_month || {},
-                  },
-                  otherIncome: freshPriorFY.other_income ? {
-                    total: freshPriorFY.other_income,
-                    byMonth: freshPriorFY.other_income_by_month || {},
-                  } : undefined,
-                  otherExpenses: freshPriorFY.other_expenses ? {
-                    total: freshPriorFY.other_expenses,
-                    byMonth: freshPriorFY.other_expenses_by_month || {},
-                  } : undefined,
-                  seasonalityPattern: freshPriorFY.seasonality_pattern?.length === 12
-                    ? freshPriorFY.seasonality_pattern : Array(12).fill(100 / 12),
-                };
-
-                actionsRef.current.setPriorYear(freshPriorYear);
-                // Re-initialize revenue/COGS lines from fresh data
+                console.log('[ForecastWizardV4] Re-initializing user-line splits (cached:', cachedRevenue, 'fresh:', freshRevenue, ')');
                 const currentYTDData = plData.summary?.current_ytd;
                 actionsRef.current.initializeFromXero({
                   priorYear: freshPriorYear,
@@ -286,7 +300,7 @@ export function ForecastWizardV4({
                   } : undefined,
                 });
               } else {
-                console.log('[ForecastWizardV4] Cached priorYear matches fresh data, no refresh needed');
+                console.log('[ForecastWizardV4] priorYear refreshed from Xero; user-line splits preserved (revenue unchanged)');
               }
 
               // COGS=0 re-sync hack removed — pl-summary now reads directly from
