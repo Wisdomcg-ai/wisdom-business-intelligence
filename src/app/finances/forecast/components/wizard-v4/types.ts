@@ -515,7 +515,12 @@ export interface YearlySummary {
   opex: number;
   depreciation: number;
   investments?: number;
+  /** User-entered one-off / recurring expenses from Step 7 (NOT Xero's other_expense bucket). */
   otherExpenses: number;
+  /** Xero `other_income` account_type bucket — carried over from prior FY actuals. */
+  otherIncome: number;
+  /** Xero `other_expense` account_type bucket — carried over from prior FY actuals. */
+  xeroOtherExpense: number;
   netProfit: number;
   netProfitPct: number;
 }

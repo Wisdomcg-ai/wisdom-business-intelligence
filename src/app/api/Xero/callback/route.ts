@@ -177,6 +177,10 @@ async function triggerInitialSync(businessId: string, accessToken: string, tenan
       }
     }
 
+    // DEPRECATED (Tier 3 cleanup, 2026-04-30): see /api/Xero/sync/route.ts for
+    // the same dead-write rationale. 3-bucket formula omits Xero
+    // other_income/other_expense buckets. No current consumer reads
+    // `financial_metrics.net_profit_month`; remove in a future migration.
     monthlyMetrics.net_profit_month = monthlyMetrics.revenue_month - monthlyMetrics.cogs_month - monthlyMetrics.expenses_month;
 
     // Save to financial_metrics table

@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
 import type { FinancialForecast, PLLine, ForecastEmployee, ForecastScenario } from '../types'
+import { netProfitFromBuckets } from '@/lib/finance/net-profit'
 
 /**
  * Excel Export Service
@@ -312,13 +313,25 @@ export class ExcelExportService {
       row = this.addCategorySection(sheet, row, 'Operating Expenses', grouped['Operating Expenses'], months, 'FFF59E0B')
     }
 
-    // Net Profit
+    // Plus Other Income (Xero bucket — interest, grants, etc.)
+    if (grouped['Other Income'].length > 0) {
+      row = this.addCategorySection(sheet, row, 'Other Income', grouped['Other Income'], months, 'FF10B981')
+    }
+
+    // Less Other Expenses (Xero bucket — rare; only for tenants with OTHEREXPENSE accounts)
+    if (grouped['Other Expenses'].length > 0) {
+      row = this.addCategorySection(sheet, row, 'Other Expenses', grouped['Other Expenses'], months, 'FFF59E0B')
+    }
+
+    // Net Profit (5-bucket formula — mirrors src/lib/finance/net-profit.ts)
     row = this.addCalculatedRow(sheet, row, 'Net Profit', months,
       (monthKey) => {
         const revenue = this.sumCategory(grouped.Revenue, monthKey)
         const cogs = this.sumCategory(grouped['Cost of Sales'], monthKey)
         const opex = this.sumCategory(grouped['Operating Expenses'], monthKey)
-        return revenue - cogs - opex
+        const otherIncome = this.sumCategory(grouped['Other Income'], monthKey)
+        const otherExpense = this.sumCategory(grouped['Other Expenses'], monthKey)
+        return netProfitFromBuckets({ revenue, cogs, opex, otherIncome, otherExpense })
       },
       'FF8B5CF6', true)
 
@@ -631,6 +644,8 @@ export class ExcelExportService {
     let revenue = 0
     let cogs = 0
     let opex = 0
+    let otherIncome = 0
+    let otherExpense = 0
 
     plLines.forEach(line => {
       const lineTotal = Object.values(line.forecast_months || {}).reduce((sum, val) => sum + (val || 0), 0)
@@ -641,6 +656,10 @@ export class ExcelExportService {
         cogs += lineTotal
       } else if (line.category === 'Operating Expenses') {
         opex += lineTotal
+      } else if (line.category === 'Other Income') {
+        otherIncome += lineTotal
+      } else if (line.category === 'Other Expenses') {
+        otherExpense += lineTotal
       }
     })
 
@@ -648,8 +667,10 @@ export class ExcelExportService {
       revenue,
       cogs,
       opex,
+      otherIncome,
+      otherExpense,
       grossProfit: revenue - cogs,
-      netProfit: revenue - cogs - opex
+      netProfit: netProfitFromBuckets({ revenue, cogs, opex, otherIncome, otherExpense })
     }
   }
 
@@ -657,7 +678,9 @@ export class ExcelExportService {
     return {
       Revenue: lines.filter(l => l.category === 'Revenue'),
       'Cost of Sales': lines.filter(l => l.category === 'Cost of Sales'),
-      'Operating Expenses': lines.filter(l => l.category === 'Operating Expenses')
+      'Operating Expenses': lines.filter(l => l.category === 'Operating Expenses'),
+      'Other Income': lines.filter(l => l.category === 'Other Income'),
+      'Other Expenses': lines.filter(l => l.category === 'Other Expenses')
     }
   }
 

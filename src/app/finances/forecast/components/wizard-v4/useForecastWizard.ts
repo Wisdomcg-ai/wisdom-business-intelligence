@@ -1140,8 +1140,31 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       const finalDepreciation = state.plannedSpends?.length > 0 ? plannedSpendDepreciation : depreciation;
       const finalInvestments = state.plannedSpends?.length > 0 ? plannedSpendExpenses : investments;
 
-      // Net Profit
-      const netProfit = grossProfit - teamCosts - opex - finalDepreciation - otherExpenses - finalInvestments;
+      // Xero buckets (other_income, other_expense) carried forward from prior FY
+      // actuals. Without these, the wizard's net profit was understated by
+      // exactly other_income (interest income, grants, etc.) — see Phase 44.2
+      // YTD-Mar 2026 reconciliation: JDS FY25 was off by $651 = exactly this
+      // figure. We persist the prior-FY rate as the projection for forecast
+      // years until the user has a UI to override per-year (future enhancement).
+      const xeroOtherIncome = state.priorYear?.otherIncome?.total ?? 0;
+      const xeroOtherExpense = state.priorYear?.otherExpenses?.total ?? 0;
+
+      // Net Profit (CFO 5-bucket formula, mirroring forecast-read-service.ts and
+      // historical-pl-summary.ts):
+      //   revenue - cogs - opex + other_income - other_expense
+      // Wizard expands the opex side into team / opex / depreciation /
+      // user-one-offs / investments. The Xero other_income/expense buckets are
+      // additive on top — see /Users/.../src/lib/finance/net-profit.ts for the
+      // canonical 5-bucket helper.
+      const netProfit =
+        grossProfit
+        - teamCosts
+        - opex
+        - finalDepreciation
+        - otherExpenses // user-entered one-offs (Step 7), NOT Xero other_expense bucket
+        - finalInvestments
+        + xeroOtherIncome
+        - xeroOtherExpense;
       const netProfitPct = revenue > 0 ? (netProfit / revenue) * 100 : 0;
 
       return {
@@ -1153,7 +1176,9 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         opex: Math.round(opex),
         depreciation: Math.round(finalDepreciation),
         investments: Math.round(finalInvestments),
-        otherExpenses: Math.round(otherExpenses),
+        otherExpenses: Math.round(otherExpenses), // user-entered list
+        otherIncome: Math.round(xeroOtherIncome),
+        xeroOtherExpense: Math.round(xeroOtherExpense),
         netProfit: Math.round(netProfit),
         netProfitPct: Math.round(netProfitPct * 10) / 10,
       };

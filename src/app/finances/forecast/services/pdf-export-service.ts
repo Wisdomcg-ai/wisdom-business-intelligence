@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { FinancialForecast, PLLine, ForecastScenario } from '../types'
+import { netProfitFromBuckets } from '@/lib/finance/net-profit'
 
 /**
  * PDF Export Service
@@ -449,6 +450,8 @@ export class PDFExportService {
     let revenue = 0
     let cogs = 0
     let opex = 0
+    let otherIncome = 0
+    let otherExpense = 0
 
     plLines.forEach(line => {
       const lineTotal = Object.values(line.forecast_months || {}).reduce((sum, val) => sum + (val || 0), 0)
@@ -459,6 +462,10 @@ export class PDFExportService {
         cogs += lineTotal
       } else if (line.category === 'Operating Expenses') {
         opex += lineTotal
+      } else if (line.category === 'Other Income') {
+        otherIncome += lineTotal
+      } else if (line.category === 'Other Expenses') {
+        otherExpense += lineTotal
       }
     })
 
@@ -466,8 +473,10 @@ export class PDFExportService {
       revenue,
       cogs,
       opex,
+      otherIncome,
+      otherExpense,
       grossProfit: revenue - cogs,
-      netProfit: revenue - cogs - opex
+      netProfit: netProfitFromBuckets({ revenue, cogs, opex, otherIncome, otherExpense })
     }
   }
 
