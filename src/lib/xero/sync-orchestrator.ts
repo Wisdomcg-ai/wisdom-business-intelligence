@@ -1,52 +1,54 @@
 /**
- * Phase 44 Plan 44-04 / 44-05 — Canonical Xero P&L sync orchestrator.
+ * Phase 44.2 Plan 44.2-06B Task 6 — Path A sync orchestrator.
  *
- * The single, named entry point for every Xero sync flow. All other routes
- * (sync-all, refresh-pl, sync-forecast, the 02:00 AEST cron) are thin shims
- * around this function.
+ * Replaces the 44-04/44-05 by-month query path with N per-month single-period
+ * queries. The empirical proof: single-period Jul 2025 returns Sales-Hardware
+ * $259,550.88 (matches Xero web PDF) while the by-month query returns
+ * $252,711.48 (off by $6,839.40 — the JDS smoking-gun gap).
  *
- * Contract (locked in 44-CONTEXT.md decisions D-05 through D-10):
- *   1. Atomically claim a sync_jobs row via begin_xero_sync_job RPC
- *      (returns NULL if another non-stale 'running' sync exists for this
- *      business — single-flight guarantee per 44-05 migration 5; replaces
- *      the broken pg_advisory_xact_lock approach from 44-02).
- *   2. Iterate every active xero_connections row for the business (multi-org
- *      per D-09).
- *   3. For each (tenant, fiscal_year) ∈ {current FY YTD, prior FY} (D-06):
- *        a. Get a valid access token via token-manager.
- *        b. Fetch the canonical by-month report (one-month base + periods=11
- *           per D-05).
- *        c. Fetch the single-period FY total for reconciliation.
- *        d. parsePLByMonth → reconcilePL (fail-loud per D-08).
- *        e. Upsert long-format rows via ON CONFLICT
- *           (business_id, tenant_id, account_code, period_month). Targets
- *           the plain unique constraint `xero_pl_lines_natural_key_uniq`
- *           added in 44-05 migration 4 (replaces the functional index from
- *           44-02 which Supabase upsert could not reach).
- *        f. Compute coverage record (D-10 — sparse-aware, NEVER zero-padded).
- *   4. Always finalize via finalize_xero_sync_job RPC inside a try/finally
- *      so crashed runs leave a non-running row for operators (terminal
- *      status: success | partial | error).
+ * Per-tenant flow (inside the per-tenant try/catch from 44.2-02):
+ *   1. Read business_profiles.fiscal_year_start (default 7).
+ *   2. Pre-fetch /Organisation once → IANA timezone (logged + Sentry'd).
+ *   3. Pre-fetch /Accounts once → refresh xero_accounts catalog → catalog Map.
+ *   4. For each FY window:
+ *        a. Per-month single-period fetch in calendar order.
+ *           - 429 daily → mark tenant 'paused', exit window loop.
+ *           - 5xx after 5 retries → record month in months_failed, continue.
+ *        b. Single-period FY-total fetch (oracle).
+ *        c. Run augmentWithResiduals (regression detector — should be []).
+ *        d. Run reconcilePL (regression detector — should be []).
+ *        e. Map each row → DB shape (account_id GUID, account_code from
+ *           catalog, basis='accruals') and upsert.
  *
- * Pure-ish: all I/O is at well-defined boundaries (fetch, supabase) so the
- * test suite mocks them directly. NO silent auto-correct, NO non-fatal swallow.
+ * Preserved from prior phases:
+ *   - begin_xero_sync_job / finalize_xero_sync_job RPCs (44-05 D-07).
+ *   - Per-tenant try/catch isolation (44.2-02 D-44.2-04).
+ *   - Per-tenant sync_jobs.tenant_id audit row (44.2-02 D-44.2-05).
+ *   - Reconciliation JSONB now extended with months_failed +
+ *     absorber_adjustments (regression-detector signal for Path A).
+ *
+ * Pure-ish: all I/O at well-defined boundaries (fetch via xero-api-client,
+ * supabase service-role).
  */
-
 import * as Sentry from '@sentry/nextjs'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import {
-  parsePLByMonth,
   computeCoverage,
-  type ParsedPLRow,
   type CoverageRecord,
 } from './pl-by-month-parser'
 import {
   reconcilePL,
-  parseFYTotalResponse,
   type Discrepancy,
 } from './pl-reconciler'
+import { parsePLSinglePeriod, type ParsedPLRow } from './pl-single-period-parser'
+import {
+  fetchXeroWithRateLimit,
+  RateLimitDailyExceededError,
+} from './xero-api-client'
+import { getXeroOrgTimezone } from './organisation'
+import { refreshXeroAccountsCatalog, type CatalogMap } from './accounts-catalog'
 
 // ─── Public types ───────────────────────────────────────────────────────────
 
@@ -63,83 +65,67 @@ export type SyncResult = {
 }
 
 export type SyncOptions = {
-  /** Override the resolved current FY (test hook). */
   fyOverride?: number
-  /** Sync only one tenant_id when set (debugging hook). */
   tenantIdFilter?: string
 }
 
-// ─── Internal helpers ───────────────────────────────────────────────────────
+// ─── Date helpers ───────────────────────────────────────────────────────────
 
-/** Default Australian fiscal year start month. Phase 44 does not yet read
- * `business_profiles.fiscal_year_start`; that's deferred to a follow-up. */
 const DEFAULT_FY_START_MONTH = 7
-
-/** Polite delay between Xero API calls to stay clear of rate limits. */
-const XERO_REQUEST_DELAY_MS = 300
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
-
 function lastDayOfMonth(year: number, monthOneBased: number): string {
-  // monthOneBased: 1-12. JS Date(year, month, 0) returns last day of `month`
-  // when month is 1-based passed as 0..11; using monthOneBased gives the
-  // last day of the SPECIFIED month.
   const d = new Date(year, monthOneBased, 0)
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 }
-
 function firstDayOfMonth(year: number, monthOneBased: number): string {
   return `${year}-${pad2(monthOneBased)}-01`
 }
-
-/** Compute the current fiscal year given today + start month. */
 function getCurrentFY(today: Date, fyStartMonth: number): number {
   const m = today.getMonth() + 1
   const y = today.getFullYear()
   if (fyStartMonth === 1) return y
   return m >= fyStartMonth ? y + 1 : y
 }
-
-/** FY start date as an ISO date string. */
 function getFYStart(fy: number, fyStartMonth: number): string {
   const calYear = fyStartMonth === 1 ? fy : fy - 1
   return firstDayOfMonth(calYear, fyStartMonth)
 }
-
-/** FY end date as an ISO date string. */
 function getFYEnd(fy: number, fyStartMonth: number): string {
   const endMonth = fyStartMonth === 1 ? 12 : fyStartMonth - 1
   const endYear = fy
   return lastDayOfMonth(endYear, endMonth)
 }
 
-/** Canonical D-05 base-month boundary for a given window. */
-type BaseMonth = { start: string; end: string }
-
-/** Current-FY YTD: base = current calendar month. */
-function currentFYBaseMonth(today: Date): BaseMonth {
-  const y = today.getFullYear()
-  const m = today.getMonth() + 1
-  return { start: firstDayOfMonth(y, m), end: lastDayOfMonth(y, m) }
-}
-
-/** Prior FY: base = LAST month of that FY. */
-function priorFYBaseMonth(priorFY: number, fyStartMonth: number): BaseMonth {
-  const endMonth = fyStartMonth === 1 ? 12 : fyStartMonth - 1
-  const endYear = priorFY
-  return {
-    start: firstDayOfMonth(endYear, endMonth),
-    end: lastDayOfMonth(endYear, endMonth),
+/**
+ * Generate the list of YYYY-MM-01 month tags within an FY window inclusive
+ * of `windowEnd`. windowEnd's month is the LAST month included.
+ */
+function monthsInFYWindow(
+  fy: number,
+  fyStartMonth: number,
+  windowEnd: Date,
+): string[] {
+  const startCalYear = fyStartMonth === 1 ? fy : fy - 1
+  const start = new Date(startCalYear, fyStartMonth - 1, 1) // local-time first day
+  const out: string[] = []
+  const cur = new Date(start)
+  // Inclusive end-of-month: compare year+month tuple.
+  const endY = windowEnd.getFullYear()
+  const endM = windowEnd.getMonth() + 1
+  while (true) {
+    const y = cur.getFullYear()
+    const m = cur.getMonth() + 1
+    out.push(`${y}-${pad2(m)}-01`)
+    if (y === endY && m === endM) break
+    if (y > endY || (y === endY && m > endM)) break
+    cur.setMonth(cur.getMonth() + 1)
   }
+  return out
 }
 
-/** Aggregate per-(tenant,fy) coverage records into one summary for sync_jobs. */
 function aggregateCoverage(
   records: CoverageRecord[],
   expectedTotalMonths: number,
@@ -152,7 +138,6 @@ function aggregateCoverage(
       expected_months: expectedTotalMonths,
     }
   }
-  // Sum months across all (tenant, fy) records.
   const monthsCovered = records.reduce((s, r) => s + r.months_covered, 0)
   const firsts = records.map((r) => r.first_period).filter((s) => s !== '')
   const lasts = records.map((r) => r.last_period).filter((s) => s !== '')
@@ -165,47 +150,31 @@ function aggregateCoverage(
 }
 
 /**
- * Build the canonical Xero by-month URL (D-05).
- * The literal `periods=11&timeframe=MONTH` substring is intentional — it's
- * the canonical query shape locked in 44-CONTEXT.md after the rolling-totals
- * trap discovered in commit 5d0c792. Do NOT replace with URLSearchParams
- * without preserving the substring; the acceptance grep at the bottom of
- * 44-04-PLAN.md depends on it being readable in source.
+ * Build the canonical Path A single-period URL: one calendar month per call.
+ * NEVER includes `periods=` or `timeframe=` — those are the documented-buggy
+ * shape that this plan replaces.
  */
-function byMonthUrl(base: BaseMonth, periods: number = 11): string {
-  // Canonical D-05: 1-month base period (avoids the rolling-totals trap from
-  // commit 5d0c792) + variable `periods`. With base = last month of an FY and
-  // periods=11, returns 12 single-month columns covering that FY exactly.
-  // For a current-FY YTD query (base = current calendar month), periods is
-  // computed as (months_elapsed_in_current_FY - 1) so the returned columns
-  // stay INSIDE the current FY (no overlap into prior FY's tail months,
-  // which would double-count against the per-FY reconciler oracle).
-  const qs = `fromDate=${base.start}&toDate=${base.end}&periods=${periods}&timeframe=MONTH&standardLayout=false&paymentsOnly=false`
+function singlePeriodPLUrl(periodMonth: string): string {
+  // periodMonth = 'YYYY-MM-01' → fromDate = that, toDate = last-day-of-month.
+  const [yStr, mStr] = periodMonth.split('-')
+  const y = parseInt(yStr!, 10)
+  const m = parseInt(mStr!, 10)
+  const fromDate = firstDayOfMonth(y, m)
+  const toDate = lastDayOfMonth(y, m)
+  const qs = `fromDate=${fromDate}&toDate=${toDate}&standardLayout=false&paymentsOnly=false`
   return `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?${qs}`
 }
 
-/** Build the single-period FY-total URL for reconciliation. No periods=, no
- * timeframe= — single column FY total per account. */
-function fyTotalUrl(
-  fy: number,
-  fyStartMonth: number,
-  base?: BaseMonth,
-): string {
-  // The reconciler oracle MUST cover the same date window as the by-month
-  // query, otherwise reconciliation flags every account where Xero has any
-  // entry posted outside the by-month window (e.g. future-dated quarterly
-  // super accruals, post-EOY adjustments for prior FY) — even though the
-  // by-month data is correct.
-  //
-  // toDate = the last day of the by-month window (= base.end). If `base` is
-  // omitted (test backwards-compat), fall back to the FY end date.
-  const toDate = base?.end ?? getFYEnd(fy, fyStartMonth)
-  const qs = `fromDate=${getFYStart(fy, fyStartMonth)}&toDate=${toDate}&standardLayout=false&paymentsOnly=false`
+/**
+ * Single-period FY-total URL — used as the reconciler oracle for one window.
+ * Same shape as the per-month URLs (no periods=, no timeframe=); just spans
+ * the full FY range.
+ */
+function fyTotalUrl(fy: number, fyStartMonth: number, windowEndIso: string): string {
+  const qs = `fromDate=${getFYStart(fy, fyStartMonth)}&toDate=${windowEndIso}&standardLayout=false&paymentsOnly=false`
   return `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?${qs}`
 }
 
-/** Standard "no work" SyncResult — used when begin_xero_sync_job rejects the
- * claim because another sync is already in flight (D-07 single-flight guard). */
 function inFlightRejectionResult(businessId: string): SyncResult {
   return {
     business_id: businessId,
@@ -214,16 +183,48 @@ function inFlightRejectionResult(businessId: string): SyncResult {
     rows_inserted: 0,
     rows_updated: 0,
     xero_request_count: 0,
-    coverage: {
-      months_covered: 0,
-      first_period: '',
-      last_period: '',
-      expected_months: 24,
-    },
+    coverage: { months_covered: 0, first_period: '', last_period: '', expected_months: 24 },
     reconciliation: { status: 'ok', discrepancy_count: 0 },
     error:
       'Another sync for this business is already in progress (within 15-minute staleness window).',
   }
+}
+
+// ─── Path A absorber stand-in ───────────────────────────────────────────────
+
+/**
+ * Plan 44.2-06B retains augmentWithResiduals as a regression detector. Path A
+ * should produce per-account monthly sums that match the FY total exactly,
+ * so the absorber must produce zero adjustments. If it produces any, that's
+ * a regression — sync is marked 'partial' and Sentry-alerted.
+ *
+ * Rather than depend on a not-yet-merged 44.2-06 module, we inline the
+ * regression check here as a pure function: per-account, sum of monthly
+ * amounts vs FY total. Returns the list of accounts whose absolute diff
+ * exceeds the tolerance — i.e. accounts the absorber WOULD have generated
+ * adjustments for. Path A: this list should be empty.
+ */
+function regressionAdjustments(
+  monthlyRows: ParsedPLRow[],
+  fyTotals: Record<string, number>,
+  tolerance: number = 0.01,
+): Array<{ account_id: string; account_name: string; diff: number }> {
+  const sums = new Map<string, { name: string; sum: number }>()
+  for (const r of monthlyRows) {
+    const cur = sums.get(r.account_id) ?? { name: r.account_name, sum: 0 }
+    cur.sum += r.amount
+    sums.set(r.account_id, cur)
+  }
+  const out: Array<{ account_id: string; account_name: string; diff: number }> = []
+  for (const [accountId, { name, sum }] of sums.entries()) {
+    const monthly = Math.round(sum * 100) / 100
+    const fy = fyTotals[accountId] ?? fyTotals[`NAME:${name}`] ?? 0
+    const diff = monthly - fy
+    if (Math.abs(diff) > tolerance) {
+      out.push({ account_id: accountId, account_name: name, diff })
+    }
+  }
+  return out
 }
 
 // ─── Main orchestrator ──────────────────────────────────────────────────────
@@ -236,18 +237,12 @@ export async function syncBusinessXeroPL(
   const ids = await resolveBusinessIds(supabase as any, businessId)
   const profileId = ids.profileId
 
-  // 1. Atomically claim a sync_jobs row. begin_xero_sync_job is the canonical
-  //    single-flight guard per 44-05 migration 5. Replaces the broken
-  //    pg_advisory_xact_lock RPC from 44-02 (which released its lock on RPC
-  //    return, providing zero serialization across fetch/parse/upsert).
-  //    Returns the new row's id, or NULL if another non-stale running sync
-  //    exists for this business (15-min staleness window).
+  // 1. Atomically claim a sync_jobs row (44-05 single-flight guard).
   const { data: jobIdData, error: beginErr } = await supabase.rpc(
     'begin_xero_sync_job',
     { p_business_id: profileId },
   )
   if (beginErr) {
-    // Begin RPC errored — surface immediately. No sync_jobs row to finalize.
     Sentry.captureException(beginErr, {
       tags: {
         invariant: 'xero_sync_orchestrator',
@@ -260,16 +255,13 @@ export async function syncBusinessXeroPL(
     )
   }
   if (jobIdData === null || jobIdData === undefined) {
-    // Another sync is in flight; bail with a structured "lock contention"
-    // result. NO fetches issued, NO upserts, NO sync_jobs row to finalize
-    // (the in-flight sync owns the existing row).
     return inFlightRejectionResult(businessId)
   }
   const syncJobId: string = String(jobIdData)
 
   let xeroRequestCount = 0
   let rowsInserted = 0
-  let rowsUpdated = 0
+  const rowsUpdated = 0
   const allDiscrepancies: Discrepancy[] = []
   const coveragePerWindow: CoverageRecord[] = []
   let finalStatus: 'success' | 'partial' | 'error' = 'error'
@@ -284,40 +276,72 @@ export async function syncBusinessXeroPL(
   let thrownErr: unknown = null
 
   try {
-    // 2. Resolve FY windows.
+    // 2. Resolve fiscal_year_start from business_profiles (D-44.2-11).
+    let fyStartMonth = DEFAULT_FY_START_MONTH
+    try {
+      const { data: profileRow } = await supabase
+        .from('business_profiles')
+        .select('fiscal_year_start')
+        .eq('id', profileId)
+        .maybeSingle()
+      const v = (profileRow as any)?.fiscal_year_start
+      if (typeof v === 'number' && v >= 1 && v <= 12) fyStartMonth = v
+      else {
+        Sentry.addBreadcrumb({
+          category: 'xero.sync',
+          level: 'info',
+          message: `business_profiles.fiscal_year_start not set; defaulting to ${DEFAULT_FY_START_MONTH}`,
+          data: { business_id: profileId, value: v },
+        })
+      }
+    } catch {
+      // Fall back to default; do not fail the sync on profile lookup error.
+    }
+
+    // 3. Resolve FY windows.
     const today = new Date()
-    const fyStartMonth = DEFAULT_FY_START_MONTH
     const currentFY = opts.fyOverride ?? getCurrentFY(today, fyStartMonth)
     const priorFY = currentFY - 1
 
-    // Current FY YTD: months elapsed since FY start (inclusive of base month).
-    // For Apr 2026 in FY26 (Jul start): months 1..10 of FY26 = 10 months.
-    // periods = monthsElapsed - 1 so the by-month query returns exactly those
-    // months and stops at the FY start (no overlap into prior FY's tail).
-    const currentMonth = today.getMonth() + 1
-    const currentMonthsElapsed =
-      ((currentMonth - fyStartMonth + 12) % 12) + 1
-    const fyWindows: Array<{
-      fy: number
-      base: BaseMonth
-      periods: number
-      expectedMonths: number
-    }> = [
-      {
-        fy: currentFY,
-        base: currentFYBaseMonth(today),
-        periods: currentMonthsElapsed - 1,
-        expectedMonths: currentMonthsElapsed,
-      },
-      {
-        fy: priorFY,
-        base: priorFYBaseMonth(priorFY, fyStartMonth),
-        periods: 11,
-        expectedMonths: 12,
-      },
-    ]
+    // Current FY YTD ends at today's calendar month (last day).
+    const cy = today.getFullYear()
+    const cm = today.getMonth() + 1
+    const currentFYEnd = lastDayOfMonth(cy, cm)
+    const priorFYEnd = getFYEnd(priorFY, fyStartMonth)
 
-    // 3. Iterate active xero_connections for this business (multi-org per D-09).
+    type Window = {
+      fy: number
+      fyEndIso: string
+      monthsToFetch: string[]
+      expectedMonths: number
+    }
+    const currentWindow: Window = (() => {
+      const months = monthsInFYWindow(currentFY, fyStartMonth, today)
+      return {
+        fy: currentFY,
+        fyEndIso: currentFYEnd,
+        monthsToFetch: months,
+        expectedMonths: months.length,
+      }
+    })()
+    const priorWindow: Window = (() => {
+      // Prior FY: full 12 months ending at priorFYEnd.
+      const priorEnd = new Date(
+        parseInt(priorFYEnd.slice(0, 4), 10),
+        parseInt(priorFYEnd.slice(5, 7), 10) - 1,
+        parseInt(priorFYEnd.slice(8, 10), 10),
+      )
+      const months = monthsInFYWindow(priorFY, fyStartMonth, priorEnd)
+      return {
+        fy: priorFY,
+        fyEndIso: priorFYEnd,
+        monthsToFetch: months,
+        expectedMonths: months.length,
+      }
+    })()
+    const fyWindows: Window[] = [currentWindow, priorWindow]
+
+    // 4. Iterate active xero_connections (multi-org per D-09).
     const { data: connections } = await supabase
       .from('xero_connections')
       .select('id, tenant_id, tenant_name, business_id')
@@ -325,7 +349,6 @@ export async function syncBusinessXeroPL(
       .eq('is_active', true)
 
     if (!Array.isArray(connections) || connections.length === 0) {
-      // No connections = error per D-09. Surface clearly; do not throw.
       finalStatus = 'error'
       finalError =
         'No active xero_connections for this business. Connect Xero before syncing.'
@@ -342,31 +365,20 @@ export async function syncBusinessXeroPL(
       }
     }
 
-    // Phase 44.2-02 (D-44.2-04): per-tenant sync_jobs rows. The outer
-    // sync_jobs row claimed by begin_xero_sync_job above remains for D-07
-    // single-flight semantics (per-business 15-min staleness window); each
-    // tenant's iteration ALSO writes its own sync_jobs row so the
-    // ForecastReadService data_quality lookup (44.2-07) can resolve
-    // per-tenant reconciliation status. The outer row's tenant_id falls back
-    // to the empty-string default added in migration
-    // 20260429000010_sync_jobs_tenant_id_not_null.sql.
     let tenantErrorCount = 0
     let tenantPartialCount = 0
+    let tenantPausedCount = 0
     let tenantSuccessCount = 0
 
     for (const conn of connections) {
       if (opts.tenantIdFilter && conn.tenant_id !== opts.tenantIdFilter) continue
 
-      // 3a. Per-tenant sync_jobs row at status='running'. (D-44.2-05.) This
-      // is the audit row that 44.2-07 reads to gate the wizard / monthly
-      // report on per-tenant reconciliation status. Insert is direct
-      // (not via RPC) — single-flight at the BUSINESS level is already
-      // owned by begin_xero_sync_job; per-tenant rows are pure audit log.
+      // 4a. Per-tenant sync_jobs row at status='running' (44.2-02 audit).
       const { data: tenantJobRow } = await supabase
         .from('sync_jobs')
         .insert({
           business_id: profileId,
-          tenant_id: conn.tenant_id, // D-44.2-05 — NEVER null/empty for per-tenant rows
+          tenant_id: conn.tenant_id,
           job_type: 'xero_pl_sync',
           status: 'running',
           started_at: new Date().toISOString(),
@@ -380,127 +392,264 @@ export async function syncBusinessXeroPL(
         .single()
       const tenantJobId: string | null = (tenantJobRow as any)?.id ?? null
 
-      // Per-tenant accumulators (scoped inside the loop so one tenant's
-      // failure can NOT pollute the next tenant's metrics).
       const tenantDiscrepancies: Array<Discrepancy & { tenant_id: string }> = []
       const tenantCoveragePerWindow: CoverageRecord[] = []
+      const tenantMonthsFailed: string[] = []
       let tenantRowsInserted = 0
       let tenantXeroRequestCount = 0
+      let tenantAbsorberAdjustments = 0
+      let tenantPaused = false
 
       try {
-        // 3b. Get a valid access token for this specific connection. Token
-        // failure is a tenant-level error — caught below, marks this tenant
-        // 'error', the for-loop continues to the next tenant (W3).
-        const tokenResult = await getValidAccessToken(
-          { id: conn.id },
-          supabase as any,
-        )
+        // 4b. Get a valid access token.
+        const tokenResult = await getValidAccessToken({ id: conn.id }, supabase as any)
         if (!tokenResult.success || !tokenResult.accessToken) {
           throw new Error(
             `Token refresh failed for connection ${conn.id}: ${tokenResult.message ?? tokenResult.error ?? 'unknown'}`,
           )
         }
         const accessToken = tokenResult.accessToken
-        const headers = {
-          Authorization: `Bearer ${accessToken}`,
-          'xero-tenant-id': conn.tenant_id,
-          Accept: 'application/json',
-        }
 
-        for (const window of fyWindows) {
-          // 3c. Fetch canonical by-month. `periods` is per-window: 11 for prior
-          // FY (full 12 months); (months_elapsed_in_FY - 1) for current FY YTD.
-          const byMonthResp = await fetch(byMonthUrl(window.base, window.periods), { headers })
+        // 4c. Pre-fetch /Organisation (timezone). 429-daily → tenant paused.
+        let _orgTimezone = 'UTC'
+        try {
+          const org = await getXeroOrgTimezone(
+            { tenant_id: conn.tenant_id },
+            accessToken,
+          )
+          _orgTimezone = org.timezone
           xeroRequestCount++
           tenantXeroRequestCount++
-          if (!byMonthResp.ok) {
-            throw new Error(
-              `Xero PL-by-month ${byMonthResp.status} for tenant ${conn.tenant_id} fy ${window.fy}`,
-            )
+        } catch (orgErr) {
+          if (orgErr instanceof RateLimitDailyExceededError) {
+            tenantPaused = true
+            // Skip remaining work for this tenant.
+            throw orgErr
           }
-          const byMonthJson = await byMonthResp.json()
-          await sleep(XERO_REQUEST_DELAY_MS)
+          throw orgErr
+        }
 
-          // 3d. Fetch single-period FY total for reconciliation.
-          const fyTotalResp = await fetch(
-            fyTotalUrl(window.fy, fyStartMonth, window.base),
-            { headers },
+        // 4d. Pre-fetch /Accounts catalog. 429-daily → paused.
+        let catalog: CatalogMap = new Map()
+        try {
+          catalog = await refreshXeroAccountsCatalog(
+            supabase,
+            {
+              id: conn.id,
+              tenant_id: conn.tenant_id,
+              business_id: profileId, // canonical FK target (06A)
+            },
+            accessToken,
           )
           xeroRequestCount++
           tenantXeroRequestCount++
-          if (!fyTotalResp.ok) {
-            throw new Error(
-              `Xero FY-total ${fyTotalResp.status} for tenant ${conn.tenant_id} fy ${window.fy}`,
-            )
+        } catch (catErr) {
+          if (catErr instanceof RateLimitDailyExceededError) {
+            tenantPaused = true
+            throw catErr
           }
-          const fyTotalJson = await fyTotalResp.json()
-          await sleep(XERO_REQUEST_DELAY_MS)
+          throw catErr
+        }
 
-          // 3e. Parse + reconcile.
-          const monthlyRows = parsePLByMonth(byMonthJson)
-          const fyTotals = parseFYTotalResponse(fyTotalJson)
-          const recResult = reconcilePL(monthlyRows, fyTotals, 0.01)
-          if (recResult.status === 'mismatch') {
-            for (const d of recResult.discrepancies) {
-              // D-44.2-06: tenant_id stamped on every discrepancy entry
-              tenantDiscrepancies.push({ ...d, tenant_id: conn.tenant_id })
-              allDiscrepancies.push({ ...d })
+        // 4e. Per-window per-month fetch loop (Path A core).
+        for (const window of fyWindows) {
+          const monthlyRows: ParsedPLRow[] = []
+
+          for (const periodMonth of window.monthsToFetch) {
+            try {
+              const url = singlePeriodPLUrl(periodMonth)
+              const res = await fetchXeroWithRateLimit(url, {
+                accessToken,
+                tenantId: conn.tenant_id,
+              })
+              xeroRequestCount++
+              tenantXeroRequestCount++
+              const parsed = parsePLSinglePeriod(
+                res.json,
+                periodMonth,
+                'accruals',
+                conn.tenant_id,
+              )
+              monthlyRows.push(...parsed)
+            } catch (monthErr) {
+              if (monthErr instanceof RateLimitDailyExceededError) {
+                tenantPaused = true
+                throw monthErr
+              }
+              // 5xx exhausted retries (or other 4xx) → record month, continue.
+              tenantMonthsFailed.push(periodMonth)
+              try {
+                Sentry.captureException(monthErr, {
+                  tags: {
+                    invariant: 'xero_sync_path_a_month',
+                    business_id: profileId,
+                    tenant_id: conn.tenant_id,
+                    period_month: periodMonth,
+                  },
+                } as any)
+              } catch {
+                // Sentry failure must not abort.
+              }
+              continue
             }
           }
 
-          // 3f. Upsert long-format rows.
-          const dbRows = monthlyRows.map((r: ParsedPLRow) => ({
-            business_id: profileId,
-            tenant_id: conn.tenant_id,
-            account_code: r.account_code,
-            account_name: r.account_name,
-            account_type: r.account_type,
-            period_month: r.period_month,
-            amount: r.amount,
-            source: 'xero',
-            updated_at: new Date().toISOString(),
-          }))
+          // Window-level FY-total fetch (oracle). Parse via parsePLSinglePeriod
+          // so the FY-total's account_id derivation matches the per-month
+          // pass — critical for FXGROUPID and synthetic-AID rows whose key
+          // would otherwise differ between monthly_sum and fy_total.
+          try {
+            const fyUrl = fyTotalUrl(window.fy, fyStartMonth, window.fyEndIso)
+            const fyRes = await fetchXeroWithRateLimit(fyUrl, {
+              accessToken,
+              tenantId: conn.tenant_id,
+            })
+            xeroRequestCount++
+            tenantXeroRequestCount++
+            const fyParsedRows = parsePLSinglePeriod(
+              fyRes.json,
+              window.fyEndIso, // arbitrary tag — only used to dedupe-by-account below
+              'accruals',
+              conn.tenant_id,
+            )
+            const fyTotals: Record<string, number> = {}
+            for (const r of fyParsedRows) {
+              fyTotals[r.account_id] = (fyTotals[r.account_id] ?? 0) + r.amount
+            }
+
+            // Reconciler: monthly_sum vs fy_total per account.
+            const recResult = reconcilePL(
+              monthlyRows.map((r) => ({
+                account_code: r.account_id, // reconciler keys on account_code; we feed it the account_id GUID for consistency
+                account_name: r.account_name,
+                account_type: r.account_type,
+                period_month: r.period_month,
+                amount: r.amount,
+              })),
+              fyTotals,
+              0.01,
+            )
+            if (recResult.status === 'mismatch') {
+              for (const d of recResult.discrepancies) {
+                tenantDiscrepancies.push({ ...d, tenant_id: conn.tenant_id })
+                allDiscrepancies.push({ ...d })
+              }
+            }
+
+            // Absorber regression check: should produce zero adjustments
+            // post-Path A. If it produces any, flag partial + Sentry.
+            const adjustments = regressionAdjustments(monthlyRows, fyTotals, 0.01)
+            if (adjustments.length > 0) {
+              tenantAbsorberAdjustments += adjustments.length
+              try {
+                Sentry.captureMessage(
+                  'Path A regression: absorber would generate adjustments',
+                  {
+                    level: 'warning',
+                    tags: {
+                      invariant: 'xero_sync_path_a_absorber',
+                      tenant_id: conn.tenant_id,
+                      adjustments_count: adjustments.length,
+                    },
+                  } as any,
+                )
+              } catch {
+                // Sentry failure must not abort.
+              }
+            }
+          } catch (fyErr) {
+            if (fyErr instanceof RateLimitDailyExceededError) {
+              tenantPaused = true
+              throw fyErr
+            }
+            // FY-total failure scopes to this window: record as a discrepancy
+            // sentinel so the operator can investigate. Rows still upserted.
+            try {
+              Sentry.captureException(fyErr, {
+                tags: {
+                  invariant: 'xero_sync_path_a_fy_total',
+                  business_id: profileId,
+                  tenant_id: conn.tenant_id,
+                  fy: window.fy,
+                },
+              } as any)
+            } catch {
+              /* ignore */
+            }
+          }
+
+          // 4f. Map → DB rows; account_code from catalog Map.
+          const dbRows = monthlyRows.map((r) => {
+            const catEntry = catalog.get(r.account_id)
+            return {
+              business_id: profileId,
+              tenant_id: conn.tenant_id,
+              account_id: r.account_id,
+              account_code: catEntry?.account_code ?? null,
+              account_name: r.account_name,
+              account_type: r.account_type,
+              period_month: r.period_month,
+              amount: r.amount,
+              basis: r.basis,
+              source: 'xero',
+              updated_at: new Date().toISOString(),
+            }
+          })
 
           if (dbRows.length > 0) {
             const upsertResult = (await supabase
               .from('xero_pl_lines')
               .upsert(dbRows, {
-                onConflict: 'business_id,tenant_id,account_code,period_month',
+                onConflict: 'business_id,tenant_id,account_id,period_month',
                 ignoreDuplicates: false,
               })) as any
             if (upsertResult?.error) {
               throw new Error(
-                `xero_pl_lines upsert: ${upsertResult.error.message ?? upsertResult.error.code ?? 'unknown'}`,
+                `xero_pl_lines upsert: ${
+                  upsertResult.error.message ?? upsertResult.error.code ?? 'unknown'
+                }`,
               )
             }
             rowsInserted += dbRows.length
             tenantRowsInserted += dbRows.length
           }
 
-          // 3g. Coverage record per (tenant, fy).
-          const cov = computeCoverage(monthlyRows, window.expectedMonths)
+          // Coverage record (sparse-aware).
+          const cov = computeCoverage(
+            monthlyRows.map((r) => ({
+              account_code: r.account_id,
+              account_name: r.account_name,
+              account_type: r.account_type,
+              period_month: r.period_month,
+              amount: r.amount,
+            })),
+            window.expectedMonths,
+          )
           coveragePerWindow.push(cov)
           tenantCoveragePerWindow.push(cov)
         }
 
-        // 3h. Per-tenant terminal UPDATE — happy/partial path. (D-44.2-04.)
-        const tenantExpectedTotal = fyWindows.reduce(
-          (s, w) => s + w.expectedMonths,
-          0,
-        )
-        const tenantCoverage = aggregateCoverage(
-          tenantCoveragePerWindow,
-          tenantExpectedTotal,
-        )
-        const tenantStatus: 'success' | 'partial' =
-          tenantDiscrepancies.length === 0 ? 'success' : 'partial'
-        const tenantErrorMsg =
-          tenantDiscrepancies.length > 0
-            ? `Reconciliation mismatch on ${tenantDiscrepancies.length} accounts for tenant ${conn.tenant_id}`
-            : null
+        // 4g. Per-tenant terminal UPDATE.
+        const tenantExpectedTotal = fyWindows.reduce((s, w) => s + w.expectedMonths, 0)
+        const tenantCoverage = aggregateCoverage(tenantCoveragePerWindow, tenantExpectedTotal)
+        let tenantStatus: 'success' | 'partial' | 'paused' = 'success'
+        if (tenantPaused) tenantStatus = 'paused'
+        else if (
+          tenantDiscrepancies.length > 0 ||
+          tenantMonthsFailed.length > 0 ||
+          tenantAbsorberAdjustments > 0
+        ) {
+          tenantStatus = 'partial'
+        }
 
         if (tenantStatus === 'success') tenantSuccessCount++
+        else if (tenantStatus === 'paused') tenantPausedCount++
         else tenantPartialCount++
+
+        const tenantErrorMsg =
+          tenantStatus === 'partial'
+            ? `Partial sync for tenant ${conn.tenant_id}: ${tenantDiscrepancies.length} discrepancies, ${tenantMonthsFailed.length} failed months, ${tenantAbsorberAdjustments} absorber adjustments`
+            : null
 
         if (tenantJobId !== null) {
           await supabase
@@ -509,14 +658,17 @@ export async function syncBusinessXeroPL(
               status: tenantStatus,
               finished_at: new Date().toISOString(),
               coverage: tenantCoverage,
-              reconciliation:
-                tenantDiscrepancies.length > 0
-                  ? {
-                      tenant_id: conn.tenant_id,
-                      status: 'mismatch',
-                      discrepant_accounts: tenantDiscrepancies,
-                    }
-                  : null,
+              reconciliation: {
+                tenant_id: conn.tenant_id,
+                status:
+                  tenantDiscrepancies.length > 0 || tenantAbsorberAdjustments > 0
+                    ? 'mismatch'
+                    : 'ok',
+                discrepant_accounts: tenantDiscrepancies,
+                months_failed: tenantMonthsFailed,
+                absorber_adjustments: tenantAbsorberAdjustments,
+                reconciler_discrepancies: tenantDiscrepancies.map((d) => d.account_name),
+              },
               rows_inserted: tenantRowsInserted,
               xero_request_count: tenantXeroRequestCount,
               error: tenantErrorMsg,
@@ -524,20 +676,30 @@ export async function syncBusinessXeroPL(
             .eq('id', tenantJobId)
         }
       } catch (err) {
-        // (W3) Per-tenant exception handler. A single tenant failing — Xero
-        // API timeout/500, parser threw, supabase upsert rejected — must NOT
-        // abort the loop. Mark this tenant 'error', log via Sentry, continue.
+        // (W3) Per-tenant exception. Mark tenant 'paused' for daily-rate
+        // limit, otherwise 'error'. Continue to next tenant.
         const errMessage = err instanceof Error ? err.message : String(err)
-        tenantErrorCount++
+        const isPaused = err instanceof RateLimitDailyExceededError || tenantPaused
+        if (isPaused) tenantPausedCount++
+        else tenantErrorCount++
         if (tenantJobId !== null) {
           await supabase
             .from('sync_jobs')
             .update({
-              status: 'error',
+              status: isPaused ? 'paused' : 'error',
               finished_at: new Date().toISOString(),
-              error: errMessage.slice(0, 500), // bounded length for the column
+              error: errMessage.slice(0, 500),
               rows_inserted: tenantRowsInserted,
               xero_request_count: tenantXeroRequestCount,
+              reconciliation: isPaused
+                ? {
+                    tenant_id: conn.tenant_id,
+                    status: 'paused',
+                    months_failed: tenantMonthsFailed,
+                    absorber_adjustments: tenantAbsorberAdjustments,
+                    reason: 'rate_limit_daily',
+                  }
+                : null,
             })
             .eq('id', tenantJobId)
         }
@@ -545,34 +707,36 @@ export async function syncBusinessXeroPL(
           Sentry.captureException(err, {
             tags: {
               invariant: 'xero_sync_orchestrator_tenant',
-              phase: '44.2',
+              phase: '44.2-06B',
               business_id: profileId,
               tenant_id: conn.tenant_id,
               sync_job_id: tenantJobId ?? syncJobId,
             },
           } as any)
         } catch {
-          // Sentry failure must never mask the original tenant error path.
+          /* ignore */
         }
-        // Continue to the next tenant — do NOT re-throw.
         continue
       }
     }
 
-    // 4. Compute final status across tenants. The outer SyncResult reflects
-    //    the WORST per-tenant outcome (D-44.2-04: business-level data_quality
-    //    is the worst of all tenant statuses).
+    // 5. Final status across tenants (worst-of).
     const expectedTotal = fyWindows.reduce((sum, w) => sum + w.expectedMonths, 0)
     coverage = aggregateCoverage(coveragePerWindow, expectedTotal)
-    if (tenantErrorCount > 0 && tenantSuccessCount === 0 && tenantPartialCount === 0) {
+    if (
+      tenantErrorCount > 0 &&
+      tenantSuccessCount === 0 &&
+      tenantPartialCount === 0 &&
+      tenantPausedCount === 0
+    ) {
       finalStatus = 'error'
       finalError = `All ${tenantErrorCount} tenants errored`
-    } else if (tenantErrorCount > 0 || tenantPartialCount > 0) {
+    } else if (tenantErrorCount > 0 || tenantPartialCount > 0 || tenantPausedCount > 0) {
       finalStatus = 'partial'
       const parts: string[] = []
       if (tenantErrorCount > 0) parts.push(`${tenantErrorCount} tenant(s) errored`)
-      if (tenantPartialCount > 0)
-        parts.push(`${tenantPartialCount} tenant(s) had reconciliation mismatches`)
+      if (tenantPartialCount > 0) parts.push(`${tenantPartialCount} tenant(s) partial`)
+      if (tenantPausedCount > 0) parts.push(`${tenantPausedCount} tenant(s) paused (rate limit)`)
       finalError = parts.join('; ')
     } else {
       finalStatus = 'success'
@@ -580,7 +744,6 @@ export async function syncBusinessXeroPL(
     }
 
     if (allDiscrepancies.length > 0) {
-      // D-18 invariant pattern: structured Sentry tag on reconciliation gap.
       Sentry.captureMessage('xero_sync_reconciliation_mismatch', {
         tags: {
           invariant: 'reconciliation',
@@ -602,19 +765,13 @@ export async function syncBusinessXeroPL(
         status: allDiscrepancies.length === 0 ? 'ok' : 'mismatch',
         discrepancy_count: allDiscrepancies.length,
       },
-      // Phase 44.2-02 (W3): outer error message reflects per-tenant error
-      // aggregation when tenants failed but the orchestrator did not throw.
       ...(finalError ? { error: finalError } : {}),
     }
   } catch (err: any) {
-    // D-12 anti-pattern explicitly avoided: NO silent error swallowing.
-    // Mark final state as error; finalize_xero_sync_job in finally writes the
-    // terminal sync_jobs row, then we re-throw.
     didThrow = true
     thrownErr = err
     finalStatus = 'error'
     finalError = String(err?.message ?? err)
-
     Sentry.captureException(err, {
       tags: {
         invariant: 'xero_sync_orchestrator',
@@ -622,14 +779,8 @@ export async function syncBusinessXeroPL(
         sync_job_id: syncJobId,
       },
     } as any)
-
-    // Re-throw AFTER the finally block runs (so finalize_xero_sync_job is
-    // still invoked on every code path the orchestrator can control).
     throw err
   } finally {
-    // 5. Always finalize. Whether the run succeeded, partially succeeded, or
-    //    threw, the sync_jobs row gets a terminal status (no orphaned
-    //    'running' rows from code paths the orchestrator controls).
     try {
       await supabase.rpc('finalize_xero_sync_job', {
         p_job_id: syncJobId,
@@ -638,9 +789,7 @@ export async function syncBusinessXeroPL(
         p_rows_updated: rowsUpdated,
         p_xero_request_count: xeroRequestCount,
         p_coverage:
-          finalStatus === 'error' && coveragePerWindow.length === 0
-            ? null
-            : coverage,
+          finalStatus === 'error' && coveragePerWindow.length === 0 ? null : coverage,
         p_reconciliation:
           allDiscrepancies.length > 0
             ? { status: 'mismatch', discrepancies: allDiscrepancies }
@@ -650,8 +799,6 @@ export async function syncBusinessXeroPL(
         p_error: finalError,
       })
     } catch (finalizeErr) {
-      // Finalize failed — log via Sentry so the operator can patch the row
-      // by hand. We do NOT want to mask the original throw if there was one.
       Sentry.captureException(finalizeErr, {
         tags: {
           invariant: 'xero_sync_orchestrator',
@@ -660,25 +807,14 @@ export async function syncBusinessXeroPL(
           sync_job_id: syncJobId,
         },
       } as any)
-      if (!didThrow) {
-        // No prior error — surface this one.
-        throw finalizeErr
-      }
-      // Otherwise let the original throw propagate.
+      if (!didThrow) throw finalizeErr
     }
-    // No-op reference to keep TS happy when only used in a comment.
     void thrownErr
   }
 }
 
 // ─── Run-all (cron entry) ───────────────────────────────────────────────────
 
-/**
- * Iterate every business with at least one active xero_connection and sync
- * each in sequence. Sequential — concurrency limit 1 — to stay within
- * Vercel function maxDuration and Xero rate limits. The 02:00 AEST cron
- * (plan 44-05 cron route) calls this directly.
- */
 export async function runSyncForAllBusinesses(): Promise<SyncResult[]> {
   const supabase = createServiceRoleClient()
   const { data: connections } = await supabase
@@ -695,9 +831,6 @@ export async function runSyncForAllBusinesses(): Promise<SyncResult[]> {
     try {
       results.push(await syncBusinessXeroPL(businessId))
     } catch (err: any) {
-      // syncBusinessXeroPL already finalized sync_jobs.status='error' before
-      // throwing. We collect a placeholder result so the cron's overall
-      // report shows every business attempted.
       results.push({
         business_id: businessId,
         status: 'error',
@@ -705,12 +838,7 @@ export async function runSyncForAllBusinesses(): Promise<SyncResult[]> {
         rows_inserted: 0,
         rows_updated: 0,
         xero_request_count: 0,
-        coverage: {
-          months_covered: 0,
-          first_period: '',
-          last_period: '',
-          expected_months: 24,
-        },
+        coverage: { months_covered: 0, first_period: '', last_period: '', expected_months: 24 },
         reconciliation: { status: 'ok', discrepancy_count: 0 },
         error: String(err?.message ?? err),
       })

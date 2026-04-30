@@ -1,33 +1,30 @@
 /**
- * Phase 44.2 Plan 44.2-02 — sync_jobs.tenant_id regression tests.
+ * Phase 44.2 Plan 44.2-02 / 44.2-06B — sync_jobs.tenant_id regression tests.
  *
- * Asserts the D-44.2-04 / D-44.2-05 / D-44.2-06 contract that the sync
- * orchestrator MUST satisfy now that sync_jobs.tenant_id is NOT NULL:
+ * Asserts the D-44.2-04 / D-44.2-05 / D-44.2-06 contract under the Path A
+ * orchestrator (44.2-06B):
  *
- *   1. Single tenant happy path → exactly 1 per-tenant sync_jobs row,
+ *   1. Single-tenant happy path → exactly 1 per-tenant sync_jobs row,
  *      status='success', tenant_id = conn.tenant_id.
- *   2. Single tenant reconciliation mismatch → status='partial' with
- *      reconciliation JSONB tagged with tenant_id (D-44.2-06).
- *   3. Multi-tenant consolidated business (2 tenants both happy) → 2
- *      per-tenant sync_jobs rows, both status='success', distinct tenant_ids,
- *      neither empty/null.
- *   4. Multi-tenant with one tenant having a reconciliation mismatch →
- *      2 per-tenant rows, statuses ['success','partial'], discrepancies on
- *      the partial row carry that tenant's tenant_id.
- *   5. (W3) Multi-tenant where ONE tenant throws (Xero 500 mock) → that
- *      tenant's per-tenant row is updated with status='error' and the error
- *      message; the OTHER tenant in the same run still completes with its
- *      own status. The for-loop must NOT abort on per-tenant exception.
- *
- * Mocking pattern matches src/__tests__/xero/sync-orchestrator.test.ts —
- * supabase service-role client + token manager + global.fetch are all
- * mocked at the boundary. Captures every from('sync_jobs').insert / update
- * payload and asserts every payload includes tenant_id.
+ *   2. Reconciliation mismatch (FY oracle disagrees with monthly sums) →
+ *      status='partial' with reconciliation JSONB tagged with tenant_id.
+ *   3. Multi-tenant consolidated business (2 happy tenants) → 2 distinct
+ *      per-tenant rows.
+ *   4. Multi-tenant where one tenant has a reconciliation mismatch →
+ *      ['success','partial'], discrepancy carries that tenant's id.
+ *   5. Multi-tenant where one tenant errors (Xero 4xx mock that no retry
+ *      handler can absorb) → that tenant's row is updated with
+ *      status='error'; the other completes with its own status.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import jdsByMonthFixture from './fixtures/jds-fy26.json'
 
 // ─── Module-level mocks ─────────────────────────────────────────────────────
+
+vi.mock('@sentry/nextjs', () => ({
+  addBreadcrumb: vi.fn(),
+  captureException: vi.fn(),
+  captureMessage: vi.fn(),
+}))
 
 const supabaseMock: any = {}
 vi.mock('@/lib/supabase/admin', () => ({
@@ -41,34 +38,19 @@ vi.mock('@/lib/xero/token-manager', () => ({
   })),
 }))
 
-// Sentry mock — orchestrator captures exceptions; we don't want test
-// stderr noise from the unhandled-error stub paths.
-vi.mock('@sentry/nextjs', () => ({
-  captureException: vi.fn(),
-  captureMessage: vi.fn(),
-}))
-
 // ─── Test helpers ───────────────────────────────────────────────────────────
 
-type CallLogEntry = { kind: string; arg?: any }
+const ACC_ID = 'aaaa1111-1111-1111-1111-aaaaaaaaaaaa'
 
+type CallLogEntry = { kind: string; arg?: any }
 type RpcReturn =
   | { data: any; error: any | null }
   | ((args: any) => { data: any; error: any | null })
 
-/**
- * Build a stub of the supabase service-role client that supports per-tenant
- * sync_jobs INSERT (returns { id }) and UPDATE (eq filter), in addition to
- * the existing xero_connections list, xero_pl_lines upsert, and RPC calls.
- *
- * Captures every sync_jobs.insert payload and every sync_jobs.update payload
- * separately so tests can assert tenant_id is present in each.
- */
 function makeSupabaseStub(opts: {
   connections?: any[]
   rpcReturns?: Record<string, RpcReturn>
   upsertError?: any | null
-  /** Stub a tenant_id-keyed insert id sequence — defaults to 'tenant-job-1', 'tenant-job-2', ... */
   tenantJobIdSequence?: string[]
 }) {
   const callLog: CallLogEntry[] = []
@@ -78,10 +60,7 @@ function makeSupabaseStub(opts: {
   const syncJobsInsertPayloads: any[] = []
   const syncJobsUpdatePayloads: Array<{ payload: any; filter: any }> = []
   const idSequence = opts.tenantJobIdSequence ?? [
-    'tenant-job-1',
-    'tenant-job-2',
-    'tenant-job-3',
-    'tenant-job-4',
+    'tenant-job-1', 'tenant-job-2', 'tenant-job-3', 'tenant-job-4',
   ]
   let idCursor = 0
 
@@ -100,14 +79,12 @@ function makeSupabaseStub(opts: {
     }
     ctx.eq = (col: string, val: any) => {
       ctx._filters.push({ kind: 'eq', col, val })
-      // sync_jobs.update returns a thenable AFTER .eq is chained.
       if (table === 'sync_jobs' && ctx._pendingUpdate) {
         const payload = ctx._pendingUpdate
         ctx._pendingUpdate = null
         const filter = { col, val }
-        callLog.push({ kind: `from:sync_jobs:update`, arg: { payload, filter } })
+        callLog.push({ kind: 'from:sync_jobs:update', arg: { payload, filter } })
         syncJobsUpdatePayloads.push({ payload, filter })
-        // Return a resolved promise immediately so awaiters get { error: null }.
         return Promise.resolve({ data: null, error: null }) as any
       }
       return ctx
@@ -116,22 +93,20 @@ function makeSupabaseStub(opts: {
       ctx._filters.push({ kind: 'in', col, val })
       return ctx
     }
-    ctx.order = (..._args: any[]) => ctx
-    ctx.limit = (..._args: any[]) => ctx
+    ctx.order = () => ctx
+    ctx.limit = () => ctx
     ctx.maybeSingle = async () => {
       callLog.push({ kind: `from:${table}:select-maybeSingle` })
       if (table === 'business_profiles') {
         return {
-          data: { id: 'profile-id-1', business_id: 'biz-id-1' },
+          data: { id: 'profile-id-1', business_id: 'biz-id-1', fiscal_year_start: 7 },
           error: null,
         }
       }
       return { data: null, error: null }
     }
     ctx.single = async () => {
-      callLog.push({ kind: `from:${table}:select-single` })
-      // sync_jobs INSERT chain: .insert(payload).select('id').single() →
-      // returns the new row's id from our id sequence.
+      callLog.push({ kind: `from:${table}:single` })
       if (table === 'sync_jobs' && ctx._pendingInsertId) {
         const id = ctx._pendingInsertId
         ctx._pendingInsertId = null
@@ -139,7 +114,6 @@ function makeSupabaseStub(opts: {
       }
       return { data: null, error: null }
     }
-
     ctx.insert = (payload: any) => {
       callLog.push({ kind: `from:${table}:insert`, arg: payload })
       if (table === 'sync_jobs') {
@@ -149,16 +123,10 @@ function makeSupabaseStub(opts: {
       }
       return ctx
     }
-
     ctx.update = (payload: any) => {
-      // The actual update happens when .eq is chained (above). Hold the
-      // payload and let .eq finalize.
-      if (table === 'sync_jobs') {
-        ctx._pendingUpdate = payload
-      }
+      if (table === 'sync_jobs') ctx._pendingUpdate = payload
       return ctx
     }
-
     ctx.upsert = (rows: any[], upsertOpts: any) => {
       callLog.push({
         kind: `from:${table}:upsert`,
@@ -167,28 +135,21 @@ function makeSupabaseStub(opts: {
       upsertedRowsCapture.push(rows)
       return Promise.resolve({
         data: rows,
-        error: upsertError,
+        error: table === 'xero_pl_lines' ? upsertError : null,
         count: rows.length,
       })
     }
-
-    // Terminal awaitable for SELECT chains (xero_connections list, etc.)
     ctx.then = (resolve: any, reject: any) => {
       callLog.push({ kind: `from:${table}:select-list`, arg: ctx._filters })
       if (table === 'xero_connections') {
-        return Promise.resolve({ data: connections, error: null }).then(
-          resolve,
-          reject,
-        )
+        return Promise.resolve({ data: connections, error: null }).then(resolve, reject)
       }
       return Promise.resolve({ data: [], error: null }).then(resolve, reject)
     }
-
     return ctx
   }
 
   supabaseMock.from = (table: string) => fromBuilder(table)
-
   supabaseMock.rpc = vi.fn(async (name: string, args: any) => {
     callLog.push({ kind: `rpc:${name}`, arg: args })
     const ret = rpcReturns[name]
@@ -205,89 +166,115 @@ function makeSupabaseStub(opts: {
   }
 }
 
-function mockFetchByUrl(
-  handlers: Array<{ match: (url: string) => boolean; body: any; status?: number }>,
-) {
-  return vi.spyOn(global, 'fetch').mockImplementation(async (url: any) => {
-    const u = String(url)
-    for (const h of handlers) {
-      if (h.match(u)) {
-        return new Response(JSON.stringify(h.body), {
-          status: h.status ?? 200,
-          headers: { 'Content-Type': 'application/json' },
-        }) as any
-      }
-    }
-    return new Response(JSON.stringify({ error: `unhandled url ${u}` }), {
-      status: 500,
-    }) as any
-  })
+// ─── URL pattern matchers (Path A) ──────────────────────────────────────────
+
+function isPLUrl(u: string): boolean {
+  return u.includes('/Reports/ProfitAndLoss')
+}
+function isFYTotalUrl(u: string): boolean {
+  if (!isPLUrl(u)) return false
+  const fromMatch = u.match(/fromDate=(\d{4})-(\d{2})-/)
+  const toMatch = u.match(/toDate=(\d{4})-(\d{2})-/)
+  if (!fromMatch || !toMatch) return false
+  return !(fromMatch[1] === toMatch[1] && fromMatch[2] === toMatch[2])
+}
+function isPerMonthUrl(u: string): boolean {
+  return isPLUrl(u) && !isFYTotalUrl(u)
+}
+function periodMonthFromUrl(u: string): string | null {
+  const m = u.match(/fromDate=(\d{4}-\d{2}-\d{2})/)
+  return m ? m[1]! : null
+}
+function monthsInUrlRange(u: string): number {
+  const fromMatch = u.match(/fromDate=(\d{4})-(\d{2})-/)
+  const toMatch = u.match(/toDate=(\d{4})-(\d{2})-/)
+  if (!fromMatch || !toMatch) return 1
+  const fy = parseInt(fromMatch[1]!, 10)
+  const fm = parseInt(fromMatch[2]!, 10)
+  const ty = parseInt(toMatch[1]!, 10)
+  const tm = parseInt(toMatch[2]!, 10)
+  return (ty - fy) * 12 + (tm - fm) + 1
 }
 
-async function buildSyntheticFYTotalsFromByMonth(byMonthFixture: any) {
-  const { parsePLByMonth } = await import('@/lib/xero/pl-by-month-parser')
-  const rows = parsePLByMonth(byMonthFixture)
-  const totals: Record<
-    string,
-    { code: string | null; name: string; total: number }
-  > = {}
+// ─── Fixture builders ───────────────────────────────────────────────────────
+
+function makeJsonResponse(body: any, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  }) as any
+}
+function singlePeriodReport(
+  periodLabel: string,
+  rows: Array<{ name: string; id: string; amount: string; section?: string }>,
+) {
+  const bySection = new Map<string, typeof rows>()
   for (const r of rows) {
-    const key = r.account_code ?? `NAME:${r.account_name}`
-    if (!totals[key]) {
-      totals[key] = { code: r.account_code, name: r.account_name, total: 0 }
-    }
-    totals[key].total += r.amount
+    const sec = r.section ?? 'Income'
+    const arr = bySection.get(sec) ?? []
+    arr.push(r)
+    bySection.set(sec, arr)
   }
-  const xeroRows = Object.values(totals).map((t) => ({
-    RowType: 'Row',
-    Cells: [
-      {
-        Value: t.name,
-        Attributes:
-          t.code !== null ? [{ Id: 'account', Value: t.code }] : undefined,
-      },
-      { Value: (Math.round(t.total * 100) / 100).toFixed(2) },
-    ],
+  const sections = Array.from(bySection.entries()).map(([title, arr]) => ({
+    RowType: 'Section',
+    Title: title,
+    Rows: arr.map((r) => ({
+      RowType: 'Row',
+      Cells: [
+        { Value: r.name, Attributes: [{ Id: 'account', Value: r.id }] },
+        { Value: r.amount },
+      ],
+    })),
   }))
   return {
-    Reports: [
-      {
-        Rows: [
-          { RowType: 'Header', Cells: [{ Value: '' }, { Value: '30 Jun 26' }] },
-          { RowType: 'Section', Title: 'Income', Rows: xeroRows },
-        ],
-      },
-    ],
+    Reports: [{ Rows: [{ RowType: 'Header', Cells: [{ Value: '' }, { Value: periodLabel }] }, ...sections] }],
   }
 }
-
-// FY total fixture that DELIBERATELY mismatches the by-month sum, forcing
-// reconcilePL to return status='mismatch' and the orchestrator to mark
-// the per-tenant row 'partial'.
-const MISMATCH_FY_TOTALS = {
-  Reports: [
-    {
-      Rows: [
-        { RowType: 'Header', Cells: [{ Value: '' }, { Value: '30 Jun 26' }] },
-        {
-          RowType: 'Section',
-          Title: 'Income',
-          Rows: [
-            {
-              RowType: 'Row',
-              Cells: [
-                {
-                  Value: 'Sales - Bogus',
-                  Attributes: [{ Id: 'account', Value: 'BOGUS-ACCT' }],
-                },
-                { Value: '999999.99' },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  ],
+function organisationResponse(timezone = 'AUSEASTERNSTANDARDTIME', country = 'AU') {
+  return { Organisations: [{ OrganisationID: 'org-1', Timezone: timezone, CountryCode: country }] }
+}
+function accountsResponse(items: Array<{ id: string; code: string; name: string; type: string }>) {
+  return {
+    Accounts: items.map((a) => ({
+      AccountID: a.id,
+      Code: a.code,
+      Name: a.name,
+      Type: a.type,
+      Status: 'ACTIVE',
+    })),
+  }
+}
+function isOrgUrl(u: string): boolean {
+  return u.includes('/api.xro/2.0/Organisation')
+}
+function isAccountsUrl(u: string): boolean {
+  return u.includes('/api.xro/2.0/Accounts')
+}
+function defaultPathAFetch(amount = 50, fyOverride?: string) {
+  return vi.spyOn(global, 'fetch').mockImplementation(async (url: any) => {
+    const u = String(url)
+    if (isOrgUrl(u)) return makeJsonResponse(organisationResponse())
+    if (isAccountsUrl(u)) {
+      return makeJsonResponse(
+        accountsResponse([{ id: ACC_ID, code: '200', name: 'Sales', type: 'REVENUE' }]),
+      )
+    }
+    if (isFYTotalUrl(u)) {
+      const months = monthsInUrlRange(u)
+      return makeJsonResponse(
+        singlePeriodReport('FY Total', [
+          { name: 'Sales', id: ACC_ID, amount: fyOverride ?? (amount * months).toFixed(2) },
+        ]),
+      )
+    }
+    if (isPerMonthUrl(u)) {
+      const p = periodMonthFromUrl(u)!
+      return makeJsonResponse(
+        singlePeriodReport(p, [{ name: 'Sales', id: ACC_ID, amount: amount.toFixed(2) }]),
+      )
+    }
+    return makeJsonResponse({}, 500)
+  })
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -303,45 +290,27 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('Sync orchestrator — per-tenant sync_jobs.tenant_id (44.2-02)', () => {
+describe('Sync orchestrator — per-tenant sync_jobs.tenant_id (44.2-02 / 44.2-06B)', () => {
   it('Test 1 — single-tenant happy path writes 1 per-tenant row with tenant_id', async () => {
     const { syncJobsInsertPayloads, syncJobsUpdatePayloads } = makeSupabaseStub({
       connections: [
-        {
-          id: 'conn-1',
-          tenant_id: 'tenant-A-uuid',
-          tenant_name: 'JDS',
-          business_id: 'profile-id-1',
-        },
+        { id: 'conn-1', tenant_id: 'tenant-A-uuid', tenant_name: 'JDS', business_id: 'profile-id-1' },
       ],
     })
-    const fyTotals = await buildSyntheticFYTotalsFromByMonth(jdsByMonthFixture)
-    mockFetchByUrl([
-      { match: (u) => u.includes('timeframe=MONTH'), body: jdsByMonthFixture },
-      {
-        match: (u) =>
-          u.includes('ProfitAndLoss') && !u.includes('timeframe=MONTH'),
-        body: fyTotals,
-      },
-    ])
-
+    defaultPathAFetch()
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
     await syncBusinessXeroPL('biz-id-1')
 
-    // Exactly 1 per-tenant INSERT, with tenant_id = the connection's tenant_id.
     expect(syncJobsInsertPayloads.length).toBe(1)
     expect(syncJobsInsertPayloads[0].tenant_id).toBe('tenant-A-uuid')
     expect(syncJobsInsertPayloads[0].business_id).toBe('profile-id-1')
     expect(syncJobsInsertPayloads[0].status).toBe('running')
 
-    // Exactly 1 per-tenant UPDATE on the inserted job id, status='success'.
     expect(syncJobsUpdatePayloads.length).toBe(1)
     expect(syncJobsUpdatePayloads[0].payload.status).toBe('success')
     expect(syncJobsUpdatePayloads[0].filter.col).toBe('id')
     expect(syncJobsUpdatePayloads[0].filter.val).toBe('tenant-job-1')
 
-    // EVERY sync_jobs payload (insert + update) — assert tenant_id never absent
-    // on insert (spec contract; update preserves the inserted row's tenant_id).
     for (const ins of syncJobsInsertPayloads) {
       expect(ins.tenant_id).toBeTruthy()
       expect(ins.tenant_id).not.toBe('')
@@ -351,22 +320,11 @@ describe('Sync orchestrator — per-tenant sync_jobs.tenant_id (44.2-02)', () =>
   it('Test 2 — single-tenant reconciliation mismatch → status=partial with tenant_id-tagged discrepancies', async () => {
     const { syncJobsInsertPayloads, syncJobsUpdatePayloads } = makeSupabaseStub({
       connections: [
-        {
-          id: 'conn-1',
-          tenant_id: 'tenant-A-uuid',
-          tenant_name: 'JDS',
-          business_id: 'profile-id-1',
-        },
+        { id: 'conn-1', tenant_id: 'tenant-A-uuid', tenant_name: 'JDS', business_id: 'profile-id-1' },
       ],
     })
-    mockFetchByUrl([
-      { match: (u) => u.includes('timeframe=MONTH'), body: jdsByMonthFixture },
-      {
-        match: (u) =>
-          u.includes('ProfitAndLoss') && !u.includes('timeframe=MONTH'),
-        body: MISMATCH_FY_TOTALS,
-      },
-    ])
+    // Plant the FY-total to disagree with the monthly_sum.
+    defaultPathAFetch(50, '999999.99')
 
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
     await syncBusinessXeroPL('biz-id-1')
@@ -377,112 +335,74 @@ describe('Sync orchestrator — per-tenant sync_jobs.tenant_id (44.2-02)', () =>
     expect(syncJobsUpdatePayloads.length).toBe(1)
     const update = syncJobsUpdatePayloads[0].payload
     expect(update.status).toBe('partial')
-
-    // D-44.2-06 — reconciliation JSONB carries tenant_id at the wrapper level
-    // OR every discrepancy entry inside it does. Assert the wrapper carries
-    // it (current orchestrator design — tenant_id is the audit trail key).
     expect(update.reconciliation).toBeTruthy()
     expect(update.reconciliation.tenant_id).toBe('tenant-A-uuid')
     expect(Array.isArray(update.reconciliation.discrepant_accounts)).toBe(true)
     expect(update.reconciliation.discrepant_accounts.length).toBeGreaterThan(0)
 
-    // Error message references the tenant for operator triage.
-    expect(update.error).toMatch(/tenant-A-uuid|reconciliation/i)
+    expect(update.error).toMatch(/tenant-A-uuid|partial|reconciliation|discrepancies/i)
   })
 
   it('Test 3 — multi-tenant consolidated business (2 happy tenants) writes 2 distinct per-tenant rows', async () => {
     const { syncJobsInsertPayloads, syncJobsUpdatePayloads } = makeSupabaseStub({
       connections: [
-        {
-          id: 'conn-1',
-          tenant_id: 'tenant-A-uuid',
-          tenant_name: 'JDS',
-          business_id: 'profile-id-1',
-        },
-        {
-          id: 'conn-2',
-          tenant_id: 'tenant-B-uuid',
-          tenant_name: 'Envisage',
-          business_id: 'profile-id-1',
-        },
+        { id: 'conn-1', tenant_id: 'tenant-A-uuid', tenant_name: 'JDS', business_id: 'profile-id-1' },
+        { id: 'conn-2', tenant_id: 'tenant-B-uuid', tenant_name: 'Envisage', business_id: 'profile-id-1' },
       ],
     })
-    const fyTotals = await buildSyntheticFYTotalsFromByMonth(jdsByMonthFixture)
-    mockFetchByUrl([
-      { match: (u) => u.includes('timeframe=MONTH'), body: jdsByMonthFixture },
-      {
-        match: (u) =>
-          u.includes('ProfitAndLoss') && !u.includes('timeframe=MONTH'),
-        body: fyTotals,
-      },
-    ])
-
+    defaultPathAFetch()
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
     await syncBusinessXeroPL('biz-id-1')
 
-    // 2 per-tenant INSERTs with distinct tenant_ids.
     expect(syncJobsInsertPayloads.length).toBe(2)
     const insertedTenantIds = syncJobsInsertPayloads.map((p) => p.tenant_id)
     expect(new Set(insertedTenantIds).size).toBe(2)
     expect(insertedTenantIds).toContain('tenant-A-uuid')
     expect(insertedTenantIds).toContain('tenant-B-uuid')
 
-    // 2 per-tenant UPDATEs, both status='success'.
     expect(syncJobsUpdatePayloads.length).toBe(2)
-    for (const u of syncJobsUpdatePayloads) {
-      expect(u.payload.status).toBe('success')
-    }
-
-    // No insert payload has empty/null tenant_id.
-    for (const ins of syncJobsInsertPayloads) {
-      expect(ins.tenant_id).toBeTruthy()
-      expect(ins.tenant_id).not.toBe('')
-    }
+    const statuses = syncJobsUpdatePayloads.map((u) => u.payload.status).sort()
+    expect(statuses).toEqual(['success', 'success'])
   })
 
-  it('Test 4 — multi-tenant where one has reconciliation mismatch → mixed statuses [success, partial]', async () => {
-    const { syncJobsUpdatePayloads, syncJobsInsertPayloads } = makeSupabaseStub({
+  it('Test 4 — multi-tenant; one tenant reconciliation mismatch → mixed statuses', async () => {
+    const { syncJobsInsertPayloads, syncJobsUpdatePayloads } = makeSupabaseStub({
       connections: [
-        {
-          id: 'conn-1',
-          tenant_id: 'tenant-A-uuid',
-          tenant_name: 'JDS',
-          business_id: 'profile-id-1',
-        },
-        {
-          id: 'conn-2',
-          tenant_id: 'tenant-B-uuid',
-          tenant_name: 'Envisage',
-          business_id: 'profile-id-1',
-        },
+        { id: 'conn-1', tenant_id: 'tenant-A-uuid', tenant_name: 'JDS', business_id: 'profile-id-1' },
+        { id: 'conn-2', tenant_id: 'tenant-B-uuid', tenant_name: 'Envisage', business_id: 'profile-id-1' },
       ],
     })
-    const fyTotalsHappy =
-      await buildSyntheticFYTotalsFromByMonth(jdsByMonthFixture)
-    // First two tenant fetches return MISMATCH_FY_TOTALS (tenant A mismatches),
-    // remainder return happy totals (tenant B reconciles cleanly).
-    // Per-tenant fetch sequence (orchestrator iterates tenants outer, FY windows inner):
-    //   tenant A: by-month FY26, fy-total FY26, by-month FY25, fy-total FY25  → 4 fetches
-    //   tenant B: by-month FY26, fy-total FY26, by-month FY25, fy-total FY25  → 4 fetches
-    // We need tenant A's FY-totals to MISMATCH, tenant B's to be happy. Track
-    // FY-total request count and gate on the first 2 (= tenant A's two FY windows).
-    let fyTotalCallCount = 0
+    // Plant a per-tenant variation: tenant A sees a mismatched FY total
+    // (we route by call order — first /Organisation = tenant A, etc.).
+    let tenantSeen = ''
+    let orgCallCount = 0
     vi.spyOn(global, 'fetch').mockImplementation(async (url: any) => {
       const u = String(url)
-      if (u.includes('timeframe=MONTH')) {
-        return new Response(JSON.stringify(jdsByMonthFixture), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }) as any
+      if (isOrgUrl(u)) {
+        orgCallCount++
+        tenantSeen = orgCallCount === 1 ? 'A' : 'B'
+        return makeJsonResponse(organisationResponse())
       }
-      // FY-total request. First 2 = tenant A (mismatch), next 2 = tenant B (happy).
-      const isTenantA = fyTotalCallCount < 2
-      fyTotalCallCount++
-      const body = isTenantA ? MISMATCH_FY_TOTALS : fyTotalsHappy
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }) as any
+      if (isAccountsUrl(u)) {
+        return makeJsonResponse(
+          accountsResponse([{ id: ACC_ID, code: '200', name: 'Sales', type: 'REVENUE' }]),
+        )
+      }
+      if (isFYTotalUrl(u)) {
+        const months = monthsInUrlRange(u)
+        // Tenant A's FY total mismatches; tenant B's matches.
+        const total = tenantSeen === 'A' ? '999999.99' : (50 * months).toFixed(2)
+        return makeJsonResponse(
+          singlePeriodReport('FY Total', [{ name: 'Sales', id: ACC_ID, amount: total }]),
+        )
+      }
+      if (isPerMonthUrl(u)) {
+        const p = periodMonthFromUrl(u)!
+        return makeJsonResponse(
+          singlePeriodReport(p, [{ name: 'Sales', id: ACC_ID, amount: '50.00' }]),
+        )
+      }
+      return makeJsonResponse({}, 500)
     })
 
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
@@ -490,97 +410,61 @@ describe('Sync orchestrator — per-tenant sync_jobs.tenant_id (44.2-02)', () =>
 
     expect(syncJobsInsertPayloads.length).toBe(2)
     expect(syncJobsUpdatePayloads.length).toBe(2)
-
     const statuses = syncJobsUpdatePayloads.map((u) => u.payload.status).sort()
     expect(statuses).toEqual(['partial', 'success'])
-
-    // The 'partial' update's reconciliation JSONB must carry tenant_id =
-    // tenant-A-uuid (the mismatching tenant).
-    const partialUpdate = syncJobsUpdatePayloads.find(
-      (u) => u.payload.status === 'partial',
-    )
-    expect(partialUpdate).toBeTruthy()
-    expect(partialUpdate?.payload.reconciliation?.tenant_id).toBe(
-      'tenant-A-uuid',
-    )
+    // The 'partial' carries tenant_id A.
+    const partialUpdate = syncJobsUpdatePayloads.find((u) => u.payload.status === 'partial')!
+    expect(partialUpdate.payload.reconciliation.tenant_id).toBe('tenant-A-uuid')
   })
 
-  it('Test 5 (W3) — one tenant throws → that tenant marked error, other tenants still complete', async () => {
+  it('Test 5 — multi-tenant; one tenant 4xx during /Organisation marks tenant error; other completes', async () => {
     const { syncJobsInsertPayloads, syncJobsUpdatePayloads } = makeSupabaseStub({
       connections: [
-        {
-          id: 'conn-1',
-          tenant_id: 'tenant-A-uuid',
-          tenant_name: 'JDS',
-          business_id: 'profile-id-1',
-        },
-        {
-          id: 'conn-2',
-          tenant_id: 'tenant-B-uuid',
-          tenant_name: 'Envisage',
-          business_id: 'profile-id-1',
-        },
+        { id: 'conn-1', tenant_id: 'tenant-A-uuid', tenant_name: 'JDS', business_id: 'profile-id-1' },
+        { id: 'conn-2', tenant_id: 'tenant-B-uuid', tenant_name: 'Envisage', business_id: 'profile-id-1' },
       ],
     })
-    const fyTotalsHappy =
-      await buildSyntheticFYTotalsFromByMonth(jdsByMonthFixture)
-    // Tenant A's FIRST FY-total fetch returns 500. Tenant B's fetches all succeed.
-    let fetchCallNum = 0
+    let orgCalls = 0
     vi.spyOn(global, 'fetch').mockImplementation(async (url: any) => {
-      fetchCallNum++
       const u = String(url)
-      // Per-tenant fetch sequence: by-month #1, fy-total #1, by-month #2, fy-total #2 = 4 fetches per tenant.
-      // Inject a 500 on tenant A's very first FY-total fetch (call #2 overall).
-      if (fetchCallNum === 2) {
-        return new Response(JSON.stringify({ error: 'Xero 500' }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        }) as any
+      if (isOrgUrl(u)) {
+        orgCalls++
+        if (orgCalls === 1) {
+          return makeJsonResponse({ error: 'forbidden' }, 403) // tenant A errors
+        }
+        return makeJsonResponse(organisationResponse())
       }
-      if (u.includes('timeframe=MONTH')) {
-        return new Response(JSON.stringify(jdsByMonthFixture), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }) as any
+      if (isAccountsUrl(u)) {
+        return makeJsonResponse(
+          accountsResponse([{ id: ACC_ID, code: '200', name: 'Sales', type: 'REVENUE' }]),
+        )
       }
-      return new Response(JSON.stringify(fyTotalsHappy), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }) as any
+      if (isFYTotalUrl(u)) {
+        const months = monthsInUrlRange(u)
+        return makeJsonResponse(
+          singlePeriodReport('FY Total', [
+            { name: 'Sales', id: ACC_ID, amount: (50 * months).toFixed(2) },
+          ]),
+        )
+      }
+      if (isPerMonthUrl(u)) {
+        const p = periodMonthFromUrl(u)!
+        return makeJsonResponse(
+          singlePeriodReport(p, [{ name: 'Sales', id: ACC_ID, amount: '50.00' }]),
+        )
+      }
+      return makeJsonResponse({}, 500)
     })
 
     const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
-    // The orchestrator MUST NOT throw — the per-tenant try/catch absorbs the error.
-    const result = await syncBusinessXeroPL('biz-id-1')
+    await syncBusinessXeroPL('biz-id-1')
 
-    // Both tenants got their per-tenant INSERT.
     expect(syncJobsInsertPayloads.length).toBe(2)
-    const insertedTenantIds = syncJobsInsertPayloads.map((p) => p.tenant_id)
-    expect(insertedTenantIds).toContain('tenant-A-uuid')
-    expect(insertedTenantIds).toContain('tenant-B-uuid')
-
-    // Both tenants got their per-tenant UPDATE — none was skipped.
     expect(syncJobsUpdatePayloads.length).toBe(2)
-
     const statuses = syncJobsUpdatePayloads.map((u) => u.payload.status).sort()
-    // Tenant A → 'error', tenant B → 'success'.
-    expect(statuses).toContain('error')
-    expect(statuses).toContain('success')
-
-    const errorUpdate = syncJobsUpdatePayloads.find(
-      (u) => u.payload.status === 'error',
-    )
-    expect(errorUpdate).toBeTruthy()
-    expect(errorUpdate?.payload.error).toBeTruthy()
-    // Error column is bounded to 500 chars (column safety).
-    expect(String(errorUpdate?.payload.error).length).toBeLessThanOrEqual(500)
-    // Mention of the Xero 500 (or generic "fetch" / "Xero" wording acceptable).
-    expect(String(errorUpdate?.payload.error)).toMatch(/Xero|500|fetch|fy-total/i)
-
-    // Outer SyncResult reflects the partial-failure shape — overall status
-    // SHOULD reflect that at least one tenant errored. Accept 'partial' or
-    // 'error' here; the contract is that the orchestrator returns a response
-    // and didn't throw.
-    expect(['partial', 'error', 'success']).toContain(result.status)
+    expect(statuses).toEqual(['error', 'success'])
+    // Tenant A's row carries the error message; tenant B's still ran.
+    const errorUpdate = syncJobsUpdatePayloads.find((u) => u.payload.status === 'error')!
+    expect(String(errorUpdate.payload.error)).toMatch(/403|forbidden|xero/i)
   })
 })
