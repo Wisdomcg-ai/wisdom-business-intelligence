@@ -1,16 +1,22 @@
 // /api/monthly-report/sync-xero/route.ts
-// Manual P&L sync for a single business — syncs xero_pl_lines from Xero
-// Fetches each month INDIVIDUALLY to guarantee correct monthly P&L values.
+// Manual sync for a single business — delegates P&L to the Path A orchestrator
+// (Phase 44.2-06B) and runs the existing BS snapshot loop in-place. The route's
+// own per-tenant P&L fetcher was retired because (a) it wrote wide-format
+// `monthly_values` JSONB into a long-format table, and (b) it set
+// `xero_pl_lines.business_id = bizId` which violates the FK to
+// business_profiles(id) added in 06A. Both bugs would cause every "Sync"
+// click on the integration page to wipe and fail to re-insert P&L rows.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids';
+import { syncBusinessXeroPL } from '@/lib/xero/sync-orchestrator';
 
 export const dynamic = 'force-dynamic';
-// Vercel Hobby caps at 60s; request 60s explicitly
-export const maxDuration = 60;
+// Path A orchestrator can take >60s for multi-tenant + 24-month windows.
+export const maxDuration = 300;
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -229,18 +235,31 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Sync Xero] Found ${connections.length} active connection(s) for business ${business_id}`);
 
-    const months = getMonthList(13);
-    let totalAccountsSynced = 0;
-    let totalMonthsFetched = 0;
+    // ── P&L sync via Path A orchestrator (Phase 44.2-06B) ──
+    // Replaces this route's prior per-tenant fetcher. The orchestrator handles
+    // multi-tenant iteration, /Organisation timezone, /Accounts catalog,
+    // per-month single-period fetches, FY-total reconciliation, and upsert
+    // into xero_pl_lines (with correct business_id = profileId per 06A FK).
+    stage = 'sync_pl_via_orchestrator';
+    const plResult = await syncBusinessXeroPL(business_id);
+    console.log(
+      `[Sync Xero] P&L orchestrator: status=${plResult.status} rows_inserted=${plResult.rows_inserted} xero_requests=${plResult.xero_request_count}`
+    );
+
+    const totalAccountsSynced = plResult.rows_inserted;
+    let totalMonthsFetched = plResult.coverage?.months_covered ?? 0;
     let totalMonthsFailed = 0;
     const perTenantErrors: { tenant_id: string; error: string }[] = [];
     const syncedTenantIds: string[] = [];
+    if (plResult.status === 'error' && plResult.error) {
+      perTenantErrors.push({ tenant_id: 'all', error: `P&L orchestrator: ${plResult.error}` });
+    }
 
-    // Per-connection sync loop
+    // Per-connection BS sync loop (P&L was handled above by the orchestrator).
     for (const connection of connections) {
       const tenantId = connection.tenant_id;
       const tenantLabel = connection.display_name || connection.tenant_name || tenantId;
-      console.log(`[Sync Xero] === Syncing tenant ${tenantLabel} (${tenantId}) ===`);
+      console.log(`[Sync Xero] === BS sync for tenant ${tenantLabel} (${tenantId}) ===`);
 
       stage = `refresh_token:${tenantId}`;
       const tokenResult = await getValidAccessToken(connection, supabaseAdmin);
@@ -250,126 +269,11 @@ export async function POST(request: NextRequest) {
       }
       const accessToken = tokenResult.accessToken;
 
-      stage = `fetch_chart_of_accounts:${tenantId}`;
-      const accountCodeLookup = new Map<string, string>();
-      try {
-        const coaResp = await fetch(
-          `https://api.xero.com/api.xro/2.0/Accounts?where=${encodeURIComponent('Type=="REVENUE"||Type=="OTHERINCOME"||Type=="DIRECTCOSTS"||Type=="EXPENSE"||Type=="OVERHEADS"')}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'xero-tenant-id': tenantId,
-              'Accept': 'application/json',
-            },
-          }
-        );
-        if (coaResp.ok) {
-          const coaData = await coaResp.json();
-          for (const acc of coaData.Accounts || []) {
-            if (acc.Name && acc.Code) accountCodeLookup.set(acc.Name, acc.Code);
-          }
-        }
-      } catch (coaErr) {
-        console.warn(`[Sync Xero] ${tenantLabel}: could not fetch CoA (non-fatal):`, coaErr);
-      }
-
-      stage = `fetch_monthly_pl:${tenantId}`;
-      const tenantAccounts = new Map<string, {
-        business_id: string;
-        tenant_id: string;
-        account_name: string;
-        account_code: string | null;
-        account_type: string;
-        section: string;
-        monthly_values: Record<string, number>;
-        updated_at: string;
-      }>();
-      let fetchedCount = 0;
-      let failedCount = 0;
-
-      for (const month of months) {
-        if (fetchedCount > 0) await new Promise((r) => setTimeout(r, 500));
-
-        const result = await fetchSingleMonthPL(accessToken, tenantId, month.fromDate, month.toDate);
-
-        if (!result.success) {
-          if (result.status === 401) {
-            perTenantErrors.push({ tenant_id: tenantId, error: `Token expired mid-sync at ${month.key}` });
-            break;
-          }
-          if (result.status === 429) {
-            await new Promise((r) => setTimeout(r, 10000));
-            const retry = await fetchSingleMonthPL(accessToken, tenantId, month.fromDate, month.toDate);
-            if (!retry.success) {
-              failedCount++;
-              continue;
-            }
-            result.report = retry.report;
-          } else {
-            failedCount++;
-            continue;
-          }
-        }
-        if (!result.report) {
-          failedCount++;
-          continue;
-        }
-
-        const monthAccounts = parseSingleMonthReport(result.report);
-        for (const [name, data] of monthAccounts) {
-          const existing = tenantAccounts.get(name) || {
-            business_id: ids.bizId,
-            tenant_id: tenantId,
-            account_name: name,
-            account_code: accountCodeLookup.get(name) || null,
-            account_type: mapSectionToType(data.section),
-            section: data.section,
-            monthly_values: {} as Record<string, number>,
-            updated_at: new Date().toISOString(),
-          };
-          existing.monthly_values[month.key] = data.value;
-          tenantAccounts.set(name, existing);
-        }
-        fetchedCount++;
-      }
-
-      console.log(`[Sync Xero] ${tenantLabel}: ${fetchedCount}/${months.length} months OK, ${failedCount} failed, ${tenantAccounts.size} accounts`);
-      totalMonthsFetched += fetchedCount;
-      totalMonthsFailed += failedCount;
-
-      const tenantPlLines = Array.from(tenantAccounts.values()).filter(
-        (l) => Object.keys(l.monthly_values).length > 0,
-      );
-
-      // Replace this tenant's P&L rows (scoped by tenant_id — does NOT touch other tenants)
-      stage = `db_delete:${tenantId}`;
-      const { error: deleteError } = await supabaseAdmin
-        .from('xero_pl_lines')
-        .delete()
-        .in('business_id', ids.all)
-        .eq('tenant_id', tenantId);
-      if (deleteError) {
-        perTenantErrors.push({ tenant_id: tenantId, error: `Delete failed: ${deleteError.message}` });
-        continue;
-      }
-
-      if (tenantPlLines.length > 0) {
-        stage = `db_insert:${tenantId}`;
-        const { error: insertError } = await supabaseAdmin
-          .from('xero_pl_lines')
-          .insert(tenantPlLines);
-        if (insertError) {
-          perTenantErrors.push({ tenant_id: tenantId, error: `Insert failed: ${insertError.message}` });
-          continue;
-        }
-      }
-
-      // ── Balance Sheet snapshot sync (same tenant, 3 most-recent months) ──
-      // Scoped to 3 months to stay within Vercel's 60s function budget when
-      // 3 tenants × (13 P&L months + 3 BS months) × 500ms ≈ 24s. BS is a
-      // point-in-time snapshot, so each month-end gets its own row set.
+      // ── Balance Sheet snapshot sync (3 most-recent month-ends) ──
+      // P&L was handled above by syncBusinessXeroPL. BS still uses this route's
+      // own per-tenant fetcher until Phase 44.2-06D ports BS to the orchestrator.
       stage = `fetch_monthly_bs:${tenantId}`;
-      const bsMonths = months.slice(0, 3); // most-recent 3 months
+      const bsMonths = getMonthList(13).slice(0, 3); // most-recent 3 month-ends
       const tenantBSAccounts = new Map<string, {
         business_id: string;
         tenant_id: string;
@@ -438,7 +342,6 @@ export async function POST(request: NextRequest) {
         .update({ last_synced_at: new Date().toISOString() })
         .eq('id', connection.id);
 
-      totalAccountsSynced += tenantPlLines.length;
       syncedTenantIds.push(tenantId);
     }
 

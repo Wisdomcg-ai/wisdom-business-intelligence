@@ -236,6 +236,10 @@ export async function syncBusinessXeroPL(
   const supabase = createServiceRoleClient()
   const ids = await resolveBusinessIds(supabase as any, businessId)
   const profileId = ids.profileId
+  // xero_accounts.business_id FK targets businesses(id) (legacy); xero_pl_lines.business_id FK targets business_profiles(id) (post-06A). Use bizId for the former, profileId for the latter.
+  const bizId = ids.bizId
+
+  console.log('[syncBusinessXeroPL] start', { input: businessId, bizId, profileId })
 
   // 1. Atomically claim a sync_jobs row (44-05 single-flight guard).
   const { data: jobIdData, error: beginErr } = await supabase.rpc(
@@ -370,8 +374,12 @@ export async function syncBusinessXeroPL(
     let tenantPausedCount = 0
     let tenantSuccessCount = 0
 
+    console.log('[syncBusinessXeroPL] connections:', connections.length, 'currentFY:', currentFY, 'priorFY:', priorFY, 'fyStartMonth:', fyStartMonth)
+
     for (const conn of connections) {
       if (opts.tenantIdFilter && conn.tenant_id !== opts.tenantIdFilter) continue
+
+      console.log('[syncBusinessXeroPL] === tenant', conn.tenant_name, conn.tenant_id, '===')
 
       // 4a. Per-tenant sync_jobs row at status='running' (44.2-02 audit).
       const { data: tenantJobRow } = await supabase
@@ -420,6 +428,7 @@ export async function syncBusinessXeroPL(
           _orgTimezone = org.timezone
           xeroRequestCount++
           tenantXeroRequestCount++
+          console.log('[syncBusinessXeroPL]', conn.tenant_id, 'org timezone:', _orgTimezone)
         } catch (orgErr) {
           if (orgErr instanceof RateLimitDailyExceededError) {
             tenantPaused = true
@@ -437,12 +446,13 @@ export async function syncBusinessXeroPL(
             {
               id: conn.id,
               tenant_id: conn.tenant_id,
-              business_id: profileId, // canonical FK target (06A)
+              business_id: bizId, // xero_accounts FK targets businesses(id), not business_profiles(id)
             },
             accessToken,
           )
           xeroRequestCount++
           tenantXeroRequestCount++
+          console.log('[syncBusinessXeroPL]', conn.tenant_id, 'catalog accounts:', catalog.size)
         } catch (catErr) {
           if (catErr instanceof RateLimitDailyExceededError) {
             tenantPaused = true
@@ -612,6 +622,7 @@ export async function syncBusinessXeroPL(
             }
             rowsInserted += dbRows.length
             tenantRowsInserted += dbRows.length
+            console.log('[syncBusinessXeroPL]', conn.tenant_id, 'FY', window.fy, 'upserted', dbRows.length, 'rows')
           }
 
           // Coverage record (sparse-aware).
@@ -679,6 +690,7 @@ export async function syncBusinessXeroPL(
         // (W3) Per-tenant exception. Mark tenant 'paused' for daily-rate
         // limit, otherwise 'error'. Continue to next tenant.
         const errMessage = err instanceof Error ? err.message : String(err)
+        console.error('[syncBusinessXeroPL]', conn.tenant_id, 'TENANT FAILED:', errMessage)
         const isPaused = err instanceof RateLimitDailyExceededError || tenantPaused
         if (isPaused) tenantPausedCount++
         else tenantErrorCount++
