@@ -6,8 +6,14 @@
 -- continue to work unchanged. basis + notes columns added for downstream consumers.
 --
 -- security_invoker=on (per 20260429000004) is preserved.
+--
+-- DROP + CREATE (not CREATE OR REPLACE) because we are reordering columns —
+-- account_id is inserted before account_code so the canonical identity comes
+-- first. Postgres requires DROP for column-order changes.
 
-CREATE OR REPLACE VIEW xero_pl_lines_wide_compat AS
+DROP VIEW IF EXISTS xero_pl_lines_wide_compat;
+
+CREATE VIEW xero_pl_lines_wide_compat AS
 SELECT
   business_id,
   tenant_id,
