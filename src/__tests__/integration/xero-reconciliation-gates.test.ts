@@ -300,7 +300,13 @@ describe.each(TENANTS)('Reconciliation gates — $name', (tenant) => {
     const bsFixture = `${tenant.slug}-bs-${balanceDate}`
     const tbFixture = `${tenant.slug}-trialbalance-${balanceDate}`
 
-    // Gate 2 — PL ↔ BS articulation. Needs THIS month-end BS + PRIOR month-end BS + monthly PL net profit for the period.
+    // Gate 2 — PL ↔ BS articulation. Uses the SINGLE-PERIOD monthly PL
+    // fixture for the month ending at balanceDate, never the by-month
+    // fixture. Empirical justification: on IICT-HK 2026-03, the by-month
+    // query reports net=-$7,975 while the single-period query reports
+    // net=+$1,432,486 (a 1000× discrepancy). The single-period query is
+    // the Path A truth (verified to the cent on JDS Sales-Hardware in
+    // 06B); the by-month query carries the Calxa Q1 documented Xero bug.
     describe('Gate 2: PL ↔ BS articulation', () => {
       const priorIdx = BALANCE_DATES.indexOf(balanceDate) - 1
       if (priorIdx < 0) {
@@ -312,12 +318,13 @@ describe.each(TENANTS)('Reconciliation gates — $name', (tenant) => {
       }
       const priorDate = BALANCE_DATES[priorIdx]!
       const priorBSFixture = `${tenant.slug}-bs-${priorDate}`
-      const byMonthFixture = `${tenant.slug}-pl-by-month-${tenant.fyEnd}`
-      if (!fixtureExists(bsFixture) || !fixtureExists(priorBSFixture) || !fixtureExists(byMonthFixture)) {
+      const monthSlug = balanceDate.slice(0, 7) // YYYY-MM
+      const plMonthFixture = `${tenant.slug}-pl-single-${monthSlug}`
+      if (!fixtureExists(bsFixture) || !fixtureExists(priorBSFixture) || !fixtureExists(plMonthFixture)) {
         const missing = [
           !fixtureExists(bsFixture) && bsFixture,
           !fixtureExists(priorBSFixture) && priorBSFixture,
-          !fixtureExists(byMonthFixture) && byMonthFixture,
+          !fixtureExists(plMonthFixture) && plMonthFixture,
         ]
           .filter(Boolean)
           .join(', ')
@@ -325,17 +332,18 @@ describe.each(TENANTS)('Reconciliation gates — $name', (tenant) => {
         return
       }
 
-      it(`PL net profit for ${balanceDate.slice(0, 7)} == Δ(CYE+RE) over month`, () => {
-        const byMonth = parsePLByMonth(unwrapResponse(loadFixture(byMonthFixture)))
-        // Filter by-month rows down to the month ending at `balanceDate` —
-        // period_month is the MONTH KEY (YYYY-MM-01) for the period start.
-        const monthKey = `${balanceDate.slice(0, 7)}-01`
-        const monthRows = byMonth.filter((r) => r.period_month === monthKey)
+      it(`PL net profit for ${monthSlug} == Δ(CYE+RE) over month`, () => {
+        const monthRows = parsePLSinglePeriod(
+          unwrapResponse(loadFixture(plMonthFixture)),
+          `${monthSlug}-01`,
+          'accruals',
+          'fixture-tenant',
+        )
         const monthNetProfit = netProfitOf(monthRows)
         const bsThis = parseBSSinglePeriod(unwrapResponse(loadFixture(bsFixture)), balanceDate, 'accruals', 'fixture-tenant')
         const bsPrior = parseBSSinglePeriod(unwrapResponse(loadFixture(priorBSFixture)), priorDate, 'accruals', 'fixture-tenant')
         const earningsDelta = bsEarningsTotal(bsThis) - bsEarningsTotal(bsPrior)
-        const delta = Math.abs(monthNetProfit - earningsDelta)
+        const delta = Math.abs(Math.round((monthNetProfit - earningsDelta) * 100) / 100)
         expect(delta, `tenant=${tenant.name} month=${balanceDate} pl=${monthNetProfit.toFixed(2)} bsΔ=${earningsDelta.toFixed(2)} Δ=${delta.toFixed(2)}`).toBeLessThanOrEqual(0.01)
       })
     })
@@ -371,7 +379,10 @@ describe.each(TENANTS)('Reconciliation gates — $name', (tenant) => {
         const liabilities = bs.filter((r) => r.account_type === 'liability').reduce((s, r) => s + r.balance, 0)
         const equity = bs.filter((r) => r.account_type === 'equity').reduce((s, r) => s + r.balance, 0)
         const netAssets = assets - liabilities
-        const delta = Math.abs(netAssets - equity)
+        // Round to cents BEFORE the comparison: summing many large numbers
+        // accumulates JS float epsilon, so a true $0.01 difference can read
+        // as 0.01000000071... vs the literal 0.01 boundary.
+        const delta = Math.abs(Math.round((netAssets - equity) * 100) / 100)
         expect(delta, `tenant=${tenant.name} date=${balanceDate} assets=${assets.toFixed(2)} liabilities=${liabilities.toFixed(2)} netAssets=${netAssets.toFixed(2)} equity=${equity.toFixed(2)} Δ=${delta.toFixed(2)}`).toBeLessThanOrEqual(0.01)
       })
     })
