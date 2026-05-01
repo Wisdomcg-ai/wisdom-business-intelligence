@@ -13,8 +13,13 @@ interface Step4Props {
   setTwelveMonthInitiatives: (initiatives: StrategicInitiative[] | ((prev: StrategicInitiative[]) => StrategicInitiative[])) => void
   annualPlanByQuarter: Record<string, StrategicInitiative[]>
   setAnnualPlanByQuarter: (plan: Record<string, StrategicInitiative[]>) => void
-  quarterlyTargets: Record<string, { q1: string; q2: string; q3: string; q4: string }>
-  setQuarterlyTargets: (targets: Record<string, { q1: string; q2: string; q3: string; q4: string }>) => void
+  // Period values keyed by quarter id. q1-q4 are required for backwards-compat
+  // with consumers (page.tsx, Step5SprintPlanning) that index `.q1`/`.q2`/etc
+  // directly. `current_remainder` is optional — only present when the wizard
+  // is in planning season (last 3 months of current FY) AND planning the next
+  // FY, mirroring the pseudo-column added by deriveCurrentRemainderColumn.
+  quarterlyTargets: Record<string, { q1: string; q2: string; q3: string; q4: string; current_remainder?: string }>
+  setQuarterlyTargets: (targets: Record<string, { q1: string; q2: string; q3: string; q4: string; current_remainder?: string }>) => void
   financialData: FinancialData | null
   coreMetrics?: any
   kpis: KPIData[]
@@ -521,20 +526,21 @@ export default function Step4AnnualPlan({
 
   const getMemberById = (id: string) => teamMembers.find(m => m.id === id)
 
-  // Update quarterly target value with bidirectional margin/profit calculations
-  const updateQuarterlyTarget = (metricKey: string, quarter: 'q1' | 'q2' | 'q3' | 'q4', value: string) => {
+  // Update quarterly target value with bidirectional margin/profit calculations.
+  // `quarter` is a string period id ('q1'..'q4' or 'current_remainder') — typed
+  // as string to allow the new card layout to also write the remainder period.
+  const updateQuarterlyTarget = (metricKey: string, quarter: string, value: string) => {
+    const existing = quarterlyTargets[metricKey] || { q1: '', q2: '', q3: '', q4: '' }
     let newTargets = {
       ...quarterlyTargets,
       [metricKey]: {
-        q1: quarter === 'q1' ? value : (quarterlyTargets[metricKey]?.q1 || ''),
-        q2: quarter === 'q2' ? value : (quarterlyTargets[metricKey]?.q2 || ''),
-        q3: quarter === 'q3' ? value : (quarterlyTargets[metricKey]?.q3 || ''),
-        q4: quarter === 'q4' ? value : (quarterlyTargets[metricKey]?.q4 || '')
-      }
+        ...existing,
+        [quarter]: value,
+      },
     }
 
-    // Get revenue for this quarter for calculations
-    const quarterRevenue = parseFloat(newTargets['revenue']?.[quarter] || '0') || 0
+    // Get revenue for this quarter for calculations (works for any period key).
+    const quarterRevenue = parseFloat((newTargets['revenue'] as Record<string, string> | undefined)?.[quarter] || '0') || 0
 
     // Bidirectional: Gross Margin % <-> Gross Profit $
     if (metricKey === 'grossMargin' && quarterRevenue > 0) {
@@ -603,13 +609,12 @@ export default function Step4AnnualPlan({
     return value < 0 ? `(${formatted})` : formatted
   }
 
-  // Calculate quarterly total and validation
+  // Calculate quarterly total and validation. Sums across ALL visible periods
+  // (q1-q4 plus current_remainder when the planning-season pseudo-column exists).
   const calculateQuarterlyTotal = (metricKey: string): { total: number; annual: number; variance: number; isValid: boolean } => {
-    const q1 = parseFloat(quarterlyTargets[metricKey]?.q1 || '0') || 0
-    const q2 = parseFloat(quarterlyTargets[metricKey]?.q2 || '0') || 0
-    const q3 = parseFloat(quarterlyTargets[metricKey]?.q3 || '0') || 0
-    const q4 = parseFloat(quarterlyTargets[metricKey]?.q4 || '0') || 0
-    const total = q1 + q2 + q3 + q4
+    const metric = quarterlyTargets[metricKey] as Record<string, string> | undefined
+    const periodIds = allPeriods.map(p => p.id) // ['current_remainder'?, 'q1', 'q2', 'q3', 'q4']
+    const total = periodIds.reduce((sum, pid) => sum + (parseFloat(metric?.[pid] || '0') || 0), 0)
 
     // Get annual target based on metric key
     let annual = 0
@@ -624,6 +629,35 @@ export default function Step4AnnualPlan({
     const isValid = percentDiff < 5 // Within 5% is considered valid
 
     return { total, annual, variance, isValid }
+  }
+
+  // ── Auto-distribute helpers (card layout's smart-defaults bar) ──
+  // Splits the annual target evenly across the 4 quarters of the planned FY.
+  // The current_remainder period stays at 0 by design (it's outside Year 1).
+  const autoSplitEvenly = () => {
+    if (!financialData) return
+    const newTargets = { ...quarterlyTargets }
+    const updateMetric = (metricKey: string, annual: number) => {
+      if (annual <= 0) return
+      const each = Math.round(annual / 4)
+      newTargets[metricKey] = {
+        ...(newTargets[metricKey] || {}),
+        q1: each.toString(),
+        q2: each.toString(),
+        q3: each.toString(),
+        // Q4 absorbs rounding remainder so the sum equals annual exactly.
+        q4: (annual - each * 3).toString(),
+      } as { q1: string; q2: string; q3: string; q4: string; current_remainder?: string }
+    }
+    updateMetric('revenue', financialData.revenue.year1)
+    updateMetric('grossProfit', financialData.grossProfit.year1)
+    updateMetric('netProfit', financialData.netProfit.year1)
+    setQuarterlyTargets(newTargets)
+  }
+
+  const clearTargets = () => {
+    if (!confirm('Clear all quarterly target values? Initiative assignments are not affected.')) return
+    setQuarterlyTargets({})
   }
 
   // Calculate section completion status
@@ -715,836 +749,210 @@ export default function Step4AnnualPlan({
         </div>
       </div>
 
-      {/* SECTION 1: Quarterly Targets */}
+      {/* ANNUAL PLAN CARDS — combined targets + initiatives per quarter */}
       {financialData && (
         <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm ${
-              hasAnyQuarterlyTarget ? 'bg-green-500 text-white' : 'bg-brand-orange text-white'
-            }`}>
-              {hasAnyQuarterlyTarget ? <Check className="w-5 h-5" /> : '1'}
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-brand-navy">Quarterly Targets</h3>
-              <p className="text-sm text-gray-600">Break down your Year 1 targets across quarters</p>
-            </div>
-            {hasAnyQuarterlyTarget && (
-              <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded">
-                ✓ Complete
-              </span>
-            )}
-          </div>
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200">
-          <div className="p-6">
-            <div className="space-y-6">
-              {/* Financial Targets Section */}
-              <div>
-                <h4 className="text-sm font-semibold text-brand-navy mb-2">Financial Targets</h4>
-                <p className="text-xs text-gray-600 mb-3">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="inline-block w-2 h-2 rounded-full bg-green-500"></span>
-                    <span><strong>Actual</strong> - Enter your actual results for completed quarters</span>
+          {/* Annual goals + auto-distribute bar */}
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                <span className="text-gray-600">
+                  <span className="font-semibold text-brand-navy">{yearLabel} Annual Goals:</span>
+                </span>
+                <span>
+                  <span className="text-gray-500">Revenue</span>{' '}
+                  <span className="font-semibold text-brand-navy">
+                    {financialData.revenue.year1 > 0 ? formatCurrency(financialData.revenue.year1) : '—'}
                   </span>
-                  <span className="mx-2 text-gray-300">|</span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
-                    <span><strong>Current</strong> - Enter your results to date</span>
+                </span>
+                <span>
+                  <span className="text-gray-500">Gross Profit</span>{' '}
+                  <span className="font-semibold text-brand-navy">
+                    {financialData.grossProfit.year1 > 0 ? formatCurrency(financialData.grossProfit.year1) : '—'}
                   </span>
-                  <span className="mx-2 text-gray-300">|</span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="inline-block w-2 h-2 rounded-full bg-brand-orange"></span>
-                    <span><strong>Planning</strong> - Set your targets</span>
+                </span>
+                <span>
+                  <span className="text-gray-500">Net Profit</span>{' '}
+                  <span className="font-semibold text-brand-navy">
+                    {financialData.netProfit.year1 > 0 ? formatCurrency(financialData.netProfit.year1) : '—'}
                   </span>
-                </p>
-                <table className="w-full border-collapse border border-slate-200" style={{ tableLayout: 'fixed' }}>
-                  <colgroup>
-                    <col style={{ width: '21%' }} />
-                    <col style={{ width: '13%' }} />
-                    <col style={{ width: '13%' }} />
-                    <col style={{ width: '13%' }} />
-                    <col style={{ width: '13%' }} />
-                    <col style={{ width: '13%' }} />
-                    <col style={{ width: '14%' }} />
-                  </colgroup>
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-brand-navy border-b border-r border-slate-200">Metric</th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">{yearLabel}</th>
-                      {QUARTERS.map(q => (
-                        <th key={q.id} className={`px-4 py-3 text-center text-sm font-semibold border-b border-r border-slate-200 ${q.isPast ? 'bg-green-50 text-green-800' : q.isCurrent ? 'bg-amber-50 text-amber-800' : 'text-brand-navy'}`}>
-                          <div className="flex flex-col items-center gap-1">
-                            <div className="flex items-center gap-1">
-                              <span>{q.label}</span>
-                              {q.isPast && <span className="text-[9px] px-1 py-0.5 bg-green-500 text-white rounded font-semibold">ACTUAL</span>}
-                              {q.isCurrent && !q.isPast && <span className="text-[9px] px-1 py-0.5 bg-amber-500 text-white rounded font-semibold">CURRENT</span>}
-                              {q.isNextQuarter && <span className="text-[9px] px-1 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLANNING</span>}
-                            </div>
-                            <span className="text-[10px] font-normal text-gray-500">{q.months}</span>
-                          </div>
-                        </th>
-                      ))}
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-slate-200">Q Total</th>
-                    </tr>
-                  </thead>
-                    <tbody className="bg-white divide-y divide-slate-200">
-                      {/* Revenue — always render (allow quarterly entry even if Year 1 annual goal isn't set yet) */}
-                      {(() => {
-                        const validation = calculateQuarterlyTotal('revenue')
-                        return (
-                          <tr>
-                            <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Revenue</td>
-                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
-                              {financialData.revenue.year1 > 0
-                                ? formatCurrency(financialData.revenue.year1)
-                                : <span className="text-xs text-gray-400">Set in Step 1</span>}
-                            </td>
-                            {QUARTERS.map(q => (
-                              <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                <input
-                                  type="text"
-                                  value={quarterlyTargets['revenue']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] ? formatDollar(parseFloat(quarterlyTargets['revenue'][q.id as 'q1' | 'q2' | 'q3' | 'q4'])) : ''}
-                                  onChange={(e) => updateQuarterlyTarget('revenue', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
-                                  placeholder={q.isPast || q.isCurrent ? 'Actual' : 'Target'}
-                                  className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                    q.isPast
-                                      ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
-                                      : q.isCurrent
-                                      ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                      : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                  }`}
-                                />
-                              </td>
-                            ))}
-                            <td className={`px-4 py-3 text-sm text-center font-medium ${
-                              validation.total === 0 ? 'text-slate-400' :
-                              validation.isValid ? 'bg-green-50 text-green-700' :
-                              validation.variance > 0 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
-                            }`}>
-                              {validation.total > 0 ? (
-                                <div>
-                                  <div className="font-semibold">{formatCurrency(validation.total)}</div>
-                                  <div className="text-xs mt-0.5">
-                                    {validation.variance > 0 ? '+' : ''}{formatCurrency(validation.variance)}
-                                    {validation.isValid && ' ✓'}
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className="text-xs">Not set</span>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      })()}
-
-                      {/* Gross Profit — always render */}
-                      {(() => {
-                        const validation = calculateQuarterlyTotal('grossProfit')
-                        return (
-                          <tr>
-                            <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Gross Profit</td>
-                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
-                              {financialData.grossProfit.year1 > 0
-                                ? formatCurrency(financialData.grossProfit.year1)
-                                : <span className="text-xs text-gray-400">Set in Step 1</span>}
-                            </td>
-                            {QUARTERS.map(q => (
-                              <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                <input
-                                  type="text"
-                                  value={quarterlyTargets['grossProfit']?.[q.id as 'q1' | 'q2' | 'q3' | 'q4'] ? formatDollar(parseFloat(quarterlyTargets['grossProfit'][q.id as 'q1' | 'q2' | 'q3' | 'q4'])) : ''}
-                                  onChange={(e) => updateQuarterlyTarget('grossProfit', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
-                                  placeholder={q.isPast || q.isCurrent ? 'Actual' : 'Target'}
-                                  className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                    q.isPast
-                                      ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
-                                      : q.isCurrent
-                                      ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                      : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                  }`}
-                                />
-                              </td>
-                            ))}
-                            <td className={`px-4 py-3 text-sm text-center font-medium ${
-                              validation.total === 0 ? 'text-slate-400' :
-                              validation.isValid ? 'bg-green-50 text-green-700' :
-                              validation.variance > 0 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
-                            }`}>
-                              {validation.total > 0 ? (
-                                <div>
-                                  <div className="font-semibold">{formatCurrency(validation.total)}</div>
-                                  <div className="text-xs mt-0.5">
-                                    {validation.variance > 0 ? '+' : ''}{formatCurrency(validation.variance)}
-                                    {validation.isValid && ' ✓'}
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className="text-xs">Not set</span>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      })()}
-
-                      {/* Gross Margin */}
-                      {financialData.grossMargin && financialData.grossMargin.year1 > 0 && (() => {
-                          const q1 = parseFloat(quarterlyTargets['grossMargin']?.q1 || '0') || 0
-                          const q2 = parseFloat(quarterlyTargets['grossMargin']?.q2 || '0') || 0
-                          const q3 = parseFloat(quarterlyTargets['grossMargin']?.q3 || '0') || 0
-                          const q4 = parseFloat(quarterlyTargets['grossMargin']?.q4 || '0') || 0
-                          const avg = (q1 + q2 + q3 + q4) / 4
-                          return (
-                            <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Gross Margin</td>
-                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{financialData.grossMargin.year1}%</td>
-                              {QUARTERS.map(q => (
-                                <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  <input
-                                    type="text"
-                                    value={quarterlyTargets['grossMargin']?.[q.id as keyof typeof quarterlyTargets['grossMargin']] ? `${parseFloat(quarterlyTargets['grossMargin'][q.id as keyof typeof quarterlyTargets['grossMargin']])}%` : ''}
-                                    onChange={(e) => updateQuarterlyTarget('grossMargin', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value.replace('%', ''))}
-                                    placeholder={q.isPast || q.isCurrent ? 'Actual' : 'Target'}
-                                    className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                      q.isPast
-                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
-                                        : q.isCurrent
-                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                    }`}
-                                  />
-                                </td>
-                              ))}
-                              <td className="px-4 py-3 text-sm text-center font-medium text-gray-700">
-                                {avg > 0 ? `${avg.toFixed(1)}% avg` : <span className="text-xs text-slate-400">-</span>}
-                              </td>
-                            </tr>
-                          )
-                        })()}
-
-                      {/* Net Profit — always render */}
-                      {(() => {
-                        const validation = calculateQuarterlyTotal('netProfit')
-                        return (
-                          <tr>
-                            <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Net Profit</td>
-                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
-                              {financialData.netProfit.year1 > 0
-                                ? formatCurrency(financialData.netProfit.year1)
-                                : <span className="text-xs text-gray-400">Set in Step 1</span>}
-                            </td>
-                            {QUARTERS.map(q => (
-                              <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                <input
-                                  type="text"
-                                  value={quarterlyTargets['netProfit']?.[q.id as keyof typeof quarterlyTargets['netProfit']] ? formatDollar(parseFloat(quarterlyTargets['netProfit'][q.id as keyof typeof quarterlyTargets['netProfit']])) : ''}
-                                  onChange={(e) => updateQuarterlyTarget('netProfit', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
-                                  placeholder={q.isPast || q.isCurrent ? 'Actual' : 'Target'}
-                                  className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                    q.isPast
-                                      ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
-                                      : q.isCurrent
-                                      ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                      : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                  }`}
-                                />
-                              </td>
-                            ))}
-                            <td className={`px-4 py-3 text-sm text-center font-medium ${
-                              validation.total === 0 ? 'text-slate-400' :
-                              validation.isValid ? 'bg-green-50 text-green-700' :
-                              validation.variance > 0 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
-                            }`}>
-                              {validation.total > 0 ? (
-                                <div>
-                                  <div className="font-semibold">{formatCurrency(validation.total)}</div>
-                                  <div className="text-xs mt-0.5">
-                                    {validation.variance > 0 ? '+' : ''}{formatCurrency(validation.variance)}
-                                    {validation.isValid && ' ✓'}
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className="text-xs">Not set</span>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      })()}
-
-                      {/* Net Margin */}
-                      {financialData.netMargin && financialData.netMargin.year1 > 0 && (() => {
-                          const q1 = parseFloat(quarterlyTargets['netMargin']?.q1 || '0') || 0
-                          const q2 = parseFloat(quarterlyTargets['netMargin']?.q2 || '0') || 0
-                          const q3 = parseFloat(quarterlyTargets['netMargin']?.q3 || '0') || 0
-                          const q4 = parseFloat(quarterlyTargets['netMargin']?.q4 || '0') || 0
-                          const avg = (q1 + q2 + q3 + q4) / 4
-                          return (
-                            <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Net Margin</td>
-                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{financialData.netMargin.year1}%</td>
-                              {QUARTERS.map(q => (
-                                <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  <input
-                                    type="text"
-                                    value={quarterlyTargets['netMargin']?.[q.id as keyof typeof quarterlyTargets['netMargin']] ? `${parseFloat(quarterlyTargets['netMargin'][q.id as keyof typeof quarterlyTargets['netMargin']])}%` : ''}
-                                    onChange={(e) => updateQuarterlyTarget('netMargin', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value.replace('%', ''))}
-                                    placeholder="0%"
-                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                      q.isPast
-                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
-                                        : q.isCurrent
-                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                    }`}
-                                  />
-                                </td>
-                              ))}
-                              <td className="px-4 py-3 text-sm text-center font-medium text-gray-700">
-                                {avg > 0 ? `${avg.toFixed(1)}% avg` : <span className="text-xs text-slate-400">-</span>}
-                              </td>
-                            </tr>
-                          )
-                        })()}
-                    </tbody>
-                </table>
+                </span>
               </div>
-
-              {/* Core Metrics Section */}
-              {coreMetrics && (
-                <div>
-                  <h4 className="text-sm font-semibold text-brand-navy mb-3">Core Business Metrics</h4>
-                  <table className="w-full border-collapse border border-slate-200" style={{ tableLayout: 'fixed' }}>
-                    <colgroup>
-                      <col style={{ width: '21%' }} />
-                      <col style={{ width: '13%' }} />
-                      <col style={{ width: '16.5%' }} />
-                      <col style={{ width: '16.5%' }} />
-                      <col style={{ width: '16.5%' }} />
-                      <col style={{ width: '16.5%' }} />
-                    </colgroup>
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-brand-navy border-b border-r border-slate-200">Metric</th>
-                        <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">{yearLabel}</th>
-                        {QUARTERS.map(q => (
-                          <th key={q.id} className={`px-4 py-3 text-center text-sm font-semibold border-b border-r border-slate-200 ${q.isPast ? 'bg-green-50 text-green-800' : q.isCurrent ? 'bg-amber-50 text-amber-800' : 'text-brand-navy'}`}>
-                            <div className="flex flex-col items-center gap-1">
-                              <div className="flex items-center gap-1">
-                                <span>{q.label}</span>
-                                {q.isPast && <span className="text-[9px] px-1 py-0.5 bg-green-500 text-white rounded font-semibold">ACTUAL</span>}
-                                {q.isCurrent && !q.isPast && <span className="text-[9px] px-1 py-0.5 bg-amber-500 text-white rounded font-semibold">CURRENT</span>}
-                                {q.isNextQuarter && <span className="text-[9px] px-1 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLANNING</span>}
-                              </div>
-                              <span className="text-[10px] font-normal text-gray-500">{q.months}</span>
-                            </div>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                      <tbody className="bg-white divide-y divide-slate-200">
-                        {coreMetrics.leadsPerMonth?.year1 > 0 && (() => {
-                          const q1 = parseFloat(quarterlyTargets['leadsPerMonth']?.q1 || '0') || 0
-                          const q2 = parseFloat(quarterlyTargets['leadsPerMonth']?.q2 || '0') || 0
-                          const q3 = parseFloat(quarterlyTargets['leadsPerMonth']?.q3 || '0') || 0
-                          const q4 = parseFloat(quarterlyTargets['leadsPerMonth']?.q4 || '0') || 0
-                          const total = q1 + q2 + q3 + q4
-                          return (
-                            <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Leads Per Month</td>
-                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.leadsPerMonth.year1}</td>
-                              {QUARTERS.map(q => (
-                                <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  <input
-                                    type="text"
-                                    value={quarterlyTargets['leadsPerMonth']?.[q.id as keyof typeof quarterlyTargets['leadsPerMonth']] || ''}
-                                    onChange={(e) => updateQuarterlyTarget('leadsPerMonth', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
-                                    placeholder="#"
-                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                      q.isPast
-                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
-                                        : q.isCurrent
-                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                    }`}
-                                  />
-                                </td>
-                              ))}
-                            </tr>
-                          )
-                        })()}
-                        {coreMetrics.conversionRate?.year1 > 0 && (() => {
-                          const q1 = parseFloat(quarterlyTargets['conversionRate']?.q1 || '0') || 0
-                          const q2 = parseFloat(quarterlyTargets['conversionRate']?.q2 || '0') || 0
-                          const q3 = parseFloat(quarterlyTargets['conversionRate']?.q3 || '0') || 0
-                          const q4 = parseFloat(quarterlyTargets['conversionRate']?.q4 || '0') || 0
-                          const avg = (q1 + q2 + q3 + q4) / 4
-                          return (
-                            <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Conversion Rate</td>
-                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.conversionRate.year1}%</td>
-                              {QUARTERS.map(q => (
-                                <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  <input
-                                    type="text"
-                                    value={quarterlyTargets['conversionRate']?.[q.id as keyof typeof quarterlyTargets['conversionRate']] || ''}
-                                    onChange={(e) => updateQuarterlyTarget('conversionRate', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
-                                    placeholder="%"
-                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                      q.isPast
-                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
-                                        : q.isCurrent
-                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                    }`}
-                                  />
-                                </td>
-                              ))}
-                            </tr>
-                          )
-                        })()}
-                        {coreMetrics.avgTransactionValue?.year1 > 0 && (() => {
-                          const q1 = parseFloat(quarterlyTargets['avgTransactionValue']?.q1 || '0') || 0
-                          const q2 = parseFloat(quarterlyTargets['avgTransactionValue']?.q2 || '0') || 0
-                          const q3 = parseFloat(quarterlyTargets['avgTransactionValue']?.q3 || '0') || 0
-                          const q4 = parseFloat(quarterlyTargets['avgTransactionValue']?.q4 || '0') || 0
-                          const avg = (q1 + q2 + q3 + q4) / 4
-                          return (
-                            <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Avg Transaction Value</td>
-                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{formatCurrency(coreMetrics.avgTransactionValue.year1)}</td>
-                              {QUARTERS.map(q => (
-                                <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  <input
-                                    type="text"
-                                    value={quarterlyTargets['avgTransactionValue']?.[q.id as keyof typeof quarterlyTargets['avgTransactionValue']] ? formatDollar(parseFloat(quarterlyTargets['avgTransactionValue'][q.id as keyof typeof quarterlyTargets['avgTransactionValue']])) : ''}
-                                    onChange={(e) => updateQuarterlyTarget('avgTransactionValue', q.id as 'q1' | 'q2' | 'q3' | 'q4', parseDollarInput(e.target.value).toString())}
-                                    placeholder="$0"
-                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                      q.isPast
-                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
-                                        : q.isCurrent
-                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                    }`}
-                                  />
-                                </td>
-                              ))}
-                            </tr>
-                          )
-                        })()}
-                        {coreMetrics.teamHeadcount?.year1 > 0 && (() => {
-                          const q1 = parseFloat(quarterlyTargets['teamHeadcount']?.q1 || '0') || 0
-                          const q2 = parseFloat(quarterlyTargets['teamHeadcount']?.q2 || '0') || 0
-                          const q3 = parseFloat(quarterlyTargets['teamHeadcount']?.q3 || '0') || 0
-                          const q4 = parseFloat(quarterlyTargets['teamHeadcount']?.q4 || '0') || 0
-                          const avg = (q1 + q2 + q3 + q4) / 4
-                          return (
-                            <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Team Headcount</td>
-                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.teamHeadcount.year1}</td>
-                              {QUARTERS.map(q => (
-                                <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  <input
-                                    type="text"
-                                    value={quarterlyTargets['teamHeadcount']?.[q.id as keyof typeof quarterlyTargets['teamHeadcount']] || ''}
-                                    onChange={(e) => updateQuarterlyTarget('teamHeadcount', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
-                                    placeholder="#"
-                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                      q.isPast
-                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
-                                        : q.isCurrent
-                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                    }`}
-                                  />
-                                </td>
-                              ))}
-                            </tr>
-                          )
-                        })()}
-                        {/* Revenue per Employee (Auto-Calculated) */}
-                        {coreMetrics.teamHeadcount?.year1 > 0 && financialData && (() => {
-                          // Calculate revenue per employee for each quarter
-                          const revenueQ1 = parseFloat(quarterlyTargets['revenue']?.q1 || '0') || 0
-                          const revenueQ2 = parseFloat(quarterlyTargets['revenue']?.q2 || '0') || 0
-                          const revenueQ3 = parseFloat(quarterlyTargets['revenue']?.q3 || '0') || 0
-                          const revenueQ4 = parseFloat(quarterlyTargets['revenue']?.q4 || '0') || 0
-
-                          const headcountQ1 = parseFloat(quarterlyTargets['teamHeadcount']?.q1 || '0') || 0
-                          const headcountQ2 = parseFloat(quarterlyTargets['teamHeadcount']?.q2 || '0') || 0
-                          const headcountQ3 = parseFloat(quarterlyTargets['teamHeadcount']?.q3 || '0') || 0
-                          const headcountQ4 = parseFloat(quarterlyTargets['teamHeadcount']?.q4 || '0') || 0
-
-                          const rpeQ1 = headcountQ1 > 0 ? revenueQ1 / headcountQ1 : 0
-                          const rpeQ2 = headcountQ2 > 0 ? revenueQ2 / headcountQ2 : 0
-                          const rpeQ3 = headcountQ3 > 0 ? revenueQ3 / headcountQ3 : 0
-                          const rpeQ4 = headcountQ4 > 0 ? revenueQ4 / headcountQ4 : 0
-
-                          // Calculate year 1 baseline
-                          const year1RPE = coreMetrics.teamHeadcount.year1 > 0
-                            ? financialData.revenue.year1 / coreMetrics.teamHeadcount.year1
-                            : 0
-
-                          return (
-                            <tr className="bg-brand-orange-50/50">
-                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">
-                                Revenue per Employee <span className="text-xs text-gray-500 font-normal">(Auto-Calc)</span>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
-                                {formatCurrency(Math.round(year1RPE))}
-                              </td>
-                              <td className="px-4 py-2 border-r border-slate-200">
-                                <div className="px-2 py-1.5 bg-slate-100 rounded text-sm text-center font-medium text-gray-700 border border-slate-200">
-                                  {rpeQ1 > 0 ? formatCurrency(Math.round(rpeQ1)) : '-'}
-                                </div>
-                              </td>
-                              <td className="px-4 py-2 border-r border-slate-200">
-                                <div className="px-2 py-1.5 bg-slate-100 rounded text-sm text-center font-medium text-gray-700 border border-slate-200">
-                                  {rpeQ2 > 0 ? formatCurrency(Math.round(rpeQ2)) : '-'}
-                                </div>
-                              </td>
-                              <td className="px-4 py-2 border-r border-slate-200">
-                                <div className="px-2 py-1.5 bg-slate-100 rounded text-sm text-center font-medium text-gray-700 border border-slate-200">
-                                  {rpeQ3 > 0 ? formatCurrency(Math.round(rpeQ3)) : '-'}
-                                </div>
-                              </td>
-                              <td className="px-4 py-2">
-                                <div className="px-2 py-1.5 bg-slate-100 rounded text-sm text-center font-medium text-gray-700 border border-slate-200">
-                                  {rpeQ4 > 0 ? formatCurrency(Math.round(rpeQ4)) : '-'}
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })()}
-                        {coreMetrics.ownerHoursPerWeek?.year1 > 0 && (() => {
-                          const q1 = parseFloat(quarterlyTargets['ownerHoursPerWeek']?.q1 || '0') || 0
-                          const q2 = parseFloat(quarterlyTargets['ownerHoursPerWeek']?.q2 || '0') || 0
-                          const q3 = parseFloat(quarterlyTargets['ownerHoursPerWeek']?.q3 || '0') || 0
-                          const q4 = parseFloat(quarterlyTargets['ownerHoursPerWeek']?.q4 || '0') || 0
-                          const avg = (q1 + q2 + q3 + q4) / 4
-                          return (
-                            <tr>
-                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Owner Hours Per Week</td>
-                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{coreMetrics.ownerHoursPerWeek.year1} hrs</td>
-                              {QUARTERS.map(q => (
-                                <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  <input
-                                    type="text"
-                                    value={quarterlyTargets['ownerHoursPerWeek']?.[q.id as keyof typeof quarterlyTargets['ownerHoursPerWeek']] || ''}
-                                    onChange={(e) => updateQuarterlyTarget('ownerHoursPerWeek', q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
-                                    placeholder="#"
-                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                      q.isPast
-                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
-                                        : q.isCurrent
-                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                    }`}
-                                  />
-                                </td>
-                              ))}
-                            </tr>
-                          )
-                        })()}
-                      </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* KPIs Section */}
-              {kpis && kpis.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-semibold text-brand-navy mb-3">Key Performance Indicators</h4>
-                  <table className="w-full border-collapse border border-slate-200" style={{ tableLayout: 'fixed' }}>
-                    <colgroup>
-                      <col style={{ width: '21%' }} />
-                      <col style={{ width: '13%' }} />
-                      <col style={{ width: '16.5%' }} />
-                      <col style={{ width: '16.5%' }} />
-                      <col style={{ width: '16.5%' }} />
-                      <col style={{ width: '16.5%' }} />
-                    </colgroup>
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-brand-navy border-b border-r border-slate-200">KPI</th>
-                        <th className="px-4 py-3 text-center text-sm font-semibold text-brand-navy border-b border-r border-slate-200">{yearLabel}</th>
-                        {QUARTERS.map(q => (
-                          <th key={q.id} className={`px-4 py-3 text-center text-sm font-semibold border-b border-r border-slate-200 ${q.isPast ? 'bg-green-50 text-green-800' : q.isCurrent ? 'bg-amber-50 text-amber-800' : 'text-brand-navy'}`}>
-                            <div className="flex flex-col items-center gap-1">
-                              <div className="flex items-center gap-1">
-                                <span>{q.label}</span>
-                                {q.isPast && <span className="text-[9px] px-1 py-0.5 bg-green-500 text-white rounded font-semibold">ACTUAL</span>}
-                                {q.isCurrent && !q.isPast && <span className="text-[9px] px-1 py-0.5 bg-amber-500 text-white rounded font-semibold">CURRENT</span>}
-                                {q.isNextQuarter && <span className="text-[9px] px-1 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLANNING</span>}
-                              </div>
-                              <span className="text-[10px] font-normal text-gray-500">{q.months}</span>
-                            </div>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                      <tbody className="bg-white divide-y divide-slate-200">
-                        {kpis.map((kpi) => {
-                          const q1 = parseFloat(quarterlyTargets[kpi.id]?.q1 || '0') || 0
-                          const q2 = parseFloat(quarterlyTargets[kpi.id]?.q2 || '0') || 0
-                          const q3 = parseFloat(quarterlyTargets[kpi.id]?.q3 || '0') || 0
-                          const q4 = parseFloat(quarterlyTargets[kpi.id]?.q4 || '0') || 0
-
-                          // Determine unit type
-                          const unit = (kpi.unit || '').toLowerCase()
-                          const isCurrency = unit.includes('$') || unit.includes('dollar')
-                          const isPercentage = unit.includes('%') || unit.includes('percent')
-
-                          // Format value based on unit type (without showing unit text)
-                          const formatKPIValue = (value: number) => {
-                            if (!value) return '-'
-                            if (isCurrency) {
-                              return formatCurrency(value)
-                            } else if (isPercentage) {
-                              return `${value.toFixed(1)}%`
-                            } else {
-                              return value.toLocaleString()
-                            }
-                          }
-
-                          // Get placeholder text based on unit type
-                          const getPlaceholder = () => {
-                            if (isCurrency) return '$'
-                            if (isPercentage) return '%'
-                            return '#'
-                          }
-
-                          return (
-                            <tr key={kpi.id}>
-                              <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">{kpi.name}</td>
-                              <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
-                                {formatKPIValue(kpi.year1Target)}
-                              </td>
-                              {QUARTERS.map(q => (
-                                <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
-                                  <input
-                                    type="text"
-                                    value={quarterlyTargets[kpi.id]?.[q.id as keyof typeof quarterlyTargets[typeof kpi.id]] || ''}
-                                    onChange={(e) => updateQuarterlyTarget(kpi.id, q.id as 'q1' | 'q2' | 'q3' | 'q4', e.target.value)}
-                                    placeholder={getPlaceholder()}
-                                                                        className={`w-full px-2 py-2 border rounded-md text-sm text-center font-medium focus:outline-none transition-colors ${
-                                      q.isPast
-                                        ? 'border-green-300 bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent hover:border-green-400'
-                                        : q.isCurrent
-                                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent hover:border-amber-400'
-                                        : 'border-gray-300 focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300'
-                                    }`}
-                                  />
-                                </td>
-                              ))}
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        </div>
-      )}
-
-      {/* SECTION 2: Quarterly Execution Plan */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <div className={`flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm ${
-            allUnlockedHaveInitiatives ? 'bg-green-500 text-white' : 'bg-slate-600 text-white'
-          }`}>
-            {allUnlockedHaveInitiatives ? <Check className="w-5 h-5" /> : '2'}
-          </div>
-          <div className="flex-1">
-            <h3 className="text-lg font-bold text-brand-navy">Quarterly Execution Plan</h3>
-            <p className="text-sm text-gray-600">Assign initiatives to quarters (Max {MAX_PER_QUARTER} per quarter)</p>
-          </div>
-          {allUnlockedHaveInitiatives && (
-            <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded">
-              ✓ Complete
-            </span>
-          )}
-          <div className="relative group">
-            <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
-            <span className="absolute left-6 top-0 w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
-              Limiting to {MAX_PER_QUARTER} initiatives per quarter ensures your team can focus and execute effectively. Trying to do too much leads to nothing getting done well.
-            </span>
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200">
-          <div className="p-6">
-            {/* Quarter Status Summary Bar */}
-            {twelveMonthInitiatives.length > 0 && (
-              <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-slate-200">
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">Quarter Status Overview</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {allPeriods.map((quarter) => {
-                    const items = annualPlanByQuarter[quarter.id] || []
-                    const assignedCount = items.filter(i => i.assignedTo).length
-                    const isComplete = items.length > 0 && assignedCount === items.length
-                    const isEmpty = items.length === 0
-                    const isFull = items.length >= MAX_PER_QUARTER
-
-                    return (
-                      <div
-                        key={quarter.id}
-                        className={`p-3 rounded-lg border-2 ${
-                          quarter.isLocked
-                            ? 'bg-gray-100 border-gray-300 opacity-60'
-                            : isEmpty
-                            ? 'bg-amber-50 border-amber-200'
-                            : isComplete
-                            ? 'bg-green-50 border-green-300'
-                            : 'bg-brand-orange-50 border-brand-orange-200'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-bold text-brand-navy">{quarter.label}</span>
-                          {quarter.isLocked && (
-                            <span className="text-[9px] px-1.5 py-0.5 bg-gray-400 text-white rounded font-semibold">LOCKED</span>
-                          )}
-                          {quarter.isNextQuarter && (
-                            <span className="text-[9px] px-1.5 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLAN NOW</span>
-                          )}
-                          {!quarter.isLocked && !quarter.isNextQuarter && isComplete && (
-                            <Check className="w-4 h-4 text-green-600" />
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className={`font-medium ${
-                            isEmpty ? 'text-amber-700' : isComplete ? 'text-green-700' : 'text-gray-600'
-                          }`}>
-                            {items.length}/{MAX_PER_QUARTER} initiatives
-                          </span>
-                          {items.length > 0 && (
-                            <span className={`${assignedCount === items.length ? 'text-green-600' : 'text-amber-600'}`}>
-                              • {assignedCount}/{items.length} assigned
-                            </span>
-                          )}
-                        </div>
-                        {isEmpty && !quarter.isLocked && (
-                          <p className="text-[10px] text-amber-600 mt-1">Needs initiatives</p>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Batch Actions */}
-            {twelveMonthInitiatives.length > 0 && (
-              <div className="flex items-center justify-end gap-2 mb-4">
+              <div className="flex gap-2">
                 <button
-                  onClick={handleStaggerByPriority}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-orange-50 text-brand-orange-700 rounded hover:bg-brand-orange-100 font-medium transition-colors"
+                  type="button"
+                  onClick={autoSplitEvenly}
+                  disabled={
+                    !(financialData.revenue.year1 > 0 ||
+                      financialData.grossProfit.year1 > 0 ||
+                      financialData.netProfit.year1 > 0)
+                  }
+                  className="px-3 py-1.5 text-xs font-semibold rounded border border-brand-orange text-brand-orange hover:bg-brand-orange hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Split annual goals evenly across the 4 FY quarters"
                 >
-                  <TrendingUp className="w-3.5 h-3.5" />
-                  By Priority
+                  Auto-split evenly
+                </button>
+                <button
+                  type="button"
+                  onClick={clearTargets}
+                  className="px-3 py-1.5 text-xs font-medium rounded border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Clear targets
                 </button>
               </div>
-            )}
-
-            {/* Empty State */}
-            {teamMembers.length === 0 && (
-              <div className="border-t border-slate-200 pt-4">
-                <p className="text-sm text-gray-600 text-center py-4">
-                  No team members found. Click "Assign to..." on any initiative below and select "Add New Person..." to add your team.
-                </p>
-              </div>
-            )}
-
-            {/* Keyboard Hints */}
-            {twelveMonthInitiatives.length > 0 && (
-              <p className="text-xs text-gray-500 mt-4">
-                💡 Shortcuts: Press 1-4 to toggle quarters
+            </div>
+            {financialData.revenue.year1 === 0 && (
+              <p className="mt-2 text-xs text-gray-500">
+                Set your Year 1 revenue / GP / NP goals in Step 1 to enable auto-split and variance checking.
               </p>
             )}
+          </div>
 
-            {/* Warning if no initiatives */}
-            {twelveMonthInitiatives.length === 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <div className="flex gap-3">
-                  <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-amber-900">No initiatives selected</p>
-                    <p className="text-sm text-amber-700 mt-1">
-                      Go back to Step 4 to select 5-10 initiatives first.
-                    </p>
+          {/* Quarter cards */}
+          <div
+            className={`grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 ${
+              allPeriods.length === 5 ? 'xl:grid-cols-5' : 'xl:grid-cols-4'
+            }`}
+          >
+            {allPeriods.map((quarter) => {
+              const items = annualPlanByQuarter[quarter.id] || []
+              const isFull = items.length >= MAX_PER_QUARTER
+              const isLockedQuarter = quarter.isLocked
+              const isCurrentRemainder = quarter.id === 'current_remainder'
+              const targetsMetricRow = (key: string, label: string, suffix?: string) => {
+                const metric = quarterlyTargets[key] as Record<string, string> | undefined
+                const raw = metric?.[quarter.id] || ''
+                const display = raw && !suffix ? formatDollar(parseFloat(raw)) : raw
+                return (
+                  <div key={key} className="flex items-center gap-2">
+                    <label className="text-[11px] uppercase tracking-wide font-semibold text-gray-500 w-8">
+                      {label}
+                    </label>
+                    <div className="flex-1 relative">
+                      <input
+                        type="text"
+                        value={display}
+                        onChange={(e) =>
+                          updateQuarterlyTarget(
+                            key,
+                            quarter.id,
+                            suffix === '%' ? e.target.value.replace('%', '') : parseDollarInput(e.target.value).toString(),
+                          )
+                        }
+                        placeholder={suffix === '%' ? '0' : '$0'}
+                        className="w-full px-2 py-1 border border-gray-200 rounded text-sm text-right font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+                      />
+                      {suffix && (
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                          {suffix}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </div>
-            )}
+                )
+              }
 
-            {/* Kanban Board - Horizontal Columns */}
-            {twelveMonthInitiatives.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {/* Unassigned Column — scrolls internally so the kanban row
-                    stays compact and quarter columns remain visible side-by-side
-                    no matter how many unassigned initiatives the list contains. */}
-                <div className="md:col-span-2 lg:col-span-4 xl:col-span-1">
-                  <div className="bg-gray-50 rounded-lg border-2 border-dashed border-slate-300 p-4 h-full flex flex-col">
-                    <h4 className="font-semibold text-gray-700 text-sm mb-3 uppercase tracking-wider">
-                      Available
-                    </h4>
-                    <p className="text-xs text-gray-500 mb-3">
-                      {unassignedInitiatives.length} unassigned
-                    </p>
-                    <div className="space-y-2 overflow-y-auto pr-1 max-h-[60vh]">
-                      {unassignedInitiatives.length === 0 ? (
-                        <p className="text-xs text-gray-500 text-center py-6">
-                          All initiatives assigned ✓
+              return (
+                <div
+                  key={quarter.id}
+                  onDragOver={!isLockedQuarter ? handleDragOver : undefined}
+                  onDrop={!isLockedQuarter ? (e) => handleDrop(e, quarter.id) : undefined}
+                  className={`rounded-lg border-2 p-3 flex flex-col ${
+                    isCurrentRemainder
+                      ? 'border-amber-300 bg-amber-50/30'
+                      : quarter.isCurrent
+                      ? 'border-amber-300 bg-amber-50/30'
+                      : quarter.isNextQuarter
+                      ? 'border-brand-orange bg-orange-50/30'
+                      : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-bold text-brand-navy">{quarter.label}</span>
+                        {isCurrentRemainder && (
+                          <span className="text-[9px] px-1 py-0.5 bg-amber-500 text-white rounded font-semibold">NOW</span>
+                        )}
+                        {quarter.isNextQuarter && !isCurrentRemainder && (
+                          <span className="text-[9px] px-1 py-0.5 bg-brand-orange text-white rounded font-semibold">PLANNING</span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5">{quarter.months}</p>
+                    </div>
+                  </div>
+
+                  {/* Targets section */}
+                  <div className="border-t border-slate-100 pt-2 pb-2 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Targets</p>
+                    </div>
+                    {targetsMetricRow('revenue', 'Rev')}
+                    {targetsMetricRow('grossProfit', 'GP')}
+                    {targetsMetricRow('netProfit', 'NP')}
+                  </div>
+
+                  {/* Initiatives section */}
+                  <div className="border-t border-slate-100 pt-2 flex-1 flex flex-col">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                        Initiatives <span className="text-gray-400">({items.length}/{MAX_PER_QUARTER})</span>
+                      </p>
+                      {!isLockedQuarter && !isFull && unassignedInitiatives.length > 0 && (
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            const id = e.target.value
+                            if (!id) return
+                            handleDragStart(id, 'unassigned')
+                            // Reuse drop handler with synthetic event (preventDefault is no-op).
+                            handleDrop({ preventDefault: () => {} } as React.DragEvent, quarter.id)
+                          }}
+                          className="text-[10px] border border-slate-200 rounded px-1 py-0.5 text-brand-orange font-semibold hover:border-brand-orange focus:outline-none focus:ring-1 focus:ring-brand-orange max-w-[110px]"
+                        >
+                          <option value="">+ Add initiative</option>
+                          {unassignedInitiatives.map((ui) => (
+                            <option key={ui.id} value={ui.id}>{ui.title}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5 min-h-[60px]">
+                      {items.length === 0 ? (
+                        <p className="text-[11px] text-center py-3 text-gray-400 italic">
+                          {isLockedQuarter ? 'Quarter is locked' : 'Drag here or use + Add'}
                         </p>
                       ) : (
-                        unassignedInitiatives.map((initiative) => {
+                        items.map((initiative) => {
                           const isRoadmap = initiative.source === 'roadmap'
                           const isOperational = initiative.ideaType === 'operational'
-
-                          // Card styles matching Step 2: Roadmap=Navy, Strategic=Orange, Operational=White
-                          const getCardStyle = () => {
-                            if (isRoadmap) {
-                              return 'bg-brand-navy border-brand-navy shadow-md hover:bg-brand-navy-700'
-                            } else if (isOperational) {
-                              return 'bg-white border-gray-300 hover:border-gray-400 hover:shadow-md'
-                            } else {
-                              return 'bg-brand-orange border-brand-orange shadow-md hover:bg-brand-orange-600'
-                            }
-                          }
-
-                          const getTextColor = () => isOperational ? 'text-gray-900' : 'text-white'
-                          const getSubTextColor = () => isOperational ? 'text-gray-700' : 'text-white/90'
-                          const getGripColor = () => isOperational ? 'text-gray-500 group-hover:text-gray-700' : 'text-white/60 group-hover:text-white'
-
-                          const getBadgeStyle = () => {
-                            if (isRoadmap) return { bg: 'bg-white/20', text: 'text-white', label: 'ROADMAP' }
-                            if (isOperational) return { bg: 'bg-gray-200', text: 'text-gray-700', label: 'OPERATIONAL' }
-                            return { bg: 'bg-white/20', text: 'text-white', label: 'STRATEGIC' }
-                          }
-                          const badgeStyle = getBadgeStyle()
-
+                          const cardBg = isRoadmap
+                            ? 'bg-brand-navy text-white border-brand-navy'
+                            : isOperational
+                            ? 'bg-white text-gray-900 border-gray-300'
+                            : 'bg-brand-orange text-white border-brand-orange'
+                          const subTextColor = isOperational ? 'text-gray-500' : 'text-white/70'
                           return (
                             <div
                               key={initiative.id}
                               draggable
-                              onDragStart={() => handleDragStart(initiative.id, 'unassigned')}
-                              className={`group flex items-start gap-2 p-3 rounded-lg border-2 cursor-move transition-all ${getCardStyle()}`}
+                              onDragStart={() => handleDragStart(initiative.id, quarter.id)}
+                              className={`group flex items-start gap-1.5 p-2 rounded border-2 cursor-move transition-all ${cardBg}`}
                             >
-                              <GripVertical className={`w-4 h-4 flex-shrink-0 mt-0.5 ${getGripColor()}`} />
-
-                              <div className="flex-1 min-w-0">
-                                <p className={`text-sm font-bold leading-tight ${getTextColor()}`}>
-                                  {initiative.title}
-                                </p>
-                                {initiative.description && (
-                                  <p className={`text-xs mt-1.5 leading-relaxed line-clamp-2 ${getSubTextColor()}`}>
-                                    {initiative.description}
-                                  </p>
-                                )}
-                                <span className={`inline-block mt-2 px-2 py-0.5 text-[10px] rounded font-semibold ${badgeStyle.bg} ${badgeStyle.text}`}>
-                                  {badgeStyle.label}
-                                </span>
-                              </div>
+                              <GripVertical className={`w-3 h-3 flex-shrink-0 mt-0.5 ${subTextColor}`} />
+                              <p className="text-xs font-medium leading-snug flex-1 line-clamp-2">
+                                {initiative.title}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveFromQuarter(initiative.id, quarter.id)}
+                                className={`opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ${subTextColor} hover:text-red-400`}
+                                title="Remove from quarter"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
                             </div>
                           )
                         })
@@ -1552,350 +960,117 @@ export default function Step4AnnualPlan({
                     </div>
                   </div>
                 </div>
+              )
+            })}
+          </div>
 
-                {/* Quarter Columns */}
-                {allPeriods.map((quarter) => {
-                  const isRemainder = quarter.id === 'current_remainder'
-                  const status = getQuarterStatus(quarter.id)
-                  const items = annualPlanByQuarter[quarter.id] || []
-                  const isExpanded = expandedQuarters.has(quarter.id)
-                  const isFull = items.length >= MAX_PER_QUARTER
-                  const isLockedQuarter = quarter.isLocked
-                  const isCurrentQuarter = quarter.isCurrent
-                  const isNextQuarter = quarter.isNextQuarter
-
+          {/* Variance row — sum of quarter targets vs annual */}
+          {(financialData.revenue.year1 > 0 ||
+            financialData.grossProfit.year1 > 0 ||
+            financialData.netProfit.year1 > 0) && (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                <span className="font-semibold text-gray-600">Sum of quarter targets:</span>
+                {(['revenue', 'grossProfit', 'netProfit'] as const).map((key) => {
+                  const v = calculateQuarterlyTotal(key)
+                  if (v.annual === 0) return null
+                  const labels = { revenue: 'Rev', grossProfit: 'GP', netProfit: 'NP' } as const
                   return (
-                    <div key={quarter.id} className={`lg:col-span-1 ${isRemainder ? 'border-l-4 border-l-amber-400' : ''}`}>
-                      <div
-                        className={`rounded-lg border-2 p-4 min-h-96 transition-all ${
-                          isRemainder
-                            ? 'bg-amber-50/30 border-amber-300'
-                            : isLockedQuarter
-                            ? 'bg-gray-100 border-gray-300 opacity-60'
-                            : isNextQuarter
-                            ? 'bg-brand-orange-50 border-brand-orange-300 ring-2 ring-brand-orange-200'
-                            : getStatusColor(status)
-                        }`}
-                        onDragOver={isLockedQuarter ? undefined : handleDragOver}
-                        onDragLeave={isLockedQuarter ? undefined : handleDragLeave}
-                        onDrop={isLockedQuarter ? undefined : (e) => handleDrop(e, quarter.id)}
+                    <span key={key} className="flex items-center gap-1">
+                      <span className="text-gray-500">{labels[key]}:</span>
+                      <span className="font-semibold">{formatCurrency(v.total)}</span>
+                      <span
+                        className={
+                          v.total === 0
+                            ? 'text-gray-400'
+                            : v.isValid
+                            ? 'text-green-600'
+                            : Math.abs(v.variance / v.annual) > 0.05
+                            ? 'text-red-600'
+                            : 'text-amber-600'
+                        }
                       >
-                        {/* Quarter Header */}
-                        <button
-                          onClick={() => !isLockedQuarter && toggleQuarter(quarter.id)}
-                          className="w-full text-left mb-4 pb-3 border-b border-current border-opacity-20"
-                          disabled={isLockedQuarter}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <h4 className={`font-bold text-sm uppercase tracking-wider ${isLockedQuarter ? 'text-gray-500' : 'text-brand-navy'}`}>
-                                  {isRemainder ? 'Current Year' : quarter.label}
-                                </h4>
-                                {isRemainder && (
-                                  <span className="text-[10px] px-1.5 py-0.5 bg-amber-500 text-white rounded font-semibold">REMAINDER</span>
-                                )}
-                                {!isRemainder && quarter.isPast && (
-                                  <span className="text-[10px] px-1.5 py-0.5 bg-gray-300 text-gray-600 rounded font-semibold">PAST</span>
-                                )}
-                                {!isRemainder && isCurrentQuarter && !quarter.isPast && (
-                                  <span className="text-[10px] px-1.5 py-0.5 bg-amber-500 text-white rounded font-semibold">NOW (LOCKED)</span>
-                                )}
-                                {!isRemainder && isNextQuarter && (
-                                  <span className="text-[10px] px-1.5 py-0.5 bg-brand-orange-500 text-white rounded font-semibold">PLANNING</span>
-                                )}
-                              </div>
-                              <p className={`text-xs mt-1 ${isLockedQuarter ? 'text-gray-500' : 'text-gray-600'}`}>
-                                {quarter.months}
-                              </p>
-                              <p className={`text-xs mt-0.5 ${isLockedQuarter ? 'text-gray-400' : 'text-gray-500'}`}>
-                                {quarter.title}
-                              </p>
-                            </div>
-                            {isExpanded ? (
-                              <ChevronUp className="w-4 h-4 text-gray-600" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 text-gray-600" />
-                            )}
-                          </div>
-                          <p className={`text-xs font-medium mt-2 ${
-                            isFull ? 'text-amber-700' : 'text-gray-700'
-                          }`}>
-                            {items.length} / {MAX_PER_QUARTER} initiatives
-                            {isFull && ' (Full)'}
-                          </p>
-                        </button>
-
-                        {/* Drop Zone */}
-                        {isExpanded && (
-                          <div className="min-h-20">
-
-                            {items.length === 0 ? (
-                              <p className={`text-xs text-center py-6 ${isLockedQuarter ? 'text-gray-400' : 'text-gray-500'}`}>
-                                {isLockedQuarter ? 'Quarter is locked' : 'Drag initiatives here'}
-                              </p>
-                            ) : (
-                              <div className="space-y-2">
-                                {items.map((initiative, index) => {
-                                  const assignedMember = initiative.assignedTo ? getMemberById(initiative.assignedTo) : null
-                                  const isShowingAssignment = showAssignmentFor === initiative.id
-
-                                  // Card styles matching Step 2: Roadmap=Navy, Strategic=Orange, Operational=White
-                                  const isRoadmapItem = initiative.source === 'roadmap'
-                                  const isOperationalItem = initiative.ideaType === 'operational'
-
-                                  const getQuarterCardStyle = () => {
-                                    if (isRoadmapItem) {
-                                      return 'bg-brand-navy border-brand-navy-700'
-                                    } else if (isOperationalItem) {
-                                      return 'bg-white border-gray-300'
-                                    } else {
-                                      return 'bg-brand-orange border-brand-orange-600'
-                                    }
-                                  }
-
-                                  const getQuarterTextColor = () => isOperationalItem ? 'text-gray-900' : 'text-white'
-                                  const getQuarterSubTextColor = () => isOperationalItem ? 'text-gray-600' : 'text-white/80'
-                                  const getQuarterIndexColor = () => isOperationalItem ? 'text-gray-500' : 'text-white/70'
-                                  const getQuarterRemoveColor = () => isOperationalItem
-                                    ? 'text-gray-300 hover:text-red-600'
-                                    : 'text-white/40 hover:text-white'
-
-                                  const getQuarterBadgeStyle = () => {
-                                    if (isRoadmapItem) return { bg: 'bg-white/20', text: 'text-white', label: 'ROADMAP' }
-                                    if (isOperationalItem) return { bg: 'bg-gray-200', text: 'text-gray-700', label: 'OPERATIONAL' }
-                                    return { bg: 'bg-white/20', text: 'text-white', label: 'STRATEGIC' }
-                                  }
-                                  const quarterBadgeStyle = getQuarterBadgeStyle()
-
-                                  return (
-                                    <div
-                                      key={initiative.id}
-                                      draggable
-                                      onDragStart={() => handleDragStart(initiative.id, quarter.id)}
-                                      className={`p-3 rounded-lg border-2 cursor-move hover:shadow-md transition-all group ${getQuarterCardStyle()}`}
-                                    >
-                                  <div className="flex items-start justify-between gap-2 mb-2">
-                                    <div className="flex items-start gap-2 flex-1">
-                                      <span className={`text-xs font-bold mt-0.5 ${getQuarterIndexColor()}`}>
-                                        {index + 1}
-                                      </span>
-                                      <div className="flex-1">
-                                        <p className={`text-sm font-semibold leading-tight ${getQuarterTextColor()}`}>
-                                          {initiative.title}
-                                        </p>
-                                        {initiative.description && (
-                                          <p className={`text-xs mt-1.5 leading-relaxed ${getQuarterSubTextColor()}`}>
-                                            {initiative.description}
-                                          </p>
-                                        )}
-                                        <span className={`inline-block mt-2 text-[10px] px-1.5 py-0.5 rounded font-semibold ${quarterBadgeStyle.bg} ${quarterBadgeStyle.text}`}>
-                                          {quarterBadgeStyle.label}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <button
-                                      onClick={() => handleRemoveFromQuarter(initiative.id, quarter.id)}
-                                      className={`opacity-0 group-hover:opacity-100 transition-all flex-shrink-0 ${getQuarterRemoveColor()}`}
-                                      title="Remove"
-                                    >
-                                      <X className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-  
-                                  {/* Person Assignment - Beautiful Design */}
-                                  <div className="relative">
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        setShowAssignmentFor(isShowingAssignment ? null : initiative.id)
-                                      }}
-                                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded border transition-colors ${
-                                        assignedMember
-                                          ? peopleAtCapacityByQuarter[quarter.id]?.has(assignedMember.id)
-                                            ? 'bg-red-50 border-red-200 hover:border-red-300'
-                                            : 'bg-gray-50 border-slate-200 hover:border-slate-300'
-                                          : 'bg-white border-dashed border-slate-300 hover:border-slate-400'
-                                      }`}
-                                    >
-                                      {assignedMember ? (
-                                        <>
-                                          <div className={`w-5 h-5 rounded-full ${assignedMember.color} flex items-center justify-center flex-shrink-0`}>
-                                            <span className="text-white text-xs font-bold">{assignedMember.initials}</span>
-                                          </div>
-                                          <span className="text-xs font-medium text-brand-navy flex-1 text-left">{assignedMember.name}</span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
-                                            <UserPlus className="w-3 h-3 text-slate-400" />
-                                          </div>
-                                          <span className="text-xs text-gray-500 flex-1 text-left">Assign to...</span>
-                                        </>
-                                      )}
-                                      <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${isShowingAssignment ? 'rotate-180' : ''}`} />
-                                    </button>
-  
-                                    {/* Dropdown Menu */}
-                                    {isShowingAssignment && (
-                                      <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-10 max-h-80 overflow-y-auto min-w-[320px]">
-                                        {/* Existing Team Members */}
-                                        {teamMembers.map(member => {
-                                          const count = assignmentCountsByQuarter[quarter.id]?.[member.id] || 0
-                                          const isAtCapacity = count >= MAX_PER_PERSON
-                                          const isCurrentlyAssigned = initiative.assignedTo === member.id
-                                          const canAssign = !isAtCapacity || isCurrentlyAssigned
-  
-                                          return (
-                                            <button
-                                              key={member.id}
-                                              onClick={(e) => {
-                                                e.stopPropagation()
-                                                if (canAssign) {
-                                                  handleAssignPerson(initiative.id, quarter.id, member.id)
-                                                }
-                                              }}
-                                              disabled={!canAssign}
-                                              className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${
-                                                isCurrentlyAssigned ? 'bg-brand-orange-50' : ''
-                                              } ${!canAssign ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                            >
-                                              <div className={`w-8 h-8 rounded-full ${member.color} flex items-center justify-center flex-shrink-0`}>
-                                                <span className="text-white text-sm font-bold">{member.initials}</span>
-                                              </div>
-                                              <div className="flex-1">
-                                                <p className="text-sm font-medium text-brand-navy">{member.name}</p>
-                                                <p className={`text-sm ${
-                                                  isAtCapacity ? 'text-red-600' : 'text-gray-500'
-                                                }`}>
-                                                  {count}/{MAX_PER_PERSON} {isAtCapacity && '(Full)'}
-                                                </p>
-                                              </div>
-                                              {isCurrentlyAssigned && (
-                                                <Check className="w-5 h-5 text-brand-orange" />
-                                              )}
-                                            </button>
-                                          )
-                                        })}
-  
-                                        {/* Separator */}
-                                        {teamMembers.length > 0 && (
-                                          <div className="border-t border-slate-200 my-1"></div>
-                                        )}
-  
-                                        {/* Add New Person Option */}
-                                        {!showAddNewPerson ? (
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation()
-                                              setShowAddNewPerson(true)
-                                            }}
-                                            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-brand-orange-50 transition-colors text-brand-orange"
-                                          >
-                                            <div className="w-8 h-8 rounded-full bg-brand-orange-100 flex items-center justify-center flex-shrink-0">
-                                              <UserPlus className="w-4 h-4 text-brand-orange" />
-                                            </div>
-                                            <p className="text-sm font-medium">Add New Person...</p>
-                                          </button>
-                                        ) : (
-                                          <div className="p-4 bg-gray-50 border-t border-slate-200" onClick={(e) => e.stopPropagation()}>
-                                            <p className="text-sm font-semibold text-brand-navy mb-3">Add New Team Member</p>
-                                            <input
-                                              type="text"
-                                              value={newPersonName}
-                                              onChange={(e) => setNewPersonName(e.target.value)}
-                                              placeholder="Full name"
-                                              className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-brand-orange"
-                                              autoFocus
-                                            />
-                                            <input
-                                              type="text"
-                                              value={newPersonRole}
-                                              onChange={(e) => setNewPersonRole(e.target.value)}
-                                              placeholder="Role/Title (optional)"
-                                              className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-brand-orange"
-                                            />
-                                            <div className="flex items-center gap-2">
-                                              <button
-                                                onClick={() => handleAddTeamMember(initiative.id, quarter.id)}
-                                                disabled={isSavingNewPerson || !newPersonName.trim()}
-                                                className="flex-1 px-4 py-2.5 bg-brand-orange text-white text-sm rounded-lg hover:bg-brand-orange-600 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                                              >
-                                                {isSavingNewPerson ? 'Saving...' : 'Add & Assign'}
-                                              </button>
-                                              <button
-                                                onClick={(e) => {
-                                                  e.stopPropagation()
-                                                  setShowAddNewPerson(false)
-                                                  setNewPersonName('')
-                                                  setNewPersonRole('')
-                                                }}
-                                                className="px-4 py-2.5 bg-slate-200 text-gray-700 text-sm rounded-lg hover:bg-slate-300"
-                                              >
-                                                Cancel
-                                              </button>
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                  )}
-                      </div>
-                    </div>
+                        ({v.variance >= 0 ? '+' : ''}{formatCurrency(v.variance)})
+                      </span>
+                    </span>
                   )
                 })}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Completion Messages */}
-            {(() => {
-              // Check if all unlocked quarters have at least 1 initiative
-              const unlockedQuarters = QUARTERS.filter(q => !q.isLocked)
-              const allUnlockedHaveInitiatives = unlockedQuarters.every(
-                q => (annualPlanByQuarter[q.id] || []).length > 0
-              )
-              const allDistributed = twelveMonthInitiatives.length > 0 && unassignedInitiatives.length === 0
+          {/* Available pool — drop here to unassign */}
+          {twelveMonthInitiatives.length > 0 && (
+            <div
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, 'unassigned')}
+              className="bg-gray-50 rounded-lg border-2 border-dashed border-slate-300 p-4"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-semibold text-brand-navy text-sm">
+                  Available initiatives <span className="text-gray-500 font-normal">({unassignedInitiatives.length})</span>
+                </h4>
+                <p className="text-xs text-gray-500">Drag into a quarter or use + Add inside the quarter</p>
+              </div>
+              {unassignedInitiatives.length === 0 ? (
+                <p className="text-xs text-center py-4 text-gray-500">
+                  All initiatives assigned ✓
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-[40vh] overflow-y-auto pr-1">
+                  {unassignedInitiatives.map((initiative) => {
+                    const isRoadmap = initiative.source === 'roadmap'
+                    const isOperational = initiative.ideaType === 'operational'
+                    const cardBg = isRoadmap
+                      ? 'bg-brand-navy text-white border-brand-navy'
+                      : isOperational
+                      ? 'bg-white text-gray-900 border-gray-300'
+                      : 'bg-brand-orange text-white border-brand-orange'
+                    const subTextColor = isOperational ? 'text-gray-500' : 'text-white/70'
+                    const badgeStyle = isRoadmap
+                      ? { bg: 'bg-white/20', text: 'text-white', label: 'ROADMAP' }
+                      : isOperational
+                      ? { bg: 'bg-gray-200', text: 'text-gray-700', label: 'OPERATIONAL' }
+                      : { bg: 'bg-white/20', text: 'text-white', label: 'STRATEGIC' }
+                    return (
+                      <div
+                        key={initiative.id}
+                        draggable
+                        onDragStart={() => handleDragStart(initiative.id, 'unassigned')}
+                        className={`flex items-start gap-1.5 p-2 rounded border-2 cursor-move ${cardBg}`}
+                      >
+                        <GripVertical className={`w-3 h-3 flex-shrink-0 mt-0.5 ${subTextColor}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium leading-snug">{initiative.title}</p>
+                          <span className={`inline-block mt-1 px-1 py-0.5 text-[9px] rounded font-semibold ${badgeStyle.bg} ${badgeStyle.text}`}>
+                            {badgeStyle.label}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
-              if (allUnlockedHaveInitiatives && allDistributed) {
-                return (
-                  <div className="bg-brand-teal-50 border-2 border-brand-teal-300 rounded-lg p-4 mt-4">
-                    <p className="text-base font-semibold text-brand-teal-800">
-                      ✓ Step 4 Complete! All unlocked quarters have initiatives assigned.
-                    </p>
-                    <p className="text-sm text-brand-teal-700 mt-1">
-                      You can proceed to Step 5 to define your sprint focus and key actions.
-                    </p>
-                  </div>
-                )
-              } else if (allUnlockedHaveInitiatives) {
-                return (
-                  <div className="bg-brand-teal-50 border border-brand-teal-200 rounded-lg p-3 mt-4">
-                    <p className="text-sm text-brand-teal-800">
-                      ✓ Minimum requirement met! You can proceed, or continue assigning remaining initiatives.
-                    </p>
-                  </div>
-                )
-              } else if (allDistributed) {
-                return (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4">
-                    <p className="text-sm text-amber-800">
-                      All initiatives distributed, but some unlocked quarters are empty. Add at least 1 initiative to each unlocked quarter.
-                    </p>
-                  </div>
-                )
-              }
-              return null
-            })()}
-          </div>
+          {/* No-initiatives empty state */}
+          {twelveMonthInitiatives.length === 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="flex gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-amber-900">No initiatives selected</p>
+                  <p className="text-sm text-amber-700 mt-1">
+                    Go back to Step 3 to select 5-20 initiatives first.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      )}
+
     </div>
   )
 }
