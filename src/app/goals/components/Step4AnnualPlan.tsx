@@ -342,12 +342,29 @@ export default function Step4AnnualPlan({
     setExpandedQuarters(newExpanded)
   }
 
-  // Get unassigned initiatives
-  const assignedInitiativeIds = new Set(
-    Object.values(annualPlanByQuarter).flat().map(i => i.id)
+  // Get unassigned initiatives.
+  //
+  // Match by TITLE rather than by id because each step_type ('twelve_month',
+  // 'q1'..'q4', 'current_remainder') is persisted as separate DB rows in
+  // strategic_initiatives — they share no foreign key linking the q1 copy back
+  // to its twelve_month parent. So the same conceptual initiative ends up with
+  // a different UUID in each step_type. Filtering by id therefore always
+  // failed to dedupe and the initiative appeared in BOTH the assigned quarter
+  // AND the Available pool. (Also dedupes against the same-title quarter copy
+  // produced by a re-save round-trip.)
+  //
+  // Long-term fix would be a `parent_initiative_id` column on
+  // strategic_initiatives so quarter assignments reference the twelve_month
+  // source row. Tracked in the data-model debt but out of scope for this
+  // hotfix — we want fit2shine unblocked today.
+  const assignedTitles = new Set(
+    Object.values(annualPlanByQuarter)
+      .flat()
+      .map(i => (i.title || '').trim().toLowerCase())
+      .filter(t => t.length > 0)
   )
   const unassignedInitiatives = twelveMonthInitiatives.filter(
-    i => !assignedInitiativeIds.has(i.id)
+    i => !assignedTitles.has((i.title || '').trim().toLowerCase())
   )
 
   // Add initiative to quarter
