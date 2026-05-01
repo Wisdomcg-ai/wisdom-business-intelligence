@@ -52,7 +52,6 @@ import { getXeroOrgTimezone } from './organisation'
 import {
   refreshXeroAccountsCatalog,
   classifyByXeroType,
-  classifyBSByXeroType,
   type CatalogMap,
 } from './accounts-catalog'
 
@@ -372,17 +371,25 @@ async function syncBalanceSheetForTenant(
     if (!unbalancedSet.has(r.balance_date)) balancedRows.push(r)
   }
 
-  // Map → DB rows (catalog-first classification, parser as fallback).
+  // Map → DB rows. PARSER WINS for account_type on BS (catalog only fills
+  // account_code). This is the opposite of P&L: in P&L, layout is freeform
+  // and chart-of-accounts xero_type is the truth. In BS, the user can drag
+  // any account into any section (e.g. JDS drags Mastercard Aeris — a
+  // BANK-typed account — into "Current Liabilities"), and Xero web honors
+  // that layout intent for the displayed totals. Catalog-overriding here
+  // would make our DB diverge from what Xero web shows by exactly the
+  // misclassified balance × 2 in the accounting equation. The Net Assets ==
+  // Equity gate above runs on the same parser bucketing, so DB and gate
+  // remain self-consistent.
   const dbRows = balancedRows.map((r) => {
     const catEntry = catalog.get(r.account_id)
-    const catalogType = classifyBSByXeroType(catEntry?.account_type)
     return {
       business_id: profileId,
       tenant_id: conn.tenant_id,
       account_id: r.account_id,
       account_code: catEntry?.account_code ?? null,
       account_name: r.account_name,
-      account_type: catalogType ?? r.account_type,
+      account_type: r.account_type,
       section: r.section,
       balance_date: r.balance_date,
       balance: r.balance,

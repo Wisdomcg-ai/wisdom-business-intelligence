@@ -645,6 +645,62 @@ describe('Path A BS sync orchestrator', () => {
     expect(uniqueFxIds.size).toBe(1)
   })
 
+  it('Test 6.1 — layout intent wins over catalog xero_type (Mastercard-as-liability case)', async () => {
+    // Real JDS regression: Mastercard Aeris is xero_type=BANK in chart-of-
+    // accounts (catalog would call it asset) but lives under "Current
+    // Liabilities" in JDS's BS layout. Xero web honors layout intent and
+    // shows it as a liability — so must we. If catalog override re-bucketed
+    // it to asset at write time, DB would diverge from Xero web by
+    // 2× balance in the accounting equation.
+    const MASTERCARD_ID = 'eeee1111-1111-1111-1111-eeeeeeeeeeee'
+    const { upsertCallsByTable } = makeSupabaseStub({
+      connections: [
+        { id: 'conn-1', tenant_id: 'tenant-A-uuid', tenant_name: 'JDS', business_id: 'profile-id-1' },
+      ],
+    })
+    const plH = defaultPLHandlers({})
+    mockFetchRouted((u) => {
+      // Override /Accounts BEFORE delegating to defaultPLHandlers so our
+      // catalog includes Mastercard with code '884' and xero_type=BANK.
+      if (isAccountsUrl(u)) {
+        return makeJsonResponse(
+          accountsResponse([
+            { id: MASTERCARD_ID, code: '884', name: 'Mastercard Aeris', type: 'BANK' },
+          ]),
+        )
+      }
+      const pl = plH(u); if (pl) return pl
+      if (isBSUrl(u)) {
+        const d = balanceDateFromBSUrl(u)!
+        // Layout: Mastercard sits in Current Liabilities. Asset / Liability /
+        // Equity all balance: 1000 - (400 + 248) - 352 = 0.
+        return makeJsonResponse(
+          singlePeriodBSReport(d, [
+            { name: 'NAB Bank', id: BS_ASSET_ID, amount: '1000.00', section: 'Assets' },
+            { name: 'GST Payable', id: BS_LIAB_ID, amount: '400.00', section: 'Liabilities' },
+            { name: 'Mastercard Aeris', id: MASTERCARD_ID, amount: '248.08', section: 'Liabilities' },
+            { name: 'Retained Earnings', id: BS_EQUITY_ID, amount: '351.92', section: 'Equity' },
+          ]),
+        )
+      }
+      return makeJsonResponse({}, 500)
+    })
+
+    const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
+    const result = await syncBusinessXeroPL('biz-id-1')
+
+    expect(result.status).toBe('success')
+    const bsRows = upsertCallsByTable['xero_bs_lines'] ?? []
+    const mastercardRows = bsRows.filter((r: any) => r.account_id === MASTERCARD_ID)
+    expect(mastercardRows.length).toBeGreaterThan(0)
+    for (const r of mastercardRows) {
+      // Layout (parser) wins — NOT catalog xero_type=BANK → asset.
+      expect(r.account_type).toBe('liability')
+      // Catalog still fills the friendly account_code.
+      expect(r.account_code).toBe('884')
+    }
+  })
+
   it('Test 7 — catalog reuse: only one /Accounts call per tenant per sync (P&L + BS share the catalog)', async () => {
     makeSupabaseStub({
       connections: [
