@@ -288,3 +288,50 @@ describe('classifyByXeroType', () => {
     expect(classifyByXeroType('directcosts')).toBe('cogs')
   })
 })
+
+describe('classifyBSByXeroType', () => {
+  // Sibling to classifyByXeroType — Balance Sheet's 3-bucket taxonomy.
+  // Mappings validated against production xero_type distribution
+  // (snapshot 2026-04-30 across 18 tenants).
+  it('maps BANK and balance-sheet asset types to asset', async () => {
+    const { classifyBSByXeroType } = await import('@/lib/xero/accounts-catalog')
+    for (const t of ['BANK', 'CURRENT', 'FIXED', 'INVENTORY', 'NONCURRENT', 'PREPAYMENT']) {
+      expect(classifyBSByXeroType(t)).toBe('asset')
+    }
+  })
+
+  it('maps liability types to liability', async () => {
+    const { classifyBSByXeroType } = await import('@/lib/xero/accounts-catalog')
+    for (const t of ['CURRLIAB', 'LIABILITY', 'TERMLIAB']) {
+      expect(classifyBSByXeroType(t)).toBe('liability')
+    }
+  })
+
+  it('maps EQUITY to equity', async () => {
+    const { classifyBSByXeroType } = await import('@/lib/xero/accounts-catalog')
+    expect(classifyBSByXeroType('EQUITY')).toBe('equity')
+  })
+
+  it('returns null for P&L types (so callers route to the P&L pipeline)', async () => {
+    const { classifyBSByXeroType } = await import('@/lib/xero/accounts-catalog')
+    for (const t of ['REVENUE', 'SALES', 'OTHERINCOME', 'DIRECTCOSTS', 'EXPENSE', 'OVERHEADS', 'DEPRECIATN', 'OTHEREXPENSE']) {
+      expect(classifyBSByXeroType(t)).toBeNull()
+    }
+  })
+
+  it('returns null for null/undefined/empty/unknown', async () => {
+    const { classifyBSByXeroType } = await import('@/lib/xero/accounts-catalog')
+    expect(classifyBSByXeroType(null)).toBeNull()
+    expect(classifyBSByXeroType(undefined)).toBeNull()
+    expect(classifyBSByXeroType('')).toBeNull()
+    expect(classifyBSByXeroType('NONSENSE')).toBeNull()
+  })
+
+  it('is case-insensitive', async () => {
+    const { classifyBSByXeroType } = await import('@/lib/xero/accounts-catalog')
+    expect(classifyBSByXeroType('bank')).toBe('asset')
+    expect(classifyBSByXeroType('Bank')).toBe('asset')
+    expect(classifyBSByXeroType('currliab')).toBe('liability')
+    expect(classifyBSByXeroType('Equity')).toBe('equity')
+  })
+})
