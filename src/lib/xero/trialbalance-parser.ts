@@ -49,16 +49,24 @@ type XeroReport = { Rows?: XeroRow[] }
 // ─── Internal helpers ───────────────────────────────────────────────────────
 
 /**
- * Extract debit + credit from a TB data row, preferring YTD columns
- * (Cells[3] / Cells[4]) when present, falling back to current-period columns
- * (Cells[1] / Cells[2]). Returns zero for either side when the cell is empty
- * or unparseable.
+ * Extract debit + credit from a TB data row.
+ *
+ * Column-shape decision is made ONCE per report (in parseTrialBalance) by
+ * looking at the Header row, then applied uniformly to every data row. We
+ * cannot decide per-row "YTD if non-zero else current" because:
+ *   - cells[1]/cells[2] are PERIOD MOVEMENTS (debit/credit activity in some
+ *     range); cells[3]/cells[4] are YTD BALANCES.
+ *   - Movements and balances do NOT sum together — mixing them per-row
+ *     breaks the universal Σ debit == Σ credit invariant. Empirically on
+ *     a JDS Feb 2026 TB this caused a $1,418.81 spurious imbalance.
+ *   - Empty YTD cell means "zero balance YTD", NOT "fall back to current".
  */
-function extractDebitCredit(cells: XeroCell[]): { debit: number; credit: number } {
-  const ytdDebit = parseAmount(cells[3]?.Value)
-  const ytdCredit = parseAmount(cells[4]?.Value)
-  if (ytdDebit !== 0 || ytdCredit !== 0) {
-    return { debit: ytdDebit, credit: ytdCredit }
+function extractDebitCredit(cells: XeroCell[], useYTD: boolean): { debit: number; credit: number } {
+  if (useYTD) {
+    return {
+      debit: parseAmount(cells[3]?.Value),
+      credit: parseAmount(cells[4]?.Value),
+    }
   }
   return {
     debit: parseAmount(cells[1]?.Value),
@@ -73,14 +81,19 @@ function extractAccountId(cells: XeroCell[]): string | null {
   return accAttr?.Value ?? null
 }
 
-function walkSection(section: XeroRow, sectionTitle: string | null, out: ParsedTBRow[]): void {
+function walkSection(
+  section: XeroRow,
+  sectionTitle: string | null,
+  useYTD: boolean,
+  out: ParsedTBRow[],
+): void {
   if (!Array.isArray(section.Rows)) return
   const ownTitle = (section.Title ?? '').trim()
   const effectiveSection = ownTitle || sectionTitle
   for (const node of section.Rows) {
     if (!node || typeof node !== 'object') continue
     if (node.RowType === 'Section') {
-      walkSection(node, effectiveSection, out)
+      walkSection(node, effectiveSection, useYTD, out)
       continue
     }
     if (node.RowType !== 'Row') continue // skip Header / SummaryRow
@@ -90,7 +103,7 @@ function walkSection(section: XeroRow, sectionTitle: string | null, out: ParsedT
     if (!accountName) continue
     // Filter Xero's computed total rows that arrive as plain Row.
     if (accountName.toLowerCase().startsWith('total ')) continue
-    const { debit, credit } = extractDebitCredit(cells)
+    const { debit, credit } = extractDebitCredit(cells, useYTD)
     out.push({
       account_id: extractAccountId(cells),
       account_name: accountName,
@@ -104,6 +117,32 @@ function walkSection(section: XeroRow, sectionTitle: string | null, out: ParsedT
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
+ * Detect column shape: modern Xero TB has 5 cells per row
+ * [Account, Debit, Credit, YTD Debit, YTD Credit]; legacy / minimal shape
+ * has just [Account, Debit, Credit]. Cell count is the signal (locale-safe).
+ *
+ * Look at the Header row first. If absent (some test fixtures + edge-case
+ * Xero responses), fall back to the first data Row's cell count.
+ */
+function shouldUseYTD(top: XeroReport): boolean {
+  const header = (top.Rows ?? []).find((r) => r.RowType === 'Header')
+  if (Array.isArray(header?.Cells)) return header.Cells.length >= 5
+  // No Header — infer from first data Row encountered (recurse into Sections).
+  const findFirstRowCellCount = (rs: XeroRow[]): number | null => {
+    for (const r of rs) {
+      if (r?.RowType === 'Row' && Array.isArray(r.Cells)) return r.Cells.length
+      if (r?.RowType === 'Section' && Array.isArray(r.Rows)) {
+        const inner = findFirstRowCellCount(r.Rows)
+        if (inner !== null) return inner
+      }
+    }
+    return null
+  }
+  const cellCount = findFirstRowCellCount(top.Rows ?? [])
+  return cellCount !== null && cellCount >= 5
+}
+
+/**
  * Parse a Reports/TrialBalance response into long-format rows. Caller
  * verifies the universal Σ(debit) == Σ(credit) invariant downstream.
  */
@@ -111,10 +150,11 @@ export function parseTrialBalance(report: unknown): ParsedTBRow[] {
   const r = report as { Reports?: XeroReport[] } | null
   const top = r?.Reports?.[0]
   if (!top || !Array.isArray(top.Rows)) return []
+  const useYTD = shouldUseYTD(top)
   const out: ParsedTBRow[] = []
   for (const node of top.Rows) {
     if (node.RowType !== 'Section') continue
-    walkSection(node, null, out)
+    walkSection(node, null, useYTD, out)
   }
   return out
 }
