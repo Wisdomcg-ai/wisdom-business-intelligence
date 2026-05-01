@@ -787,13 +787,17 @@ export default function Step4AnnualPlan({
                     </tr>
                   </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
-                      {/* Revenue */}
-                      {financialData.revenue.year1 > 0 && (() => {
+                      {/* Revenue — always render (allow quarterly entry even if Year 1 annual goal isn't set yet) */}
+                      {(() => {
                         const validation = calculateQuarterlyTotal('revenue')
                         return (
                           <tr>
                             <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Revenue</td>
-                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{formatCurrency(financialData.revenue.year1)}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
+                              {financialData.revenue.year1 > 0
+                                ? formatCurrency(financialData.revenue.year1)
+                                : <span className="text-xs text-gray-400">Set in Step 1</span>}
+                            </td>
                             {QUARTERS.map(q => (
                               <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
                                 <input
@@ -832,13 +836,17 @@ export default function Step4AnnualPlan({
                         )
                       })()}
 
-                      {/* Gross Profit */}
-                      {financialData.grossProfit.year1 > 0 && (() => {
+                      {/* Gross Profit — always render */}
+                      {(() => {
                         const validation = calculateQuarterlyTotal('grossProfit')
                         return (
                           <tr>
                             <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Gross Profit</td>
-                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{formatCurrency(financialData.grossProfit.year1)}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
+                              {financialData.grossProfit.year1 > 0
+                                ? formatCurrency(financialData.grossProfit.year1)
+                                : <span className="text-xs text-gray-400">Set in Step 1</span>}
+                            </td>
                             {QUARTERS.map(q => (
                               <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
                                 <input
@@ -912,13 +920,17 @@ export default function Step4AnnualPlan({
                           )
                         })()}
 
-                      {/* Net Profit */}
-                      {financialData.netProfit.year1 > 0 && (() => {
+                      {/* Net Profit — always render */}
+                      {(() => {
                         const validation = calculateQuarterlyTotal('netProfit')
                         return (
                           <tr>
                             <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">Net Profit</td>
-                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">{formatCurrency(financialData.netProfit.year1)}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
+                              {financialData.netProfit.year1 > 0
+                                ? formatCurrency(financialData.netProfit.year1)
+                                : <span className="text-xs text-gray-400">Set in Step 1</span>}
+                            </td>
                             {QUARTERS.map(q => (
                               <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
                                 <input
@@ -1468,16 +1480,18 @@ export default function Step4AnnualPlan({
             {/* Kanban Board - Horizontal Columns */}
             {twelveMonthInitiatives.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {/* Unassigned Column */}
+                {/* Unassigned Column — scrolls internally so the kanban row
+                    stays compact and quarter columns remain visible side-by-side
+                    no matter how many unassigned initiatives the list contains. */}
                 <div className="md:col-span-2 lg:col-span-4 xl:col-span-1">
-                  <div className="bg-gray-50 rounded-lg border-2 border-dashed border-slate-300 p-4 h-full">
+                  <div className="bg-gray-50 rounded-lg border-2 border-dashed border-slate-300 p-4 h-full flex flex-col">
                     <h4 className="font-semibold text-gray-700 text-sm mb-3 uppercase tracking-wider">
                       Available
                     </h4>
                     <p className="text-xs text-gray-500 mb-3">
                       {unassignedInitiatives.length} unassigned
                     </p>
-                    <div className="space-y-2">
+                    <div className="space-y-2 overflow-y-auto pr-1 max-h-[60vh]">
                       {unassignedInitiatives.length === 0 ? (
                         <p className="text-xs text-gray-500 text-center py-6">
                           All initiatives assigned ✓
