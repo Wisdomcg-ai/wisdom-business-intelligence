@@ -797,7 +797,7 @@ Plans:
 **Goal:** Establish a CFO-grade data integrity contract — numbers we display equal numbers Xero displays, exactly, every account, every month, every tenant. **Restructured 2026-04-30** after empirical proof that Xero's `?periods=N&timeframe=MONTH` aggregation is structurally broken (documented in Xero's own developer docs). Old plans 04, 05, 06 (standardLayout / classification / absorber) are obsolete; replaced by 06A-06F (Path A: per-month single-period queries for both PL and BS, with full Calxa-grade reconciliation gates). Plans 07-12 (data integrity UI, daily cron, UAT) extended to cover both PL and BS.
 **Requirements**: PHASE-44-D-08, PHASE-44-D-11, PHASE-44-D-18, D-44.2-00 through D-44.2-20
 **Depends on:** Phase 44
-**Plans:** 3/15 plans executed (3 obsoleted, 6 new, 6 preserved)
+**Plans:** 5/18 plans executed
 **See:** [.planning/phases/44.2-cfo-grade-xero-reconciliation/44.2-RESTRUCTURE-NOTE.md](phases/44.2-cfo-grade-xero-reconciliation/44.2-RESTRUCTURE-NOTE.md) for the why behind the restructure.
 
 Plans:
@@ -807,9 +807,9 @@ Plans:
 - [~] 44.2-04-PLAN.md — OBSOLETE (standardLayout investigation; settled empirically — both layouts return same single-period totals)
 - [~] 44.2-05-PLAN.md — OBSOLETE (classification fix — folded into 06B)
 - [~] 44.2-06-PLAN.md — OBSOLETE (FY-vs-by-month absorber — wrong layer; replaced by Path A rebuild)
-- [ ] 44.2-06A-PLAN.md — P&L schema rebuild (account_id GUID first-class + dual-key + business_id FK + basis stamp + xero_accounts catalog)
+- [x] 44.2-06A-PLAN.md — P&L schema rebuild (account_id GUID first-class + dual-key + business_id FK + basis stamp + xero_accounts catalog)
 - [ ] 44.2-06B-PLAN.md — P&L sync orchestrator rebuild (per-month single-period queries + classification fix + FXGROUPID + tz + fy_start + Calxa-spec rate-limit handler)
-- [ ] 44.2-06C-PLAN.md — Balance Sheet schema (xero_bs_lines table + wide-compat view, mirrors PL discipline)
+- [x] 44.2-06C-PLAN.md — Balance Sheet schema (xero_bs_lines table + wide-compat view, mirrors PL discipline)
 - [ ] 44.2-06D-PLAN.md — Balance Sheet sync orchestrator (per-month-end single-period queries + Net Assets == Equity invariant)
 - [ ] 44.2-06E-PLAN.md — 5-gate reconciliation harness (single-period vs aggregated, PL↔BS articulation, TB balanced, BS in balance, web parity) × 3 tenants × 3 months
 - [ ] 44.2-06F-PLAN.md — Production migration runbook + rollback protocol + verify-production-migration.ts
