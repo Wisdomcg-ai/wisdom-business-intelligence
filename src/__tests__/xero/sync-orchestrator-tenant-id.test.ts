@@ -250,9 +250,50 @@ function isOrgUrl(u: string): boolean {
 function isAccountsUrl(u: string): boolean {
   return u.includes('/api.xro/2.0/Accounts')
 }
+/**
+ * Empty-balanced BS response — these legacy P&L tests don't model BS, but
+ * post-06D the orchestrator always issues per-month-end BS fetches. Without a
+ * BS handler, the catch-all 500 burns 5xx retries × 22 month-ends = timeout.
+ */
+function isBSUrl(u: string): boolean {
+  return u.includes('/Reports/BalanceSheet')
+}
+function emptyBalancedBS(balanceDate: string) {
+  return {
+    Reports: [
+      {
+        Rows: [
+          { RowType: 'Header', Cells: [{ Value: '' }, { Value: balanceDate }] },
+          {
+            RowType: 'Section',
+            Title: 'Assets',
+            Rows: [
+              {
+                RowType: 'Row',
+                Cells: [
+                  {
+                    Value: 'Placeholder Asset',
+                    Attributes: [{ Id: 'account', Value: 'fffffff1-0000-0000-0000-000000000001' }],
+                  },
+                  { Value: '0.00' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+}
+function bsHandlerOrNull(u: string): Response | null {
+  if (!isBSUrl(u)) return null
+  const m = u.match(/date=(\d{4}-\d{2}-\d{2})/)
+  return makeJsonResponse(emptyBalancedBS(m ? m[1]! : '2026-04-30')) as any
+}
 function defaultPathAFetch(amount = 50, fyOverride?: string) {
   return vi.spyOn(global, 'fetch').mockImplementation(async (url: any) => {
     const u = String(url)
+    const bs = bsHandlerOrNull(u); if (bs) return bs as any
     if (isOrgUrl(u)) return makeJsonResponse(organisationResponse())
     if (isAccountsUrl(u)) {
       return makeJsonResponse(
@@ -378,6 +419,7 @@ describe('Sync orchestrator — per-tenant sync_jobs.tenant_id (44.2-02 / 44.2-0
     let orgCallCount = 0
     vi.spyOn(global, 'fetch').mockImplementation(async (url: any) => {
       const u = String(url)
+      const bs = bsHandlerOrNull(u); if (bs) return bs as any
       if (isOrgUrl(u)) {
         orgCallCount++
         tenantSeen = orgCallCount === 1 ? 'A' : 'B'
@@ -427,6 +469,7 @@ describe('Sync orchestrator — per-tenant sync_jobs.tenant_id (44.2-02 / 44.2-0
     let orgCalls = 0
     vi.spyOn(global, 'fetch').mockImplementation(async (url: any) => {
       const u = String(url)
+      const bs = bsHandlerOrNull(u); if (bs) return bs as any
       if (isOrgUrl(u)) {
         orgCalls++
         if (orgCalls === 1) {

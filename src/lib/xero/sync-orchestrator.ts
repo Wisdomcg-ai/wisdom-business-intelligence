@@ -43,12 +43,18 @@ import {
   type Discrepancy,
 } from './pl-reconciler'
 import { parsePLSinglePeriod, type ParsedPLRow } from './pl-single-period-parser'
+import { parseBSSinglePeriod, type ParsedBSRow } from './bs-single-period-parser'
 import {
   fetchXeroWithRateLimit,
   RateLimitDailyExceededError,
 } from './xero-api-client'
 import { getXeroOrgTimezone } from './organisation'
-import { refreshXeroAccountsCatalog, classifyByXeroType, type CatalogMap } from './accounts-catalog'
+import {
+  refreshXeroAccountsCatalog,
+  classifyByXeroType,
+  classifyBSByXeroType,
+  type CatalogMap,
+} from './accounts-catalog'
 
 // ─── Public types ───────────────────────────────────────────────────────────
 
@@ -175,6 +181,29 @@ function fyTotalUrl(fy: number, fyStartMonth: number, windowEndIso: string): str
   return `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?${qs}`
 }
 
+/**
+ * Single-period BS URL — point-in-time as-of `balanceDate`. Per Calxa-via-
+ * Cowork Q1, Reports/BalanceSheet has the same documented periods-parameter
+ * bug as Reports/ProfitAndLoss, so we issue one query per month-end and
+ * NEVER include `periods=` / `timeframe=`.
+ */
+function singlePeriodBSUrl(balanceDate: string): string {
+  const qs = `date=${balanceDate}&standardLayout=false&paymentsOnly=false`
+  return `https://api.xero.com/api.xro/2.0/Reports/BalanceSheet?${qs}`
+}
+
+/**
+ * Convert a 'YYYY-MM-01' month-tag to the last day of that month
+ * ('YYYY-MM-LAST'). Used to derive BS month-end fetch dates from the
+ * P&L window's `monthsToFetch` list — the same FY/window math drives both.
+ */
+function monthTagToMonthEnd(periodMonth: string): string {
+  const [yStr, mStr] = periodMonth.split('-')
+  const y = parseInt(yStr!, 10)
+  const m = parseInt(mStr!, 10)
+  return lastDayOfMonth(y, m)
+}
+
 function inFlightRejectionResult(businessId: string): SyncResult {
   return {
     business_id: businessId,
@@ -225,6 +254,170 @@ function regressionAdjustments(
     }
   }
   return out
+}
+
+// ─── Balance Sheet per-tenant fetch + reconcile + upsert ───────────────────
+
+export type BSResult = {
+  monthsFetched: number
+  monthsFailed: string[]
+  unbalancedDates: Array<{ balance_date: string; delta: number }>
+  rowsInserted: number
+  xeroRequestCount: number
+  paused: boolean
+}
+
+/**
+ * Fetch + reconcile + upsert Balance Sheet for one tenant, one set of
+ * month-ends. Runs AFTER P&L has succeeded for the tenant, inside the same
+ * per-tenant try/catch (so a BS-only failure marks the tenant 'partial' but
+ * doesn't undo the P&L work).
+ *
+ * Per balance_date, asserts the fundamental BS invariant:
+ *   Σ(asset.balance) − Σ(liability.balance) == Σ(equity.balance)
+ * to within $0.01. Out-of-balance dates are recorded in `unbalancedDates`
+ * and SKIPPED from the upsert — we will not write rows the operator can't
+ * trust to a CFO-grade cache. The reconciliation gate is consumed by the
+ * sync_jobs.reconciliation.bs sub-object so operators see exactly which
+ * dates failed and by how much.
+ *
+ * 429-daily on any month-end: re-throws RateLimitDailyExceededError so the
+ * outer per-tenant catch can mark the tenant 'paused'. P&L rows from this
+ * tenant remain (already upserted before BS started).
+ */
+async function syncBalanceSheetForTenant(
+  supabase: any,
+  conn: { id: string; tenant_id: string },
+  accessToken: string,
+  catalog: CatalogMap,
+  profileId: string,
+  monthEnds: string[], // 'YYYY-MM-DD' last day of each month in all FY windows
+): Promise<BSResult> {
+  const monthsFailed: string[] = []
+  const unbalancedDates: Array<{ balance_date: string; delta: number }> = []
+  const allRows: ParsedBSRow[] = []
+  let xeroRequestCount = 0
+  let monthsFetched = 0
+
+  for (const balanceDate of monthEnds) {
+    try {
+      const url = singlePeriodBSUrl(balanceDate)
+      const res = await fetchXeroWithRateLimit(url, {
+        accessToken,
+        tenantId: conn.tenant_id,
+      })
+      xeroRequestCount++
+      const parsed = parseBSSinglePeriod(
+        res.json,
+        balanceDate,
+        'accruals',
+        conn.tenant_id,
+      )
+      monthsFetched++
+      allRows.push(...parsed)
+    } catch (monthErr) {
+      if (monthErr instanceof RateLimitDailyExceededError) {
+        // Bubble up — outer catch marks tenant 'paused'.
+        throw monthErr
+      }
+      monthsFailed.push(balanceDate)
+      try {
+        Sentry.captureException(monthErr, {
+          tags: {
+            invariant: 'xero_sync_path_a_bs_month',
+            business_id: profileId,
+            tenant_id: conn.tenant_id,
+            balance_date: balanceDate,
+          },
+        } as any)
+      } catch {
+        // Sentry failure must not abort.
+      }
+      continue
+    }
+  }
+
+  // Per-balance-date Net Assets == Equity assertion (Calxa verification gate #4).
+  const byDate = new Map<string, { asset: number; liability: number; equity: number }>()
+  for (const r of allRows) {
+    const cur = byDate.get(r.balance_date) ?? { asset: 0, liability: 0, equity: 0 }
+    cur[r.account_type] += r.balance
+    byDate.set(r.balance_date, cur)
+  }
+  const balancedRows: ParsedBSRow[] = []
+  const unbalancedSet = new Set<string>()
+  for (const [date, sums] of byDate.entries()) {
+    const netAssets = sums.asset - sums.liability
+    const delta = Math.round((netAssets - sums.equity) * 100) / 100
+    if (Math.abs(delta) > 0.01) {
+      unbalancedDates.push({ balance_date: date, delta })
+      unbalancedSet.add(date)
+      try {
+        Sentry.captureMessage('BS not in balance', {
+          level: 'warning',
+          tags: {
+            invariant: 'xero_sync_path_a_bs_balance',
+            tenant_id: conn.tenant_id,
+            business_id: profileId,
+            balance_date: date,
+          },
+          extra: { delta, net_assets: netAssets, equity: sums.equity },
+        } as any)
+      } catch {
+        // Sentry failure must not abort.
+      }
+    }
+  }
+  for (const r of allRows) {
+    if (!unbalancedSet.has(r.balance_date)) balancedRows.push(r)
+  }
+
+  // Map → DB rows (catalog-first classification, parser as fallback).
+  const dbRows = balancedRows.map((r) => {
+    const catEntry = catalog.get(r.account_id)
+    const catalogType = classifyBSByXeroType(catEntry?.account_type)
+    return {
+      business_id: profileId,
+      tenant_id: conn.tenant_id,
+      account_id: r.account_id,
+      account_code: catEntry?.account_code ?? null,
+      account_name: r.account_name,
+      account_type: catalogType ?? r.account_type,
+      section: r.section,
+      balance_date: r.balance_date,
+      balance: r.balance,
+      basis: r.basis,
+      source: 'xero',
+      updated_at: new Date().toISOString(),
+    }
+  })
+
+  let rowsInserted = 0
+  if (dbRows.length > 0) {
+    const upsertResult = (await supabase
+      .from('xero_bs_lines')
+      .upsert(dbRows, {
+        onConflict: 'business_id,tenant_id,account_id,balance_date',
+        ignoreDuplicates: false,
+      })) as any
+    if (upsertResult?.error) {
+      throw new Error(
+        `xero_bs_lines upsert: ${
+          upsertResult.error.message ?? upsertResult.error.code ?? 'unknown'
+        }`,
+      )
+    }
+    rowsInserted = dbRows.length
+  }
+
+  return {
+    monthsFetched,
+    monthsFailed,
+    unbalancedDates,
+    rowsInserted,
+    xeroRequestCount,
+    paused: false,
+  }
 }
 
 // ─── Main orchestrator ──────────────────────────────────────────────────────
@@ -647,15 +840,76 @@ export async function syncBusinessXeroPL(
           tenantCoveragePerWindow.push(cov)
         }
 
-        // 4g. Per-tenant terminal UPDATE.
+        // 4g. Balance Sheet fetch — runs after P&L succeeds for the tenant.
+        // BS reuses the catalog already pre-fetched for P&L (no second
+        // /Accounts call). One Reports/BalanceSheet?date=... fetch per
+        // month-end across all FY windows. Per-balance-date Net Assets ==
+        // Equity invariant gates writes — out-of-balance dates are skipped
+        // and recorded in bs.unbalanced_dates.
+        //
+        // BS-only failures (one bad month, one out-of-balance date) flag the
+        // tenant 'partial' but do not roll back P&L. BS rate-limit-daily
+        // throws to the outer catch and marks the tenant 'paused'.
+        let bsResult: BSResult = {
+          monthsFetched: 0,
+          monthsFailed: [],
+          unbalancedDates: [],
+          rowsInserted: 0,
+          xeroRequestCount: 0,
+          paused: false,
+        }
+        try {
+          const monthEnds: string[] = []
+          for (const window of fyWindows) {
+            for (const monthTag of window.monthsToFetch) {
+              monthEnds.push(monthTagToMonthEnd(monthTag))
+            }
+          }
+          bsResult = await syncBalanceSheetForTenant(
+            supabase,
+            { id: conn.id, tenant_id: conn.tenant_id },
+            accessToken,
+            catalog,
+            profileId,
+            monthEnds,
+          )
+          xeroRequestCount += bsResult.xeroRequestCount
+          tenantXeroRequestCount += bsResult.xeroRequestCount
+          rowsInserted += bsResult.rowsInserted
+          tenantRowsInserted += bsResult.rowsInserted
+          console.log('[syncBusinessXeroPL]', conn.tenant_id, 'BS fetched', bsResult.monthsFetched, 'month-ends; failed:', bsResult.monthsFailed.length, '; unbalanced:', bsResult.unbalancedDates.length)
+        } catch (bsErr) {
+          if (bsErr instanceof RateLimitDailyExceededError) {
+            tenantPaused = true
+            throw bsErr
+          }
+          // Non-paused BS failure: surface as a partial signal but keep P&L.
+          bsResult.monthsFailed.push('error')
+          try {
+            Sentry.captureException(bsErr, {
+              tags: {
+                invariant: 'xero_sync_path_a_bs',
+                business_id: profileId,
+                tenant_id: conn.tenant_id,
+              },
+            } as any)
+          } catch {
+            /* ignore */
+          }
+        }
+
+        // 4h. Per-tenant terminal UPDATE.
         const tenantExpectedTotal = fyWindows.reduce((s, w) => s + w.expectedMonths, 0)
         const tenantCoverage = aggregateCoverage(tenantCoveragePerWindow, tenantExpectedTotal)
+        const bsHasIssues =
+          bsResult.monthsFailed.length > 0 || bsResult.unbalancedDates.length > 0
         let tenantStatus: 'success' | 'partial' | 'paused' = 'success'
         if (tenantPaused) tenantStatus = 'paused'
         else if (
           tenantDiscrepancies.length > 0 ||
           tenantMonthsFailed.length > 0 ||
-          tenantAbsorberAdjustments > 0
+          tenantAbsorberAdjustments > 0 ||
+          bsHasIssues
         ) {
           tenantStatus = 'partial'
         }
@@ -664,9 +918,14 @@ export async function syncBusinessXeroPL(
         else if (tenantStatus === 'paused') tenantPausedCount++
         else tenantPartialCount++
 
+        const plMismatch =
+          tenantDiscrepancies.length > 0 || tenantAbsorberAdjustments > 0
+        const reconciliationStatus =
+          plMismatch || bsResult.unbalancedDates.length > 0 ? 'mismatch' : 'ok'
+
         const tenantErrorMsg =
           tenantStatus === 'partial'
-            ? `Partial sync for tenant ${conn.tenant_id}: ${tenantDiscrepancies.length} discrepancies, ${tenantMonthsFailed.length} failed months, ${tenantAbsorberAdjustments} absorber adjustments`
+            ? `Partial sync for tenant ${conn.tenant_id}: pl=${tenantDiscrepancies.length} discrepancies, ${tenantMonthsFailed.length} failed months, ${tenantAbsorberAdjustments} absorber adjustments; bs=${bsResult.monthsFailed.length} failed dates, ${bsResult.unbalancedDates.length} unbalanced dates`
             : null
 
         if (tenantJobId !== null) {
@@ -678,10 +937,20 @@ export async function syncBusinessXeroPL(
               coverage: tenantCoverage,
               reconciliation: {
                 tenant_id: conn.tenant_id,
-                status:
-                  tenantDiscrepancies.length > 0 || tenantAbsorberAdjustments > 0
-                    ? 'mismatch'
-                    : 'ok',
+                status: reconciliationStatus,
+                pl: {
+                  discrepant_accounts: tenantDiscrepancies,
+                  months_failed: tenantMonthsFailed,
+                  absorber_adjustments: tenantAbsorberAdjustments,
+                  reconciler_discrepancies: tenantDiscrepancies.map((d) => d.account_name),
+                },
+                bs: {
+                  months_fetched: bsResult.monthsFetched,
+                  months_failed: bsResult.monthsFailed,
+                  unbalanced_dates: bsResult.unbalancedDates,
+                },
+                // Legacy P&L-only fields kept for backwards compatibility with
+                // pre-06D consumers. New consumers should read pl.* / bs.*.
                 discrepant_accounts: tenantDiscrepancies,
                 months_failed: tenantMonthsFailed,
                 absorber_adjustments: tenantAbsorberAdjustments,

@@ -289,9 +289,55 @@ function monthsInUrlRange(u: string): number {
 
 type FetchHandler = (url: string) => Response | Promise<Response>
 
+function isBSUrl(u: string): boolean {
+  return u.includes('/Reports/BalanceSheet')
+}
+
+/**
+ * Minimal balanced BS response: one $0 asset row. Net Assets ($0) == Equity ($0).
+ * Path-a tests don't assert on BS content; this just keeps the orchestrator's
+ * post-06D BS fetch loop from hitting the catch-all 500 → 5 retries → timeout.
+ */
+function emptyBalancedBSResponse(balanceDate: string) {
+  return {
+    Reports: [
+      {
+        Rows: [
+          { RowType: 'Header', Cells: [{ Value: '' }, { Value: balanceDate }] },
+          {
+            RowType: 'Section',
+            Title: 'Assets',
+            Rows: [
+              {
+                RowType: 'Row',
+                Cells: [
+                  {
+                    Value: 'Placeholder Asset',
+                    Attributes: [
+                      { Id: 'account', Value: 'fffffff1-0000-0000-0000-000000000001' },
+                    ],
+                  },
+                  { Value: '0.00' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+}
+
 function mockFetchRouted(handler: FetchHandler) {
   return vi.spyOn(global, 'fetch').mockImplementation(async (url: any) => {
     const u = String(url)
+    // Path-a tests don't model BS; respond with an empty balanced BS so the
+    // orchestrator's post-06D BS pass doesn't time out via the 5xx retry loop.
+    if (isBSUrl(u) && !handler.toString().includes('BalanceSheet')) {
+      const dateMatch = u.match(/date=(\d{4}-\d{2}-\d{2})/)
+      const balanceDate = dateMatch ? dateMatch[1]! : '2026-04-30'
+      return makeJsonResponse(emptyBalancedBSResponse(balanceDate)) as any
+    }
     return handler(u) as any
   })
 }
@@ -351,9 +397,9 @@ describe('Path A sync orchestrator', () => {
 
     expect(result.status).toBe('success')
 
-    // 1 tenant × (1 Org + 1 Accounts + (current FY 10 monthly + 1 FY-total) + (prior FY 12 monthly + 1 FY-total))
-    // = 2 + 11 + 13 = 26 fetches
-    expect(fetchSpy).toHaveBeenCalledTimes(26)
+    // 1 tenant × (1 Org + 1 Accounts + (current FY 10 monthly + 1 FY-total) + (prior FY 12 monthly + 1 FY-total) + 22 BS month-ends)
+    // = 2 + 11 + 13 + 22 = 48 fetches (post-06D BS extension)
+    expect(fetchSpy).toHaveBeenCalledTimes(48)
 
     // Every PL URL is single-period (no periods=, no timeframe=).
     for (const call of fetchSpy.mock.calls) {
