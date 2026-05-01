@@ -1,7 +1,7 @@
 'use client'
 
 import { StrategicInitiative, FinancialData, KPIData, YearType } from '../types'
-import { ChevronDown, ChevronUp, AlertCircle, GripVertical, TrendingUp, X, UserPlus, Check, HelpCircle } from 'lucide-react'
+import { ChevronDown, ChevronUp, AlertCircle, GripVertical, TrendingUp, X, UserPlus, Check, HelpCircle, DollarSign, Target, Activity } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatDollar, parseDollarInput } from '../utils/formatting'
@@ -86,6 +86,14 @@ export default function Step4AnnualPlan({
   const [expandedQuarters, setExpandedQuarters] = useState<Set<string>>(
     new Set(['current_remainder', 'q1', 'q2', 'q3', 'q4'])
   )
+
+  // Step-1-style collapsible section toggles. All three sections start expanded
+  // so users see everything by default; collapsing is for screen-real-estate
+  // management once the user has filled them in.
+  const [financialCollapsed, setFinancialCollapsed] = useState(false)
+  const [coreMetricsCollapsed, setCoreMetricsCollapsed] = useState(false)
+  const [kpisCollapsed, setKpisCollapsed] = useState(false)
+  const [executionCollapsed, setExecutionCollapsed] = useState(false)
   const [draggedItem, setDraggedItem] = useState<{
     initiativeId: string
     sourceQuarter: string | 'unassigned'
@@ -749,323 +757,519 @@ export default function Step4AnnualPlan({
         </div>
       </div>
 
-      {/* ANNUAL PLAN CARDS — combined targets + initiatives per quarter */}
-      {financialData && (
-        <div className="space-y-4">
-          {/* Annual goals + auto-distribute bar */}
-          <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-                <span className="text-gray-600">
-                  <span className="font-semibold text-brand-navy">{yearLabel} Annual Goals:</span>
-                </span>
-                <span>
-                  <span className="text-gray-500">Revenue</span>{' '}
-                  <span className="font-semibold text-brand-navy">
-                    {financialData.revenue.year1 > 0 ? formatCurrency(financialData.revenue.year1) : '—'}
-                  </span>
-                </span>
-                <span>
-                  <span className="text-gray-500">Gross Profit</span>{' '}
-                  <span className="font-semibold text-brand-navy">
-                    {financialData.grossProfit.year1 > 0 ? formatCurrency(financialData.grossProfit.year1) : '—'}
-                  </span>
-                </span>
-                <span>
-                  <span className="text-gray-500">Net Profit</span>{' '}
-                  <span className="font-semibold text-brand-navy">
-                    {financialData.netProfit.year1 > 0 ? formatCurrency(financialData.netProfit.year1) : '—'}
-                  </span>
-                </span>
+      {/* ── FINANCIAL TARGETS — Step-1-style card with quarterly columns ── */}
+      {financialData && (() => {
+        type MetricRow = { key: string; label: string; isPercentage: boolean }
+        const FINANCIAL_ROWS: MetricRow[] = [
+          { key: 'revenue', label: 'Revenue', isPercentage: false },
+          { key: 'grossProfit', label: 'Gross Profit', isPercentage: false },
+          { key: 'grossMargin', label: 'Gross Margin', isPercentage: true },
+          { key: 'netProfit', label: 'Net Profit', isPercentage: false },
+          { key: 'netMargin', label: 'Net Margin', isPercentage: true },
+        ]
+        const annualValueFor = (key: string): number => {
+          if (!financialData) return 0
+          if (key === 'revenue') return financialData.revenue.year1
+          if (key === 'grossProfit') return financialData.grossProfit.year1
+          if (key === 'grossMargin') return (financialData.grossMargin?.year1 ?? 0) as number
+          if (key === 'netProfit') return financialData.netProfit.year1
+          if (key === 'netMargin') return (financialData.netMargin?.year1 ?? 0) as number
+          return 0
+        }
+        return (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-5 flex items-center justify-between">
+              <div
+                onClick={() => setFinancialCollapsed(!financialCollapsed)}
+                className="cursor-pointer flex items-center gap-3 flex-1 hover:opacity-80 transition-opacity"
+              >
+                <div className="p-2 bg-brand-orange-100 rounded-lg">
+                  <DollarSign className="w-5 h-5 text-brand-orange" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Financial Targets</h3>
+                  <p className="text-sm text-gray-600">Break Year 1 financial goals down by quarter for {yearLabel}</p>
+                </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={autoSplitEvenly}
+                  onClick={(e) => { e.stopPropagation(); autoSplitEvenly() }}
                   disabled={
                     !(financialData.revenue.year1 > 0 ||
                       financialData.grossProfit.year1 > 0 ||
                       financialData.netProfit.year1 > 0)
                   }
-                  className="px-3 py-1.5 text-xs font-semibold rounded border border-brand-orange text-brand-orange hover:bg-brand-orange hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded border border-brand-orange text-brand-orange hover:bg-brand-orange hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   title="Split annual goals evenly across the 4 FY quarters"
                 >
                   Auto-split evenly
                 </button>
                 <button
                   type="button"
-                  onClick={clearTargets}
-                  className="px-3 py-1.5 text-xs font-medium rounded border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); clearTargets() }}
+                  className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors"
                 >
-                  Clear targets
+                  Clear
+                </button>
+                <button
+                  onClick={() => setFinancialCollapsed(!financialCollapsed)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  {financialCollapsed ? (
+                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                  ) : (
+                    <ChevronUp className="w-5 h-5 text-gray-400" />
+                  )}
                 </button>
               </div>
             </div>
-            {financialData.revenue.year1 === 0 && (
-              <p className="mt-2 text-xs text-gray-500">
-                Set your Year 1 revenue / GP / NP goals in Step 1 to enable auto-split and variance checking.
-              </p>
+            {!financialCollapsed && (
+              <div className="border-t border-gray-200 p-4 sm:p-6 bg-gradient-to-b from-white to-gray-50">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-gradient-to-r from-brand-orange-50 to-brand-orange-100 border-b-2 border-brand-orange-200">
+                        <th className="text-left p-3 text-sm font-bold text-gray-700 sticky left-0 bg-brand-orange-50 z-10 w-[200px]">Metric</th>
+                        <th className="text-center p-3 text-sm font-bold text-gray-700 w-[110px]">Annual</th>
+                        {allPeriods.map((q) => (
+                          <th key={q.id} className="text-center p-3 text-sm font-bold text-gray-700 w-[110px]">
+                            <div>{q.label}</div>
+                            <div className="text-xs font-normal text-gray-500 mt-1">{q.months}</div>
+                          </th>
+                        ))}
+                        <th className="text-center p-3 text-sm font-bold text-gray-700 w-[120px]">Q Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {FINANCIAL_ROWS.map((m, idx) => {
+                        const annual = annualValueFor(m.key)
+                        const validation = calculateQuarterlyTotal(m.key)
+                        const metric = quarterlyTargets[m.key] as Record<string, string> | undefined
+                        return (
+                          <tr key={m.key} className={`border-b border-gray-200 hover:bg-brand-orange-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                            <td className="p-3 sticky left-0 z-10 bg-inherit">
+                              <span className="font-semibold text-gray-900 text-sm">{m.label}</span>
+                            </td>
+                            <td className="p-3 text-center text-sm font-medium text-gray-700">
+                              {annual > 0
+                                ? (m.isPercentage ? `${annual}%` : formatCurrency(annual))
+                                : <span className="text-xs text-gray-400">Set in Step 1</span>}
+                            </td>
+                            {allPeriods.map((q) => {
+                              const raw = metric?.[q.id] || ''
+                              const display = raw && !m.isPercentage ? formatDollar(parseFloat(raw)) : raw ? `${raw}%` : ''
+                              return (
+                                <td key={q.id} className="p-2 text-center">
+                                  <input
+                                    type="text"
+                                    value={display}
+                                    onChange={(e) => updateQuarterlyTarget(
+                                      m.key,
+                                      q.id,
+                                      m.isPercentage ? e.target.value.replace('%', '') : parseDollarInput(e.target.value).toString(),
+                                    )}
+                                    placeholder={m.isPercentage ? '0%' : '$0'}
+                                    className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 transition-colors"
+                                  />
+                                </td>
+                              )
+                            })}
+                            <td className={`p-3 text-center text-sm font-medium ${
+                              validation.total === 0 ? 'text-gray-400' :
+                              !m.isPercentage && annual > 0 && validation.isValid ? 'bg-green-50 text-green-700' :
+                              !m.isPercentage && annual > 0 ? 'bg-amber-50 text-amber-700' : 'text-gray-700'
+                            }`}>
+                              {validation.total > 0 ? (
+                                <div>
+                                  <div className="font-semibold">{m.isPercentage ? `${validation.total.toFixed(1)}%` : formatCurrency(validation.total)}</div>
+                                  {!m.isPercentage && annual > 0 && (
+                                    <div className="text-xs mt-0.5">
+                                      {validation.variance >= 0 ? '+' : ''}{formatCurrency(validation.variance)}{validation.isValid && ' ✓'}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Mobile-only: show auto-split button below the (horizontally scrolled) table */}
+                <div className="sm:hidden mt-4 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={autoSplitEvenly}
+                    disabled={!(financialData.revenue.year1 > 0)}
+                    className="flex-1 px-3 py-2 text-xs font-semibold rounded border border-brand-orange text-brand-orange hover:bg-brand-orange hover:text-white disabled:opacity-40"
+                  >
+                    Auto-split evenly
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearTargets}
+                    className="flex-1 px-3 py-2 text-xs font-medium rounded border border-slate-300 text-slate-600"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
             )}
           </div>
+        )
+      })()}
 
-          {/* Quarter cards */}
-          <div
-            className={`grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 ${
-              allPeriods.length === 5 ? 'xl:grid-cols-5' : 'xl:grid-cols-4'
-            }`}
-          >
-            {allPeriods.map((quarter) => {
-              const items = annualPlanByQuarter[quarter.id] || []
-              const isFull = items.length >= MAX_PER_QUARTER
-              const isLockedQuarter = quarter.isLocked
-              const isCurrentRemainder = quarter.id === 'current_remainder'
-              const targetsMetricRow = (key: string, label: string, suffix?: string) => {
-                const metric = quarterlyTargets[key] as Record<string, string> | undefined
-                const raw = metric?.[quarter.id] || ''
-                const display = raw && !suffix ? formatDollar(parseFloat(raw)) : raw
-                return (
-                  <div key={key} className="flex items-center gap-2">
-                    <label className="text-[11px] uppercase tracking-wide font-semibold text-gray-500 w-8">
-                      {label}
-                    </label>
-                    <div className="flex-1 relative">
-                      <input
-                        type="text"
-                        value={display}
-                        onChange={(e) =>
-                          updateQuarterlyTarget(
-                            key,
-                            quarter.id,
-                            suffix === '%' ? e.target.value.replace('%', '') : parseDollarInput(e.target.value).toString(),
-                          )
-                        }
-                        placeholder={suffix === '%' ? '0' : '$0'}
-                        className="w-full px-2 py-1 border border-gray-200 rounded text-sm text-right font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-                      />
-                      {suffix && (
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                          {suffix}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )
-              }
+      {/* ── CORE BUSINESS METRICS — Step-1-style ── */}
+      {financialData && coreMetrics && (() => {
+        type CoreRow = { key: string; label: string; isPercentage?: boolean; isCurrency?: boolean; year1?: number }
+        const CORE_ROWS: CoreRow[] = [
+          { key: 'leadsPerMonth', label: 'Leads / Month', year1: coreMetrics.leadsPerMonth?.year1 },
+          { key: 'conversionRate', label: 'Conversion Rate', isPercentage: true, year1: coreMetrics.conversionRate?.year1 },
+          { key: 'avgTransactionValue', label: 'Avg Transaction Value', isCurrency: true, year1: coreMetrics.avgTransactionValue?.year1 },
+          { key: 'teamHeadcount', label: 'Team Headcount', year1: coreMetrics.teamHeadcount?.year1 },
+          { key: 'ownerHoursPerWeek', label: 'Owner Hours / Week', year1: coreMetrics.ownerHoursPerWeek?.year1 },
+        ]
+        const visibleRows = CORE_ROWS.filter(r => (r.year1 ?? 0) > 0)
+        if (visibleRows.length === 0) return null
+        return (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-5 flex items-center justify-between">
+              <div
+                onClick={() => setCoreMetricsCollapsed(!coreMetricsCollapsed)}
+                className="cursor-pointer flex items-center gap-3 flex-1 hover:opacity-80 transition-opacity"
+              >
+                <div className="p-2 bg-brand-orange-100 rounded-lg">
+                  <Target className="w-5 h-5 text-brand-orange" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Core Business Metrics</h3>
+                  <p className="text-sm text-gray-600">Operational targets by quarter</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCoreMetricsCollapsed(!coreMetricsCollapsed)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                {coreMetricsCollapsed ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronUp className="w-5 h-5 text-gray-400" />}
+              </button>
+            </div>
+            {!coreMetricsCollapsed && (
+              <div className="border-t border-gray-200 p-4 sm:p-6 bg-gradient-to-b from-white to-gray-50">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-gradient-to-r from-brand-orange-50 to-brand-orange-100 border-b-2 border-brand-orange-200">
+                        <th className="text-left p-3 text-sm font-bold text-gray-700 sticky left-0 bg-brand-orange-50 z-10 w-[200px]">Metric</th>
+                        <th className="text-center p-3 text-sm font-bold text-gray-700 w-[110px]">Annual</th>
+                        {allPeriods.map((q) => (
+                          <th key={q.id} className="text-center p-3 text-sm font-bold text-gray-700 w-[110px]">
+                            <div>{q.label}</div>
+                            <div className="text-xs font-normal text-gray-500 mt-1">{q.months}</div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleRows.map((m, idx) => {
+                        const metric = quarterlyTargets[m.key] as Record<string, string> | undefined
+                        return (
+                          <tr key={m.key} className={`border-b border-gray-200 hover:bg-brand-orange-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                            <td className="p-3 sticky left-0 z-10 bg-inherit">
+                              <span className="font-semibold text-gray-900 text-sm">{m.label}</span>
+                            </td>
+                            <td className="p-3 text-center text-sm font-medium text-gray-700">
+                              {m.isPercentage ? `${m.year1}%` : m.isCurrency ? formatCurrency(m.year1 ?? 0) : (m.year1 ?? 0)}
+                            </td>
+                            {allPeriods.map((q) => {
+                              const raw = metric?.[q.id] || ''
+                              return (
+                                <td key={q.id} className="p-2 text-center">
+                                  <input
+                                    type="text"
+                                    value={raw}
+                                    onChange={(e) => updateQuarterlyTarget(m.key, q.id, e.target.value)}
+                                    placeholder={m.isPercentage ? '0%' : m.isCurrency ? '$0' : '0'}
+                                    className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+                                  />
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
-              return (
-                <div
-                  key={quarter.id}
-                  onDragOver={!isLockedQuarter ? handleDragOver : undefined}
-                  onDrop={!isLockedQuarter ? (e) => handleDrop(e, quarter.id) : undefined}
-                  className={`rounded-lg border-2 p-3 flex flex-col ${
-                    isCurrentRemainder
-                      ? 'border-amber-300 bg-amber-50/30'
-                      : quarter.isCurrent
-                      ? 'border-amber-300 bg-amber-50/30'
-                      : quarter.isNextQuarter
-                      ? 'border-brand-orange bg-orange-50/30'
-                      : 'border-slate-200 bg-white'
-                  }`}
-                >
-                  {/* Header */}
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-bold text-brand-navy">{quarter.label}</span>
-                        {isCurrentRemainder && (
-                          <span className="text-[9px] px-1 py-0.5 bg-amber-500 text-white rounded font-semibold">NOW</span>
-                        )}
-                        {quarter.isNextQuarter && !isCurrentRemainder && (
-                          <span className="text-[9px] px-1 py-0.5 bg-brand-orange text-white rounded font-semibold">PLANNING</span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-gray-500 mt-0.5">{quarter.months}</p>
-                    </div>
-                  </div>
+      {/* ── KEY PERFORMANCE INDICATORS — Step-1-style ── */}
+      {kpis.length > 0 && (() => {
+        return (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-5 flex items-center justify-between">
+              <div
+                onClick={() => setKpisCollapsed(!kpisCollapsed)}
+                className="cursor-pointer flex items-center gap-3 flex-1 hover:opacity-80 transition-opacity"
+              >
+                <div className="p-2 bg-brand-orange-100 rounded-lg">
+                  <Activity className="w-5 h-5 text-brand-orange" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Key Performance Indicators</h3>
+                  <p className="text-sm text-gray-600">{kpis.length} KPI{kpis.length === 1 ? '' : 's'} from Step 1, broken down by quarter</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setKpisCollapsed(!kpisCollapsed)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                {kpisCollapsed ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronUp className="w-5 h-5 text-gray-400" />}
+              </button>
+            </div>
+            {!kpisCollapsed && (
+              <div className="border-t border-gray-200 p-4 sm:p-6 bg-gradient-to-b from-white to-gray-50">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-gradient-to-r from-brand-orange-50 to-brand-orange-100 border-b-2 border-brand-orange-200">
+                        <th className="text-left p-3 text-sm font-bold text-gray-700 sticky left-0 bg-brand-orange-50 z-10 w-[200px]">KPI</th>
+                        <th className="text-center p-3 text-sm font-bold text-gray-700 w-[110px]">Annual</th>
+                        {allPeriods.map((q) => (
+                          <th key={q.id} className="text-center p-3 text-sm font-bold text-gray-700 w-[110px]">
+                            <div>{q.label}</div>
+                            <div className="text-xs font-normal text-gray-500 mt-1">{q.months}</div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {kpis.map((kpi, idx) => {
+                        const metricKey = `kpi_${kpi.id}`
+                        const metric = quarterlyTargets[metricKey] as Record<string, string> | undefined
+                        return (
+                          <tr key={kpi.id} className={`border-b border-gray-200 hover:bg-brand-orange-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                            <td className="p-3 sticky left-0 z-10 bg-inherit">
+                              <span className="font-semibold text-gray-900 text-sm">{kpi.friendlyName || kpi.name}</span>
+                            </td>
+                            <td className="p-3 text-center text-sm font-medium text-gray-700">
+                              {kpi.year1Target || <span className="text-xs text-gray-400">—</span>}
+                            </td>
+                            {allPeriods.map((q) => {
+                              const raw = metric?.[q.id] || ''
+                              return (
+                                <td key={q.id} className="p-2 text-center">
+                                  <input
+                                    type="text"
+                                    value={raw}
+                                    onChange={(e) => updateQuarterlyTarget(metricKey, q.id, e.target.value)}
+                                    placeholder="0"
+                                    className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
+                                  />
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
-                  {/* Targets section */}
-                  <div className="border-t border-slate-100 pt-2 pb-2 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Targets</p>
-                    </div>
-                    {targetsMetricRow('revenue', 'Rev')}
-                    {targetsMetricRow('grossProfit', 'GP')}
-                    {targetsMetricRow('netProfit', 'NP')}
-                  </div>
-
-                  {/* Initiatives section */}
-                  <div className="border-t border-slate-100 pt-2 flex-1 flex flex-col">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                        Initiatives <span className="text-gray-400">({items.length}/{MAX_PER_QUARTER})</span>
+      {/* ── QUARTERLY EXECUTION PLAN — kanban for initiative assignment ── */}
+      {financialData && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="p-5 flex items-center justify-between">
+            <div
+              onClick={() => setExecutionCollapsed(!executionCollapsed)}
+              className="cursor-pointer flex items-center gap-3 flex-1 hover:opacity-80 transition-opacity"
+            >
+              <div className="p-2 bg-brand-orange-100 rounded-lg">
+                <TrendingUp className="w-5 h-5 text-brand-orange" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Quarterly Execution Plan</h3>
+                <p className="text-sm text-gray-600">Drag initiatives into quarters or use the + Add dropdown — max {MAX_PER_QUARTER} per quarter</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setExecutionCollapsed(!executionCollapsed)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              {executionCollapsed ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronUp className="w-5 h-5 text-gray-400" />}
+            </button>
+          </div>
+          {!executionCollapsed && (
+            <div className="border-t border-gray-200 p-4 sm:p-6 bg-gradient-to-b from-white to-gray-50">
+              {twelveMonthInitiatives.length === 0 ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <div className="flex gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-900">No initiatives selected</p>
+                      <p className="text-sm text-amber-700 mt-1">
+                        Go back to Step 3 to select 5-20 initiatives first.
                       </p>
-                      {!isLockedQuarter && !isFull && unassignedInitiatives.length > 0 && (
-                        <select
-                          value=""
-                          onChange={(e) => {
-                            const id = e.target.value
-                            if (!id) return
-                            handleDragStart(id, 'unassigned')
-                            // Reuse drop handler with synthetic event (preventDefault is no-op).
-                            handleDrop({ preventDefault: () => {} } as React.DragEvent, quarter.id)
-                          }}
-                          className="text-[10px] border border-slate-200 rounded px-1 py-0.5 text-brand-orange font-semibold hover:border-brand-orange focus:outline-none focus:ring-1 focus:ring-brand-orange max-w-[110px]"
-                        >
-                          <option value="">+ Add initiative</option>
-                          {unassignedInitiatives.map((ui) => (
-                            <option key={ui.id} value={ui.id}>{ui.title}</option>
-                          ))}
-                        </select>
-                      )}
                     </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Quarter columns — drop zones with optional + Add dropdown */}
+                  <div className={`grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 ${allPeriods.length === 5 ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
+                    {allPeriods.map((quarter) => {
+                      const items = annualPlanByQuarter[quarter.id] || []
+                      const isFull = items.length >= MAX_PER_QUARTER
+                      const isLockedQuarter = quarter.isLocked
+                      const isCurrentRemainder = quarter.id === 'current_remainder'
+                      return (
+                        <div
+                          key={quarter.id}
+                          onDragOver={!isLockedQuarter ? handleDragOver : undefined}
+                          onDrop={!isLockedQuarter ? (e) => handleDrop(e, quarter.id) : undefined}
+                          className={`rounded-lg border-2 p-3 flex flex-col min-h-[180px] ${
+                            isCurrentRemainder ? 'border-amber-300 bg-amber-50/50'
+                            : quarter.isCurrent ? 'border-amber-300 bg-amber-50/30'
+                            : quarter.isNextQuarter ? 'border-brand-orange bg-orange-50/30'
+                            : 'border-slate-200 bg-white'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-sm font-bold text-brand-navy">{quarter.label}</span>
+                                {isCurrentRemainder && (
+                                  <span className="text-[9px] px-1 py-0.5 bg-amber-500 text-white rounded font-semibold">NOW</span>
+                                )}
+                                {quarter.isNextQuarter && !isCurrentRemainder && (
+                                  <span className="text-[9px] px-1 py-0.5 bg-brand-orange text-white rounded font-semibold">PLANNING</span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-gray-500 mt-0.5">{quarter.months}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                              Initiatives <span className="text-gray-400">({items.length}/{MAX_PER_QUARTER})</span>
+                            </p>
+                            {!isLockedQuarter && !isFull && unassignedInitiatives.length > 0 && (
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  const id = e.target.value
+                                  if (!id) return
+                                  handleDragStart(id, 'unassigned')
+                                  handleDrop({ preventDefault: () => {} } as React.DragEvent, quarter.id)
+                                }}
+                                className="text-[10px] border border-slate-200 rounded px-1 py-0.5 text-brand-orange font-semibold hover:border-brand-orange focus:outline-none focus:ring-1 focus:ring-brand-orange max-w-[110px]"
+                              >
+                                <option value="">+ Add</option>
+                                {unassignedInitiatives.map((ui) => (
+                                  <option key={ui.id} value={ui.id}>{ui.title}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                          <div className="space-y-1.5 flex-1 min-h-[60px]">
+                            {items.length === 0 ? (
+                              <p className="text-[11px] text-center py-3 text-gray-400 italic">
+                                {isLockedQuarter ? 'Quarter is locked' : 'Drag here or use + Add'}
+                              </p>
+                            ) : (
+                              items.map((initiative) => {
+                                const isRoadmap = initiative.source === 'roadmap'
+                                const isOperational = initiative.ideaType === 'operational'
+                                const cardBg = isRoadmap ? 'bg-brand-navy text-white border-brand-navy'
+                                  : isOperational ? 'bg-white text-gray-900 border-gray-300'
+                                  : 'bg-brand-orange text-white border-brand-orange'
+                                const subTextColor = isOperational ? 'text-gray-500' : 'text-white/70'
+                                return (
+                                  <div
+                                    key={initiative.id}
+                                    draggable
+                                    onDragStart={() => handleDragStart(initiative.id, quarter.id)}
+                                    className={`group flex items-start gap-1.5 p-2 rounded border-2 cursor-move transition-all ${cardBg}`}
+                                  >
+                                    <GripVertical className={`w-3 h-3 flex-shrink-0 mt-0.5 ${subTextColor}`} />
+                                    <p className="text-xs font-medium leading-snug flex-1 line-clamp-2">{initiative.title}</p>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveFromQuarter(initiative.id, quarter.id)}
+                                      className={`opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ${subTextColor} hover:text-red-300`}
+                                      title="Remove from quarter"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                )
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
 
-                    <div className="space-y-1.5 min-h-[60px]">
-                      {items.length === 0 ? (
-                        <p className="text-[11px] text-center py-3 text-gray-400 italic">
-                          {isLockedQuarter ? 'Quarter is locked' : 'Drag here or use + Add'}
-                        </p>
-                      ) : (
-                        items.map((initiative) => {
+                  {/* Available pool */}
+                  <div
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, 'unassigned')}
+                    className="mt-4 bg-gray-50 rounded-lg border-2 border-dashed border-slate-300 p-4"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-brand-navy text-sm">
+                        Available initiatives <span className="text-gray-500 font-normal">({unassignedInitiatives.length})</span>
+                      </h4>
+                      <p className="text-xs text-gray-500">Drag into a quarter or use + Add</p>
+                    </div>
+                    {unassignedInitiatives.length === 0 ? (
+                      <p className="text-xs text-center py-4 text-gray-500">All initiatives assigned ✓</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-[40vh] overflow-y-auto pr-1">
+                        {unassignedInitiatives.map((initiative) => {
                           const isRoadmap = initiative.source === 'roadmap'
                           const isOperational = initiative.ideaType === 'operational'
-                          const cardBg = isRoadmap
-                            ? 'bg-brand-navy text-white border-brand-navy'
-                            : isOperational
-                            ? 'bg-white text-gray-900 border-gray-300'
+                          const cardBg = isRoadmap ? 'bg-brand-navy text-white border-brand-navy'
+                            : isOperational ? 'bg-white text-gray-900 border-gray-300'
                             : 'bg-brand-orange text-white border-brand-orange'
                           const subTextColor = isOperational ? 'text-gray-500' : 'text-white/70'
+                          const badgeStyle = isRoadmap ? { bg: 'bg-white/20', text: 'text-white', label: 'ROADMAP' }
+                            : isOperational ? { bg: 'bg-gray-200', text: 'text-gray-700', label: 'OPERATIONAL' }
+                            : { bg: 'bg-white/20', text: 'text-white', label: 'STRATEGIC' }
                           return (
                             <div
                               key={initiative.id}
                               draggable
-                              onDragStart={() => handleDragStart(initiative.id, quarter.id)}
-                              className={`group flex items-start gap-1.5 p-2 rounded border-2 cursor-move transition-all ${cardBg}`}
+                              onDragStart={() => handleDragStart(initiative.id, 'unassigned')}
+                              className={`flex items-start gap-1.5 p-2 rounded border-2 cursor-move ${cardBg}`}
                             >
                               <GripVertical className={`w-3 h-3 flex-shrink-0 mt-0.5 ${subTextColor}`} />
-                              <p className="text-xs font-medium leading-snug flex-1 line-clamp-2">
-                                {initiative.title}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveFromQuarter(initiative.id, quarter.id)}
-                                className={`opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ${subTextColor} hover:text-red-400`}
-                                title="Remove from quarter"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium leading-snug">{initiative.title}</p>
+                                <span className={`inline-block mt-1 px-1 py-0.5 text-[9px] rounded font-semibold ${badgeStyle.bg} ${badgeStyle.text}`}>
+                                  {badgeStyle.label}
+                                </span>
+                              </div>
                             </div>
                           )
-                        })
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Variance row — sum of quarter targets vs annual */}
-          {(financialData.revenue.year1 > 0 ||
-            financialData.grossProfit.year1 > 0 ||
-            financialData.netProfit.year1 > 0) && (
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-              <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
-                <span className="font-semibold text-gray-600">Sum of quarter targets:</span>
-                {(['revenue', 'grossProfit', 'netProfit'] as const).map((key) => {
-                  const v = calculateQuarterlyTotal(key)
-                  if (v.annual === 0) return null
-                  const labels = { revenue: 'Rev', grossProfit: 'GP', netProfit: 'NP' } as const
-                  return (
-                    <span key={key} className="flex items-center gap-1">
-                      <span className="text-gray-500">{labels[key]}:</span>
-                      <span className="font-semibold">{formatCurrency(v.total)}</span>
-                      <span
-                        className={
-                          v.total === 0
-                            ? 'text-gray-400'
-                            : v.isValid
-                            ? 'text-green-600'
-                            : Math.abs(v.variance / v.annual) > 0.05
-                            ? 'text-red-600'
-                            : 'text-amber-600'
-                        }
-                      >
-                        ({v.variance >= 0 ? '+' : ''}{formatCurrency(v.variance)})
-                      </span>
-                    </span>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Available pool — drop here to unassign */}
-          {twelveMonthInitiatives.length > 0 && (
-            <div
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, 'unassigned')}
-              className="bg-gray-50 rounded-lg border-2 border-dashed border-slate-300 p-4"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-semibold text-brand-navy text-sm">
-                  Available initiatives <span className="text-gray-500 font-normal">({unassignedInitiatives.length})</span>
-                </h4>
-                <p className="text-xs text-gray-500">Drag into a quarter or use + Add inside the quarter</p>
-              </div>
-              {unassignedInitiatives.length === 0 ? (
-                <p className="text-xs text-center py-4 text-gray-500">
-                  All initiatives assigned ✓
-                </p>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-[40vh] overflow-y-auto pr-1">
-                  {unassignedInitiatives.map((initiative) => {
-                    const isRoadmap = initiative.source === 'roadmap'
-                    const isOperational = initiative.ideaType === 'operational'
-                    const cardBg = isRoadmap
-                      ? 'bg-brand-navy text-white border-brand-navy'
-                      : isOperational
-                      ? 'bg-white text-gray-900 border-gray-300'
-                      : 'bg-brand-orange text-white border-brand-orange'
-                    const subTextColor = isOperational ? 'text-gray-500' : 'text-white/70'
-                    const badgeStyle = isRoadmap
-                      ? { bg: 'bg-white/20', text: 'text-white', label: 'ROADMAP' }
-                      : isOperational
-                      ? { bg: 'bg-gray-200', text: 'text-gray-700', label: 'OPERATIONAL' }
-                      : { bg: 'bg-white/20', text: 'text-white', label: 'STRATEGIC' }
-                    return (
-                      <div
-                        key={initiative.id}
-                        draggable
-                        onDragStart={() => handleDragStart(initiative.id, 'unassigned')}
-                        className={`flex items-start gap-1.5 p-2 rounded border-2 cursor-move ${cardBg}`}
-                      >
-                        <GripVertical className={`w-3 h-3 flex-shrink-0 mt-0.5 ${subTextColor}`} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium leading-snug">{initiative.title}</p>
-                          <span className={`inline-block mt-1 px-1 py-0.5 text-[9px] rounded font-semibold ${badgeStyle.bg} ${badgeStyle.text}`}>
-                            {badgeStyle.label}
-                          </span>
-                        </div>
+                        })}
                       </div>
-                    )
-                  })}
-                </div>
+                    )}
+                  </div>
+                </>
               )}
-            </div>
-          )}
-
-          {/* No-initiatives empty state */}
-          {twelveMonthInitiatives.length === 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-              <div className="flex gap-3">
-                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-amber-900">No initiatives selected</p>
-                  <p className="text-sm text-amber-700 mt-1">
-                    Go back to Step 3 to select 5-20 initiatives first.
-                  </p>
-                </div>
-              </div>
             </div>
           )}
         </div>
