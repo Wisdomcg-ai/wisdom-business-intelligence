@@ -3,23 +3,27 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: verifying
-last_updated: "2026-05-01T10:46:15.499Z"
-last_activity: 2026-04-29
+last_updated: "2026-05-03T00:00:00.000Z"
+last_activity: 2026-05-03
 progress:
   total_phases: 51
-  completed_phases: 18
+  completed_phases: 21
   total_plans: 106
-  completed_plans: 90
+  completed_plans: 103
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 44 (Test Gate & CI Hardening) — EXECUTING
-Plan: 5 of 5 (next; plans 1, 2, 3, and 4 complete, plan 5 remaining)
-Status: Phase complete — ready for verification
-Last activity: 2026-04-29
+Phase: 44 (Test Gate & CI Hardening) — **COMPLETE** (5/5 plans). All 4 required checks (`lint`, `typecheck`, `vitest`, `build`) enforced on `main`; each independently smoke-tested against a deliberate break and confirmed to block merging. `PLAYWRIGHT_BASE_URL` secret provisioned; first nightly run green.
+Phase: 44.1 (Atomic Save Hardening + Staged Rollout) — **COMPLETE**.
+Phase: 44.2 (CFO-Grade Xero Reconciliation) — **COMPLETE** at the data layer (12/12 plans).
+Last activity: 2026-05-03 (44-05 smoke tests proven; phase 44 closed)
+
+Next eligible work:
+- **Phase 45 (Invisible Cleanup)** — first unblocked phase in the v1.1 milestone. Deletes ~192 files / ~6,000 LOC of unreferenced/dead code (archives, dead wizards, AWS SAM remnants). Zero blast radius.
+- **44.2 UI surface spot-checks** (operator on deployed preview): non-blocking, tracked in `.planning/phases/44.2-cfo-grade-xero-reconciliation/UAT.md`.
 
 ## Current Milestone: v1.1 — Codebase Hardening
 
