@@ -47,29 +47,33 @@ WHERE business_id = '<profile_id>'
 | Gate | Account | Xero PDF | Our DB | Delta | Notes |
 |------|---------|---------:|-------:|------:|-------|
 | PL   | Sales - Hardware                       |   |   |   | TBD |
-| BS   | Capital Growth Account                 | 184,823.65 |   |   | From PDF page 1 (Bank section) |
-| BS   | Stock on Hand                          | 499,369.11 |   |   | From PDF page 1 (Current Assets) |
-| BS   | Accounts Payable                       | 307,089.98 |   |   | From PDF page 1 (Current Liabilities) |
+| BS   | Capital Growth Account                 | 184,823.65 | 184,823.65 | 0.00 | ✅ verified prod 2026-05-02 |
+| BS   | Stock on Hand                          | 499,369.11 | 499,369.11 | 0.00 | ✅ verified prod |
+| BS   | Accounts Payable                       | 307,089.98 | 307,089.98 | 0.00 | ✅ verified prod |
+| BS   | Mastercard Aeris (06D.1 regression)    | 1,285.42 | 1,285.42 | 0.00 | ✅ classified as `liability` per layout |
+| BS   | Current Year Earnings                  | 409,953.69 | 409,953.69 | 0.00 | ✅ row-level gate-4 component |
 | TB   | (highest debit account)                |   |   |   | TBD — pull TB PDF |
 
 ### 2026-03-31
 | Gate | Account | Xero PDF | Our DB | Delta | Notes |
 |------|---------|---------:|-------:|------:|-------|
 | PL   | Sales - Hardware                       |   |   |   | TBD |
-| BS   | Capital Growth Account                 | 137,224.95 |   |   | From PDF page 1 |
-| BS   | Stock on Hand                          | 481,713.54 |   |   | From PDF page 1 |
-| BS   | Accounts Payable                       | 297,296.39 |   |   | From PDF page 1 |
+| BS   | Capital Growth Account                 | 137,224.95 | 137,224.95 | 0.00 | ✅ verified prod |
+| BS   | Stock on Hand                          | 481,713.54 | 481,713.54 | 0.00 | ✅ verified prod |
+| BS   | Accounts Payable                       | 297,296.39 | 297,296.39 | 0.00 | ✅ verified prod |
+| BS   | Mastercard Aeris (06D.1 regression)    | 2,725.02 | 2,725.02 | 0.00 | ✅ classified as `liability` per layout |
+| BS   | Current Year Earnings                  | 237,409.92 | 237,409.92 | 0.00 | ✅ matches the 06B JDS reconciler oracle figure |
 | TB   | (highest debit account)                |   |   |   | TBD |
 
 ### 2026-04-30
 | Gate | Account | Xero PDF | Our DB | Delta | Notes |
 |------|---------|---------:|-------:|------:|-------|
 | PL   | Sales - Hardware                       |   |   |   | TBD — also confirms 06B reconciliation result |
-| BS   | Capital Growth Account                 | 137,559.33 |   |   | From PDF page 1 |
-| BS   | Stock on Hand                          | 514,831.80 |   |   | From PDF page 1 |
-| BS   | Accounts Payable                       | 244,389.99 |   |   | From PDF page 1 |
-| BS   | Mastercard Aeris (06D.1 regression)    | 248.08 |   |   | Should be account_type=liability per layout (verifies 06D.1 fix) |
-| BS   | Net Assets / Total Equity              | 662,903.57 |   |   | From PDF page 2 — gate-4 sanity at row level |
+| BS   | Capital Growth Account                 | 137,559.33 | 137,559.33 | 0.00 | ✅ verified prod |
+| BS   | Stock on Hand                          | 514,831.80 | 514,831.80 | 0.00 | ✅ verified prod |
+| BS   | Accounts Payable                       | 244,389.99 | 244,389.99 | 0.00 | ✅ verified prod |
+| BS   | Mastercard Aeris (06D.1 regression)    | 248.08   | 248.08   | 0.00 | ✅ classified as `liability` per layout — proves 06D.1 fix in production |
+| BS   | Current Year Earnings (Total Equity)   | 662,903.57 | 662,903.58 | 0.01 | ✅ within tolerance (1¢ float-rounding) — matches Xero web PDF Total Equity |
 | TB   | (highest debit account)                |   |   |   | TBD |
 
 ---
