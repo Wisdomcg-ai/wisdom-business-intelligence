@@ -546,6 +546,11 @@ export interface XeroCoverage {
   expected_months: number
 }
 
+// Re-export from forecast-read-service for a single canonical type. Type-only
+// import keeps this file dependency-light at runtime even though many UI
+// modules import from here.
+export type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read-service'
+
 // Historical P&L summary for AI context
 export interface HistoricalPLSummary {
   has_xero_data: boolean
@@ -566,6 +571,13 @@ export interface HistoricalPLSummary {
 
   // Phase 44 D-15: coverage for sparse-tenant banner (Plan 44-10 consumer)
   coverage?: XeroCoverage
+
+  // D-44.2-03 — read-path quality gate. Always populated post-44.2-08
+  // (banner needs a uniform contract across all 4 consumer routes).
+  // Falls back to 'no_sync' when the business has no active xero_connections
+  // OR when the historical fallback path has no sync history to consult.
+  data_quality?: import('@/lib/services/forecast-read-service').DataQuality
+  per_tenant_quality?: import('@/lib/services/forecast-read-service').PerTenantQuality[]
 
   // Forecast period - what we're planning
   forecast_period?: {

@@ -109,15 +109,33 @@ export async function getHistoricalSummary(
       .in('business_id', ids.all)
 
     if (error || !rawLines || rawLines.length === 0) {
-      return { has_xero_data: false }
+      // No data — still surface a quality signal so the banner can explain why.
+      const fallbackQuality = await createForecastReadService(supabase).getDataQualityForBusiness(ids.all)
+      return {
+        has_xero_data: false,
+        data_quality: fallbackQuality.data_quality,
+        per_tenant_quality: fallbackQuality.per_tenant_quality,
+      }
     }
     xeroLines = rawLines as WideXeroRow[]
     coverage = computeCoverageFromRows(xeroLines)
   }
 
   if (xeroLines.length === 0) {
-    return { has_xero_data: false }
+    const fallbackQuality = await createForecastReadService(supabase).getDataQualityForBusiness(ids.all)
+    return {
+      has_xero_data: false,
+      data_quality: fallbackQuality.data_quality,
+      per_tenant_quality: fallbackQuality.per_tenant_quality,
+    }
   }
+
+  // D-44.2-03 — quality gate. Active-forecast path inherits from composite
+  // (already computed in 44.2-07 path); fallback path computes via the
+  // public wrapper so both surfaces produce the same shape.
+  const dataQuality = composite
+    ? { data_quality: composite.data_quality, per_tenant_quality: composite.per_tenant_quality }
+    : await createForecastReadService(supabase).getDataQualityForBusiness(ids.all)
 
   // Determine periods using centralized fiscal year logic.
   const periods = calculateForecastPeriods(fiscalYear, yearStartMonth)
@@ -165,6 +183,8 @@ export async function getHistoricalSummary(
     prior_fy: priorFY || undefined,
     current_ytd: currentYTD,
     coverage,
+    data_quality: dataQuality.data_quality,
+    per_tenant_quality: dataQuality.per_tenant_quality,
   }
 }
 
