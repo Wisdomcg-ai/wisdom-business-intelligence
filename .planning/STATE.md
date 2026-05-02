@@ -7,23 +7,22 @@ last_updated: "2026-05-03T00:00:00.000Z"
 last_activity: 2026-05-03
 progress:
   total_phases: 51
-  completed_phases: 20
+  completed_phases: 21
   total_plans: 106
-  completed_plans: 102
+  completed_plans: 103
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 44.2 (CFO-Grade Xero Reconciliation) — **COMPLETE** at the data layer (12/12 plans)
-Phase 44 (Test Gate & CI Hardening): plan 5 (branch protection + secret provisioning) outstanding — pure GitHub UI work, requires user action; cannot be automated.
-Phase 44.1 (Atomic Save Hardening + Staged Rollout): complete.
-Last activity: 2026-05-03 (44.2-12 cross-tenant UAT merged, all 11 active production pairs reconcile to live Xero)
+Phase: 44 (Test Gate & CI Hardening) — **COMPLETE** (5/5 plans). All 4 required checks (`lint`, `typecheck`, `vitest`, `build`) enforced on `main`; each independently smoke-tested against a deliberate break and confirmed to block merging. `PLAYWRIGHT_BASE_URL` secret provisioned; first nightly run green.
+Phase: 44.1 (Atomic Save Hardening + Staged Rollout) — **COMPLETE**.
+Phase: 44.2 (CFO-Grade Xero Reconciliation) — **COMPLETE** at the data layer (12/12 plans).
+Last activity: 2026-05-03 (44-05 smoke tests proven; phase 44 closed)
 
 Next eligible work:
-- **44-05** (user-only): provision `PLAYWRIGHT_BASE_URL` secret + mark lint/typecheck/vitest/build as required status checks on `main` + run smoke tests. See `.planning/phases/44-test-gate-ci-hardening/44-05-PLAN.md`.
-- **Phase 45 (Invisible Cleanup)**: blocked on 44-05 per dependency graph; ready to start once 44 fully closes.
+- **Phase 45 (Invisible Cleanup)** — first unblocked phase in the v1.1 milestone. Deletes ~192 files / ~6,000 LOC of unreferenced/dead code (archives, dead wizards, AWS SAM remnants). Zero blast radius.
 - **44.2 UI surface spot-checks** (operator on deployed preview): non-blocking, tracked in `.planning/phases/44.2-cfo-grade-xero-reconciliation/UAT.md`.
 
 ## Current Milestone: v1.1 — Codebase Hardening
