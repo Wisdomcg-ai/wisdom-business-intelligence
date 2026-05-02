@@ -3,23 +3,28 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: verifying
-last_updated: "2026-05-01T10:46:15.499Z"
-last_activity: 2026-04-29
+last_updated: "2026-05-03T00:00:00.000Z"
+last_activity: 2026-05-03
 progress:
   total_phases: 51
-  completed_phases: 18
+  completed_phases: 20
   total_plans: 106
-  completed_plans: 90
+  completed_plans: 102
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 44 (Test Gate & CI Hardening) — EXECUTING
-Plan: 5 of 5 (next; plans 1, 2, 3, and 4 complete, plan 5 remaining)
-Status: Phase complete — ready for verification
-Last activity: 2026-04-29
+Phase: 44.2 (CFO-Grade Xero Reconciliation) — **COMPLETE** at the data layer (12/12 plans)
+Phase 44 (Test Gate & CI Hardening): plan 5 (branch protection + secret provisioning) outstanding — pure GitHub UI work, requires user action; cannot be automated.
+Phase 44.1 (Atomic Save Hardening + Staged Rollout): complete.
+Last activity: 2026-05-03 (44.2-12 cross-tenant UAT merged, all 11 active production pairs reconcile to live Xero)
+
+Next eligible work:
+- **44-05** (user-only): provision `PLAYWRIGHT_BASE_URL` secret + mark lint/typecheck/vitest/build as required status checks on `main` + run smoke tests. See `.planning/phases/44-test-gate-ci-hardening/44-05-PLAN.md`.
+- **Phase 45 (Invisible Cleanup)**: blocked on 44-05 per dependency graph; ready to start once 44 fully closes.
+- **44.2 UI surface spot-checks** (operator on deployed preview): non-blocking, tracked in `.planning/phases/44.2-cfo-grade-xero-reconciliation/UAT.md`.
 
 ## Current Milestone: v1.1 — Codebase Hardening
 
