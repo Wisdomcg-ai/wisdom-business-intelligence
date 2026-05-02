@@ -66,11 +66,14 @@ export async function GET(request: NextRequest) {
     if (forecastId) {
       // D-13 path. D-18 invariant violations propagate to the catch.
       const composite = await createForecastReadService(supabase).getMonthlyComposite(forecastId)
+      // D-44.2-03 quality gate — non-blocking; UI banner consumes.
       return NextResponse.json({
         data: composite.rows.map((r, i) => toPLLine({
           account_name: r.account_name, account_code: r.account_code,
           account_type: r.account_type, monthly_values: r.monthly_values,
         }, i)),
+        data_quality: composite.data_quality,
+        per_tenant_quality: composite.per_tenant_quality,
       })
     }
 
@@ -83,7 +86,13 @@ export async function GET(request: NextRequest) {
       console.error('[Xero Actuals] Error:', error)
       return NextResponse.json({ error: 'Failed to load Xero actuals' }, { status: 500 })
     }
-    return NextResponse.json({ data: (xeroLines || []).map((xl: any, i: number) => toPLLine(xl, i)) })
+    // D-44.2-03 quality gate — fallback path; compute via public wrapper.
+    const fallbackQuality = await createForecastReadService(supabase).getDataQualityForBusiness(ids.all)
+    return NextResponse.json({
+      data: (xeroLines || []).map((xl: any, i: number) => toPLLine(xl, i)),
+      data_quality: fallbackQuality.data_quality,
+      per_tenant_quality: fallbackQuality.per_tenant_quality,
+    })
   } catch (err: any) {
     const message = String(err?.message ?? err)
     const isInvariant = message.includes('INVARIANT VIOLATED')

@@ -187,6 +187,13 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .maybeSingle()
 
+    // D-44.2-03 quality gate — non-blocking; UI banner consumes. Set on
+    // both code paths below.
+    let dataQuality: { data_quality: string; per_tenant_quality: any[] } = {
+      data_quality: 'no_sync',
+      per_tenant_quality: [],
+    }
+
     if (actualsForecast?.id) {
       // D-13 path. D-18 invariant violations propagate to the outer catch.
       const composite = await createForecastReadService(supabase).getMonthlyComposite(actualsForecast.id)
@@ -196,6 +203,10 @@ export async function POST(request: NextRequest) {
         section: '',
         monthly_values: r.monthly_values,
       }))
+      dataQuality = {
+        data_quality: composite.data_quality,
+        per_tenant_quality: composite.per_tenant_quality,
+      }
     } else {
       // Fallback: no active forecast → read raw Xero rows.
       const { data: rawXeroLines, error: xeroErr } = await supabase
@@ -222,6 +233,12 @@ export async function POST(request: NextRequest) {
 
       if (rawXeroLines && rawXeroLines.length !== xeroLines.length) {
         console.warn(`[Report Generate] Deduplicated xero_pl_lines: ${rawXeroLines.length} rows → ${xeroLines.length} unique accounts`)
+      }
+      // D-44.2-03 quality gate — fallback path; compute via public wrapper.
+      const fallbackQuality = await createForecastReadService(supabase).getDataQualityForBusiness(ids.all)
+      dataQuality = {
+        data_quality: fallbackQuality.data_quality,
+        per_tenant_quality: fallbackQuality.per_tenant_quality,
       }
     }
 
@@ -613,6 +630,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       report,
+      data_quality: dataQuality.data_quality,
+      per_tenant_quality: dataQuality.per_tenant_quality,
       _debug: {
         xero_accounts: matchLog.length,
         budget_lines: budgetPLLines.length,
