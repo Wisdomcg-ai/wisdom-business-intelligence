@@ -41,28 +41,36 @@ WHERE business_id = '<profile_id>'
 
 ## JDS — Just Digital Signage / Aeris Solutions Trust
 
-`business_id: 900aa935-ae8c-4913-baf7-169260fa19ef` · `tenant_id: 0219d3a9-...` · AUD · FY end Jun
+`business_id: 900aa935-ae8c-4913-baf7-169260fa19ef` · `tenant_id: 0219d3a9-c1be-4fb8-a4d3-0710b3af715a` · AUD · FY end Jun
 
 ### 2026-02-28
 | Gate | Account | Xero PDF | Our DB | Delta | Notes |
 |------|---------|---------:|-------:|------:|-------|
-| PL   | Sales - Hardware                       |   |   |   |   |
-| BS   | NAB Bank / Cheque A/C                  |   |   |   |   |
-| TB   | (highest debit account)                |   |   |   |   |
+| PL   | Sales - Hardware                       |   |   |   | TBD |
+| BS   | Capital Growth Account                 | 184,823.65 |   |   | From PDF page 1 (Bank section) |
+| BS   | Stock on Hand                          | 499,369.11 |   |   | From PDF page 1 (Current Assets) |
+| BS   | Accounts Payable                       | 307,089.98 |   |   | From PDF page 1 (Current Liabilities) |
+| TB   | (highest debit account)                |   |   |   | TBD — pull TB PDF |
 
 ### 2026-03-31
 | Gate | Account | Xero PDF | Our DB | Delta | Notes |
 |------|---------|---------:|-------:|------:|-------|
-| PL   | Sales - Hardware                       |   |   |   |   |
-| BS   | NAB Bank / Cheque A/C                  |   |   |   |   |
-| TB   | (highest debit account)                |   |   |   |   |
+| PL   | Sales - Hardware                       |   |   |   | TBD |
+| BS   | Capital Growth Account                 | 137,224.95 |   |   | From PDF page 1 |
+| BS   | Stock on Hand                          | 481,713.54 |   |   | From PDF page 1 |
+| BS   | Accounts Payable                       | 297,296.39 |   |   | From PDF page 1 |
+| TB   | (highest debit account)                |   |   |   | TBD |
 
 ### 2026-04-30
 | Gate | Account | Xero PDF | Our DB | Delta | Notes |
 |------|---------|---------:|-------:|------:|-------|
-| PL   | Sales - Hardware                       |   |   |   |   |
-| BS   | NAB Bank / Cheque A/C                  |   |   |   |   |
-| TB   | (highest debit account)                |   |   |   |   |
+| PL   | Sales - Hardware                       |   |   |   | TBD — also confirms 06B reconciliation result |
+| BS   | Capital Growth Account                 | 137,559.33 |   |   | From PDF page 1 |
+| BS   | Stock on Hand                          | 514,831.80 |   |   | From PDF page 1 |
+| BS   | Accounts Payable                       | 244,389.99 |   |   | From PDF page 1 |
+| BS   | Mastercard Aeris (06D.1 regression)    | 248.08 |   |   | Should be account_type=liability per layout (verifies 06D.1 fix) |
+| BS   | Net Assets / Total Equity              | 662,903.57 |   |   | From PDF page 2 — gate-4 sanity at row level |
+| TB   | (highest debit account)                |   |   |   | TBD |
 
 ---
 
