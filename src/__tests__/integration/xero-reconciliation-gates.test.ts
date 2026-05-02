@@ -27,10 +27,15 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync, readFileSync } from 'fs'
 import path from 'path'
-import { parsePLByMonth } from '@/lib/xero/pl-by-month-parser'
 import { parsePLSinglePeriod } from '@/lib/xero/pl-single-period-parser'
 import { parseBSSinglePeriod } from '@/lib/xero/bs-single-period-parser'
-import { parseTrialBalance, trialBalanceTotals } from '@/lib/xero/trialbalance-parser'
+import { parseTrialBalance } from '@/lib/xero/trialbalance-parser'
+import {
+  assertGate1,
+  assertGate2,
+  assertGate3,
+  assertGate4,
+} from '@/lib/xero/reconciliation-gates'
 
 // ─── Test parameterization ──────────────────────────────────────────────────
 
@@ -173,73 +178,11 @@ function captureCommand(t: Tenant, fixtureName: string, balanceDate?: string): s
   return `(no capture command registered for fixture pattern: ${fixtureName})`
 }
 
-// ─── Net-profit extraction ──────────────────────────────────────────────────
-
-/**
- * Compute net profit from a parsed PL row set:
- *   net_profit = revenue + other_income - cogs - opex - other_expense
- *
- * All sign conventions follow the parser's existing AccountType taxonomy
- * (revenue/other_income are positive contributions; cogs/opex/other_expense
- * are positive amounts that subtract from the result).
- */
-function netProfitOf(rows: Array<{ account_type: string; amount: number }>): number {
-  let revenue = 0
-  let cogs = 0
-  let opex = 0
-  let otherIncome = 0
-  let otherExpense = 0
-  for (const r of rows) {
-    switch (r.account_type) {
-      case 'revenue':
-        revenue += r.amount
-        break
-      case 'cogs':
-        cogs += r.amount
-        break
-      case 'opex':
-        opex += r.amount
-        break
-      case 'other_income':
-        otherIncome += r.amount
-        break
-      case 'other_expense':
-        otherExpense += r.amount
-        break
-      default:
-        break
-    }
-  }
-  return revenue + otherIncome - cogs - opex - otherExpense
-}
-
-/**
- * Sum the BS earnings accounts (Current Year Earnings + Retained Earnings)
- * at a given balance_date. Used by gate 2 articulation: monthly PL net
- * profit MUST equal Δ(earnings) across the month.
- *
- * We match by name (case-insensitive substring) because account_id varies
- * per tenant and we don't want this gate to depend on a tenant-specific id
- * mapping. Both 'current year earnings' and 'retained earnings' are Xero
- * system account names with stable wording.
- */
-function bsEarningsTotal(bsRows: Array<{ account_name: string; balance: number }>): number {
-  let total = 0
-  for (const r of bsRows) {
-    const n = r.account_name.toLowerCase()
-    if (
-      n.includes('current year earnings') ||
-      n.includes('retained earnings') ||
-      n.includes('profit ~ loss earned this year') ||
-      n.includes('profit / loss earned this year')
-    ) {
-      total += r.balance
-    }
-  }
-  return total
-}
-
 // ─── Tests ──────────────────────────────────────────────────────────────────
+// Gate logic lives in src/lib/xero/reconciliation-gates.ts and is shared
+// with scripts/verify-production-migration.ts (06F). One source of truth:
+// fixture-driven tests (this file) and live-data verifier exercise the
+// same assertGate1/2/3/4 functions.
 
 describe.each(TENANTS)('Reconciliation gates — $name', (tenant) => {
   // ─── Gate 1 (FY-wide) ─────────────────────────────────────────────────────
@@ -293,103 +236,58 @@ describe.each(TENANTS)('Reconciliation gates — $name', (tenant) => {
     //    multi-currency tenants) — but this gate uses single-period
     //    monthly fixtures, NOT by-month, so it's unaffected.
     //
-    // Allow-list specific accounts here when investigation confirms the
-    // discrepancy is genuinely on Xero's side, not ours. Format keys as
-    // 'name:<account_name>' (matches the fallback key when account_id is
-    // unset) or as the raw account_id GUID prefixed with the tenant slug.
-    const GATE_1_ACCOUNT_ALLOWLIST = new Set<string>([
+    // Per-account drift detection lives in src/lib/xero/reconciliation-gates.ts
+    // (assertGate1). The allow-list captures known Xero quirks per tenant
+    // (each documented in the gate code with justification).
+    const allowlistByTenant: Record<string, Set<string>> = {
       // JDS Rent: monthly_sum=$68,659.97 vs FY-total=$75,127.94 (Δ -$6,467.97).
       // Path A monthly is the truth (06B verified other JDS accounts to the
-      // cent against Xero web PDF). The FY-range query rolls up an extra
-      // ~$6,467 of Rent that the per-month queries don't see — likely an
-      // annual rent reconciliation accrual that lands at FY-end only and
-      // doesn't show on per-month views. Cross-check with Gate 5 manual
-      // evidence against Xero web PDF for Rent specifically before promoting
-      // this to a "fix the parser" investigation.
-      'jds:Rent',
-      // IICT-HK Foreign Currency Gains and Losses: monthly_sum=$14,995.54 vs
-      // combined-range FY-total=$14,912.80 (Δ $82.74). Standard multi-currency
-      // behavior: Xero re-runs closing-rate revaluation per query date range,
-      // so two single-period queries (Apr, May) produce a slightly different
-      // FX-revaluation total than one combined Apr-May query. This is a real
-      // Xero behavior, not a parser issue — allow-list with intent.
-      'iict-hk:Foreign Currency Gains and Losses',
-    ])
+      // cent against Xero web PDF). FY-range query rolls up an extra ~$6,467
+      // of Rent — likely an annual rent reconciliation accrual that lands at
+      // FY-end only. Cross-check via Gate 5 web PDF before fixing the parser.
+      jds: new Set(['Rent']),
+      // IICT-HK FX Gains/Losses: monthly_sum=$14,995.54 vs combined-range
+      // FY-total=$14,912.80 (Δ $82.74). Standard multi-currency behavior —
+      // Xero re-runs closing-rate revaluation per query date range, so two
+      // single-period queries produce a slightly different FX revaluation
+      // than one combined query.
+      'iict-hk': new Set(['Foreign Currency Gains and Losses']),
+    }
 
     if (!haveAllMonthly || !haveFYTotal) {
-      // already handled by the prior block — guard so TS narrows types.
       void fyTotalFixture
       void monthlyFixtures
       return
     }
 
     it(`every account: Σ(monthly amount) == FY-total amount (within $0.01)`, () => {
-      // Aggregate monthly captures per account_id.
-      const monthlyByAccount = new Map<string, { name: string; type: string; amount: number }>()
-      for (const fix of monthlyFixtures) {
-        const monthRows = parsePLSinglePeriod(
+      const monthlyRows = monthlyFixtures.map((fix) =>
+        parsePLSinglePeriod(
           unwrapResponse(loadFixture(fix)),
           tenant.fyEnd,
           'accruals',
           'fixture-tenant',
-        )
-        for (const r of monthRows) {
-          const key = r.account_id || `name:${r.account_name}`
-          const cur = monthlyByAccount.get(key) ?? { name: r.account_name, type: r.account_type, amount: 0 }
-          cur.amount += r.amount
-          monthlyByAccount.set(key, cur)
-        }
-      }
-      // Aggregate FY-total per account_id.
-      const fyByAccount = new Map<string, { name: string; type: string; amount: number }>()
-      const fyRows = parsePLSinglePeriod(
+        ),
+      )
+      const fyTotalRows = parsePLSinglePeriod(
         unwrapResponse(loadFixture(fyTotalFixture)),
         tenant.fyEnd,
         'accruals',
         'fixture-tenant',
       )
-      for (const r of fyRows) {
-        const key = r.account_id || `name:${r.account_name}`
-        const cur = fyByAccount.get(key) ?? { name: r.account_name, type: r.account_type, amount: 0 }
-        cur.amount += r.amount
-        fyByAccount.set(key, cur)
-      }
-      // Compare.
-      const allKeys = new Set<string>([...monthlyByAccount.keys(), ...fyByAccount.keys()])
-      const drift: Array<{ name: string; type: string; monthly: number; fy: number; delta: number }> = []
-      for (const k of allKeys) {
-        const m = monthlyByAccount.get(k)
-        const f = fyByAccount.get(k)
-        const accountName = m?.name ?? f?.name ?? '(unknown)'
-        // Allow-list key is `<tenant.slug>:<account_name>` for human-friendly
-        // entries — avoids depending on whether account_id is populated for
-        // this row.
-        if (GATE_1_ACCOUNT_ALLOWLIST.has(`${tenant.slug}:${accountName}`)) continue
-        const monthly = m?.amount ?? 0
-        const fy = f?.amount ?? 0
-        const delta = Math.round((monthly - fy) * 100) / 100
-        if (Math.abs(delta) > 0.01) {
-          drift.push({
-            name: accountName,
-            type: m?.type ?? f?.type ?? '?',
-            monthly,
-            fy,
-            delta,
-          })
-        }
-      }
+      const allowlist = allowlistByTenant[tenant.slug] ?? new Set<string>()
+      const result = assertGate1(monthlyRows, fyTotalRows, allowlist)
       const summary =
-        drift.length === 0
+        result.drift_accounts.length === 0
           ? 'no drift'
-          : `${drift.length} account(s) drift:\n` +
-            drift
-              .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+          : `${result.drift_accounts.length} account(s) drift:\n` +
+            result.drift_accounts
               .map(
                 (d) =>
-                  `  - [${d.type}] ${d.name}: monthly=${d.monthly.toFixed(2)} fy=${d.fy.toFixed(2)} Δ=${d.delta.toFixed(2)}`,
+                  `  - [${d.account_type}] ${d.account_name}: monthly=${d.monthly_sum.toFixed(2)} fy=${d.fy_total.toFixed(2)} Δ=${d.delta.toFixed(2)}`,
               )
               .join('\n')
-      expect(drift.length, `tenant=${tenant.name}\n${summary}`).toBe(0)
+      expect(result.pass, `tenant=${tenant.name}\n${summary}`).toBe(true)
     })
   })
 
@@ -434,12 +332,10 @@ describe.each(TENANTS)('Reconciliation gates — $name', (tenant) => {
           'accruals',
           'fixture-tenant',
         )
-        const monthNetProfit = netProfitOf(monthRows)
         const bsThis = parseBSSinglePeriod(unwrapResponse(loadFixture(bsFixture)), balanceDate, 'accruals', 'fixture-tenant')
         const bsPrior = parseBSSinglePeriod(unwrapResponse(loadFixture(priorBSFixture)), priorDate, 'accruals', 'fixture-tenant')
-        const earningsDelta = bsEarningsTotal(bsThis) - bsEarningsTotal(bsPrior)
-        const delta = Math.abs(Math.round((monthNetProfit - earningsDelta) * 100) / 100)
-        expect(delta, `tenant=${tenant.name} month=${balanceDate} pl=${monthNetProfit.toFixed(2)} bsΔ=${earningsDelta.toFixed(2)} Δ=${delta.toFixed(2)}`).toBeLessThanOrEqual(0.01)
+        const result = assertGate2(monthRows, bsThis, bsPrior)
+        expect(result.pass, `tenant=${tenant.name} month=${balanceDate} pl=${result.pl_net_profit.toFixed(2)} bsΔ=${result.bs_earnings_delta.toFixed(2)} Δ=${result.delta.toFixed(2)}`).toBe(true)
       })
     })
 
@@ -454,8 +350,8 @@ describe.each(TENANTS)('Reconciliation gates — $name', (tenant) => {
       }
       it(`Σ debit == Σ credit (within $0.01)`, () => {
         const tb = parseTrialBalance(unwrapResponse(loadFixture(tbFixture)))
-        const totals = trialBalanceTotals(tb)
-        expect(Math.abs(totals.delta), `tenant=${tenant.name} date=${balanceDate} debit=${totals.debit.toFixed(2)} credit=${totals.credit.toFixed(2)} Δ=${totals.delta.toFixed(2)}`).toBeLessThanOrEqual(0.01)
+        const result = assertGate3(tb)
+        expect(result.pass, `tenant=${tenant.name} date=${balanceDate} debit=${result.total_debit.toFixed(2)} credit=${result.total_credit.toFixed(2)} Δ=${result.delta.toFixed(2)}`).toBe(true)
       })
     })
 
@@ -470,15 +366,8 @@ describe.each(TENANTS)('Reconciliation gates — $name', (tenant) => {
       }
       it(`Σ(asset) − Σ(liability) == Σ(equity) (within $0.01)`, () => {
         const bs = parseBSSinglePeriod(unwrapResponse(loadFixture(bsFixture)), balanceDate, 'accruals', 'fixture-tenant')
-        const assets = bs.filter((r) => r.account_type === 'asset').reduce((s, r) => s + r.balance, 0)
-        const liabilities = bs.filter((r) => r.account_type === 'liability').reduce((s, r) => s + r.balance, 0)
-        const equity = bs.filter((r) => r.account_type === 'equity').reduce((s, r) => s + r.balance, 0)
-        const netAssets = assets - liabilities
-        // Round to cents BEFORE the comparison: summing many large numbers
-        // accumulates JS float epsilon, so a true $0.01 difference can read
-        // as 0.01000000071... vs the literal 0.01 boundary.
-        const delta = Math.abs(Math.round((netAssets - equity) * 100) / 100)
-        expect(delta, `tenant=${tenant.name} date=${balanceDate} assets=${assets.toFixed(2)} liabilities=${liabilities.toFixed(2)} netAssets=${netAssets.toFixed(2)} equity=${equity.toFixed(2)} Δ=${delta.toFixed(2)}`).toBeLessThanOrEqual(0.01)
+        const result = assertGate4(bs)
+        expect(result.pass, `tenant=${tenant.name} date=${balanceDate} assets=${result.assets.toFixed(2)} liabilities=${result.liabilities.toFixed(2)} netAssets=${result.net_assets.toFixed(2)} equity=${result.equity.toFixed(2)} Δ=${result.delta.toFixed(2)}`).toBe(true)
       })
     })
   })
