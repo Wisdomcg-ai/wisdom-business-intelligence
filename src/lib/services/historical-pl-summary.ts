@@ -295,6 +295,9 @@ function aggregatePeriod(
         percent_of_revenue: 100,
       })
     } else if (line.account_type === 'cogs' && lineTotal !== 0) {
+      // percent_of_revenue intentionally NOT set here — totalRevenue is
+      // mid-aggregation in this loop and not final yet. Filled after the
+      // loop via the second pass below.
       cogsLines.push({
         account_name: line.account_name,
         category: 'Cost of Sales',
@@ -333,6 +336,14 @@ function aggregatePeriod(
 
   const grossProfit = totalRevenue - totalCogs
   const netProfit = grossProfit - totalOpex + totalOtherIncome - totalOtherExpenses
+
+  // Backfill percent_of_revenue on each COGS line now that totalRevenue is
+  // final. Without this, the wizard's Step 3 `calculateCOGSAmount` reads
+  // `percentOfRevenue=0` for every variable-cost line and returns $0 —
+  // making COGS appear not to calculate at all on Xero-sourced forecasts.
+  for (const cl of cogsLines) {
+    cl.percent_of_revenue = totalRevenue > 0 ? (cl.total / totalRevenue) * 100 : 0
+  }
 
   return {
     period_label: label,
