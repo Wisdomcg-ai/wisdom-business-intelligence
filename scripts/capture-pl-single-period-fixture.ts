@@ -26,7 +26,9 @@ import { getValidAccessToken } from '@/lib/xero/token-manager'
 interface CliArgs {
   businessId: string
   tenantId: string
-  month: string // 'YYYY-MM'
+  month?: string // 'YYYY-MM' — convenience; expands to month-start..month-end
+  fromDate?: string // 'YYYY-MM-DD' — explicit range start (mutually exclusive with --month)
+  toDate?: string // 'YYYY-MM-DD' — explicit range end
   label: string
   includeInactive?: boolean
 }
@@ -38,13 +40,29 @@ function parseArgs(argv: string[]): CliArgs | { help: true } {
     if (a.startsWith('--business-id=')) out.businessId = a.slice('--business-id='.length)
     else if (a.startsWith('--tenant-id=')) out.tenantId = a.slice('--tenant-id='.length)
     else if (a.startsWith('--month=')) out.month = a.slice('--month='.length)
+    else if (a.startsWith('--from-date=')) out.fromDate = a.slice('--from-date='.length)
+    else if (a.startsWith('--to-date=')) out.toDate = a.slice('--to-date='.length)
     else if (a.startsWith('--label=')) out.label = a.slice('--label='.length)
     else if (a === '--include-inactive') out.includeInactive = true
   }
-  if (!out.businessId || !out.tenantId || !out.month || !out.label) return { help: true }
-  if (!/^\d{4}-\d{2}$/.test(out.month)) {
+  const hasMonth = !!out.month
+  const hasRange = !!out.fromDate && !!out.toDate
+  if (!out.businessId || !out.tenantId || !out.label) return { help: true }
+  if (!hasMonth && !hasRange) {
+    console.error(`[capture-pl-single-period-fixture] Provide either --month=YYYY-MM OR both --from-date=YYYY-MM-DD --to-date=YYYY-MM-DD`)
+    return { help: true }
+  }
+  if (hasMonth && !/^\d{4}-\d{2}$/.test(out.month!)) {
     console.error(`[capture-pl-single-period-fixture] --month must be YYYY-MM, got: ${out.month}`)
     process.exit(1)
+  }
+  if (hasRange) {
+    for (const [k, v] of [['from-date', out.fromDate], ['to-date', out.toDate]] as const) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v!)) {
+        console.error(`[capture-pl-single-period-fixture] --${k} must be YYYY-MM-DD, got: ${v}`)
+        process.exit(1)
+      }
+    }
   }
   return out as CliArgs
 }
@@ -75,8 +93,11 @@ async function main() {
     process.exit(parsed.help && process.argv.length <= 2 ? 0 : 1)
   }
   const { businessId, tenantId, month, label, includeInactive } = parsed
-  const fromDate = `${month}-01`
-  const toDate = lastDayOfMonth(month)
+  // --month is a convenience expanded to month-start..month-end. --from-date /
+  // --to-date overrides for arbitrary ranges (used by 06E gate-1 FY-total
+  // captures where the FY range is non-AU-FY, e.g. IICT-HK calendar/Apr-Mar).
+  const fromDate = parsed.fromDate ?? `${month}-01`
+  const toDate = parsed.toDate ?? lastDayOfMonth(month!)
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY
@@ -148,7 +169,7 @@ async function main() {
       tenant_name: connection.tenant_name,
       tenant_id: tenantId,
       business_id: businessId,
-      period_month: month,
+      period_month: month ?? null,
       from_date: fromDate,
       to_date: toDate,
       captured_at: new Date().toISOString(),

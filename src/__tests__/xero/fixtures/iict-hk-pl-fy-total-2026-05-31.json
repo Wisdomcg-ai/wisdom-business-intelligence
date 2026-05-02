@@ -1,0 +1,282 @@
+{
+  "_meta": {
+    "tenant_name": "IICT Group Limited",
+    "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+    "business_id": "6c0dfadb-4229-4fc2-89eb-ec064d24511b",
+    "period_month": null,
+    "from_date": "2026-04-01",
+    "to_date": "2026-05-31",
+    "captured_at": "2026-05-02T04:00:12.629Z"
+  },
+  "response": {
+    "Id": "bd930c22-5b21-4cab-acd9-a1e9c0236009",
+    "Status": "OK",
+    "ProviderName": "Business Coaching Platform",
+    "DateTimeUTC": "/Date(1777694412445)/",
+    "Reports": [
+      {
+        "ReportID": "ProfitAndLoss",
+        "ReportName": "Profit and Loss",
+        "ReportType": "ProfitAndLoss",
+        "ReportTitles": [
+          "Profit & Loss",
+          "IICT Group Limited",
+          "1 April 2026 to 31 May 2026"
+        ],
+        "ReportDate": "2 May 2026",
+        "UpdatedDateUTC": "/Date(1777694412445)/",
+        "Fields": [],
+        "Rows": [
+          {
+            "RowType": "Header",
+            "Cells": [
+              {
+                "Value": ""
+              },
+              {
+                "Value": "31 May 26"
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Income",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Membership income",
+                    "Attributes": [
+                      {
+                        "Value": "a5342881-5e99-43e9-80df-128fc2327c60",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1298600.62",
+                    "Attributes": [
+                      {
+                        "Value": "a5342881-5e99-43e9-80df-128fc2327c60",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Income"
+                  },
+                  {
+                    "Value": "1298600.62"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Gross Profit"
+                  },
+                  {
+                    "Value": "1298600.62"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Less Operating Expenses",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Bank Fees",
+                    "Attributes": [
+                      {
+                        "Value": "c07fe0e7-f56b-4e88-bbe7-4cc73555d225",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "3367.19",
+                    "Attributes": [
+                      {
+                        "Value": "c07fe0e7-f56b-4e88-bbe7-4cc73555d225",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Consultancy",
+                    "Attributes": [
+                      {
+                        "Value": "681ad76b-88b7-4fbc-82fd-15b8fb3a9a98",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "60259.25",
+                    "Attributes": [
+                      {
+                        "Value": "681ad76b-88b7-4fbc-82fd-15b8fb3a9a98",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Dues & Subscriptions",
+                    "Attributes": [
+                      {
+                        "Value": "5d5b757a-11ec-40b1-b674-2496f090a1f7",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1700.86",
+                    "Attributes": [
+                      {
+                        "Value": "5d5b757a-11ec-40b1-b674-2496f090a1f7",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Foreign Currency Gains and Losses",
+                    "Attributes": [
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "account"
+                      },
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "groupID"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "14912.80",
+                    "Attributes": [
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "account"
+                      },
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "groupID"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Offshore Virtual Assistants",
+                    "Attributes": [
+                      {
+                        "Value": "81803890-9db9-4d55-9673-b07d1e1a4726",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "19054.75",
+                    "Attributes": [
+                      {
+                        "Value": "81803890-9db9-4d55-9673-b07d1e1a4726",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Wages and Salaries",
+                    "Attributes": [
+                      {
+                        "Value": "6fb29076-1ef2-4f37-a70a-a9565e2c45bb",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "223.41",
+                    "Attributes": [
+                      {
+                        "Value": "6fb29076-1ef2-4f37-a70a-a9565e2c45bb",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Operating Expenses"
+                  },
+                  {
+                    "Value": "99518.26"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Net Profit"
+                  },
+                  {
+                    "Value": "1199082.36"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
