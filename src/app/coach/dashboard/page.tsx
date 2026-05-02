@@ -10,6 +10,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import { Loader2, AlertTriangle, RefreshCw, Users, Calendar, ListChecks, MessageSquare, Building2, Plus, ArrowRight, LayoutDashboard } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { aggregateDataQualityAcrossBusinesses, type DataQuality } from '@/lib/services/forecast-read-service'
 
 // Stage calculation from revenue (matching stage-service.ts)
 function calculateStageFromRevenue(revenue: number | null | undefined): string {
@@ -46,6 +47,14 @@ export default function CoachDashboardPage() {
     name: string
     reason: string
   }[]>([])
+
+  // D-44.2-02 — compact aggregate data-integrity signal across all the
+  // coach's clients. Computed after businesses load (see useEffect below).
+  const [dataIntegrityAggregate, setDataIntegrityAggregate] = useState<{
+    worst: DataQuality
+    affectedCount: number
+    totalCount: number
+  } | null>(null)
 
   useEffect(() => {
     loadDashboardData()
@@ -516,6 +525,29 @@ export default function CoachDashboardPage() {
       setActivities(processedActivities)
       setClientsNeedingAttention(attention)
 
+      // D-44.2-02 — aggregate read-path quality across all coach's clients.
+      // Non-blocking: if it fails, dashboard renders without the integrity
+      // strip. Active-only because archived/inactive clients aren't being
+      // synced and would always read as 'no_sync', noisy without value.
+      try {
+        const activeBusinessIds = metrics
+          .filter((c) => c.status === 'active')
+          .map((c) => c.id)
+        if (activeBusinessIds.length > 0) {
+          const aggregate = await aggregateDataQualityAcrossBusinesses(
+            supabase as any,
+            activeBusinessIds,
+          )
+          setDataIntegrityAggregate({
+            worst: aggregate.worst,
+            affectedCount: aggregate.affectedCount,
+            totalCount: aggregate.totalCount,
+          })
+        }
+      } catch (err) {
+        console.warn('[Dashboard] data-integrity aggregate failed:', err)
+      }
+
     } catch (error) {
       console.error('Error loading dashboard:', error)
     } finally {
@@ -537,6 +569,9 @@ export default function CoachDashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* D-44.2-02 — compact aggregate data-integrity strip. Renders only
+          when at least one active client has unverified Xero data. */}
+      <DataIntegrityCompactStrip aggregate={dataIntegrityAggregate} />
       {/* Page Header */}
       <PageHeader
         variant="banner"
@@ -729,6 +764,44 @@ export default function CoachDashboardPage() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * D-44.2-02 compact aggregate strip — one-line warning at the top of the
+ * dashboard when ANY active client has unverified Xero data. Color tier
+ * matches the worst-of severity. Click navigates to the affected-clients
+ * tab for triage (relies on existing /coach/clients route).
+ *
+ * Kept inline rather than promoted to a shared component because the
+ * shape (aggregate-across-clients) only makes sense at the dashboard
+ * level. Per-page DataIntegrityBanner covers the per-business case.
+ */
+function DataIntegrityCompactStrip({
+  aggregate,
+}: {
+  aggregate: { worst: DataQuality; affectedCount: number; totalCount: number } | null
+}) {
+  if (!aggregate || aggregate.worst === 'verified' || aggregate.affectedCount === 0) {
+    return null
+  }
+  const tone =
+    aggregate.worst === 'failed'
+      ? 'bg-red-50 border-red-500 text-red-900'
+      : aggregate.worst === 'partial'
+        ? 'bg-amber-50 border-amber-500 text-amber-900'
+        : aggregate.worst === 'stale'
+          ? 'bg-yellow-50 border-yellow-500 text-yellow-900'
+          : 'bg-slate-50 border-slate-500 text-slate-900'
+  return (
+    <div role="alert" className={`${tone} border-l-4 px-4 py-2 text-sm flex items-center justify-between`}>
+      <span>
+        {aggregate.affectedCount} of {aggregate.totalCount} clients have unverified Xero data — review needed
+      </span>
+      <Link href="/coach/clients" className="underline whitespace-nowrap">
+        View clients
+      </Link>
     </div>
   )
 }

@@ -11,6 +11,7 @@ import { Loader2, BarChart3, Settings, Download, Save, LayoutGrid } from 'lucide
 import { useAutoSaveReport } from './hooks/useAutoSaveReport'
 import SaveIndicator from './components/SaveIndicator'
 import { toast } from 'sonner'
+import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBanner'
 import PageHeader from '@/components/ui/PageHeader'
 import MonthlyReportTabs from './components/MonthlyReportTabs'
 import MonthSelector from './components/MonthSelector'
@@ -121,6 +122,8 @@ export default function MonthlyReportPage() {
     generateReport,
     saveSnapshot,
     loadSnapshot,
+    dataQuality,
+    perTenantQuality,
   } = useMonthlyReport(businessId)
 
   // Phase 34: consolidated-specific payload (per-entity columns + FX context).
@@ -948,6 +951,14 @@ export default function MonthlyReportPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* D-44.2-02 — read-path data integrity banner. Renders nothing when verified. */}
+      <div className="px-4 pt-4">
+        <DataIntegrityBanner
+          quality={dataQuality}
+          perTenantQuality={perTenantQuality}
+          lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
+        />
+      </div>
       {/* Page Header */}
       <PageHeader
         variant="banner"
