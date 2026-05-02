@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Trash2, Info, Lock, ChevronDown, ChevronRight } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, generateMonthKeys, getRevenueLineYearTotal, MonthlyData } from '../types';
 import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBanner';
+import type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read-service';
 
 interface Step3RevenueCOGSProps {
   state: ForecastWizardState;
@@ -12,7 +14,27 @@ interface Step3RevenueCOGSProps {
 }
 
 export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOGSProps) {
-  const { revenuePattern, revenueLines, cogsLines, activeYear, goals, priorYear, currentYTD } = state;
+  const { revenuePattern, revenueLines, cogsLines, activeYear, goals, priorYear, currentYTD, businessId } = state;
+
+  // D-44.2-03 read-path quality gate; surfaces in DataIntegrityBanner.
+  const [dataQuality, setDataQuality] = useState<DataQuality>('verified')
+  const [perTenantQuality, setPerTenantQuality] = useState<PerTenantQuality[]>([])
+  useEffect(() => {
+    if (!businessId) return
+    const ctrl = new AbortController()
+    fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.summary) return
+        if (data.summary.data_quality) setDataQuality(data.summary.data_quality)
+        if (Array.isArray(data.summary.per_tenant_quality)) setPerTenantQuality(data.summary.per_tenant_quality)
+      })
+      .catch(() => {
+        // Non-blocking — banner stays as 'verified' (silent) on fetch failure.
+      })
+    return () => ctrl.abort()
+  }, [businessId, fiscalYear])
+
   const [showAddRevenue, setShowAddRevenue] = useState(false);
   const [showAddCOGS, setShowAddCOGS] = useState(false);
   const [newRevenueName, setNewRevenueName] = useState('');
@@ -565,6 +587,12 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
   return (
     <div className="space-y-4">
+      {/* D-44.2-02 — read-path data integrity banner. Renders nothing when verified. */}
+      <DataIntegrityBanner
+        quality={dataQuality}
+        perTenantQuality={perTenantQuality}
+        lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
+      />
       {/* Compact context bar */}
       {(activeYear === 1 && completedMonthsCount > 0 || hasImportedData) && (
         <div className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-3 flex items-center justify-between text-sm">

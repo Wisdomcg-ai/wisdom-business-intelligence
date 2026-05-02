@@ -11,6 +11,8 @@ import type { FinancialForecast, PLLine, XeroConnection } from '@/app/finances/f
 import CashflowForecastTab from '@/app/finances/forecast/components/CashflowForecastTab'
 import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year'
 import { useXeroKeepalive } from '@/hooks/useXeroKeepalive'
+import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBanner'
+import type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read-service'
 
 export default function CashflowForecastPage() {
   const supabase = createClient()
@@ -23,6 +25,9 @@ export default function CashflowForecastPage() {
   const [plLines, setPlLines] = useState<PLLine[]>([])
   const [xeroConnection, setXeroConnection] = useState<XeroConnection | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // D-44.2-03 read-path quality gate from /api/forecast/cashflow/xero-actuals.
+  const [dataQuality, setDataQuality] = useState<DataQuality>('verified')
+  const [perTenantQuality, setPerTenantQuality] = useState<PerTenantQuality[]>([])
 
   // Keep Xero tokens fresh
   useXeroKeepalive(businessId || null, !!xeroConnection)
@@ -84,6 +89,20 @@ export default function CashflowForecastPage() {
         console.error('[Cashflow] Error loading Xero connection:', err)
         const xeroConn = await ForecastService.getXeroConnection(bizId)
         setXeroConnection(xeroConn)
+      }
+
+      // D-44.2-03 — read-path quality from cashflow xero-actuals endpoint.
+      try {
+        const params = new URLSearchParams({ business_id: bizId })
+        if (loadedForecast.id) params.set('forecast_id', loadedForecast.id)
+        const qualityRes = await fetch(`/api/forecast/cashflow/xero-actuals?${params.toString()}`)
+        if (qualityRes.ok) {
+          const qualityData = await qualityRes.json()
+          if (qualityData.data_quality) setDataQuality(qualityData.data_quality)
+          if (Array.isArray(qualityData.per_tenant_quality)) setPerTenantQuality(qualityData.per_tenant_quality)
+        }
+      } catch {
+        // Non-blocking — banner stays as 'verified' (silent) on fetch failure.
       }
 
       setIsLoading(false)
@@ -153,6 +172,15 @@ export default function CashflowForecastPage() {
         subtitle={forecast?.name || 'Cash position month by month'}
         icon={Banknote}
       />
+
+      {/* D-44.2-02 — read-path data integrity banner. Renders nothing when verified. */}
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+        <DataIntegrityBanner
+          quality={dataQuality}
+          perTenantQuality={perTenantQuality}
+          lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
+        />
+      </div>
 
       <div className="max-w-[1800px] mx-auto p-4 sm:p-6 lg:p-8">
         {forecast && (

@@ -119,6 +119,8 @@ const ACCOUNTING_PACKAGES = [
 ];
 
 import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH, getCurrentFiscalYear, isNearYearEnd } from '@/lib/utils/fiscal-year-utils';
+import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBanner';
+import type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read-service';
 
 const MONTHS = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
 
@@ -147,6 +149,10 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
   const [insightsLoaded, setInsightsLoaded] = useState(false);
   const [dataHash, setDataHash] = useState<string | null>(null);
+
+  // D-44.2-03 read-path quality gate; surfaces in DataIntegrityBanner.
+  const [dataQuality, setDataQuality] = useState<DataQuality>('verified')
+  const [perTenantQuality, setPerTenantQuality] = useState<PerTenantQuality[]>([])
 
   // Current YTD data from pl-summary API
   const [currentYTD, setCurrentYTD] = useState<{
@@ -179,6 +185,11 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
         const data = await response.json();
         if (data.summary?.current_ytd) {
           setCurrentYTD(data.summary.current_ytd);
+        }
+        // D-44.2-03 — capture read-path quality + per-tenant breakdown.
+        if (data.summary?.data_quality) setDataQuality(data.summary.data_quality);
+        if (Array.isArray(data.summary?.per_tenant_quality)) {
+          setPerTenantQuality(data.summary.per_tenant_quality);
         }
       }
     } catch (error) {
@@ -731,6 +742,12 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
 
   return (
     <div className="space-y-6">
+      {/* D-44.2-02 — read-path data integrity banner. Renders nothing when verified. */}
+      <DataIntegrityBanner
+        quality={dataQuality}
+        perTenantQuality={perTenantQuality}
+        lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
+      />
       {/* Header with guidance */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5">
         <div className="flex items-start gap-4">
