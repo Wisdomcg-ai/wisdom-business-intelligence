@@ -169,38 +169,6 @@ export async function middleware(request: NextRequest) {
           // Allow access - skip onboarding checks
           return response
         }
-
-        // TEMPORARILY DISABLED: Onboarding checks removed to allow business plan access
-        // TODO: Re-enable once business plan development is complete
-
-        // // STEP 1: Check if business profile is completed (clients only)
-        // const { data: businessProfile, error: profileError } = await supabase
-        //   .from('business_profiles')
-        //   .select('profile_completed')
-        //   .eq('user_id', user.id)
-        //   .maybeSingle()  // Use maybeSingle to avoid errors if no row exists
-
-        // // If profile doesn't exist or is not completed, redirect to business profile
-        // if (profileError || !businessProfile || !businessProfile.profile_completed) {
-        //   return NextResponse.redirect(new URL('/business-profile', request.url))
-        // }
-
-        // // STEP 2: Check if assessment is completed
-        // const { data: completedAssessment, error: assessmentError } = await supabase
-        //   .from('assessments')
-        //   .select('id')
-        //   .eq('user_id', user.id)
-        //   .eq('status', 'completed')
-        //   .order('completed_at', { ascending: false })
-        //   .limit(1)
-        //   .maybeSingle()
-
-        // // If no completed assessment (and no error), redirect to assessment page
-        // if (!assessmentError && !completedAssessment) {
-        //   return NextResponse.redirect(new URL('/assessment', request.url))
-        // }
-
-        // Allow access to all routes - onboarding checks disabled
       } catch (error) {
         // If there's an unexpected error, log it but allow the request through
         // This prevents redirect loops when DB is having issues
