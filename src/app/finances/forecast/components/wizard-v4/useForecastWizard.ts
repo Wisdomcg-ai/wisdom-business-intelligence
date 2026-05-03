@@ -35,6 +35,7 @@ import {
 } from './types';
 import { isTeamCost } from './utils/opex-classifier';
 import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+import type { PLLineItem } from '@/app/finances/forecast/types';
 import type {
   ForecastAssumptions,
   RevenueLineAssumption,
@@ -751,23 +752,126 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         revenue_by_month: Record<string, number>;
         total_revenue: number;
         months_count: number;
+        revenue_lines?: PLLineItem[];
       };
     }) => {
       setState((prev) => {
         const monthKeys = generateMonthKeys(prev.fiscalYearStart);
         const targetRevenue = data.goals?.year1?.revenue || 0;
 
-        // Create revenue lines from prior year data
-        // If no individual lines but we have a total, create a default line
+        // Create revenue lines from prior year data.
+        // Phase 44.3 (FCST-01..05): when targetRevenue > 0, scale each line's
+        // year1Monthly to hit lineYearTarget = round(targetRevenue × lineShare),
+        // lock per-line YTD actuals from currentYTD.revenue_lines into completed
+        // months, distribute the remaining (lineYearTarget − lineYtdTotal) across
+        // future months by that line's prior-year seasonality, and absorb any
+        // rounding residue in the last future month so per-line annual sum
+        // exactly equals the rounded lineYearTarget.
+        // NOTE: assumes July FY (fiscal_year_start = 7); non-July FY support is a
+        // pre-existing latent issue tracked separately (see 44.3 PLAN-CHECK §C).
         let revenueLines: RevenueLine[] = [];
         if (data.priorYear.revenue.byLine.length > 0) {
-          revenueLines = data.priorYear.revenue.byLine.map((line) => ({
-            id: line.id,
-            name: line.name,
-            year1Monthly: remapMonthKeysToForecastYear(line.byMonth, prev.fiscalYearStart),
-            year2Monthly: {},
-            year3Monthly: {},
-          }));
+          const priorYearTotal = data.priorYear.revenue.total;
+          const ytdLines = data.currentYTD?.revenue_lines ?? [];
+          const matchKey = (name: string) => name.trim().toLowerCase();
+          const ytdByName = new Map<string, PLLineItem>();
+          for (const ytd of ytdLines) {
+            ytdByName.set(matchKey(ytd.account_name), ytd);
+          }
+          const matchedYtdNames = new Set<string>();
+
+          revenueLines = data.priorYear.revenue.byLine.map((line) => {
+            const priorMonthlyRemapped = remapMonthKeysToForecastYear(
+              line.byMonth,
+              prev.fiscalYearStart,
+            );
+
+            // Fallback (FCST-05): no target → preserve legacy verbatim copy.
+            if (targetRevenue <= 0) {
+              return {
+                id: line.id,
+                name: line.name,
+                year1Monthly: priorMonthlyRemapped,
+                year2Monthly: {},
+                year3Monthly: {},
+              };
+            }
+
+            const ytdLine = ytdByName.get(matchKey(line.name));
+            if (ytdLine) matchedYtdNames.add(matchKey(line.name));
+
+            const lineShare = priorYearTotal > 0 ? line.total / priorYearTotal : 0;
+            const lineYearTarget = Math.round(targetRevenue * lineShare);
+
+            const ytdMonths = ytdLine?.by_month ?? {};
+            const year1Monthly: Record<string, number> = {};
+            const futureMonthKeys: string[] = [];
+            let lineYtdTotal = 0;
+
+            for (const key of monthKeys) {
+              if (ytdMonths[key] !== undefined) {
+                year1Monthly[key] = Math.round(ytdMonths[key]);
+                lineYtdTotal += year1Monthly[key];
+              } else {
+                futureMonthKeys.push(key);
+              }
+            }
+
+            const remaining = lineYearTarget - lineYtdTotal;
+            let futureSeasonalitySum = 0;
+            for (const key of futureMonthKeys) {
+              futureSeasonalitySum += priorMonthlyRemapped[key] || 0;
+            }
+
+            let runningFutureSum = 0;
+            for (let i = 0; i < futureMonthKeys.length; i++) {
+              const key = futureMonthKeys[i];
+              const isLast = i === futureMonthKeys.length - 1;
+              if (isLast) {
+                // Absorb rounding residue so per-line annual sum exactly matches lineYearTarget.
+                year1Monthly[key] = remaining - runningFutureSum;
+              } else if (futureSeasonalitySum > 0) {
+                const monthVal = Math.round(remaining * ((priorMonthlyRemapped[key] || 0) / futureSeasonalitySum));
+                year1Monthly[key] = monthVal;
+                runningFutureSum += monthVal;
+              } else if (futureMonthKeys.length > 0) {
+                // No seasonality data — distribute evenly.
+                const monthVal = Math.round(remaining / futureMonthKeys.length);
+                year1Monthly[key] = monthVal;
+                runningFutureSum += monthVal;
+              } else {
+                year1Monthly[key] = 0;
+              }
+            }
+
+            return {
+              id: line.id,
+              name: line.name,
+              year1Monthly,
+              year2Monthly: {},
+              year3Monthly: {},
+            };
+          });
+
+          // FCST-04: append YTD lines that have no prior-year match — populate YTD
+          // months only, leave future months at 0. New lines do NOT consume the
+          // year-1 target; the prior-year-derived lines already sum to it.
+          for (const ytdLine of ytdLines) {
+            const key = matchKey(ytdLine.account_name);
+            if (matchedYtdNames.has(key)) continue;
+            const year1Monthly: Record<string, number> = {};
+            for (const monthKey of monthKeys) {
+              const val = ytdLine.by_month?.[monthKey];
+              year1Monthly[monthKey] = val !== undefined ? Math.round(val) : 0;
+            }
+            revenueLines.push({
+              id: generateId(),
+              name: ytdLine.account_name,
+              year1Monthly,
+              year2Monthly: {},
+              year3Monthly: {},
+            });
+          }
         } else if (targetRevenue > 0 || data.priorYear.revenue.total > 0) {
           // Create a default Sales Revenue line
           const year1Monthly: { [key: string]: number } = {};
