@@ -135,15 +135,16 @@ async function refreshConnection(connection: any): Promise<RefreshResult> {
 
 export async function GET(request: NextRequest) {
   try {
-    // Optional: Verify cron secret for security
-    const authHeader = request.headers.get('authorization');
+    // SEC-02 (Phase 46): fail closed. If CRON_SECRET is unset OR the bearer
+    // doesn't match, reject — including in dev/preview. The previous guard
+    // had two carve-outs (truthy cronSecret + NODE_ENV === 'production') that
+    // collectively let unauthenticated requests through whenever CRON_SECRET
+    // was absent. Devs should set CRON_SECRET=local-dev-secret in .env.local.
+    // Pattern matches cron/daily-health-report:13-15.
     const cronSecret = process.env.CRON_SECRET;
-
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      // Allow without auth in development
-      if (process.env.NODE_ENV === 'production') {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
+    const authHeader = request.headers.get('authorization');
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     console.log('[Token Refresh] Starting batch token refresh...');

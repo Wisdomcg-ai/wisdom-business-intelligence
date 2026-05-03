@@ -36,12 +36,16 @@ export const maxDuration = 300
 // + finalized the sync_jobs row before re-throwing.
 
 export async function GET(request: NextRequest) {
-  // Vercel-Cron flow: optional CRON_SECRET gate. In prod we require it; in
-  // dev/preview we allow the call through so a coach can hit the URL by
-  // hand without juggling secrets.
+  // SEC-02 (Phase 46): fail closed. If CRON_SECRET is unset OR the bearer
+  // doesn't match, reject — including in dev/preview. The previous
+  // 3-conditional guard (cronSecret && NODE_ENV === 'production' && ...)
+  // short-circuited if CRON_SECRET was absent in prod, leaving the route
+  // unauthenticated. Devs should set CRON_SECRET=local-dev-secret in
+  // .env.local; the manual coach trigger uses POST + session auth and is
+  // unaffected. Pattern matches cron/daily-health-report:13-15.
   const cronSecret = process.env.CRON_SECRET
   const auth = request.headers.get('authorization')
-  if (cronSecret && process.env.NODE_ENV === 'production' && auth !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
