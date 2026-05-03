@@ -104,7 +104,12 @@ const nextConfig = {
 // Wrap with Sentry for error tracking and optional source map upload
 const { withSentryConfig } = require('@sentry/nextjs');
 
-module.exports = withSentryConfig(nextConfig, {
+// Bundle analyzer — opt-in via `ANALYZE=true npm run build` (or `npm run analyze`)
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+});
+
+module.exports = withBundleAnalyzer(withSentryConfig(nextConfig, {
   // Suppress Sentry CLI logs during build
   silent: true,
 
@@ -118,4 +123,4 @@ module.exports = withSentryConfig(nextConfig, {
   // Disable source map upload if no auth token (still captures errors)
   disableServerWebpackPlugin: !process.env.SENTRY_AUTH_TOKEN,
   disableClientWebpackPlugin: !process.env.SENTRY_AUTH_TOKEN,
-});
+}));
