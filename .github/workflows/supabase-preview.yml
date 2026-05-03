@@ -131,3 +131,9 @@ jobs:
           # page-data collection, so any non-empty value works.
           RESEND_API_KEY: 're_placeholder'
           OPENAI_API_KEY: 'sk-placeholder'
+          # SEC-04 (Phase 46): next build's page-data collection loads route
+          # handlers that may invoke getEncryptionKey() at module init via
+          # encryption.ts imports. After plan 46-04 removes the
+          # SUPABASE_SERVICE_KEY PBKDF2 fallback, this var is required or
+          # build will throw. 64 hex chars = 32 bytes for AES-256.
+          APP_SECRET_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
