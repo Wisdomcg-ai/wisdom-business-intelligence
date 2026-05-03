@@ -9,7 +9,7 @@ progress:
   total_phases: 51
   completed_phases: 23
   total_plans: 106
-  completed_plans: 113
+  completed_plans: 116
 ---
 
 # Project State
@@ -20,11 +20,13 @@ Phase: 44 (Test Gate & CI Hardening) — **COMPLETE** (5/5 plans).
 Phase: 44.1 (Atomic Save Hardening + Staged Rollout) — **COMPLETE**.
 Phase: 44.2 (CFO-Grade Xero Reconciliation) — **COMPLETE** at the data layer (12/12 plans).
 Phase: 44.3 (Forecast Step 3 — Year-1 Target Wiring) — **COMPLETE** (1/1 plan, full GSD ceremony, PR #60).
-Phase: 45 (Invisible Cleanup) — **COMPLETE** (9/9 CLEAN-* items shipped via PRs #56–#62). ~192 files / 1,325 lines of orphaned legacy SQL / 4,424 LOC dead wizards / 295 archive files all removed; root cruft + stale v1.0 docs archived to `docs/archive/`; root README rewritten as internal-onboarding; `axios` direct dep removed; `@next/bundle-analyzer` added.
-Last activity: 2026-05-03 (Phase 45 closed via PR #62)
+Phase: 45 (Invisible Cleanup) — **COMPLETE** (9/9 CLEAN-* items shipped via PRs #56–#62).
+Phase: 46 (Server-Side Hardening) — **PARTIAL** (3/4 plans shipped via PRs #65, #66, #67 on 2026-05-03). Plan 46-04 (SEC-04 PART 2 fallback removal + SEC-07 console-error sweep + SEC-08 fail-loud Sentry) deliberately deferred ≥7 days per `SEC-04-MIGRATION-NOTE.md` cooling period. **Earliest 46-04 ship date: 2026-05-10.**
+Last activity: 2026-05-03 (Phase 46 Wave 2 closed via PR #67; APP_SECRET_KEY set in Vercel; SEC-03 verifier reports 13/13 rows clean)
 
 Next eligible work:
-- **Phase 46 (Server-Side Hardening)** — first unblocked v1.1 milestone phase. Covers SEC-01..SEC-08: dead `/api/migrate*` routes, fail-open cron-secret check on `/api/Xero/sync-all`, `console.*` → Sentry migration, plus other low-risk internal-only fixes. Depends only on Phase 44 (CI gates) which is complete.
+- **Phase 46 plan 46-04** (after 2026-05-10 cooling period). Preconditions to verify before kickoff (per `SEC-04-MIGRATION-NOTE.md`): re-run SEC-03 verifier reports clean; confirm `APP_SECRET_KEY` still set in Vercel; no production decryption errors logged in Sentry over the 7-day window.
+- **Phase 47 (Input Validation Rollout)** — depends on Phase 46 fully complete (specifically SEC-07 from 46-04). Blocked until 46-04 ships.
 - **44.2 UI surface spot-checks** (operator on deployed preview): non-blocking, tracked in `.planning/phases/44.2-cfo-grade-xero-reconciliation/UAT.md`.
 
 ## Current Milestone: v1.1 — Codebase Hardening
