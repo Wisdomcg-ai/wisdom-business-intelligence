@@ -1,6 +1,8 @@
 // Forecast Wizard V4 Types
 // Based on the 8-step CFO methodology with scenario planning support
 
+import type { PLLineItem } from '@/app/finances/forecast/types';
+
 export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9; // 8 = Growth Plan, 9 = Final Review
 export type ForecastDuration = 1 | 2 | 3; // 1yr, 2yr, or 3yr forecast
 
@@ -388,6 +390,10 @@ export interface ForecastWizardState {
     revenue_by_month: Record<string, number>;
     total_revenue: number;
     months_count: number;
+    // Per-line YTD breakdown (Phase 44.3 / FCST-06) — surfaces the per-line
+    // per-month actuals the API already returns so initializeFromXero can
+    // lock completed-month values to the cent.
+    revenue_lines?: PLLineItem[];
   } | null;
 
   // Step 3: Revenue & COGS
@@ -495,6 +501,7 @@ export interface WizardActions {
       revenue_by_month: Record<string, number>;
       total_revenue: number;
       months_count: number;
+      revenue_lines?: PLLineItem[]; // Phase 44.3 — per-line YTD breakdown for target-aware init
     };
   }) => void;
 

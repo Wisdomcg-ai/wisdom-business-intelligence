@@ -293,10 +293,14 @@ export function ForecastWizardV4({
                 actionsRef.current.initializeFromXero({
                   priorYear: freshPriorYear,
                   team: state.teamMembers || [],
+                  // Phase 44.3: pass goals so refresh path also honors Year 1 target.
+                  goals: state.goals,
                   currentYTD: currentYTDData ? {
                     revenue_by_month: currentYTDData.revenue_by_month,
                     total_revenue: currentYTDData.total_revenue,
                     months_count: currentYTDData.months_count,
+                    // Phase 44.3 (FCST-02/04): per-line YTD breakdown for target-aware init.
+                    revenue_lines: currentYTDData.revenue_lines,
                   } : undefined,
                 });
               } else {
@@ -846,6 +850,8 @@ export function ForecastWizardV4({
             revenue_by_month: roundedYtdRevenueByMonth,
             total_revenue: Math.round(currentPlData.summary.current_ytd.total_revenue || 0),
             months_count: currentPlData.summary.current_ytd.months_count || 0,
+            // Phase 44.3 (FCST-02/04): per-line YTD breakdown for target-aware init.
+            revenue_lines: currentPlData.summary.current_ytd.revenue_lines,
           } : undefined;
 
           console.log('[ForecastWizardV4] Initializing with:', {
@@ -1376,10 +1382,13 @@ export function ForecastWizardV4({
               revenue_by_month: roundedYtdRevenueByMonth,
               total_revenue: Math.round(plData.summary.current_ytd.total_revenue || 0),
               months_count: plData.summary.current_ytd.months_count || 0,
+              // Phase 44.3 (FCST-02/04): per-line YTD breakdown for target-aware init.
+              revenue_lines: plData.summary.current_ytd.revenue_lines,
             } : undefined;
 
             // Update wizard state with refreshed data
-            actionsRef.current.initializeFromXero({ priorYear, team, currentYTD });
+            // Phase 44.3: pass goals so manual sync refresh also honors Year 1 target.
+            actionsRef.current.initializeFromXero({ priorYear, team, goals: state.goals, currentYTD });
             toast.success('Xero data refreshed successfully!');
           } else {
             toast.success('Sync complete - no new data found');
