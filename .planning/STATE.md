@@ -7,22 +7,24 @@ last_updated: "2026-05-03T00:00:00.000Z"
 last_activity: 2026-05-03
 progress:
   total_phases: 51
-  completed_phases: 21
+  completed_phases: 23
   total_plans: 106
-  completed_plans: 103
+  completed_plans: 113
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 44 (Test Gate & CI Hardening) — **COMPLETE** (5/5 plans). All 4 required checks (`lint`, `typecheck`, `vitest`, `build`) enforced on `main`; each independently smoke-tested against a deliberate break and confirmed to block merging. `PLAYWRIGHT_BASE_URL` secret provisioned; first nightly run green.
+Phase: 44 (Test Gate & CI Hardening) — **COMPLETE** (5/5 plans).
 Phase: 44.1 (Atomic Save Hardening + Staged Rollout) — **COMPLETE**.
 Phase: 44.2 (CFO-Grade Xero Reconciliation) — **COMPLETE** at the data layer (12/12 plans).
-Last activity: 2026-05-03 (44-05 smoke tests proven; phase 44 closed)
+Phase: 44.3 (Forecast Step 3 — Year-1 Target Wiring) — **COMPLETE** (1/1 plan, full GSD ceremony, PR #60).
+Phase: 45 (Invisible Cleanup) — **COMPLETE** (9/9 CLEAN-* items shipped via PRs #56–#62). ~192 files / 1,325 lines of orphaned legacy SQL / 4,424 LOC dead wizards / 295 archive files all removed; root cruft + stale v1.0 docs archived to `docs/archive/`; root README rewritten as internal-onboarding; `axios` direct dep removed; `@next/bundle-analyzer` added.
+Last activity: 2026-05-03 (Phase 45 closed via PR #62)
 
 Next eligible work:
-- **Phase 45 (Invisible Cleanup)** — first unblocked phase in the v1.1 milestone. Deletes ~192 files / ~6,000 LOC of unreferenced/dead code (archives, dead wizards, AWS SAM remnants). Zero blast radius.
+- **Phase 46 (Server-Side Hardening)** — first unblocked v1.1 milestone phase. Covers SEC-01..SEC-08: dead `/api/migrate*` routes, fail-open cron-secret check on `/api/Xero/sync-all`, `console.*` → Sentry migration, plus other low-risk internal-only fixes. Depends only on Phase 44 (CI gates) which is complete.
 - **44.2 UI surface spot-checks** (operator on deployed preview): non-blocking, tracked in `.planning/phases/44.2-cfo-grade-xero-reconciliation/UAT.md`.
 
 ## Current Milestone: v1.1 — Codebase Hardening
