@@ -41,11 +41,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check migration filenames
         run: |
+          # Phase 49 DB-05: 14-digit YYYYMMDDHHMMSS form is the only accepted
+          # convention. The 8-digit alternation was removed after the 2 historical
+          # date-only files (20260424_cfo_email_log.sql,
+          # 20260427_unique_active_forecast_per_fy.sql) were renamed in
+          # 20260504000000_db01_db02_db05_audit_columns_and_renames.sql.
           INVALID=$(find supabase/migrations -maxdepth 1 -name '*.sql' -type f \
-            | grep -v -E '^supabase/migrations/[0-9]{14}_[a-z0-9_]+\.sql$' \
-            | grep -v -E '^supabase/migrations/[0-9]{8}_[a-z0-9_]+\.sql$' || true)
+            | grep -v -E '^supabase/migrations/[0-9]{14}_[a-z0-9_]+\.sql$' || true)
           if [ -n "$INVALID" ]; then
-            echo "Invalid migration filenames (must be YYYYMMDD_name.sql or YYYYMMDDHHMMSS_name.sql):"
+            echo "Invalid migration filenames (must be YYYYMMDDHHMMSS_name.sql):"
             echo "$INVALID"
             exit 1
           fi
