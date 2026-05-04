@@ -1,6 +1,20 @@
 # Foreign Key ON DELETE Policy
 
-**Status:** ACTIVE — operator sign-off Matt Malouf, 2026-05-04
+**Status:** ACTIVE — Phase 49 COMPLETE (operator sign-off Matt Malouf 2026-05-04; all 56 FKs applied 2026-05-08)
+
+## Phase 49 Status: COMPLETE (2026-05-08)
+
+All 56 originally-orphan-prone FKs surfaced by the 2026-04-28 audit Section D #1 now carry an explicit ON DELETE clause:
+- **50 SET NULL** (Bucket A) — 49-04 + 49-05
+- **4 CASCADE** (Bucket B) — 49-06
+- **2 RESTRICT/CASCADE** (Bucket C) — 49-07
+
+Sentinel 1 SQL (`information_schema.referential_constraints WHERE constraint_schema = 'public' AND delete_rule = 'NO ACTION'`) returns zero rows after 49-07 ships.
+
+This doc is now the authoritative reference for all future schema work. New FKs MUST include an explicit ON DELETE clause; the CI migration-check step in `.github/workflows/supabase-preview.yml` will be tightened in a separate follow-up phase to enforce this.
+
+---
+
 **Source:** Phase 49 Database Integrity Hygiene — research output (`.planning/phases/49-database-integrity-hygiene/RESEARCH.md` DB-03 section)
 **Audience:** future schema authors and migration reviewers
 **Authoritative for:** plans 49-04, 49-05, 49-06, 49-07 (every DB-04 migration MUST cite the `fk-policy.md` row it implements)
@@ -146,7 +160,7 @@ These require explicit product judgement. **Operator must decide each before pla
 **Reasoning:** Deleting a coaching client's account must NOT silently destroy their financial data (forecasts, monthly reports, Xero sync state). Orphaning the business via SET NULL creates ambiguous auth/RLS state. RESTRICT forces an explicit ownership-transfer or archival step — an admin must do the right thing.
 **Sign-off date:** 2026-05-04
 
-**Status:** approved
+**Status:** applied: 20260508000000_db04_restrict_and_manual_review_fks.sql
 
 ---
 
@@ -160,7 +174,7 @@ These require explicit product judgement. **Operator must decide each before pla
 **Reasoning:** Mirror the existing `business_id` FK convention — every other `business_id` FK in the baseline already CASCADEs. Custom KPI library entries belong to their business; deleting the business should remove its KPI definitions.
 **Sign-off date:** 2026-05-04
 
-**Status:** approved
+**Status:** applied: 20260508000000_db04_restrict_and_manual_review_fks.sql
 
 ---
 
@@ -208,6 +222,7 @@ This section is appended to by every Phase 49 DB-04 plan as migrations land.
 | 2026-05-05 | `20260505000000_db04_set_null_fks_batch_1.sql` | A (SET NULL) | 24 — Bucket A rows 1-22 + 47 + 48 | 49-04 |
 | 2026-05-06 | `20260506000000_db04_set_null_fks_batch_2.sql` | A (SET NULL) | 26 — Bucket A rows 23-46 + 49-50. **All Bucket A coverage complete (50/50).** | 49-05 |
 | 2026-05-07 | `20260507000000_db04_cascade_fks.sql` | B (CASCADE) | 4 — all `process_*` Bucket B rows. **All Bucket B coverage complete (4/4).** CASCADE is irreversible; cascade-bound assertions verified in db-04-cascade-batch.test.ts. | 49-06 |
+| 2026-05-08 | `20260508000000_db04_restrict_and_manual_review_fks.sql` | C (RESTRICT/CASCADE) | 2 — `businesses.owner_id` RESTRICT + `custom_kpis_library.business_id` CASCADE. **All Bucket C coverage complete (2/2). Phase 49 DB-04 COMPLETE — 56/56 FKs covered.** Sentinel 1 SQL returns zero rows. | 49-07 |
 
 ---
 

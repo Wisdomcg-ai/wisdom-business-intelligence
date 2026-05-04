@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: verifying
-last_updated: "2026-05-07T00:00:00.000Z"
-last_activity: 2026-05-07
+last_updated: "2026-05-08T00:00:00.000Z"
+last_activity: 2026-05-08
 progress:
   total_phases: 53
   completed_phases: 24
@@ -16,10 +16,10 @@ progress:
 
 ## Current Position
 
-Phase: 44, 44.1, 44.2, 44.3, 45, 50 — **COMPLETE**.
+Phase: 44, 44.1, 44.2, 44.3, 45, 49, 50 — **COMPLETE**.
 Phase: 46 (Server-Side Hardening) — **PARTIAL** (3/4 plans shipped). Plan 46-04 deferred ≥2026-05-10 per cooling period.
-Phase: 49 (Database Integrity Hygiene) — **PARTIAL** (6/7 plans shipped). Plans 49-01..49-05 + 49-04 + 49-05 (Bucket A complete) + 49-06 (Bucket B CASCADE — 4 FKs; **Bucket B 100% complete**). Remaining: 49-07 (Bucket C — 2 FKs).
-Last activity: 2026-05-07 (Phase 49-06 CASCADE batch — branch `feat/49-06-cascade-batch` ready for PR)
+Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-05-08). All 56 orphan-prone FKs covered: 50 SET NULL + 4 CASCADE + 2 RESTRICT/CASCADE. fk-policy.md is the authoritative reference going forward.
+Last activity: 2026-05-08 (Phase 49-07 final Bucket C — branch `feat/49-07-bucket-c-final` ready for PR)
 
 ## Active operational notes
 
@@ -29,7 +29,6 @@ Last activity: 2026-05-07 (Phase 49-06 CASCADE batch — branch `feat/49-06-casc
 
 ## Next eligible work
 
-- **49-07** (RESTRICT batch — `businesses.owner_id` RESTRICT + `custom_kpis_library.business_id` CASCADE per operator decisions)
 - **46-04** (after 2026-05-10 cooling period)
 - **Phase 51** (Forecast Wizard UX — emergent from 2026-05-04 review). Items deferred from Phase 50: Step 3 thousands-separator restoration, Step 4 departure flow, Step 4 part-time/casual flexibility, Step 5 $-vs-% toggle, Step 5 simpler layout, Step 6 visibility/undo/add. Needs operator design conversations before planning.
 - **Phase 52** (Xero employee data — emergent). Step 4 pay cycle, standard hours, hourly rate from Xero API. Pure research first.
