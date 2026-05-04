@@ -52,28 +52,28 @@ The `Status` column tracks per-FK lifecycle: `proposed` → `approved` (after Ma
 
 | # | Source `table.column` | Referenced | Baseline line | Recommended ON DELETE | Justification | Sign-off | Status |
 |---|----------------------|------------|---------------|----------------------|---------------|----------|--------|
-| 1 | `action_items.assigned_to` | `auth.users.id` | 8445 | SET NULL | Action item survives user deletion; assignee becomes "unassigned" | [x] | approved |
-| 2 | `action_items.created_by` | `auth.users.id` | 8455 | SET NULL | Same — preserve action item, lose creator attribution | [x] | approved |
-| 3 | `business_financial_goals.user_id` | `auth.users.id` | 8555 | SET NULL | Goal belongs to business; user attribution lost on deletion | [x] | approved |
-| 4 | `business_kpis.user_id` | `auth.users.id` | 8560 | SET NULL | Same — KPI belongs to business | [x] | approved |
-| 5 | `business_users.invited_by` | `auth.users.id` | 8590 | SET NULL | Membership record retained; inviter ref nulled | [x] | approved |
-| 6 | `businesses.assigned_coach_id` | `auth.users.id` | 8600 | SET NULL | Business survives coach deletion (coach unassigned) | [x] | approved |
-| 7 | `businesses.created_by` | `auth.users.id` | 8605 | SET NULL | Business creator may leave | [x] | approved |
-| 8 | `chat_messages.sender_id` | `auth.users.id` | 8660 | SET NULL | Message history preserved | [x] | approved |
-| 9 | `client_error_logs.user_id` | `auth.users.id` | 8665 | SET NULL | Error logs retained for diagnostics | [x] | approved |
-| 10 | `client_invitations.invited_by` | `auth.users.id` | 8670 | SET NULL | Invite history retained | [x] | approved |
-| 11 | `coach_audit_log.coach_id` | `auth.users.id` | 8680 | SET NULL | **AUDIT LOG — must preserve**; coach attribution nulled | [x] | approved |
-| 12 | `coaching_sessions.coach_id` | `auth.users.id` | 8700 | SET NULL | Session history preserved | [x] | approved |
-| 13 | `custom_kpis_library.approved_by` | `auth.users.id` | 8710 | SET NULL | KPI definition survives approver deletion | [x] | approved |
-| 14 | `custom_kpis_library.created_by` | `auth.users.id` | 8720 | SET NULL | Same — KPI definition survives creator deletion | [x] | approved |
-| 15 | `forecast_scenarios.created_by` | `auth.users.id` | 8875 | SET NULL | Scenario survives author deletion | [x] | approved |
-| 16 | `forecasts.created_by` | `public.profiles.id` | 8910 | SET NULL | Note: → `profiles`, not `auth.users` (variant test pattern). Same logic — forecast survives. | [x] | approved |
-| 17 | `ideas_filter.evaluated_by` | `auth.users.id` | 8930 | SET NULL | Idea filter result preserved | [x] | approved |
-| 18 | `messages.recipient_id` | `auth.users.id` | 9025 | SET NULL | Both sides preserved | [x] | approved |
-| 19 | `messages.sender_id` | `auth.users.id` | 9030 | SET NULL | Same | [x] | approved |
-| 20 | `monthly_reviews.created_by` | `auth.users.id` | 9060 | SET NULL | Review preserved | [x] | approved |
-| 21 | `process_comments.commented_by` | `auth.users.id` | 9100 | SET NULL | Comment preserved | [x] | approved |
-| 22 | `process_comments.commented_to` | `auth.users.id` | 9105 | SET NULL | Same | [x] | approved |
+| 1 | `action_items.assigned_to` | `auth.users.id` | 8445 | SET NULL | Action item survives user deletion; assignee becomes "unassigned" | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 2 | `action_items.created_by` | `auth.users.id` | 8455 | SET NULL | Same — preserve action item, lose creator attribution | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 3 | `business_financial_goals.user_id` | `auth.users.id` | 8555 | SET NULL | Goal belongs to business; user attribution lost on deletion | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 4 | `business_kpis.user_id` | `auth.users.id` | 8560 | SET NULL | Same — KPI belongs to business | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 5 | `business_users.invited_by` | `auth.users.id` | 8590 | SET NULL | Membership record retained; inviter ref nulled | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 6 | `businesses.assigned_coach_id` | `auth.users.id` | 8600 | SET NULL | Business survives coach deletion (coach unassigned) | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 7 | `businesses.created_by` | `auth.users.id` | 8605 | SET NULL | Business creator may leave | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 8 | `chat_messages.sender_id` | `auth.users.id` | 8660 | SET NULL | Message history preserved | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 9 | `client_error_logs.user_id` | `auth.users.id` | 8665 | SET NULL | Error logs retained for diagnostics | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 10 | `client_invitations.invited_by` | `auth.users.id` | 8670 | SET NULL | Invite history retained | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 11 | `coach_audit_log.coach_id` | `auth.users.id` | 8680 | SET NULL | **AUDIT LOG — must preserve**; coach attribution nulled | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 12 | `coaching_sessions.coach_id` | `auth.users.id` | 8700 | SET NULL | Session history preserved | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 13 | `custom_kpis_library.approved_by` | `auth.users.id` | 8710 | SET NULL | KPI definition survives approver deletion | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 14 | `custom_kpis_library.created_by` | `auth.users.id` | 8720 | SET NULL | Same — KPI definition survives creator deletion | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 15 | `forecast_scenarios.created_by` | `auth.users.id` | 8875 | SET NULL | Scenario survives author deletion | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 16 | `forecasts.created_by` | `public.profiles.id` | 8910 | SET NULL | Note: → `profiles`, not `auth.users` (variant test pattern). Same logic — forecast survives. | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 17 | `ideas_filter.evaluated_by` | `auth.users.id` | 8930 | SET NULL | Idea filter result preserved | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 18 | `messages.recipient_id` | `auth.users.id` | 9025 | SET NULL | Both sides preserved | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 19 | `messages.sender_id` | `auth.users.id` | 9030 | SET NULL | Same | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 20 | `monthly_reviews.created_by` | `auth.users.id` | 9060 | SET NULL | Review preserved | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 21 | `process_comments.commented_by` | `auth.users.id` | 9100 | SET NULL | Comment preserved | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 22 | `process_comments.commented_to` | `auth.users.id` | 9105 | SET NULL | Same | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
 | 23 | `roadmap_completions.user_id` | `public.profiles.id` | 9230 | SET NULL | Note: → `profiles`. Completion record preserved | [x] | approved |
 | 24 | `session_actions.created_by` | `auth.users.id` | 9255 | SET NULL | Session action preserved | [x] | approved |
 | 25 | `session_attendees.added_by` | `auth.users.id` | 9275 | SET NULL | Attendance record preserved (note: `session_attendees.user_id` is in Bucket B — different semantics) | [x] | approved |
@@ -98,8 +98,8 @@ The `Status` column tracks per-FK lifecycle: `proposed` → `approved` (after Ma
 | 44 | `annual_snapshots.q4_snapshot_id` | `quarterly_snapshots.id` | 8510 | SET NULL | Same | [x] | approved |
 | 45 | `swot_items.carried_from_item_id` | `swot_items.id` | 9540 | SET NULL | **Self-FK** — preserve current item, lose ancestry pointer (Principle 5) | [x] | approved |
 | 46 | `todo_items.parent_task_id` | `todo_items.id` | 9595 | SET NULL | **Self-FK** — child becomes top-level if parent deleted (Principle 5) | [x] | approved |
-| 47 | `coach_benchmarks.source_interaction_id` | `ai_interactions.id` | 8690 | SET NULL | Benchmark loses source ref but is retained. **Variant test:** create OTHER parent. | [x] | approved |
-| 48 | `monthly_report_settings.budget_forecast_id` | `financial_forecasts.id` | 9040 | SET NULL | Settings retained, forecast ref nulled. **Variant test:** create OTHER parent. | [x] | approved |
+| 47 | `coach_benchmarks.source_interaction_id` | `ai_interactions.id` | 8690 | SET NULL | Benchmark loses source ref but is retained. **Variant test:** create OTHER parent. | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
+| 48 | `monthly_report_settings.budget_forecast_id` | `financial_forecasts.id` | 9040 | SET NULL | Settings retained, forecast ref nulled. **Variant test:** create OTHER parent. | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
 | 49 | `session_actions.strategic_initiative_id` | `strategic_initiatives.id` | 9270 | SET NULL | Action preserved, initiative ref nulled. **Variant test:** create OTHER parent. | [x] | approved |
 | 50 | `session_attendees.user_id` | `auth.users.id` | 9285 | SET NULL | **Moved from Bucket B per operator decision 2026-05-04.** Preserve attendance counts when a user is deleted; the attendee row survives with `user_id = NULL`. | [x] | approved |
 
@@ -201,11 +201,11 @@ After each DB-04 migration ships, the corresponding row in this doc moves from `
 
 ## Migration history (running log)
 
-This section is appended to by every Phase 49 DB-04 plan as migrations land. Until 49-04 starts, this section is empty.
+This section is appended to by every Phase 49 DB-04 plan as migrations land.
 
 | Date | Migration filename | Bucket | FKs covered | Plan |
 |------|-------------------|--------|-------------|------|
-| _(none yet — Phase 49 in progress)_ | | | | |
+| 2026-05-05 | `20260505000000_db04_set_null_fks_batch_1.sql` | A (SET NULL) | 24 — Bucket A rows 1-22 + 47 + 48 | 49-04 |
 
 ---
 
