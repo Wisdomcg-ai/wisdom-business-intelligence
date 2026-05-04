@@ -1316,6 +1316,13 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
   const [hireType, setHireType] = useState<'employee' | 'contractor'>('employee');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
+  // Phase 51 (UX-S4-01): Termination modal state. Pending end month defaults to
+  // mid-FY (December of the calendar year that starts the current FY) so the
+  // user always sees a sensible placeholder. Operator decision: ONLY the
+  // "ends on date X" mode is supported — no remove-from-FY-entirely option.
+  const [terminatingMember, setTerminatingMember] = useState<{ id: string; name: string } | null>(null);
+  const [pendingEndMonth, setPendingEndMonth] = useState<string>(`${fiscalYear - 1}-12`);
+
   const toggleRowExpand = useCallback((id: string) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
@@ -1918,6 +1925,11 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                     />
                   </div>
                 ) : row.endMonth ? (
+                  // Already-departed: show the End badge + the existing
+                  // MonthPicker so operators can still adjust the end month.
+                  // Phase 51 (UX-S4-01): no separate End-employee button on
+                  // departed rows — the single-departure model means there's
+                  // nothing to "end" again.
                   <div className="flex items-center gap-1">
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">
                       End
@@ -1931,17 +1943,26 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                     />
                   </div>
                 ) : (
+                  // Phase 51 (UX-S4-01): explicit, accessible "End employee"
+                  // button replaces the buried MonthPicker placeholder. Opens
+                  // the termination modal scoped to this member.
                   <div className="flex items-center gap-1">
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600">
                       Active
                     </span>
-                    <MonthPicker
-                      value=""
-                      onChange={(val) => handleDepartureChange(row, val)}
-                      minYear={startYear}
-                      maxYear={endYear}
-                      placeholder="..."
-                    />
+                    {row.teamMemberId && (
+                      <button
+                        type="button"
+                        aria-label={`End employee ${row.name}`}
+                        onClick={() => {
+                          setTerminatingMember({ id: row.teamMemberId!, name: row.name });
+                          setPendingEndMonth(`${fiscalYear - 1}-12`);
+                        }}
+                        className="px-1.5 py-0.5 text-[10px] font-medium text-amber-700 hover:text-amber-900 hover:bg-amber-50 rounded"
+                      >
+                        End employee
+                      </button>
+                    )}
                   </div>
                 )}
               </td>
@@ -2893,6 +2914,65 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
               </button>
               <button
                 onClick={() => { setShowAddHire(false); resetAISuggestion(); }}
+                className="px-4 py-2 text-gray-600 text-sm rounded-lg hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 51 (UX-S4-01): Termination modal. Forward-looking only — salary
+          continues through the chosen end month, then drops to zero. Operator
+          decision: no remove-from-FY-entirely option. */}
+      {terminatingMember && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[80]">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">End {terminatingMember.name}</h3>
+              <button
+                onClick={() => setTerminatingMember(null)}
+                className="text-gray-400 hover:text-gray-600"
+                aria-label="Close termination dialog"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Salary continues through the chosen end month, then drops to zero from
+              the following month onward.
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">End month</label>
+              <MonthPicker
+                value={pendingEndMonth}
+                onChange={(val) => setPendingEndMonth(val)}
+                minYear={startYear}
+                maxYear={endYear}
+                placeholder="Select end month"
+                className="w-full py-2"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (terminatingMember && pendingEndMonth) {
+                    actions.addDeparture({
+                      teamMemberId: terminatingMember.id,
+                      endMonth: pendingEndMonth,
+                    });
+                  }
+                  setTerminatingMember(null);
+                }}
+                className="flex-1 px-4 py-2 bg-brand-navy text-white text-sm font-medium rounded-lg hover:bg-brand-navy/90"
+              >
+                Confirm
+              </button>
+              <button
+                type="button"
+                onClick={() => setTerminatingMember(null)}
                 className="px-4 py-2 text-gray-600 text-sm rounded-lg hover:bg-gray-100"
               >
                 Cancel
