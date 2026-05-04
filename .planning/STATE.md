@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: verifying
-last_updated: "2026-05-03T00:00:00.000Z"
-last_activity: 2026-05-03
+last_updated: "2026-05-06T00:00:00.000Z"
+last_activity: 2026-05-06
 progress:
   total_phases: 53
   completed_phases: 24
@@ -18,18 +18,17 @@ progress:
 
 Phase: 44, 44.1, 44.2, 44.3, 45, 50 — **COMPLETE**.
 Phase: 46 (Server-Side Hardening) — **PARTIAL** (3/4 plans shipped). Plan 46-04 deferred ≥2026-05-10 per cooling period.
-Phase: 49 (Database Integrity Hygiene) — **PARTIAL** (4/7 plans shipped). Plans 49-01, 49-02 (FK policy ACTIVE 2026-05-04 with operator sign-off), 49-03, 49-04 (SET NULL batch 1 — 24 FKs). Remaining: 49-05, 49-06, 49-07.
-Last activity: 2026-05-04 (Phase 49-04 SET NULL batch 1 closed via PR #77)
+Phase: 49 (Database Integrity Hygiene) — **PARTIAL** (5/7 plans shipped). Plans 49-01, 49-02 (FK policy ACTIVE 2026-05-04 with operator sign-off), 49-03, 49-04 (SET NULL batch 1 — 24 FKs), 49-05 (SET NULL batch 2 — 26 FKs; **Bucket A 100% complete**). Remaining: 49-06, 49-07.
+Last activity: 2026-05-06 (Phase 49-05 SET NULL batch 2 — branch `feat/49-05-set-null-batch-2` ready for PR)
 
 ## Active operational notes
 
-**Phase 49-04 deviation:** migration dropped NOT NULL on 6 columns to make ON DELETE SET NULL semantically valid. `coach_audit_log.coach_id` is the load-bearing one (fk-policy.md flags it "AUDIT LOG — must preserve"). DB can no longer enforce that audit rows have a coach_id; only application code does. **Follow-up needed** in a separate phase: app-side runtime assertion (logger / validator) to preserve the audit-log invariant. Documented in `.planning/phases/49-database-integrity-hygiene/49-04-DEVIATION.md`.
+**Phase 49 NOT NULL relaxations:** 49-04 dropped NOT NULL on 6 columns; 49-05 dropped NOT NULL on 8 more (total 14 columns). The two load-bearing audit-log columns are `coach_audit_log.coach_id` (49-04) and conceptually `user_roles.granted_by` (49-05; column was already nullable in baseline so no relaxation needed, but invariant is identical). DB can no longer enforce that audit rows carry user attribution; only application code does. **Follow-up needed** in a separate phase: app-side runtime assertion (logger / validator) covering both. Documented in `.planning/phases/49-database-integrity-hygiene/49-04-DEVIATION.md` and `49-05-SUMMARY.md`.
 
 **Phase 46-04 cooling period:** earliest ship date 2026-05-10. Preconditions per `SEC-04-MIGRATION-NOTE.md` — re-run SEC-03 verifier reports clean; confirm `APP_SECRET_KEY` still set in Vercel; no Sentry decryption errors over the 7-day window.
 
 ## Next eligible work
 
-- **49-05** (SET NULL batch 2 — 26 FKs incl. `session_attendees.user_id` which moved B → A per operator decision)
 - **49-06** (CASCADE batch — 4 `process_*` FKs; highest-risk irreversible)
 - **49-07** (RESTRICT batch — `businesses.owner_id` RESTRICT + `custom_kpis_library.business_id` CASCADE per operator decisions)
 - **46-04** (after 2026-05-10 cooling period)
