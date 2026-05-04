@@ -9,6 +9,7 @@ import {
   EmploymentType,
   ContractorType,
   HoursMode,
+  PayFrequency,
   SUPER_RATE,
 } from '../types';
 import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
@@ -2052,74 +2053,108 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
 
               {/* Salary */}
               <td className="px-2 py-1.5">
-                {!isContractor && row.type === 'part-time' ? (
-                  // Phase 51 (UX-S4-02): part-time rows render the
-                  // PartTimeSalaryInput with the new Hours/FTE toggle. The
-                  // CurrencyInput-only path is kept for full-time, casual, and
-                  // contractor rows below.
-                  (() => {
+                <div className="flex flex-col gap-1">
+                  {!isContractor && row.type === 'part-time' ? (
+                    // Phase 51 (UX-S4-02): part-time rows render the
+                    // PartTimeSalaryInput with the new Hours/FTE toggle. The
+                    // CurrencyInput-only path is kept for full-time, casual, and
+                    // contractor rows below.
+                    (() => {
+                      const sourceMember = row.isNewHire
+                        ? newHires.find((h) => h.id === row.newHireId)
+                        : teamMembers.find((m) => m.id === row.teamMemberId);
+                      return (
+                        <PartTimeSalaryInput
+                          salary={row.salary}
+                          hoursPerWeek={row.hoursPerWeek}
+                          hoursMode={sourceMember?.hoursMode}
+                          onSalaryChange={(salary) => {
+                            if (row.isNewHire) {
+                              actions.updateNewHire(row.newHireId!, { salary });
+                            } else {
+                              actions.updateTeamMember(row.teamMemberId!, { currentSalary: salary, increasePct: 0 });
+                            }
+                          }}
+                          onHoursChange={(hoursPerWeek, salary) => {
+                            if (row.isNewHire) {
+                              actions.updateNewHire(row.newHireId!, { hoursPerWeek, salary });
+                            } else {
+                              actions.updateTeamMember(row.teamMemberId!, { hoursPerWeek, currentSalary: salary, increasePct: 0 });
+                            }
+                          }}
+                          onHoursModeChange={(mode) => {
+                            if (row.isNewHire) {
+                              actions.updateNewHire(row.newHireId!, { hoursMode: mode });
+                            } else {
+                              actions.updateTeamMember(row.teamMemberId!, { hoursMode: mode });
+                            }
+                          }}
+                        />
+                      );
+                    })()
+                  ) : (
+                    <CurrencyInput
+                      value={row.salary}
+                      onChange={(val) => {
+                        if (isContractor) {
+                          if (row.isNewHire) {
+                            actions.updateNewHire(row.newHireId!, { salary: val });
+                          } else {
+                            actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, increasePct: 0 });
+                          }
+                        } else if (row.type === 'casual') {
+                          // For casual, recalculate hourly rate from new salary
+                          const weeksPerYear = row.weeksPerYear || DEFAULT_WEEKS;
+                          const newRate = row.hoursPerWeek > 0 ? val / (row.hoursPerWeek * weeksPerYear) : 0;
+                          if (row.isNewHire) {
+                            actions.updateNewHire(row.newHireId!, { salary: val, hourlyRate: Math.round(newRate * 100) / 100 });
+                          } else {
+                            actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, hourlyRate: Math.round(newRate * 100) / 100, increasePct: 0 });
+                          }
+                        } else {
+                          if (row.isNewHire) {
+                            actions.updateNewHire(row.newHireId!, { salary: val });
+                          } else {
+                            actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, increasePct: 0 });
+                          }
+                        }
+                      }}
+                      className="w-full px-1.5 py-1 text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
+                    />
+                  )}
+                  {/* Phase 51 (UX-S4-03): per-row pay frequency selector.
+                      Display value falls through: row's own payFrequency →
+                      business default → 'monthly'. Setting writes ONLY to the
+                      row's own field — business default is never mutated by
+                      per-row interaction. Phase 52 will consume this for Xero
+                      auto-fill + cashflow timing. */}
+                  {(() => {
                     const sourceMember = row.isNewHire
                       ? newHires.find((h) => h.id === row.newHireId)
                       : teamMembers.find((m) => m.id === row.teamMemberId);
+                    const effective: PayFrequency =
+                      sourceMember?.payFrequency ?? state.defaultPayFrequency ?? 'monthly';
                     return (
-                      <PartTimeSalaryInput
-                        salary={row.salary}
-                        hoursPerWeek={row.hoursPerWeek}
-                        hoursMode={sourceMember?.hoursMode}
-                        onSalaryChange={(salary) => {
+                      <select
+                        value={effective}
+                        onChange={(e) => {
+                          const value = e.target.value as PayFrequency;
                           if (row.isNewHire) {
-                            actions.updateNewHire(row.newHireId!, { salary });
+                            actions.updateNewHire(row.newHireId!, { payFrequency: value });
                           } else {
-                            actions.updateTeamMember(row.teamMemberId!, { currentSalary: salary, increasePct: 0 });
+                            actions.updateTeamMember(row.teamMemberId!, { payFrequency: value });
                           }
                         }}
-                        onHoursChange={(hoursPerWeek, salary) => {
-                          if (row.isNewHire) {
-                            actions.updateNewHire(row.newHireId!, { hoursPerWeek, salary });
-                          } else {
-                            actions.updateTeamMember(row.teamMemberId!, { hoursPerWeek, currentSalary: salary, increasePct: 0 });
-                          }
-                        }}
-                        onHoursModeChange={(mode) => {
-                          if (row.isNewHire) {
-                            actions.updateNewHire(row.newHireId!, { hoursMode: mode });
-                          } else {
-                            actions.updateTeamMember(row.teamMemberId!, { hoursMode: mode });
-                          }
-                        }}
-                      />
+                        aria-label={`Pay frequency for ${row.name}`}
+                        className="w-full px-1 py-0.5 text-[10px] text-gray-600 border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
+                      >
+                        <option value="weekly">Weekly</option>
+                        <option value="fortnightly">Fortnightly</option>
+                        <option value="monthly">Monthly</option>
+                      </select>
                     );
-                  })()
-                ) : (
-                  <CurrencyInput
-                    value={row.salary}
-                    onChange={(val) => {
-                      if (isContractor) {
-                        if (row.isNewHire) {
-                          actions.updateNewHire(row.newHireId!, { salary: val });
-                        } else {
-                          actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, increasePct: 0 });
-                        }
-                      } else if (row.type === 'casual') {
-                        // For casual, recalculate hourly rate from new salary
-                        const weeksPerYear = row.weeksPerYear || DEFAULT_WEEKS;
-                        const newRate = row.hoursPerWeek > 0 ? val / (row.hoursPerWeek * weeksPerYear) : 0;
-                        if (row.isNewHire) {
-                          actions.updateNewHire(row.newHireId!, { salary: val, hourlyRate: Math.round(newRate * 100) / 100 });
-                        } else {
-                          actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, hourlyRate: Math.round(newRate * 100) / 100, increasePct: 0 });
-                        }
-                      } else {
-                        if (row.isNewHire) {
-                          actions.updateNewHire(row.newHireId!, { salary: val });
-                        } else {
-                          actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, increasePct: 0 });
-                        }
-                      }
-                    }}
-                    className="w-full px-1.5 py-1 text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
-                  />
-                )}
+                  })()}
+                </div>
               </td>
 
               {/* Rate — detail column */}
@@ -2610,6 +2645,36 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
         fiscalYear={fiscalYear}
         onUpdateHeadcountTarget={handleUpdateHeadcountTarget}
       />
+
+      {/* Phase 51 (UX-S4-03): business-level default pay frequency.
+          Pure persistence — Phase 52 wires this into Xero PayrollCalendar
+          auto-fill + cashflow distribution. Annual salary calculations are
+          unchanged in Phase 51. Per-employee row dropdowns inherit this when
+          their own payFrequency is undefined. */}
+      <div className="bg-white rounded-xl border border-gray-200 px-6 py-3 flex items-center gap-3">
+        <label
+          htmlFor="default-pay-frequency"
+          className="text-sm font-medium text-gray-700"
+        >
+          Default pay frequency:
+        </label>
+        <select
+          id="default-pay-frequency"
+          value={state.defaultPayFrequency ?? 'monthly'}
+          onChange={(e) =>
+            actions.setDefaultPayFrequency(e.target.value as PayFrequency)
+          }
+          aria-label="Default pay frequency"
+          className="px-2 py-1 text-sm border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
+        >
+          <option value="weekly">Weekly</option>
+          <option value="fortnightly">Fortnightly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+        <span className="text-xs text-gray-500">
+          Inherited by employees without an explicit override. Affects cashflow timing only — annual salary unchanged.
+        </span>
+      </div>
 
       {/* TEAM MEMBERS SECTION */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
