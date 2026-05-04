@@ -8,6 +8,7 @@ import {
   formatCurrency,
   EmploymentType,
   ContractorType,
+  HoursMode,
   SUPER_RATE,
 } from '../types';
 import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
@@ -168,19 +169,29 @@ const NumberInput = memo(function NumberInput({ value, onChange, placeholder = "
 interface PartTimeSalaryInputProps {
   salary: number;
   hoursPerWeek: number;
+  // Phase 51 (UX-S4-02): undefined → treat as 'hours' (back-compat).
+  hoursMode?: HoursMode;
   onSalaryChange: (salary: number) => void;
   onHoursChange: (hours: number, newSalary: number) => void;
+  // Phase 51 (UX-S4-02): toggle between hours-per-week and %FTE input modes.
+  // Optional so older call sites compile; mode toggle is a no-op if omitted.
+  onHoursModeChange?: (mode: HoursMode) => void;
 }
 
 const PartTimeSalaryInput = memo(function PartTimeSalaryInput({
   salary,
   hoursPerWeek,
+  hoursMode,
   onSalaryChange,
-  onHoursChange
+  onHoursChange,
+  onHoursModeChange,
 }: PartTimeSalaryInputProps) {
   // Track previous hours for pro-rata calculation
   const [prevHours, setPrevHours] = useState(hoursPerWeek);
   const fte = calculateFTE(hoursPerWeek);
+  // Phase 51 (UX-S4-02): undefined hoursMode is treated as 'hours' for full
+  // backward compatibility with forecasts saved before Phase 51.
+  const effectiveMode: HoursMode = hoursMode ?? 'hours';
 
   const handleHoursChange = useCallback((newHours: number) => {
     // Pro-rate salary based on hours change
@@ -192,10 +203,25 @@ const PartTimeSalaryInput = memo(function PartTimeSalaryInput({
     onHoursChange(newHours, newSalary);
   }, [prevHours, salary, onHoursChange]);
 
+  // FTE-mode commit: convert %FTE → hoursPerWeek, then reuse the same pro-rata
+  // path so salary updates consistently. Round to whole hours per the plan
+  // (round(STANDARD_HOURS × pct/100)). When pct === current displayed FTE,
+  // hoursPerWeek stays the same — no surprise math.
+  const handleFTEChange = useCallback((pct: number) => {
+    const newHours = Math.round((STANDARD_HOURS * pct) / 100);
+    handleHoursChange(newHours);
+  }, [handleHoursChange]);
+
   // Update prevHours when external changes happen
   useEffect(() => {
     setPrevHours(hoursPerWeek);
   }, [hoursPerWeek]);
+
+  // Toggle mode without altering salary or hours — only flip the displayed input.
+  const handleModeToggle = useCallback((mode: HoursMode) => {
+    if (mode === effectiveMode) return;
+    onHoursModeChange?.(mode);
+  }, [effectiveMode, onHoursModeChange]);
 
   return (
     <div className="w-28">
@@ -204,14 +230,55 @@ const PartTimeSalaryInput = memo(function PartTimeSalaryInput({
         onChange={onSalaryChange}
         className="w-24 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy mb-0.5"
       />
+      {/* Phase 51 (UX-S4-02): Hours/FTE mode toggle */}
+      <div className="flex items-center gap-0.5 mb-0.5">
+        <button
+          type="button"
+          aria-label="Hours mode"
+          onClick={() => handleModeToggle('hours')}
+          className={`px-1.5 py-0.5 text-[9px] font-medium rounded ${
+            effectiveMode === 'hours'
+              ? 'bg-brand-navy text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          Hours
+        </button>
+        <button
+          type="button"
+          aria-label="FTE mode"
+          onClick={() => handleModeToggle('fte')}
+          className={`px-1.5 py-0.5 text-[9px] font-medium rounded ${
+            effectiveMode === 'fte'
+              ? 'bg-brand-navy text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          %FTE
+        </button>
+      </div>
       <div className="flex items-center gap-1">
-        <NumberInput
-          value={hoursPerWeek}
-          onChange={handleHoursChange}
-          className="w-10 px-1.5 py-1 text-xs text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
-        />
-        <span className="text-[10px] text-gray-400">hrs</span>
-        <span className="text-[10px] text-blue-600 font-medium whitespace-nowrap">({Math.round(fte * 100)}%)</span>
+        {effectiveMode === 'fte' ? (
+          <>
+            <NumberInput
+              value={Math.round(fte * 100)}
+              onChange={handleFTEChange}
+              className="w-10 px-1.5 py-1 text-xs text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
+            />
+            <span className="text-[10px] text-gray-400">%</span>
+            <span className="text-[10px] text-blue-600 font-medium whitespace-nowrap">({hoursPerWeek}h)</span>
+          </>
+        ) : (
+          <>
+            <NumberInput
+              value={hoursPerWeek}
+              onChange={handleHoursChange}
+              className="w-10 px-1.5 py-1 text-xs text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
+            />
+            <span className="text-[10px] text-gray-400">hrs</span>
+            <span className="text-[10px] text-blue-600 font-medium whitespace-nowrap">({Math.round(fte * 100)}%)</span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1702,10 +1769,19 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
     }
 
     if (row.type === 'part-time') {
+      // Phase 51 (UX-S4-02): pull current hoursMode from the underlying record
+      // (TeamMember or NewHire). undefined → 'hours' default in the input
+      // component; commit hoursMode='fte' through onHoursModeChange when the
+      // operator switches modes.
+      const sourceMember = row.isNewHire
+        ? newHires.find((h) => h.id === row.newHireId)
+        : teamMembers.find((m) => m.id === row.teamMemberId);
+      const currentHoursMode = sourceMember?.hoursMode;
       return (
         <PartTimeSalaryInput
           salary={row.salary}
           hoursPerWeek={row.hoursPerWeek}
+          hoursMode={currentHoursMode}
           onSalaryChange={(salary) => {
             if (row.isNewHire) {
               actions.updateNewHire(row.newHireId!, { salary });
@@ -1718,6 +1794,13 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
               actions.updateNewHire(row.newHireId!, { hoursPerWeek, salary });
             } else {
               actions.updateTeamMember(row.teamMemberId!, { hoursPerWeek, currentSalary: salary, increasePct: 0 });
+            }
+          }}
+          onHoursModeChange={(mode) => {
+            if (row.isNewHire) {
+              actions.updateNewHire(row.newHireId!, { hoursMode: mode });
+            } else {
+              actions.updateTeamMember(row.teamMemberId!, { hoursMode: mode });
             }
           }}
         />
@@ -1969,34 +2052,74 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
 
               {/* Salary */}
               <td className="px-2 py-1.5">
-                <CurrencyInput
-                  value={row.salary}
-                  onChange={(val) => {
-                    if (isContractor) {
-                      if (row.isNewHire) {
-                        actions.updateNewHire(row.newHireId!, { salary: val });
+                {!isContractor && row.type === 'part-time' ? (
+                  // Phase 51 (UX-S4-02): part-time rows render the
+                  // PartTimeSalaryInput with the new Hours/FTE toggle. The
+                  // CurrencyInput-only path is kept for full-time, casual, and
+                  // contractor rows below.
+                  (() => {
+                    const sourceMember = row.isNewHire
+                      ? newHires.find((h) => h.id === row.newHireId)
+                      : teamMembers.find((m) => m.id === row.teamMemberId);
+                    return (
+                      <PartTimeSalaryInput
+                        salary={row.salary}
+                        hoursPerWeek={row.hoursPerWeek}
+                        hoursMode={sourceMember?.hoursMode}
+                        onSalaryChange={(salary) => {
+                          if (row.isNewHire) {
+                            actions.updateNewHire(row.newHireId!, { salary });
+                          } else {
+                            actions.updateTeamMember(row.teamMemberId!, { currentSalary: salary, increasePct: 0 });
+                          }
+                        }}
+                        onHoursChange={(hoursPerWeek, salary) => {
+                          if (row.isNewHire) {
+                            actions.updateNewHire(row.newHireId!, { hoursPerWeek, salary });
+                          } else {
+                            actions.updateTeamMember(row.teamMemberId!, { hoursPerWeek, currentSalary: salary, increasePct: 0 });
+                          }
+                        }}
+                        onHoursModeChange={(mode) => {
+                          if (row.isNewHire) {
+                            actions.updateNewHire(row.newHireId!, { hoursMode: mode });
+                          } else {
+                            actions.updateTeamMember(row.teamMemberId!, { hoursMode: mode });
+                          }
+                        }}
+                      />
+                    );
+                  })()
+                ) : (
+                  <CurrencyInput
+                    value={row.salary}
+                    onChange={(val) => {
+                      if (isContractor) {
+                        if (row.isNewHire) {
+                          actions.updateNewHire(row.newHireId!, { salary: val });
+                        } else {
+                          actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, increasePct: 0 });
+                        }
+                      } else if (row.type === 'casual') {
+                        // For casual, recalculate hourly rate from new salary
+                        const weeksPerYear = row.weeksPerYear || DEFAULT_WEEKS;
+                        const newRate = row.hoursPerWeek > 0 ? val / (row.hoursPerWeek * weeksPerYear) : 0;
+                        if (row.isNewHire) {
+                          actions.updateNewHire(row.newHireId!, { salary: val, hourlyRate: Math.round(newRate * 100) / 100 });
+                        } else {
+                          actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, hourlyRate: Math.round(newRate * 100) / 100, increasePct: 0 });
+                        }
                       } else {
-                        actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, increasePct: 0 });
+                        if (row.isNewHire) {
+                          actions.updateNewHire(row.newHireId!, { salary: val });
+                        } else {
+                          actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, increasePct: 0 });
+                        }
                       }
-                    } else if (row.type === 'casual') {
-                      // For casual, recalculate hourly rate from new salary
-                      const weeksPerYear = row.weeksPerYear || DEFAULT_WEEKS;
-                      const newRate = row.hoursPerWeek > 0 ? val / (row.hoursPerWeek * weeksPerYear) : 0;
-                      if (row.isNewHire) {
-                        actions.updateNewHire(row.newHireId!, { salary: val, hourlyRate: Math.round(newRate * 100) / 100 });
-                      } else {
-                        actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, hourlyRate: Math.round(newRate * 100) / 100, increasePct: 0 });
-                      }
-                    } else {
-                      if (row.isNewHire) {
-                        actions.updateNewHire(row.newHireId!, { salary: val });
-                      } else {
-                        actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, increasePct: 0 });
-                      }
-                    }
-                  }}
-                  className="w-full px-1.5 py-1 text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
-                />
+                    }}
+                    className="w-full px-1.5 py-1 text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
+                  />
+                )}
               </td>
 
               {/* Rate — detail column */}
