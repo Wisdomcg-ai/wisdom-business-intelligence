@@ -17,6 +17,15 @@ export type ContractorType = 'onshore' | 'offshore';
  * for full backward compatibility with forecasts saved before Phase 51.
  */
 export type HoursMode = 'hours' | 'fte';
+
+/**
+ * Phase 51 (UX-S4-03): How often an employee is paid. Pure persistence in
+ * Phase 51 — does NOT affect annual salary calculations or the Y1/Y2/Y3 P&L
+ * summary. Consumed by Phase 52 (Xero PayrollCalendar auto-fill + cashflow
+ * pay-period distribution). When undefined on TeamMember/NewHire, falls
+ * through to ForecastWizardState.defaultPayFrequency, then to 'monthly'.
+ */
+export type PayFrequency = 'weekly' | 'fortnightly' | 'monthly';
 export type RevenuePattern = 'seasonal' | 'straight-line' | 'manual';
 export type ExpenseFrequency = 'once' | 'monthly' | 'quarterly' | 'annual';
 export type CostBehavior = 'fixed' | 'variable' | 'adhoc' | 'seasonal';
@@ -162,6 +171,10 @@ export interface TeamMember {
   // undefined → treat as 'hours' (current behaviour) for back-compat with
   // forecasts saved before Phase 51. See HoursMode type for semantics.
   hoursMode?: HoursMode;
+  // Phase 51 (UX-S4-03): pay frequency for cashflow timing (Phase 52
+  // consumer). Annual salary unchanged in Phase 51. undefined → fall
+  // through to ForecastWizardState.defaultPayFrequency, then to 'monthly'.
+  payFrequency?: PayFrequency;
 }
 
 export interface NewHire {
@@ -179,6 +192,10 @@ export interface NewHire {
   // Phase 51 (UX-S4-02): PT/casual schedule input mode.
   // undefined → treat as 'hours' (current behaviour) for back-compat.
   hoursMode?: HoursMode;
+  // Phase 51 (UX-S4-03): pay frequency for cashflow timing (Phase 52
+  // consumer). Annual salary unchanged in Phase 51. undefined → fall
+  // through to ForecastWizardState.defaultPayFrequency, then to 'monthly'.
+  payFrequency?: PayFrequency;
 }
 
 export interface Departure {
@@ -542,6 +559,14 @@ export interface ForecastWizardState {
   bonuses: Bonus[];
   commissions: Commission[];
 
+  // Phase 51 (UX-S4-03) — business-level default pay frequency.
+  // When undefined: per-row dropdowns fall through to 'monthly'.
+  // When set: rows with undefined payFrequency display this as inherited.
+  // Per-row payFrequency override always wins over this default.
+  // Pure persistence in Phase 51 — no rollup math impact. Phase 52 will
+  // consume this field for Xero PayrollCalendar auto-fill + cashflow timing.
+  defaultPayFrequency?: PayFrequency;
+
   // Step 5: OpEx
   defaultOpExIncreasePct: number;
   opexLines: OpExLine[];
@@ -600,6 +625,9 @@ export interface WizardActions {
   addCommission: (commission: Omit<Commission, 'id'>) => void;
   updateCommission: (commissionId: string, updates: Partial<Commission>) => void;
   removeCommission: (commissionId: string) => void;
+  // Phase 51 (UX-S4-03): set the business-level default pay frequency.
+  // Pure persistence — does not mutate per-row payFrequency fields.
+  setDefaultPayFrequency: (frequency: PayFrequency) => void;
 
   // Step 5: OpEx
   setDefaultOpExIncreasePct: (pct: number) => void;

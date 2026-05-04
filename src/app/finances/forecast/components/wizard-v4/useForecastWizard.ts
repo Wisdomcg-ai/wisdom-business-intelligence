@@ -11,6 +11,7 @@ import {
   COGSLine,
   TeamMember,
   NewHire,
+  PayFrequency,
   Departure,
   Bonus,
   Commission,
@@ -586,6 +587,17 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
     setState((prev) => ({
       ...prev,
       commissions: prev.commissions.filter((c) => c.id !== commissionId),
+    }));
+  }, []);
+
+  // Phase 51 (UX-S4-03): business-level default pay frequency.
+  // Pure persistence — does NOT mutate per-row TeamMember/NewHire payFrequency.
+  // Per-row fields stay undefined unless the operator explicitly overrides
+  // them; this preserves the inheritance relationship in the UI.
+  const setDefaultPayFrequency = useCallback((frequency: PayFrequency) => {
+    setState((prev) => ({
+      ...prev,
+      defaultPayFrequency: frequency,
     }));
   }, []);
 
@@ -1561,6 +1573,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
     addCommission,
     updateCommission,
     removeCommission,
+    setDefaultPayFrequency,
     setDefaultOpExIncreasePct,
     setOpExLines,
     updateOpExLine,
