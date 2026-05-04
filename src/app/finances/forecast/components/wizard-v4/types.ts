@@ -253,7 +253,16 @@ export interface OtherExpense {
 
 // Unified planned spending — replaces CapExItem + Investment
 export type SpendType = 'asset' | 'one-off' | 'monthly';
-export type PaymentMethod = 'outright' | 'finance' | 'lease';
+export type PaymentMethod = 'outright' | 'finance' | 'lease'; // LEGACY — preserved for back-compat
+
+// Phase 50 plan 50-02 (FCST-BUG-04): lease/finance taxonomy.
+// Items with `lease_type` set use the new accounting model; items without
+// fall through to the legacy `paymentMethod` switch (today's behavior).
+export type LeaseType =
+  | 'outright_purchase'
+  | 'operating_lease'
+  | 'finance_lease'
+  | 'loan_financing';
 
 export interface PlannedSpend {
   id: string;
@@ -262,18 +271,29 @@ export interface PlannedSpend {
   month: number; // 1-12 fiscal month
 
   spendType: SpendType;
-  usefulLifeYears?: number;          // For assets
+  usefulLifeYears?: number;          // LEGACY (years) — used by legacy paymentMethod branch
   annualDepreciation?: number;       // Calculated: amount / usefulLifeYears
 
-  paymentMethod: PaymentMethod;
+  paymentMethod: PaymentMethod;      // LEGACY discriminator (still required for back-compat)
 
-  // Finance (loan)
+  // Phase 50 plan 50-02 — full taxonomy (FCST-BUG-04)
+  // When `lease_type` is set, takes precedence over `paymentMethod` for
+  // accounting calcs. When undefined, falls through to legacy paymentMethod
+  // branches so existing forecasts render identically (no migration script).
+  lease_type?: LeaseType;
+  term_months?: number;              // Lease/loan term in months
+  interest_rate?: number;            // Annual % APR (used by finance_lease + loan_financing)
+  useful_life_months?: number;       // Depreciation period in months
+                                     // (replaces usefulLifeYears for new items)
+  residual_value?: number;           // Optional balloon / residual at end of lease term
+
+  // Legacy finance fields (preserved for back-compat)
   financeTerm?: number;              // Months
   financeRate?: number;              // Annual %
   financeMonthlyPayment?: number;    // Auto-calculated
   financeTotalInterest?: number;     // Auto-calculated
 
-  // Lease
+  // Legacy lease fields (preserved for back-compat)
   leaseTerm?: number;                // Months
   leaseMonthlyPayment?: number;      // User input
 
