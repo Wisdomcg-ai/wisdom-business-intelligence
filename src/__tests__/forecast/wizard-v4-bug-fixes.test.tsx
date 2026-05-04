@@ -154,98 +154,96 @@ function makeRevenueLine(id: string, name: string, monthlyValues?: Record<string
 // ────────────────────────────────────────────────────────────────────────────
 // Bug 1 — FCST-BUG-01: Step 3 input integrity
 // ────────────────────────────────────────────────────────────────────────────
+//
+// Tests use the REAL useForecastWizard hook (not mocked actions) so the
+// controlled input round-trip (state → render → keystroke → state) runs end
+// to end. With mocked actions, state never updates between keystrokes and
+// every keystroke types into a stale empty cell.
+import React from 'react';
+
+function Step3Harness({ businessId, initialRevLine }: { businessId: string; initialRevLine?: { id: string; name: string; monthly?: Record<string, number> } }) {
+  const wizard = useForecastWizard(FY_START_YEAR, businessId);
+  // Seed one revenue line on first render via setRevenueLines.
+  React.useEffect(() => {
+    if (initialRevLine && wizard.state.revenueLines.length === 0) {
+      wizard.actions.setRevenueLines([
+        {
+          id: initialRevLine.id,
+          name: initialRevLine.name,
+          year1Monthly: initialRevLine.monthly || emptyMonthly(),
+        },
+      ]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (wizard.state.revenueLines.length === 0) return null;
+  return <Step3RevenueCOGS state={wizard.state} actions={wizard.actions} fiscalYear={FISCAL_YEAR_END} />;
+}
+
 describe('Bug 1 — FCST-BUG-01: Step 3 input integrity', () => {
   it('Test 1.1: typing a 4-digit amount preserves every digit', async () => {
     const user = userEvent.setup();
-    const actions = makeStubActions();
-    const revLine = makeRevenueLine('rev-1', 'Hardware');
-    const state = makeStubState({ revenueLines: [revLine] });
+    render(<Step3Harness businessId="test-bug-50-1.1" initialRevLine={{ id: 'rev-1', name: 'Hardware' }} />);
 
-    render(<Step3RevenueCOGS state={state} actions={actions} fiscalYear={FISCAL_YEAR_END} />);
+    // Switch to Monthly Detail view to expose the per-month inputs
+    // (Site 2: lines 1058-1064 in Step3RevenueCOGS.tsx).
+    const monthlyToggle = await screen.findByRole('button', { name: /monthly detail/i });
+    await user.click(monthlyToggle);
 
-    // Switch to Monthly view to expose the per-month inputs (Site 2: line 1058-1064).
-    const monthlyToggle = screen.queryByRole('button', { name: /monthly/i });
-    if (monthlyToggle) {
-      await user.click(monthlyToggle);
-    }
+    // Find the first empty per-month numeric input. Exclude the COGS mix %
+    // input (has min/max attrs) and other non-month inputs.
+    const numericInputs = screen.queryAllByRole('spinbutton') as HTMLInputElement[];
+    const targetCell = numericInputs.find(
+      (el) => el.value === '' && !el.hasAttribute('min') && !el.hasAttribute('max')
+    );
+    expect(
+      targetCell,
+      `Expected an editable empty revenue month cell. Found ${numericInputs.length} numeric inputs.`
+    ).toBeDefined();
 
-    // Find an editable revenue cell. After Bug 1 fix this is type=number (role
-    // 'spinbutton'); on HEAD it's type=text. Try both, in order of preference.
-    let cells = screen.queryAllByRole('spinbutton');
-    if (cells.length === 0) {
-      // HEAD path: text inputs. Filter to inputs that don't yet have a value
-      // and live in the projection (non-actual) cells.
-      const allInputs = screen
-        .getAllByRole('textbox')
-        .filter((el): el is HTMLInputElement => (el as HTMLInputElement).type === 'text');
-      cells = allInputs;
-    }
-    expect(cells.length).toBeGreaterThan(0);
+    await user.click(targetCell!);
+    await user.type(targetCell!, '5000');
 
-    const cell = cells[0] as HTMLInputElement;
-    await user.click(cell);
-    await user.type(cell, '5000');
-
-    // The handler should have been called with a value whose final digit string
-    // equals "5000" (after strip-non-digits). The bug is that as the value
-    // bounces through `toLocaleString()`, the displayed string between
-    // keystrokes can contain commas — which userEvent's keystroke simulation
-    // then interprets and re-emits, losing digits.
-    const calls = (actions.updateRevenueLine as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls.length).toBeGreaterThan(0);
-    const lastCall = calls[calls.length - 1];
-    // Each call is [lineId, updates] where updates.year1Monthly[k] = numeric.
-    const lastUpdates = lastCall[1] as { year1Monthly?: Record<string, number> };
-    const lastMonthly = lastUpdates?.year1Monthly || {};
-    const monthValues = Object.values(lastMonthly);
-    const finalNumber = monthValues.find((v) => v && v > 0) ?? 0;
-    expect(finalNumber).toBe(5000);
+    // After the fix the input is type="number" + value={cellValue || ''} —
+    // no toLocaleString round-trip. The displayed value should now read 5000.
+    expect(
+      Number(targetCell!.value),
+      `Expected cell value to be 5000 after typing "5000"; got "${targetCell!.value}"`
+    ).toBe(5000);
   });
 
   it('Test 1.2: backspace mid-formatted-value does not zero the cell', async () => {
     const user = userEvent.setup();
-    const actions = makeStubActions();
-    // Pre-populate with 5000 — this triggers the toLocaleString round-trip ("5,000").
     const monthly = emptyMonthly();
     monthly[FIRST_Y1_MONTH] = 5000;
-    const revLine = makeRevenueLine('rev-1', 'Hardware', monthly);
-    const state = makeStubState({ revenueLines: [revLine] });
-
-    render(<Step3RevenueCOGS state={state} actions={actions} fiscalYear={FISCAL_YEAR_END} />);
-
-    const monthlyToggle = screen.queryByRole('button', { name: /monthly/i });
-    if (monthlyToggle) await user.click(monthlyToggle);
-
-    // Find the input whose displayed value contains 5000-or-5,000.
-    const candidates: HTMLInputElement[] = [];
-    candidates.push(...(screen.queryAllByRole('spinbutton') as HTMLInputElement[]));
-    candidates.push(
-      ...(screen.queryAllByRole('textbox') as HTMLInputElement[]).filter(
-        (el) => el.type === 'text' || el.type === 'number'
-      )
+    render(
+      <Step3Harness
+        businessId="test-bug-50-1.2"
+        initialRevLine={{ id: 'rev-1', name: 'Hardware', monthly }}
+      />
     );
+
+    const monthlyToggle = await screen.findByRole('button', { name: /monthly detail/i });
+    await user.click(monthlyToggle);
+
+    // Find the input whose displayed value contains 5000.
+    const candidates: HTMLInputElement[] = [
+      ...(screen.queryAllByRole('spinbutton') as HTMLInputElement[]),
+    ];
     const target = candidates.find((el) => /5,?000/.test(el.value));
     expect(target, 'expected an input whose display value contains "5000" or "5,000"').toBeDefined();
 
     await user.click(target!);
-    // Move caret to end & backspace once.
+    // Caret to end, backspace once → "500" expected.
     await user.keyboard('{End}{Backspace}');
 
-    // After backspacing the trailing "0" from "5000" we expect 500 to be
-    // committed. The bug: when the value was displayed as "5,000",
-    // backspacing "0" yields "5,00" → stripped → "500", which is correct.
-    // BUT when the user backspaces inside the comma (e.g. caret between "5"
-    // and ","), the strip-and-parse round-trip emits 0. Either way, the
-    // contract we lock here is "value must NOT be 0 after one backspace from
-    // a 4-digit number" — anything else is a bug.
-    const calls = (actions.updateRevenueLine as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls.length, 'updateRevenueLine should be called at least once').toBeGreaterThan(0);
-    const lastUpdates = calls[calls.length - 1][1] as { year1Monthly?: Record<string, number> };
-    const lastMonthly = lastUpdates?.year1Monthly || {};
-    const finalValue = lastMonthly[FIRST_Y1_MONTH];
-    // Acceptable: 500 (correct), or any value > 0 short of 5000. Bug: 0 or undefined.
+    // After backspacing the trailing "0" from "5000", the cell should show
+    // 500. Bug: with text+toLocaleString, backspace inside the comma can
+    // zero the value.
+    const finalValue = Number(target!.value);
     expect(finalValue, 'backspace should not zero the cell').not.toBe(0);
     expect(finalValue, 'value should be a positive number').toBeGreaterThan(0);
+    expect(finalValue, 'one backspace from 5000 should yield 500').toBe(500);
   });
 });
 
