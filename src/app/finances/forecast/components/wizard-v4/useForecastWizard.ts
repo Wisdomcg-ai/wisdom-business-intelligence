@@ -309,7 +309,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         const totalSeasonality = seasonality.reduce((sum: number, val: number) => sum + val, 0);
 
         monthKeys.forEach((key, idx) => {
-          const seasonalFactor = (seasonality[idx] || 8.33) / totalSeasonality;
+          const seasonalFactor = (seasonality[idx] ?? 8.33) / totalSeasonality;
           year1Monthly[key] = Math.round(data.revenue.total * seasonalFactor);
         });
 
@@ -381,7 +381,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
             const lineTarget = goalRevenue * share;
             const monthly: { [key: string]: number } = {};
             monthKeys.forEach((key, idx) => {
-              const factor = (seasonality[idx] || 8.33) / totalSeasonality;
+              const factor = (seasonality[idx] ?? 8.33) / totalSeasonality;
               monthly[key] = Math.round(lineTarget * factor);
             });
             line[yearKey] = monthly;
@@ -913,7 +913,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
           let totalRemainingSeasonality = 0;
           monthKeys.forEach((key, idx) => {
             if (ytdMonths[key] === undefined) {
-              totalRemainingSeasonality += seasonality[idx] || 8.33;
+              totalRemainingSeasonality += seasonality[idx] ?? 8.33;
             }
           });
 
@@ -923,7 +923,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
               year1Monthly[key] = ytdMonths[key];
             } else if (totalRemainingSeasonality > 0 && remainingTarget > 0) {
               // Distribute remaining target proportionally using seasonality weights
-              const monthSeasonality = seasonality[idx] || 8.33;
+              const monthSeasonality = seasonality[idx] ?? 8.33;
               const monthFactor = monthSeasonality / totalRemainingSeasonality;
               year1Monthly[key] = Math.round(remainingTarget * monthFactor);
             } else if (remainingMonths > 0 && remainingTarget > 0) {
@@ -965,7 +965,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
               const lineTarget = goalRevenue * share;
               const monthly: { [key: string]: number } = {};
               monthKeys.forEach((key, idx) => {
-                const factor = (seasonality[idx] || 8.33) / totalSeasonality;
+                const factor = (seasonality[idx] ?? 8.33) / totalSeasonality;
                 monthly[key] = Math.round(lineTarget * factor);
               });
               line[yearKey] = monthly;
