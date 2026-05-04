@@ -37,6 +37,13 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
   const [showAddRevenue, setShowAddRevenue] = useState(false);
   const [showAddCOGS, setShowAddCOGS] = useState(false);
+  // Local "pending" state for the % Split inputs. The displayed value is
+  // DERIVED from monthly totals (rounded, with last-line residual fix), so
+  // a controlled input bound directly to the derived value re-renders to a
+  // different number than what the user typed mid-edit. We hold the typed
+  // string in pending state until blur / Enter, then commit.
+  const [pendingMixPcts, setPendingMixPcts] = useState<Record<string, string>>({});
+  const [pendingCogsMixPcts, setPendingCogsMixPcts] = useState<Record<string, string>>({});
   const [newRevenueName, setNewRevenueName] = useState('');
   const [newCOGSName, setNewCOGSName] = useState('');
   const [viewMode, setViewMode] = useState<'summary' | 'monthly'>('summary');
@@ -53,6 +60,28 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   }, [currentYTD]);
 
   const isActualMonth = (monthKey: string) => actualMonthKeys.has(monthKey);
+
+  // Commit a pending % edit. Clamps 0..100 and fires the line-update handler.
+  const commitMixPct = (lineId: string, raw: string | undefined, kind: 'revenue' | 'cogs') => {
+    if (raw === undefined) return;
+    const parsed = parseInt(raw, 10);
+    const clamped = Math.max(0, Math.min(100, isNaN(parsed) ? 0 : parsed));
+    if (kind === 'revenue') {
+      handleMixChange(lineId, clamped);
+      setPendingMixPcts((prev) => {
+        const next = { ...prev };
+        delete next[lineId];
+        return next;
+      });
+    } else {
+      handleCogsMixChange(lineId, clamped);
+      setPendingCogsMixPcts((prev) => {
+        const next = { ...prev };
+        delete next[lineId];
+        return next;
+      });
+    }
+  };
 
   // Calculate line percentages for all years
   const getLinePercentages = () => {
@@ -748,8 +777,12 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                         <div className="inline-flex items-center gap-1 justify-center">
                           <input
                             type="number"
-                            value={currentMixPct}
-                            onChange={(e) => handleMixChange(line.id, Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                            value={pendingMixPcts[line.id] !== undefined ? pendingMixPcts[line.id] : currentMixPct}
+                            onChange={(e) => setPendingMixPcts((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                            onBlur={() => commitMixPct(line.id, pendingMixPcts[line.id], 'revenue')}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                            }}
                             min="0"
                             max="100"
                             className="w-14 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
@@ -906,8 +939,12 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                       <div className="inline-flex items-center gap-1 justify-center">
                         <input
                           type="number"
-                          value={currentPct}
-                          onChange={(e) => handleCogsMixChange(line.id, Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                          value={pendingCogsMixPcts[line.id] !== undefined ? pendingCogsMixPcts[line.id] : currentPct}
+                          onChange={(e) => setPendingCogsMixPcts((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                          onBlur={() => commitMixPct(line.id, pendingCogsMixPcts[line.id], 'cogs')}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                          }}
                           min="0"
                           max="100"
                           className="w-14 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
@@ -1037,8 +1074,12 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                         <div className="inline-flex items-center gap-0.5">
                           <input
                             type="number"
-                            value={revMixPct}
-                            onChange={(e) => handleMixChange(line.id, Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                            value={pendingMixPcts[line.id] !== undefined ? pendingMixPcts[line.id] : revMixPct}
+                            onChange={(e) => setPendingMixPcts((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                            onBlur={() => commitMixPct(line.id, pendingMixPcts[line.id], 'revenue')}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                            }}
                             min="0"
                             max="100"
                             className="w-12 px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
@@ -1178,8 +1219,12 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                         <div className="inline-flex items-center gap-0.5">
                           <input
                             type="number"
-                            value={cogsMixPct}
-                            onChange={(e) => handleCogsMixChange(line.id, Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                            value={pendingCogsMixPcts[line.id] !== undefined ? pendingCogsMixPcts[line.id] : cogsMixPct}
+                            onChange={(e) => setPendingCogsMixPcts((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                            onBlur={() => commitMixPct(line.id, pendingCogsMixPcts[line.id], 'cogs')}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                            }}
                             min="0"
                             max="100"
                             className="w-12 px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
