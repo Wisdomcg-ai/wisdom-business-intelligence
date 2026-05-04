@@ -71,6 +71,14 @@ export interface RevenueLine {
   year3Monthly?: MonthlyData;     // Monthly data for Y3 (new — replaces quarterly)
   year2Quarterly?: QuarterlyData; // Legacy — kept for backward compat with old forecasts
   year3Quarterly?: QuarterlyData; // Legacy — kept for backward compat with old forecasts
+
+  // Phase 51 plan 03 (UX-S3-03) — per-line seasonality override.
+  // When undefined: line inherits business-level seasonality (current behavior).
+  // When set: array of 12 percentages, expected to sum to ~100 (validated in editor).
+  // Read via getEffectiveSeasonality(line, businessSeasonality) in utils/line-distribution.ts —
+  // every reader (Step 3 display + useForecastWizard rollup) funnels through that helper
+  // so display + rollup cannot drift (Phase 50 Bug 4 lockstep precedent).
+  seasonalityPattern?: number[];
 }
 
 // Convert quarterly data to monthly using seasonality weights
@@ -150,6 +158,13 @@ export interface COGSLine {
   year1Monthly?: MonthlyData;
   year2Monthly?: MonthlyData;
   year3Monthly?: MonthlyData;
+
+  // Phase 51 plan 03 (UX-S3-03) — per-line seasonality override.
+  // Only meaningful for FIXED COGS lines (variable COGS distributes by revenue,
+  // so per-line seasonality is redundant). UI hides the editor button on
+  // variable COGS rows (operator decision encoded in Step3RevenueCOGS.tsx).
+  // Field accepted on the type for symmetry with RevenueLine.
+  seasonalityPattern?: number[];
 }
 
 export interface TeamMember {

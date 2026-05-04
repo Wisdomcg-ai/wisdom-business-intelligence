@@ -7,6 +7,7 @@ import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fisc
 import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBanner';
 import type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read-service';
 import { useEditableValue } from '../hooks/useEditableValue';
+import { getEffectiveSeasonality } from '../utils/line-distribution';
 
 /**
  * RevenueLineMixInputs — Phase 51-01 (UX-S3-01)
@@ -325,8 +326,10 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
       const lineTarget = yearTarget * (newPct / 100);
       const lineProjectedTarget = Math.max(0, lineTarget - lineActualsTotal);
 
-      // Get seasonality for remaining months
-      const seasonality = priorYear?.seasonalityPattern || Array(12).fill(8.33);
+      // Phase 51-03 (UX-S3-03): per-line override → business → 8.33 fallback.
+      // Tasks 4 + 5 add the line.seasonalityPattern field + editor; this read
+      // becomes override-aware automatically because every reader funnels here.
+      const seasonality = getEffectiveSeasonality(line, priorYear?.seasonalityPattern);
       let totalRemainingSeasonality = 0;
       monthKeys.forEach((key, idx) => {
         if (!isActualMonth(key)) {
@@ -353,7 +356,10 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     } else {
       // Year 2/3 - distribute across months using seasonality
       const yearTarget = activeYear === 2 ? (goals.year2?.revenue || 0) : (goals.year3?.revenue || 0);
-      const seasonality = priorYear?.seasonalityPattern || Array(12).fill(8.33);
+      // Phase 51-03 (UX-S3-03): look up the line so seasonality can pick up
+      // a per-line override (else falls through to business seasonality).
+      const line = revenueLines.find(l => l.id === lineId);
+      const seasonality = getEffectiveSeasonality(line ?? {}, priorYear?.seasonalityPattern);
       const totalSeasonality = seasonality.reduce((a: number, b: number) => a + b, 0);
 
       if (yearTarget > 0 && totalSeasonality > 0) {
@@ -392,8 +398,6 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     // For Year 1, calculate remaining revenue to distribute (target - actuals)
     const year1RemainingTarget = Math.max(0, year1Target - ytdActualTotal);
 
-    const seasonality = priorYear?.seasonalityPattern || Array(12).fill(8.33);
-
     // Calculate Year 1 line proportions for distributing Year 2/3
     const year1LineTotals: Record<string, number> = {};
     let year1TotalFromLines = 0;
@@ -405,6 +409,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
     // Recalculate revenue lines for ALL years based on pattern
     revenueLines.forEach((line) => {
+      // Phase 51-03 (UX-S3-03): per-line override → business → 8.33 fallback.
+      // Read inside the loop so each line picks up its own override (Tasks 4 + 5
+      // add the field). For back-compat (no override on any line), this returns
+      // the business seasonality identically to the prior single-read pattern.
+      const seasonality = getEffectiveSeasonality(line, priorYear?.seasonalityPattern);
       const updates: Partial<typeof line> = {};
 
       // === YEAR 1 (Monthly) ===
@@ -538,7 +547,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     const line = revenueLines.find(l => l.id === lineId);
     if (!line) return;
 
-    const seasonality = priorYear?.seasonalityPattern || Array(12).fill(8.33);
+    // Phase 51-03 (UX-S3-03): per-line override → business → 8.33 fallback.
+    const seasonality = getEffectiveSeasonality(line, priorYear?.seasonalityPattern);
     const totalSeasonality = seasonality.reduce((a: number, b: number) => a + b, 0);
 
     if (activeYear === 1) {
@@ -657,11 +667,15 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
     const lineTarget = Math.round(yearTarget * (newMixPct / 100));
     const yearMKeys = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
-    const seasonality = priorYear?.seasonalityPattern || Array(12).fill(8.33);
+    // Phase 51-03 (UX-S3-03): per-line override → business → 8.33 fallback.
+    // Look up the line up-front so seasonality honors the override regardless
+    // of which year-branch runs below.
+    const lineLookup = revenueLines.find(l => l.id === lineId);
+    const seasonality = getEffectiveSeasonality(lineLookup ?? {}, priorYear?.seasonalityPattern);
 
     // For Y1, preserve actuals and distribute remaining across projected months
     if (activeYear === 1) {
-      const line = revenueLines.find(l => l.id === lineId);
+      const line = lineLookup;
       if (!line) return;
 
       let actualsTotal = 0;
@@ -798,7 +812,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     if (totalCOGS <= 0) return;
     const lineTarget = Math.round(totalCOGS * (newMixPct / 100));
     const yearMKeys = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
-    const seasonality = priorYear?.seasonalityPattern || Array(12).fill(8.33);
+    // Phase 51-03 (UX-S3-03): per-line override (on the COGS line) → business
+    // → 8.33 fallback. Variable-COGS lines hide the editor button (Task 5),
+    // but the read still funnels through the helper for symmetry + safety.
+    const cogsLineLookup = cogsLines.find(l => l.id === lineId);
+    const seasonality = getEffectiveSeasonality(cogsLineLookup ?? {}, priorYear?.seasonalityPattern);
     const totalSeason = seasonality.reduce((s, v) => s + v, 0);
 
     const yearKey = activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';

@@ -237,13 +237,13 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
 
   it('Test 5: save sets line.seasonalityPattern with the typed values', async () => {
     const user = userEvent.setup();
-    let wizardRef: ReturnType<typeof useForecastWizard> | null = null;
+    const wizardBox: { current: ReturnType<typeof useForecastWizard> | null } = { current: null };
     render(
       <Step3Harness
         businessId="test-51-03-5"
         initialPriorYear={makePriorYear(FRONT_LOADED_SEASONALITY)}
         initialRevLines={[{ id: 'rev-1', name: 'Hardware' }]}
-        onWizard={(w) => { wizardRef = w; }}
+        onWizard={(w) => { wizardBox.current = w; }}
       />,
     );
 
@@ -265,7 +265,7 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
     await user.click(saveButton);
 
     // Assert state was updated
-    const line = wizardRef?.state.revenueLines.find((l) => l.id === 'rev-1');
+    const line = wizardBox.current?.state.revenueLines.find((l) => l.id === 'rev-1');
     expect(line?.seasonalityPattern).toBeDefined();
     if (line?.seasonalityPattern) {
       // Within ±1 per cell (number input rounds)
@@ -277,13 +277,13 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
 
   it('Test 6: override changes Step 3 display monthly distribution', async () => {
     const user = userEvent.setup();
-    let wizardRef: ReturnType<typeof useForecastWizard> | null = null;
+    const wizardBox: { current: ReturnType<typeof useForecastWizard> | null } = { current: null };
     render(
       <Step3Harness
         businessId="test-51-03-6"
         initialPriorYear={makePriorYear(FRONT_LOADED_SEASONALITY)}
         initialRevLines={[{ id: 'rev-1', name: 'Hardware' }]}
-        onWizard={(w) => { wizardRef = w; }}
+        onWizard={(w) => { wizardBox.current = w; }}
       />,
     );
 
@@ -310,7 +310,7 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
 
     // Read the resulting distribution. Y1 goal = $120k, Jul allocation should
     // honor the override (50%) → ~$60,000 (NOT 25% × $120k = $30k from business).
-    const line = wizardRef?.state.revenueLines.find((l) => l.id === 'rev-1');
+    const line = wizardBox.current?.state.revenueLines.find((l) => l.id === 'rev-1');
     expect(line).toBeDefined();
     const jul = line?.year1Monthly['2025-07'] ?? 0;
     expect(Math.abs(jul - 60_000)).toBeLessThanOrEqual(10);
@@ -318,13 +318,13 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
 
   it('Test 7: override changes useForecastWizard ROLLUP monthly distribution (LOCKSTEP)', async () => {
     const user = userEvent.setup();
-    let wizardRef: ReturnType<typeof useForecastWizard> | null = null;
+    const wizardBox: { current: ReturnType<typeof useForecastWizard> | null } = { current: null };
     render(
       <Step3Harness
         businessId="test-51-03-7"
         initialPriorYear={makePriorYear(FRONT_LOADED_SEASONALITY)}
         initialRevLines={[{ id: 'rev-1', name: 'Hardware' }]}
-        onWizard={(w) => { wizardRef = w; }}
+        onWizard={(w) => { wizardBox.current = w; }}
       />,
     );
 
@@ -358,12 +358,12 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
     // exactly what the rollup sums) AND assert summary.year1.revenue equals
     // sum of all monthly cells (proving the rollup didn't ignore the new
     // distribution).
-    const line = wizardRef?.state.revenueLines.find((l) => l.id === 'rev-1');
+    const line = wizardBox.current?.state.revenueLines.find((l) => l.id === 'rev-1');
     const jul = line?.year1Monthly['2025-07'] ?? 0;
     expect(Math.abs(jul - 60_000)).toBeLessThanOrEqual(10);
 
     const monthlyTotal = Object.values(line?.year1Monthly ?? {}).reduce((a, b) => a + b, 0);
-    const summaryRevenue = wizardRef?.summary.year1?.revenue ?? 0;
+    const summaryRevenue = wizardBox.current?.summary.year1?.revenue ?? 0;
     expect(summaryRevenue).toBe(monthlyTotal);
     // And summary.year1.revenue should be approximately $120k (annual unchanged)
     expect(Math.abs(summaryRevenue - 120_000)).toBeLessThanOrEqual(12);
@@ -371,13 +371,13 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
 
   it('Test 8: annual total UNCHANGED after override applied', async () => {
     const user = userEvent.setup();
-    let wizardRef: ReturnType<typeof useForecastWizard> | null = null;
+    const wizardBox: { current: ReturnType<typeof useForecastWizard> | null } = { current: null };
     render(
       <Step3Harness
         businessId="test-51-03-8"
         initialPriorYear={makePriorYear(FRONT_LOADED_SEASONALITY)}
         initialRevLines={[{ id: 'rev-1', name: 'Hardware' }]}
-        onWizard={(w) => { wizardRef = w; }}
+        onWizard={(w) => { wizardBox.current = w; }}
       />,
     );
 
@@ -388,7 +388,7 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
     await user.type(percentInput, '100');
     await user.tab();
 
-    const beforeLine = wizardRef?.state.revenueLines.find((l) => l.id === 'rev-1');
+    const beforeLine = wizardBox.current?.state.revenueLines.find((l) => l.id === 'rev-1');
     const beforeTotal = Object.values(beforeLine?.year1Monthly ?? {}).reduce((a, b) => a + b, 0);
     expect(Math.abs(beforeTotal - 120_000)).toBeLessThanOrEqual(12);
 
@@ -411,14 +411,14 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
     await user.type(percentInput, '100');
     await user.tab();
 
-    const afterLine = wizardRef?.state.revenueLines.find((l) => l.id === 'rev-1');
+    const afterLine = wizardBox.current?.state.revenueLines.find((l) => l.id === 'rev-1');
     const afterTotal = Object.values(afterLine?.year1Monthly ?? {}).reduce((a, b) => a + b, 0);
     expect(Math.abs(afterTotal - 120_000)).toBeLessThanOrEqual(12);
   });
 
   it('Test 9: reset clears the override (seasonalityPattern → undefined)', async () => {
     const user = userEvent.setup();
-    let wizardRef: ReturnType<typeof useForecastWizard> | null = null;
+    const wizardBox: { current: ReturnType<typeof useForecastWizard> | null } = { current: null };
     render(
       <Step3Harness
         businessId="test-51-03-9"
@@ -430,12 +430,12 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
             seasonalityPattern: [50, 30, 10, 5, 1, 1, 1, 1, 1, 0, 0, 0],
           },
         ]}
-        onWizard={(w) => { wizardRef = w; }}
+        onWizard={(w) => { wizardBox.current = w; }}
       />,
     );
 
     // Confirm the line starts with an override
-    const before = wizardRef?.state.revenueLines.find((l) => l.id === 'rev-1');
+    const before = wizardBox.current?.state.revenueLines.find((l) => l.id === 'rev-1');
     expect(before?.seasonalityPattern).toBeDefined();
 
     // Open modal → click Reset
@@ -444,7 +444,7 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
     const resetButton = await screen.findByRole('button', { name: /reset to business seasonality/i });
     await user.click(resetButton);
 
-    const after = wizardRef?.state.revenueLines.find((l) => l.id === 'rev-1');
+    const after = wizardBox.current?.state.revenueLines.find((l) => l.id === 'rev-1');
     expect(after?.seasonalityPattern).toBeUndefined();
   });
 
@@ -471,7 +471,7 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
     };
     // Total: 100,000 (matches priorYear.revenue.total)
 
-    let wizardRef: ReturnType<typeof useForecastWizard> | null = null;
+    const wizardBox: { current: ReturnType<typeof useForecastWizard> | null } = { current: null };
     render(
       <Step3Harness
         businessId="test-51-03-10-baseline"
@@ -479,14 +479,14 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
         // NOTE: no initialRevLines — let setPriorYear create the default
         // "Sales Revenue" line with seasonal distribution (the path that hits
         // useForecastWizard.ts:305 inline read).
-        onWizard={(w) => { wizardRef = w; }}
+        onWizard={(w) => { wizardBox.current = w; }}
       />,
     );
 
     // Allow setPriorYear effect to settle
     await new Promise((r) => setTimeout(r, 50));
 
-    const lines = wizardRef?.state.revenueLines ?? [];
+    const lines = wizardBox.current?.state.revenueLines ?? [];
     expect(lines.length).toBe(1);
     expect(lines[0].name).toBe('Sales Revenue');
 
@@ -498,7 +498,7 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
     // And the per-line summary contribution must match the captured total.
     const total = Object.values(lines[0].year1Monthly).reduce((a, b) => a + b, 0);
     expect(total).toBe(100_000);
-    expect(wizardRef?.summary.year1?.revenue).toBe(100_000);
+    expect(wizardBox.current?.summary.year1?.revenue).toBe(100_000);
   });
 
   it('Test 10b: BACKWARD-COMPAT (Step 3 handleMixChange path) — bit-identical to HEAD', async () => {
@@ -523,13 +523,13 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
     // Total: 120,000 (matches goals.year1.revenue × 100% mix)
 
     const user = userEvent.setup();
-    let wizardRef: ReturnType<typeof useForecastWizard> | null = null;
+    const wizardBox: { current: ReturnType<typeof useForecastWizard> | null } = { current: null };
     render(
       <Step3Harness
         businessId="test-51-03-10b-baseline"
         initialPriorYear={makePriorYear(FRONT_LOADED_SEASONALITY)}
         initialRevLines={[{ id: 'rev-1', name: 'Hardware' }]}
-        onWizard={(w) => { wizardRef = w; }}
+        onWizard={(w) => { wizardBox.current = w; }}
       />,
     );
 
@@ -539,7 +539,7 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
     await user.type(percentInput, '100');
     await user.tab();
 
-    const line = wizardRef?.state.revenueLines.find((l) => l.id === 'rev-1');
+    const line = wizardBox.current?.state.revenueLines.find((l) => l.id === 'rev-1');
     expect(line).toBeDefined();
     for (const [key, expected] of Object.entries(EXPECTED_AFTER_MIX_100)) {
       expect(line?.year1Monthly[key]).toBe(expected);
