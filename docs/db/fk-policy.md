@@ -113,10 +113,10 @@ Tightly-coupled children that have no meaning without their parent. **CASCADE is
 
 | # | Source `table.column` | Referenced | Baseline line | Recommended ON DELETE | Justification | Sign-off | Status |
 |---|----------------------|------------|---------------|----------------------|---------------|----------|--------|
-| 1 | `process_flows.from_step_id` | `process_steps.id` | 9130 | CASCADE | If a step is deleted, its inbound flow is nonsensical (a flow with no source step has no meaning) | [x] | approved |
-| 2 | `process_flows.to_step_id` | `process_steps.id` | 9140 | CASCADE | Same — outbound flow nonsensical without target step | [x] | approved |
-| 3 | `process_flows.process_id` | `process_diagrams.id` | 9135 | CASCADE | Diagram deleted → all its flows must go (no orphan flows pointing at deleted diagram) | [x] | approved |
-| 4 | `process_phases.process_id` | `process_diagrams.id` | 9145 | CASCADE | Diagram deleted → all its phases must go | [x] | approved |
+| 1 | `process_flows.from_step_id` | `process_steps.id` | 9130 | CASCADE | If a step is deleted, its inbound flow is nonsensical (a flow with no source step has no meaning) | [x] | applied: 20260507000000_db04_cascade_fks.sql |
+| 2 | `process_flows.to_step_id` | `process_steps.id` | 9140 | CASCADE | Same — outbound flow nonsensical without target step | [x] | applied: 20260507000000_db04_cascade_fks.sql |
+| 3 | `process_flows.process_id` | `process_diagrams.id` | 9135 | CASCADE | Diagram deleted → all its flows must go (no orphan flows pointing at deleted diagram) | [x] | applied: 20260507000000_db04_cascade_fks.sql |
+| 4 | `process_phases.process_id` | `process_diagrams.id` | 9145 | CASCADE | Diagram deleted → all its phases must go | [x] | applied: 20260507000000_db04_cascade_fks.sql |
 
 **Note (operator decision 2026-05-04):** `session_attendees.user_id` (originally proposed Bucket B with MEDIUM confidence) was moved to Bucket A SET NULL. Operator preference: preserve attendance counts when a user is deleted. The migration in plan 49-04 or 49-05 will SET NULL this FK, not CASCADE.
 
