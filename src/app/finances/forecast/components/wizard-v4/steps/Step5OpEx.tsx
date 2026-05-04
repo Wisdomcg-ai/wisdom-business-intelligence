@@ -13,13 +13,30 @@ interface Step5OpExProps {
   industry?: string;
 }
 
-// Cost behavior options with colors
+// Cost behavior options with colors.
+// Phase 51 plan 51-05 (UX-S5-01): operator-facing labels.
+//   fixed     → '$ per month'              (a fixed monthly amount, e.g. rent, software)
+//   variable  → '% of revenue'             (cost scales with revenue, e.g. card processing)
+//   seasonal  → '$ with annual increase'   (fixed amount that grows yearly, e.g. inflation-linked subs)
+//   adhoc     → 'Custom per-month'         (different values per month, one-offs / spiky spend)
+// Underlying enum values are unchanged — only the displayed text on each <option>.
 const COST_BEHAVIORS: { value: CostBehavior; label: string; hint: string; color: string; bgColor: string; borderColor: string }[] = [
-  { value: 'fixed', label: 'Fixed', hint: '$/month', color: 'text-blue-700', bgColor: 'bg-blue-50', borderColor: 'border-blue-300' },
-  { value: 'variable', label: 'Variable', hint: '% of revenue', color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-300' },
-  { value: 'seasonal', label: 'Seasonal', hint: 'prior year pattern', color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-amber-300' },
-  { value: 'adhoc', label: 'Ad-hoc', hint: '$/year', color: 'text-purple-700', bgColor: 'bg-purple-50', borderColor: 'border-purple-300' },
+  { value: 'fixed', label: '$ per month', hint: '$/month', color: 'text-blue-700', bgColor: 'bg-blue-50', borderColor: 'border-blue-300' },
+  { value: 'variable', label: '% of revenue', hint: '% of revenue', color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-300' },
+  { value: 'seasonal', label: '$ with annual increase', hint: 'inflation-linked', color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-amber-300' },
+  { value: 'adhoc', label: 'Custom per-month', hint: 'manual months', color: 'text-purple-700', bgColor: 'bg-purple-50', borderColor: 'border-purple-300' },
 ];
+
+// Phase 51 plan 51-05 (UX-S5-01): tooltip explainer text for the info icon
+// next to each row's costBehavior dropdown. Operator-facing copy — when to use
+// each option. Delivered via a plain `title` attribute (browser-native tooltip)
+// so we avoid pulling in a new tooltip primitive for one screen.
+const COST_BEHAVIOR_EXPLAINER = [
+  '$ per month: a fixed monthly amount (rent, software). Use when the cost stays roughly the same every month.',
+  '% of revenue: cost scales with revenue (card processing, freight). Use when the line is variable with sales.',
+  '$ with annual increase: starts at a fixed amount and grows yearly (inflation-linked subscriptions). Use for fixed costs you expect to creep upward each year.',
+  'Custom per-month: enter different values per month manually. Use for one-offs, ad-hoc spend, or seasonally-spiky costs.',
+].join('\n\n');
 
 // Helper to get behavior styling
 const getBehaviorStyle = (behavior: CostBehavior) => {
@@ -817,6 +834,18 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
     }
   }, [revenueByYear.y1]);
 
+  // Phase 50 (FCST-BUG-02): sum the OpEx lines that were auto-classified as
+  // team costs so they're surfaced in the Team Costs row of BudgetFramework
+  // instead of falling into a void. The useForecastWizard.ts P&L rollup
+  // (line 1154) already correctly EXCLUDES these lines from the OpEx total;
+  // this derived var brings them back into the team-cost subtraction so the
+  // BudgetFramework display agrees with the rollup. Reactive — re-runs when
+  // any excluded line's amount changes.
+  const opexClassifiedTeamCosts = useMemo(
+    () => excludedTeamLines.reduce((sum, line) => sum + calculateY1Amount(line), 0),
+    [excludedTeamLines, calculateY1Amount]
+  );
+
   // Calculate amount for Y2 or Y3 with auto-projection
   // Y3 uses Y2 as its base (whether Y2 is overridden or calculated)
   const calculateYearAmount = useCallback((line: OpExLine, year: 2 | 3, defaultGrowth: number = 3): number => {
@@ -1012,12 +1041,19 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
     actions.updateOpExLine(lineId, updates);
   };
 
+  // Phase 50 (FCST-BUG-02): Total team costs to display in BudgetFramework =
+  // Step 4 team (members + new hires + departures, salary + super) PLUS the
+  // OpEx lines auto-classified as team (e.g. Xero "Wages and Salaries"). The
+  // P&L rollup excludes these OpEx lines from the OpEx total — we surface
+  // them here so the breakdown reads correctly.
+  const totalTeamCostsForBudget = year1TeamCosts + opexClassifiedTeamCosts;
+
   return (
     <div className="space-y-6">
       {/* Budget Framework */}
       <BudgetFramework
         state={state}
-        year1TeamCosts={year1TeamCosts}
+        year1TeamCosts={totalTeamCostsForBudget}
         opexByYear={opexByYear}
         fiscalYear={fiscalYear}
         actualRevenue={actualRevenue}
@@ -1189,8 +1225,11 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
                     </div>
                   </th>
                 )}
-                <th className="px-3 py-1.5 text-right text-xs font-medium text-blue-600 tracking-wide bg-blue-50" style={{ width: '120px' }}>Monthly</th>
-                <th className="px-3 py-1.5 text-right text-xs font-medium text-blue-600 tracking-wide bg-blue-50" style={{ width: '120px' }}>Annual</th>
+                {/* Phase 51 plan 51-05 (UX-S5-02): operator-friendly column headers
+                    "Monthly avg" + "Year total" (was "Monthly" + "Annual"). Cell
+                    contents and underlying math are unchanged — only labels updated. */}
+                <th className="px-3 py-1.5 text-right text-xs font-medium text-blue-600 tracking-wide bg-blue-50" style={{ width: '120px' }}>Monthly avg</th>
+                <th className="px-3 py-1.5 text-right text-xs font-medium text-blue-600 tracking-wide bg-blue-50" style={{ width: '120px' }}>Year total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -1315,22 +1354,32 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
                       })()}
                     </td>
 
-                    {/* Type Dropdown */}
+                    {/* Type Dropdown + info-icon explainer (Phase 51 plan 51-05, UX-S5-01) */}
                     <td className="px-3 py-2">
-                      <select
-                        value={line.costBehavior}
-                        onChange={(e) => handleBehaviorChange(line.id, e.target.value as CostBehavior)}
-                        disabled={isY2Y3}
-                        className={`w-full px-2 py-1 text-xs font-medium border rounded text-center ${
-                          isY2Y3
-                            ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed'
-                            : `${style.bgColor} ${style.color} ${style.borderColor} cursor-pointer`
-                        }`}
-                      >
-                        {COST_BEHAVIORS.map((b) => (
-                          <option key={b.value} value={b.value}>{b.label}</option>
-                        ))}
-                      </select>
+                      <div className="flex items-center gap-1">
+                        <select
+                          value={line.costBehavior}
+                          onChange={(e) => handleBehaviorChange(line.id, e.target.value as CostBehavior)}
+                          disabled={isY2Y3}
+                          className={`w-44 px-2 py-1 text-xs font-medium border rounded text-center ${
+                            isY2Y3
+                              ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed'
+                              : `${style.bgColor} ${style.color} ${style.borderColor} cursor-pointer`
+                          }`}
+                        >
+                          {COST_BEHAVIORS.map((b) => (
+                            <option key={b.value} value={b.value}>{b.label}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          aria-label="What does each option mean?"
+                          title={COST_BEHAVIOR_EXPLAINER}
+                          className="text-gray-400 hover:text-brand-navy"
+                        >
+                          <Info className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
 
                     {/* Increase % Column - only show for Y2/Y3, part of Workings (blue) */}
@@ -1401,8 +1450,7 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
                             value={Math.round(workings.monthly || 0) || ''}
                             onChange={(e) => handleMonthlyChange(parseFloat(e.target.value) || 0)}
                             placeholder="0"
-                            className={inputStyles}
-                            style={{ width: '90px' }}
+                            className={`${inputStyles} w-28`}
                           />
                         </div>
                       ) : (
@@ -1412,7 +1460,7 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
                       )}
                     </td>
 
-                    {/* Annual Column (Workings) */}
+                    {/* Year total Column (Workings) */}
                     <td className="px-3 py-2 bg-blue-50">
                       {line.costBehavior === 'variable' ? (
                         // For variable costs, show calculated amount (% × revenue)
@@ -1438,8 +1486,7 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
                             value={Math.round(workings.annual) || ''}
                             onChange={(e) => handleAnnualChange(parseFloat(e.target.value) || 0)}
                             placeholder="0"
-                            className={inputStyles}
-                            style={{ width: '90px' }}
+                            className={`${inputStyles} w-28`}
                           />
                         </div>
                       ) : (

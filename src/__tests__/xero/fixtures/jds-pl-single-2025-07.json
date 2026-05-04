@@ -1,0 +1,1804 @@
+{
+  "_meta": {
+    "tenant_name": "Aeris Solutions Pty Ltd",
+    "tenant_id": "0219d3a9-c1be-4fb8-a4d3-0710b3af715a",
+    "business_id": "900aa935-ae8c-4913-baf7-169260fa19ef",
+    "period_month": "2025-07",
+    "from_date": "2025-07-01",
+    "to_date": "2025-07-31",
+    "captured_at": "2026-05-01T21:49:56.523Z"
+  },
+  "response": {
+    "Id": "8812a493-3837-495d-91e3-116630badcdb",
+    "Status": "OK",
+    "ProviderName": "Business Coaching Platform",
+    "DateTimeUTC": "/Date(1777672196318)/",
+    "Reports": [
+      {
+        "ReportID": "ProfitAndLoss",
+        "ReportName": "Profit and Loss",
+        "ReportType": "ProfitAndLoss",
+        "ReportTitles": [
+          "Profit & Loss",
+          "Just Digital Signage - Aeris Solutions P/L atf Aeris Solutions Trust",
+          "1 July 2025 to 31 July 2025"
+        ],
+        "ReportDate": "1 May 2026",
+        "UpdatedDateUTC": "/Date(1777672196318)/",
+        "Fields": [],
+        "Rows": [
+          {
+            "RowType": "Header",
+            "Cells": [
+              {
+                "Value": ""
+              },
+              {
+                "Value": "31 Jul 25"
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Income",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales -  ES Education Sector",
+                    "Attributes": [
+                      {
+                        "Value": "d3588e26-7c20-4d9f-ae81-2a1fa37e053b",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "67662.50",
+                    "Attributes": [
+                      {
+                        "Value": "d3588e26-7c20-4d9f-ae81-2a1fa37e053b",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Content Creation",
+                    "Attributes": [
+                      {
+                        "Value": "ba960def-d85d-4a1d-8ce7-7b81d82a61d9",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "736.00",
+                    "Attributes": [
+                      {
+                        "Value": "ba960def-d85d-4a1d-8ce7-7b81d82a61d9",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Data Plans",
+                    "Attributes": [
+                      {
+                        "Value": "185f6526-5750-44e7-a152-6112feed60f4",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "3510.00",
+                    "Attributes": [
+                      {
+                        "Value": "185f6526-5750-44e7-a152-6112feed60f4",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - ES - Installations",
+                    "Attributes": [
+                      {
+                        "Value": "b2824800-c52d-4eb7-a3ec-918f8f22409f",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "13878.00",
+                    "Attributes": [
+                      {
+                        "Value": "b2824800-c52d-4eb7-a3ec-918f8f22409f",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Freight",
+                    "Attributes": [
+                      {
+                        "Value": "7b2ccf48-a300-4c85-a695-332fe10734ab",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "845.13",
+                    "Attributes": [
+                      {
+                        "Value": "7b2ccf48-a300-4c85-a695-332fe10734ab",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Hardware",
+                    "Attributes": [
+                      {
+                        "Value": "8659dd53-4eec-469a-b5e2-9aefd38494a0",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "259550.88",
+                    "Attributes": [
+                      {
+                        "Value": "8659dd53-4eec-469a-b5e2-9aefd38494a0",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Installations",
+                    "Attributes": [
+                      {
+                        "Value": "cdb21bc0-6d70-4628-8fcb-932500b1be7b",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "38540.00",
+                    "Attributes": [
+                      {
+                        "Value": "cdb21bc0-6d70-4628-8fcb-932500b1be7b",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Professional Services",
+                    "Attributes": [
+                      {
+                        "Value": "c223bba4-33ec-4c1c-b53b-6630ccc64561",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1585.00",
+                    "Attributes": [
+                      {
+                        "Value": "c223bba4-33ec-4c1c-b53b-6630ccc64561",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Rental Income",
+                    "Attributes": [
+                      {
+                        "Value": "8ad98fbc-1bb7-4be4-922b-2f580471c179",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "6948.00",
+                    "Attributes": [
+                      {
+                        "Value": "8ad98fbc-1bb7-4be4-922b-2f580471c179",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Software 3rd Party",
+                    "Attributes": [
+                      {
+                        "Value": "5d9e9177-7eb1-466d-b27e-e6bada4231f4",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "18255.90",
+                    "Attributes": [
+                      {
+                        "Value": "5d9e9177-7eb1-466d-b27e-e6bada4231f4",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Software internal",
+                    "Attributes": [
+                      {
+                        "Value": "0f64b929-fff8-4345-9191-e6f340265449",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "7963.89",
+                    "Attributes": [
+                      {
+                        "Value": "0f64b929-fff8-4345-9191-e6f340265449",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Systems Engineering",
+                    "Attributes": [
+                      {
+                        "Value": "61dbf570-11dd-4be0-abc6-dad419f854b3",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "4800.00",
+                    "Attributes": [
+                      {
+                        "Value": "61dbf570-11dd-4be0-abc6-dad419f854b3",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Software Development Dept Income",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Other",
+                    "Attributes": [
+                      {
+                        "Value": "6b3a196e-9ec5-424e-bf99-19156224bb60",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "6029.00",
+                    "Attributes": [
+                      {
+                        "Value": "6b3a196e-9ec5-424e-bf99-19156224bb60",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Software Development Dept Income"
+                  },
+                  {
+                    "Value": "6029.00"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Support Dept Income",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Support Dept Annual Support Contracts",
+                    "Attributes": [
+                      {
+                        "Value": "81af789a-417c-4246-b4f1-b8376ef5ffc2",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "33950.00",
+                    "Attributes": [
+                      {
+                        "Value": "81af789a-417c-4246-b4f1-b8376ef5ffc2",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Support Dept Offsite Comm Player Builds",
+                    "Attributes": [
+                      {
+                        "Value": "bf177b8c-0d23-4fac-bb04-860e2bb8f355",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1686.00",
+                    "Attributes": [
+                      {
+                        "Value": "bf177b8c-0d23-4fac-bb04-860e2bb8f355",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Support Dept Post Sales Support",
+                    "Attributes": [
+                      {
+                        "Value": "e1223b57-012c-4694-a212-4c9acfceb7ca",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1285.00",
+                    "Attributes": [
+                      {
+                        "Value": "e1223b57-012c-4694-a212-4c9acfceb7ca",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Support Dept Income"
+                  },
+                  {
+                    "Value": "36921.00"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Income"
+                  },
+                  {
+                    "Value": "467225.30"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Less Cost of Sales",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Contractors - Installations",
+                    "Attributes": [
+                      {
+                        "Value": "673eb0a3-b168-40b7-af77-caf976a94560",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "10599.99",
+                    "Attributes": [
+                      {
+                        "Value": "673eb0a3-b168-40b7-af77-caf976a94560",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "ES - DA Fees Engineering etc",
+                    "Attributes": [
+                      {
+                        "Value": "bfa9cb29-3d82-4bbb-a68c-b77d6e366abf",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "15159.00",
+                    "Attributes": [
+                      {
+                        "Value": "bfa9cb29-3d82-4bbb-a68c-b77d6e366abf",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "ES - Freight",
+                    "Attributes": [
+                      {
+                        "Value": "ea43fb49-ef0c-40c1-a337-897e387f715f",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1827.68",
+                    "Attributes": [
+                      {
+                        "Value": "ea43fb49-ef0c-40c1-a337-897e387f715f",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "ES - Installation Costs",
+                    "Attributes": [
+                      {
+                        "Value": "56a90e4c-fc7d-4fef-9d75-94ce4a8964c1",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "35883.56",
+                    "Attributes": [
+                      {
+                        "Value": "56a90e4c-fc7d-4fef-9d75-94ce4a8964c1",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "ES - Purchases Hardware",
+                    "Attributes": [
+                      {
+                        "Value": "7394edd0-da5c-4937-b277-ac01bc3d690c",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "74563.52",
+                    "Attributes": [
+                      {
+                        "Value": "7394edd0-da5c-4937-b277-ac01bc3d690c",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "ES - Warranty Charges",
+                    "Attributes": [
+                      {
+                        "Value": "85cb6cb5-ff60-460d-b89d-2330e0d68cd6",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1293.68",
+                    "Attributes": [
+                      {
+                        "Value": "85cb6cb5-ff60-460d-b89d-2330e0d68cd6",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Logistics Costs",
+                    "Attributes": [
+                      {
+                        "Value": "7bce8d01-2f50-455f-94df-fb49347cd74e",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "21585.60",
+                    "Attributes": [
+                      {
+                        "Value": "7bce8d01-2f50-455f-94df-fb49347cd74e",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Logistics Costs - ES",
+                    "Attributes": [
+                      {
+                        "Value": "b8750845-d873-4a56-a022-d694ceff28eb",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "4678.59",
+                    "Attributes": [
+                      {
+                        "Value": "b8750845-d873-4a56-a022-d694ceff28eb",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Purchases - Data Plan",
+                    "Attributes": [
+                      {
+                        "Value": "4f9e253c-5dce-46cd-94e9-d9ea2f613e51",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "5380.35",
+                    "Attributes": [
+                      {
+                        "Value": "4f9e253c-5dce-46cd-94e9-d9ea2f613e51",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Purchases - Freight Couriers",
+                    "Attributes": [
+                      {
+                        "Value": "932899cf-115f-4d33-b985-3d011c236777",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1932.92",
+                    "Attributes": [
+                      {
+                        "Value": "932899cf-115f-4d33-b985-3d011c236777",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Purchases - Freight on Hardware Imports",
+                    "Attributes": [
+                      {
+                        "Value": "05e556a7-4f01-49cd-8ecb-aab319129c3f",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "589.00",
+                    "Attributes": [
+                      {
+                        "Value": "05e556a7-4f01-49cd-8ecb-aab319129c3f",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Purchases - Freight Supplier Charges",
+                    "Attributes": [
+                      {
+                        "Value": "56eb333d-5cd2-4f94-9f2e-f7b272bf33f2",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "547.06",
+                    "Attributes": [
+                      {
+                        "Value": "56eb333d-5cd2-4f94-9f2e-f7b272bf33f2",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Purchases - Hardware",
+                    "Attributes": [
+                      {
+                        "Value": "75dbd410-7ded-4a58-b6d3-89b04a3713f6",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "42020.10",
+                    "Attributes": [
+                      {
+                        "Value": "75dbd410-7ded-4a58-b6d3-89b04a3713f6",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Purchases - Installations",
+                    "Attributes": [
+                      {
+                        "Value": "3694f161-696f-41fe-b894-d4454202697f",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "22.48",
+                    "Attributes": [
+                      {
+                        "Value": "3694f161-696f-41fe-b894-d4454202697f",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Purchases - Installations Travelling Costs",
+                    "Attributes": [
+                      {
+                        "Value": "13ff3e9d-fe45-4bb5-8ef4-22c18606832e",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "5858.78",
+                    "Attributes": [
+                      {
+                        "Value": "13ff3e9d-fe45-4bb5-8ef4-22c18606832e",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Purchases - Software",
+                    "Attributes": [
+                      {
+                        "Value": "82d56ba3-a3fa-4c7d-b8df-be415bd41ba1",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "15494.38",
+                    "Attributes": [
+                      {
+                        "Value": "82d56ba3-a3fa-4c7d-b8df-be415bd41ba1",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Support Dept External Contractors - Post Sales Support",
+                    "Attributes": [
+                      {
+                        "Value": "d9f477cc-4c7e-4ea9-b257-adbb604ed2f5",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1215.00",
+                    "Attributes": [
+                      {
+                        "Value": "d9f477cc-4c7e-4ea9-b257-adbb604ed2f5",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Support Dept Purchases - Hosting Costs- NT",
+                    "Attributes": [
+                      {
+                        "Value": "1b5702b9-bdf1-45b3-8a8d-fffdf1e3b9cf",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "2654.71",
+                    "Attributes": [
+                      {
+                        "Value": "1b5702b9-bdf1-45b3-8a8d-fffdf1e3b9cf",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Software Development Dept",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Software Development Dept Misc Costs",
+                    "Attributes": [
+                      {
+                        "Value": "6a6a5e8c-7aba-429b-b016-a1bf5d9fe247",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "2468.43",
+                    "Attributes": [
+                      {
+                        "Value": "6a6a5e8c-7aba-429b-b016-a1bf5d9fe247",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Software Development Dept"
+                  },
+                  {
+                    "Value": "2468.43"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Support Dept",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Subscriptions - JustDS",
+                    "Attributes": [
+                      {
+                        "Value": "a4a2c2b9-3248-44a4-9cd6-d8db3006ec80",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "368.95",
+                    "Attributes": [
+                      {
+                        "Value": "a4a2c2b9-3248-44a4-9cd6-d8db3006ec80",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Support - Freight Costs",
+                    "Attributes": [
+                      {
+                        "Value": "ca22c8f5-e644-4894-9484-4083950fe86a",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "173.53",
+                    "Attributes": [
+                      {
+                        "Value": "ca22c8f5-e644-4894-9484-4083950fe86a",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Support Dept Purchases - Domain Renewal & Misc - NT",
+                    "Attributes": [
+                      {
+                        "Value": "2752e543-8ae9-4b8f-95f4-24f4b16e9d3d",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1020.12",
+                    "Attributes": [
+                      {
+                        "Value": "2752e543-8ae9-4b8f-95f4-24f4b16e9d3d",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Support Dept Purchases - misc",
+                    "Attributes": [
+                      {
+                        "Value": "2ce00452-4cf1-49b5-ae03-7e8dcdfdecd8",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "807.04",
+                    "Attributes": [
+                      {
+                        "Value": "2ce00452-4cf1-49b5-ae03-7e8dcdfdecd8",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Support Dept Travelling Exp - Post Sales Support",
+                    "Attributes": [
+                      {
+                        "Value": "63ac9ce3-6b38-4827-9ba0-edf1aa1b5783",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1124.65",
+                    "Attributes": [
+                      {
+                        "Value": "63ac9ce3-6b38-4827-9ba0-edf1aa1b5783",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Support Dept"
+                  },
+                  {
+                    "Value": "3494.29"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Cost of Sales"
+                  },
+                  {
+                    "Value": "247269.12"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Gross Profit"
+                  },
+                  {
+                    "Value": "219956.18"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Plus Other Income",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Interest Income",
+                    "Attributes": [
+                      {
+                        "Value": "b6d74875-7ba2-4784-a2b7-8018891afd99",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "171.63",
+                    "Attributes": [
+                      {
+                        "Value": "b6d74875-7ba2-4784-a2b7-8018891afd99",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Other Income"
+                  },
+                  {
+                    "Value": "171.63"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Less Operating Expenses",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Education Sector Marketing",
+                    "Attributes": [
+                      {
+                        "Value": "c8e91e06-326c-49a9-99fc-8e0325ce4029",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "12068.28",
+                    "Attributes": [
+                      {
+                        "Value": "c8e91e06-326c-49a9-99fc-8e0325ce4029",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Foreign Currency Gains and Losses",
+                    "Attributes": [
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "account"
+                      },
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "groupID"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "9322.32",
+                    "Attributes": [
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "account"
+                      },
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "groupID"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Rubbish Removal",
+                    "Attributes": [
+                      {
+                        "Value": "55a69145-5610-442d-819c-679cc5ad5690",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "245.45",
+                    "Attributes": [
+                      {
+                        "Value": "55a69145-5610-442d-819c-679cc5ad5690",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Stripe Fees (no GST)",
+                    "Attributes": [
+                      {
+                        "Value": "89cf40a9-77b0-4d86-8169-bc08150bf86e",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "439.42",
+                    "Attributes": [
+                      {
+                        "Value": "89cf40a9-77b0-4d86-8169-bc08150bf86e",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Virtual Assistant",
+                    "Attributes": [
+                      {
+                        "Value": "be0f57c0-893b-4389-aa5f-898a9f4980a2",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "5039.79",
+                    "Attributes": [
+                      {
+                        "Value": "be0f57c0-893b-4389-aa5f-898a9f4980a2",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Admin Expenses",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Bank Charges",
+                    "Attributes": [
+                      {
+                        "Value": "92ed94c6-0e3d-4e84-9cd1-3b6f1ce1a606",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "574.41",
+                    "Attributes": [
+                      {
+                        "Value": "92ed94c6-0e3d-4e84-9cd1-3b6f1ce1a606",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Consultancy Fees",
+                    "Attributes": [
+                      {
+                        "Value": "80ddac45-a658-4129-9af3-d4b30d2ad2a5",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1818.18",
+                    "Attributes": [
+                      {
+                        "Value": "80ddac45-a658-4129-9af3-d4b30d2ad2a5",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Filing Fees",
+                    "Attributes": [
+                      {
+                        "Value": "eb950445-c0ea-408c-bc36-92ce84cb79ce",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "291.00",
+                    "Attributes": [
+                      {
+                        "Value": "eb950445-c0ea-408c-bc36-92ce84cb79ce",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Minor Equipment Expenses",
+                    "Attributes": [
+                      {
+                        "Value": "b1947c5d-53ff-4353-bec0-50b3182ddf83",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "8554.24",
+                    "Attributes": [
+                      {
+                        "Value": "b1947c5d-53ff-4353-bec0-50b3182ddf83",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Printing & Stationery",
+                    "Attributes": [
+                      {
+                        "Value": "dc272f34-339f-4735-8af4-f4d2221c9778",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "214.89",
+                    "Attributes": [
+                      {
+                        "Value": "dc272f34-339f-4735-8af4-f4d2221c9778",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Subscriptions - Local",
+                    "Attributes": [
+                      {
+                        "Value": "8840e2c0-2695-45e7-8f29-9e8e2d246699",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1648.52",
+                    "Attributes": [
+                      {
+                        "Value": "8840e2c0-2695-45e7-8f29-9e8e2d246699",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Subscriptions - NT",
+                    "Attributes": [
+                      {
+                        "Value": "53029d0f-0563-41ca-b8dd-5cd8867b513c",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "5672.83",
+                    "Attributes": [
+                      {
+                        "Value": "53029d0f-0563-41ca-b8dd-5cd8867b513c",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sundry Expenses",
+                    "Attributes": [
+                      {
+                        "Value": "2732df88-3a4b-4605-845a-69773e716f8f",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "2200.00",
+                    "Attributes": [
+                      {
+                        "Value": "2732df88-3a4b-4605-845a-69773e716f8f",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Telephone & Internet Costs",
+                    "Attributes": [
+                      {
+                        "Value": "28e5d08f-0197-4071-8df7-e1c946b5fa51",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1045.82",
+                    "Attributes": [
+                      {
+                        "Value": "28e5d08f-0197-4071-8df7-e1c946b5fa51",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Admin Expenses"
+                  },
+                  {
+                    "Value": "22019.89"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Advertising & Marketing",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Advertising/Marketing",
+                    "Attributes": [
+                      {
+                        "Value": "09883775-0d07-45c3-b789-ba62c84e5f85",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "7561.13",
+                    "Attributes": [
+                      {
+                        "Value": "09883775-0d07-45c3-b789-ba62c84e5f85",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Travelling Expenses",
+                    "Attributes": [
+                      {
+                        "Value": "2d7d5a5d-c728-472d-8c13-994d12c815ea",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "2014.54",
+                    "Attributes": [
+                      {
+                        "Value": "2d7d5a5d-c728-472d-8c13-994d12c815ea",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Advertising & Marketing"
+                  },
+                  {
+                    "Value": "9575.67"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Office Expenses",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Cleaning",
+                    "Attributes": [
+                      {
+                        "Value": "74e81d79-1e51-4df3-9e81-6db397cdbcd4",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "506.86",
+                    "Attributes": [
+                      {
+                        "Value": "74e81d79-1e51-4df3-9e81-6db397cdbcd4",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Rates & Owners Corp Fees 7/35 Dunlop",
+                    "Attributes": [
+                      {
+                        "Value": "b8848f4e-2a45-4b41-a3c9-9695fe3ea5d9",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1297.50",
+                    "Attributes": [
+                      {
+                        "Value": "b8848f4e-2a45-4b41-a3c9-9695fe3ea5d9",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Rent",
+                    "Attributes": [
+                      {
+                        "Value": "7faa130c-3af3-410b-bc1c-f6fbe2054f09",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "6219.20",
+                    "Attributes": [
+                      {
+                        "Value": "7faa130c-3af3-410b-bc1c-f6fbe2054f09",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Warehousing and General Repairs and Maintenance",
+                    "Attributes": [
+                      {
+                        "Value": "2349ba52-4a9e-4c61-b536-6fb542f8a0be",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "622.50",
+                    "Attributes": [
+                      {
+                        "Value": "2349ba52-4a9e-4c61-b536-6fb542f8a0be",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Office Expenses"
+                  },
+                  {
+                    "Value": "8646.06"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Staff Expenses",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Staff Amenities - General",
+                    "Attributes": [
+                      {
+                        "Value": "96260756-d903-4998-a5b7-487a52da19fa",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "234.44",
+                    "Attributes": [
+                      {
+                        "Value": "96260756-d903-4998-a5b7-487a52da19fa",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Superannuation",
+                    "Attributes": [
+                      {
+                        "Value": "3df052c2-0ed5-499e-9d8f-b3f466a31448",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "23282.55",
+                    "Attributes": [
+                      {
+                        "Value": "3df052c2-0ed5-499e-9d8f-b3f466a31448",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Wages and Salaries",
+                    "Attributes": [
+                      {
+                        "Value": "f2b0e524-78af-4228-b6e8-1b44a2bc83c6",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "199277.29",
+                    "Attributes": [
+                      {
+                        "Value": "f2b0e524-78af-4228-b6e8-1b44a2bc83c6",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "WorkCover",
+                    "Attributes": [
+                      {
+                        "Value": "f2be99d4-848c-4546-8ddf-5b793a6cad76",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "15492.65",
+                    "Attributes": [
+                      {
+                        "Value": "f2be99d4-848c-4546-8ddf-5b793a6cad76",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Staff Expenses"
+                  },
+                  {
+                    "Value": "238286.93"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Operating Expenses"
+                  },
+                  {
+                    "Value": "305643.81"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Net Profit"
+                  },
+                  {
+                    "Value": "-85516.00"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

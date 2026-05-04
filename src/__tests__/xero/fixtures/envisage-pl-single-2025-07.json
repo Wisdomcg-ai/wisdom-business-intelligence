@@ -1,0 +1,860 @@
+{
+  "_meta": {
+    "tenant_name": "Malouf Family Trust",
+    "tenant_id": "04d9df1f-53b0-4d1c-ba9e-4ce49b9c8860",
+    "business_id": "fa0a80e8-e58e-40aa-b34a-8db667d4b221",
+    "period_month": "2025-07",
+    "from_date": "2025-07-01",
+    "to_date": "2025-07-31",
+    "captured_at": "2026-05-01T22:09:36.282Z"
+  },
+  "response": {
+    "Id": "33c68e84-a979-44a8-a2f5-a1579666c050",
+    "Status": "OK",
+    "ProviderName": "Business Coaching Platform",
+    "DateTimeUTC": "/Date(1777673375854)/",
+    "Reports": [
+      {
+        "ReportID": "ProfitAndLoss",
+        "ReportName": "Profit and Loss",
+        "ReportType": "ProfitAndLoss",
+        "ReportTitles": [
+          "Profit and Loss",
+          "Malouf Family Trust",
+          "1 July 2025 to 31 July 2025"
+        ],
+        "ReportDate": "1 May 2026",
+        "UpdatedDateUTC": "/Date(1777673375853)/",
+        "Fields": [],
+        "Rows": [
+          {
+            "RowType": "Header",
+            "Cells": [
+              {
+                "Value": ""
+              },
+              {
+                "Value": "31 Jul 25"
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Income",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - CFO",
+                    "Attributes": [
+                      {
+                        "Value": "3be3a7ca-6bba-42de-b18a-21f95d5161b9",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "12062.50",
+                    "Attributes": [
+                      {
+                        "Value": "3be3a7ca-6bba-42de-b18a-21f95d5161b9",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - TB",
+                    "Attributes": [
+                      {
+                        "Value": "5ebbdf05-46b2-4d8c-b194-5bdaa8696ccd",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "6318.18",
+                    "Attributes": [
+                      {
+                        "Value": "5ebbdf05-46b2-4d8c-b194-5bdaa8696ccd",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Wisdom Coaching",
+                    "Attributes": [
+                      {
+                        "Value": "9c8fb958-f715-408a-94d6-57d36772ea9f",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "131504.55",
+                    "Attributes": [
+                      {
+                        "Value": "9c8fb958-f715-408a-94d6-57d36772ea9f",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Wisdom Growth Club",
+                    "Attributes": [
+                      {
+                        "Value": "85215008-9f28-411e-af82-723c4fee809e",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "500.00",
+                    "Attributes": [
+                      {
+                        "Value": "85215008-9f28-411e-af82-723c4fee809e",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Income"
+                  },
+                  {
+                    "Value": "150385.23"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Gross Profit"
+                  },
+                  {
+                    "Value": "150385.23"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Plus Other Income",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Other Revenue",
+                    "Attributes": [
+                      {
+                        "Value": "cb5be35f-8901-4483-bb5f-bb7da8a71fe1",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "10227.28",
+                    "Attributes": [
+                      {
+                        "Value": "cb5be35f-8901-4483-bb5f-bb7da8a71fe1",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Other Income"
+                  },
+                  {
+                    "Value": "10227.28"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Less Operating Expenses",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Bank Fees",
+                    "Attributes": [
+                      {
+                        "Value": "f3b63cd5-93c4-4134-9ca9-9594fd548d23",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "10.00",
+                    "Attributes": [
+                      {
+                        "Value": "f3b63cd5-93c4-4134-9ca9-9594fd548d23",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Business Coaching",
+                    "Attributes": [
+                      {
+                        "Value": "2e0409f7-fb34-4d22-b1d5-f1f63d49ae0a",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "3363.65",
+                    "Attributes": [
+                      {
+                        "Value": "2e0409f7-fb34-4d22-b1d5-f1f63d49ae0a",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Contractors/Sub Contractors",
+                    "Attributes": [
+                      {
+                        "Value": "478eed70-d272-4520-9156-1a22d97f9709",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1709.06",
+                    "Attributes": [
+                      {
+                        "Value": "478eed70-d272-4520-9156-1a22d97f9709",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Electricity",
+                    "Attributes": [
+                      {
+                        "Value": "9a2a20f8-ac6f-489d-aa00-b4a32660e4e7",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "283.15",
+                    "Attributes": [
+                      {
+                        "Value": "9a2a20f8-ac6f-489d-aa00-b4a32660e4e7",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Entertainment",
+                    "Attributes": [
+                      {
+                        "Value": "32811b8a-6bf5-42a3-85d9-8fee63f2c9e7",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "563.33",
+                    "Attributes": [
+                      {
+                        "Value": "32811b8a-6bf5-42a3-85d9-8fee63f2c9e7",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Interest Expense",
+                    "Attributes": [
+                      {
+                        "Value": "22735291-7a7f-4511-a40a-0a0b5efb1ef6",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "8.89",
+                    "Attributes": [
+                      {
+                        "Value": "22735291-7a7f-4511-a40a-0a0b5efb1ef6",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Internet",
+                    "Attributes": [
+                      {
+                        "Value": "72853374-d74a-4ae1-b99d-082789c1353d",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "189.85",
+                    "Attributes": [
+                      {
+                        "Value": "72853374-d74a-4ae1-b99d-082789c1353d",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Marketing - Wisdom",
+                    "Attributes": [
+                      {
+                        "Value": "8b976b86-501f-4dfd-af91-3aa7dff848d8",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "40.91",
+                    "Attributes": [
+                      {
+                        "Value": "8b976b86-501f-4dfd-af91-3aa7dff848d8",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Merchant Fees",
+                    "Attributes": [
+                      {
+                        "Value": "269432d0-5e75-4238-a5ac-a6403ffa4361",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "196.55",
+                    "Attributes": [
+                      {
+                        "Value": "269432d0-5e75-4238-a5ac-a6403ffa4361",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "MV Expenses - BMW i4",
+                    "Attributes": [
+                      {
+                        "Value": "865830b8-ca47-49c4-9250-c45aa962e28c",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "231.98",
+                    "Attributes": [
+                      {
+                        "Value": "865830b8-ca47-49c4-9250-c45aa962e28c",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "MV Expenses - Toyota Landcruiser",
+                    "Attributes": [
+                      {
+                        "Value": "cbfa7da3-e812-4a4f-9602-bb89024d6d82",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "948.15",
+                    "Attributes": [
+                      {
+                        "Value": "cbfa7da3-e812-4a4f-9602-bb89024d6d82",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Offshore Team",
+                    "Attributes": [
+                      {
+                        "Value": "3dac6168-2baa-4d5b-b41a-2b2ff35af047",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "4919.08",
+                    "Attributes": [
+                      {
+                        "Value": "3dac6168-2baa-4d5b-b41a-2b2ff35af047",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Printing & Stationery",
+                    "Attributes": [
+                      {
+                        "Value": "b4a986f1-d088-434c-9e17-415066e1c538",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-129.17",
+                    "Attributes": [
+                      {
+                        "Value": "b4a986f1-d088-434c-9e17-415066e1c538",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Rent",
+                    "Attributes": [
+                      {
+                        "Value": "2b7ca9f7-0f3b-45bf-ae47-0d4cdf966d4a",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "2310.91",
+                    "Attributes": [
+                      {
+                        "Value": "2b7ca9f7-0f3b-45bf-ae47-0d4cdf966d4a",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Repairs & Maintenance",
+                    "Attributes": [
+                      {
+                        "Value": "024817aa-6dea-4ddc-ab29-dd2491495196",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "234.23",
+                    "Attributes": [
+                      {
+                        "Value": "024817aa-6dea-4ddc-ab29-dd2491495196",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Subscriptions",
+                    "Attributes": [
+                      {
+                        "Value": "a7e13ad1-7091-4575-b69c-557707550ab2",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1418.17",
+                    "Attributes": [
+                      {
+                        "Value": "a7e13ad1-7091-4575-b69c-557707550ab2",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sundry Expenses - Wisdom",
+                    "Attributes": [
+                      {
+                        "Value": "6fffb7de-203f-4673-8ffd-f3903e600bcc",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "202.29",
+                    "Attributes": [
+                      {
+                        "Value": "6fffb7de-203f-4673-8ffd-f3903e600bcc",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Superannuation",
+                    "Attributes": [
+                      {
+                        "Value": "413f7a70-2a39-4764-a3dc-9f64eade1da2",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "2200.00",
+                    "Attributes": [
+                      {
+                        "Value": "413f7a70-2a39-4764-a3dc-9f64eade1da2",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Training & Development",
+                    "Attributes": [
+                      {
+                        "Value": "1a132753-c1db-488b-9729-ef451c3bc99b",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "956.79",
+                    "Attributes": [
+                      {
+                        "Value": "1a132753-c1db-488b-9729-ef451c3bc99b",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Travel - International",
+                    "Attributes": [
+                      {
+                        "Value": "e0155ec0-7950-4a71-a8e0-592d592afedc",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "11563.77",
+                    "Attributes": [
+                      {
+                        "Value": "e0155ec0-7950-4a71-a8e0-592d592afedc",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Travel - National",
+                    "Attributes": [
+                      {
+                        "Value": "5a9e776b-4749-45c4-bd90-20a4b42ed758",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "495.04",
+                    "Attributes": [
+                      {
+                        "Value": "5a9e776b-4749-45c4-bd90-20a4b42ed758",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Travel - National Client",
+                    "Attributes": [
+                      {
+                        "Value": "3ae56f11-66b9-4a66-9a14-27bd38c5bde1",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1158.59",
+                    "Attributes": [
+                      {
+                        "Value": "3ae56f11-66b9-4a66-9a14-27bd38c5bde1",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Wages and Salaries",
+                    "Attributes": [
+                      {
+                        "Value": "144686af-b1e1-40ea-88b2-b5c188b5d925",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "18333.33",
+                    "Attributes": [
+                      {
+                        "Value": "144686af-b1e1-40ea-88b2-b5c188b5d925",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Think Bigger",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Think Bigger - Program Expenses",
+                    "Attributes": [
+                      {
+                        "Value": "f70758b5-9dc5-4087-a80e-43a48fa11f1f",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "70.87",
+                    "Attributes": [
+                      {
+                        "Value": "f70758b5-9dc5-4087-a80e-43a48fa11f1f",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Think Bigger"
+                  },
+                  {
+                    "Value": "70.87"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "VCFO",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "VCFO Program Expenses",
+                    "Attributes": [
+                      {
+                        "Value": "8ba40b56-0190-49da-8055-a69229e15395",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1611.32",
+                    "Attributes": [
+                      {
+                        "Value": "8ba40b56-0190-49da-8055-a69229e15395",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total VCFO"
+                  },
+                  {
+                    "Value": "1611.32"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Operating Expenses"
+                  },
+                  {
+                    "Value": "52890.74"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Net Profit"
+                  },
+                  {
+                    "Value": "107721.77"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

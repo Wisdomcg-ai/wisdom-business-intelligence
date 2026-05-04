@@ -1,0 +1,1233 @@
+{
+  "_meta": {
+    "tenant_name": "Malouf Family Trust",
+    "tenant_id": "04d9df1f-53b0-4d1c-ba9e-4ce49b9c8860",
+    "business_id": "fa0a80e8-e58e-40aa-b34a-8db667d4b221",
+    "balance_date": "2026-03-31",
+    "captured_at": "2026-05-01T22:09:16.339Z",
+    "currency": "AUD"
+  },
+  "response": {
+    "Id": "d477ce56-d265-4df7-b95a-a2949b28da19",
+    "Status": "OK",
+    "ProviderName": "Business Coaching Platform",
+    "DateTimeUTC": "/Date(1777673355475)/",
+    "Reports": [
+      {
+        "ReportID": "BalanceSheet",
+        "ReportName": "Balance Sheet",
+        "ReportType": "BalanceSheet",
+        "ReportTitles": [
+          "Balance Sheet",
+          "Malouf Family Trust",
+          "As at 31 March 2026"
+        ],
+        "ReportDate": "1 May 2026",
+        "UpdatedDateUTC": "/Date(1777673355475)/",
+        "Fields": [],
+        "Rows": [
+          {
+            "RowType": "Header",
+            "Cells": [
+              {
+                "Value": ""
+              },
+              {
+                "Value": "31 Mar 2026"
+              },
+              {
+                "Value": "31 Mar 2025"
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Assets",
+            "Rows": []
+          },
+          {
+            "RowType": "Section",
+            "Title": "Bank",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "MAIN A/C - MFT - ANZ ***382",
+                    "Attributes": [
+                      {
+                        "Value": "3e2ae935-0d61-4a2e-9978-0406bdae0479",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "17624.93",
+                    "Attributes": [
+                      {
+                        "Value": "3e2ae935-0d61-4a2e-9978-0406bdae0479",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "45073.59",
+                    "Attributes": [
+                      {
+                        "Value": "3e2ae935-0d61-4a2e-9978-0406bdae0479",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Bank"
+                  },
+                  {
+                    "Value": "17624.93"
+                  },
+                  {
+                    "Value": "45073.59"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Current Assets",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Accounts Receivable",
+                    "Attributes": [
+                      {
+                        "Value": "9fb88a3d-e140-4b02-aaf6-f29c24e33580",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "22940.00",
+                    "Attributes": [
+                      {
+                        "Value": "9fb88a3d-e140-4b02-aaf6-f29c24e33580",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "60505.00",
+                    "Attributes": [
+                      {
+                        "Value": "9fb88a3d-e140-4b02-aaf6-f29c24e33580",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Cash on Hand",
+                    "Attributes": [
+                      {
+                        "Value": "23a2214d-453a-477f-8c6a-68c1a1416bf2",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "10.00",
+                    "Attributes": [
+                      {
+                        "Value": "23a2214d-453a-477f-8c6a-68c1a1416bf2",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "10.00",
+                    "Attributes": [
+                      {
+                        "Value": "23a2214d-453a-477f-8c6a-68c1a1416bf2",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Current Assets"
+                  },
+                  {
+                    "Value": "22950.00"
+                  },
+                  {
+                    "Value": "60515.00"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Fixed Assets",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Motor Vehicles",
+                    "Attributes": [
+                      {
+                        "Value": "8672a9c7-2d54-442e-b9fc-0b97b6ca306f",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "171111.72",
+                    "Attributes": [
+                      {
+                        "Value": "8672a9c7-2d54-442e-b9fc-0b97b6ca306f",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "171111.72",
+                    "Attributes": [
+                      {
+                        "Value": "8672a9c7-2d54-442e-b9fc-0b97b6ca306f",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Motor Vehicles - Less Accumulated Depreciation",
+                    "Attributes": [
+                      {
+                        "Value": "b8982f35-5982-43b8-9505-4a55a8801b34",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-98231.11",
+                    "Attributes": [
+                      {
+                        "Value": "b8982f35-5982-43b8-9505-4a55a8801b34",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-96250.65",
+                    "Attributes": [
+                      {
+                        "Value": "b8982f35-5982-43b8-9505-4a55a8801b34",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Office Equipment",
+                    "Attributes": [
+                      {
+                        "Value": "b7c9f1c0-a669-4820-b5b2-239830ca1f4a",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "58644.32",
+                    "Attributes": [
+                      {
+                        "Value": "b7c9f1c0-a669-4820-b5b2-239830ca1f4a",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "47849.69",
+                    "Attributes": [
+                      {
+                        "Value": "b7c9f1c0-a669-4820-b5b2-239830ca1f4a",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Office Equipment - Less Accumulated Depreciation",
+                    "Attributes": [
+                      {
+                        "Value": "b3a941c9-7aef-4386-95ab-6ea2c9e09f13",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-55778.95",
+                    "Attributes": [
+                      {
+                        "Value": "b3a941c9-7aef-4386-95ab-6ea2c9e09f13",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-47849.69",
+                    "Attributes": [
+                      {
+                        "Value": "b3a941c9-7aef-4386-95ab-6ea2c9e09f13",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Fixed Assets"
+                  },
+                  {
+                    "Value": "75745.98"
+                  },
+                  {
+                    "Value": "74861.07"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Non-current Assets",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Borrowing Expenses",
+                    "Attributes": [
+                      {
+                        "Value": "3fbac3cd-3869-473d-b7ae-1f06d5cc6dc8",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "846.00",
+                    "Attributes": [
+                      {
+                        "Value": "3fbac3cd-3869-473d-b7ae-1f06d5cc6dc8",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "846.00",
+                    "Attributes": [
+                      {
+                        "Value": "3fbac3cd-3869-473d-b7ae-1f06d5cc6dc8",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Borrowing Expenses - Less Accumulated Amortisation",
+                    "Attributes": [
+                      {
+                        "Value": "96593e98-2e40-4fca-a4da-408568026fbe",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-529.81",
+                    "Attributes": [
+                      {
+                        "Value": "96593e98-2e40-4fca-a4da-408568026fbe",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-338.23",
+                    "Attributes": [
+                      {
+                        "Value": "96593e98-2e40-4fca-a4da-408568026fbe",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Shares - Leap Business Accelerator Pty Ltd",
+                    "Attributes": [
+                      {
+                        "Value": "255dfa1a-517c-44af-9f7f-dae20281529c",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "50.00",
+                    "Attributes": [
+                      {
+                        "Value": "255dfa1a-517c-44af-9f7f-dae20281529c",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "50.00",
+                    "Attributes": [
+                      {
+                        "Value": "255dfa1a-517c-44af-9f7f-dae20281529c",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Non-current Assets"
+                  },
+                  {
+                    "Value": "366.19"
+                  },
+                  {
+                    "Value": "557.77"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Assets"
+                  },
+                  {
+                    "Value": "116687.10"
+                  },
+                  {
+                    "Value": "181007.43"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Liabilities",
+            "Rows": []
+          },
+          {
+            "RowType": "Section",
+            "Title": "Current Liabilities",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "AMEX - M Malouf",
+                    "Attributes": [
+                      {
+                        "Value": "0fb94d26-7531-43dc-b106-c34ed86f9d51",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "63385.18",
+                    "Attributes": [
+                      {
+                        "Value": "0fb94d26-7531-43dc-b106-c34ed86f9d51",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "41481.42",
+                    "Attributes": [
+                      {
+                        "Value": "0fb94d26-7531-43dc-b106-c34ed86f9d51",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Citibank CC",
+                    "Attributes": [
+                      {
+                        "Value": "4307ad89-8a56-4128-a1ba-2f178c6d4920",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "4069.66",
+                    "Attributes": [
+                      {
+                        "Value": "4307ad89-8a56-4128-a1ba-2f178c6d4920",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "503.28",
+                    "Attributes": [
+                      {
+                        "Value": "4307ad89-8a56-4128-a1ba-2f178c6d4920",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Ge Credit Line",
+                    "Attributes": [
+                      {
+                        "Value": "29b5b699-814b-4d55-a003-cc45e3235245",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "4045.45",
+                    "Attributes": [
+                      {
+                        "Value": "29b5b699-814b-4d55-a003-cc45e3235245",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "3023.30",
+                    "Attributes": [
+                      {
+                        "Value": "29b5b699-814b-4d55-a003-cc45e3235245",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "GST",
+                    "Attributes": [
+                      {
+                        "Value": "ee6077a5-83e9-434f-81fb-25c316f217b7",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "20745.18",
+                    "Attributes": [
+                      {
+                        "Value": "ee6077a5-83e9-434f-81fb-25c316f217b7",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "36811.24",
+                    "Attributes": [
+                      {
+                        "Value": "ee6077a5-83e9-434f-81fb-25c316f217b7",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Loan Matthew Malouf",
+                    "Attributes": [
+                      {
+                        "Value": "35c065da-30f8-4ffc-9901-be5efd99b9ca",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-80388.72",
+                    "Attributes": [
+                      {
+                        "Value": "35c065da-30f8-4ffc-9901-be5efd99b9ca",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-14300.00",
+                    "Attributes": [
+                      {
+                        "Value": "35c065da-30f8-4ffc-9901-be5efd99b9ca",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "PAYG Withholdings Payable",
+                    "Attributes": [
+                      {
+                        "Value": "3e8e3f14-b615-4205-9fc3-b141a40557c6",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "17394.00",
+                    "Attributes": [
+                      {
+                        "Value": "3e8e3f14-b615-4205-9fc3-b141a40557c6",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "0.00",
+                    "Attributes": [
+                      {
+                        "Value": "3e8e3f14-b615-4205-9fc3-b141a40557c6",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Superannuation Payable",
+                    "Attributes": [
+                      {
+                        "Value": "036bc08a-724f-4cd1-bfd5-d211c30e8f13",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "6600.00",
+                    "Attributes": [
+                      {
+                        "Value": "036bc08a-724f-4cd1-bfd5-d211c30e8f13",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "0.00",
+                    "Attributes": [
+                      {
+                        "Value": "036bc08a-724f-4cd1-bfd5-d211c30e8f13",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Wages Payable",
+                    "Attributes": [
+                      {
+                        "Value": "d3e66188-e962-48ae-9a53-ddeeb6576bca",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "25070.66",
+                    "Attributes": [
+                      {
+                        "Value": "d3e66188-e962-48ae-9a53-ddeeb6576bca",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "0.00",
+                    "Attributes": [
+                      {
+                        "Value": "d3e66188-e962-48ae-9a53-ddeeb6576bca",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Current Liabilities"
+                  },
+                  {
+                    "Value": "60921.41"
+                  },
+                  {
+                    "Value": "67519.24"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Non-Current Liabilities",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Drawings - Danielle Malouf",
+                    "Attributes": [
+                      {
+                        "Value": "3705ed6d-7ef4-496e-ad62-53dd3b9689f5",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-369639.91",
+                    "Attributes": [
+                      {
+                        "Value": "3705ed6d-7ef4-496e-ad62-53dd3b9689f5",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-198869.93",
+                    "Attributes": [
+                      {
+                        "Value": "3705ed6d-7ef4-496e-ad62-53dd3b9689f5",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Drawings - Matthew Malouf",
+                    "Attributes": [
+                      {
+                        "Value": "4ee97f89-14ae-4afb-a7b0-0e1ba619a3d7",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-1173155.47",
+                    "Attributes": [
+                      {
+                        "Value": "4ee97f89-14ae-4afb-a7b0-0e1ba619a3d7",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-762815.96",
+                    "Attributes": [
+                      {
+                        "Value": "4ee97f89-14ae-4afb-a7b0-0e1ba619a3d7",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Loan",
+                    "Attributes": [
+                      {
+                        "Value": "692ff8f4-2083-4d7c-b06a-67dc0a228771",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "12535.33",
+                    "Attributes": [
+                      {
+                        "Value": "692ff8f4-2083-4d7c-b06a-67dc0a228771",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "0.00",
+                    "Attributes": [
+                      {
+                        "Value": "692ff8f4-2083-4d7c-b06a-67dc0a228771",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Loan - AMP ***159",
+                    "Attributes": [
+                      {
+                        "Value": "15554285-60f3-4332-bd4d-7e15454dbdaf",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "117450.48",
+                    "Attributes": [
+                      {
+                        "Value": "15554285-60f3-4332-bd4d-7e15454dbdaf",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "123112.40",
+                    "Attributes": [
+                      {
+                        "Value": "15554285-60f3-4332-bd4d-7e15454dbdaf",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Loan - CBA ***7292",
+                    "Attributes": [
+                      {
+                        "Value": "e0073675-15ed-4d98-976d-3475212878ff",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "40095.17",
+                    "Attributes": [
+                      {
+                        "Value": "e0073675-15ed-4d98-976d-3475212878ff",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "52299.56",
+                    "Attributes": [
+                      {
+                        "Value": "e0073675-15ed-4d98-976d-3475212878ff",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Loan - WBC ***000",
+                    "Attributes": [
+                      {
+                        "Value": "e131791d-90f7-4d46-88f1-de8dfdb3b3db",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "57200.64",
+                    "Attributes": [
+                      {
+                        "Value": "e131791d-90f7-4d46-88f1-de8dfdb3b3db",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "68761.77",
+                    "Attributes": [
+                      {
+                        "Value": "e131791d-90f7-4d46-88f1-de8dfdb3b3db",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Opening Balances - Matthew Malouf",
+                    "Attributes": [
+                      {
+                        "Value": "46574891-cdc9-4971-8fe4-371c319b9d20",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-246671.11",
+                    "Attributes": [
+                      {
+                        "Value": "46574891-cdc9-4971-8fe4-371c319b9d20",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-246671.11",
+                    "Attributes": [
+                      {
+                        "Value": "46574891-cdc9-4971-8fe4-371c319b9d20",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Share of Profit - Danielle Malouf",
+                    "Attributes": [
+                      {
+                        "Value": "69498148-bf98-41f3-9cf2-726b285baa55",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "369639.91",
+                    "Attributes": [
+                      {
+                        "Value": "69498148-bf98-41f3-9cf2-726b285baa55",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "198869.93",
+                    "Attributes": [
+                      {
+                        "Value": "69498148-bf98-41f3-9cf2-726b285baa55",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Share of Profit - Matthew Malouf",
+                    "Attributes": [
+                      {
+                        "Value": "543cc314-3296-4d8e-8c77-73084cfd840e",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "873449.57",
+                    "Attributes": [
+                      {
+                        "Value": "543cc314-3296-4d8e-8c77-73084cfd840e",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "361139.65",
+                    "Attributes": [
+                      {
+                        "Value": "543cc314-3296-4d8e-8c77-73084cfd840e",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Non-Current Liabilities"
+                  },
+                  {
+                    "Value": "-319095.39"
+                  },
+                  {
+                    "Value": "-404173.69"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Liabilities"
+                  },
+                  {
+                    "Value": "-258173.98"
+                  },
+                  {
+                    "Value": "-336654.45"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Net Assets"
+                  },
+                  {
+                    "Value": "374861.08"
+                  },
+                  {
+                    "Value": "517661.88"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Equity",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Capital Profits Reserve",
+                    "Attributes": [
+                      {
+                        "Value": "57a9ea94-e280-4f91-85ea-644b35abf31b",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-56124.08",
+                    "Attributes": [
+                      {
+                        "Value": "57a9ea94-e280-4f91-85ea-644b35abf31b",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-56124.08",
+                    "Attributes": [
+                      {
+                        "Value": "57a9ea94-e280-4f91-85ea-644b35abf31b",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Current Year Earnings",
+                    "Attributes": [
+                      {
+                        "Value": "abababab-abab-abab-abab-abababababab",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "430975.16",
+                    "Attributes": [
+                      {
+                        "Value": "abababab-abab-abab-abab-abababababab",
+                        "Id": "account"
+                      },
+                      {
+                        "Value": "7/1/2025",
+                        "Id": "fromDate"
+                      },
+                      {
+                        "Value": "3/31/2026",
+                        "Id": "toDate"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "573775.96",
+                    "Attributes": [
+                      {
+                        "Value": "abababab-abab-abab-abab-abababababab",
+                        "Id": "account"
+                      },
+                      {
+                        "Value": "7/1/2024",
+                        "Id": "fromDate"
+                      },
+                      {
+                        "Value": "3/31/2025",
+                        "Id": "toDate"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Settled Sum",
+                    "Attributes": [
+                      {
+                        "Value": "7988e8f2-3632-41e4-8df3-4dedd132ef71",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "10.00",
+                    "Attributes": [
+                      {
+                        "Value": "7988e8f2-3632-41e4-8df3-4dedd132ef71",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "10.00",
+                    "Attributes": [
+                      {
+                        "Value": "7988e8f2-3632-41e4-8df3-4dedd132ef71",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Equity"
+                  },
+                  {
+                    "Value": "374861.08"
+                  },
+                  {
+                    "Value": "517661.88"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

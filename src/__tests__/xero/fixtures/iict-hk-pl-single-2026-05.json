@@ -1,0 +1,127 @@
+{
+  "_meta": {
+    "tenant_name": "IICT Group Limited",
+    "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+    "business_id": "6c0dfadb-4229-4fc2-89eb-ec064d24511b",
+    "period_month": "2026-05",
+    "from_date": "2026-05-01",
+    "to_date": "2026-05-31",
+    "captured_at": "2026-05-01T22:12:56.330Z"
+  },
+  "response": {
+    "Id": "66645b0d-5d97-4ac8-9b29-4fbb95546c99",
+    "Status": "OK",
+    "ProviderName": "Business Coaching Platform",
+    "DateTimeUTC": "/Date(1777673576126)/",
+    "Reports": [
+      {
+        "ReportID": "ProfitAndLoss",
+        "ReportName": "Profit and Loss",
+        "ReportType": "ProfitAndLoss",
+        "ReportTitles": [
+          "Profit & Loss",
+          "IICT Group Limited",
+          "1 May 2026 to 31 May 2026"
+        ],
+        "ReportDate": "1 May 2026",
+        "UpdatedDateUTC": "/Date(1777673576126)/",
+        "Fields": [],
+        "Rows": [
+          {
+            "RowType": "Header",
+            "Cells": [
+              {
+                "Value": ""
+              },
+              {
+                "Value": "31 May 26"
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Gross Profit"
+                  },
+                  {
+                    "Value": "0.00"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Less Operating Expenses",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Foreign Currency Gains and Losses",
+                    "Attributes": [
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "account"
+                      },
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "groupID"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "472.51",
+                    "Attributes": [
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "account"
+                      },
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "groupID"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Operating Expenses"
+                  },
+                  {
+                    "Value": "472.51"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Net Profit"
+                  },
+                  {
+                    "Value": "-472.51"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

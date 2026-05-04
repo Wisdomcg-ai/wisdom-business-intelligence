@@ -64,6 +64,8 @@ export async function GET(request: NextRequest) {
 
     const summary = await getHistoricalSummary(supabase, businessId, fiscalYear)
 
+    // D-44.2-03 quality gate — non-blocking; summary.data_quality propagates
+    // from ForecastReadService via getHistoricalSummary (44.2-08 Task 1).
     return NextResponse.json({ summary })
   } catch (error: any) {
     // D-18 invariant violations from ForecastReadService surface here.

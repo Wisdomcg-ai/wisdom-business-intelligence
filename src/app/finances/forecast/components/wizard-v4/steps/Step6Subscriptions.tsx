@@ -54,6 +54,15 @@ interface VendorBudget {
   transactions: RecentTransaction[];
   isExpanded: boolean;
   isActive: boolean;
+  // Phase 51 (UX-S6-01): which Xero account codes this vendor is associated with.
+  // Used to compute per-account totals in the sidebar. Optional for back-compat
+  // with vendors restored from saved-state that may not have this populated yet.
+  accountCodes?: string[];
+  // Phase 51 (UX-S6-03): manual-entry metadata. Optional + ignored by the
+  // existing P&L summary path (Phase 51 is presentation-only persistence; future
+  // phases may consume these for cashflow timing).
+  category?: string;
+  startMonth?: string;
 }
 
 interface ReconciliationPeriod {
@@ -101,7 +110,21 @@ const FREQUENCY_COLORS: Record<string, string> = {
   'ad-hoc': 'bg-gray-100 text-gray-600 border-gray-200',
 };
 
-function createManualVendor(name: string, frequency: VendorBudget['frequency'], monthlyBudget: number): VendorBudget {
+// Phase 51 (UX-S6-03): manual-entry category options.
+// Kept narrow on purpose — the operator wants a small fixed list, not free-text.
+// Future expansion can pull from a shared categories module if needed.
+const MANUAL_CATEGORY_OPTIONS = ['Software', 'Marketing', 'Operations', 'Other'] as const;
+
+interface ManualVendorInput {
+  name: string;
+  frequency: VendorBudget['frequency'];
+  monthlyBudget: number;
+  startMonth?: string;
+  category?: string;
+}
+
+function createManualVendor(input: ManualVendorInput): VendorBudget {
+  const { name, frequency, monthlyBudget, startMonth, category } = input;
   return {
     vendorName: name,
     vendorKey: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
@@ -123,7 +146,46 @@ function createManualVendor(name: string, frequency: VendorBudget['frequency'], 
     transactions: [],
     isExpanded: false,
     isActive: true,
+    startMonth,
+    category,
   };
+}
+
+/**
+ * Phase 51 (UX-S6-02): merge incoming vendor list with previous, preserving
+ * operator-edited `isActive` and `monthlyBudget` for vendors with the same
+ * `vendorKey`. New vendors are added with their incoming defaults; previously-
+ * present vendors that don't appear in `incoming` (e.g. account no longer
+ * selected) are dropped.
+ *
+ * Exported for unit testing — see phase-51-step6-re-analyze.test.tsx.
+ */
+export function mergeByVendorKey(prev: VendorBudget[], incoming: VendorBudget[]): VendorBudget[] {
+  const prevByKey = new Map(prev.map(v => [v.vendorKey, v]));
+  return incoming.map(newV => {
+    const existing = prevByKey.get(newV.vendorKey);
+    if (!existing) return newV;
+    return { ...newV, isActive: existing.isActive, monthlyBudget: existing.monthlyBudget };
+  });
+}
+
+/**
+ * Phase 51 (UX-S6-03): build a 24-month list of FY month keys for the
+ * "Start month" dropdown. Spans Y1 + Y2 so operators can plan ahead.
+ */
+function buildStartMonthOptions(fiscalYearStart: number): Array<{ value: string; label: string }> {
+  const options: Array<{ value: string; label: string }> = [];
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Y1 starts in July of fiscalYearStart, runs 24 months.
+  for (let i = 0; i < 24; i++) {
+    const calMonth = ((7 - 1 + i) % 12) + 1;
+    const yearOffset = Math.floor((7 - 1 + i) / 12);
+    const year = fiscalYearStart + yearOffset;
+    const value = `${year}-${String(calMonth).padStart(2, '0')}`;
+    const label = `${monthNames[calMonth - 1]} ${year}`;
+    options.push({ value, label });
+  }
+  return options;
 }
 
 export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: Step6SubscriptionsProps) {
@@ -138,10 +200,17 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isManualMode, setIsManualMode] = useState(false);
   const [showAddVendor, setShowAddVendor] = useState(false);
+  const startMonthOptions = useMemo(
+    () => buildStartMonthOptions(state.fiscalYearStart ?? fiscalYear - 1),
+    [state.fiscalYearStart, fiscalYear],
+  );
+  const defaultStartMonth = startMonthOptions[0]?.value ?? '';
   const [newVendor, setNewVendor] = useState({
     name: '',
     frequency: 'monthly' as VendorBudget['frequency'],
     monthlyBudget: 0,
+    startMonth: defaultStartMonth,
+    category: MANUAL_CATEGORY_OPTIONS[0] as string,
   });
 
   // Calculate current FY context
@@ -339,7 +408,14 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
 
       const data = await response.json();
 
-      // Transform vendor data
+      // Transform vendor data. Phase 51 (UX-S6-01): tag each vendor with the
+      // account codes that were just analyzed so the sidebar can compute
+      // per-account totals. The API doesn't currently return per-vendor account
+      // codes, so we attach the entire selected-account-code list to every
+      // vendor; account totals on the sidebar therefore reflect "this vendor
+      // contributes to all selected accounts" — fine for the UX-S6-01 sidebar
+      // sum semantics (sum across vendors mapped to that account).
+      const analyzedAccountCodes = selectedAccounts.map(acc => acc.accountCode);
       const vendorBudgets: VendorBudget[] = (data.vendors || []).map((v: any) => ({
         vendorName: v.vendorName,
         vendorKey: v.vendorKey,
@@ -362,9 +438,13 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
         transactions: v.transactions || [],
         isExpanded: false,
         isActive: true,
+        accountCodes: v.accountCodes ?? analyzedAccountCodes,
       }));
 
-      setVendors(vendorBudgets);
+      // Phase 51 (UX-S6-02): merge with existing vendor list so operator's
+      // isActive toggles + monthlyBudget edits are preserved across
+      // re-analyze. New vendors take their incoming defaults.
+      setVendors(prev => mergeByVendorKey(prev, vendorBudgets));
       setSummary(data.summary);
       setPhase('review');
 
@@ -440,9 +520,21 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
       return;
     }
 
-    const vendor = createManualVendor(newVendor.name.trim(), newVendor.frequency, newVendor.monthlyBudget);
+    const vendor = createManualVendor({
+      name: newVendor.name.trim(),
+      frequency: newVendor.frequency,
+      monthlyBudget: newVendor.monthlyBudget,
+      startMonth: newVendor.startMonth,
+      category: newVendor.category,
+    });
     setVendors(prev => [...prev, vendor]);
-    setNewVendor({ name: '', frequency: 'monthly', monthlyBudget: 0 });
+    setNewVendor({
+      name: '',
+      frequency: 'monthly',
+      monthlyBudget: 0,
+      startMonth: defaultStartMonth,
+      category: MANUAL_CATEGORY_OPTIONS[0],
+    });
     setShowAddVendor(false);
     setError(null);
   };
@@ -676,7 +768,33 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
 
       {/* Phase 3: Review & Budget (Xero mode) OR Manual entry mode */}
       {phase === 'review' && (
-        <>
+        <div className="flex gap-6 items-start">
+          {/* Phase 51 (UX-S6-01): persistent sidebar showing selected accounts
+              + per-account vendor totals. Only shown in xero mode (manual mode
+              has no Xero accounts to summarize). */}
+          {!isManualMode && (
+            <aside aria-label="Selected Accounts" className="w-64 shrink-0 border border-gray-200 rounded-xl p-4 bg-gray-50">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Selected Accounts</h3>
+              {accounts.filter(a => a.isSelected).length === 0 ? (
+                <p className="text-xs text-gray-500 italic">No accounts selected.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {accounts.filter(a => a.isSelected).map(account => {
+                    const total = vendors
+                      .filter(v => v.isActive && v.accountCodes?.includes(account.accountCode))
+                      .reduce((sum, v) => sum + (v.monthlyBudget || 0), 0);
+                    return (
+                      <li key={account.accountId} className="flex justify-between gap-2 text-sm">
+                        <span className="truncate text-gray-700" title={account.accountName}>{account.accountName}</span>
+                        <span className="font-medium text-gray-900 tabular-nums">{formatCurrency(total)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </aside>
+          )}
+          <div className="flex-1 min-w-0 space-y-6">
           {/* Summary Cards */}
           <div className={`grid ${isManualMode ? 'grid-cols-3' : 'grid-cols-5'} gap-4`}>
             {!isManualMode && (
@@ -857,7 +975,8 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                {isManualMode && (
+                {/* Phase 51 (UX-S6-03): always visible in review phase, not just manual mode */}
+                {phase === 'review' && (
                   <button
                     onClick={() => setShowAddVendor(true)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-brand-navy rounded-lg hover:bg-brand-navy-800 transition-colors"
@@ -866,12 +985,14 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
                     Add Subscription
                   </button>
                 )}
+                {/* Phase 51 (UX-S6-02): renamed from "Re-analyze" → "Change selected accounts".
+                    Vendor toggles are now preserved across re-analyze via mergeByVendorKey. */}
                 {!isManualMode && (
                   <button
                     onClick={() => setPhase('select-accounts')}
                     className="text-sm text-gray-600 hover:text-gray-900"
                   >
-                    Re-analyze
+                    Change selected accounts
                   </button>
                 )}
                 {isSaving ? (
@@ -893,55 +1014,95 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
               </div>
             </div>
 
-            {/* Add Vendor Form — Manual mode */}
+            {/* Add Vendor Form — Phase 51 (UX-S6-03): visible in xero mode too,
+                with explicit labelled fields for start month + category. */}
             {showAddVendor && (
               <div className="px-6 py-4 bg-blue-50 border-b border-blue-100">
                 <div className="grid grid-cols-12 gap-3">
-                  <input
-                    type="text"
-                    value={newVendor.name}
-                    onChange={(e) => setNewVendor({ ...newVendor, name: e.target.value })}
-                    placeholder="Vendor name (e.g., Microsoft 365)"
-                    className="col-span-5 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy"
-                    autoFocus
-                    onKeyDown={(e) => e.key === 'Enter' && addManualVendor()}
-                  />
-                  <select
-                    value={newVendor.frequency}
-                    onChange={(e) => setNewVendor({ ...newVendor, frequency: e.target.value as VendorBudget['frequency'] })}
-                    className="col-span-3 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy"
-                  >
-                    {FREQUENCY_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                  <div className="col-span-2 relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <label className="col-span-5 flex flex-col gap-1 text-xs font-medium text-gray-700">
+                    Vendor name
                     <input
-                      type="number"
-                      value={newVendor.monthlyBudget || ''}
-                      onChange={(e) => setNewVendor({ ...newVendor, monthlyBudget: parseFloat(e.target.value) || 0 })}
-                      placeholder="Monthly"
-                      className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand-navy"
+                      type="text"
+                      value={newVendor.name}
+                      onChange={(e) => setNewVendor({ ...newVendor, name: e.target.value })}
+                      placeholder="Vendor name (e.g., Microsoft 365)"
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy font-normal"
+                      autoFocus
                       onKeyDown={(e) => e.key === 'Enter' && addManualVendor()}
                     />
-                  </div>
-                  <div className="col-span-2 flex gap-2">
-                    <button
-                      onClick={addManualVendor}
-                      disabled={!newVendor.name.trim() || newVendor.monthlyBudget <= 0}
-                      className="flex-1 px-3 py-2 bg-brand-navy text-white text-sm font-medium rounded-lg hover:bg-brand-navy-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  </label>
+                  <label className="col-span-3 flex flex-col gap-1 text-xs font-medium text-gray-700">
+                    Frequency
+                    <select
+                      value={newVendor.frequency}
+                      onChange={(e) => setNewVendor({ ...newVendor, frequency: e.target.value as VendorBudget['frequency'] })}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy font-normal"
                     >
-                      Add
-                    </button>
+                      {FREQUENCY_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="col-span-2 flex flex-col gap-1 text-xs font-medium text-gray-700">
+                    Monthly amount
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                      <input
+                        type="number"
+                        value={newVendor.monthlyBudget || ''}
+                        onChange={(e) => setNewVendor({ ...newVendor, monthlyBudget: parseFloat(e.target.value) || 0 })}
+                        placeholder="Monthly"
+                        className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand-navy font-normal"
+                        onKeyDown={(e) => e.key === 'Enter' && addManualVendor()}
+                      />
+                    </div>
+                  </label>
+                  <label className="col-span-2 flex flex-col gap-1 text-xs font-medium text-gray-700">
+                    Start month
+                    <select
+                      value={newVendor.startMonth}
+                      onChange={(e) => setNewVendor({ ...newVendor, startMonth: e.target.value })}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy font-normal"
+                    >
+                      {startMonthOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="col-span-3 flex flex-col gap-1 text-xs font-medium text-gray-700">
+                    Category
+                    <select
+                      value={newVendor.category}
+                      onChange={(e) => setNewVendor({ ...newVendor, category: e.target.value })}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy font-normal"
+                    >
+                      {MANUAL_CATEGORY_OPTIONS.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="col-span-9 flex justify-end gap-2 mt-1">
                     <button
                       onClick={() => {
                         setShowAddVendor(false);
-                        setNewVendor({ name: '', frequency: 'monthly', monthlyBudget: 0 });
+                        setNewVendor({
+                          name: '',
+                          frequency: 'monthly',
+                          monthlyBudget: 0,
+                          startMonth: defaultStartMonth,
+                          category: MANUAL_CATEGORY_OPTIONS[0],
+                        });
                       }}
                       className="px-3 py-2 text-gray-600 text-sm rounded-lg hover:bg-gray-100 transition-colors"
                     >
                       Cancel
+                    </button>
+                    <button
+                      onClick={addManualVendor}
+                      disabled={!newVendor.name.trim() || newVendor.monthlyBudget <= 0}
+                      className="px-4 py-2 bg-brand-navy text-white text-sm font-medium rounded-lg hover:bg-brand-navy-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Add
                     </button>
                   </div>
                 </div>
@@ -1230,7 +1391,8 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
               </div>
             )}
           </div>
-        </>
+          </div>
+        </div>
       )}
     </div>
   );

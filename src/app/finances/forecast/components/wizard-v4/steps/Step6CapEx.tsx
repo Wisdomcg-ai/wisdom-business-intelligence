@@ -8,6 +8,7 @@ import {
   PlannedSpend,
   SpendType,
   PaymentMethod,
+  LeaseType,
   formatCurrency,
   getPlannedSpendPLImpact,
 } from '../types';
@@ -30,12 +31,34 @@ interface StrategicInitiative {
   is_monthly_cost?: boolean;
 }
 
+// Phase 50 plan 50-02: localStorage key for the one-time migration banner
+// telling coaches about the new lease_type taxonomy. SSR-safe: read inside
+// useEffect so we don't touch window during server render.
+const LEASE_TYPE_BANNER_KEY = 'phase50-leasetype-banner-dismissed';
+
 export function Step6CapEx({ state, actions, fiscalYear, businessId }: Step6CapExProps) {
   const { plannedSpends = [] } = state;
   const [showAddForm, setShowAddForm] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [initiatives, setInitiatives] = useState<StrategicInitiative[]>([]);
   const [loadingInitiatives, setLoadingInitiatives] = useState(false);
+
+  // Phase 50 plan 50-02: dismissible migration banner state. Default true
+  // (not dismissed) so SSR shows the banner; useEffect hydrates from
+  // localStorage on mount.
+  const [showLeaseTypeBanner, setShowLeaseTypeBanner] = useState(true);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.localStorage.getItem(LEASE_TYPE_BANNER_KEY) === '1') {
+      setShowLeaseTypeBanner(false);
+    }
+  }, []);
+  const dismissLeaseTypeBanner = () => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(LEASE_TYPE_BANNER_KEY, '1');
+    }
+    setShowLeaseTypeBanner(false);
+  };
 
   // New item form state
   const [newItem, setNewItem] = useState({
@@ -142,6 +165,27 @@ export function Step6CapEx({ state, actions, fiscalYear, businessId }: Step6CapE
           </button>
         </div>
 
+        {/* Phase 50 plan 50-02 (FCST-BUG-04): one-time migration banner.
+            CapEx items can now be classified more precisely (operating lease,
+            finance lease, loan financing) for correct accrual accounting.
+            Existing items keep simplified accounting until upgraded. */}
+        {showLeaseTypeBanner && (
+          <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 text-xs text-amber-800 flex items-center justify-between gap-4">
+            <span>
+              <strong>New:</strong> CapEx items can now be classified as
+              operating lease, finance lease, or loan financing for more
+              precise P&amp;L accounting. Existing items continue using the
+              simplified model — switch the Payment column to upgrade.
+            </span>
+            <button
+              onClick={dismissLeaseTypeBanner}
+              className="flex-shrink-0 text-amber-700 hover:text-amber-900 font-medium"
+            >
+              Got it
+            </button>
+          </div>
+        )}
+
         {/* Add form */}
         {showAddForm && (
           <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
@@ -207,7 +251,7 @@ export function Step6CapEx({ state, actions, fiscalYear, businessId }: Step6CapE
                     <tr className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          {(item.paymentMethod === 'finance' || item.paymentMethod === 'lease') && (
+                          {(item.paymentMethod === 'finance' || item.paymentMethod === 'lease' || item.lease_type) && (
                             <button onClick={() => { const next = new Set(expandedItems); isExpanded ? next.delete(item.id) : next.add(item.id); setExpandedItems(next); }} className="text-gray-400 hover:text-gray-600">
                               {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                             </button>
@@ -215,7 +259,15 @@ export function Step6CapEx({ state, actions, fiscalYear, businessId }: Step6CapE
                           <span className="text-sm font-medium text-gray-900">{item.description}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right text-sm text-gray-900">{formatCurrency(item.amount)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <input
+                          type="number"
+                          value={item.amount || ''}
+                          onChange={e => actions.updatePlannedSpend(item.id, { amount: parseFloat(e.target.value) || 0 })}
+                          placeholder="0"
+                          className="w-28 px-2 py-1 border border-gray-200 rounded text-sm text-right bg-white"
+                        />
+                      </td>
                       <td className="px-4 py-3 text-center text-sm text-gray-600">{months[(item.month - 7 + 12) % 12]}</td>
                       <td className="px-4 py-3 text-center">
                         <select value={`${item.spendType}${item.spendType === 'asset' ? `-${item.usefulLifeYears || 5}` : ''}`}
@@ -234,10 +286,47 @@ export function Step6CapEx({ state, actions, fiscalYear, businessId }: Step6CapE
                         </select>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <select value={item.paymentMethod} onChange={e => actions.updatePlannedSpend(item.id, { paymentMethod: e.target.value as PaymentMethod })} className="px-2 py-1 text-xs border border-gray-200 rounded">
-                          <option value="outright">Outright</option>
-                          <option value="finance">Finance</option>
-                          <option value="lease">Lease</option>
+                        {/* Phase 50 plan 50-02 (FCST-BUG-04): two-tier select.
+                            New lease_type values use the detailed accounting
+                            taxonomy (4 branches with correct accrual math).
+                            Legacy values fall through to the simplified model
+                            so existing forecasts continue rendering identically. */}
+                        <select
+                          value={item.lease_type || `legacy:${item.paymentMethod}`}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val.startsWith('legacy:')) {
+                              // User selected (or stayed on) the simplified
+                              // model. Clear lease_type and set the legacy
+                              // paymentMethod accordingly.
+                              actions.updatePlannedSpend(item.id, {
+                                lease_type: undefined,
+                                paymentMethod: val.split(':')[1] as PaymentMethod,
+                              });
+                            } else {
+                              // User upgraded to the new detailed taxonomy.
+                              // Keep paymentMethod set so a hypothetical revert
+                              // of this PR still has a valid legacy fallback
+                              // (rollback safety per RESEARCH.md / plan-checker
+                              //  Note 5).
+                              actions.updatePlannedSpend(item.id, {
+                                lease_type: val as LeaseType,
+                              });
+                            }
+                          }}
+                          className="px-2 py-1 text-xs border border-gray-200 rounded"
+                        >
+                          <optgroup label="New (detailed accounting)">
+                            <option value="outright_purchase">Outright purchase</option>
+                            <option value="operating_lease">Operating lease</option>
+                            <option value="finance_lease">Finance lease</option>
+                            <option value="loan_financing">Loan financing</option>
+                          </optgroup>
+                          <optgroup label="Legacy (simplified)">
+                            <option value="legacy:outright">Outright</option>
+                            <option value="legacy:finance">Finance</option>
+                            <option value="legacy:lease">Lease</option>
+                          </optgroup>
                         </select>
                       </td>
                       <td className="px-4 py-3 text-right text-sm font-medium text-gray-900">{formatCurrency(plImpact)}/yr</td>
@@ -281,6 +370,125 @@ export function Step6CapEx({ state, actions, fiscalYear, businessId }: Step6CapE
                                 <div>
                                   <div className="text-xs text-blue-600">Total Cost</div>
                                   <div className="font-semibold text-blue-900">{formatCurrency(item.amount + (item.financeTotalInterest || 0))}</div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+
+                    {/* Phase 50 plan 50-02 (FCST-BUG-04): expansion panel for
+                        items using the new lease_type taxonomy. Conditional
+                        inputs per type:
+                        - outright_purchase: useful_life_months + residual_value
+                        - operating_lease: term_months + leaseMonthlyPayment
+                        - finance_lease + loan_financing: full set
+                        Note: useful_life_months pre-fill from usefulLifeYears
+                        on transition is intentionally NOT done — coach must
+                        confirm the depreciation period explicitly. */}
+                    {isExpanded && item.lease_type && (
+                      <tr className="bg-amber-50 border-b border-amber-100">
+                        <td colSpan={8} className="px-8 py-4">
+                          <div className="text-xs text-amber-800 mb-2 font-medium">
+                            Detailed accounting model: {item.lease_type.replace(/_/g, ' ')}
+                          </div>
+                          <div className="flex items-center gap-4 text-sm flex-wrap">
+                            {(item.lease_type === 'outright_purchase' ||
+                              item.lease_type === 'finance_lease' ||
+                              item.lease_type === 'loan_financing') && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-600">Useful life (months):</span>
+                                <input
+                                  type="number"
+                                  value={item.useful_life_months || ''}
+                                  onChange={e =>
+                                    actions.updatePlannedSpend(item.id, {
+                                      useful_life_months: parseInt(e.target.value) || 0,
+                                    })
+                                  }
+                                  className="w-20 px-2 py-1 border border-amber-200 rounded text-sm bg-white"
+                                  placeholder="60"
+                                />
+                              </div>
+                            )}
+
+                            {(item.lease_type === 'operating_lease' ||
+                              item.lease_type === 'finance_lease' ||
+                              item.lease_type === 'loan_financing') && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-600">Term (months):</span>
+                                <input
+                                  type="number"
+                                  value={item.term_months || ''}
+                                  onChange={e =>
+                                    actions.updatePlannedSpend(item.id, {
+                                      term_months: parseInt(e.target.value) || 0,
+                                    })
+                                  }
+                                  className="w-20 px-2 py-1 border border-amber-200 rounded text-sm bg-white"
+                                  placeholder="60"
+                                />
+                              </div>
+                            )}
+
+                            {(item.lease_type === 'finance_lease' ||
+                              item.lease_type === 'loan_financing') && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-600">Interest rate (% APR):</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.interest_rate ?? ''}
+                                  onChange={e =>
+                                    actions.updatePlannedSpend(item.id, {
+                                      interest_rate: parseFloat(e.target.value) || 0,
+                                    })
+                                  }
+                                  className="w-20 px-2 py-1 border border-amber-200 rounded text-sm bg-white"
+                                  placeholder="6.00"
+                                />
+                              </div>
+                            )}
+
+                            {item.lease_type === 'operating_lease' && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-600">Monthly payment:</span>
+                                <div className="relative">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                                  <input
+                                    type="number"
+                                    value={item.leaseMonthlyPayment || ''}
+                                    onChange={e =>
+                                      actions.updatePlannedSpend(item.id, {
+                                        leaseMonthlyPayment: parseFloat(e.target.value) || 0,
+                                      })
+                                    }
+                                    className="w-24 pl-6 pr-2 py-1 border border-amber-200 rounded text-sm bg-white"
+                                    placeholder="2000"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {(item.lease_type === 'outright_purchase' ||
+                              item.lease_type === 'finance_lease' ||
+                              item.lease_type === 'loan_financing') && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-600">Residual value:</span>
+                                <div className="relative">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                                  <input
+                                    type="number"
+                                    value={item.residual_value || ''}
+                                    onChange={e =>
+                                      actions.updatePlannedSpend(item.id, {
+                                        residual_value: parseFloat(e.target.value) || 0,
+                                      })
+                                    }
+                                    className="w-24 pl-6 pr-2 py-1 border border-amber-200 rounded text-sm bg-white"
+                                    placeholder="0"
+                                  />
                                 </div>
                               </div>
                             )}

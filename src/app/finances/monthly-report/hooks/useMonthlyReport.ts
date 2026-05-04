@@ -243,6 +243,11 @@ export function useMonthlyReport(businessId: string) {
   const [isConsolidationGroup, setIsConsolidationGroup] = useState<
     boolean | null
   >(null)
+  // D-44.2-03 — read-path quality from /api/monthly-report/generate response.
+  // Consolidated path doesn't surface data_quality yet (no top-level wrapper);
+  // single-business reports always populate via 44.2-08 propagation.
+  const [dataQuality, setDataQuality] = useState<import('@/lib/services/forecast-read-service').DataQuality>('verified')
+  const [perTenantQuality, setPerTenantQuality] = useState<import('@/lib/services/forecast-read-service').PerTenantQuality[]>([])
 
   // MLTE-05: detect consolidation mode = business has 2+ active,
   // consolidation-included xero_connections. Mirrors useConsolidatedReport.
@@ -328,6 +333,9 @@ export function useMonthlyReport(businessId: string) {
         }
 
         setReport(data.report)
+        // D-44.2-03 — surface read-path quality (single-business path only).
+        if (data.data_quality) setDataQuality(data.data_quality)
+        if (Array.isArray(data.per_tenant_quality)) setPerTenantQuality(data.per_tenant_quality)
         return data.report
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to generate report')
@@ -416,5 +424,7 @@ export function useMonthlyReport(businessId: string) {
     generateReport,
     saveSnapshot,
     loadSnapshot,
+    dataQuality,
+    perTenantQuality,
   }
 }

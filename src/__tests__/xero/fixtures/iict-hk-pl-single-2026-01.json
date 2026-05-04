@@ -1,0 +1,205 @@
+{
+  "_meta": {
+    "tenant_name": "IICT Group Limited",
+    "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+    "business_id": "6c0dfadb-4229-4fc2-89eb-ec064d24511b",
+    "period_month": "2026-01",
+    "from_date": "2026-01-01",
+    "to_date": "2026-01-31",
+    "captured_at": "2026-05-01T22:12:50.564Z"
+  },
+  "response": {
+    "Id": "fd10719a-91cb-40a2-990a-ccad0c8286f1",
+    "Status": "OK",
+    "ProviderName": "Business Coaching Platform",
+    "DateTimeUTC": "/Date(1777673570358)/",
+    "Reports": [
+      {
+        "ReportID": "ProfitAndLoss",
+        "ReportName": "Profit and Loss",
+        "ReportType": "ProfitAndLoss",
+        "ReportTitles": [
+          "Profit & Loss",
+          "IICT Group Limited",
+          "1 January 2026 to 31 January 2026"
+        ],
+        "ReportDate": "1 May 2026",
+        "UpdatedDateUTC": "/Date(1777673570358)/",
+        "Fields": [],
+        "Rows": [
+          {
+            "RowType": "Header",
+            "Cells": [
+              {
+                "Value": ""
+              },
+              {
+                "Value": "31 Jan 26"
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Income",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Membership income",
+                    "Attributes": [
+                      {
+                        "Value": "a5342881-5e99-43e9-80df-128fc2327c60",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1144391.80",
+                    "Attributes": [
+                      {
+                        "Value": "a5342881-5e99-43e9-80df-128fc2327c60",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Income"
+                  },
+                  {
+                    "Value": "1144391.80"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Gross Profit"
+                  },
+                  {
+                    "Value": "1144391.80"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Less Operating Expenses",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Bank Fees",
+                    "Attributes": [
+                      {
+                        "Value": "c07fe0e7-f56b-4e88-bbe7-4cc73555d225",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "2688.81",
+                    "Attributes": [
+                      {
+                        "Value": "c07fe0e7-f56b-4e88-bbe7-4cc73555d225",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Consultancy",
+                    "Attributes": [
+                      {
+                        "Value": "681ad76b-88b7-4fbc-82fd-15b8fb3a9a98",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "37293.85",
+                    "Attributes": [
+                      {
+                        "Value": "681ad76b-88b7-4fbc-82fd-15b8fb3a9a98",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Offshore Virtual Assistants",
+                    "Attributes": [
+                      {
+                        "Value": "81803890-9db9-4d55-9673-b07d1e1a4726",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "16008.51",
+                    "Attributes": [
+                      {
+                        "Value": "81803890-9db9-4d55-9673-b07d1e1a4726",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Operating Expenses"
+                  },
+                  {
+                    "Value": "55991.17"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Net Profit"
+                  },
+                  {
+                    "Value": "1088400.63"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

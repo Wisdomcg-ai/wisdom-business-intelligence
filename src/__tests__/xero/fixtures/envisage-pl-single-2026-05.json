@@ -1,0 +1,142 @@
+{
+  "_meta": {
+    "tenant_name": "Malouf Family Trust",
+    "tenant_id": "04d9df1f-53b0-4d1c-ba9e-4ce49b9c8860",
+    "business_id": "fa0a80e8-e58e-40aa-b34a-8db667d4b221",
+    "period_month": "2026-05",
+    "from_date": "2026-05-01",
+    "to_date": "2026-05-31",
+    "captured_at": "2026-05-01T22:09:53.401Z"
+  },
+  "response": {
+    "Id": "8f5c3818-3bce-49ad-9340-4b3efca220ca",
+    "Status": "OK",
+    "ProviderName": "Business Coaching Platform",
+    "DateTimeUTC": "/Date(1777673393284)/",
+    "Reports": [
+      {
+        "ReportID": "ProfitAndLoss",
+        "ReportName": "Profit and Loss",
+        "ReportType": "ProfitAndLoss",
+        "ReportTitles": [
+          "Profit and Loss",
+          "Malouf Family Trust",
+          "1 May 2026 to 31 May 2026"
+        ],
+        "ReportDate": "1 May 2026",
+        "UpdatedDateUTC": "/Date(1777673393284)/",
+        "Fields": [],
+        "Rows": [
+          {
+            "RowType": "Header",
+            "Cells": [
+              {
+                "Value": ""
+              },
+              {
+                "Value": "31 May 26"
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Income",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - TB",
+                    "Attributes": [
+                      {
+                        "Value": "5ebbdf05-46b2-4d8c-b194-5bdaa8696ccd",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1818.18",
+                    "Attributes": [
+                      {
+                        "Value": "5ebbdf05-46b2-4d8c-b194-5bdaa8696ccd",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Wisdom Coaching",
+                    "Attributes": [
+                      {
+                        "Value": "9c8fb958-f715-408a-94d6-57d36772ea9f",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "2400.00",
+                    "Attributes": [
+                      {
+                        "Value": "9c8fb958-f715-408a-94d6-57d36772ea9f",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Income"
+                  },
+                  {
+                    "Value": "4218.18"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Gross Profit"
+                  },
+                  {
+                    "Value": "4218.18"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Net Profit"
+                  },
+                  {
+                    "Value": "4218.18"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

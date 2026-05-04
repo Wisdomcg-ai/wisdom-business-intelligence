@@ -50,6 +50,45 @@ export type AccountType =
   | 'other_income'
   | 'other_expense'
 
+/**
+ * D-44.2-03 — quality tier for a (business_id, tenant_id) pair, rolled
+ * up to business level via WORST-OF semantics across tenants (D-44.2-04).
+ *
+ * Severity order (high → low):
+ *   failed > partial > no_sync > stale > verified
+ *
+ * The 44.2-09 banner dispatches on this enum. UI consumers MUST honor it
+ * (faded-with-overlay when not 'verified' per CONTEXT.md UX decision).
+ */
+export type DataQuality = 'verified' | 'partial' | 'failed' | 'no_sync' | 'stale'
+
+export interface PerTenantQuality {
+  tenant_id: string
+  data_quality: DataQuality
+  /** sync_jobs.started_at of the latest row, or null when no syncs ever ran. */
+  last_sync_at: string | null
+  /** sync_jobs.status of the latest row, or null when no syncs ever ran. */
+  last_sync_status: string | null
+  /**
+   * Total reconciler-flagged accounts across pl + bs sub-objects of the
+   * latest sync_jobs.reconciliation. Surfaces as the per-tenant detail in
+   * the 44.2-09 drawer.
+   */
+  discrepancy_count: number
+}
+
+/**
+ * Severity rank for worst-of-tenants rollup (D-44.2-04). Higher number = worse.
+ * Exported so 44.2-09 banner / drawer code can sort per-tenant lists.
+ */
+export const QUALITY_RANK: Record<DataQuality, number> = {
+  verified: 0,
+  stale: 1,
+  no_sync: 2,
+  partial: 3,
+  failed: 4,
+}
+
 export interface MonthlyCompositeRow {
   account_code: string | null
   account_name: string
@@ -85,6 +124,13 @@ export interface MonthlyComposite {
   computed_at: string | null
   /** financial_forecasts.updated_at — the assumptions freshness timestamp. */
   assumptions_updated_at: string | null
+  /**
+   * D-44.2-03 — read-path quality gate. Worst-of-tenants rollup across
+   * every active xero_connections row for this business.
+   */
+  data_quality: DataQuality
+  /** D-44.2-04 — per-tenant breakdown for the 44.2-09 drawer. */
+  per_tenant_quality: PerTenantQuality[]
 }
 
 export interface CategorySubtotals {
@@ -197,6 +243,13 @@ export class ForecastReadService {
       forecast_months: (r.forecast_months ?? {}) as Record<string, number>,
     }))
 
+    // 7. D-44.2-03 — quality gate (per-tenant + worst-of business).
+    //    Reads sync_jobs LATEST per (business_id, tenant_id) using the
+    //    sync_jobs_business_tenant_started_idx index from 44.2-02. Adds 1+N
+    //    queries (xero_connections + 1 per tenant) — small per-call cost
+    //    that gives every consumer the trustworthiness signal for free.
+    const quality = await this.computeDataQuality(ids.all)
+
     return {
       forecast_id: forecastId,
       business_id: forecast.business_id as string,
@@ -206,7 +259,119 @@ export class ForecastReadService {
       coverage,
       computed_at: computedAt,
       assumptions_updated_at: assumptionsUpdatedAt,
+      data_quality: quality.data_quality,
+      per_tenant_quality: quality.per_tenant_quality,
     }
+  }
+
+  /**
+   * D-44.2-03 / D-44.2-04 — per-tenant data_quality, rolled up to business
+   * level via worst-of severity. Public wrapper around the private helper
+   * so consumers without a forecast (cashflow xero-actuals fallback,
+   * coach dashboard aggregation) can still get the quality signal.
+   *
+   * Args: businessIds — already resolved via resolveBusinessIds at the
+   * caller boundary (avoids duplicate dual-ID resolution).
+   */
+  public async getDataQualityForBusiness(
+    businessIds: string[],
+  ): Promise<{ data_quality: DataQuality; per_tenant_quality: PerTenantQuality[] }> {
+    return this.computeDataQuality(businessIds)
+  }
+
+  /**
+   * D-44.2-03 / D-44.2-04 — read sync_jobs LATEST per (business_id,
+   * tenant_id) for every active connection, then roll up to business level
+   * via worst-of severity (failed > partial > no_sync > stale > verified).
+   *
+   * Returns 'no_sync' when the business has no active xero_connections at
+   * all — neither "verified" nor "failed" is honest in that case (there's
+   * nothing to verify against and nothing has failed; there's just no data).
+   */
+  private async computeDataQuality(
+    businessIds: string[],
+  ): Promise<{ data_quality: DataQuality; per_tenant_quality: PerTenantQuality[] }> {
+    // 1. Active tenants for this business. Going through xero_connections
+    //    rather than sync_jobs catches tenants that have never synced —
+    //    those should report 'no_sync', not be silently absent.
+    const { data: connections } = await this.supabase
+      .from('xero_connections')
+      .select('tenant_id, business_id')
+      .in('business_id', businessIds)
+      .eq('is_active', true)
+
+    const tenants = new Set<string>()
+    for (const c of (connections ?? []) as Array<{ tenant_id: string | null }>) {
+      if (c.tenant_id) tenants.add(c.tenant_id)
+    }
+
+    // 2. Per-tenant: latest sync_jobs row → DataQuality.
+    const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000 // 24h
+    const now = Date.now()
+    const perTenant: PerTenantQuality[] = []
+
+    for (const tenantId of tenants) {
+      const { data: latest } = await this.supabase
+        .from('sync_jobs')
+        .select('status, started_at, finished_at, reconciliation')
+        .in('business_id', businessIds)
+        .eq('tenant_id', tenantId)
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      let quality: DataQuality
+      let lastSyncAt: string | null = null
+      let lastSyncStatus: string | null = null
+      let discrepancyCount = 0
+
+      if (!latest) {
+        quality = 'no_sync'
+      } else {
+        lastSyncAt = ((latest as any).started_at ?? null) as string | null
+        lastSyncStatus = ((latest as any).status ?? null) as string | null
+        // Post-06D the reconciliation jsonb has pl + bs sub-objects; legacy
+        // pre-06D rows have flat discrepant_accounts. Sum both shapes so
+        // existing rows still surface.
+        const recon = (latest as any).reconciliation ?? {}
+        const plDisc = (recon.pl?.discrepant_accounts?.length ?? 0) as number
+        const bsUnbalanced = (recon.bs?.unbalanced_dates?.length ?? 0) as number
+        const legacyDisc = (recon.discrepant_accounts?.length ?? 0) as number
+        // Prefer the new shape when present, fall back to legacy field.
+        discrepancyCount = plDisc + bsUnbalanced + (plDisc + bsUnbalanced > 0 ? 0 : legacyDisc)
+
+        const status = lastSyncStatus
+        if (status === 'success') {
+          const ageMs = lastSyncAt ? now - new Date(lastSyncAt).getTime() : Infinity
+          quality = ageMs > STALE_THRESHOLD_MS ? 'stale' : 'verified'
+        } else if (status === 'partial') {
+          quality = 'partial'
+        } else if (status === 'error') {
+          quality = 'failed'
+        } else {
+          // 'running' or unknown — no completed result to trust.
+          quality = 'no_sync'
+        }
+      }
+
+      perTenant.push({
+        tenant_id: tenantId,
+        data_quality: quality,
+        last_sync_at: lastSyncAt,
+        last_sync_status: lastSyncStatus,
+        discrepancy_count: discrepancyCount,
+      })
+    }
+
+    // 3. Worst-of severity → business-level.
+    let business: DataQuality = perTenant.length === 0 ? 'no_sync' : 'verified'
+    for (const t of perTenant) {
+      if (QUALITY_RANK[t.data_quality] > QUALITY_RANK[business]) {
+        business = t.data_quality
+      }
+    }
+
+    return { data_quality: business, per_tenant_quality: perTenant }
   }
 
   /**
@@ -428,4 +593,38 @@ export class ForecastReadService {
 
 export function createForecastReadService(supabase: SupabaseClient): ForecastReadService {
   return new ForecastReadService(supabase)
+}
+
+/**
+ * D-44.2-04 — aggregate data_quality across multiple businesses for the
+ * coach dashboard. Returns the WORST quality across all businesses + a
+ * per-business breakdown for the compact-aggregate banner variant in
+ * 44.2-09.
+ *
+ * Resolves dual IDs at this boundary so callers (the dashboard) can pass
+ * raw business_ids straight from their own list.
+ */
+export async function aggregateDataQualityAcrossBusinesses(
+  supabase: SupabaseClient,
+  businessIds: string[],
+): Promise<{
+  worst: DataQuality
+  affectedCount: number
+  totalCount: number
+  perBusiness: Array<{ business_id: string; quality: DataQuality }>
+}> {
+  const service = createForecastReadService(supabase)
+  const perBusiness = await Promise.all(
+    businessIds.map(async (bid) => {
+      const ids = await resolveBusinessIds(supabase, bid)
+      const result = await service.getDataQualityForBusiness(ids.all)
+      return { business_id: bid, quality: result.data_quality }
+    }),
+  )
+  const worst = perBusiness.reduce<DataQuality>(
+    (acc, b) => (QUALITY_RANK[b.quality] > QUALITY_RANK[acc] ? b.quality : acc),
+    'verified',
+  )
+  const affectedCount = perBusiness.filter((b) => b.quality !== 'verified').length
+  return { worst, affectedCount, totalCount: perBusiness.length, perBusiness }
 }

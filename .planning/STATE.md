@@ -3,23 +3,37 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: verifying
-last_updated: "2026-04-29T20:35:16.949Z"
-last_activity: 2026-04-29
+last_updated: "2026-05-08T00:00:00.000Z"
+last_activity: 2026-05-08
 progress:
-  total_phases: 51
-  completed_phases: 18
-  total_plans: 100
-  completed_plans: 88
+  total_phases: 53
+  completed_phases: 24
+  total_plans: 106
+  completed_plans: 124
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 44 (Test Gate & CI Hardening) — EXECUTING
-Plan: 5 of 5 (next; plans 1, 2, 3, and 4 complete, plan 5 remaining)
-Status: Phase complete — ready for verification
-Last activity: 2026-04-29
+Phase: 44, 44.1, 44.2, 44.3, 45, 49, 50 — **COMPLETE**.
+Phase: 46 (Server-Side Hardening) — **PARTIAL** (3/4 plans shipped). Plan 46-04 deferred ≥2026-05-10 per cooling period.
+Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-05-08). All 56 orphan-prone FKs covered: 50 SET NULL + 4 CASCADE + 2 RESTRICT/CASCADE. fk-policy.md is the authoritative reference going forward.
+Last activity: 2026-05-08 (Phase 49-07 final Bucket C — branch `feat/49-07-bucket-c-final` ready for PR)
+
+## Active operational notes
+
+**Phase 49 NOT NULL relaxations:** 49-04 dropped NOT NULL on 6 columns; 49-05 dropped NOT NULL on 8 more (total 14 columns). The two load-bearing audit-log columns are `coach_audit_log.coach_id` (49-04) and conceptually `user_roles.granted_by` (49-05; column was already nullable in baseline so no relaxation needed, but invariant is identical). DB can no longer enforce that audit rows carry user attribution; only application code does. **Follow-up needed** in a separate phase: app-side runtime assertion (logger / validator) covering both. Documented in `.planning/phases/49-database-integrity-hygiene/49-04-DEVIATION.md` and `49-05-SUMMARY.md`.
+
+**Phase 46-04 cooling period:** earliest ship date 2026-05-10. Preconditions per `SEC-04-MIGRATION-NOTE.md` — re-run SEC-03 verifier reports clean; confirm `APP_SECRET_KEY` still set in Vercel; no Sentry decryption errors over the 7-day window.
+
+## Next eligible work
+
+- **46-04** (after 2026-05-10 cooling period)
+- **Phase 51** (Forecast Wizard UX — emergent from 2026-05-04 review). Items deferred from Phase 50: Step 3 thousands-separator restoration, Step 4 departure flow, Step 4 part-time/casual flexibility, Step 5 $-vs-% toggle, Step 5 simpler layout, Step 6 visibility/undo/add. Needs operator design conversations before planning.
+- **Phase 52** (Xero employee data — emergent). Step 4 pay cycle, standard hours, hourly rate from Xero API. Pure research first.
+- **Phase 47** (Input Validation Rollout) — blocked on 46-04.
+- **44.2 UI surface spot-checks** — non-blocking; operator on deployed preview.
 
 ## Current Milestone: v1.1 — Codebase Hardening
 

@@ -109,15 +109,33 @@ export async function getHistoricalSummary(
       .in('business_id', ids.all)
 
     if (error || !rawLines || rawLines.length === 0) {
-      return { has_xero_data: false }
+      // No data — still surface a quality signal so the banner can explain why.
+      const fallbackQuality = await createForecastReadService(supabase).getDataQualityForBusiness(ids.all)
+      return {
+        has_xero_data: false,
+        data_quality: fallbackQuality.data_quality,
+        per_tenant_quality: fallbackQuality.per_tenant_quality,
+      }
     }
     xeroLines = rawLines as WideXeroRow[]
     coverage = computeCoverageFromRows(xeroLines)
   }
 
   if (xeroLines.length === 0) {
-    return { has_xero_data: false }
+    const fallbackQuality = await createForecastReadService(supabase).getDataQualityForBusiness(ids.all)
+    return {
+      has_xero_data: false,
+      data_quality: fallbackQuality.data_quality,
+      per_tenant_quality: fallbackQuality.per_tenant_quality,
+    }
   }
+
+  // D-44.2-03 — quality gate. Active-forecast path inherits from composite
+  // (already computed in 44.2-07 path); fallback path computes via the
+  // public wrapper so both surfaces produce the same shape.
+  const dataQuality = composite
+    ? { data_quality: composite.data_quality, per_tenant_quality: composite.per_tenant_quality }
+    : await createForecastReadService(supabase).getDataQualityForBusiness(ids.all)
 
   // Determine periods using centralized fiscal year logic.
   const periods = calculateForecastPeriods(fiscalYear, yearStartMonth)
@@ -165,6 +183,8 @@ export async function getHistoricalSummary(
     prior_fy: priorFY || undefined,
     current_ytd: currentYTD,
     coverage,
+    data_quality: dataQuality.data_quality,
+    per_tenant_quality: dataQuality.per_tenant_quality,
   }
 }
 
@@ -275,6 +295,9 @@ function aggregatePeriod(
         percent_of_revenue: 100,
       })
     } else if (line.account_type === 'cogs' && lineTotal !== 0) {
+      // percent_of_revenue intentionally NOT set here — totalRevenue is
+      // mid-aggregation in this loop and not final yet. Filled after the
+      // loop via the second pass below.
       cogsLines.push({
         account_name: line.account_name,
         category: 'Cost of Sales',
@@ -313,6 +336,14 @@ function aggregatePeriod(
 
   const grossProfit = totalRevenue - totalCogs
   const netProfit = grossProfit - totalOpex + totalOtherIncome - totalOtherExpenses
+
+  // Backfill percent_of_revenue on each COGS line now that totalRevenue is
+  // final. Without this, the wizard's Step 3 `calculateCOGSAmount` reads
+  // `percentOfRevenue=0` for every variable-cost line and returns $0 —
+  // making COGS appear not to calculate at all on Xero-sourced forecasts.
+  for (const cl of cogsLines) {
+    cl.percent_of_revenue = totalRevenue > 0 ? (cl.total / totalRevenue) * 100 : 0
+  }
 
   return {
     period_label: label,

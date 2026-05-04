@@ -1,11 +1,22 @@
 // Forecast Wizard V4 Types
 // Based on the 8-step CFO methodology with scenario planning support
 
+import type { PLLineItem } from '@/app/finances/forecast/types';
+
 export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9; // 8 = Growth Plan, 9 = Final Review
 export type ForecastDuration = 1 | 2 | 3; // 1yr, 2yr, or 3yr forecast
 
 export type EmploymentType = 'full-time' | 'part-time' | 'casual' | 'contractor';
 export type ContractorType = 'onshore' | 'offshore';
+
+/**
+ * Phase 51 (UX-S4-02): How a part-time / casual employee enters their schedule.
+ * - 'hours': user inputs hours-per-week (current behaviour)
+ * - 'fte': user inputs %FTE; hoursPerWeek derives from fte/100 × STANDARD_HOURS
+ * Optional. When undefined, components MUST treat the member as 'hours' mode
+ * for full backward compatibility with forecasts saved before Phase 51.
+ */
+export type HoursMode = 'hours' | 'fte';
 export type RevenuePattern = 'seasonal' | 'straight-line' | 'manual';
 export type ExpenseFrequency = 'once' | 'monthly' | 'quarterly' | 'annual';
 export type CostBehavior = 'fixed' | 'variable' | 'adhoc' | 'seasonal';
@@ -147,6 +158,10 @@ export interface TeamMember {
   superAmount: number;
   isFromXero: boolean;
   includeInHeadcount?: boolean; // For contractors - whether to include in headcount calculations
+  // Phase 51 (UX-S4-02): PT/casual schedule input mode.
+  // undefined → treat as 'hours' (current behaviour) for back-compat with
+  // forecasts saved before Phase 51. See HoursMode type for semantics.
+  hoursMode?: HoursMode;
 }
 
 export interface NewHire {
@@ -161,6 +176,9 @@ export interface NewHire {
   salary: number; // Annual salary (calculated for casuals from hourly × hours × weeks)
   superAmount: number;
   includeInHeadcount?: boolean; // For contractors - whether to include in headcount calculations
+  // Phase 51 (UX-S4-02): PT/casual schedule input mode.
+  // undefined → treat as 'hours' (current behaviour) for back-compat.
+  hoursMode?: HoursMode;
 }
 
 export interface Departure {
@@ -251,7 +269,16 @@ export interface OtherExpense {
 
 // Unified planned spending — replaces CapExItem + Investment
 export type SpendType = 'asset' | 'one-off' | 'monthly';
-export type PaymentMethod = 'outright' | 'finance' | 'lease';
+export type PaymentMethod = 'outright' | 'finance' | 'lease'; // LEGACY — preserved for back-compat
+
+// Phase 50 plan 50-02 (FCST-BUG-04): lease/finance taxonomy.
+// Items with `lease_type` set use the new accounting model; items without
+// fall through to the legacy `paymentMethod` switch (today's behavior).
+export type LeaseType =
+  | 'outright_purchase'
+  | 'operating_lease'
+  | 'finance_lease'
+  | 'loan_financing';
 
 export interface PlannedSpend {
   id: string;
@@ -260,18 +287,29 @@ export interface PlannedSpend {
   month: number; // 1-12 fiscal month
 
   spendType: SpendType;
-  usefulLifeYears?: number;          // For assets
+  usefulLifeYears?: number;          // LEGACY (years) — used by legacy paymentMethod branch
   annualDepreciation?: number;       // Calculated: amount / usefulLifeYears
 
-  paymentMethod: PaymentMethod;
+  paymentMethod: PaymentMethod;      // LEGACY discriminator (still required for back-compat)
 
-  // Finance (loan)
+  // Phase 50 plan 50-02 — full taxonomy (FCST-BUG-04)
+  // When `lease_type` is set, takes precedence over `paymentMethod` for
+  // accounting calcs. When undefined, falls through to legacy paymentMethod
+  // branches so existing forecasts render identically (no migration script).
+  lease_type?: LeaseType;
+  term_months?: number;              // Lease/loan term in months
+  interest_rate?: number;            // Annual % APR (used by finance_lease + loan_financing)
+  useful_life_months?: number;       // Depreciation period in months
+                                     // (replaces usefulLifeYears for new items)
+  residual_value?: number;           // Optional balloon / residual at end of lease term
+
+  // Legacy finance fields (preserved for back-compat)
   financeTerm?: number;              // Months
   financeRate?: number;              // Annual %
   financeMonthlyPayment?: number;    // Auto-calculated
   financeTotalInterest?: number;     // Auto-calculated
 
-  // Lease
+  // Legacy lease fields (preserved for back-compat)
   leaseTerm?: number;                // Months
   leaseMonthlyPayment?: number;      // User input
 
@@ -292,36 +330,134 @@ export function calculateTotalInterest(principal: number, monthlyPayment: number
   return Math.round(monthlyPayment * termMonths - principal);
 }
 
-// Calculate P&L impact for a PlannedSpend item (annual)
-export function getPlannedSpendPLImpact(item: PlannedSpend, yearNum: 1 | 2 | 3): number {
-  let impact = 0;
+// Phase 50 plan 50-02 (FCST-BUG-04): split P&L impact into depreciation and
+// expenses so the rollup at useForecastWizard.ts can preserve its two-bucket
+// accumulation (depreciation feeds ForecastSummary.depreciation; expenses
+// feeds ForecastSummary.investments).
+export interface PlannedSpendPLBreakdown {
+  depreciation: number;
+  expenses: number;       // operating expenses + interest portion of payments
+  total: number;
+}
 
-  if (item.spendType === 'asset' && item.usefulLifeYears) {
-    const annualDep = item.amount / item.usefulLifeYears;
-    impact += yearNum === 1 ? annualDep * (13 - item.month) / 12 : annualDep;
-  } else if (item.spendType === 'one-off') {
-    impact += yearNum === 1 ? item.amount : 0;
-  } else if (item.spendType === 'monthly') {
-    impact += item.amount * 12;
+// Calculate P&L impact breakdown for a PlannedSpend item (annual).
+// - When item.lease_type is set: dispatch on the new taxonomy (4 branches).
+// - When item.lease_type is undefined: fall through to legacy paymentMethod
+//   logic so existing forecasts produce identical numbers (no migration).
+export function getPlannedSpendPLBreakdown(
+  item: PlannedSpend,
+  yearNum: 1 | 2 | 3,
+): PlannedSpendPLBreakdown {
+  if (item.lease_type) {
+    return getBreakdownWithTaxonomy(item, yearNum);
   }
+  return getBreakdownLegacy(item, yearNum);
+}
 
-  // Interest expense for financed items
-  if (item.paymentMethod === 'finance' && item.financeTotalInterest && item.financeTerm) {
-    const yearsOfTerm = item.financeTerm / 12;
-    impact += item.financeTotalInterest / yearsOfTerm;
-  }
+function getBreakdownWithTaxonomy(
+  item: PlannedSpend,
+  yearNum: 1 | 2 | 3,
+): PlannedSpendPLBreakdown {
+  const monthsRemaining = yearNum === 1 ? Math.max(0, 13 - item.month) : 12;
+  const depreciableBase = item.amount - (item.residual_value || 0);
+  const usefulLifeMonths = item.useful_life_months || 0;
+  const termMonths = item.term_months || 0;
 
-  // Lease payments (instead of depreciation)
-  if (item.paymentMethod === 'lease' && item.leaseMonthlyPayment) {
-    // Lease replaces asset depreciation — clear the asset impact and use lease cost
-    if (item.spendType === 'asset') {
-      const annualDep = item.usefulLifeYears ? item.amount / item.usefulLifeYears : 0;
-      impact -= yearNum === 1 ? annualDep * (13 - item.month) / 12 : annualDep;
+  switch (item.lease_type) {
+    case 'outright_purchase': {
+      if (usefulLifeMonths <= 0) {
+        return { depreciation: 0, expenses: 0, total: 0 };
+      }
+      const monthlyDep = depreciableBase / usefulLifeMonths;
+      const dep = Math.round(monthlyDep * monthsRemaining);
+      return { depreciation: dep, expenses: 0, total: dep };
     }
-    impact += item.leaseMonthlyPayment * 12;
+    case 'operating_lease': {
+      const monthlyPayment =
+        item.leaseMonthlyPayment ??
+        (termMonths > 0 ? item.amount / termMonths : 0);
+      const exp = Math.round(monthlyPayment * 12);
+      return { depreciation: 0, expenses: exp, total: exp };
+    }
+    case 'finance_lease':
+    case 'loan_financing': {
+      let dep = 0;
+      if (usefulLifeMonths > 0) {
+        const monthlyDep = depreciableBase / usefulLifeMonths;
+        dep = Math.round(monthlyDep * monthsRemaining);
+      }
+      let interestExp = 0;
+      if (termMonths > 0 && item.interest_rate !== undefined) {
+        const monthlyPayment = calculateLoanPayment(
+          item.amount,
+          item.interest_rate,
+          termMonths,
+        );
+        const totalInterest = monthlyPayment * termMonths - item.amount;
+        interestExp = Math.round(totalInterest / (termMonths / 12));
+      }
+      return {
+        depreciation: dep,
+        expenses: interestExp,
+        total: dep + interestExp,
+      };
+    }
+    default: {
+      // Defensive: lease_type was set to an unknown string. Fall through to
+      // legacy so we don't silently zero out a forecast.
+      return getBreakdownLegacy(item, yearNum);
+    }
+  }
+}
+
+// Legacy implementation — preserved to match exactly the behavior of the
+// pre-Phase-50 inline rollup AND the pre-Phase-50 getPlannedSpendPLImpact.
+// Test 4.5 in wizard-v4-bug-fixes.test.tsx regression-locks this against the
+// captured value $23,200 for the canonical legacy fixture.
+function getBreakdownLegacy(
+  item: PlannedSpend,
+  yearNum: 1 | 2 | 3,
+): PlannedSpendPLBreakdown {
+  let depreciation = 0;
+  let expenses = 0;
+
+  if (item.spendType === 'asset' && item.paymentMethod !== 'lease') {
+    if (item.usefulLifeYears) {
+      depreciation = Math.round(
+        (item.amount / item.usefulLifeYears) *
+          (yearNum === 1 ? (13 - item.month) / 12 : 1),
+      );
+    }
   }
 
-  return Math.round(impact);
+  if (
+    item.paymentMethod === 'finance' &&
+    item.financeTotalInterest &&
+    item.financeTerm
+  ) {
+    expenses += Math.round(item.financeTotalInterest / (item.financeTerm / 12));
+  }
+
+  if (item.paymentMethod === 'lease' && item.leaseMonthlyPayment) {
+    expenses += item.leaseMonthlyPayment * 12;
+  }
+
+  if (item.spendType === 'one-off' && yearNum === 1) {
+    expenses += item.amount;
+  }
+
+  if (item.spendType === 'monthly') {
+    expenses += item.amount * 12;
+  }
+
+  return { depreciation, expenses, total: depreciation + expenses };
+}
+
+// Calculate annual P&L impact for a PlannedSpend item.
+// Delegates to getPlannedSpendPLBreakdown (which encapsulates both the new
+// lease_type taxonomy and the legacy paymentMethod fallback).
+export function getPlannedSpendPLImpact(item: PlannedSpend, yearNum: 1 | 2 | 3): number {
+  return getPlannedSpendPLBreakdown(item, yearNum).total;
 }
 
 export interface PriorYearData {
@@ -388,6 +524,10 @@ export interface ForecastWizardState {
     revenue_by_month: Record<string, number>;
     total_revenue: number;
     months_count: number;
+    // Per-line YTD breakdown (Phase 44.3 / FCST-06) — surfaces the per-line
+    // per-month actuals the API already returns so initializeFromXero can
+    // lock completed-month values to the cent.
+    revenue_lines?: PLLineItem[];
   } | null;
 
   // Step 3: Revenue & COGS
@@ -495,6 +635,7 @@ export interface WizardActions {
       revenue_by_month: Record<string, number>;
       total_revenue: number;
       months_count: number;
+      revenue_lines?: PLLineItem[]; // Phase 44.3 — per-line YTD breakdown for target-aware init
     };
   }) => void;
 

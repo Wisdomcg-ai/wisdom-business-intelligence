@@ -76,6 +76,44 @@ export function classifyByXeroType(xeroType: string | undefined | null): Account
   }
 }
 
+/**
+ * Sibling to classifyByXeroType — but for the Balance Sheet's 3-bucket taxonomy
+ * (asset / liability / equity). Returns null for P&L types so callers can route
+ * the row to the P&L pipeline instead.
+ *
+ * Kept separate from classifyByXeroType (rather than broadening that function's
+ * AccountType return) so existing P&L consumers don't need to handle BS
+ * variants and BS consumers don't need to handle P&L variants.
+ *
+ * Mappings derived from production xero_type distribution across all 18 tenants
+ * (verified 2026-04-30): BANK 88, CURRENT 116, FIXED 78, INVENTORY 12,
+ * NONCURRENT 35, PREPAYMENT 2 → asset; CURRLIAB 221, LIABILITY 7, TERMLIAB 61
+ * → liability; EQUITY 53 → equity.
+ */
+export type BSAccountType = 'asset' | 'liability' | 'equity'
+
+export function classifyBSByXeroType(xeroType: string | undefined | null): BSAccountType | null {
+  if (!xeroType) return null
+  const t = xeroType.toUpperCase()
+  switch (t) {
+    case 'BANK':
+    case 'CURRENT':
+    case 'FIXED':
+    case 'INVENTORY':
+    case 'NONCURRENT':
+    case 'PREPAYMENT':
+      return 'asset'
+    case 'CURRLIAB':
+    case 'LIABILITY':
+    case 'TERMLIAB':
+      return 'liability'
+    case 'EQUITY':
+      return 'equity'
+    default:
+      return null // P&L types or unknown — not a BS row
+  }
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /**

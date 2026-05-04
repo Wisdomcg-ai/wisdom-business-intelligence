@@ -1,0 +1,546 @@
+{
+  "_meta": {
+    "tenant_name": "Aeris Solutions Pty Ltd",
+    "tenant_id": "0219d3a9-c1be-4fb8-a4d3-0710b3af715a",
+    "business_id": "900aa935-ae8c-4913-baf7-169260fa19ef",
+    "period_month": "2026-05",
+    "from_date": "2026-05-01",
+    "to_date": "2026-05-31",
+    "captured_at": "2026-05-01T21:50:21.994Z"
+  },
+  "response": {
+    "Id": "0901f44f-643c-4ff8-82df-e0a33c77cb19",
+    "Status": "OK",
+    "ProviderName": "Business Coaching Platform",
+    "DateTimeUTC": "/Date(1777672221866)/",
+    "Reports": [
+      {
+        "ReportID": "ProfitAndLoss",
+        "ReportName": "Profit and Loss",
+        "ReportType": "ProfitAndLoss",
+        "ReportTitles": [
+          "Profit & Loss",
+          "Just Digital Signage - Aeris Solutions P/L atf Aeris Solutions Trust",
+          "1 May 2026 to 31 May 2026"
+        ],
+        "ReportDate": "1 May 2026",
+        "UpdatedDateUTC": "/Date(1777672221866)/",
+        "Fields": [],
+        "Rows": [
+          {
+            "RowType": "Header",
+            "Cells": [
+              {
+                "Value": ""
+              },
+              {
+                "Value": "31 May 26"
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Income",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Data Plans",
+                    "Attributes": [
+                      {
+                        "Value": "185f6526-5750-44e7-a152-6112feed60f4",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "645.00",
+                    "Attributes": [
+                      {
+                        "Value": "185f6526-5750-44e7-a152-6112feed60f4",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Freight",
+                    "Attributes": [
+                      {
+                        "Value": "7b2ccf48-a300-4c85-a695-332fe10734ab",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "390.00",
+                    "Attributes": [
+                      {
+                        "Value": "7b2ccf48-a300-4c85-a695-332fe10734ab",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Hardware",
+                    "Attributes": [
+                      {
+                        "Value": "8659dd53-4eec-469a-b5e2-9aefd38494a0",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "4002.00",
+                    "Attributes": [
+                      {
+                        "Value": "8659dd53-4eec-469a-b5e2-9aefd38494a0",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Software 3rd Party",
+                    "Attributes": [
+                      {
+                        "Value": "5d9e9177-7eb1-466d-b27e-e6bada4231f4",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "640.00",
+                    "Attributes": [
+                      {
+                        "Value": "5d9e9177-7eb1-466d-b27e-e6bada4231f4",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Software internal",
+                    "Attributes": [
+                      {
+                        "Value": "0f64b929-fff8-4345-9191-e6f340265449",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "1923.00",
+                    "Attributes": [
+                      {
+                        "Value": "0f64b929-fff8-4345-9191-e6f340265449",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Support Dept Income",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Support Dept Annual Support Contracts",
+                    "Attributes": [
+                      {
+                        "Value": "81af789a-417c-4246-b4f1-b8376ef5ffc2",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "749.00",
+                    "Attributes": [
+                      {
+                        "Value": "81af789a-417c-4246-b4f1-b8376ef5ffc2",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Sales - Support Dept Offsite Comm Player Builds",
+                    "Attributes": [
+                      {
+                        "Value": "bf177b8c-0d23-4fac-bb04-860e2bb8f355",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "585.00",
+                    "Attributes": [
+                      {
+                        "Value": "bf177b8c-0d23-4fac-bb04-860e2bb8f355",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Support Dept Income"
+                  },
+                  {
+                    "Value": "1334.00"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Income"
+                  },
+                  {
+                    "Value": "8934.00"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Less Cost of Sales",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "ES - Freight",
+                    "Attributes": [
+                      {
+                        "Value": "ea43fb49-ef0c-40c1-a337-897e387f715f",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "26.15",
+                    "Attributes": [
+                      {
+                        "Value": "ea43fb49-ef0c-40c1-a337-897e387f715f",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Purchases - Freight Supplier Charges",
+                    "Attributes": [
+                      {
+                        "Value": "56eb333d-5cd2-4f94-9f2e-f7b272bf33f2",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "40.53",
+                    "Attributes": [
+                      {
+                        "Value": "56eb333d-5cd2-4f94-9f2e-f7b272bf33f2",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Support Dept",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Support - Freight Costs",
+                    "Attributes": [
+                      {
+                        "Value": "ca22c8f5-e644-4894-9484-4083950fe86a",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "113.28",
+                    "Attributes": [
+                      {
+                        "Value": "ca22c8f5-e644-4894-9484-4083950fe86a",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Support Dept"
+                  },
+                  {
+                    "Value": "113.28"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Cost of Sales"
+                  },
+                  {
+                    "Value": "179.96"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Gross Profit"
+                  },
+                  {
+                    "Value": "8754.04"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Less Operating Expenses",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Foreign Currency Gains and Losses",
+                    "Attributes": [
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "account"
+                      },
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "groupID"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "-839.14",
+                    "Attributes": [
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "account"
+                      },
+                      {
+                        "Value": "FXGROUPID",
+                        "Id": "groupID"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Virtual Assistant",
+                    "Attributes": [
+                      {
+                        "Value": "be0f57c0-893b-4389-aa5f-898a9f4980a2",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "31.88",
+                    "Attributes": [
+                      {
+                        "Value": "be0f57c0-893b-4389-aa5f-898a9f4980a2",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Advertising & Marketing",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "JDS Trade Show Exhibitions",
+                    "Attributes": [
+                      {
+                        "Value": "1e8c09f0-8654-4adc-a202-e1aa2b52a7b6",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "589.17",
+                    "Attributes": [
+                      {
+                        "Value": "1e8c09f0-8654-4adc-a202-e1aa2b52a7b6",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Advertising & Marketing"
+                  },
+                  {
+                    "Value": "589.17"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "Office Expenses",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Rent",
+                    "Attributes": [
+                      {
+                        "Value": "7faa130c-3af3-410b-bc1c-f6fbe2054f09",
+                        "Id": "account"
+                      }
+                    ]
+                  },
+                  {
+                    "Value": "6467.97",
+                    "Attributes": [
+                      {
+                        "Value": "7faa130c-3af3-410b-bc1c-f6fbe2054f09",
+                        "Id": "account"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Office Expenses"
+                  },
+                  {
+                    "Value": "6467.97"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "SummaryRow",
+                "Cells": [
+                  {
+                    "Value": "Total Operating Expenses"
+                  },
+                  {
+                    "Value": "6249.88"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "RowType": "Section",
+            "Title": "",
+            "Rows": [
+              {
+                "RowType": "Row",
+                "Cells": [
+                  {
+                    "Value": "Net Profit"
+                  },
+                  {
+                    "Value": "2504.16"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

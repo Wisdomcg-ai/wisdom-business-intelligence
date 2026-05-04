@@ -244,11 +244,53 @@ function isAccountsUrl(u: string): boolean {
   return u.includes('/api.xro/2.0/Accounts')
 }
 
+/**
+ * Empty-balanced BS response — these legacy P&L tests don't model BS, but
+ * post-06D the orchestrator always issues per-month-end BS fetches. Without a
+ * BS handler, the catch-all 500 burns 5xx retries × 22 month-ends = timeout.
+ */
+function isBSUrl(u: string): boolean {
+  return u.includes('/Reports/BalanceSheet')
+}
+function emptyBalancedBS(balanceDate: string) {
+  return {
+    Reports: [
+      {
+        Rows: [
+          { RowType: 'Header', Cells: [{ Value: '' }, { Value: balanceDate }] },
+          {
+            RowType: 'Section',
+            Title: 'Assets',
+            Rows: [
+              {
+                RowType: 'Row',
+                Cells: [
+                  {
+                    Value: 'Placeholder Asset',
+                    Attributes: [{ Id: 'account', Value: 'fffffff1-0000-0000-0000-000000000001' }],
+                  },
+                  { Value: '0.00' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+}
+function bsHandlerOrNull(u: string): Response | null {
+  if (!isBSUrl(u)) return null
+  const m = u.match(/date=(\d{4}-\d{2}-\d{2})/)
+  return makeJsonResponse(emptyBalancedBS(m ? m[1]! : '2026-04-30')) as any
+}
+
 /** Default Path A fetch handler — emits a happy 50/month single-account
  * response and a matching FY-total for any request shape. */
 function defaultPathAFetch(amount = 50) {
   return vi.spyOn(global, 'fetch').mockImplementation(async (url: any) => {
     const u = String(url)
+    const bs = bsHandlerOrNull(u); if (bs) return bs as any
     if (isOrgUrl(u)) return makeJsonResponse(organisationResponse())
     if (isAccountsUrl(u)) {
       return makeJsonResponse(
@@ -300,8 +342,8 @@ describe('Sync Orchestrator', () => {
     const result = await syncBusinessXeroPL('biz-id-1')
 
     expect(result.status).toBe('success')
-    // 1 tenant × (1 Org + 1 Accounts + currentFY 10 monthly + 1 FY-total + priorFY 12 monthly + 1 FY-total) = 26
-    expect(fetchSpy).toHaveBeenCalledTimes(26)
+    // 1 tenant × (1 Org + 1 Accounts + currentFY 10 monthly + 1 FY-total + priorFY 12 monthly + 1 FY-total + 22 BS month-ends) = 48
+    expect(fetchSpy).toHaveBeenCalledTimes(48)
     expect(callLog.some((c) => c.kind === 'rpc:begin_xero_sync_job')).toBe(true)
     expect(callLog.some((c) => c.kind === 'rpc:finalize_xero_sync_job')).toBe(true)
   })
@@ -345,7 +387,7 @@ describe('Sync Orchestrator', () => {
     expect(finalizeCall).toBeTruthy()
     expect(finalizeCall?.arg.p_status).toBe('success')
     expect(finalizeCall?.arg.p_job_id).toBe('sync-job-id-1')
-    expect(finalizeCall?.arg.p_xero_request_count).toBe(26)
+    expect(finalizeCall?.arg.p_xero_request_count).toBe(48)
     expect(finalizeCall?.arg.p_rows_inserted).toBeGreaterThan(0)
     expect(finalizeCall?.arg.p_error).toBeNull()
   })
@@ -450,6 +492,7 @@ describe('Sync Orchestrator', () => {
     })
     vi.spyOn(global, 'fetch').mockImplementation(async (url: any) => {
       const u = String(url)
+      const bs = bsHandlerOrNull(u); if (bs) return bs as any
       if (isOrgUrl(u)) return makeJsonResponse(organisationResponse())
       if (isAccountsUrl(u)) {
         return makeJsonResponse(
@@ -501,8 +544,8 @@ describe('Sync Orchestrator', () => {
     const result = await syncBusinessXeroPL('biz-id-1')
 
     expect(result.status).toBe('success')
-    // 2 tenants × 26 = 52 fetches.
-    expect(result.xero_request_count).toBe(52)
+    // 2 tenants × 48 = 96 fetches (post-06D BS extension).
+    expect(result.xero_request_count).toBe(96)
 
     const tenantIds = new Set<string>()
     for (const batch of upsertedRowsCapture) {
