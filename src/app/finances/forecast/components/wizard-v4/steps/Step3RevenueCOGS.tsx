@@ -6,6 +6,92 @@ import { ForecastWizardState, WizardActions, formatCurrency, generateMonthKeys, 
 import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBanner';
 import type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read-service';
+import { useEditableValue } from '../hooks/useEditableValue';
+
+/**
+ * RevenueLineMixInputs — Phase 51-01 (UX-S3-01)
+ *
+ * Renders a paired $ / % editor for a single revenue line. Both inputs use
+ * useEditableValue (51-00) so neither flickers nor loses keystrokes when the
+ * upstream committed value re-derives mid-edit.
+ *
+ * Why a child component: useEditableValue must be called from a stable
+ * component (Rules of Hooks). Calling it inline inside `revenueLines.map(...)`
+ * would violate the rule of hooks (hook count varies with array length).
+ *
+ * Used by BOTH the summary view (~line 776) and the monthly view (~line 1073)
+ * of Step3RevenueCOGS so the $ ↔ % bidirectional sync behavior is identical.
+ */
+interface RevenueLineMixInputsProps {
+  lineId: string;
+  lineName: string;
+  lineTotal: number;        // committed annual $ for this line (derived from monthly data)
+  linePct: number;          // committed % split for this line
+  onCommitDollar: (value: number) => void;
+  onCommitPct: (value: number) => void;
+  /** 'sm' (summary view ~text-sm, w-20) or 'xs' (monthly view ~text-xs, w-16) */
+  size?: 'sm' | 'xs';
+}
+
+function RevenueLineMixInputs({
+  lineId: _lineId,
+  lineName,
+  lineTotal,
+  linePct,
+  onCommitDollar,
+  onCommitPct,
+  size = 'sm',
+}: RevenueLineMixInputsProps) {
+  // Dollar editor — default parse (parseFloat) coerces typed string → number.
+  const dollarEditor = useEditableValue(lineTotal, onCommitDollar);
+  // Percent editor — clamp parse to 0..100 integer.
+  const percentEditor = useEditableValue(linePct, onCommitPct, {
+    parse: (raw) => {
+      const n = parseInt(raw, 10);
+      if (Number.isNaN(n)) return 0;
+      return Math.max(0, Math.min(100, n));
+    },
+  });
+
+  const dollarClass =
+    size === 'sm'
+      ? 'w-20 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy'
+      : 'w-16 px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy';
+  const percentClass =
+    size === 'sm'
+      ? 'w-14 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy'
+      : 'w-12 px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy';
+  const symbolClass = size === 'sm' ? 'text-xs text-gray-400' : 'text-[10px] text-gray-400';
+  const wrapperClass = size === 'sm' ? 'inline-flex items-center gap-1 justify-center' : 'inline-flex items-center gap-0.5';
+
+  return (
+    <div className={wrapperClass}>
+      <span className={symbolClass}>$</span>
+      <input
+        type="number"
+        aria-label={`Annual dollars for ${lineName}`}
+        value={dollarEditor.display}
+        onChange={dollarEditor.onChange}
+        onBlur={dollarEditor.onBlur}
+        onKeyDown={dollarEditor.onKeyDown}
+        min="0"
+        className={dollarClass}
+      />
+      <input
+        type="number"
+        aria-label={`Percent split for ${lineName}`}
+        value={percentEditor.display}
+        onChange={percentEditor.onChange}
+        onBlur={percentEditor.onBlur}
+        onKeyDown={percentEditor.onKeyDown}
+        min="0"
+        max="100"
+        className={percentClass}
+      />
+      <span className={symbolClass}>%</span>
+    </div>
+  );
+}
 
 interface Step3RevenueCOGSProps {
   state: ForecastWizardState;
@@ -37,12 +123,16 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
   const [showAddRevenue, setShowAddRevenue] = useState(false);
   const [showAddCOGS, setShowAddCOGS] = useState(false);
-  // Local "pending" state for the % Split inputs. The displayed value is
+  // Local "pending" state for the COGS % Split inputs. The displayed value is
   // DERIVED from monthly totals (rounded, with last-line residual fix), so
   // a controlled input bound directly to the derived value re-renders to a
   // different number than what the user typed mid-edit. We hold the typed
   // string in pending state until blur / Enter, then commit.
-  const [pendingMixPcts, setPendingMixPcts] = useState<Record<string, string>>({});
+  //
+  // Phase 51-01 (UX-S3-01): the REVENUE pendingMixPcts state was removed —
+  // both revenue $ and % editors now use the useEditableValue hook (51-00) per
+  // <RevenueLineMixInputs> child component. COGS still uses the local pattern
+  // because Phase 51-01 is scoped to the revenue branch only.
   const [pendingCogsMixPcts, setPendingCogsMixPcts] = useState<Record<string, string>>({});
   const [newRevenueName, setNewRevenueName] = useState('');
   const [newCOGSName, setNewCOGSName] = useState('');
@@ -61,18 +151,19 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
   const isActualMonth = (monthKey: string) => actualMonthKeys.has(monthKey);
 
-  // Commit a pending % edit. Clamps 0..100 and fires the line-update handler.
+  // Commit a pending COGS % edit. Clamps 0..100 and fires the line-update
+  // handler. Revenue uses useEditableValue per <RevenueLineMixInputs>; COGS
+  // is intentionally left on the local pending pattern (out of scope for 51-01).
   const commitMixPct = (lineId: string, raw: string | undefined, kind: 'revenue' | 'cogs') => {
     if (raw === undefined) return;
     const parsed = parseInt(raw, 10);
     const clamped = Math.max(0, Math.min(100, isNaN(parsed) ? 0 : parsed));
     if (kind === 'revenue') {
+      // Defensive — Phase 51-01 routes revenue through useEditableValue, so
+      // this branch is unreachable from the JSX. Left here so future re-use
+      // (e.g., another revenue control still on the local pattern) keeps
+      // working without surprises.
       handleMixChange(lineId, clamped);
-      setPendingMixPcts((prev) => {
-        const next = { ...prev };
-        delete next[lineId];
-        return next;
-      });
     } else {
       handleCogsMixChange(lineId, clamped);
       setPendingCogsMixPcts((prev) => {
@@ -156,6 +247,16 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
   const linePercentages = getLinePercentages();
   const linePctTotal = Object.values(linePercentages).reduce((a, b) => a + b, 0);
+
+  // Phase 51-01 (UX-S3-01): year-level revenue target for the active year.
+  // Used by <RevenueLineMixInputs> so the % column means "share of goal" (NOT
+  // "share of forecast total") — round-trips with $ via commitDollarValue.
+  const yearTargetRevenue =
+    activeYear === 1
+      ? goals.year1?.revenue || 0
+      : activeYear === 2
+        ? goals.year2?.revenue || 0
+        : goals.year3?.revenue || 0;
 
   // Handle line percentage change
   const handleLinePctChange = (lineId: string, value: string) => {
@@ -449,6 +550,23 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     });
     return mix;
   }, [priorYear]);
+
+  // Phase 51-01 (UX-S3-01): commit a $ edit by converting it to a % and
+  // delegating to handleMixChange. Single source of truth for distribution
+  // math — the $ column never duplicates the seasonality / actuals-locking
+  // logic that handleMixChange owns.
+  const commitDollarValue = (lineId: string, dollarValue: number) => {
+    const yearTarget =
+      activeYear === 1
+        ? goals.year1?.revenue || 0
+        : activeYear === 2
+          ? goals.year2?.revenue || 0
+          : goals.year3?.revenue || 0;
+    if (yearTarget <= 0) return;
+    const pct = Math.round((dollarValue / yearTarget) * 100);
+    const clamped = Math.max(0, Math.min(100, pct));
+    handleMixChange(lineId, clamped);
+  };
 
   // Handle mix % change — recalculate forecast from target × mix × seasonality
   const handleMixChange = (lineId: string, newMixPct: number) => {
@@ -774,21 +892,22 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                         {priorTotal > 0 ? formatCurrency(priorTotal) : '\u2014'}
                       </td>
                       <td className="px-4 py-2.5 text-center">
-                        <div className="inline-flex items-center gap-1 justify-center">
-                          <input
-                            type="number"
-                            value={pendingMixPcts[line.id] !== undefined ? pendingMixPcts[line.id] : currentMixPct}
-                            onChange={(e) => setPendingMixPcts((prev) => ({ ...prev, [line.id]: e.target.value }))}
-                            onBlur={() => commitMixPct(line.id, pendingMixPcts[line.id], 'revenue')}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                            }}
-                            min="0"
-                            max="100"
-                            className="w-14 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
-                          />
-                          <span className="text-xs text-gray-400">%</span>
-                        </div>
+                        {/* Phase 51-01 (UX-S3-01): paired $/% editor (was % only).
+                            % is share of goals.year[N].revenue (not share of revenue-line total)
+                            so it round-trips with the $ value and matches handleMixChange semantics. */}
+                        <RevenueLineMixInputs
+                          lineId={line.id}
+                          lineName={line.name}
+                          lineTotal={forecastTotal}
+                          linePct={
+                            yearTargetRevenue > 0
+                              ? Math.round((forecastTotal / yearTargetRevenue) * 100)
+                              : currentMixPct
+                          }
+                          onCommitDollar={(val) => commitDollarValue(line.id, val)}
+                          onCommitPct={(val) => handleMixChange(line.id, val)}
+                          size="sm"
+                        />
                       </td>
                       <td className="px-4 py-2.5 text-right text-sm font-semibold text-gray-900">
                         {formatCurrency(forecastTotal)}
@@ -1071,21 +1190,26 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                         {line.name}
                       </td>
                       <td className="px-1 py-1 text-center">
-                        <div className="inline-flex items-center gap-0.5">
-                          <input
-                            type="number"
-                            value={pendingMixPcts[line.id] !== undefined ? pendingMixPcts[line.id] : revMixPct}
-                            onChange={(e) => setPendingMixPcts((prev) => ({ ...prev, [line.id]: e.target.value }))}
-                            onBlur={() => commitMixPct(line.id, pendingMixPcts[line.id], 'revenue')}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                            }}
-                            min="0"
-                            max="100"
-                            className="w-12 px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
-                          />
-                          <span className="text-[10px] text-gray-400">%</span>
-                        </div>
+                        {/* Phase 51-01 (UX-S3-01): paired $/% editor (was % only).
+                            % is share of goals.year[N].revenue so it round-trips with $. */}
+                        {(() => {
+                          const lineTotalNow = Object.values(yearMonthly).reduce((s, v) => s + (v || 0), 0);
+                          return (
+                            <RevenueLineMixInputs
+                              lineId={line.id}
+                              lineName={line.name}
+                              lineTotal={lineTotalNow}
+                              linePct={
+                                yearTargetRevenue > 0
+                                  ? Math.round((lineTotalNow / yearTargetRevenue) * 100)
+                                  : revMixPct
+                              }
+                              onCommitDollar={(val) => commitDollarValue(line.id, val)}
+                              onCommitPct={(val) => handleMixChange(line.id, val)}
+                              size="xs"
+                            />
+                          );
+                        })()}
                       </td>
                       {monthKeys.map((key) => {
                         const isActual = activeYear === 1 && isActualMonth(key);
