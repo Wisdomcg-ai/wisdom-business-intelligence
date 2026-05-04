@@ -240,22 +240,31 @@ describe('UX-S5-02 — Step 5 OpEx layout (Year total + Monthly avg headers)', (
     const actions = makeStubActions();
     render(<Step5OpEx state={state} actions={actions} fiscalYear={FISCAL_YEAR_END} />);
 
-    // Locate the new column headers and find their column index.
-    const yearTotalHeader = screen.getByRole('columnheader', { name: /year total/i });
+    // Resolve the Monthly avg + Year total column indices, accounting for
+    // rowSpan=2 cells in the primary header row.
+    // Header row 1: [Expense (rs=2), FY{x} Actual (rs=2), Type (rs=2),
+    //                Workings (colSpan=2 or 3), FY Forecast (rs=2), (action rs=2)]
+    // Header row 2: [Monthly avg, Year total]   (Y1)
+    //               [Increase, Monthly avg, Year total]  (Y2/Y3)
     const monthlyAvgHeader = screen.getByRole('columnheader', { name: /monthly avg/i });
+    const yearTotalHeader = screen.getByRole('columnheader', { name: /year total/i });
+    const subHeaderRow = monthlyAvgHeader.closest('tr');
+    expect(subHeaderRow).toBeTruthy();
 
-    // Walk to the parent <tr> to determine each header's column index.
-    const headerRow = yearTotalHeader.closest('tr');
-    expect(headerRow).toBeTruthy();
-    const headerCells = Array.from(headerRow!.querySelectorAll('th'));
-    const yearTotalIdx = headerCells.indexOf(yearTotalHeader as HTMLTableCellElement);
-    const monthlyAvgIdx = headerCells.indexOf(monthlyAvgHeader as HTMLTableCellElement);
-    expect(yearTotalIdx).toBeGreaterThanOrEqual(0);
-    expect(monthlyAvgIdx).toBeGreaterThanOrEqual(0);
+    // Map sub-header cells back to absolute column indices. The first 3
+    // primary-row cells (Expense, FY{x} Actual, Type) take indices 0, 1, 2;
+    // sub-header cells follow at index 3 onward.
+    const subHeaderCells = Array.from(subHeaderRow!.querySelectorAll('th'));
+    const baseColumnOffset = 3; // Expense + FY Actual + Type
+    const monthlyAvgIdx =
+      baseColumnOffset + subHeaderCells.indexOf(monthlyAvgHeader as HTMLTableCellElement);
+    const yearTotalIdx =
+      baseColumnOffset + subHeaderCells.indexOf(yearTotalHeader as HTMLTableCellElement);
 
-    // Find the Rent body row (input value === 'Rent') and read the cells at
-    // those indices.
-    const tbody = headerRow!.parentElement!.parentElement!.querySelector('tbody');
+    // Find the Rent body row.
+    const table = subHeaderRow!.closest('table');
+    expect(table).toBeTruthy();
+    const tbody = table!.querySelector('tbody');
     expect(tbody).toBeTruthy();
     const rentRow = Array.from(tbody!.querySelectorAll('tr')).find((tr) =>
       Array.from(tr.querySelectorAll('input')).some(
@@ -264,12 +273,23 @@ describe('UX-S5-02 — Step 5 OpEx layout (Year total + Monthly avg headers)', (
     );
     expect(rentRow, 'expected to find a body row containing the Rent name input').toBeTruthy();
 
-    const bodyCells = Array.from(rentRow!.querySelectorAll('td'));
-    const yearTotalCellText = bodyCells[yearTotalIdx]?.textContent || '';
-    const monthlyAvgCellText = bodyCells[monthlyAvgIdx]?.textContent || '';
+    // Combine textContent + any <input> value within the cell so we can
+    // assert against editable rows (the Monthly avg + Year total cells in Y1
+    // render <input type="number"> with the numeric value, not text).
+    const cellContent = (cell: HTMLTableCellElement | undefined): string => {
+      if (!cell) return '';
+      const text = cell.textContent || '';
+      const inputs = Array.from(cell.querySelectorAll('input')) as HTMLInputElement[];
+      const inputVals = inputs.map((i) => Number(i.value)).filter((n) => !isNaN(n) && n > 0);
+      const inputText = inputVals.map((n) => `$${n.toLocaleString()}`).join(' ');
+      return `${text} ${inputText}`.trim();
+    };
+    const bodyCells = Array.from(rentRow!.querySelectorAll('td')) as HTMLTableCellElement[];
+    const monthlyAvgCellText = cellContent(bodyCells[monthlyAvgIdx]);
+    const yearTotalCellText = cellContent(bodyCells[yearTotalIdx]);
 
-    expect(yearTotalCellText).toMatch(/\$12,000/);
     expect(monthlyAvgCellText).toMatch(/\$1,000/);
+    expect(yearTotalCellText).toMatch(/\$12,000/);
   });
 });
 
