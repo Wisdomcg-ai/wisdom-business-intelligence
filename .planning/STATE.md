@@ -6,10 +6,10 @@ status: verifying
 last_updated: "2026-05-03T00:00:00.000Z"
 last_activity: 2026-05-03
 progress:
-  total_phases: 51
-  completed_phases: 23
+  total_phases: 53
+  completed_phases: 24
   total_plans: 106
-  completed_plans: 116
+  completed_plans: 122
 ---
 
 # Project State
@@ -21,13 +21,18 @@ Phase: 44.1 (Atomic Save Hardening + Staged Rollout) — **COMPLETE**.
 Phase: 44.2 (CFO-Grade Xero Reconciliation) — **COMPLETE** at the data layer (12/12 plans).
 Phase: 44.3 (Forecast Step 3 — Year-1 Target Wiring) — **COMPLETE** (1/1 plan, full GSD ceremony, PR #60).
 Phase: 45 (Invisible Cleanup) — **COMPLETE** (9/9 CLEAN-* items shipped via PRs #56–#62).
-Phase: 46 (Server-Side Hardening) — **PARTIAL** (3/4 plans shipped via PRs #65, #66, #67 on 2026-05-03). Plan 46-04 (SEC-04 PART 2 fallback removal + SEC-07 console-error sweep + SEC-08 fail-loud Sentry) deliberately deferred ≥7 days per `SEC-04-MIGRATION-NOTE.md` cooling period. **Earliest 46-04 ship date: 2026-05-10.**
-Last activity: 2026-05-03 (Phase 46 Wave 2 closed via PR #67; APP_SECRET_KEY set in Vercel; SEC-03 verifier reports 13/13 rows clean)
+Phase: 46 (Server-Side Hardening) — **PARTIAL** (3/4 plans shipped via PRs #65, #66, #67 on 2026-05-03). Plan 46-04 deferred ≥2026-05-10 per cooling period.
+Phase: 49 (Database Integrity Hygiene) — **PARTIAL** (3/7 plans shipped via PRs #70 + #71 + planning #69 on 2026-05-04). Plan 49-02 (FK policy doc) paused at operator-review checkpoint — Matt to sign off `docs/db/fk-policy.md` and decide `businesses.owner_id` ON DELETE behavior. Plans 49-04..07 blocked on 49-02.
+Phase: 50 (Forecast Wizard Bug Sweep) — **COMPLETE** (2/2 plans shipped via PRs #73 + #74 on 2026-05-04). All 4 reported bugs fixed: Step 3 input integrity, Step 5 OpEx display, Step 7 CapEx editable, Step 7 lease/finance accounting taxonomy.
+Last activity: 2026-05-04 (Phase 50 closed via PR #74; lease/finance taxonomy with proper accounting per type)
 
 Next eligible work:
-- **Phase 46 plan 46-04** (after 2026-05-10 cooling period). Preconditions to verify before kickoff (per `SEC-04-MIGRATION-NOTE.md`): re-run SEC-03 verifier reports clean; confirm `APP_SECRET_KEY` still set in Vercel; no production decryption errors logged in Sentry over the 7-day window.
-- **Phase 47 (Input Validation Rollout)** — depends on Phase 46 fully complete (specifically SEC-07 from 46-04). Blocked until 46-04 ships.
-- **44.2 UI surface spot-checks** (operator on deployed preview): non-blocking, tracked in `.planning/phases/44.2-cfo-grade-xero-reconciliation/UAT.md`.
+- **49-02 operator checkpoint** — Matt to review `docs/db/fk-policy.md` on branch `feat/49-02-fk-policy-doc` and sign off (especially the `businesses.owner_id` decision). Unblocks 49-04..07.
+- **Phase 46 plan 46-04** (after 2026-05-10 cooling period). Preconditions per `SEC-04-MIGRATION-NOTE.md`.
+- **Phase 51** (Forecast Wizard UX improvements — emergent from 2026-05-04 review) — Step 3 thousands separator, Step 4 departure flow, Step 4 part-time/casual flexibility, Step 5 $-vs-% toggle, Step 5 simpler layout, Step 6 visibility/undo/add. Needs operator design conversations before planning.
+- **Phase 52** (Xero employee data integration — emergent) — Step 4 pay cycle, standard hours, hourly rate. Depends on Xero API surface.
+- **Phase 47** (Input Validation Rollout) — blocked on Phase 46 fully complete (SEC-07 from 46-04).
+- **44.2 UI surface spot-checks** — non-blocking, operator on deployed preview.
 
 ## Current Milestone: v1.1 — Codebase Hardening
 
