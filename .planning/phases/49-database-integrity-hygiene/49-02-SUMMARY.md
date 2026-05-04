@@ -125,6 +125,24 @@ None.
 - After operator sign-off, Task 3 will: apply Matt's decisions to the doc, flip Status to ACTIVE, tick all sign-off checkboxes, and commit. A fresh executor invocation (or resumption of this thread with the resume-signal) will handle Task 3.
 
 ---
+
+## Operator sign-off — 2026-05-04 (Task 3 complete)
+
+Operator (Matt Malouf) reviewed the doc and approved with researcher recommendations across the board, with one re-bucketing.
+
+**Decisions:**
+- **Bucket A (was 49 → now 50):** approved as recommended; `session_attendees.user_id` moved B → A (SET NULL) — preserve attendance counts when a user is deleted.
+- **Bucket B (was 5 → now 4):** the 4 `process_*` FKs approved CASCADE.
+- **`businesses.owner_id`:** RESTRICT — force manual ownership transfer / business archival; avoids destructive CASCADE through 26 child tables and avoids ambiguous SET NULL semantics.
+- **`custom_kpis_library.business_id`:** CASCADE — mirror existing `business_id` FK convention.
+- **Bucket C-3 placeholder:** N/A; not used.
+
+**Final bucket distribution:** 50 SET NULL + 4 CASCADE + 2 RESTRICT = 56 FKs ✓
+
+**Doc status:** PROPOSED → ACTIVE on 2026-05-04. All sign-off checkboxes ticked.
+
+**Effect on downstream plans:** 49-04, 49-05, 49-06, 49-07 are now **cleared to start**. The 50 SET NULL FKs split between 49-04/05 (planner's 24+24+1 = 50; one of those plans needs to absorb the 50th). 4 CASCADE FKs ship in 49-06. 2 RESTRICT FKs ship in 49-07.
+
 *Phase: 49-database-integrity-hygiene*
-*Status: HANDED OFF — Task 2 operator checkpoint pending*
-*Last update: 2026-05-03*
+*Status: COMPLETE*
+*Last update: 2026-05-04*
