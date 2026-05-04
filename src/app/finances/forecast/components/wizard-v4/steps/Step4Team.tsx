@@ -8,6 +8,7 @@ import {
   formatCurrency,
   EmploymentType,
   ContractorType,
+  HoursMode,
   SUPER_RATE,
 } from '../types';
 import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
@@ -168,19 +169,29 @@ const NumberInput = memo(function NumberInput({ value, onChange, placeholder = "
 interface PartTimeSalaryInputProps {
   salary: number;
   hoursPerWeek: number;
+  // Phase 51 (UX-S4-02): undefined → treat as 'hours' (back-compat).
+  hoursMode?: HoursMode;
   onSalaryChange: (salary: number) => void;
   onHoursChange: (hours: number, newSalary: number) => void;
+  // Phase 51 (UX-S4-02): toggle between hours-per-week and %FTE input modes.
+  // Optional so older call sites compile; mode toggle is a no-op if omitted.
+  onHoursModeChange?: (mode: HoursMode) => void;
 }
 
 const PartTimeSalaryInput = memo(function PartTimeSalaryInput({
   salary,
   hoursPerWeek,
+  hoursMode,
   onSalaryChange,
-  onHoursChange
+  onHoursChange,
+  onHoursModeChange,
 }: PartTimeSalaryInputProps) {
   // Track previous hours for pro-rata calculation
   const [prevHours, setPrevHours] = useState(hoursPerWeek);
   const fte = calculateFTE(hoursPerWeek);
+  // Phase 51 (UX-S4-02): undefined hoursMode is treated as 'hours' for full
+  // backward compatibility with forecasts saved before Phase 51.
+  const effectiveMode: HoursMode = hoursMode ?? 'hours';
 
   const handleHoursChange = useCallback((newHours: number) => {
     // Pro-rate salary based on hours change
@@ -192,10 +203,25 @@ const PartTimeSalaryInput = memo(function PartTimeSalaryInput({
     onHoursChange(newHours, newSalary);
   }, [prevHours, salary, onHoursChange]);
 
+  // FTE-mode commit: convert %FTE → hoursPerWeek, then reuse the same pro-rata
+  // path so salary updates consistently. Round to whole hours per the plan
+  // (round(STANDARD_HOURS × pct/100)). When pct === current displayed FTE,
+  // hoursPerWeek stays the same — no surprise math.
+  const handleFTEChange = useCallback((pct: number) => {
+    const newHours = Math.round((STANDARD_HOURS * pct) / 100);
+    handleHoursChange(newHours);
+  }, [handleHoursChange]);
+
   // Update prevHours when external changes happen
   useEffect(() => {
     setPrevHours(hoursPerWeek);
   }, [hoursPerWeek]);
+
+  // Toggle mode without altering salary or hours — only flip the displayed input.
+  const handleModeToggle = useCallback((mode: HoursMode) => {
+    if (mode === effectiveMode) return;
+    onHoursModeChange?.(mode);
+  }, [effectiveMode, onHoursModeChange]);
 
   return (
     <div className="w-28">
@@ -204,14 +230,55 @@ const PartTimeSalaryInput = memo(function PartTimeSalaryInput({
         onChange={onSalaryChange}
         className="w-24 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy mb-0.5"
       />
+      {/* Phase 51 (UX-S4-02): Hours/FTE mode toggle */}
+      <div className="flex items-center gap-0.5 mb-0.5">
+        <button
+          type="button"
+          aria-label="Hours mode"
+          onClick={() => handleModeToggle('hours')}
+          className={`px-1.5 py-0.5 text-[9px] font-medium rounded ${
+            effectiveMode === 'hours'
+              ? 'bg-brand-navy text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          Hours
+        </button>
+        <button
+          type="button"
+          aria-label="FTE mode"
+          onClick={() => handleModeToggle('fte')}
+          className={`px-1.5 py-0.5 text-[9px] font-medium rounded ${
+            effectiveMode === 'fte'
+              ? 'bg-brand-navy text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          %FTE
+        </button>
+      </div>
       <div className="flex items-center gap-1">
-        <NumberInput
-          value={hoursPerWeek}
-          onChange={handleHoursChange}
-          className="w-10 px-1.5 py-1 text-xs text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
-        />
-        <span className="text-[10px] text-gray-400">hrs</span>
-        <span className="text-[10px] text-blue-600 font-medium whitespace-nowrap">({Math.round(fte * 100)}%)</span>
+        {effectiveMode === 'fte' ? (
+          <>
+            <NumberInput
+              value={Math.round(fte * 100)}
+              onChange={handleFTEChange}
+              className="w-10 px-1.5 py-1 text-xs text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
+            />
+            <span className="text-[10px] text-gray-400">%</span>
+            <span className="text-[10px] text-blue-600 font-medium whitespace-nowrap">({hoursPerWeek}h)</span>
+          </>
+        ) : (
+          <>
+            <NumberInput
+              value={hoursPerWeek}
+              onChange={handleHoursChange}
+              className="w-10 px-1.5 py-1 text-xs text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
+            />
+            <span className="text-[10px] text-gray-400">hrs</span>
+            <span className="text-[10px] text-blue-600 font-medium whitespace-nowrap">({Math.round(fte * 100)}%)</span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1316,6 +1383,13 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
   const [hireType, setHireType] = useState<'employee' | 'contractor'>('employee');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
+  // Phase 51 (UX-S4-01): Termination modal state. Pending end month defaults to
+  // mid-FY (December of the calendar year that starts the current FY) so the
+  // user always sees a sensible placeholder. Operator decision: ONLY the
+  // "ends on date X" mode is supported — no remove-from-FY-entirely option.
+  const [terminatingMember, setTerminatingMember] = useState<{ id: string; name: string } | null>(null);
+  const [pendingEndMonth, setPendingEndMonth] = useState<string>(`${fiscalYear - 1}-12`);
+
   const toggleRowExpand = useCallback((id: string) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
@@ -1695,10 +1769,19 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
     }
 
     if (row.type === 'part-time') {
+      // Phase 51 (UX-S4-02): pull current hoursMode from the underlying record
+      // (TeamMember or NewHire). undefined → 'hours' default in the input
+      // component; commit hoursMode='fte' through onHoursModeChange when the
+      // operator switches modes.
+      const sourceMember = row.isNewHire
+        ? newHires.find((h) => h.id === row.newHireId)
+        : teamMembers.find((m) => m.id === row.teamMemberId);
+      const currentHoursMode = sourceMember?.hoursMode;
       return (
         <PartTimeSalaryInput
           salary={row.salary}
           hoursPerWeek={row.hoursPerWeek}
+          hoursMode={currentHoursMode}
           onSalaryChange={(salary) => {
             if (row.isNewHire) {
               actions.updateNewHire(row.newHireId!, { salary });
@@ -1711,6 +1794,13 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
               actions.updateNewHire(row.newHireId!, { hoursPerWeek, salary });
             } else {
               actions.updateTeamMember(row.teamMemberId!, { hoursPerWeek, currentSalary: salary, increasePct: 0 });
+            }
+          }}
+          onHoursModeChange={(mode) => {
+            if (row.isNewHire) {
+              actions.updateNewHire(row.newHireId!, { hoursMode: mode });
+            } else {
+              actions.updateTeamMember(row.teamMemberId!, { hoursMode: mode });
             }
           }}
         />
@@ -1918,6 +2008,11 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                     />
                   </div>
                 ) : row.endMonth ? (
+                  // Already-departed: show the End badge + the existing
+                  // MonthPicker so operators can still adjust the end month.
+                  // Phase 51 (UX-S4-01): no separate End-employee button on
+                  // departed rows — the single-departure model means there's
+                  // nothing to "end" again.
                   <div className="flex items-center gap-1">
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">
                       End
@@ -1931,51 +2026,100 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                     />
                   </div>
                 ) : (
+                  // Phase 51 (UX-S4-01): explicit, accessible "End employee"
+                  // button replaces the buried MonthPicker placeholder. Opens
+                  // the termination modal scoped to this member.
                   <div className="flex items-center gap-1">
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600">
                       Active
                     </span>
-                    <MonthPicker
-                      value=""
-                      onChange={(val) => handleDepartureChange(row, val)}
-                      minYear={startYear}
-                      maxYear={endYear}
-                      placeholder="..."
-                    />
+                    {row.teamMemberId && (
+                      <button
+                        type="button"
+                        aria-label={`End employee ${row.name}`}
+                        onClick={() => {
+                          setTerminatingMember({ id: row.teamMemberId!, name: row.name });
+                          setPendingEndMonth(`${fiscalYear - 1}-12`);
+                        }}
+                        className="px-1.5 py-0.5 text-[10px] font-medium text-amber-700 hover:text-amber-900 hover:bg-amber-50 rounded"
+                      >
+                        End employee
+                      </button>
+                    )}
                   </div>
                 )}
               </td>
 
               {/* Salary */}
               <td className="px-2 py-1.5">
-                <CurrencyInput
-                  value={row.salary}
-                  onChange={(val) => {
-                    if (isContractor) {
-                      if (row.isNewHire) {
-                        actions.updateNewHire(row.newHireId!, { salary: val });
+                {!isContractor && row.type === 'part-time' ? (
+                  // Phase 51 (UX-S4-02): part-time rows render the
+                  // PartTimeSalaryInput with the new Hours/FTE toggle. The
+                  // CurrencyInput-only path is kept for full-time, casual, and
+                  // contractor rows below.
+                  (() => {
+                    const sourceMember = row.isNewHire
+                      ? newHires.find((h) => h.id === row.newHireId)
+                      : teamMembers.find((m) => m.id === row.teamMemberId);
+                    return (
+                      <PartTimeSalaryInput
+                        salary={row.salary}
+                        hoursPerWeek={row.hoursPerWeek}
+                        hoursMode={sourceMember?.hoursMode}
+                        onSalaryChange={(salary) => {
+                          if (row.isNewHire) {
+                            actions.updateNewHire(row.newHireId!, { salary });
+                          } else {
+                            actions.updateTeamMember(row.teamMemberId!, { currentSalary: salary, increasePct: 0 });
+                          }
+                        }}
+                        onHoursChange={(hoursPerWeek, salary) => {
+                          if (row.isNewHire) {
+                            actions.updateNewHire(row.newHireId!, { hoursPerWeek, salary });
+                          } else {
+                            actions.updateTeamMember(row.teamMemberId!, { hoursPerWeek, currentSalary: salary, increasePct: 0 });
+                          }
+                        }}
+                        onHoursModeChange={(mode) => {
+                          if (row.isNewHire) {
+                            actions.updateNewHire(row.newHireId!, { hoursMode: mode });
+                          } else {
+                            actions.updateTeamMember(row.teamMemberId!, { hoursMode: mode });
+                          }
+                        }}
+                      />
+                    );
+                  })()
+                ) : (
+                  <CurrencyInput
+                    value={row.salary}
+                    onChange={(val) => {
+                      if (isContractor) {
+                        if (row.isNewHire) {
+                          actions.updateNewHire(row.newHireId!, { salary: val });
+                        } else {
+                          actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, increasePct: 0 });
+                        }
+                      } else if (row.type === 'casual') {
+                        // For casual, recalculate hourly rate from new salary
+                        const weeksPerYear = row.weeksPerYear || DEFAULT_WEEKS;
+                        const newRate = row.hoursPerWeek > 0 ? val / (row.hoursPerWeek * weeksPerYear) : 0;
+                        if (row.isNewHire) {
+                          actions.updateNewHire(row.newHireId!, { salary: val, hourlyRate: Math.round(newRate * 100) / 100 });
+                        } else {
+                          actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, hourlyRate: Math.round(newRate * 100) / 100, increasePct: 0 });
+                        }
                       } else {
-                        actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, increasePct: 0 });
+                        if (row.isNewHire) {
+                          actions.updateNewHire(row.newHireId!, { salary: val });
+                        } else {
+                          actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, increasePct: 0 });
+                        }
                       }
-                    } else if (row.type === 'casual') {
-                      // For casual, recalculate hourly rate from new salary
-                      const weeksPerYear = row.weeksPerYear || DEFAULT_WEEKS;
-                      const newRate = row.hoursPerWeek > 0 ? val / (row.hoursPerWeek * weeksPerYear) : 0;
-                      if (row.isNewHire) {
-                        actions.updateNewHire(row.newHireId!, { salary: val, hourlyRate: Math.round(newRate * 100) / 100 });
-                      } else {
-                        actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, hourlyRate: Math.round(newRate * 100) / 100, increasePct: 0 });
-                      }
-                    } else {
-                      if (row.isNewHire) {
-                        actions.updateNewHire(row.newHireId!, { salary: val });
-                      } else {
-                        actions.updateTeamMember(row.teamMemberId!, { currentSalary: val, increasePct: 0 });
-                      }
-                    }
-                  }}
-                  className="w-full px-1.5 py-1 text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
-                />
+                    }}
+                    className="w-full px-1.5 py-1 text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
+                  />
+                )}
               </td>
 
               {/* Rate — detail column */}
@@ -2893,6 +3037,65 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
               </button>
               <button
                 onClick={() => { setShowAddHire(false); resetAISuggestion(); }}
+                className="px-4 py-2 text-gray-600 text-sm rounded-lg hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 51 (UX-S4-01): Termination modal. Forward-looking only — salary
+          continues through the chosen end month, then drops to zero. Operator
+          decision: no remove-from-FY-entirely option. */}
+      {terminatingMember && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[80]">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">End {terminatingMember.name}</h3>
+              <button
+                onClick={() => setTerminatingMember(null)}
+                className="text-gray-400 hover:text-gray-600"
+                aria-label="Close termination dialog"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Salary continues through the chosen end month, then drops to zero from
+              the following month onward.
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">End month</label>
+              <MonthPicker
+                value={pendingEndMonth}
+                onChange={(val) => setPendingEndMonth(val)}
+                minYear={startYear}
+                maxYear={endYear}
+                placeholder="Select end month"
+                className="w-full py-2"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (terminatingMember && pendingEndMonth) {
+                    actions.addDeparture({
+                      teamMemberId: terminatingMember.id,
+                      endMonth: pendingEndMonth,
+                    });
+                  }
+                  setTerminatingMember(null);
+                }}
+                className="flex-1 px-4 py-2 bg-brand-navy text-white text-sm font-medium rounded-lg hover:bg-brand-navy/90"
+              >
+                Confirm
+              </button>
+              <button
+                type="button"
+                onClick={() => setTerminatingMember(null)}
                 className="px-4 py-2 text-gray-600 text-sm rounded-lg hover:bg-gray-100"
               >
                 Cancel
