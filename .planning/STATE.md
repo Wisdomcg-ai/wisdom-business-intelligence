@@ -9,30 +9,34 @@ progress:
   total_phases: 53
   completed_phases: 24
   total_plans: 106
-  completed_plans: 122
+  completed_plans: 124
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 44 (Test Gate & CI Hardening) — **COMPLETE** (5/5 plans).
-Phase: 44.1 (Atomic Save Hardening + Staged Rollout) — **COMPLETE**.
-Phase: 44.2 (CFO-Grade Xero Reconciliation) — **COMPLETE** at the data layer (12/12 plans).
-Phase: 44.3 (Forecast Step 3 — Year-1 Target Wiring) — **COMPLETE** (1/1 plan, full GSD ceremony, PR #60).
-Phase: 45 (Invisible Cleanup) — **COMPLETE** (9/9 CLEAN-* items shipped via PRs #56–#62).
-Phase: 46 (Server-Side Hardening) — **PARTIAL** (3/4 plans shipped via PRs #65, #66, #67 on 2026-05-03). Plan 46-04 deferred ≥2026-05-10 per cooling period.
-Phase: 49 (Database Integrity Hygiene) — **PARTIAL** (3/7 plans shipped via PRs #70 + #71 + planning #69 on 2026-05-04). Plan 49-02 (FK policy doc) paused at operator-review checkpoint — Matt to sign off `docs/db/fk-policy.md` and decide `businesses.owner_id` ON DELETE behavior. Plans 49-04..07 blocked on 49-02.
-Phase: 50 (Forecast Wizard Bug Sweep) — **COMPLETE** (2/2 plans shipped via PRs #73 + #74 on 2026-05-04). All 4 reported bugs fixed: Step 3 input integrity, Step 5 OpEx display, Step 7 CapEx editable, Step 7 lease/finance accounting taxonomy.
-Last activity: 2026-05-04 (Phase 50 closed via PR #74; lease/finance taxonomy with proper accounting per type)
+Phase: 44, 44.1, 44.2, 44.3, 45, 50 — **COMPLETE**.
+Phase: 46 (Server-Side Hardening) — **PARTIAL** (3/4 plans shipped). Plan 46-04 deferred ≥2026-05-10 per cooling period.
+Phase: 49 (Database Integrity Hygiene) — **PARTIAL** (4/7 plans shipped). Plans 49-01, 49-02 (FK policy ACTIVE 2026-05-04 with operator sign-off), 49-03, 49-04 (SET NULL batch 1 — 24 FKs). Remaining: 49-05, 49-06, 49-07.
+Last activity: 2026-05-04 (Phase 49-04 SET NULL batch 1 closed via PR #77)
 
-Next eligible work:
-- **49-02 operator checkpoint** — Matt to review `docs/db/fk-policy.md` on branch `feat/49-02-fk-policy-doc` and sign off (especially the `businesses.owner_id` decision). Unblocks 49-04..07.
-- **Phase 46 plan 46-04** (after 2026-05-10 cooling period). Preconditions per `SEC-04-MIGRATION-NOTE.md`.
-- **Phase 51** (Forecast Wizard UX improvements — emergent from 2026-05-04 review) — Step 3 thousands separator, Step 4 departure flow, Step 4 part-time/casual flexibility, Step 5 $-vs-% toggle, Step 5 simpler layout, Step 6 visibility/undo/add. Needs operator design conversations before planning.
-- **Phase 52** (Xero employee data integration — emergent) — Step 4 pay cycle, standard hours, hourly rate. Depends on Xero API surface.
-- **Phase 47** (Input Validation Rollout) — blocked on Phase 46 fully complete (SEC-07 from 46-04).
-- **44.2 UI surface spot-checks** — non-blocking, operator on deployed preview.
+## Active operational notes
+
+**Phase 49-04 deviation:** migration dropped NOT NULL on 6 columns to make ON DELETE SET NULL semantically valid. `coach_audit_log.coach_id` is the load-bearing one (fk-policy.md flags it "AUDIT LOG — must preserve"). DB can no longer enforce that audit rows have a coach_id; only application code does. **Follow-up needed** in a separate phase: app-side runtime assertion (logger / validator) to preserve the audit-log invariant. Documented in `.planning/phases/49-database-integrity-hygiene/49-04-DEVIATION.md`.
+
+**Phase 46-04 cooling period:** earliest ship date 2026-05-10. Preconditions per `SEC-04-MIGRATION-NOTE.md` — re-run SEC-03 verifier reports clean; confirm `APP_SECRET_KEY` still set in Vercel; no Sentry decryption errors over the 7-day window.
+
+## Next eligible work
+
+- **49-05** (SET NULL batch 2 — 26 FKs incl. `session_attendees.user_id` which moved B → A per operator decision)
+- **49-06** (CASCADE batch — 4 `process_*` FKs; highest-risk irreversible)
+- **49-07** (RESTRICT batch — `businesses.owner_id` RESTRICT + `custom_kpis_library.business_id` CASCADE per operator decisions)
+- **46-04** (after 2026-05-10 cooling period)
+- **Phase 51** (Forecast Wizard UX — emergent from 2026-05-04 review). Items deferred from Phase 50: Step 3 thousands-separator restoration, Step 4 departure flow, Step 4 part-time/casual flexibility, Step 5 $-vs-% toggle, Step 5 simpler layout, Step 6 visibility/undo/add. Needs operator design conversations before planning.
+- **Phase 52** (Xero employee data — emergent). Step 4 pay cycle, standard hours, hourly rate from Xero API. Pure research first.
+- **Phase 47** (Input Validation Rollout) — blocked on 46-04.
+- **44.2 UI surface spot-checks** — non-blocking; operator on deployed preview.
 
 ## Current Milestone: v1.1 — Codebase Hardening
 
