@@ -215,7 +215,15 @@ export function Step6CapEx({ state, actions, fiscalYear, businessId }: Step6CapE
                           <span className="text-sm font-medium text-gray-900">{item.description}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right text-sm text-gray-900">{formatCurrency(item.amount)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <input
+                          type="number"
+                          value={item.amount || ''}
+                          onChange={e => actions.updatePlannedSpend(item.id, { amount: parseFloat(e.target.value) || 0 })}
+                          placeholder="0"
+                          className="w-28 px-2 py-1 border border-gray-200 rounded text-sm text-right bg-white"
+                        />
+                      </td>
                       <td className="px-4 py-3 text-center text-sm text-gray-600">{months[(item.month - 7 + 12) % 12]}</td>
                       <td className="px-4 py-3 text-center">
                         <select value={`${item.spendType}${item.spendType === 'asset' ? `-${item.usefulLifeYears || 5}` : ''}`}

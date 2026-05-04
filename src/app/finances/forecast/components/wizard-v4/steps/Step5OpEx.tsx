@@ -817,6 +817,18 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
     }
   }, [revenueByYear.y1]);
 
+  // Phase 50 (FCST-BUG-02): sum the OpEx lines that were auto-classified as
+  // team costs so they're surfaced in the Team Costs row of BudgetFramework
+  // instead of falling into a void. The useForecastWizard.ts P&L rollup
+  // (line 1154) already correctly EXCLUDES these lines from the OpEx total;
+  // this derived var brings them back into the team-cost subtraction so the
+  // BudgetFramework display agrees with the rollup. Reactive — re-runs when
+  // any excluded line's amount changes.
+  const opexClassifiedTeamCosts = useMemo(
+    () => excludedTeamLines.reduce((sum, line) => sum + calculateY1Amount(line), 0),
+    [excludedTeamLines, calculateY1Amount]
+  );
+
   // Calculate amount for Y2 or Y3 with auto-projection
   // Y3 uses Y2 as its base (whether Y2 is overridden or calculated)
   const calculateYearAmount = useCallback((line: OpExLine, year: 2 | 3, defaultGrowth: number = 3): number => {
@@ -1012,12 +1024,19 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
     actions.updateOpExLine(lineId, updates);
   };
 
+  // Phase 50 (FCST-BUG-02): Total team costs to display in BudgetFramework =
+  // Step 4 team (members + new hires + departures, salary + super) PLUS the
+  // OpEx lines auto-classified as team (e.g. Xero "Wages and Salaries"). The
+  // P&L rollup excludes these OpEx lines from the OpEx total — we surface
+  // them here so the breakdown reads correctly.
+  const totalTeamCostsForBudget = year1TeamCosts + opexClassifiedTeamCosts;
+
   return (
     <div className="space-y-6">
       {/* Budget Framework */}
       <BudgetFramework
         state={state}
-        year1TeamCosts={year1TeamCosts}
+        year1TeamCosts={totalTeamCostsForBudget}
         opexByYear={opexByYear}
         fiscalYear={fiscalYear}
         actualRevenue={actualRevenue}

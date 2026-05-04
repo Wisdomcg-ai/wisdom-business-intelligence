@@ -802,9 +802,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                                     </div>
                                   ) : (
                                     <input
-                                      type="text"
-                                      value={cellValue ? cellValue.toLocaleString() : ''}
+                                      type="number"
+                                      inputMode="decimal"
+                                      value={cellValue || ''}
                                       onChange={(e) => handleRevenueChange(line.id, key, e.target.value)}
+                                      onKeyDown={(e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
                                       placeholder="0"
                                       className="w-full px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
                                     />
@@ -1056,9 +1058,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                               </div>
                             ) : (
                               <input
-                                type="text"
-                                value={cellValue ? cellValue.toLocaleString() : ''}
+                                type="number"
+                                inputMode="decimal"
+                                value={cellValue || ''}
                                 onChange={(e) => handleRevenueChange(line.id, key, e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
                                 placeholder="0"
                                 className="w-full px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy"
                               />
@@ -1189,9 +1193,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                         return (
                           <td key={key} className={`px-1 py-1 ${isActual ? 'bg-blue-50' : ''}`}>
                             <input
-                              type="text"
-                              value={val ? val.toLocaleString() : ''}
+                              type="number"
+                              inputMode="decimal"
+                              value={val || ''}
                               onChange={(e) => handleCOGSMonthChange(key, e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
                               placeholder="0"
                               className={`w-full px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy ${
                                 !hasMonthlyData ? 'text-gray-400' : 'text-gray-900'
