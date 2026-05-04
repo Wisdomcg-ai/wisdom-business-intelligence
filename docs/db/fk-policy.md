@@ -207,6 +207,7 @@ This section is appended to by every Phase 49 DB-04 plan as migrations land.
 |------|-------------------|--------|-------------|------|
 | 2026-05-05 | `20260505000000_db04_set_null_fks_batch_1.sql` | A (SET NULL) | 24 — Bucket A rows 1-22 + 47 + 48 | 49-04 |
 | 2026-05-06 | `20260506000000_db04_set_null_fks_batch_2.sql` | A (SET NULL) | 26 — Bucket A rows 23-46 + 49-50. **All Bucket A coverage complete (50/50).** | 49-05 |
+| 2026-05-07 | `20260507000000_db04_cascade_fks.sql` | B (CASCADE) | 4 — all `process_*` Bucket B rows. **All Bucket B coverage complete (4/4).** CASCADE is irreversible; cascade-bound assertions verified in db-04-cascade-batch.test.ts. | 49-06 |
 
 ---
 
