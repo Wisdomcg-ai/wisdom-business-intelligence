@@ -151,7 +151,7 @@ describe('UX-S6-02 — Step 6 re-analyze preserves vendor toggles', () => {
     render(<Step6Subscriptions state={state} actions={actions} fiscalYear={FISCAL_YEAR_END} businessId={BUSINESS_ID} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Subscription Budgets/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Subscription Budgets/i })).toBeInTheDocument();
     });
 
     // Toggle Notion off
@@ -194,7 +194,7 @@ describe('UX-S6-02 — Step 6 re-analyze preserves vendor toggles', () => {
     await user.click(analyzeBtn);
 
     await waitFor(() => {
-      expect(screen.getByText(/Subscription Budgets/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Subscription Budgets/i })).toBeInTheDocument();
     });
 
     // Re-find Notion row; checkbox should still be unchecked (preserved)
