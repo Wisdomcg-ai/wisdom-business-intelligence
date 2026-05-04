@@ -74,34 +74,34 @@ The `Status` column tracks per-FK lifecycle: `proposed` → `approved` (after Ma
 | 20 | `monthly_reviews.created_by` | `auth.users.id` | 9060 | SET NULL | Review preserved | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
 | 21 | `process_comments.commented_by` | `auth.users.id` | 9100 | SET NULL | Comment preserved | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
 | 22 | `process_comments.commented_to` | `auth.users.id` | 9105 | SET NULL | Same | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
-| 23 | `roadmap_completions.user_id` | `public.profiles.id` | 9230 | SET NULL | Note: → `profiles`. Completion record preserved | [x] | approved |
-| 24 | `session_actions.created_by` | `auth.users.id` | 9255 | SET NULL | Session action preserved | [x] | approved |
-| 25 | `session_attendees.added_by` | `auth.users.id` | 9275 | SET NULL | Attendance record preserved (note: `session_attendees.user_id` is in Bucket B — different semantics) | [x] | approved |
-| 26 | `session_notes.coach_id` | `auth.users.id` | 9295 | SET NULL | Notes preserved | [x] | approved |
-| 27 | `session_prep.client_id` | `auth.users.id` | 9305 | SET NULL | Prep preserved | [x] | approved |
-| 28 | `sessions.coach_id` | `auth.users.id` | 9325 | SET NULL | Session preserved | [x] | approved |
-| 29 | `shared_documents.uploaded_by` | `auth.users.id` | 9335 | SET NULL | Doc preserved | [x] | approved |
-| 30 | `sprint_actions.user_id` | `auth.users.id` | 9340 | SET NULL | Sprint history preserved | [x] | approved |
-| 31 | `sprint_key_actions.user_id` | `auth.users.id` | 9345 | SET NULL | Same | [x] | approved |
-| 32 | `strategic_initiatives.user_id` | `auth.users.id` | 9415 | SET NULL | Initiative preserved | [x] | approved |
-| 33 | `strategic_todos.created_by` | `auth.users.id` | 9440 | SET NULL | Todo preserved | [x] | approved |
-| 34 | `strategic_todos.owner_id` | `auth.users.id` | 9445 | SET NULL | Owner unassigned on deletion (NB: this is `strategic_todos.owner_id`, NOT `businesses.owner_id` — see Bucket C-1 for the latter) | [x] | approved |
-| 35 | `system_roles.created_by` | `auth.users.id` | 9550 | SET NULL | Role assignment audit preserved | [x] | approved |
-| 36 | `team_invites.accepted_by` | `auth.users.id` | 9570 | SET NULL | Invite history preserved | [x] | approved |
-| 37 | `team_invites.invited_by` | `auth.users.id` | 9580 | SET NULL | Same | [x] | approved |
-| 38 | `todo_items.created_by` | `auth.users.id` | 9590 | SET NULL | Todo preserved | [x] | approved |
-| 39 | `user_roles.granted_by` | `auth.users.id` | 9640 | SET NULL | **AUDIT LOG — must preserve** | [x] | approved |
-| 40 | `weekly_checkins.created_by` | `auth.users.id` | 9675 | SET NULL | Check-in preserved | [x] | approved |
-| 41 | `annual_snapshots.q1_snapshot_id` | `quarterly_snapshots.id` | 8495 | SET NULL | Annual snapshot survives quarterly deletion; q-pointer nulled. **Variant test:** create OTHER parent (not user) — see RESEARCH.md DB-04 batch-2 notes. | [x] | approved |
-| 42 | `annual_snapshots.q2_snapshot_id` | `quarterly_snapshots.id` | 8500 | SET NULL | Same | [x] | approved |
-| 43 | `annual_snapshots.q3_snapshot_id` | `quarterly_snapshots.id` | 8505 | SET NULL | Same | [x] | approved |
-| 44 | `annual_snapshots.q4_snapshot_id` | `quarterly_snapshots.id` | 8510 | SET NULL | Same | [x] | approved |
-| 45 | `swot_items.carried_from_item_id` | `swot_items.id` | 9540 | SET NULL | **Self-FK** — preserve current item, lose ancestry pointer (Principle 5) | [x] | approved |
-| 46 | `todo_items.parent_task_id` | `todo_items.id` | 9595 | SET NULL | **Self-FK** — child becomes top-level if parent deleted (Principle 5) | [x] | approved |
+| 23 | `roadmap_completions.user_id` | `public.profiles.id` | 9230 | SET NULL | Note: → `profiles`. Completion record preserved | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 24 | `session_actions.created_by` | `auth.users.id` | 9255 | SET NULL | Session action preserved | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 25 | `session_attendees.added_by` | `auth.users.id` | 9275 | SET NULL | Attendance record preserved (note: `session_attendees.user_id` is in Bucket B — different semantics) | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 26 | `session_notes.coach_id` | `auth.users.id` | 9295 | SET NULL | Notes preserved | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 27 | `session_prep.client_id` | `auth.users.id` | 9305 | SET NULL | Prep preserved | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 28 | `sessions.coach_id` | `auth.users.id` | 9325 | SET NULL | Session preserved | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 29 | `shared_documents.uploaded_by` | `auth.users.id` | 9335 | SET NULL | Doc preserved | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 30 | `sprint_actions.user_id` | `auth.users.id` | 9340 | SET NULL | Sprint history preserved | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 31 | `sprint_key_actions.user_id` | `auth.users.id` | 9345 | SET NULL | Same | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 32 | `strategic_initiatives.user_id` | `auth.users.id` | 9415 | SET NULL | Initiative preserved | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 33 | `strategic_todos.created_by` | `auth.users.id` | 9440 | SET NULL | Todo preserved | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 34 | `strategic_todos.owner_id` | `auth.users.id` | 9445 | SET NULL | Owner unassigned on deletion (NB: this is `strategic_todos.owner_id`, NOT `businesses.owner_id` — see Bucket C-1 for the latter) | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 35 | `system_roles.created_by` | `auth.users.id` | 9550 | SET NULL | Role assignment audit preserved | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 36 | `team_invites.accepted_by` | `auth.users.id` | 9570 | SET NULL | Invite history preserved | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 37 | `team_invites.invited_by` | `auth.users.id` | 9580 | SET NULL | Same | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 38 | `todo_items.created_by` | `auth.users.id` | 9590 | SET NULL | Todo preserved | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 39 | `user_roles.granted_by` | `auth.users.id` | 9640 | SET NULL | **AUDIT LOG — must preserve** | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 40 | `weekly_checkins.created_by` | `auth.users.id` | 9675 | SET NULL | Check-in preserved | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 41 | `annual_snapshots.q1_snapshot_id` | `quarterly_snapshots.id` | 8495 | SET NULL | Annual snapshot survives quarterly deletion; q-pointer nulled. **Variant test:** create OTHER parent (not user) — see RESEARCH.md DB-04 batch-2 notes. | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 42 | `annual_snapshots.q2_snapshot_id` | `quarterly_snapshots.id` | 8500 | SET NULL | Same | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 43 | `annual_snapshots.q3_snapshot_id` | `quarterly_snapshots.id` | 8505 | SET NULL | Same | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 44 | `annual_snapshots.q4_snapshot_id` | `quarterly_snapshots.id` | 8510 | SET NULL | Same | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 45 | `swot_items.carried_from_item_id` | `swot_items.id` | 9540 | SET NULL | **Self-FK** — preserve current item, lose ancestry pointer (Principle 5) | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 46 | `todo_items.parent_task_id` | `todo_items.id` | 9595 | SET NULL | **Self-FK** — child becomes top-level if parent deleted (Principle 5) | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
 | 47 | `coach_benchmarks.source_interaction_id` | `ai_interactions.id` | 8690 | SET NULL | Benchmark loses source ref but is retained. **Variant test:** create OTHER parent. | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
 | 48 | `monthly_report_settings.budget_forecast_id` | `financial_forecasts.id` | 9040 | SET NULL | Settings retained, forecast ref nulled. **Variant test:** create OTHER parent. | [x] | applied: 20260505000000_db04_set_null_fks_batch_1.sql |
-| 49 | `session_actions.strategic_initiative_id` | `strategic_initiatives.id` | 9270 | SET NULL | Action preserved, initiative ref nulled. **Variant test:** create OTHER parent. | [x] | approved |
-| 50 | `session_attendees.user_id` | `auth.users.id` | 9285 | SET NULL | **Moved from Bucket B per operator decision 2026-05-04.** Preserve attendance counts when a user is deleted; the attendee row survives with `user_id = NULL`. | [x] | approved |
+| 49 | `session_actions.strategic_initiative_id` | `strategic_initiatives.id` | 9270 | SET NULL | Action preserved, initiative ref nulled. **Variant test:** create OTHER parent. | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
+| 50 | `session_attendees.user_id` | `auth.users.id` | 9285 | SET NULL | **Moved from Bucket B per operator decision 2026-05-04.** Preserve attendance counts when a user is deleted; the attendee row survives with `user_id = NULL`. | [x] | applied: 20260506000000_db04_set_null_fks_batch_2.sql |
 
 **Confidence (per RESEARCH.md):** HIGH. The pattern matches the established convention already in baseline (`audit_log_user_id_fkey ... ON DELETE SET NULL` at baseline:8545; `cfo_email_log.triggered_by ... ON DELETE SET NULL`; `cfo_report_status.approved_by ... ON DELETE SET NULL` at baseline:8645).
 
