@@ -8,6 +8,15 @@ export type ForecastDuration = 1 | 2 | 3; // 1yr, 2yr, or 3yr forecast
 
 export type EmploymentType = 'full-time' | 'part-time' | 'casual' | 'contractor';
 export type ContractorType = 'onshore' | 'offshore';
+
+/**
+ * Phase 51 (UX-S4-02): How a part-time / casual employee enters their schedule.
+ * - 'hours': user inputs hours-per-week (current behaviour)
+ * - 'fte': user inputs %FTE; hoursPerWeek derives from fte/100 × STANDARD_HOURS
+ * Optional. When undefined, components MUST treat the member as 'hours' mode
+ * for full backward compatibility with forecasts saved before Phase 51.
+ */
+export type HoursMode = 'hours' | 'fte';
 export type RevenuePattern = 'seasonal' | 'straight-line' | 'manual';
 export type ExpenseFrequency = 'once' | 'monthly' | 'quarterly' | 'annual';
 export type CostBehavior = 'fixed' | 'variable' | 'adhoc' | 'seasonal';
@@ -149,6 +158,10 @@ export interface TeamMember {
   superAmount: number;
   isFromXero: boolean;
   includeInHeadcount?: boolean; // For contractors - whether to include in headcount calculations
+  // Phase 51 (UX-S4-02): PT/casual schedule input mode.
+  // undefined → treat as 'hours' (current behaviour) for back-compat with
+  // forecasts saved before Phase 51. See HoursMode type for semantics.
+  hoursMode?: HoursMode;
 }
 
 export interface NewHire {
@@ -163,6 +176,9 @@ export interface NewHire {
   salary: number; // Annual salary (calculated for casuals from hourly × hours × weeks)
   superAmount: number;
   includeInHeadcount?: boolean; // For contractors - whether to include in headcount calculations
+  // Phase 51 (UX-S4-02): PT/casual schedule input mode.
+  // undefined → treat as 'hours' (current behaviour) for back-compat.
+  hoursMode?: HoursMode;
 }
 
 export interface Departure {
