@@ -31,6 +31,16 @@ interface RevenueLineMixInputsProps {
   onCommitPct: (value: number) => void;
   /** 'sm' (summary view ~text-sm, w-20) or 'xs' (monthly view ~text-xs, w-16) */
   size?: 'sm' | 'xs';
+
+  // Phase 51-02 (UX-S3-02) — Y-on-Y Growth % editor for Y2/Y3 views.
+  // When activeYear === 1 (or undefined), the growth editor is HIDDEN
+  //   (Y1 has no prior wizard year line total to compute growth from —
+  //    Y1 lives off goals.year1.revenue, not a prior-year line).
+  // When activeYear === 2 or 3 AND onCommitGrowth is provided, a third
+  //   editor renders to the right of the % editor.
+  activeYear?: 1 | 2 | 3;       // default 1 (back-compat with 51-01 call sites)
+  growthPct?: number;            // committed Y-on-Y growth % for the active year
+  onCommitGrowth?: (value: number) => void;
 }
 
 function RevenueLineMixInputs({
@@ -41,6 +51,9 @@ function RevenueLineMixInputs({
   onCommitDollar,
   onCommitPct,
   size = 'sm',
+  activeYear,
+  growthPct,
+  onCommitGrowth,
 }: RevenueLineMixInputsProps) {
   // Dollar editor — default parse (parseFloat) coerces typed string → number.
   const dollarEditor = useEditableValue(lineTotal, onCommitDollar);
@@ -52,6 +65,16 @@ function RevenueLineMixInputs({
       return Math.max(0, Math.min(100, n));
     },
   });
+  // Growth editor — clamp parse to -100..1000 integer (Rules of Hooks
+  // requires this hook to be called unconditionally; render gating is
+  // applied at JSX time below).
+  const growthEditor = useEditableValue(growthPct ?? 0, (value) => onCommitGrowth?.(value), {
+    parse: (raw) => {
+      const n = parseInt(raw, 10);
+      if (Number.isNaN(n)) return 0;
+      return Math.max(-100, Math.min(1000, n));
+    },
+  });
 
   const dollarClass =
     size === 'sm'
@@ -61,8 +84,14 @@ function RevenueLineMixInputs({
     size === 'sm'
       ? 'w-14 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy'
       : 'w-12 px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy';
+  const growthClass =
+    size === 'sm'
+      ? 'w-14 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy'
+      : 'w-12 px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy';
   const symbolClass = size === 'sm' ? 'text-xs text-gray-400' : 'text-[10px] text-gray-400';
   const wrapperClass = size === 'sm' ? 'inline-flex items-center gap-1 justify-center' : 'inline-flex items-center gap-0.5';
+
+  const showGrowth = (activeYear === 2 || activeYear === 3) && !!onCommitGrowth;
 
   return (
     <div className={wrapperClass}>
@@ -89,6 +118,22 @@ function RevenueLineMixInputs({
         className={percentClass}
       />
       <span className={symbolClass}>%</span>
+      {showGrowth && (
+        <>
+          <input
+            type="number"
+            aria-label={`Growth percent for ${lineName}`}
+            value={growthEditor.display}
+            onChange={growthEditor.onChange}
+            onBlur={growthEditor.onBlur}
+            onKeyDown={growthEditor.onKeyDown}
+            min="-100"
+            max="1000"
+            className={growthClass}
+          />
+          <span className={symbolClass}>%▲</span>
+        </>
+      )}
     </div>
   );
 }
@@ -468,9 +513,25 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     return priorLine?.total || 0;
   };
 
-  // Handle growth % change — recalculate forecast from prior year x growth
+  // Phase 51-02 (UX-S3-02) — base for Y-on-Y growth comes from the WIZARD's
+  // previous year line total (Y1 → Y2 baseline; Y2 → Y3 baseline). The Xero
+  // priorYear data (getLinePriorYear) is unused here because operators want
+  // "Y3 grows X% from Y2", not "Y3 grows X% from last year's Xero data".
+  // For Y1, return 0 — Y1 doesn't expose a Growth editor (the column is
+  // hidden in Y1 view per the plan's must-haves).
+  const getPreviousWizardYearLineTotal = (lineId: string, year: 1 | 2 | 3): number => {
+    if (year === 1) return 0;
+    const line = revenueLines.find(l => l.id === lineId);
+    if (!line) return 0;
+    const previousYear: 1 | 2 = year === 2 ? 1 : 2;
+    return getRevenueLineYearTotal(line, previousYear);
+  };
+
+  // Handle growth % change — recalculate Y2/Y3 forecast from previous wizard
+  // year line total × (1 + growth%). Y1 is a no-op (no prior wizard year).
+  // Distribution uses the same business seasonality the rest of Step 3 uses.
   const handleGrowthChange = (lineId: string, growthPct: number) => {
-    const priorTotal = getLinePriorYear(lineId);
+    const priorTotal = getPreviousWizardYearLineTotal(lineId, activeYear as 1 | 2 | 3);
     if (priorTotal <= 0) return;
 
     const newTarget = Math.round(priorTotal * (1 + growthPct / 100));
@@ -566,6 +627,25 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     const pct = Math.round((dollarValue / yearTarget) * 100);
     const clamped = Math.max(0, Math.min(100, pct));
     handleMixChange(lineId, clamped);
+  };
+
+  // Phase 51-02 (UX-S3-02): commit a Growth % edit. Clamps to [-100, 1000]
+  // and delegates to handleGrowthChange (single source of truth — distribution
+  // math is owned by handleGrowthChange, not duplicated here).
+  const commitGrowthValue = (lineId: string, growthValue: number) => {
+    const clamped = Math.max(-100, Math.min(1000, growthValue));
+    handleGrowthChange(lineId, clamped);
+  };
+
+  // Phase 51-02 (UX-S3-02): per-line implied growth % for the active year.
+  // Display floor: when this-year total is 0 (no entry yet) and prior is
+  // positive, display 0 instead of -100 to avoid showing -100% as the default.
+  const getDisplayGrowthPct = (lineId: string, thisYearTotal: number): number => {
+    if (activeYear === 1) return 0;
+    const priorTotal = getPreviousWizardYearLineTotal(lineId, activeYear as 1 | 2 | 3);
+    if (priorTotal <= 0) return 0;
+    if (thisYearTotal <= 0) return 0; // floor: don't surface -100% as the default
+    return Math.round(((thisYearTotal - priorTotal) / priorTotal) * 100);
   };
 
   // Handle mix % change — recalculate forecast from target × mix × seasonality
@@ -849,7 +929,12 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
               <tr className="border-b border-gray-200">
                 <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '30%' }}>Line Item</th>
                 <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '18%' }}>Prior Year</th>
-                <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '14%' }}>% Split</th>
+                <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '14%' }}>
+                  % Split
+                  {(activeYear === 2 || activeYear === 3) && (
+                    <span className="ml-1 text-gray-400 normal-case">/ Growth</span>
+                  )}
+                </th>
                 <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '20%' }}>Forecast {activeYear === 1 ? 'Y1' : `Y${activeYear}`}</th>
                 <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '18%' }}>vs Prior / % of Rev</th>
               </tr>
@@ -907,6 +992,13 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                           onCommitDollar={(val) => commitDollarValue(line.id, val)}
                           onCommitPct={(val) => handleMixChange(line.id, val)}
                           size="sm"
+                          activeYear={activeYear}
+                          growthPct={getDisplayGrowthPct(line.id, forecastTotal)}
+                          onCommitGrowth={
+                            activeYear === 2 || activeYear === 3
+                              ? (val) => commitGrowthValue(line.id, val)
+                              : undefined
+                          }
                         />
                       </td>
                       <td className="px-4 py-2.5 text-right text-sm font-semibold text-gray-900">
@@ -1207,6 +1299,13 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                               onCommitDollar={(val) => commitDollarValue(line.id, val)}
                               onCommitPct={(val) => handleMixChange(line.id, val)}
                               size="xs"
+                              activeYear={activeYear}
+                              growthPct={getDisplayGrowthPct(line.id, lineTotalNow)}
+                              onCommitGrowth={
+                                activeYear === 2 || activeYear === 3
+                                  ? (val) => commitGrowthValue(line.id, val)
+                                  : undefined
+                              }
                             />
                           );
                         })()}
