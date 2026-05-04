@@ -36,6 +36,7 @@ import {
   getRevenueLineYearTotal,
 } from './types';
 import { isTeamCost } from './utils/opex-classifier';
+import { getEffectiveSeasonality } from './utils/line-distribution';
 import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 import type { PLLineItem } from '@/app/finances/forecast/types';
 import type {
@@ -301,12 +302,14 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         const monthKeys = generateMonthKeys(prev.fiscalYearStart);
         const year1Monthly: { [key: string]: number } = {};
 
-        // Apply seasonality pattern if available
-        const seasonality = data.seasonalityPattern || Array(12).fill(8.33);
+        // Phase 51-03 (UX-S3-03): aggregate site — line doesn't exist yet at
+        // creation time, so pass `{}` to fall through to business seasonality.
+        // No per-line override semantics at this point.
+        const seasonality = getEffectiveSeasonality({}, data.seasonalityPattern);
         const totalSeasonality = seasonality.reduce((sum: number, val: number) => sum + val, 0);
 
         monthKeys.forEach((key, idx) => {
-          const seasonalFactor = (seasonality[idx] || 8.33) / totalSeasonality;
+          const seasonalFactor = (seasonality[idx] ?? 8.33) / totalSeasonality;
           year1Monthly[key] = Math.round(data.revenue.total * seasonalFactor);
         });
 
@@ -364,18 +367,21 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
           year1Total += Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
         });
 
-        const seasonality = data.seasonalityPattern || Array(12).fill(8.33);
+        // Phase 51-03 (UX-S3-03): per-line override → business → 8.33 fallback.
+        // Resolved per-line inside the loop so each line's override is honored.
+        // For back-compat (no override on any line), returns business seasonality identically.
         const distributeGoalRevenueMonthly = (goalRevenue: number, yearOffset: number, yearKey: 'year2Monthly' | 'year3Monthly') => {
           if (goalRevenue <= 0) return;
           const monthKeys = generateMonthKeys(prev.fiscalYearStart + yearOffset);
-          const totalSeasonality = seasonality.reduce((s: number, v: number) => s + v, 0);
           revenueLines.forEach(line => {
+            const seasonality = getEffectiveSeasonality(line, data.seasonalityPattern);
+            const totalSeasonality = seasonality.reduce((s: number, v: number) => s + v, 0);
             const lineY1 = Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
             const share = year1Total > 0 ? lineY1 / year1Total : 1 / revenueLines.length;
             const lineTarget = goalRevenue * share;
             const monthly: { [key: string]: number } = {};
             monthKeys.forEach((key, idx) => {
-              const factor = (seasonality[idx] || 8.33) / totalSeasonality;
+              const factor = (seasonality[idx] ?? 8.33) / totalSeasonality;
               monthly[key] = Math.round(lineTarget * factor);
             });
             line[yearKey] = monthly;
@@ -898,14 +904,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
           const remainingTarget = Math.max(0, targetRevenue - ytdTotal);
           const remainingMonths = 12 - completedMonthsCount;
 
-          // Get seasonality pattern
-          const seasonality = data.priorYear.seasonalityPattern || Array(12).fill(8.33);
+          // Phase 51-03 (UX-S3-03): aggregate site — default Sales Revenue line
+          // is being CREATED here, so no per-line override exists yet. Pass `{}`
+          // to fall through to business seasonality (current behavior).
+          const seasonality = getEffectiveSeasonality({}, data.priorYear.seasonalityPattern);
 
           // Calculate total seasonality weight for all remaining (projected) months
           let totalRemainingSeasonality = 0;
           monthKeys.forEach((key, idx) => {
             if (ytdMonths[key] === undefined) {
-              totalRemainingSeasonality += seasonality[idx] || 8.33;
+              totalRemainingSeasonality += seasonality[idx] ?? 8.33;
             }
           });
 
@@ -915,7 +923,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
               year1Monthly[key] = ytdMonths[key];
             } else if (totalRemainingSeasonality > 0 && remainingTarget > 0) {
               // Distribute remaining target proportionally using seasonality weights
-              const monthSeasonality = seasonality[idx] || 8.33;
+              const monthSeasonality = seasonality[idx] ?? 8.33;
               const monthFactor = monthSeasonality / totalRemainingSeasonality;
               year1Monthly[key] = Math.round(remainingTarget * monthFactor);
             } else if (remainingMonths > 0 && remainingTarget > 0) {
@@ -943,18 +951,21 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
             year1Total += Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
           });
 
-          const seasonality = data.priorYear?.seasonalityPattern || Array(12).fill(8.33);
-          const totalSeasonality = seasonality.reduce((s: number, v: number) => s + v, 0);
+          // Phase 51-03 (UX-S3-03): per-line override → business → 8.33 fallback.
+          // Resolved per-line inside the loop so each line's override is honored.
+          // Back-compat: no overrides → returns business seasonality identically.
           const distributeGoalRevenueMonthly = (goalRevenue: number, yearOffset: number, yearKey: 'year2Monthly' | 'year3Monthly') => {
             if (goalRevenue <= 0) return;
             const monthKeys = generateMonthKeys(prev.fiscalYearStart + yearOffset);
             revenueLines.forEach(line => {
+              const seasonality = getEffectiveSeasonality(line, data.priorYear?.seasonalityPattern);
+              const totalSeasonality = seasonality.reduce((s: number, v: number) => s + v, 0);
               const lineY1 = Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
               const share = year1Total > 0 ? lineY1 / year1Total : 1 / revenueLines.length;
               const lineTarget = goalRevenue * share;
               const monthly: { [key: string]: number } = {};
               monthKeys.forEach((key, idx) => {
-                const factor = (seasonality[idx] || 8.33) / totalSeasonality;
+                const factor = (seasonality[idx] ?? 8.33) / totalSeasonality;
                 monthly[key] = Math.round(lineTarget * factor);
               });
               line[yearKey] = monthly;
@@ -1419,7 +1430,11 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       },
       revenue: {
         lines: revenueLines,
-        seasonalityPattern: state.priorYear?.seasonalityPattern || Array(12).fill(8.33),
+        // Phase 51-03 (UX-S3-03): aggregate site — exporting BUSINESS-level
+        // seasonality on the AssumptionsBuilder payload (not per-line). Per-line
+        // overrides live on the individual revenue lines and are exported by
+        // the lines mapper above. Pass `{}` for the helper's line arg.
+        seasonalityPattern: getEffectiveSeasonality({}, state.priorYear?.seasonalityPattern),
         seasonalitySource: state.priorYear ? 'xero' : 'industry_default',
       },
       cogs: {
