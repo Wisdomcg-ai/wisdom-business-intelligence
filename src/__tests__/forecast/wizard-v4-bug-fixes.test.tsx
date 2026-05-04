@@ -1,10 +1,10 @@
 /**
  * Phase 50 — Forecast Wizard Bug Sweep — regression tests
  *
- * Covers FCST-BUG-01, -02, -03 (this file in 50-01).
- * Will be EXTENDED in 50-02 with FCST-BUG-04 (lease/finance taxonomy) tests.
+ * Covers FCST-BUG-01, -02, -03 (50-01) AND FCST-BUG-04 (50-02 lease/finance
+ * taxonomy).
  *
- * EXPECTED FAILURES on HEAD (Task 1 RED):
+ * EXPECTED FAILURES on HEAD (Task 1 RED) — Bugs 1, 2, 3:
  * - Test 1.1: typed digits lost via toLocaleString round-trip → received !== '5000'
  *   when caret/selection edits happen mid-string. (Note: when typing strictly
  *   left-to-right with no commas in current value, the round-trip can survive;
@@ -24,6 +24,15 @@
  *
  * Test 2.2 may PASS on HEAD (the useMemos ARE reactive); it's included to lock
  * the contract.
+ *
+ * BUG 4 EXPECTED FAILURES on HEAD (50-02 Task 1 RED):
+ * - Tests 4.1, 4.2, 4.3, 4.4, 4.6: lease_type field doesn't exist yet on
+ *   PlannedSpend → tsc fails OR runtime returns 0 / today's legacy number.
+ *   After Task 2 (type extension): tsc passes; runtime branch returns legacy
+ *   number (because new switch isn't wired yet). After Tasks 3 + 4: GREEN.
+ * - Test 4.5: this PASSES on HEAD — captures the legacy behavior we MUST
+ *   preserve. Hardcoded value: $23,200 (verified by direct simulation of
+ *   getPlannedSpendPLImpact against the legacy fixture, on main 2026-05-02).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -40,6 +49,7 @@ import type {
   PlannedSpend,
   RevenueLine,
 } from '@/app/finances/forecast/components/wizard-v4/types';
+import { getPlannedSpendPLImpact } from '@/app/finances/forecast/components/wizard-v4/types';
 
 // ─── Test infra: clear localStorage between tests so the wizard hook starts
 //                clean for each renderHook (it persists state by businessId).
@@ -502,5 +512,217 @@ describe('Bug 3 — FCST-BUG-03: Step 7 from-plan amount editable', () => {
     await user.type(target, '200000');
 
     expect(target.value).toBe('200000');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Bug 4 — FCST-BUG-04: lease/finance taxonomy
+// ────────────────────────────────────────────────────────────────────────────
+//
+// NOTE: Tests 4.1-4.4 + 4.6 reference the new `lease_type` discriminator and
+// related fields (term_months, interest_rate, useful_life_months, residual_value)
+// added to PlannedSpend in 50-02 Task 2. On HEAD before Task 2 lands, expect
+// tsc to fail. After Task 2: tests fail at runtime (RED — branch falls through
+// to legacy which returns the wrong number for the new-taxonomy fixtures).
+// After Tasks 3 + 4: tests pass (GREEN — both rollup sites switch on lease_type).
+//
+// Test 4.5 (backward-compat regression lock) PASSES on HEAD. Hardcoded number
+// captured by direct simulation of the current `getPlannedSpendPLImpact`
+// implementation against the legacy fixture on main, 2026-05-02:
+//   getPlannedSpendPLImpact({amount:100000, paymentMethod:'finance',
+//     financeRate:6, financeTerm:60, financeMonthlyPayment:1933,
+//     financeTotalInterest:15998, usefulLifeYears:5, month:1, spendType:'asset'}, 1)
+//   → 23200
+// Both the function and the inline rollup at useForecastWizard.ts:1217-1240
+// return $23,200 for this fixture (verified independently). The taxonomy
+// refactor in Tasks 3+4 must preserve this exact number for items WITHOUT
+// `lease_type` set.
+
+/**
+ * Lockstep helper — Sites 1 vs 2 must agree.
+ *
+ * After 50-02 Task 4 lands, the rollup at useForecastWizard.ts:1217-1240
+ * delegates to `getPlannedSpendPLBreakdown(item, year)` (extracted to types.ts).
+ * `getPlannedSpendPLImpact` also delegates to the same helper
+ * (returns breakdown.total). Therefore both sites are guaranteed equal by
+ * construction — they share one helper.
+ *
+ * For lockstep verification we simply call `getPlannedSpendPLImpact` twice
+ * (once standalone — Site 1; once after running the value through the rollup
+ * surface via the wizard hook — Site 2). Both must return the same number.
+ *
+ * Site 2 (rollup) accumulates plannedSpendDepreciation + plannedSpendExpenses
+ * for an item. Reading `summary.year1.depreciation + summary.year1.investments`
+ * is NOT directly comparable because it includes other-than-plannedSpends
+ * contributions. Instead, we exploit the fact that with a clean state (no
+ * priorYear, no capexItems, no investments, no other expenses), only
+ * plannedSpends contribute to those two summary fields. Their sum equals
+ * the per-item rollup total.
+ */
+function siteOnePLImpact(item: PlannedSpend, year: 1 | 2 | 3): number {
+  return getPlannedSpendPLImpact(item, year);
+}
+
+function siteTwoPLImpact(item: PlannedSpend, year: 1 | 2 | 3): number {
+  // Render the wizard hook with a clean state, add a single plannedSpend,
+  // and read the resulting summary. depreciation + investments isolates the
+  // plannedSpend contribution because no other source feeds those buckets
+  // when capexItems / investments / priorYear are empty.
+  const { result } = renderHook(() =>
+    useForecastWizard(FY_START_YEAR, `lockstep-${Math.random().toString(36).slice(2)}`),
+  );
+  act(() => {
+    result.current.actions.addPlannedSpend({
+      description: item.description,
+      amount: item.amount,
+      month: item.month,
+      spendType: item.spendType,
+      paymentMethod: item.paymentMethod,
+      usefulLifeYears: item.usefulLifeYears,
+      financeTerm: item.financeTerm,
+      financeRate: item.financeRate,
+      financeMonthlyPayment: item.financeMonthlyPayment,
+      financeTotalInterest: item.financeTotalInterest,
+      leaseTerm: item.leaseTerm,
+      leaseMonthlyPayment: item.leaseMonthlyPayment,
+      // New-taxonomy fields (will be no-ops until Tasks 2+4 land)
+      lease_type: item.lease_type,
+      term_months: item.term_months,
+      interest_rate: item.interest_rate,
+      useful_life_months: item.useful_life_months,
+      residual_value: item.residual_value,
+    } as Omit<PlannedSpend, 'id'>);
+  });
+  const yearKey = `year${year}` as 'year1' | 'year2' | 'year3';
+  const ys = result.current.summary[yearKey];
+  if (!ys) return -1;
+  return (ys.depreciation || 0) + (ys.investments || 0);
+}
+
+describe('Bug 4 — FCST-BUG-04: lease/finance taxonomy', () => {
+  it('Test 4.1: outright_purchase — depreciation only over useful_life_months', () => {
+    const item: PlannedSpend = {
+      id: 'spend-4.1',
+      description: 'Outright server',
+      amount: 100_000,
+      month: 1, // FY start — full 12 months ahead
+      spendType: 'asset',
+      paymentMethod: 'outright',
+      lease_type: 'outright_purchase',
+      useful_life_months: 60,
+    };
+    // monthlyDep = 100_000 / 60 = 1666.6667; * 12 = 20_000
+    expect(siteOnePLImpact(item, 1)).toBe(20_000);
+    // Lockstep — Site 2 rollup matches Site 1
+    expect(siteTwoPLImpact(item, 1)).toBe(20_000);
+  });
+
+  it('Test 4.2: operating_lease — full payment is P&L expense, no depreciation', () => {
+    const item: PlannedSpend = {
+      id: 'spend-4.2',
+      description: 'Operating lease office equipment',
+      amount: 100_000,
+      month: 1,
+      spendType: 'asset',
+      paymentMethod: 'lease',
+      lease_type: 'operating_lease',
+      leaseMonthlyPayment: 2_000,
+      term_months: 60,
+      // useful_life_months intentionally set — operating lease must IGNORE it
+      useful_life_months: 60,
+    };
+    // 2_000 * 12 = 24_000; no depreciation
+    expect(siteOnePLImpact(item, 1)).toBe(24_000);
+    expect(siteTwoPLImpact(item, 1)).toBe(24_000);
+  });
+
+  it('Test 4.3: finance_lease — depreciation + interest portion only (NOT full payment)', () => {
+    const item: PlannedSpend = {
+      id: 'spend-4.3',
+      description: 'Finance lease vehicle',
+      amount: 100_000,
+      month: 1,
+      spendType: 'asset',
+      paymentMethod: 'lease',
+      lease_type: 'finance_lease',
+      term_months: 60,
+      interest_rate: 6, // 6% APR
+      useful_life_months: 60,
+    };
+    // monthlyPayment via PMT(100_000, 6%, 60) = 1933 (rounded)
+    // totalInterest = 1933*60 - 100_000 = 15_980
+    // annualInterest = 15_980 / 5 = 3_196
+    // monthlyDep = 100_000 / 60 = 1666.67; *12 = 20_000
+    // total = 20_000 + 3_196 = 23_196 (NOT $24_000 of full lease payment)
+    const site1 = siteOnePLImpact(item, 1);
+    expect(site1).toBeCloseTo(23_199, -1);
+    // CRITICAL: must NOT equal $24,000 (the buggy full-payment expensing)
+    expect(site1).toBeLessThan(24_000);
+    // Lockstep — Site 2 must match Site 1 within ±$2 rounding tolerance
+    const site2 = siteTwoPLImpact(item, 1);
+    expect(Math.abs(site1 - site2)).toBeLessThanOrEqual(2);
+  });
+
+  it('Test 4.4: loan_financing — depreciation + interest portion only (identical math to finance_lease)', () => {
+    const item: PlannedSpend = {
+      id: 'spend-4.4',
+      description: 'Loan-financed asset',
+      amount: 100_000,
+      month: 1,
+      spendType: 'asset',
+      paymentMethod: 'finance',
+      lease_type: 'loan_financing',
+      term_months: 60,
+      interest_rate: 6,
+      useful_life_months: 60,
+    };
+    const site1 = siteOnePLImpact(item, 1);
+    expect(site1).toBeCloseTo(23_199, -1);
+    expect(site1).toBeLessThan(24_000);
+    const site2 = siteTwoPLImpact(item, 1);
+    expect(Math.abs(site1 - site2)).toBeLessThanOrEqual(2);
+  });
+
+  it('Test 4.5: backward compatibility — legacy item without lease_type produces today\'s exact P&L ($23,200)', () => {
+    // REGRESSION LOCK — captured from main on 2026-05-02 by direct simulation
+    // of getPlannedSpendPLImpact + the inline rollup. Both produce $23,200
+    // for this fixture. The Tasks 3+4 refactor MUST preserve this number.
+    //
+    // Legacy fixture — no lease_type set. Falls through to the legacy
+    // paymentMethod switch in both sites.
+    const legacyItem: PlannedSpend = {
+      id: 'spend-4.5-legacy',
+      description: 'Legacy financed server',
+      amount: 100_000,
+      month: 1,
+      spendType: 'asset',
+      paymentMethod: 'finance',
+      financeRate: 6,
+      financeTerm: 60,
+      financeMonthlyPayment: 1_933,
+      financeTotalInterest: 15_998,
+      usefulLifeYears: 5,
+      // NO lease_type — must fall through to legacy
+    };
+    expect(siteOnePLImpact(legacyItem, 1)).toBe(23_200);
+    // Lockstep — Site 2 also returns $23,200 for the legacy fixture
+    expect(siteTwoPLImpact(legacyItem, 1)).toBe(23_200);
+  });
+
+  it('Test 4.6: operating_lease without leaseMonthlyPayment falls back to amount/term_months', () => {
+    const item: PlannedSpend = {
+      id: 'spend-4.6',
+      description: 'Operating lease (no monthly payment specified)',
+      amount: 100_000,
+      month: 1,
+      spendType: 'asset',
+      paymentMethod: 'lease',
+      lease_type: 'operating_lease',
+      term_months: 60,
+      // NO leaseMonthlyPayment — derive from amount/term_months
+    };
+    // monthlyPayment fallback = 100_000 / 60 = 1666.67; * 12 = 20_000
+    expect(siteOnePLImpact(item, 1)).toBe(20_000);
+    expect(siteTwoPLImpact(item, 1)).toBe(20_000);
   });
 });
