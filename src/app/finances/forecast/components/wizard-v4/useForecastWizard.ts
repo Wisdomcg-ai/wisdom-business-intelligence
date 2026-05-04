@@ -28,6 +28,7 @@ import {
   calculateTotalInterest,
   generateMonthKeys,
   getPlannedSpendPLImpact,
+  getPlannedSpendPLBreakdown,
   SUPER_RATE,
   quarterlyToMonthly,
   monthlyToQuarterly,
@@ -1211,32 +1212,22 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         ? state.investments.reduce((sum, inv) => sum + inv.totalBudget, 0)
         : 0;
 
-      // Planned Spending — new unified model (overrides legacy capex/investments if present)
+      // Planned Spending — new unified model (overrides legacy capex/investments if present).
+      //
+      // Phase 50 plan 50-02 (FCST-BUG-04): delegate to the shared
+      // getPlannedSpendPLBreakdown helper from types.ts. Keeps Site 1
+      // (getPlannedSpendPLImpact, used by Step6CapEx per-row column) and
+      // Site 2 (this rollup) in lockstep by construction — both call the same
+      // helper. Items with `lease_type` set use the new 4-branch taxonomy;
+      // items without fall through to the legacy paymentMethod logic so
+      // existing forecasts produce identical numbers.
       let plannedSpendDepreciation = 0;
       let plannedSpendExpenses = 0;
       if (state.plannedSpends && state.plannedSpends.length > 0) {
         for (const item of state.plannedSpends) {
-          if (item.spendType === 'asset' && item.paymentMethod !== 'lease') {
-            plannedSpendDepreciation += item.usefulLifeYears
-              ? Math.round((item.amount / item.usefulLifeYears) * (yearNum === 1 ? (13 - item.month) / 12 : 1))
-              : 0;
-          }
-          // Interest expense for financed items
-          if (item.paymentMethod === 'finance' && item.financeTotalInterest && item.financeTerm) {
-            plannedSpendExpenses += Math.round(item.financeTotalInterest / (item.financeTerm / 12));
-          }
-          // Lease payments go to expenses
-          if (item.paymentMethod === 'lease' && item.leaseMonthlyPayment) {
-            plannedSpendExpenses += item.leaseMonthlyPayment * 12;
-          }
-          // One-off expenses only in Year 1
-          if (item.spendType === 'one-off' && yearNum === 1) {
-            plannedSpendExpenses += item.amount;
-          }
-          // Monthly recurring expenses
-          if (item.spendType === 'monthly') {
-            plannedSpendExpenses += item.amount * 12;
-          }
+          const breakdown = getPlannedSpendPLBreakdown(item, yearNum);
+          plannedSpendDepreciation += breakdown.depreciation;
+          plannedSpendExpenses += breakdown.expenses;
         }
       }
 
