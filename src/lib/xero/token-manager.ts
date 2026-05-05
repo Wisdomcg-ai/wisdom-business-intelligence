@@ -15,8 +15,11 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { encrypt, decrypt } from '@/lib/utils/encryption';
 
-// Standardized refresh threshold - refresh if token expires within 15 minutes
-const REFRESH_THRESHOLD_MINUTES = 15;
+// Standardized refresh threshold - refresh if token expires within 15 minutes.
+// Exported (53-04 F2) so cron consumers can infer still_valid vs refreshed
+// without duplicating the constant. If you change this, the cron's pre-call
+// staleness inference automatically stays in sync.
+export const REFRESH_THRESHOLD_MINUTES = 15;
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
 
