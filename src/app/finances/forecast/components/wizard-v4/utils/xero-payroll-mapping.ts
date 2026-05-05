@@ -128,7 +128,6 @@ export function classifyXeroEarningsRateCalculationType(
  * `ordinaryHoursPerWeek` when the line omits it.
  */
 export function extractCompensationFromPayTemplate(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   earningsLines: any[] | undefined,
   ordinaryHoursPerWeek: number | undefined,
 ): {
@@ -262,7 +261,6 @@ export function computeXeroFingerprint(
   const result: XeroFieldFingerprint = {};
   for (const [k, v] of Object.entries(values)) {
     if (v !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (result as any)[k] = v;
     }
   }

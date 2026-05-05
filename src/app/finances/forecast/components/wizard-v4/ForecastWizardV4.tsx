@@ -19,6 +19,11 @@ import { Step6CapEx } from './steps/Step6CapEx'; // Now Step 7
 import { Step8GrowthPlan } from './steps/Step8GrowthPlan';
 import { Step8Review } from './steps/Step8Review';
 import { WIZARD_STEPS, PriorYearData, TeamMember, Goals } from './types';
+// Phase 52 (XERO-S4-01..04): single canonical Xero-→-wizard mapper. Replaces
+// three inline mapper bodies in this file (lines ~175, ~770, ~1355) so the
+// new Phase 52 fields (payFrequency, standardHours, _xeroEmployeeId,
+// _xeroImportedAt, _xeroFingerprint) flow through every entry path.
+import { enrichWizardMemberFromXeroEmployee } from './utils/xero-payroll-mapping';
 
 interface ForecastWizardV4Props {
   businessId: string;
@@ -172,7 +177,14 @@ export function ForecastWizardV4({
               if (teamData.employees?.length > 0) {
                 console.log('[ForecastWizardV4] Refreshing team from Xero:', teamData.employees.length, 'employees');
                 for (const emp of teamData.employees) {
-                  const empType = (emp.employment_type || 'full-time') as 'full-time' | 'part-time' | 'casual' | 'contractor';
+                  // Phase 52 (XERO-S4-01..04): single canonical mapper. Helper
+                  // populates payFrequency, standardHours, hourlyRate, _xeroEmployeeId,
+                  // _xeroImportedAt, _xeroFingerprint. Site-specific defaults
+                  // (salary fallback chain, casual hour default, increasePct=3,
+                  // first/last-name composite, "Team Member" capitalisation) are
+                  // applied AFTER the spread so they win on conflict.
+                  const enriched = enrichWizardMemberFromXeroEmployee(emp);
+                  const empType = enriched.type;
                   let salary = emp.annual_salary || 0;
                   if (!salary && emp.hourly_rate) {
                     const defaultHours = empType === 'casual' ? 20 : 38;
@@ -180,6 +192,7 @@ export function ForecastWizardV4({
                   }
                   if (!salary) salary = 80000;
                   actionsRef.current.addTeamMember({
+                    ...enriched,
                     name: emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown',
                     role: emp.job_title || 'Team Member',
                     type: empType,
@@ -755,19 +768,12 @@ export function ForecastWizardV4({
           let team: TeamMember[] = [];
           if (teamData.employees?.length > 0) {
             team = teamData.employees.map(
-              (emp: {
-                employee_id?: string;
-                full_name?: string;
-                first_name?: string;
-                last_name?: string;
-                job_title?: string;
-                annual_salary?: number;
-                hourly_rate?: number;
-                employment_type?: string;
-                hours_per_week?: number;
-                from_xero?: boolean;
-              }) => {
-                const empType = (emp.employment_type || 'full-time') as 'full-time' | 'part-time' | 'casual' | 'contractor';
+              (emp: any) => {
+                // Phase 52 (XERO-S4-01..04): single canonical mapper. See Site 1
+                // comment above (around line ~175) for rationale. Site-specific
+                // defaults applied AFTER spread so they win on conflict.
+                const enriched = enrichWizardMemberFromXeroEmployee(emp);
+                const empType = enriched.type;
                 let salary = emp.annual_salary || 0;
                 if (!salary && emp.hourly_rate) {
                   const defaultHours = empType === 'casual' ? 20 : 38;
@@ -776,6 +782,7 @@ export function ForecastWizardV4({
                 if (!salary) salary = 80000;
 
                 return {
+                  ...enriched,
                   id: emp.employee_id || `emp-${Date.now()}-${Math.random()}`,
                   name:
                     emp.full_name ||
@@ -1352,6 +1359,11 @@ export function ForecastWizardV4({
             };
 
             const team: TeamMember[] = (teamData.employees || []).map((emp: any) => {
+              // Phase 52 (XERO-S4-01..04): single canonical mapper. See Site 1
+              // comment (around line ~175) for rationale. Note this site
+              // historically used a flat 38-hour default (no casual special-case),
+              // preserved here verbatim to avoid changing re-fetch behaviour.
+              const enriched = enrichWizardMemberFromXeroEmployee(emp);
               let salary = emp.annual_salary || 0;
               if (!salary && emp.hourly_rate) {
                 salary = emp.hourly_rate * (emp.hours_per_week || 38) * 52;
@@ -1359,6 +1371,7 @@ export function ForecastWizardV4({
               if (!salary) salary = 80000;
 
               return {
+                ...enriched,
                 id: emp.employee_id || `emp-${Date.now()}-${Math.random()}`,
                 name: emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown',
                 role: emp.job_title || 'Team Member',
