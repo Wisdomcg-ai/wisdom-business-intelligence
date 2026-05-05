@@ -512,10 +512,13 @@ export function ForecastWizardV4({
           fetch(`/api/business-profile?business_id=${businessId}`),
         ];
 
-        // If editing an existing forecast, fetch its saved assumptions
-        // If no forecast ID provided, try to find the active forecast for this FY
+        // If editing an existing forecast, fetch its saved assumptions.
+        // Otherwise auto-discover the active forecast for this FY, UNLESS
+        // startFresh=true — that signal comes from "Create New Forecast" and
+        // means the user explicitly wants a brand-new forecast row, not the
+        // saved assumptions of whatever's already active for this FY.
         let resolvedForecastId = existingForecastId || null;
-        if (!resolvedForecastId) {
+        if (!resolvedForecastId && !startFresh) {
           try {
             const versionsRes = await fetch(`/api/forecasts/versions?business_id=${businessId}&fiscal_year=${fiscalYear}`);
             if (versionsRes.ok) {
