@@ -994,8 +994,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         </div>
       )}
 
-      {/* View Mode Toggle + Distribution Note */}
-      <div className="flex items-center justify-between">
+      {/* View Mode Toggle + Forecast Pattern Selector */}
+      <div className="flex items-center justify-between flex-wrap gap-y-2">
         <div className="flex border border-gray-200 rounded-lg overflow-hidden">
           <button
             onClick={() => setViewMode('summary')}
@@ -1014,12 +1014,40 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
             Monthly Detail
           </button>
         </div>
-        {viewMode === 'monthly' && (
-          <p className="text-xs text-gray-400 italic">
-            <Info className="w-3 h-3 inline mr-1" />
-            {priorYear ? 'Monthly amounts distributed based on your prior year seasonal pattern' : 'Monthly amounts distributed evenly across the year'}
-          </p>
-        )}
+        {/* Forecast pattern selector — wires existing handlePatternChange. Default: 'seasonal'. */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 font-medium">Forecast pattern:</span>
+          <div className="flex border border-gray-200 rounded-lg overflow-hidden">
+            <button
+              onClick={() => handlePatternChange('seasonal')}
+              title="Distribute by your prior-year shape (or per-line override). Best when revenue varies by month."
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                revenuePattern === 'seasonal' ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Seasonal
+            </button>
+            <button
+              onClick={() => handlePatternChange('straight-line')}
+              title="Equal monthly amount across remaining months. Best for recurring or steady revenue."
+              className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-gray-200 ${
+                revenuePattern === 'straight-line' ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Straight-line
+            </button>
+            <button
+              onClick={() => handlePatternChange('manual')}
+              title="Don't auto-distribute. Type each cell yourself."
+              className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-gray-200 ${
+                revenuePattern === 'manual' ? 'bg-brand-navy text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Manual
+            </button>
+          </div>
+          <Info className="w-3 h-3 text-gray-400" />
+        </div>
       </div>
 
       {/* Add Revenue Line form (above the table) */}
