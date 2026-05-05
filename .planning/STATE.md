@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: verifying
-last_updated: "2026-05-05T03:06:22.359Z"
-last_activity: 2026-05-08 (Phase 49-07 final Bucket C — branch `feat/49-07-bucket-c-final` ready for PR)
+last_updated: "2026-05-06T08:20:00.000Z"
+last_activity: 2026-05-06 (Phase 53-03 token-manager race-closure shipped — PR #108)
 progress:
   total_phases: 51
   completed_phases: 20
-  total_plans: 117
-  completed_plans: 113
+  total_plans: 118
+  completed_plans: 114
 ---
 
 # Project State
@@ -19,7 +19,8 @@ progress:
 Phase: 44, 44.1, 44.2, 44.3, 45, 49, 50 — **COMPLETE**.
 Phase: 46 (Server-Side Hardening) — **PARTIAL** (3/4 plans shipped). Plan 46-04 deferred ≥2026-05-10 per cooling period.
 Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-05-08). All 56 orphan-prone FKs covered: 50 SET NULL + 4 CASCADE + 2 RESTRICT/CASCADE. fk-policy.md is the authoritative reference going forward.
-Last activity: 2026-05-08 (Phase 49-07 final Bucket C — branch `feat/49-07-bucket-c-final` ready for PR)
+Phase: 53 (Xero Connection Durability) — **IN PROGRESS** (1/5 plans shipped 2026-05-06). Plan 53-03 closes the two race-condition holes in `src/lib/xero/token-manager.ts` (Hole A post-lock refetch, Hole B pre-deactivation refetch) and tightens per-error-code policy (unauthorized_client x3 retry, invalid_client never deactivates). Adds structured deactivation log as the Sentry insertion point for 53-05. PR #108. Next: 53-01 (server-side disconnect endpoint), 53-02 (centralize refresh through token-manager), 53-04 (proactive refresh cron), 53-05 (Sentry + dashboard health surface).
+Last activity: 2026-05-06 (Phase 53-03 token-manager race-closure shipped — PR #108)
 
 ## Active operational notes
 
