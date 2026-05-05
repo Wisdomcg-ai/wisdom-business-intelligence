@@ -17,6 +17,12 @@ import {
   extractCompensationFromPayTemplate,
   enrichWizardMemberFromXeroEmployee,
   computeXeroFingerprint,
+  // Phase 52-01 additions:
+  ANNUAL_PAY_PERIODS,
+  getDerivedAnnualSalary,
+  markFieldOverridden,
+  isFieldOverridden,
+  isXeroSourcedRow,
 } from '@/app/finances/forecast/components/wizard-v4/utils/xero-payroll-mapping';
 
 describe('mapXeroPayrollCalendarToFrequency', () => {
@@ -285,5 +291,116 @@ describe('computeXeroFingerprint', () => {
 
   it('returns an empty object for fully-undefined input', () => {
     expect(computeXeroFingerprint({})).toEqual({});
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Phase 52-01 additions — derived-salary helper + override tracking helpers
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('ANNUAL_PAY_PERIODS', () => {
+  it('weekly = 52', () => {
+    expect(ANNUAL_PAY_PERIODS.weekly).toBe(52);
+  });
+  it('fortnightly = 26', () => {
+    expect(ANNUAL_PAY_PERIODS.fortnightly).toBe(26);
+  });
+  it('monthly = 12', () => {
+    expect(ANNUAL_PAY_PERIODS.monthly).toBe(12);
+  });
+});
+
+describe('getDerivedAnnualSalary', () => {
+  it('weekly: $45/hr × 20h × 52 = $46,800', () => {
+    expect(getDerivedAnnualSalary(45, 20, 'weekly')).toBe(46800);
+  });
+  it('fortnightly: $45/hr × 20h × 26 = $23,400', () => {
+    expect(getDerivedAnnualSalary(45, 20, 'fortnightly')).toBe(23400);
+  });
+  it('monthly: $60/hr × 38h × 12 = $27,360', () => {
+    expect(getDerivedAnnualSalary(60, 38, 'monthly')).toBe(27360);
+  });
+  it('rounds non-integer products', () => {
+    // 17.55 × 38 × 52 = 34678.68 → 34679
+    expect(getDerivedAnnualSalary(17.55, 38, 'weekly')).toBe(34679);
+  });
+  it('returns undefined when hourlyRate is missing', () => {
+    expect(getDerivedAnnualSalary(undefined, 20, 'weekly')).toBeUndefined();
+  });
+  it('returns undefined when standardHours is missing', () => {
+    expect(getDerivedAnnualSalary(45, undefined, 'weekly')).toBeUndefined();
+  });
+  it('returns undefined when payFrequency is missing', () => {
+    expect(getDerivedAnnualSalary(45, 20, undefined)).toBeUndefined();
+  });
+  it('handles zero hours correctly (returns 0, not undefined)', () => {
+    // 45 × 0 × 52 = 0 — meaningful "no hours configured" signal, not missing input.
+    expect(getDerivedAnnualSalary(45, 0, 'weekly')).toBe(0);
+  });
+});
+
+describe('markFieldOverridden', () => {
+  it('starts a new array when current is undefined', () => {
+    expect(markFieldOverridden(undefined, 'currentSalary')).toEqual(['currentSalary']);
+  });
+  it('appends to existing array', () => {
+    expect(markFieldOverridden(['payFrequency'], 'currentSalary')).toEqual([
+      'payFrequency',
+      'currentSalary',
+    ]);
+  });
+  it('is idempotent — duplicate add returns the same array reference', () => {
+    const arr = ['currentSalary'];
+    const result = markFieldOverridden(arr, 'currentSalary');
+    expect(result).toBe(arr); // same reference, no change
+    expect(result).toEqual(['currentSalary']);
+  });
+  it('handles empty array input', () => {
+    expect(markFieldOverridden([], 'role')).toEqual(['role']);
+  });
+  it('preserves order on multiple appends', () => {
+    let acc: string[] | undefined;
+    acc = markFieldOverridden(acc, 'currentSalary');
+    acc = markFieldOverridden(acc, 'payFrequency');
+    acc = markFieldOverridden(acc, 'hourlyRate');
+    acc = markFieldOverridden(acc, 'currentSalary'); // dup, ignored
+    expect(acc).toEqual(['currentSalary', 'payFrequency', 'hourlyRate']);
+  });
+});
+
+describe('isFieldOverridden', () => {
+  it('returns false when _overriddenFields is undefined', () => {
+    expect(isFieldOverridden({ _overriddenFields: undefined }, 'currentSalary')).toBe(false);
+  });
+  it('returns true when field is in array', () => {
+    expect(
+      isFieldOverridden({ _overriddenFields: ['currentSalary', 'payFrequency'] }, 'currentSalary'),
+    ).toBe(true);
+  });
+  it('returns false when field is not in array', () => {
+    expect(
+      isFieldOverridden({ _overriddenFields: ['payFrequency'] }, 'currentSalary'),
+    ).toBe(false);
+  });
+  it('returns false for empty array', () => {
+    expect(isFieldOverridden({ _overriddenFields: [] }, 'currentSalary')).toBe(false);
+  });
+});
+
+describe('isXeroSourcedRow', () => {
+  it('returns true when _xeroEmployeeId is set', () => {
+    expect(
+      isXeroSourcedRow({ _xeroEmployeeId: 'emp-123', _xeroFingerprint: undefined }),
+    ).toBe(true);
+  });
+  it('returns false when _xeroEmployeeId is undefined', () => {
+    expect(
+      isXeroSourcedRow({ _xeroEmployeeId: undefined, _xeroFingerprint: undefined }),
+    ).toBe(false);
+  });
+  it('returns false when _xeroEmployeeId is empty string', () => {
+    expect(
+      isXeroSourcedRow({ _xeroEmployeeId: '', _xeroFingerprint: undefined }),
+    ).toBe(false);
   });
 });

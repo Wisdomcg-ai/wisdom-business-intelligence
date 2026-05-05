@@ -30,8 +30,83 @@ import type {
   PayFrequency,
   EmploymentType,
   TeamMember,
+  NewHire,
   XeroFieldFingerprint,
 } from '../types';
+
+/**
+ * Phase 52-01 — Annual pay-period count per PayFrequency.
+ * Used by getDerivedAnnualSalary to compute the read-only annual figure
+ * displayed for hourly Xero imports (hourlyRate × standardHours × periods).
+ */
+export const ANNUAL_PAY_PERIODS: Record<PayFrequency, number> = {
+  weekly: 52,
+  fortnightly: 26,
+  monthly: 12,
+};
+
+/**
+ * Phase 52-01 — Derive annual salary for an hourly-imported employee.
+ * Used for the read-only display when calculation_type === 'hourly' (Operator's
+ * Option D). Returns undefined if any input is missing so the UI can fall back
+ * to '—' instead of rendering '$0/yr'.
+ *
+ * Math: hourlyRate × standardHours × annualPayPeriods. The wizard's existing
+ * casual-annual helper (Step4Team.calculateCasualAnnual) uses
+ * `hourlyRate × hoursPerWeek × weeksPerYear` — same shape, but Phase 52
+ * imports use the Xero-supplied standardHours (per pay period) and infer the
+ * period multiplier from payFrequency rather than a tenant-set weeksPerYear.
+ */
+export function getDerivedAnnualSalary(
+  hourlyRate: number | undefined,
+  standardHours: number | undefined,
+  payFrequency: PayFrequency | undefined,
+): number | undefined {
+  if (hourlyRate == null || standardHours == null || !payFrequency) return undefined;
+  const periods = ANNUAL_PAY_PERIODS[payFrequency];
+  if (!periods) return undefined;
+  return Math.round(hourlyRate * standardHours * periods);
+}
+
+/**
+ * Phase 52-01 — Mark a Xero-sourced field as operator-overridden. Returns a new
+ * _overriddenFields array (existing fields preserved; idempotent on duplicate).
+ * Pure helper; safe in render paths.
+ */
+export function markFieldOverridden(
+  current: string[] | undefined,
+  fieldName: keyof TeamMember | keyof NewHire | string,
+): string[] {
+  const existing = current ?? [];
+  const name = fieldName as string;
+  if (existing.includes(name)) return existing;
+  return [...existing, name];
+}
+
+/**
+ * Phase 52-01 — Check whether a Xero-sourced field has been overridden by the
+ * operator. Used for the visual 'edited' marker pill next to the field.
+ */
+export function isFieldOverridden(
+  member: Pick<TeamMember, '_overriddenFields'>,
+  fieldName: string,
+): boolean {
+  return Boolean(member._overriddenFields?.includes(fieldName));
+}
+
+/**
+ * Phase 52-01 — Decide whether a row originated from a Xero import.
+ * Drives conditional rendering of the edit affordance + 'Xero' provenance hint.
+ *
+ * NB: keyed off `_xeroEmployeeId` (a non-empty string identifies the Xero
+ * EmployeeID join key). `Boolean('')` is `false`, so an empty-string id is
+ * treated as not-from-Xero — defensive against half-stamped rows.
+ */
+export function isXeroSourcedRow(
+  member: Pick<TeamMember, '_xeroFingerprint' | '_xeroEmployeeId'>,
+): boolean {
+  return Boolean(member._xeroEmployeeId);
+}
 
 /**
  * Maps Xero Payroll AU CalendarType → wizard PayFrequency.
