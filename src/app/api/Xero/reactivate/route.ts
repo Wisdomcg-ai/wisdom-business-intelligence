@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
-import { decrypt, encrypt } from '@/lib/utils/encryption';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import { getValidAccessToken } from '@/lib/xero/token-manager';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,9 +14,25 @@ const supabaseAdmin = createClient(
 /**
  * POST /api/Xero/reactivate
  *
- * Attempts to re-activate an inactive Xero connection by checking if the
- * refresh token is still valid. If valid, refreshes the tokens and marks
- * the connection as active again.
+ * Attempts to re-activate an inactive Xero connection by delegating the
+ * refresh-token grant to the centralized token-manager. On success, flips
+ * `is_active=true`. On terminal failure (invalid_grant / access_denied),
+ * the token-manager has already deactivated and we surface a 401 to the FE.
+ *
+ * Phase 53-02 refactor: this route used to inline its own
+ * fetch(identity.xero.com) + decrypt + encrypt + save block. That bypassed
+ * the lock + retry + race-aware deactivation policy in token-manager. Now
+ * we delegate the entire token surface to getValidAccessToken.
+ *
+ * Behavioral note (53-02 PLAN-CHECK F1): on HEAD, any non-`invalid_grant`
+ * failure (including `access_denied`) returned HTTP 500 / `error: 'refresh_failed'`.
+ * Post-refactor, both `token_expired_permanently` (invalid_grant) AND
+ * `token_revoked` (access_denied / unauthorized_client × MAX_RETRIES) return
+ * HTTP 401 / `error: 'token_expired'`. This is a small behavioral improvement —
+ * terminal "user must reconnect" failures now correctly signal re-auth instead
+ * of being lumped into a generic 500. FE callers (`integrations/page.tsx` and
+ * `ForecastWizardV4.tsx:1430`) do NOT branch on `status === 500` for the
+ * reactivate path, so this change is transparent to existing UX.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -90,84 +106,73 @@ export async function POST(request: NextRequest) {
 
     console.log('[Xero Reactivate] Attempting to reactivate connection:', connection.id);
 
-    // Try to refresh the tokens
-    let decryptedRefreshToken: string;
-    try {
-      decryptedRefreshToken = decrypt(connection.refresh_token);
-    } catch (e) {
-      return NextResponse.json({
-        success: false,
-        error: 'decrypt_failed',
-        message: 'Failed to decrypt stored tokens. Please reconnect Xero.'
-      }, { status: 500 });
-    }
+    // 53-02: delegate refresh to centralized token-manager.
+    // - Pass { id } so getValidAccessToken re-fetches the row internally
+    //   (avoids stale-in-memory rotation race per 53-03 Hole A).
+    // - token-manager runs the lock + retry + careful deactivation policy.
+    //   On terminal failure it has already flipped is_active=false; we just
+    //   map its error category to the FE-facing response shape.
+    // - We do NOT decrypt connection.refresh_token here — token-manager owns
+    //   decryption. The encryption module is no longer imported in this file.
+    const tokenResult = await getValidAccessToken({ id: connection.id }, supabaseAdmin);
 
-    // Attempt token refresh
-    const response = await fetch('https://identity.xero.com/connect/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${Buffer.from(
-          `${process.env.XERO_CLIENT_ID}:${process.env.XERO_CLIENT_SECRET}`
-        ).toString('base64')}`
-      },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: decryptedRefreshToken
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[Xero Reactivate] Token refresh failed:', response.status, errorText);
-
-      let errorData: any = {};
-      try {
-        errorData = JSON.parse(errorText);
-      } catch {
-        // Not JSON
-      }
-
-      // Check if it's a permanent failure
-      if (errorData.error === 'invalid_grant') {
+    if (!tokenResult.success) {
+      // Terminal: refresh_token expired (60-day idle / rotated past grace).
+      if (tokenResult.error === 'token_expired_permanently') {
         return NextResponse.json({
           success: false,
           error: 'token_expired',
           message: 'Refresh token has expired. Please reconnect Xero from the Integrations page.'
         }, { status: 401 });
       }
-
+      // Terminal: user revoked in Xero, or unauthorized_client after MAX_RETRIES.
+      // 53-03's categorizeError maps both `access_denied` and exhausted
+      // `unauthorized_client` to the `token_revoked` category. Both require
+      // user reconnection.
+      if (tokenResult.error === 'token_revoked') {
+        return NextResponse.json({
+          success: false,
+          error: 'token_expired',
+          message: 'Access has been revoked. Please reconnect Xero from the Integrations page.'
+        }, { status: 401 });
+      }
+      // Transient — token-manager already retried internally. Surface as 500
+      // with the underlying message so ops can correlate. (database_error,
+      // network_error, server_error, rate_limited, unknown all land here.)
       return NextResponse.json({
         success: false,
         error: 'refresh_failed',
-        message: `Token refresh failed: ${errorData.error || 'Unknown error'}`
+        message: tokenResult.message ?? 'Token refresh failed'
       }, { status: 500 });
     }
 
-    // Token refresh succeeded - update and reactivate
-    const tokens = await response.json();
-    const newExpiry = new Date();
-    newExpiry.setSeconds(newExpiry.getSeconds() + tokens.expires_in);
-
+    // 53-02: refresh succeeded. token-manager already saved the fresh
+    // access_token / refresh_token / expires_at. We only need to flip the
+    // activation flag. Single targeted UPDATE — do NOT re-write tokens here.
     const { error: updateError } = await supabaseAdmin
       .from('xero_connections')
       .update({
-        access_token: encrypt(tokens.access_token),
-        refresh_token: encrypt(tokens.refresh_token),
-        expires_at: newExpiry.toISOString(),
         is_active: true,
         updated_at: new Date().toISOString()
       })
       .eq('id', connection.id);
 
     if (updateError) {
-      console.error('[Xero Reactivate] Failed to save tokens:', updateError);
+      console.error('[Xero Reactivate] Failed to flip is_active:', updateError);
       return NextResponse.json({
         success: false,
         error: 'save_failed',
-        message: 'Failed to save updated tokens'
+        message: 'Token refreshed but failed to flip is_active=true'
       }, { status: 500 });
     }
+
+    // Re-read the row so the FE gets the freshly-saved expires_at for
+    // "expires in N minutes" display.
+    const { data: refreshedRow } = await supabaseAdmin
+      .from('xero_connections')
+      .select('id, tenant_name, expires_at')
+      .eq('id', connection.id)
+      .single();
 
     console.log('[Xero Reactivate] Connection reactivated successfully:', connection.id);
 
@@ -178,7 +183,7 @@ export async function POST(request: NextRequest) {
       connection: {
         id: connection.id,
         tenant_name: connection.tenant_name,
-        expires_at: newExpiry.toISOString()
+        expires_at: refreshedRow?.expires_at ?? connection.expires_at
       }
     });
 
