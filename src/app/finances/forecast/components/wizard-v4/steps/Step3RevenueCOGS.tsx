@@ -12,32 +12,32 @@ import { getEffectiveSeasonality } from '../utils/line-distribution';
 /**
  * RevenueLineMixInputs — Phase 51-01 (UX-S3-01)
  *
- * Renders a paired $ / % editor for a single revenue line. Both inputs use
- * useEditableValue (51-00) so neither flickers nor loses keystrokes when the
- * upstream committed value re-derives mid-edit.
+ * Renders a % editor for a single revenue line (and an optional Y-on-Y growth
+ * % editor for Y2/Y3). Uses useEditableValue (51-00) so the input doesn't
+ * flicker or lose keystrokes when the upstream committed value re-derives
+ * mid-edit.
  *
  * Why a child component: useEditableValue must be called from a stable
  * component (Rules of Hooks). Calling it inline inside `revenueLines.map(...)`
  * would violate the rule of hooks (hook count varies with array length).
  *
- * Used by BOTH the summary view (~line 776) and the monthly view (~line 1073)
- * of Step3RevenueCOGS so the $ ↔ % bidirectional sync behavior is identical.
+ * The paired $ editor was removed — the "Forecast Y1" column already shows
+ * the dollar value, so duplicating it in the Split column was visual clutter
+ * and out of step with COGS (which has always been % only).
  */
 interface RevenueLineMixInputsProps {
   lineId: string;
   lineName: string;
-  lineTotal: number;        // committed annual $ for this line (derived from monthly data)
   linePct: number;          // committed % split for this line
-  onCommitDollar: (value: number) => void;
   onCommitPct: (value: number) => void;
-  /** 'sm' (summary view ~text-sm, w-20) or 'xs' (monthly view ~text-xs, w-16) */
+  /** 'sm' (summary view ~text-sm) or 'xs' (monthly view ~text-xs) */
   size?: 'sm' | 'xs';
 
   // Phase 51-02 (UX-S3-02) — Y-on-Y Growth % editor for Y2/Y3 views.
   // When activeYear === 1 (or undefined), the growth editor is HIDDEN
   //   (Y1 has no prior wizard year line total to compute growth from —
   //    Y1 lives off goals.year1.revenue, not a prior-year line).
-  // When activeYear === 2 or 3 AND onCommitGrowth is provided, a third
+  // When activeYear === 2 or 3 AND onCommitGrowth is provided, a second
   //   editor renders to the right of the % editor.
   activeYear?: 1 | 2 | 3;       // default 1 (back-compat with 51-01 call sites)
   growthPct?: number;            // committed Y-on-Y growth % for the active year
@@ -47,17 +47,13 @@ interface RevenueLineMixInputsProps {
 function RevenueLineMixInputs({
   lineId: _lineId,
   lineName,
-  lineTotal,
   linePct,
-  onCommitDollar,
   onCommitPct,
   size = 'sm',
   activeYear,
   growthPct,
   onCommitGrowth,
 }: RevenueLineMixInputsProps) {
-  // Dollar editor — default parse (parseFloat) coerces typed string → number.
-  const dollarEditor = useEditableValue(lineTotal, onCommitDollar);
   // Percent editor — clamp parse to 0..100 integer.
   const percentEditor = useEditableValue(linePct, onCommitPct, {
     parse: (raw) => {
@@ -77,18 +73,11 @@ function RevenueLineMixInputs({
     },
   });
 
-  const dollarClass =
-    size === 'sm'
-      ? 'w-20 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy'
-      : 'w-16 px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy';
   const percentClass =
     size === 'sm'
       ? 'w-14 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy'
       : 'w-12 px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy';
-  const growthClass =
-    size === 'sm'
-      ? 'w-14 px-2 py-1 text-sm text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy'
-      : 'w-12 px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy';
+  const growthClass = percentClass;
   const symbolClass = size === 'sm' ? 'text-xs text-gray-400' : 'text-[10px] text-gray-400';
   const wrapperClass = size === 'sm' ? 'inline-flex items-center gap-1 justify-center' : 'inline-flex items-center gap-0.5';
 
@@ -96,17 +85,6 @@ function RevenueLineMixInputs({
 
   return (
     <div className={wrapperClass}>
-      <span className={symbolClass}>$</span>
-      <input
-        type="number"
-        aria-label={`Annual dollars for ${lineName}`}
-        value={dollarEditor.display}
-        onChange={dollarEditor.onChange}
-        onBlur={dollarEditor.onBlur}
-        onKeyDown={dollarEditor.onKeyDown}
-        min="0"
-        className={dollarClass}
-      />
       <input
         type="number"
         aria-label={`Percent split for ${lineName}`}
@@ -433,7 +411,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
   // Phase 51-01 (UX-S3-01): year-level revenue target for the active year.
   // Used by <RevenueLineMixInputs> so the % column means "share of goal" (NOT
-  // "share of forecast total") — round-trips with $ via commitDollarValue.
+  // "share of forecast total"); handleMixChange targets goals.year[N].revenue.
   const yearTargetRevenue =
     activeYear === 1
       ? goals.year1?.revenue || 0
@@ -888,23 +866,6 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     return mix;
   }, [priorYear]);
 
-  // Phase 51-01 (UX-S3-01): commit a $ edit by converting it to a % and
-  // delegating to handleMixChange. Single source of truth for distribution
-  // math — the $ column never duplicates the seasonality / actuals-locking
-  // logic that handleMixChange owns.
-  const commitDollarValue = (lineId: string, dollarValue: number) => {
-    const yearTarget =
-      activeYear === 1
-        ? goals.year1?.revenue || 0
-        : activeYear === 2
-          ? goals.year2?.revenue || 0
-          : goals.year3?.revenue || 0;
-    if (yearTarget <= 0) return;
-    const pct = Math.round((dollarValue / yearTarget) * 100);
-    const clamped = Math.max(0, Math.min(100, pct));
-    handleMixChange(lineId, clamped);
-  };
-
   // Phase 51-02 (UX-S3-02): commit a Growth % edit. Clamps to [-100, 1000]
   // and delegates to handleGrowthChange (single source of truth — distribution
   // math is owned by handleGrowthChange, not duplicated here).
@@ -1058,15 +1019,30 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const grossProfit = totalRevenue - totalCOGS;
   const grossProfitPct = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
-  // Current COGS line percentages (of total COGS)
+  // Current COGS line percentages (of total COGS).
+  // Last line absorbs rounding residue so the displayed sum is exactly 100%
+  // (independent rounding per line drifts to 98/99/101/102 with 3+ lines).
   const cogsLinePercentages = useMemo(() => {
     const pcts: Record<string, number> = {};
+    if (cogsLines.length === 0) return pcts;
     if (totalCOGS <= 0) {
-      cogsLines.forEach(line => { pcts[line.id] = Math.round(100 / (cogsLines.length || 1)); });
+      const evenSplit = Math.floor(100 / cogsLines.length);
+      const lastIdx = cogsLines.length - 1;
+      cogsLines.forEach((line, i) => {
+        pcts[line.id] = i === lastIdx ? 100 - evenSplit * lastIdx : evenSplit;
+      });
       return pcts;
     }
-    cogsLines.forEach(line => {
-      pcts[line.id] = Math.round((calculateCOGSAmount(line) / totalCOGS) * 100);
+    let runningSum = 0;
+    const lastIdx = cogsLines.length - 1;
+    cogsLines.forEach((line, i) => {
+      if (i === lastIdx) {
+        pcts[line.id] = Math.max(0, 100 - runningSum);
+      } else {
+        const rounded = Math.round((calculateCOGSAmount(line) / totalCOGS) * 100);
+        pcts[line.id] = rounded;
+        runningSum += rounded;
+      }
     });
     return pcts;
   }, [cogsLines, totalCOGS, totalRevenue, activeYear]);
@@ -1098,9 +1074,14 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
   return (
     <div className="space-y-4">
-      {/* D-44.2-02 — read-path data integrity banner. Renders nothing when verified. */}
+      {/* D-44.2-02 — read-path data integrity banner. Renders nothing when verified.
+          Suppress 'no_sync' when actuals are already loaded — the API returns
+          'no_sync' if xero_connections.is_active is false or sync_jobs is in
+          'running'/unknown, but xero_pl_lines may still hold last-good data.
+          Telling the coach to "Connect Xero" when YTD is visibly populated is
+          contradictory; partial / failed / stale still fire correctly. */}
       <DataIntegrityBanner
-        quality={dataQuality}
+        quality={dataQuality === 'no_sync' && (currentYTD?.months_count ?? 0) > 0 ? 'verified' : dataQuality}
         perTenantQuality={perTenantQuality}
         lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
       />
@@ -1299,19 +1280,18 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                         {priorTotal > 0 ? formatCurrency(priorTotal) : '\u2014'}
                       </td>
                       <td className="px-4 py-2.5 text-center">
-                        {/* Phase 51-01 (UX-S3-01): paired $/% editor (was % only).
+                        {/* Phase 51-01 (UX-S3-01): % split editor.
                             % is share of goals.year[N].revenue (not share of revenue-line total)
-                            so it round-trips with the $ value and matches handleMixChange semantics. */}
+                            so it matches handleMixChange semantics. The $ value is shown in the
+                            adjacent "Forecast Y[N]" column; it doesn't need to be duplicated here. */}
                         <RevenueLineMixInputs
                           lineId={line.id}
                           lineName={line.name}
-                          lineTotal={forecastTotal}
                           linePct={
                             yearTargetRevenue > 0
                               ? Math.round((forecastTotal / yearTargetRevenue) * 100)
                               : currentMixPct
                           }
-                          onCommitDollar={(val) => commitDollarValue(line.id, val)}
                           onCommitPct={(val) => handleMixChange(line.id, val)}
                           size="sm"
                           activeYear={activeYear}
@@ -1638,13 +1618,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                             <RevenueLineMixInputs
                               lineId={line.id}
                               lineName={line.name}
-                              lineTotal={lineTotalNow}
                               linePct={
                                 yearTargetRevenue > 0
                                   ? Math.round((lineTotalNow / yearTargetRevenue) * 100)
                                   : revMixPct
                               }
-                              onCommitDollar={(val) => commitDollarValue(line.id, val)}
                               onCommitPct={(val) => handleMixChange(line.id, val)}
                               size="xs"
                               activeYear={activeYear}
