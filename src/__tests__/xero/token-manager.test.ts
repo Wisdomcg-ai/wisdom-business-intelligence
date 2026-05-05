@@ -559,8 +559,11 @@ describe('categorizeError — unauthorized_client 3-retry policy', () => {
     const handle = makeMockSupabase(BASE_ROW);
     const cap = captureConsole();
 
+    // Each fetch must produce a fresh Response — Response bodies are
+    // consumable only once, so a single mockResolvedValue would error on
+    // the 2nd attempt's `await response.text()`.
     const fetchMock = vi.spyOn(global, 'fetch')
-      .mockResolvedValue(makeXeroResponse('unauthorized_client'));
+      .mockImplementation(async () => makeXeroResponse('unauthorized_client'));
 
     const { getValidAccessToken } = await import('@/lib/xero/token-manager');
     const promise = getValidAccessToken({ id: 'conn-1' }, handle.client);
@@ -642,7 +645,7 @@ describe('categorizeError — invalid_client never deactivates', () => {
     const handle = makeMockSupabase(BASE_ROW);
 
     const fetchMock = vi.spyOn(global, 'fetch')
-      .mockResolvedValue(makeXeroResponse('invalid_client'));
+      .mockImplementation(async () => makeXeroResponse('invalid_client'));
 
     const { getValidAccessToken } = await import('@/lib/xero/token-manager');
     const promise = getValidAccessToken({ id: 'conn-1' }, handle.client);
@@ -686,7 +689,7 @@ describe('categorizeError — generic 400 never deactivates (regression preserva
     vi.useFakeTimers();
     const handle = makeMockSupabase(BASE_ROW);
 
-    vi.spyOn(global, 'fetch').mockResolvedValue(makeXeroResponse('generic_400'));
+    vi.spyOn(global, 'fetch').mockImplementation(async () => makeXeroResponse('generic_400'));
 
     const { getValidAccessToken } = await import('@/lib/xero/token-manager');
     const promise = getValidAccessToken({ id: 'conn-1' }, handle.client);
