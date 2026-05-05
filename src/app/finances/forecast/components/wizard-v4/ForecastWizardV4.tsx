@@ -271,14 +271,20 @@ export function ForecastWizardV4({
                   total: totalOpex, byLine: opexByLine,
                   byMonth: freshPriorFY.opex_by_month || {},
                 },
-                otherIncome: freshPriorFY.other_income ? {
+                // Other Income / Other Expenses preservation:
+                // If the refresh response includes the field (even as 0), trust
+                // it — Xero is telling us the current value. If the field is
+                // missing entirely (undefined), preserve the cached value so a
+                // partial API response doesn't silently wipe data the user
+                // previously had (e.g. from a Step 2 manual P&L import).
+                otherIncome: freshPriorFY.other_income !== undefined && freshPriorFY.other_income !== null ? {
                   total: freshPriorFY.other_income,
                   byMonth: freshPriorFY.other_income_by_month || {},
-                } : undefined,
-                otherExpenses: freshPriorFY.other_expenses ? {
+                } : state.priorYear?.otherIncome,
+                otherExpenses: freshPriorFY.other_expenses !== undefined && freshPriorFY.other_expenses !== null ? {
                   total: freshPriorFY.other_expenses,
                   byMonth: freshPriorFY.other_expenses_by_month || {},
-                } : undefined,
+                } : state.priorYear?.otherExpenses,
                 seasonalityPattern: freshPriorFY.seasonality_pattern?.length === 12
                   ? freshPriorFY.seasonality_pattern : Array(12).fill(100 / 12),
               };
