@@ -171,12 +171,22 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
     run_rate_net_profit?: number;
   } | null>(null);
 
-  // Load current YTD data
+  // Load current YTD data + sync-quality banner state.
+  // Refetches on tab focus / visibility change so a sync triggered from the
+  // Integrations tab (or elsewhere) updates the banner without a full reload.
   useEffect(() => {
-    if (priorYear && businessId) {
-      loadCurrentYTD();
-    }
-  }, [priorYear, businessId]);
+    if (!priorYear || !businessId) return;
+    loadCurrentYTD();
+    const onFocus = () => { loadCurrentYTD(); };
+    const onVisibility = () => { if (document.visibilityState === 'visible') loadCurrentYTD(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priorYear, businessId, fiscalYear]);
 
   const loadCurrentYTD = async () => {
     try {

@@ -269,22 +269,35 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const { revenuePattern, revenueLines, cogsLines, activeYear, goals, priorYear, currentYTD, businessId } = state;
 
   // D-44.2-03 read-path quality gate; surfaces in DataIntegrityBanner.
+  // Refetches on tab focus / visibility change so a sync triggered from the
+  // Integrations tab (or elsewhere) updates the banner without a full reload.
   const [dataQuality, setDataQuality] = useState<DataQuality>('verified')
   const [perTenantQuality, setPerTenantQuality] = useState<PerTenantQuality[]>([])
   useEffect(() => {
     if (!businessId) return
-    const ctrl = new AbortController()
-    fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`, { signal: ctrl.signal })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!data?.summary) return
+    let aborted = false
+    const fetchQuality = async () => {
+      try {
+        const r = await fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`)
+        if (!r.ok || aborted) return
+        const data = await r.json()
+        if (aborted || !data?.summary) return
         if (data.summary.data_quality) setDataQuality(data.summary.data_quality)
         if (Array.isArray(data.summary.per_tenant_quality)) setPerTenantQuality(data.summary.per_tenant_quality)
-      })
-      .catch(() => {
+      } catch {
         // Non-blocking — banner stays as 'verified' (silent) on fetch failure.
-      })
-    return () => ctrl.abort()
+      }
+    }
+    void fetchQuality()
+    const onFocus = () => { void fetchQuality() }
+    const onVisibility = () => { if (document.visibilityState === 'visible') void fetchQuality() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      aborted = true
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [businessId, fiscalYear])
 
   const [showAddRevenue, setShowAddRevenue] = useState(false);
