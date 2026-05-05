@@ -23,7 +23,17 @@ import {
   markFieldOverridden,
   isFieldOverridden,
   isXeroSourcedRow,
+  // Phase 52-02 additions (RED on HEAD until Task 2 ships these exports):
+  findMatchingTeamMember,
+  computeReconciliationDiff,
+  applyReconciliationDecision,
+  applySilentXeroUpdates,
+  XERO_TRACKED_FIELDS,
+  type MemberDiff,
+  type FieldDiff,
+  type ReconciliationDecision,
 } from '@/app/finances/forecast/components/wizard-v4/utils/xero-payroll-mapping';
+import type { TeamMember } from '@/app/finances/forecast/components/wizard-v4/types';
 
 describe('mapXeroPayrollCalendarToFrequency', () => {
   it.each([
@@ -402,5 +412,538 @@ describe('isXeroSourcedRow', () => {
     expect(
       isXeroSourcedRow({ _xeroEmployeeId: '', _xeroFingerprint: undefined }),
     ).toBe(false);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Phase 52-02 additions — re-import reconciliation helpers
+//
+// RED on HEAD: every test below fails because the 4 helpers + types do not
+// yet exist on xero-payroll-mapping.ts. After Task 2 lands the helpers, all
+// tests in these 4 describe blocks GREEN. Existing 52-00 + 52-01 tests above
+// stay GREEN throughout.
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Helper to build a minimal TeamMember for reconciliation tests. All Phase 52
+ * provenance fields default to "Xero-sourced row" with a fresh fingerprint.
+ */
+function makeMember(overrides: Partial<TeamMember> = {}): TeamMember {
+  return {
+    id: 'team-default',
+    name: 'Alice',
+    role: 'Engineer',
+    type: 'full-time',
+    hoursPerWeek: 38,
+    currentSalary: 98000,
+    increasePct: 0,
+    newSalary: 98000,
+    superAmount: 0,
+    isFromXero: true,
+    payFrequency: 'fortnightly',
+    standardHours: 38,
+    hourlyRate: undefined,
+    _xeroEmployeeId: 'emp-alice-xero',
+    _xeroImportedAt: '2026-04-01T00:00:00.000Z',
+    _xeroFingerprint: {
+      name: 'Alice',
+      role: 'Engineer',
+      type: 'full-time',
+      payFrequency: 'fortnightly',
+      standardHours: 38,
+      currentSalary: 98000,
+    },
+    ...overrides,
+  };
+}
+
+describe('findMatchingTeamMember', () => {
+  it('Tier 1 wins: matching _xeroEmployeeId returns that member id even if name differs', () => {
+    const members = [
+      { id: 'team-1', name: 'Different Name', _xeroEmployeeId: 'emp-xero-1' },
+      { id: 'team-2', name: 'Bob Jones', _xeroEmployeeId: 'emp-xero-2' },
+    ];
+    const result = findMatchingTeamMember(
+      { employee_id: 'emp-xero-1', full_name: 'Alice Smith' },
+      members,
+    );
+    expect(result).toBe('team-1');
+  });
+
+  it('Tier 2 wins: no _xeroEmployeeId match but email matches case-insensitively', () => {
+    const members = [
+      { id: 'team-1', name: 'Bob Jones', _xeroEmployeeId: 'other-emp', email: 'BOB@example.com' },
+      { id: 'team-2', name: 'Carol', _xeroEmployeeId: 'emp-c', email: 'carol@example.com' },
+    ];
+    const result = findMatchingTeamMember(
+      { employee_id: 'no-match-id', full_name: 'Bob Jones', email: 'bob@example.com' },
+      members,
+    );
+    expect(result).toBe('team-1');
+  });
+
+  it('Tier 3 wins: no id/email match but name matches case-insensitively + trimmed', () => {
+    const members = [
+      { id: 'team-1', name: '  Alice Smith  ', _xeroEmployeeId: 'other-emp' },
+      { id: 'team-2', name: 'Bob Jones', _xeroEmployeeId: 'emp-b' },
+    ];
+    const result = findMatchingTeamMember(
+      { employee_id: 'no-match', full_name: 'alice smith' },
+      members,
+    );
+    expect(result).toBe('team-1');
+  });
+
+  it('returns undefined when teamMembers is empty', () => {
+    const result = findMatchingTeamMember(
+      { employee_id: 'emp-1', full_name: 'Anyone' },
+      [],
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined when nothing matches across all 3 tiers', () => {
+    const members = [
+      { id: 'team-1', name: 'Bob', _xeroEmployeeId: 'emp-b', email: 'bob@x.com' },
+    ];
+    const result = findMatchingTeamMember(
+      { employee_id: 'emp-no', full_name: 'Carol', email: 'carol@x.com' },
+      members,
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it('Tier 3 matches a manually-added member (no _xeroEmployeeId) by name', () => {
+    // Manually-added Mary has no _xeroEmployeeId. Xero returns an employee
+    // with full_name 'Mary Smith'. Tier 3 should match.
+    const members = [
+      { id: 'team-mary', name: 'Mary Smith', _xeroEmployeeId: undefined },
+    ];
+    const result = findMatchingTeamMember(
+      { employee_id: 'emp-mary-xero', full_name: 'Mary Smith' },
+      members,
+    );
+    expect(result).toBe('team-mary');
+  });
+
+  it('Tier ordering: when both _xeroEmployeeId AND name match different members, tier 1 wins', () => {
+    const members = [
+      { id: 'team-a', name: 'Different Name', _xeroEmployeeId: 'emp-target' },
+      { id: 'team-b', name: 'Alice Smith', _xeroEmployeeId: 'unrelated-id' },
+    ];
+    const result = findMatchingTeamMember(
+      { employee_id: 'emp-target', full_name: 'Alice Smith' },
+      members,
+    );
+    expect(result).toBe('team-a');
+  });
+});
+
+describe('computeReconciliationDiff', () => {
+  it('all fields unchanged → every field verdict is "unchanged"', () => {
+    const member = makeMember();
+    const fresh = {
+      name: 'Alice',
+      role: 'Engineer',
+      type: 'full-time' as const,
+      payFrequency: 'fortnightly' as const,
+      standardHours: 38,
+      hourlyRate: undefined,
+      currentSalary: 98000,
+    };
+    const diff = computeReconciliationDiff(member, fresh as any);
+    expect(diff.fields.every((f) => f.verdict === 'unchanged')).toBe(true);
+  });
+
+  it('one field changed by Xero, operator never touched → verdict is "updated-by-xero-only"', () => {
+    const member = makeMember({ currentSalary: 98000, _overriddenFields: undefined });
+    const fresh = {
+      name: 'Alice',
+      role: 'Engineer',
+      type: 'full-time' as const,
+      payFrequency: 'fortnightly' as const,
+      standardHours: 38,
+      hourlyRate: undefined,
+      currentSalary: 105000,
+    };
+    const diff = computeReconciliationDiff(member, fresh as any);
+    const salaryField = diff.fields.find((f) => f.field === 'currentSalary')!;
+    expect(salaryField.verdict).toBe('updated-by-xero-only');
+    // Other fields stay "unchanged"
+    expect(diff.fields.filter((f) => f.field !== 'currentSalary').every((f) => f.verdict === 'unchanged')).toBe(true);
+  });
+
+  it('field operator-overridden but Xero unchanged → verdict is "unchanged" (no Xero change to react to)', () => {
+    const member = makeMember({
+      currentSalary: 90000, // operator changed value
+      _overriddenFields: ['currentSalary'],
+      _xeroFingerprint: { ...makeMember()._xeroFingerprint!, currentSalary: 98000 },
+    });
+    const fresh = {
+      name: 'Alice',
+      role: 'Engineer',
+      type: 'full-time' as const,
+      payFrequency: 'fortnightly' as const,
+      standardHours: 38,
+      hourlyRate: undefined,
+      currentSalary: 98000, // Xero hasn't changed since last import
+    };
+    const diff = computeReconciliationDiff(member, fresh as any);
+    expect(diff.fields.find((f) => f.field === 'currentSalary')!.verdict).toBe('unchanged');
+  });
+
+  it('field operator-overridden AND Xero changed → verdict is "conflict"', () => {
+    const member = makeMember({
+      currentSalary: 90000,
+      _overriddenFields: ['currentSalary'],
+      _xeroFingerprint: { ...makeMember()._xeroFingerprint!, currentSalary: 98000 },
+    });
+    const fresh = {
+      name: 'Alice',
+      role: 'Engineer',
+      type: 'full-time' as const,
+      payFrequency: 'fortnightly' as const,
+      standardHours: 38,
+      hourlyRate: undefined,
+      currentSalary: 105000,
+    };
+    const diff = computeReconciliationDiff(member, fresh as any);
+    expect(diff.fields.find((f) => f.field === 'currentSalary')!.verdict).toBe('conflict');
+  });
+
+  it('mix: 1 unchanged + 1 silent-update + 1 conflict', () => {
+    const member = makeMember({
+      currentSalary: 90000,                     // operator-overridden + Xero will change
+      payFrequency: 'fortnightly',              // unchanged
+      role: 'Senior Engineer',                  // operator-overridden role; here Xero will NOT change → unchanged
+      _overriddenFields: ['currentSalary'],     // role NOT overridden
+      _xeroFingerprint: {
+        ...makeMember()._xeroFingerprint!,
+        currentSalary: 98000,
+        role: 'Engineer',
+      },
+    });
+    const fresh = {
+      name: 'Alice',
+      role: 'Lead Engineer',                    // Xero changed role; operator NOT overridden → silent
+      type: 'full-time' as const,
+      payFrequency: 'fortnightly' as const,     // unchanged
+      standardHours: 38,
+      hourlyRate: undefined,
+      currentSalary: 105000,                     // Xero changed + operator overridden → conflict
+    };
+    const diff = computeReconciliationDiff(member, fresh as any);
+    const verdicts = diff.fields.reduce<Record<string, string>>((acc, f) => {
+      acc[f.field] = f.verdict;
+      return acc;
+    }, {});
+    expect(verdicts.currentSalary).toBe('conflict');
+    expect(verdicts.role).toBe('updated-by-xero-only');
+    expect(verdicts.payFrequency).toBe('unchanged');
+  });
+
+  it('float tolerance: hourlyRate fingerprint=45.00, fresh=45.001 → "unchanged" (within 0.005)', () => {
+    const member = makeMember({
+      hourlyRate: 45.00,
+      _xeroFingerprint: { ...makeMember()._xeroFingerprint!, hourlyRate: 45.00 },
+    });
+    const fresh = {
+      name: 'Alice',
+      role: 'Engineer',
+      type: 'full-time' as const,
+      payFrequency: 'fortnightly' as const,
+      standardHours: 38,
+      hourlyRate: 45.001,
+      currentSalary: 98000,
+    };
+    const diff = computeReconciliationDiff(member, fresh as any);
+    expect(diff.fields.find((f) => f.field === 'hourlyRate')!.verdict).toBe('unchanged');
+  });
+
+  it('undefined↔null treated as equivalent (both "absent") → verdict "unchanged"', () => {
+    const member = makeMember({
+      hourlyRate: undefined,
+      _xeroFingerprint: { ...makeMember()._xeroFingerprint!, hourlyRate: undefined },
+    });
+    const fresh = {
+      name: 'Alice',
+      role: 'Engineer',
+      type: 'full-time' as const,
+      payFrequency: 'fortnightly' as const,
+      standardHours: 38,
+      hourlyRate: null,
+      currentSalary: 98000,
+    };
+    const diff = computeReconciliationDiff(member, fresh as any);
+    expect(diff.fields.find((f) => f.field === 'hourlyRate')!.verdict).toBe('unchanged');
+  });
+
+  it('missing _xeroFingerprint entirely → every changed field counts as "updated-by-xero-only"', () => {
+    const member = makeMember({
+      _xeroFingerprint: undefined,
+      _overriddenFields: undefined,
+      currentSalary: 80000,
+    });
+    const fresh = {
+      name: 'Alice Renamed',
+      role: 'New Role',
+      type: 'part-time' as const,
+      payFrequency: 'monthly' as const,
+      standardHours: 20,
+      hourlyRate: 50,
+      currentSalary: 105000,
+    };
+    const diff = computeReconciliationDiff(member, fresh as any);
+    // Every field where the new value differs from the (undefined) fingerprint → silent
+    const silentCount = diff.fields.filter((f) => f.verdict === 'updated-by-xero-only').length;
+    expect(silentCount).toBeGreaterThanOrEqual(5);
+    expect(diff.fields.some((f) => f.verdict === 'conflict')).toBe(false);
+  });
+});
+
+describe('applyReconciliationDecision', () => {
+  it('"accept-xero" sets field to xero value, removes from _overriddenFields, refreshes fingerprint', () => {
+    const member = makeMember({
+      currentSalary: 90000,
+      _overriddenFields: ['currentSalary', 'payFrequency'],
+    });
+    const before = Date.now();
+    const partial = applyReconciliationDecision(member, 'currentSalary', 'accept-xero', 105000);
+    const after = Date.now();
+    expect(partial.currentSalary).toBe(105000);
+    expect(partial._xeroFingerprint?.currentSalary).toBe(105000);
+    expect(partial._overriddenFields).toEqual(['payFrequency']);
+    const ts = new Date(partial._xeroImportedAt!).getTime();
+    expect(ts).toBeGreaterThanOrEqual(before);
+    expect(ts).toBeLessThanOrEqual(after);
+  });
+
+  it('"accept-xero" on field NOT in _overriddenFields is idempotent on overrides', () => {
+    const member = makeMember({
+      currentSalary: 98000,
+      _overriddenFields: ['payFrequency'],
+    });
+    const partial = applyReconciliationDecision(member, 'currentSalary', 'accept-xero', 105000);
+    expect(partial.currentSalary).toBe(105000);
+    expect(partial._xeroFingerprint?.currentSalary).toBe(105000);
+    expect(partial._overriddenFields).toEqual(['payFrequency']);
+  });
+
+  it('"keep-mine" leaves field value untouched, refreshes fingerprint to xero value, ensures field IS in _overriddenFields', () => {
+    const member = makeMember({
+      currentSalary: 90000,
+      _overriddenFields: ['currentSalary'],
+    });
+    const partial = applyReconciliationDecision(member, 'currentSalary', 'keep-mine', 105000);
+    expect(partial.currentSalary).toBeUndefined(); // not written
+    expect(partial._xeroFingerprint?.currentSalary).toBe(105000);
+    expect(partial._overriddenFields).toContain('currentSalary');
+    expect(partial._xeroImportedAt).toBeDefined();
+  });
+
+  it('"keep-mine" when field already in _overriddenFields is idempotent', () => {
+    const member = makeMember({
+      currentSalary: 90000,
+      _overriddenFields: ['currentSalary', 'payFrequency'],
+    });
+    const partial = applyReconciliationDecision(member, 'currentSalary', 'keep-mine', 105000);
+    // No duplicate; preserve order
+    expect(partial._overriddenFields).toEqual(['currentSalary', 'payFrequency']);
+  });
+
+  it('"edit" sets field to operatorValue (NOT xero value), adds field to _overriddenFields, refreshes fingerprint to xero value', () => {
+    const member = makeMember({
+      currentSalary: 98000,
+      _overriddenFields: undefined,
+    });
+    const partial = applyReconciliationDecision(member, 'currentSalary', 'edit', 105000, 100000);
+    expect(partial.currentSalary).toBe(100000); // operator value
+    expect(partial._xeroFingerprint?.currentSalary).toBe(105000); // xero snapshot
+    expect(partial._overriddenFields).toContain('currentSalary');
+  });
+
+  it('"edit" on field already in _overriddenFields is idempotent on overrides', () => {
+    const member = makeMember({
+      currentSalary: 90000,
+      _overriddenFields: ['currentSalary'],
+    });
+    const partial = applyReconciliationDecision(member, 'currentSalary', 'edit', 105000, 92000);
+    expect(partial.currentSalary).toBe(92000);
+    expect(partial._overriddenFields).toEqual(['currentSalary']);
+  });
+
+  it('fingerprint preservation: other field fingerprints not being decided are preserved', () => {
+    const member = makeMember({
+      _xeroFingerprint: {
+        name: 'Alice',
+        role: 'Engineer',
+        type: 'full-time',
+        payFrequency: 'fortnightly',
+        standardHours: 38,
+        currentSalary: 98000,
+        hourlyRate: 50,
+      },
+      _overriddenFields: ['currentSalary'],
+    });
+    const partial = applyReconciliationDecision(member, 'currentSalary', 'accept-xero', 105000);
+    expect(partial._xeroFingerprint?.payFrequency).toBe('fortnightly');
+    expect(partial._xeroFingerprint?.standardHours).toBe(38);
+    expect(partial._xeroFingerprint?.hourlyRate).toBe(50);
+    expect(partial._xeroFingerprint?.role).toBe('Engineer');
+    expect(partial._xeroFingerprint?.currentSalary).toBe(105000); // updated
+  });
+
+  it('_overriddenFields preservation: other override entries are preserved when removing/adding one', () => {
+    const member = makeMember({
+      _overriddenFields: ['currentSalary', 'payFrequency', 'role'],
+    });
+    const partial = applyReconciliationDecision(member, 'currentSalary', 'accept-xero', 105000);
+    expect(partial._overriddenFields).toEqual(['payFrequency', 'role']);
+  });
+
+  it('_xeroImportedAt is updated to the current time on every decision', async () => {
+    const member = makeMember({ _xeroImportedAt: '2020-01-01T00:00:00.000Z' });
+    const before = Date.now();
+    const partial = applyReconciliationDecision(member, 'currentSalary', 'keep-mine', 105000);
+    const after = Date.now();
+    const ts = new Date(partial._xeroImportedAt!).getTime();
+    expect(ts).toBeGreaterThanOrEqual(before);
+    expect(ts).toBeLessThanOrEqual(after);
+  });
+});
+
+describe('applySilentXeroUpdates', () => {
+  it('all fields unchanged → returns null', () => {
+    const member = makeMember();
+    const diff: MemberDiff = {
+      memberId: member.id,
+      xeroEmployeeId: member._xeroEmployeeId!,
+      fields: XERO_TRACKED_FIELDS.map((field) => ({
+        field,
+        currentValue: undefined,
+        lastImportedValue: undefined,
+        newXeroValue: undefined,
+        verdict: 'unchanged' as const,
+      })),
+    };
+    expect(applySilentXeroUpdates(member, diff)).toBeNull();
+  });
+
+  it('only conflict fields → returns null (silent updates do not include conflicts)', () => {
+    const member = makeMember();
+    const diff: MemberDiff = {
+      memberId: member.id,
+      xeroEmployeeId: member._xeroEmployeeId!,
+      fields: [
+        {
+          field: 'currentSalary',
+          currentValue: 90000,
+          lastImportedValue: 98000,
+          newXeroValue: 105000,
+          verdict: 'conflict' as const,
+        },
+      ],
+    };
+    expect(applySilentXeroUpdates(member, diff)).toBeNull();
+  });
+
+  it('2 silent fields → returns Partial<TeamMember> with both values applied + both in fingerprint + _xeroImportedAt', () => {
+    const member = makeMember();
+    const diff: MemberDiff = {
+      memberId: member.id,
+      xeroEmployeeId: member._xeroEmployeeId!,
+      fields: [
+        {
+          field: 'currentSalary',
+          currentValue: 98000,
+          lastImportedValue: 98000,
+          newXeroValue: 105000,
+          verdict: 'updated-by-xero-only' as const,
+        },
+        {
+          field: 'role',
+          currentValue: 'Engineer',
+          lastImportedValue: 'Engineer',
+          newXeroValue: 'Lead Engineer',
+          verdict: 'updated-by-xero-only' as const,
+        },
+      ],
+    };
+    const before = Date.now();
+    const result = applySilentXeroUpdates(member, diff);
+    const after = Date.now();
+    expect(result).not.toBeNull();
+    expect((result as any).currentSalary).toBe(105000);
+    expect((result as any).role).toBe('Lead Engineer');
+    expect(result!._xeroFingerprint?.currentSalary).toBe(105000);
+    expect(result!._xeroFingerprint?.role).toBe('Lead Engineer');
+    const ts = new Date(result!._xeroImportedAt!).getTime();
+    expect(ts).toBeGreaterThanOrEqual(before);
+    expect(ts).toBeLessThanOrEqual(after);
+  });
+
+  it('silent + conflict mix → returns ONLY the silent updates', () => {
+    const member = makeMember();
+    const diff: MemberDiff = {
+      memberId: member.id,
+      xeroEmployeeId: member._xeroEmployeeId!,
+      fields: [
+        {
+          field: 'role',
+          currentValue: 'Engineer',
+          lastImportedValue: 'Engineer',
+          newXeroValue: 'Lead Engineer',
+          verdict: 'updated-by-xero-only' as const,
+        },
+        {
+          field: 'currentSalary',
+          currentValue: 90000,
+          lastImportedValue: 98000,
+          newXeroValue: 105000,
+          verdict: 'conflict' as const,
+        },
+      ],
+    };
+    const result = applySilentXeroUpdates(member, diff);
+    expect(result).not.toBeNull();
+    expect((result as any).role).toBe('Lead Engineer');
+    expect((result as any).currentSalary).toBeUndefined();
+    expect(result!._xeroFingerprint?.role).toBe('Lead Engineer');
+    // currentSalary in fingerprint should NOT be the new conflict value (still last-imported)
+    expect(result!._xeroFingerprint?.currentSalary).toBe(member._xeroFingerprint?.currentSalary);
+  });
+
+  it('fingerprint preservation: untouched fingerprint fields stay intact', () => {
+    const member = makeMember({
+      _xeroFingerprint: {
+        name: 'Alice',
+        role: 'Engineer',
+        type: 'full-time',
+        payFrequency: 'fortnightly',
+        standardHours: 38,
+        currentSalary: 98000,
+        hourlyRate: 50,
+      },
+    });
+    const diff: MemberDiff = {
+      memberId: member.id,
+      xeroEmployeeId: member._xeroEmployeeId!,
+      fields: [
+        {
+          field: 'role',
+          currentValue: 'Engineer',
+          lastImportedValue: 'Engineer',
+          newXeroValue: 'Lead Engineer',
+          verdict: 'updated-by-xero-only' as const,
+        },
+      ],
+    };
+    const result = applySilentXeroUpdates(member, diff);
+    expect(result).not.toBeNull();
+    expect(result!._xeroFingerprint?.payFrequency).toBe('fortnightly');
+    expect(result!._xeroFingerprint?.standardHours).toBe(38);
+    expect(result!._xeroFingerprint?.hourlyRate).toBe(50);
+    expect(result!._xeroFingerprint?.currentSalary).toBe(98000);
+    expect(result!._xeroFingerprint?.role).toBe('Lead Engineer');
   });
 });
