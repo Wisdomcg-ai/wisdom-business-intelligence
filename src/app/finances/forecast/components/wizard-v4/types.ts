@@ -26,6 +26,28 @@ export type HoursMode = 'hours' | 'fte';
  * through to ForecastWizardState.defaultPayFrequency, then to 'monthly'.
  */
 export type PayFrequency = 'weekly' | 'fortnightly' | 'monthly';
+
+/**
+ * Phase 52 (XERO-S4-01..05) — snapshot of Xero-imported field values for
+ * re-import reconciliation. Stored on TeamMember/NewHire as `_xeroFingerprint`
+ * by enrichWizardMemberFromXeroEmployee on import. Plan 52-02 will read this
+ * to detect "operator has manually edited this field since the last import"
+ * by comparing the live member values against the fingerprint.
+ *
+ * All fields optional — only the fields actually sourced from Xero on a given
+ * import get snapshotted. Strict JSON-serialisable for localStorage round-trip.
+ */
+export interface XeroFieldFingerprint {
+  payFrequency?: PayFrequency;
+  standardHours?: number;
+  hourlyRate?: number;
+  currentSalary?: number;
+  hoursPerWeek?: number;
+  type?: EmploymentType;
+  name?: string;
+  role?: string;
+}
+
 export type RevenuePattern = 'seasonal' | 'straight-line' | 'manual';
 export type ExpenseFrequency = 'once' | 'monthly' | 'quarterly' | 'annual';
 export type CostBehavior = 'fixed' | 'variable' | 'adhoc' | 'seasonal';
@@ -190,6 +212,18 @@ export interface TeamMember {
   // consumer). Annual salary unchanged in Phase 51. undefined → fall
   // through to ForecastWizardState.defaultPayFrequency, then to 'monthly'.
   payFrequency?: PayFrequency;
+  // Phase 52 (XERO-S4-03): hours per pay period from Xero. For salaried
+  // employees this is OrdinaryHoursPerWeek (top-level Employee field).
+  // For hourly, derived from PayTemplate.EarningsLines.NumberOfUnitsPerWeek
+  // when present, falling back to OrdinaryHoursPerWeek.
+  standardHours?: number;
+  // Phase 52 — Xero provenance markers (XERO-S4-01..05).
+  _xeroEmployeeId?: string;          // Xero EmployeeID for re-import matching
+  _xeroImportedAt?: string;          // ISO timestamp of most recent import
+  _xeroFingerprint?: XeroFieldFingerprint;  // last-imported values per field
+  _overriddenFields?: string[];      // field names the operator has explicitly
+                                     // edited since last import. ARRAY (not Set)
+                                     // — must survive JSON localStorage round-trip.
 }
 
 export interface NewHire {
@@ -211,6 +245,13 @@ export interface NewHire {
   // consumer). Annual salary unchanged in Phase 51. undefined → fall
   // through to ForecastWizardState.defaultPayFrequency, then to 'monthly'.
   payFrequency?: PayFrequency;
+  // Phase 52 (XERO-S4-03): hours per pay period from Xero (see TeamMember.standardHours).
+  standardHours?: number;
+  // Phase 52 — Xero provenance markers (XERO-S4-01..05).
+  _xeroEmployeeId?: string;
+  _xeroImportedAt?: string;
+  _xeroFingerprint?: XeroFieldFingerprint;
+  _overriddenFields?: string[];
 }
 
 export interface Departure {
