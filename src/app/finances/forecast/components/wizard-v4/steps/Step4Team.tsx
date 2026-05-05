@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback, memo } from 'react';
-import { Plus, Trash2, HelpCircle, ChevronDown, ChevronUp, Info, Calendar, Sparkles, X, Briefcase, UserCheck, Loader2, Users, UserPlus, TrendingUp, DollarSign, Target, Lightbulb, ArrowRight, DownloadCloud } from 'lucide-react';
+import { Plus, Trash2, HelpCircle, ChevronDown, ChevronUp, Info, Calendar, Sparkles, X, Briefcase, UserCheck, Loader2, Users, UserPlus, TrendingUp, DollarSign, Target, Lightbulb, ArrowRight, DownloadCloud, RefreshCw } from 'lucide-react';
 import {
   ForecastWizardState,
   WizardActions,
@@ -15,6 +15,7 @@ import {
 } from '../types';
 import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 // Phase 52-01 (XERO-S4-01/03/04) — Import-from-Xero modal + Option D edit affordance.
+// Phase 52-02 (XERO-S4-05) — Refresh-from-Xero reconciliation flow (4 new helpers).
 import {
   enrichWizardMemberFromXeroEmployee,
   getDerivedAnnualSalary,
@@ -22,6 +23,15 @@ import {
   isFieldOverridden,
   isXeroSourcedRow,
   type XeroEmployeeApiShape,
+  // Phase 52-02 additions:
+  findMatchingTeamMember,
+  computeReconciliationDiff,
+  applyReconciliationDecision,
+  applySilentXeroUpdates,
+  XERO_TRACKED_FIELDS,
+  type MemberDiff,
+  type ReconciliationDecision,
+  type XeroTrackedField,
 } from '../utils/xero-payroll-mapping';
 
 // AI Salary Suggestion type
@@ -1576,6 +1586,326 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
     [state.teamMembers, actions],
   );
 
+  // ────────────────────────────────────────────────────────────────────────
+  // Phase 52-02 (XERO-S4-05) — Refresh-from-Xero / reconciliation state.
+  //
+  // The reconciliation modal is a SEPARATE flow from the 52-01 import modal.
+  // Visibility of the Refresh button is gated on `hasAnyXeroSourcedRow` (any
+  // wizard row carrying _xeroFingerprint — i.e. an import has happened).
+  //
+  // CRITICAL SAFETY (52-RESEARCH Pitfall 6): the reconciliation algorithm
+  // iterates `xeroEmployees` from the fresh fetch and for each one either
+  // (a) matches via findMatchingTeamMember + reconciles, or (b) emits a
+  // "New from Xero" candidate. It NEVER iterates `state.teamMembers` to
+  // filter or remove. Manually-added rows (no _xeroEmployeeId) are
+  // completely untouchable by this flow.
+  // ────────────────────────────────────────────────────────────────────────
+  const [showReconcile, setShowReconcile] = useState(false);
+  const [reconcileLoading, setReconcileLoading] = useState(false);
+  const [reconcileError, setReconcileError] = useState<string | null>(null);
+  const [reconcileConflicts, setReconcileConflicts] = useState<MemberDiff[]>([]);
+  const [reconcileSilentUpdates, setReconcileSilentUpdates] = useState<
+    Array<{ memberId: string; update: Partial<TeamMember> }>
+  >([]);
+  const [reconcileNewFromXero, setReconcileNewFromXero] = useState<XeroEmployeeApiShape[]>([]);
+  const [reconcileSelectedNewIds, setReconcileSelectedNewIds] = useState<Set<string>>(new Set());
+  // pendingDecisions[memberId][fieldName] = ReconciliationDecision
+  const [pendingDecisions, setPendingDecisions] = useState<
+    Record<string, Partial<Record<XeroTrackedField, ReconciliationDecision>>>
+  >({});
+
+  // Visibility gate: Refresh button only shown when at least one row carries
+  // _xeroFingerprint (i.e. an import has happened on this wizard).
+  const hasAnyXeroSourcedRow = useMemo(
+    () =>
+      state.teamMembers.some((m) => !!m._xeroFingerprint) ||
+      (state.newHires ?? []).some((h) => !!h._xeroFingerprint),
+    [state.teamMembers, state.newHires],
+  );
+
+  /**
+   * Phase 52-02 — Open the reconciliation modal and run the diff algorithm
+   * against the freshly-fetched Xero employees.
+   *
+   * Algorithm (per 52-RESEARCH "Re-import provenance tracking"):
+   *   for each xeroEmp in fresh fetch:
+   *     match = findMatchingTeamMember(xeroEmp, state.teamMembers)
+   *     if !match → New-from-Xero candidate
+   *     else → diff = computeReconciliationDiff(match, freshXeroValues)
+   *            collect silent updates (apply on Apply)
+   *            if any field has 'conflict' verdict → push to conflicts
+   */
+  const openReconcile = useCallback(async () => {
+    setShowReconcile(true);
+    setReconcileLoading(true);
+    setReconcileError(null);
+    setReconcileConflicts([]);
+    setReconcileSilentUpdates([]);
+    setReconcileNewFromXero([]);
+    setReconcileSelectedNewIds(new Set());
+    setPendingDecisions({});
+    try {
+      const res = await fetch(`/api/Xero/employees?business_id=${state.businessId}`);
+      if (res.status === 404) {
+        setReconcileError('Connect Xero to enable refresh.');
+        return;
+      }
+      const data = await res.json();
+      if (data.expired || data.needs_reconnect) {
+        setReconcileError(data.message || 'Reconnect Xero to refresh employee data.');
+        return;
+      }
+      if (data.error) {
+        const isRateLimit = /rate limit|429|too many/i.test(String(data.error));
+        setReconcileError(
+          isRateLimit ? 'Xero rate limit hit — retry in a moment.' : String(data.error),
+        );
+        return;
+      }
+      const xeroEmps: XeroEmployeeApiShape[] = (data.employees ?? []) as XeroEmployeeApiShape[];
+
+      const newConflicts: MemberDiff[] = [];
+      const newSilent: Array<{ memberId: string; update: Partial<TeamMember> }> = [];
+      const newCandidates: XeroEmployeeApiShape[] = [];
+
+      // ITERATE xeroEmps — NEVER state.teamMembers (Pitfall 6).
+      for (const xeroEmp of xeroEmps) {
+        const matchedId = findMatchingTeamMember(
+          {
+            employee_id: xeroEmp.employee_id,
+            full_name: xeroEmp.full_name,
+            email: xeroEmp.email,
+          },
+          state.teamMembers,
+        );
+        if (!matchedId) {
+          newCandidates.push(xeroEmp);
+          continue;
+        }
+        const member = state.teamMembers.find((m) => m.id === matchedId);
+        if (!member) {
+          // Defensive: id resolved but member vanished mid-flight (state churn).
+          // Treat as new-from-Xero candidate so operator can re-add if desired.
+          newCandidates.push(xeroEmp);
+          continue;
+        }
+        // Build the "fresh Xero values" snapshot from the enriched mapper.
+        const enriched = enrichWizardMemberFromXeroEmployee(xeroEmp);
+        const freshValues: Partial<Record<XeroTrackedField, unknown>> = {
+          name: enriched.name,
+          role: enriched.role,
+          type: enriched.type,
+          payFrequency: enriched.payFrequency,
+          standardHours: enriched.standardHours,
+          hourlyRate: enriched.hourlyRate,
+          currentSalary: enriched.currentSalary,
+        };
+        const diff = computeReconciliationDiff(member, freshValues);
+        const hasConflict = diff.fields.some((f) => f.verdict === 'conflict');
+        if (hasConflict) newConflicts.push(diff);
+        const silentUpdate = applySilentXeroUpdates(member, diff);
+        if (silentUpdate) newSilent.push({ memberId: member.id, update: silentUpdate });
+      }
+
+      setReconcileConflicts(newConflicts);
+      setReconcileSilentUpdates(newSilent);
+      setReconcileNewFromXero(newCandidates);
+    } catch (err) {
+      setReconcileError(err instanceof Error ? err.message : 'Refresh failed');
+    } finally {
+      setReconcileLoading(false);
+    }
+  }, [state.businessId, state.teamMembers]);
+
+  /**
+   * Phase 52-02 — Bulk action: pre-fill every conflict field's decision to
+   * 'accept-xero'. Per-field clicks override.
+   */
+  const acceptAllXeroChanges = useCallback(() => {
+    const next: typeof pendingDecisions = {};
+    for (const memberDiff of reconcileConflicts) {
+      next[memberDiff.memberId] = {};
+      for (const f of memberDiff.fields) {
+        if (f.verdict === 'conflict') {
+          next[memberDiff.memberId][f.field] = 'accept-xero';
+        }
+      }
+    }
+    setPendingDecisions(next);
+  }, [reconcileConflicts]);
+
+  /**
+   * Phase 52-02 — Bulk action: pre-fill every conflict field's decision to
+   * 'keep-mine'. Per-field clicks override.
+   */
+  const keepAllMineChanges = useCallback(() => {
+    const next: typeof pendingDecisions = {};
+    for (const memberDiff of reconcileConflicts) {
+      next[memberDiff.memberId] = {};
+      for (const f of memberDiff.fields) {
+        if (f.verdict === 'conflict') {
+          next[memberDiff.memberId][f.field] = 'keep-mine';
+        }
+      }
+    }
+    setPendingDecisions(next);
+  }, [reconcileConflicts]);
+
+  /**
+   * Phase 52-02 — Set a per-field decision for one conflict.
+   */
+  const setFieldDecision = useCallback(
+    (memberId: string, field: XeroTrackedField, decision: ReconciliationDecision) => {
+      setPendingDecisions((prev) => ({
+        ...prev,
+        [memberId]: { ...(prev[memberId] ?? {}), [field]: decision },
+      }));
+    },
+    [],
+  );
+
+  /**
+   * Phase 52-02 — Toggle "Add this Xero employee" checkbox in the New-from-
+   * Xero section.
+   */
+  const toggleNewFromXeroSelection = useCallback((employeeId: string) => {
+    setReconcileSelectedNewIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(employeeId)) next.delete(employeeId);
+      else next.add(employeeId);
+      return next;
+    });
+  }, []);
+
+  /**
+   * Phase 52-02 — Apply all reconciliation changes:
+   *   1. Silent updates (no operator interaction needed)
+   *   2. Conflict decisions (per-field accept-xero / keep-mine)
+   *   3. New-from-Xero opt-ins (route to addNewHire if start_date is future)
+   *
+   * Default decision for un-clicked conflict fields = 'keep-mine' (safer
+   * default — never overwrites operator value without explicit consent).
+   *
+   * Apply is per-MEMBER (one updateTeamMember call per touched member,
+   * batching all silent + decision updates). NOT per-field.
+   */
+  const applyReconciliation = useCallback(() => {
+    // 1. Silent updates → one updateTeamMember call per affected member
+    const silentByMember = new Map<string, Partial<TeamMember>>();
+    for (const { memberId, update } of reconcileSilentUpdates) {
+      silentByMember.set(memberId, update);
+    }
+
+    // 2. Conflict decisions → merge into the same per-member partial
+    for (const memberDiff of reconcileConflicts) {
+      const member = state.teamMembers.find((m) => m.id === memberDiff.memberId);
+      if (!member) continue;
+      const decisions = pendingDecisions[memberDiff.memberId] ?? {};
+      let memberUpdate: Partial<TeamMember> = silentByMember.get(memberDiff.memberId) ?? {
+        _xeroImportedAt: new Date().toISOString(),
+      };
+      for (const fieldDiff of memberDiff.fields) {
+        if (fieldDiff.verdict !== 'conflict') continue;
+        const decision = decisions[fieldDiff.field] ?? 'keep-mine';
+        const partial = applyReconciliationDecision(
+          member,
+          fieldDiff.field,
+          decision,
+          fieldDiff.newXeroValue,
+        );
+        memberUpdate = {
+          ...memberUpdate,
+          ...partial,
+          _xeroFingerprint: {
+            ...(memberUpdate._xeroFingerprint ?? {}),
+            ...(partial._xeroFingerprint ?? {}),
+          },
+        };
+      }
+      silentByMember.set(memberDiff.memberId, memberUpdate);
+    }
+
+    // Single dispatch per member
+    for (const [memberId, update] of silentByMember.entries()) {
+      actions.updateTeamMember(memberId, update);
+    }
+
+    // 3. New-from-Xero opt-ins (same path as 52-01 import)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const cutoff = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    for (const emp of reconcileNewFromXero) {
+      if (!reconcileSelectedNewIds.has(emp.employee_id)) continue;
+      const enriched = enrichWizardMemberFromXeroEmployee(emp);
+      const startDate = emp.start_date ? new Date(emp.start_date) : undefined;
+      const isPlannedHire =
+        !!startDate && !isNaN(startDate.getTime()) && startDate > cutoff;
+      if (isPlannedHire) {
+        const startMonth = `${startDate!.getFullYear()}-${String(
+          startDate!.getMonth() + 1,
+        ).padStart(2, '0')}`;
+        actions.addNewHire({
+          role: enriched.role!,
+          type: enriched.type!,
+          hoursPerWeek: enriched.hoursPerWeek ?? STANDARD_HOURS,
+          hourlyRate: enriched.hourlyRate,
+          startMonth,
+          salary: enriched.currentSalary ?? 0,
+          payFrequency: enriched.payFrequency,
+          standardHours: enriched.standardHours,
+          _xeroEmployeeId: enriched._xeroEmployeeId,
+          _xeroImportedAt: enriched._xeroImportedAt,
+          _xeroFingerprint: enriched._xeroFingerprint,
+        });
+      } else {
+        actions.addTeamMember({
+          name: enriched.name!,
+          role: enriched.role!,
+          type: enriched.type!,
+          hoursPerWeek: enriched.hoursPerWeek ?? STANDARD_HOURS,
+          hourlyRate: enriched.hourlyRate,
+          currentSalary: enriched.currentSalary ?? 0,
+          increasePct: 0,
+          payFrequency: enriched.payFrequency,
+          standardHours: enriched.standardHours,
+          isFromXero: true,
+          _xeroEmployeeId: enriched._xeroEmployeeId,
+          _xeroImportedAt: enriched._xeroImportedAt,
+          _xeroFingerprint: enriched._xeroFingerprint,
+        });
+      }
+    }
+
+    // 4. Close + clear modal state
+    setShowReconcile(false);
+    setReconcileConflicts([]);
+    setReconcileSilentUpdates([]);
+    setReconcileNewFromXero([]);
+    setReconcileSelectedNewIds(new Set());
+    setPendingDecisions({});
+  }, [
+    reconcileSilentUpdates,
+    reconcileConflicts,
+    reconcileNewFromXero,
+    reconcileSelectedNewIds,
+    pendingDecisions,
+    state.teamMembers,
+    actions,
+  ]);
+
+  // Derived: in-sync iff nothing changed in Xero AND no new candidates.
+  const reconcileInSync =
+    !reconcileLoading &&
+    !reconcileError &&
+    reconcileConflicts.length === 0 &&
+    reconcileSilentUpdates.length === 0 &&
+    reconcileNewFromXero.length === 0;
+  // Total pending changes = silent + conflicts (each member counts once) + new opt-ins
+  const reconcileTotalChanges =
+    reconcileSilentUpdates.length +
+    reconcileConflicts.length +
+    reconcileSelectedNewIds.size;
+
   const toggleRowExpand = useCallback((id: string) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
@@ -2997,6 +3327,22 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
               <DownloadCloud className="w-4 h-4" />
               Import from Xero
             </button>
+            {/* Phase 52-02 (XERO-S4-05) — Refresh-from-Xero button. Visibility
+                gated on hasAnyXeroSourcedRow so operators only see this control
+                AFTER an initial import. Click → reconciliation modal with per-
+                field diffs, conflicts, and New-from-Xero candidates. */}
+            {hasAnyXeroSourcedRow && (
+              <button
+                type="button"
+                onClick={openReconcile}
+                aria-label="Refresh from Xero"
+                title="Refresh employee data from Xero (per-field diff with manual edits preserved)"
+                className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Refresh from Xero
+              </button>
+            )}
           </div>
         </div>
 
@@ -3615,6 +3961,204 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
               >
                 Import {selectedXeroEmployeeIds.size} selected
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 52-02 (XERO-S4-05) — Refresh-from-Xero reconciliation modal.
+          Distinct from the 52-01 import modal above. Per Operator's Option D:
+            - silentUpdates summary line (no operator interaction needed)
+            - conflicts section with bulk actions + per-row per-field decisions
+            - "New from Xero" section with opt-in checkboxes
+          Manually-added members are NEVER iterated by this flow (Pitfall 6). */}
+      {showReconcile && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Reconcile with Xero"
+        >
+          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Reconcile with Xero</h3>
+              <button
+                type="button"
+                onClick={() => setShowReconcile(false)}
+                aria-label="Close reconciliation dialog"
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {reconcileLoading && (
+                <div className="flex items-center gap-2 text-gray-500 text-sm py-8 justify-center">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Checking Xero for changes…
+                </div>
+              )}
+              {!reconcileLoading && reconcileError && (
+                <div className="text-red-600 text-sm py-4">{reconcileError}</div>
+              )}
+              {reconcileInSync && (
+                <div className="text-center py-8">
+                  <div className="text-3xl mb-2 text-green-600">✓</div>
+                  <div className="text-gray-700 font-medium">Everything is in sync with Xero</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    No changes detected since last import.
+                  </div>
+                </div>
+              )}
+
+              {!reconcileLoading && !reconcileError && reconcileSilentUpdates.length > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm text-blue-900">
+                  <strong>{reconcileSilentUpdates.length}</strong> employee
+                  {reconcileSilentUpdates.length === 1 ? '' : 's'} will be silently updated with new
+                  Xero values for fields you haven&apos;t edited.
+                </div>
+              )}
+
+              {!reconcileLoading && !reconcileError && reconcileConflicts.length > 0 && (
+                <section>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium text-gray-900">
+                      Conflicts requiring your decision ({reconcileConflicts.length})
+                    </h4>
+                    <div className="flex gap-3 text-xs">
+                      <button
+                        type="button"
+                        onClick={acceptAllXeroChanges}
+                        className="text-blue-600 hover:underline"
+                      >
+                        Accept all Xero changes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={keepAllMineChanges}
+                        className="text-gray-600 hover:underline"
+                      >
+                        Keep all my changes
+                      </button>
+                    </div>
+                  </div>
+                  {reconcileConflicts.map((memberDiff) => {
+                    const member = state.teamMembers.find((m) => m.id === memberDiff.memberId);
+                    if (!member) return null;
+                    const conflictFields = memberDiff.fields.filter((f) => f.verdict === 'conflict');
+                    return (
+                      <div
+                        key={memberDiff.memberId}
+                        className="border border-gray-200 rounded p-3 mb-2"
+                      >
+                        <div className="font-medium text-gray-900 mb-2">{member.name}</div>
+                        {conflictFields.map((f) => {
+                          const decision = pendingDecisions[memberDiff.memberId]?.[f.field];
+                          const formatVal = (v: unknown) =>
+                            v == null
+                              ? '—'
+                              : typeof v === 'number'
+                                ? String(v)
+                                : String(v);
+                          return (
+                            <div
+                              key={f.field}
+                              className="flex items-start justify-between py-1.5 text-sm gap-3"
+                              data-conflict-field={f.field}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <span className="font-mono text-xs text-gray-500">{f.field}</span>
+                                <span className="text-gray-700">: Xero now shows </span>
+                                <strong className="text-gray-900">{formatVal(f.newXeroValue)}</strong>
+                                <span className="text-gray-700">; you have </span>
+                                <strong className="text-gray-900">{formatVal(f.currentValue)}</strong>
+                              </div>
+                              <div className="flex gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setFieldDecision(memberDiff.memberId, f.field, 'keep-mine')
+                                  }
+                                  aria-label={`Keep yours for ${f.field}`}
+                                  className={`px-2 py-1 text-xs rounded border ${
+                                    decision === 'keep-mine'
+                                      ? 'bg-gray-200 border-gray-400'
+                                      : 'border-gray-300 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  Keep yours
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setFieldDecision(memberDiff.memberId, f.field, 'accept-xero')
+                                  }
+                                  aria-label={`Accept Xero for ${f.field}`}
+                                  className={`px-2 py-1 text-xs rounded border ${
+                                    decision === 'accept-xero'
+                                      ? 'bg-blue-100 border-blue-400 text-blue-800'
+                                      : 'border-gray-300 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  Accept Xero
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </section>
+              )}
+
+              {!reconcileLoading && !reconcileError && reconcileNewFromXero.length > 0 && (
+                <section>
+                  <h4 className="font-medium text-gray-900 mb-2">
+                    New from Xero ({reconcileNewFromXero.length})
+                  </h4>
+                  <div className="text-xs text-gray-500 mb-2">
+                    Employees in Xero not yet in your forecast.
+                  </div>
+                  {reconcileNewFromXero.map((emp) => (
+                    <label
+                      key={emp.employee_id}
+                      className="flex items-center gap-2 py-1 text-sm text-gray-800"
+                    >
+                      <input
+                        type="checkbox"
+                        aria-label={`Add ${emp.full_name}`}
+                        checked={reconcileSelectedNewIds.has(emp.employee_id)}
+                        onChange={() => toggleNewFromXeroSelection(emp.employee_id)}
+                      />
+                      <span className="font-medium">{emp.full_name}</span>
+                      <span className="text-xs text-gray-500">
+                        — {emp.employment_type ?? '—'} — {emp.pay_frequency ?? '—'}
+                      </span>
+                    </label>
+                  ))}
+                </section>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-6 py-3 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={() => setShowReconcile(false)}
+                className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                {reconcileInSync ? 'Close' : 'Cancel'}
+              </button>
+              {!reconcileInSync && (
+                <button
+                  type="button"
+                  onClick={applyReconciliation}
+                  disabled={reconcileTotalChanges === 0}
+                  aria-label={`Apply ${reconcileTotalChanges} changes`}
+                  className="px-3 py-1.5 text-sm font-medium bg-brand-navy text-white rounded-lg hover:bg-brand-navy/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Apply {reconcileTotalChanges} change{reconcileTotalChanges === 1 ? '' : 's'}
+                </button>
+              )}
             </div>
           </div>
         </div>
