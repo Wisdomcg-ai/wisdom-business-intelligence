@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+// Phase 52 (XERO-S4-01..04): mapping helpers extracted to a pure module so
+// the route + wizard first-load + Plan 52-01 import modal all share one
+// canonical Xero-→-wizard mapping path.
+import {
+  mapXeroPayrollCalendarToFrequency,
+  normaliseXeroEmployment,
+  extractCompensationFromPayTemplate,
+} from '@/app/finances/forecast/components/wizard-v4/utils/xero-payroll-mapping';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,14 +42,12 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-// Map Xero employment types to wizard-compatible format
-const EMPLOYMENT_TYPE_MAP: Record<string, string> = {
-  'FULLTIME': 'full-time',
-  'PARTTIME': 'part-time',
-  'CASUAL': 'casual',
-  'CONTRACTOR': 'contractor',
-  'LABOURHIRE': 'contractor',
-};
+// Phase 52 (XERO-S4-01..04): EMPLOYMENT_TYPE_MAP removed; replaced by
+// `normaliseXeroEmployment` in src/app/finances/forecast/components/wizard-v4/
+// utils/xero-payroll-mapping.ts. The previous map was keyed off the wrong
+// JSON field (`EmploymentType` instead of `EmploymentBasis` — see
+// 52-RESEARCH.md Pitfall 2). The helper now reads EmploymentBasis with
+// EmploymentType fallback for backward safety.
 
 interface XeroEmployee {
   employee_id: string;
@@ -58,6 +64,15 @@ interface XeroEmployee {
   is_active: boolean;
   email?: string;
   from_xero: boolean;
+  // Phase 52 (XERO-S4-02): pay frequency derived from joining
+  // Employee.PayrollCalendarID against the tenant's PayrollCalendars list.
+  pay_frequency?: 'weekly' | 'fortnightly' | 'monthly';
+  // Phase 52 (XERO-S4-03): hours per pay period from PayTemplate.EarningsLines
+  // (when populated) falling back to Employee.OrdinaryHoursPerWeek.
+  standard_hours?: number;
+  // Phase 52 (XERO-S4-04): branch hint for the import modal UI — does the
+  // employee's pay derive from a unit rate (hourly) or an annual salary?
+  calculation_type?: 'hourly' | 'salaried';
 }
 
 
@@ -185,6 +200,39 @@ export async function GET(request: NextRequest) {
 
     const accessToken = tokenResult.accessToken!;
 
+    // Phase 52 (XERO-S4-02): fetch all PayrollCalendars for the tenant once
+    // and build a Map<PayrollCalendarID, CalendarType> for join lookup. Single
+    // request per import (typically 1-3 calendars per tenant). Failure is
+    // non-fatal — pay_frequency just stays undefined and the wizard falls
+    // back to its default. See 52-RESEARCH.md "Pitfall 3" for why we fetch
+    // once and join in-memory rather than per-employee.
+    const calendarById = new Map<string, string>();
+    try {
+      const calendarsResponse = await fetch(
+        'https://api.xero.com/payroll.xro/1.0/PayrollCalendars',
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'xero-tenant-id': connection.tenant_id,
+            'Accept': 'application/json',
+          },
+        }
+      );
+      if (calendarsResponse.ok) {
+        const calendarsData = await calendarsResponse.json();
+        for (const cal of calendarsData?.PayrollCalendars ?? []) {
+          if (cal.PayrollCalendarID && cal.CalendarType) {
+            calendarById.set(cal.PayrollCalendarID, cal.CalendarType);
+          }
+        }
+        console.log('[Xero Employees] Loaded', calendarById.size, 'payroll calendars');
+      } else {
+        console.warn('[Xero Employees] PayrollCalendars fetch failed:', calendarsResponse.status);
+      }
+    } catch (calErr) {
+      console.warn('[Xero Employees] PayrollCalendars fetch threw:', calErr);
+    }
+
     // Fetch employees from Xero Payroll API (AU)
     // Note: Xero has different payroll APIs for different regions
     // We're using the Australian payroll API v1.0
@@ -262,8 +310,18 @@ export async function GET(request: NextRequest) {
         let hourlyRate: number | undefined;
         let hoursPerWeek: number | undefined;
         let employmentType: string | undefined;
+        let standardHours: number | undefined;
+        let calculationType: 'hourly' | 'salaried' | undefined;
+        let payFrequency: 'weekly' | 'fortnightly' | 'monthly' | undefined;
 
-        // Fetch detailed employee info including pay template
+        // Fetch detailed employee info including pay template.
+        // N+1 LIMITATION (documented, NOT refactored): /Employees/{id} is called
+        // once per employee. The Xero AU bulk /Employees endpoint does NOT include
+        // PayTemplate in the list response, so the N+1 is inherent to the API,
+        // not the code. For a 30-person tenant this is 1 + 30 + 1 = 32 requests,
+        // well under Xero's 60/min and 5000/day caps. See 52-RESEARCH.md
+        // "Rate limit math" for the full analysis. Refactor deferred to a future
+        // plan if/when Xero adds a bulk-with-PayTemplate endpoint.
         try {
           const detailResponse = await fetch(
             `https://api.xero.com/payroll.xro/1.0/Employees/${emp.EmployeeID}`,
@@ -281,29 +339,41 @@ export async function GET(request: NextRequest) {
             const employeeDetail = detailData?.Employees?.[0];
 
             if (employeeDetail) {
-              // Map employment type to wizard format
-              if (employeeDetail.EmploymentType) {
-                employmentType = EMPLOYMENT_TYPE_MAP[employeeDetail.EmploymentType.toUpperCase()] || 'full-time';
-              }
+              // Phase 52 (XERO-S4-01..04): use shared mapping helpers.
+              // EmploymentBasis is the correct AU JSON field name (see
+              // 52-RESEARCH.md Pitfall 2). EmploymentType fallback preserves
+              // backward compat for any tenant where the legacy field is what
+              // the Xero response actually carries.
+              const empBasis = employeeDetail.EmploymentBasis ?? employeeDetail.EmploymentType;
+              employmentType = normaliseXeroEmployment(empBasis);
 
-              // Extract hours per week
-              if (employeeDetail.OrdinaryHoursPerWeek) {
-                hoursPerWeek = parseFloat(employeeDetail.OrdinaryHoursPerWeek);
-                if (isNaN(hoursPerWeek)) hoursPerWeek = undefined;
-              }
+              // Extract OrdinaryHoursPerWeek as a parsed number for the helper.
+              const ohpwRaw = employeeDetail.OrdinaryHoursPerWeek;
+              const ohpwParsed = ohpwRaw != null ? parseFloat(ohpwRaw) : NaN;
+              const ohpw = isNaN(ohpwParsed) ? undefined : ohpwParsed;
 
-              // Get salary from pay template
-              const payTemplate = employeeDetail.PayTemplate;
-              if (payTemplate?.EarningsLines) {
-                for (const line of payTemplate.EarningsLines) {
-                  // Look for ordinary earnings (base salary)
-                  if (line.EarningsRateID && line.AnnualSalary) {
-                    annualSalary = parseFloat(line.AnnualSalary);
-                  } else if (line.RatePerUnit) {
-                    hourlyRate = parseFloat(line.RatePerUnit);
-                  }
-                }
-              }
+              // Delegate compensation parsing to the shared helper. Returns
+              // { hourlyRate, annualSalary, standardHours, calculationType }
+              // — handles salaried (ANNUALSALARY), hourly (USEEARNINGSRATE,
+              // ENTEREARNINGSRATE), missing NumberOfUnitsPerWeek fallback,
+              // and string-vs-number value normalisation.
+              const comp = extractCompensationFromPayTemplate(
+                employeeDetail.PayTemplate?.EarningsLines,
+                ohpw,
+              );
+              annualSalary = comp.annualSalary;
+              hourlyRate = comp.hourlyRate;
+              standardHours = comp.standardHours;
+              hoursPerWeek = comp.standardHours ?? ohpw;
+              calculationType = comp.calculationType;
+
+              // Phase 52 (XERO-S4-02): join Employee.PayrollCalendarID against
+              // the calendarById map built before the loop.
+              const payrollCalendarID = employeeDetail.PayrollCalendarID;
+              const calendarType = payrollCalendarID
+                ? calendarById.get(payrollCalendarID)
+                : undefined;
+              payFrequency = mapXeroPayrollCalendarToFrequency(calendarType);
             }
           }
         } catch (detailError) {
@@ -324,7 +394,11 @@ export async function GET(request: NextRequest) {
           employment_type: employmentType,
           is_active: !isTerminated,
           email: emp.Email || undefined,
-          from_xero: true
+          from_xero: true,
+          // Phase 52 (XERO-S4-02..04) — new fields consumed by Plan 52-01 UI.
+          pay_frequency: payFrequency,
+          standard_hours: standardHours,
+          calculation_type: calculationType,
         });
       }
     }
