@@ -88,6 +88,11 @@ interface HarnessProps {
   initialRevLines: SeedRevLine[];
   /** 1 | 2 | 3 — view to render. Wizard's actions.setActiveYear is invoked. */
   seededActiveYear?: 1 | 2 | 3;
+  /** Optional callback invoked on every render with the latest wizard state.
+   *  The $ input that previously let tests read the post-commit line total
+   *  was removed (Split column is now % only); tests use this to read
+   *  revenueLines[].yearNMonthly directly. */
+  onState?: (state: ReturnType<typeof useForecastWizard>['state']) => void;
 }
 
 /**
@@ -95,7 +100,7 @@ interface HarnessProps {
  *   1. Y1/Y2/Y3 monthly seeds on revenue lines
  *   2. activeYear control via actions.setActiveYear
  */
-function Step3Harness({ businessId, initialGoals = DEFAULT_GOALS, initialRevLines, seededActiveYear = 1 }: HarnessProps) {
+function Step3Harness({ businessId, initialGoals = DEFAULT_GOALS, initialRevLines, seededActiveYear = 1, onState }: HarnessProps) {
   const wizard = useForecastWizard(FY_START_YEAR, businessId);
   const [seeded, setSeeded] = React.useState(false);
 
@@ -121,10 +126,19 @@ function Step3Harness({ businessId, initialGoals = DEFAULT_GOALS, initialRevLine
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  React.useEffect(() => {
+    onState?.(wizard.state);
+  });
+
   if (!seeded || wizard.state.revenueLines.length === 0) return null;
   // Wait for activeYear to actually flip to the seeded value before rendering.
   if (wizard.state.activeYear !== seededActiveYear) return null;
   return <Step3RevenueCOGS state={wizard.state} actions={wizard.actions} fiscalYear={FISCAL_YEAR_END} />;
+}
+
+function sumMonthly(m?: Record<string, number>): number {
+  if (!m) return 0;
+  return Object.values(m).reduce((s, v) => s + (v || 0), 0);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -143,8 +157,8 @@ describe('UX-S3-02 — Step 3 Y-on-Y Growth % column', () => {
       />,
     );
 
-    // Sentinel: ensure Step 3 has rendered (the $ editor from 51-01 is present)
-    await screen.findByLabelText(/Annual dollars for Hardware/i);
+    // Sentinel: ensure Step 3 has rendered (% Split editor is always present)
+    await screen.findByLabelText(/Percent split for Hardware/i);
 
     // The Growth editor must NOT exist in Y1 view
     const growthInputs = screen.queryAllByLabelText(/Growth percent for Hardware/i);
@@ -174,6 +188,7 @@ describe('UX-S3-02 — Step 3 Y-on-Y Growth % column', () => {
 
   it('Test 3: Y2 view — typing 20 in Growth on a fresh Y2 line sets Y2 total = Y1 × 1.20 (within ±$10)', async () => {
     const user = userEvent.setup();
+    let latestState: ReturnType<typeof useForecastWizard>['state'] | undefined;
     render(
       <Step3Harness
         businessId="test-51-02-3"
@@ -182,6 +197,7 @@ describe('UX-S3-02 — Step 3 Y-on-Y Growth % column', () => {
           { id: 'rev-1', name: 'Hardware', year1Monthly: evenMonthly(50_000, 0) },
           // No year2Monthly seeded yet
         ]}
+        onState={(s) => { latestState = s; }}
       />,
     );
 
@@ -192,15 +208,14 @@ describe('UX-S3-02 — Step 3 Y-on-Y Growth % column', () => {
     await user.type(growthInput, '20');
     await user.tab(); // blur → commit
 
-    // After commit, Y2 line total should be ~$60,000. The displayed lineTotal
-    // (the Y2 $ editor for the same row) reflects the freshly-distributed Y2 total.
-    const dollarInput = (await screen.findByLabelText(/Annual dollars for Hardware/i)) as HTMLInputElement;
-    const y2Total = Number(dollarInput.value);
+    // After commit, Y2 line total should be ~$60,000.
+    const y2Total = sumMonthly(latestState?.revenueLines.find(l => l.id === 'rev-1')?.year2Monthly);
     expect(Math.abs(y2Total - 60_000)).toBeLessThanOrEqual(10);
   });
 
   it('Test 4: Y3 view — Growth column visible; typing 10 sets Y3 total = Y2 × 1.10 (within ±$10)', async () => {
     const user = userEvent.setup();
+    let latestState: ReturnType<typeof useForecastWizard>['state'] | undefined;
     render(
       <Step3Harness
         businessId="test-51-02-4"
@@ -214,6 +229,7 @@ describe('UX-S3-02 — Step 3 Y-on-Y Growth % column', () => {
             // No year3Monthly seeded yet
           },
         ]}
+        onState={(s) => { latestState = s; }}
       />,
     );
 
@@ -224,14 +240,16 @@ describe('UX-S3-02 — Step 3 Y-on-Y Growth % column', () => {
     await user.type(growthInput, '10');
     await user.tab();
 
-    const dollarInput = (await screen.findByLabelText(/Annual dollars for Hardware/i)) as HTMLInputElement;
-    const y3Total = Number(dollarInput.value);
+    const y3Total = sumMonthly(latestState?.revenueLines.find(l => l.id === 'rev-1')?.year3Monthly);
     // Y2 total is ~59,988 (round(60000/12)*12 = 4999 *12). Growth 10% → ~65,987.
-    // Allow ±$15 because seasonality rounding can bias slightly per-month.
+    // Allow ±$50 because seasonality rounding can bias slightly per-month.
     expect(Math.abs(y3Total - 65_987)).toBeLessThanOrEqual(50);
   });
 
-  it('Test 5: Y2 view — round-trip: typing $60000 in $ updates Growth display to 20', async () => {
+  it('Test 5: Y2 view — round-trip: typing 25 in % column (of $240k goal) updates Growth display to 20', async () => {
+    // Y2 goal=$240k; 25% → $60k; Y1=$50k → growth = (60-50)/50 = 20.
+    // Replaces a prior test that typed $60000 into a $ input that no longer exists
+    // (Split column is now % only — see fix/step3-banner-cogs-pct-mix-display).
     const user = userEvent.setup();
     render(
       <Step3Harness
@@ -243,12 +261,12 @@ describe('UX-S3-02 — Step 3 Y-on-Y Growth % column', () => {
       />,
     );
 
-    const dollarInput = (await screen.findByLabelText(/Annual dollars for Hardware/i)) as HTMLInputElement;
+    const pctInput = (await screen.findByLabelText(/Percent split for Hardware/i)) as HTMLInputElement;
     const growthInput = (await screen.findByLabelText(/Growth percent for Hardware/i)) as HTMLInputElement;
 
-    await user.click(dollarInput);
-    await user.clear(dollarInput);
-    await user.type(dollarInput, '60000');
+    await user.click(pctInput);
+    await user.clear(pctInput);
+    await user.type(pctInput, '25');
     await user.tab();
 
     // Growth display should now reflect (60000 - 50000) / 50000 → 20
