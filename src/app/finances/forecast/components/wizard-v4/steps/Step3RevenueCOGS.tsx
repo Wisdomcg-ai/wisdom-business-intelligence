@@ -544,6 +544,49 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
       year1TotalFromLines += lineTotal;
     });
 
+    // Per-line weight for splitting the year target across lines.
+    // Preferred source: prior-year per-line share (so "seasonal" actually
+    // restores the Xero-imported shape — e.g., switching from straight-line
+    // back to seasonal recovers the original A=50% / B=30% / C=20% split,
+    // not an equal target/N for every line).
+    // Fallback hierarchy:
+    //   1. prior-year line total / prior-year revenue total (if both > 0)
+    //   2. current Y1 line total / current Y1 total (if line not in prior year)
+    //   3. equal split 1/N (if no signal at all)
+    const priorByLine: Record<string, number> = {};
+    let priorRevTotal = 0;
+    if (priorYear?.revenue?.byLine) {
+      for (const pl of priorYear.revenue.byLine) {
+        priorByLine[pl.id] = pl.total || 0;
+        priorRevTotal += pl.total || 0;
+      }
+    }
+    const lineWeights: Record<string, number> = {};
+    let weightSum = 0;
+    revenueLines.forEach((line) => {
+      let w: number;
+      const priorShare = priorRevTotal > 0 ? (priorByLine[line.id] || 0) / priorRevTotal : 0;
+      if (priorShare > 0) {
+        w = priorShare;
+      } else if (year1TotalFromLines > 0) {
+        w = (year1LineTotals[line.id] || 0) / year1TotalFromLines;
+      } else {
+        w = 1 / revenueLines.length;
+      }
+      lineWeights[line.id] = w;
+      weightSum += w;
+    });
+    // Normalise so weights sum to 1 (handles the mixed prior-year + new-line case).
+    if (weightSum > 0) {
+      revenueLines.forEach((line) => {
+        lineWeights[line.id] = lineWeights[line.id] / weightSum;
+      });
+    } else {
+      revenueLines.forEach((line) => {
+        lineWeights[line.id] = 1 / revenueLines.length;
+      });
+    }
+
     // Recalculate revenue lines for ALL years based on pattern
     revenueLines.forEach((line) => {
       // Phase 51-03 (UX-S3-03): per-line override → business → 8.33 fallback.
@@ -555,7 +598,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
       // === YEAR 1 (Monthly) ===
       if (pattern === 'straight-line') {
-        const lineRemainingTarget = year1RemainingTarget / revenueLines.length;
+        const lineRemainingTarget = year1RemainingTarget * (lineWeights[line.id] ?? 1 / revenueLines.length);
         const projectedMonthlyAmount = remainingMonthsCount > 0
           ? Math.round(lineRemainingTarget / remainingMonthsCount)
           : 0;
@@ -578,7 +621,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         });
 
         const monthly: { [key: string]: number } = {};
-        const lineRemainingTarget = year1RemainingTarget / revenueLines.length;
+        const lineRemainingTarget = year1RemainingTarget * (lineWeights[line.id] ?? 1 / revenueLines.length);
 
         monthKeys.forEach((key, idx) => {
           if (isActualMonth(key)) {
@@ -596,10 +639,10 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
       // === YEAR 2 (Monthly) ===
       if (year2Target > 0) {
-        const lineYear1Pct = year1TotalFromLines > 0
-          ? (year1LineTotals[line.id] || 0) / year1TotalFromLines
-          : 1 / revenueLines.length;
-        const lineYear2Target = year2Target * lineYear1Pct;
+        // Use the prior-year-preferred line weights (same source as Y1) so
+        // switching back to seasonal restores the correct per-line proportion
+        // instead of inheriting whatever Y1 looked like after a straight-line pass.
+        const lineYear2Target = year2Target * (lineWeights[line.id] ?? 1 / revenueLines.length);
         const y2MonthKeys = generateMonthKeys(fiscalYear);
         const totalPct = seasonality.reduce((a: number, b: number) => a + b, 0);
 
@@ -622,10 +665,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
       // === YEAR 3 (Monthly) ===
       if (year3Target > 0) {
-        const lineYear1Pct = year1TotalFromLines > 0
-          ? (year1LineTotals[line.id] || 0) / year1TotalFromLines
-          : 1 / revenueLines.length;
-        const lineYear3Target = year3Target * lineYear1Pct;
+        // Use the prior-year-preferred line weights (same source as Y1).
+        const lineYear3Target = year3Target * (lineWeights[line.id] ?? 1 / revenueLines.length);
         const y3MonthKeys = generateMonthKeys(fiscalYear + 1);
         const totalPct = seasonality.reduce((a: number, b: number) => a + b, 0);
 
