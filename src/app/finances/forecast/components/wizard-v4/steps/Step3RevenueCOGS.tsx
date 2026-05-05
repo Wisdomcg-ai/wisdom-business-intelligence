@@ -527,32 +527,30 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     // Manual mode: don't auto-distribute, let user enter each cell
     if (pattern === 'manual') return;
 
+    if (revenueLines.length === 0) return;
+
     // Get targets for ALL years
     const year1Target = goals.year1?.revenue || 0;
     const year2Target = goals.year2?.revenue || 0;
     const year3Target = goals.year3?.revenue || 0;
 
-    // For Year 1, calculate remaining revenue to distribute (target - actuals)
-    const year1RemainingTarget = Math.max(0, year1Target - ytdActualTotal);
-
-    // Calculate Year 1 line proportions for distributing Year 2/3
-    const year1LineTotals: Record<string, number> = {};
-    let year1TotalFromLines = 0;
-    revenueLines.forEach((line) => {
-      const lineTotal = Object.values(line.year1Monthly).reduce((sum, val) => sum + val, 0);
-      year1LineTotals[line.id] = lineTotal;
-      year1TotalFromLines += lineTotal;
-    });
-
-    // Per-line weight for splitting the year target across lines.
-    // Preferred source: prior-year per-line share (so "seasonal" actually
-    // restores the Xero-imported shape — e.g., switching from straight-line
-    // back to seasonal recovers the original A=50% / B=30% / C=20% split,
-    // not an equal target/N for every line).
-    // Fallback hierarchy:
-    //   1. prior-year line total / prior-year revenue total (if both > 0)
-    //   2. current Y1 line total / current Y1 total (if line not in prior year)
-    //   3. equal split 1/N (if no signal at all)
+    // ═════════════════════════════════════════════════════════════════════════
+    // STABLE LINE WEIGHTS
+    // ═════════════════════════════════════════════════════════════════════════
+    // Weights MUST be deterministic so clicking a pattern N times produces the
+    // same result. The previous fallback (current Y1 share) drifted between
+    // clicks for manually-added lines (lines not in prior year) and caused
+    // "random numbers" on repeated switches.
+    //
+    // New rule:
+    //   - Lines IN prior year: use prior-year share (line_total / prior_total)
+    //   - Lines NOT in prior year (manually added): equal share of the
+    //     remaining weight (1 - sum_of_prior_shares_for_current_lines)
+    //   - All lines: normalised so weights sum to 1.0 exactly.
+    //
+    // This is invariant given (priorYear, revenueLines.length, list of which
+    // lines have prior-year matches). Repeated clicks → identical weights →
+    // identical distribution.
     const priorByLine: Record<string, number> = {};
     let priorRevTotal = 0;
     if (priorYear?.revenue?.byLine) {
@@ -561,43 +559,61 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         priorRevTotal += pl.total || 0;
       }
     }
-    const lineWeights: Record<string, number> = {};
-    let weightSum = 0;
-    revenueLines.forEach((line) => {
-      let w: number;
-      const priorShare = priorRevTotal > 0 ? (priorByLine[line.id] || 0) / priorRevTotal : 0;
-      if (priorShare > 0) {
-        w = priorShare;
-      } else if (year1TotalFromLines > 0) {
-        w = (year1LineTotals[line.id] || 0) / year1TotalFromLines;
+    const linesWithPrior: string[] = [];
+    const linesWithoutPrior: string[] = [];
+    let priorWeightCovered = 0;
+    for (const line of revenueLines) {
+      const share = priorRevTotal > 0 ? (priorByLine[line.id] || 0) / priorRevTotal : 0;
+      if (share > 0) {
+        linesWithPrior.push(line.id);
+        priorWeightCovered += share;
       } else {
-        w = 1 / revenueLines.length;
+        linesWithoutPrior.push(line.id);
       }
-      lineWeights[line.id] = w;
-      weightSum += w;
-    });
-    // Normalise so weights sum to 1 (handles the mixed prior-year + new-line case).
-    if (weightSum > 0) {
-      revenueLines.forEach((line) => {
-        lineWeights[line.id] = lineWeights[line.id] / weightSum;
-      });
+    }
+    const remainingForNoPrior = Math.max(0, 1 - priorWeightCovered);
+    const equalShareForNoPrior = linesWithoutPrior.length > 0
+      ? remainingForNoPrior / linesWithoutPrior.length
+      : 0;
+    const lineWeights: Record<string, number> = {};
+    for (const line of revenueLines) {
+      const priorShare = priorRevTotal > 0 ? (priorByLine[line.id] || 0) / priorRevTotal : 0;
+      lineWeights[line.id] = priorShare > 0 ? priorShare : equalShareForNoPrior;
+    }
+    // Normalise (defensive — handles floating-point drift + edge case where
+    // prior-year covers all but no equal share is possible).
+    const totalWeight = revenueLines.reduce((s, l) => s + (lineWeights[l.id] || 0), 0);
+    if (totalWeight > 0) {
+      for (const line of revenueLines) {
+        lineWeights[line.id] = lineWeights[line.id] / totalWeight;
+      }
     } else {
-      revenueLines.forEach((line) => {
+      for (const line of revenueLines) {
         lineWeights[line.id] = 1 / revenueLines.length;
-      });
+      }
     }
 
-    // Determine the "actuals" portion the wizard will lock for Y1. Source of
-    // truth is currentYTD.revenue_by_month (the real Xero YTD), NOT whatever
-    // happened to be in line.year1Monthly[actualMonth] (which could be stale
-    // prior-year values from initializeFromXero, or operator manual edits).
-    //
-    // This guarantees: Σ(Y1 actual months) === ytdActualTotal exactly, and
-    // therefore Σ(Y1 cells) === year1Target exactly when we add the
-    // seasonally-/straight-line-distributed remaining target on top.
+    // ═════════════════════════════════════════════════════════════════════════
+    // PER-LINE TARGETS WITH CROSS-LINE RESIDUE ABSORPTION
+    // ═════════════════════════════════════════════════════════════════════════
+    // Round each line's annual target, with the LAST line absorbing the
+    // rounding residue. This guarantees Σ lineYearTarget_i === year1Target
+    // exactly (within $1), regardless of floating-point weights.
+    const lineYearTargets: Record<string, number> = {};
+    let runningLineTargetSum = 0;
+    revenueLines.forEach((line, idx) => {
+      const isLastLine = idx === revenueLines.length - 1;
+      const target = isLastLine
+        ? year1Target - runningLineTargetSum
+        : Math.round(year1Target * (lineWeights[line.id] ?? 0));
+      lineYearTargets[line.id] = target;
+      runningLineTargetSum += target;
+    });
+
+    // Per-line YTD: real Xero per-line breakdown when available; else
+    // proportional split of business-level YTD by line weight (cross-line
+    // residue absorption ensures Σ lineYtd_i === ytdActualTotal exactly).
     const ytdByMonth = currentYTD?.revenue_by_month ?? {};
-    // Optional: real per-line YTD (preferred when Xero returned it). Match by
-    // case-insensitive trimmed name (same convention as initializeFromXero).
     const ytdLines: Array<{ account_name: string; by_month?: Record<string, number> }> =
       ((currentYTD as { revenue_lines?: Array<{ account_name: string; by_month?: Record<string, number> }> } | null)?.revenue_lines) ?? [];
     const matchKey = (name: string) => name.trim().toLowerCase();
@@ -606,109 +622,160 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
       if (yl.by_month) ytdByLineName.set(matchKey(yl.account_name), yl.by_month);
     }
 
-    // Recalculate revenue lines for ALL years based on pattern
+    // Per-line YTD totals (sum across actual months for each line).
+    const lineYtdTotals: Record<string, number> = {};
+    if (ytdByLineName.size > 0) {
+      // Real per-line YTD available — use it directly.
+      for (const line of revenueLines) {
+        const real = ytdByLineName.get(matchKey(line.name));
+        if (real) {
+          lineYtdTotals[line.id] = monthKeys
+            .filter((k) => isActualMonth(k))
+            .reduce((s, k) => s + (real[k] || 0), 0);
+        } else {
+          lineYtdTotals[line.id] = 0;
+        }
+      }
+    } else {
+      // No per-line YTD — proportional split with cross-line residue absorption.
+      let runningYtdSum = 0;
+      revenueLines.forEach((line, idx) => {
+        const isLastLine = idx === revenueLines.length - 1;
+        lineYtdTotals[line.id] = isLastLine
+          ? ytdActualTotal - runningYtdSum
+          : Math.round(ytdActualTotal * (lineWeights[line.id] ?? 0));
+        runningYtdSum += lineYtdTotals[line.id];
+      });
+    }
+
+    // Same idea for actual months when no per-line YTD: each actual month's
+    // ytdByMonth[key] gets split across lines; last line absorbs residue.
+    // Pre-compute the per-(line, actualMonth) values so the loop below can
+    // read them directly.
+    const lineActualMonthly: Record<string, Record<string, number>> = {};
+    for (const line of revenueLines) lineActualMonthly[line.id] = {};
+    monthKeys.forEach((key) => {
+      if (!isActualMonth(key)) return;
+      // Real per-line YTD takes precedence.
+      const haveAllRealForThisMonth = revenueLines.every((l) => {
+        const real = ytdByLineName.get(matchKey(l.name));
+        return real && real[key] !== undefined;
+      });
+      if (haveAllRealForThisMonth) {
+        for (const line of revenueLines) {
+          const real = ytdByLineName.get(matchKey(line.name))!;
+          lineActualMonthly[line.id][key] = Math.round(real[key]);
+        }
+        return;
+      }
+      // Proportional split with last-line residue absorption.
+      const monthYtd = ytdByMonth[key] || 0;
+      let runningMonthSum = 0;
+      revenueLines.forEach((line, idx) => {
+        const isLastLine = idx === revenueLines.length - 1;
+        lineActualMonthly[line.id][key] = isLastLine
+          ? Math.round(monthYtd - runningMonthSum)
+          : Math.round(monthYtd * (lineWeights[line.id] ?? 0));
+        runningMonthSum += lineActualMonthly[line.id][key];
+      });
+    });
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // PER-LINE DISTRIBUTION WITH PER-LINE RESIDUE ABSORPTION
+    // ═════════════════════════════════════════════════════════════════════════
     revenueLines.forEach((line) => {
-      // Phase 51-03 (UX-S3-03): per-line override → business → 8.33 fallback.
       const seasonality = getEffectiveSeasonality(line, priorYear?.seasonalityPattern);
       const updates: Partial<typeof line> = {};
-      const lineWeight = lineWeights[line.id] ?? 1 / revenueLines.length;
+      const lineYearTarget = lineYearTargets[line.id];
+      const lineYtd = lineYtdTotals[line.id];
+      const lineRemainingTarget = lineYearTarget - lineYtd;
 
-      // === YEAR 1 (Monthly) ===
-      // Per-line YTD actuals: prefer real Xero per-line breakdown when available;
-      // otherwise proportion the business-level monthly YTD by line weight.
-      // This makes pattern application IDEMPOTENT — clicking Seasonal twice in a
-      // row, or Seasonal → Manual → Seasonal, produces identical cells because
-      // the actual-month values come from invariant data sources, not from
-      // whatever was previously in line.year1Monthly.
-      const realLineYtd = ytdByLineName.get(matchKey(line.name));
-      const monthly: { [key: string]: number } = {};
-
-      // Compute totals across remaining (non-actual) months for distribution.
-      const lineRemainingTarget = year1RemainingTarget * lineWeight;
-      let totalRemainingSeasonality = 0;
-      monthKeys.forEach((key, idx) => {
-        if (!isActualMonth(key)) {
-          totalRemainingSeasonality += seasonality[idx] ?? 8.33;
-        }
-      });
-
-      monthKeys.forEach((key, idx) => {
+      // === YEAR 1 ===
+      const y1Monthly: { [key: string]: number } = {};
+      // 1. Lock actual months from pre-computed values.
+      for (const key of monthKeys) {
         if (isActualMonth(key)) {
-          // Lock the actual month: real per-line YTD if Xero gave it, else
-          // proportional split of business YTD by this line's weight.
-          if (realLineYtd && realLineYtd[key] !== undefined) {
-            monthly[key] = Math.round(realLineYtd[key]);
-          } else {
-            monthly[key] = Math.round((ytdByMonth[key] || 0) * lineWeight);
-          }
+          y1Monthly[key] = lineActualMonthly[line.id][key] ?? 0;
+        }
+      }
+      // 2. Distribute lineRemainingTarget across non-actual months WITH
+      //    last-month residue absorption. Guarantees Σ non-actual === lineRemainingTarget.
+      const nonActualKeys = monthKeys.filter((k) => !isActualMonth(k));
+      let totalRemainingSeasonality = 0;
+      nonActualKeys.forEach((k) => {
+        const idx = monthKeys.indexOf(k);
+        totalRemainingSeasonality += seasonality[idx] ?? 8.33;
+      });
+      let runningNonActualSum = 0;
+      nonActualKeys.forEach((key, ni) => {
+        const isLast = ni === nonActualKeys.length - 1;
+        if (isLast) {
+          y1Monthly[key] = Math.max(0, lineRemainingTarget - runningNonActualSum);
         } else if (pattern === 'straight-line') {
-          monthly[key] = remainingMonthsCount > 0
-            ? Math.round(lineRemainingTarget / remainingMonthsCount)
-            : 0;
+          const val = nonActualKeys.length > 0 ? Math.round(lineRemainingTarget / nonActualKeys.length) : 0;
+          y1Monthly[key] = Math.max(0, val);
+          runningNonActualSum += y1Monthly[key];
         } else if (pattern === 'seasonal') {
           if (totalRemainingSeasonality > 0 && lineRemainingTarget > 0) {
+            const idx = monthKeys.indexOf(key);
             const monthFactor = (seasonality[idx] ?? 8.33) / totalRemainingSeasonality;
-            monthly[key] = Math.round(lineRemainingTarget * monthFactor);
+            y1Monthly[key] = Math.max(0, Math.round(lineRemainingTarget * monthFactor));
           } else {
-            monthly[key] = 0;
+            y1Monthly[key] = 0;
           }
+          runningNonActualSum += y1Monthly[key];
         } else {
-          monthly[key] = 0;
+          y1Monthly[key] = 0;
         }
       });
-      updates.year1Monthly = monthly;
+      updates.year1Monthly = y1Monthly;
 
-      // === YEAR 2 (Monthly) ===
+      // === YEAR 2 (no actuals; full target distribution) ===
       if (year2Target > 0) {
-        // Use the prior-year-preferred line weights (same source as Y1) so
-        // switching back to seasonal restores the correct per-line proportion
-        // instead of inheriting whatever Y1 looked like after a straight-line pass.
-        const lineYear2Target = year2Target * (lineWeights[line.id] ?? 1 / revenueLines.length);
+        const lineYear2TargetRaw = year2Target * (lineWeights[line.id] ?? 0);
+        const lineYear2Target = Math.round(lineYear2TargetRaw);
         const y2MonthKeys = generateMonthKeys(fiscalYear);
         const totalPct = seasonality.reduce((a: number, b: number) => a + b, 0);
-
-        if (pattern === 'seasonal' && totalPct > 0) {
-          const monthly: MonthlyData = {};
-          y2MonthKeys.forEach((key, idx) => {
-            monthly[key] = Math.round(lineYear2Target * ((seasonality[idx] ?? 8.33) / totalPct));
-          });
-          updates.year2Monthly = monthly;
-        } else {
-          // Straight-line: equal months
-          const monthlyAmount = Math.round(lineYear2Target / 12);
-          const monthly: MonthlyData = {};
-          y2MonthKeys.forEach((key) => {
-            monthly[key] = monthlyAmount;
-          });
-          updates.year2Monthly = monthly;
-        }
+        const y2Monthly: MonthlyData = {};
+        let y2Running = 0;
+        y2MonthKeys.forEach((key, idx) => {
+          const isLast = idx === y2MonthKeys.length - 1;
+          if (isLast) {
+            y2Monthly[key] = Math.max(0, lineYear2Target - y2Running);
+          } else if (pattern === 'seasonal' && totalPct > 0) {
+            y2Monthly[key] = Math.max(0, Math.round(lineYear2Target * ((seasonality[idx] ?? 8.33) / totalPct)));
+            y2Running += y2Monthly[key];
+          } else {
+            y2Monthly[key] = Math.max(0, Math.round(lineYear2Target / 12));
+            y2Running += y2Monthly[key];
+          }
+        });
+        updates.year2Monthly = y2Monthly;
       }
 
-      // === YEAR 3 (Monthly) ===
+      // === YEAR 3 ===
       if (year3Target > 0) {
-        // Use the prior-year-preferred line weights (same source as Y1).
-        const lineYear3Target = year3Target * (lineWeights[line.id] ?? 1 / revenueLines.length);
+        const lineYear3TargetRaw = year3Target * (lineWeights[line.id] ?? 0);
+        const lineYear3Target = Math.round(lineYear3TargetRaw);
         const y3MonthKeys = generateMonthKeys(fiscalYear + 1);
         const totalPct = seasonality.reduce((a: number, b: number) => a + b, 0);
-
-        if (pattern === 'seasonal' && totalPct > 0) {
-          const monthly: MonthlyData = {};
-          y3MonthKeys.forEach((key, idx) => {
-            monthly[key] = Math.round(lineYear3Target * ((seasonality[idx] ?? 8.33) / totalPct));
-          });
-          updates.year3Monthly = monthly;
-        } else {
-          // Straight-line: equal months
-          const monthlyAmount = Math.round(lineYear3Target / 12);
-          const monthly: MonthlyData = {};
-          y3MonthKeys.forEach((key) => {
-            monthly[key] = monthlyAmount;
-          });
-          updates.year3Monthly = monthly;
-        }
+        const y3Monthly: MonthlyData = {};
+        let y3Running = 0;
+        y3MonthKeys.forEach((key, idx) => {
+          const isLast = idx === y3MonthKeys.length - 1;
+          if (isLast) {
+            y3Monthly[key] = Math.max(0, lineYear3Target - y3Running);
+          } else if (pattern === 'seasonal' && totalPct > 0) {
+            y3Monthly[key] = Math.max(0, Math.round(lineYear3Target * ((seasonality[idx] ?? 8.33) / totalPct)));
+            y3Running += y3Monthly[key];
+          } else {
+            y3Monthly[key] = Math.max(0, Math.round(lineYear3Target / 12));
+            y3Running += y3Monthly[key];
+          }
+        });
+        updates.year3Monthly = y3Monthly;
       }
 
-      // Apply all updates at once
       if (Object.keys(updates).length > 0) {
         actions.updateRevenueLine(line.id, updates);
       }
