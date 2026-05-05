@@ -97,18 +97,31 @@ export default function IntegrationsPage() {
 
     setSyncing(true)
     try {
-      const { error } = await supabase
-        .from('xero_connections')
-        .delete()
-        .eq('business_id', businessId)
+      // Phase 53-01: route through the server-side disconnect endpoint so the
+      // dual-ID delete fires (covers rows under BOTH businesses.id AND
+      // business_profiles.id). Do NOT optimistically flip — JDS 2026-05-05
+      // taught us that flipping before the server confirms hides stale rows
+      // that survive a partial delete. State only mutates when the server
+      // confirms deleted_count > 0.
+      const res = await fetch('/api/Xero/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_id: businessId }),
+      })
 
-      if (error) throw error
+      const data = await res.json().catch(() => ({}))
 
-      setXeroConnected(false)
-      setXeroData(null)
+      if (res.ok && data.success && (data.deleted_count ?? 0) > 0) {
+        setXeroConnected(false)
+        setXeroData(null)
+      } else {
+        const message = data.message || data.error || 'Failed to disconnect Xero'
+        console.error('[Integrations] Disconnect failed:', { status: res.status, data })
+        alert(message)
+      }
     } catch (error) {
       console.error('Error disconnecting Xero:', error)
-      alert('Failed to disconnect Xero')
+      alert(error instanceof Error ? error.message : 'Failed to disconnect Xero')
     } finally {
       setSyncing(false)
     }

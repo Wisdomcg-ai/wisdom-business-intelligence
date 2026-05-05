@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: verifying
-last_updated: "2026-05-06T08:20:00.000Z"
-last_activity: 2026-05-06 (Phase 53-03 token-manager race-closure shipped — PR #108)
+last_updated: "2026-05-06T08:15:00.000Z"
+last_activity: 2026-05-06 (Phase 53-01 server-side Xero disconnect with dual-ID purge — PR #107 opened)
 progress:
   total_phases: 51
   completed_phases: 20
@@ -19,8 +19,8 @@ progress:
 Phase: 44, 44.1, 44.2, 44.3, 45, 49, 50 — **COMPLETE**.
 Phase: 46 (Server-Side Hardening) — **PARTIAL** (3/4 plans shipped). Plan 46-04 deferred ≥2026-05-10 per cooling period.
 Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-05-08). All 56 orphan-prone FKs covered: 50 SET NULL + 4 CASCADE + 2 RESTRICT/CASCADE. fk-policy.md is the authoritative reference going forward.
-Phase: 53 (Xero Connection Durability) — **IN PROGRESS** (1/5 plans shipped 2026-05-06). Plan 53-03 closes the two race-condition holes in `src/lib/xero/token-manager.ts` (Hole A post-lock refetch, Hole B pre-deactivation refetch) and tightens per-error-code policy (unauthorized_client x3 retry, invalid_client never deactivates). Adds structured deactivation log as the Sentry insertion point for 53-05. PR #108. Next: 53-01 (server-side disconnect endpoint), 53-02 (centralize refresh through token-manager), 53-04 (proactive refresh cron), 53-05 (Sentry + dashboard health surface).
-Last activity: 2026-05-06 (Phase 53-03 token-manager race-closure shipped — PR #108)
+Phase: 53 (Xero Connection Durability) — **IN PROGRESS** (1/5 plans shipped). Plan 53-01 server-side disconnect with dual-ID purge complete (PR #107). Next: 53-03 → 53-02 → 53-04 → 53-05 per PHASE.md ship order.
+Last activity: 2026-05-06 (Phase 53-01 server-side Xero disconnect — PR #107 opened, awaiting CI + JDS preview verification)
 
 ## Active operational notes
 
@@ -30,6 +30,7 @@ Last activity: 2026-05-06 (Phase 53-03 token-manager race-closure shipped — PR
 
 ## Next eligible work
 
+- **Phase 53-03** (Tighten deactivation logic in token-manager.ts — re-fetch row before deactivating, retry policy per error code). Per PHASE.md ship order, 53-03 lands before 53-02 because we want centralization to happen alongside policy tightening, not before.
 - **46-04** (after 2026-05-10 cooling period)
 - **Phase 51** (Forecast Wizard UX — emergent from 2026-05-04 review). Items deferred from Phase 50: Step 3 thousands-separator restoration, Step 4 departure flow, Step 4 part-time/casual flexibility, Step 5 $-vs-% toggle, Step 5 simpler layout, Step 6 visibility/undo/add. Needs operator design conversations before planning.
 - **Phase 52** (Xero employee data — emergent). Step 4 pay cycle, standard hours, hourly rate from Xero API. Pure research first.
