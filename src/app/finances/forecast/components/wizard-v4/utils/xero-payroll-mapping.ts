@@ -341,3 +341,255 @@ export function computeXeroFingerprint(
   }
   return result;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 52-02 — Re-import reconciliation helpers
+//
+// These pure functions implement Operator's Option D:
+//   - findMatchingTeamMember: 3-tier match (id > email > name) — caller iterates
+//     `xeroEmployees` and looks up against `teamMembers`, NEVER the reverse
+//     (52-RESEARCH Pitfall 6 — manually-added members must stay untouchable).
+//   - computeReconciliationDiff: per-field diff classifying each tracked field
+//     as 'unchanged' / 'updated-by-xero-only' / 'conflict'.
+//   - applyReconciliationDecision: per-field operator decision → Partial<TeamMember>.
+//   - applySilentXeroUpdates: batch the silent (no-prompt) updates for one member.
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The 7 fields tracked by Xero re-import reconciliation. Source of truth — keep
+ * in sync with markFieldOverridden (52-01) and the salary cell + payFrequency
+ * dropdown override-stamping in Step4Team.tsx.
+ *
+ * `name` and `role` participate so a Xero rename or job-title change can be
+ * silently applied (operator hasn't typed in the wizard) or surfaced as a
+ * conflict (operator has overridden). `type` is included so a part-time → full-
+ * time change in Xero gets reconciled the same way.
+ */
+export const XERO_TRACKED_FIELDS = [
+  'name',
+  'role',
+  'type',
+  'payFrequency',
+  'standardHours',
+  'hourlyRate',
+  'currentSalary',
+] as const;
+export type XeroTrackedField = typeof XERO_TRACKED_FIELDS[number];
+
+export type FieldDiffVerdict = 'unchanged' | 'updated-by-xero-only' | 'conflict';
+
+export interface FieldDiff {
+  field: XeroTrackedField;
+  currentValue: unknown;
+  lastImportedValue: unknown;
+  newXeroValue: unknown;
+  verdict: FieldDiffVerdict;
+}
+
+export interface MemberDiff {
+  memberId: TeamMember['id'];
+  xeroEmployeeId: string;
+  fields: FieldDiff[];
+}
+
+export type ReconciliationDecision = 'accept-xero' | 'keep-mine' | 'edit';
+
+/**
+ * Phase 52-02 — Match a Xero employee to an existing wizard TeamMember.
+ *
+ * Strategy (in order of confidence):
+ *   1. Exact match on `_xeroEmployeeId` (highest — survives name changes)
+ *   2. Case-insensitive email match (if both present)
+ *   3. Case-insensitive trimmed full-name match
+ *
+ * Returns the matched member's `id`, or `undefined` if no match.
+ *
+ * IMPORTANT: caller iterates `xeroEmployees` and looks up via this function
+ * against `teamMembers`. Never iterate `teamMembers` to filter — manually-
+ * added rows (no `_xeroEmployeeId`) must stay untouchable. Tier 3 by name does
+ * still match manually-added rows by design — the operator can choose to
+ * "claim" the row in the modal or skip via [Keep yours].
+ */
+export function findMatchingTeamMember(
+  xeroEmp: { employee_id: string; email?: string; full_name: string },
+  teamMembers: ReadonlyArray<{
+    id: string;
+    name: string;
+    _xeroEmployeeId?: string;
+    email?: string;
+  }>,
+): string | undefined {
+  // Tier 1: _xeroEmployeeId
+  if (xeroEmp.employee_id) {
+    const byId = teamMembers.find((m) => m._xeroEmployeeId === xeroEmp.employee_id);
+    if (byId) return byId.id;
+  }
+  // Tier 2: email (case-insensitive)
+  if (xeroEmp.email) {
+    const xeroEmail = xeroEmp.email.toLowerCase().trim();
+    const byEmail = teamMembers.find(
+      (m) => m.email && m.email.toLowerCase().trim() === xeroEmail,
+    );
+    if (byEmail) return byEmail.id;
+  }
+  // Tier 3: full name (case-insensitive, trimmed)
+  if (xeroEmp.full_name) {
+    const xeroName = xeroEmp.full_name.toLowerCase().trim();
+    const byName = teamMembers.find(
+      (m) => m.name.toLowerCase().trim() === xeroName,
+    );
+    if (byName) return byName.id;
+  }
+  return undefined;
+}
+
+/**
+ * Phase 52-02 — Value equality helper for reconciliation diffs.
+ *
+ *   - `undefined` and `null` are equivalent (both = "absent")
+ *   - Numbers compared with 0.005 tolerance (covers float drift on hourly rates
+ *     and standard hours; e.g. 45.00 vs 45.001)
+ *   - Everything else: strict ===
+ */
+function valuesEqual(a: unknown, b: unknown): boolean {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  if (typeof a === 'number' && typeof b === 'number') {
+    return Math.abs(a - b) < 0.005;
+  }
+  return a === b;
+}
+
+/**
+ * Phase 52-02 — Compute a per-field diff between the current wizard member,
+ * its last-imported fingerprint, and the fresh Xero values. Returns the
+ * field list with verdicts.
+ *
+ * Verdict logic per field:
+ *   xeroChanged       = newXeroValue !== lastImportedValue (via valuesEqual)
+ *   operatorOverrode  = member._overriddenFields?.includes(field)
+ *
+ *   - !xeroChanged                          → 'unchanged'   (skip)
+ *   - xeroChanged && !operatorOverrode      → 'updated-by-xero-only' (silent apply)
+ *   - xeroChanged && operatorOverrode       → 'conflict'    (operator decides)
+ */
+export function computeReconciliationDiff(
+  member: TeamMember,
+  freshXeroValues: Partial<Record<XeroTrackedField, unknown>>,
+): MemberDiff {
+  const fingerprint = member._xeroFingerprint ?? {};
+  const overridden = new Set(member._overriddenFields ?? []);
+  const fields: FieldDiff[] = XERO_TRACKED_FIELDS.map((field) => {
+    const currentValue = (member as any)[field];
+    const lastImportedValue = (fingerprint as any)[field];
+    const newXeroValue = (freshXeroValues as any)[field];
+    const xeroChanged = !valuesEqual(newXeroValue, lastImportedValue);
+    const operatorOverrode = overridden.has(field);
+    let verdict: FieldDiffVerdict;
+    if (!xeroChanged) verdict = 'unchanged';
+    else if (!operatorOverrode) verdict = 'updated-by-xero-only';
+    else verdict = 'conflict';
+    return { field, currentValue, lastImportedValue, newXeroValue, verdict };
+  });
+  return {
+    memberId: member.id,
+    xeroEmployeeId: member._xeroEmployeeId ?? '',
+    fields,
+  };
+}
+
+/**
+ * Phase 52-02 — Compute the partial member update for a single per-field
+ * decision. The fingerprint is ALWAYS refreshed (whether the operator accepts
+ * or keeps), so the same conflict will not re-prompt on the next refresh —
+ * comparison happens against the now-known Xero state.
+ *
+ *   accept-xero
+ *     - sets field to `newXeroValue`
+ *     - removes field from `_overriddenFields` (operator accepted Xero's value)
+ *     - updates `_xeroFingerprint[field]` to `newXeroValue`
+ *     - bumps `_xeroImportedAt`
+ *
+ *   keep-mine
+ *     - leaves field value untouched (NOT included in the partial)
+ *     - ensures field is in `_overriddenFields` (idempotent)
+ *     - updates `_xeroFingerprint[field]` to `newXeroValue` (so future re-
+ *       imports compare against the now-known Xero state, not the original)
+ *     - bumps `_xeroImportedAt`
+ *
+ *   edit (with operatorValue)
+ *     - sets field to `operatorValue` (NOT newXeroValue)
+ *     - adds field to `_overriddenFields` (idempotent)
+ *     - updates `_xeroFingerprint[field]` to `newXeroValue`
+ *     - bumps `_xeroImportedAt`
+ */
+export function applyReconciliationDecision(
+  member: TeamMember,
+  field: XeroTrackedField,
+  decision: ReconciliationDecision,
+  newXeroValue: unknown,
+  operatorValue?: unknown,
+): Partial<TeamMember> {
+  const updatedFingerprint: XeroFieldFingerprint = {
+    ...(member._xeroFingerprint ?? {}),
+    [field]: newXeroValue,
+  } as XeroFieldFingerprint;
+  const currentOverrides = member._overriddenFields ?? [];
+  const importedAt = new Date().toISOString();
+
+  if (decision === 'accept-xero') {
+    return {
+      [field]: newXeroValue,
+      _xeroFingerprint: updatedFingerprint,
+      _overriddenFields: currentOverrides.filter((f) => f !== field),
+      _xeroImportedAt: importedAt,
+    } as Partial<TeamMember>;
+  }
+  if (decision === 'keep-mine') {
+    return {
+      _xeroFingerprint: updatedFingerprint,
+      _overriddenFields: currentOverrides.includes(field)
+        ? currentOverrides
+        : [...currentOverrides, field],
+      _xeroImportedAt: importedAt,
+    } as Partial<TeamMember>;
+  }
+  // 'edit'
+  return {
+    [field]: operatorValue,
+    _xeroFingerprint: updatedFingerprint,
+    _overriddenFields: currentOverrides.includes(field)
+      ? currentOverrides
+      : [...currentOverrides, field],
+    _xeroImportedAt: importedAt,
+  } as Partial<TeamMember>;
+}
+
+/**
+ * Phase 52-02 — Apply ALL silent (updated-by-xero-only) field updates for one
+ * member in a single shot. Returns a Partial<TeamMember> ready to pass to
+ * `actions.updateTeamMember`, or `null` if there are no silent updates.
+ *
+ * Silent updates apply BEFORE the modal renders so the operator only sees
+ * genuine conflicts.
+ *
+ * Fingerprint preservation: untouched fingerprint fields stay intact; only
+ * the silently-updated fields advance.
+ */
+export function applySilentXeroUpdates(
+  member: TeamMember,
+  diff: MemberDiff,
+): Partial<TeamMember> | null {
+  const silent = diff.fields.filter((f) => f.verdict === 'updated-by-xero-only');
+  if (silent.length === 0) return null;
+  const update: Record<string, unknown> = {
+    _xeroImportedAt: new Date().toISOString(),
+  };
+  const fingerprint: XeroFieldFingerprint = { ...(member._xeroFingerprint ?? {}) };
+  for (const f of silent) {
+    update[f.field] = f.newXeroValue;
+    (fingerprint as any)[f.field] = f.newXeroValue;
+  }
+  update._xeroFingerprint = fingerprint;
+  return update as Partial<TeamMember>;
+}
