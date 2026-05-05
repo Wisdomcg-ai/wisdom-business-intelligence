@@ -752,9 +752,14 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
 
   return (
     <div className="space-y-6">
-      {/* D-44.2-02 — read-path data integrity banner. Renders nothing when verified. */}
+      {/* D-44.2-02 — read-path data integrity banner. Renders nothing when verified.
+          Suppress 'no_sync' when actuals are already loaded — the API returns
+          'no_sync' if xero_connections.is_active is false or sync_jobs is in
+          'running'/unknown, but xero_pl_lines may still hold last-good data.
+          Telling the coach to "Connect Xero" when YTD is visibly populated is
+          contradictory; partial / failed / stale still fire correctly. */}
       <DataIntegrityBanner
-        quality={dataQuality}
+        quality={dataQuality === 'no_sync' && (currentYTD?.months_count ?? 0) > 0 ? 'verified' : dataQuality}
         perTenantQuality={perTenantQuality}
         lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
       />
