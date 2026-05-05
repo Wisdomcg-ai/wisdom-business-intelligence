@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/reconciliation-watch",
       "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-xero-tokens",
+      "schedule": "0 */6 * * *"
     }
   ]
 }
