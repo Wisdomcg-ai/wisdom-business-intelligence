@@ -205,23 +205,7 @@ export async function GET(request: NextRequest) {
     const tokenResult = await getValidAccessToken(connection, supabase);
 
     if (!tokenResult.success) {
-      // TEMP DIAGNOSTIC (debug/employees-401-diagnosis): enrich both server log
-      // AND response body so we can pinpoint the 401 root cause from the
-      // browser network tab without round-tripping to Vercel logs. Remove
-      // once Phase 53 JDS production verification is done.
-      const diagnostic = {
-        token_error: tokenResult.error,
-        token_message: tokenResult.message,
-        should_deactivate: tokenResult.shouldDeactivate ?? false,
-        connection_id: connection?.id?.substring(0, 8),
-        connection_business_id: connection?.business_id?.substring(0, 8),
-        connection_tenant_id: connection?.tenant_id,
-        connection_expires_at: connection?.expires_at,
-        connection_updated_at: connection?.updated_at,
-        connection_is_active: connection?.is_active,
-        request_business_id: business_id?.substring(0, 8),
-      };
-      console.error('[Xero Employees] Token refresh failed — full context:', JSON.stringify(diagnostic));
+      console.error('[Xero Employees] Token refresh failed:', tokenResult.error, tokenResult.message);
 
       // If the token-manager flagged the connection for deactivation (e.g. refresh
       // token expired beyond Xero's 60-day window), actually deactivate it here so
@@ -249,7 +233,6 @@ export async function GET(request: NextRequest) {
           error: tokenResult.message || 'Xero connection expired. Please reconnect Xero from the Integrations page.',
           expired: true,
           needsReconnect: tokenResult.shouldDeactivate,
-          _diagnostic: diagnostic, // TEMP — remove after JDS verification
         },
         { status: 401 }
       );
