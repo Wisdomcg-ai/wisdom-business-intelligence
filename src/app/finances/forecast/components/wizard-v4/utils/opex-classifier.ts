@@ -596,13 +596,26 @@ export function classifyOpExLines(
 }
 
 /**
- * Get suggested default value based on behavior and prior year
+ * Get suggested default value based on behavior and prior year.
+ *
+ * IMPORTANT: for `variable` behavior, the percentage MUST be derived from
+ * prior-year revenue (priorYearRevenue), NOT from the forecast goal. The
+ * pct represents "this expense was X% of revenue historically" — applying
+ * that historical ratio to forecast revenue is the whole point of % of
+ * revenue forecasting. Using the forecast goal as denominator pins the
+ * forecast amount to priorYearAnnual (the divisions cancel) and breaks
+ * scaling with revenue growth. This was a real bug shipped 2026-05-07.
+ *
+ * `yearlyRevenueTarget` (3rd positional, kept for back-compat) is now
+ * IGNORED for variable lines. Pass `priorYearRevenue` via the new param.
  */
 export function getSuggestedValue(
   behavior: CostBehavior,
   priorYearAnnual: number,
   priorYearMonthly?: Record<string, number>,
-  yearlyRevenueTarget?: number
+  /** @deprecated — use priorYearRevenue for variable seeding */
+  _yearlyRevenueTarget?: number,
+  priorYearRevenue?: number,
 ): { value: number; unit: string } {
   switch (behavior) {
     case 'fixed':
@@ -612,8 +625,10 @@ export function getSuggestedValue(
       };
 
     case 'variable':
-      if (yearlyRevenueTarget && yearlyRevenueTarget > 0) {
-        const pct = (priorYearAnnual / yearlyRevenueTarget) * 100;
+      // Use prior-year revenue as the denominator so the seeded pct
+      // genuinely encodes the historical expense-to-revenue ratio.
+      if (priorYearRevenue && priorYearRevenue > 0 && priorYearAnnual >= 0) {
+        const pct = (priorYearAnnual / priorYearRevenue) * 100;
         return { value: Math.round(pct * 10) / 10, unit: '% rev' };
       }
       return { value: 0, unit: '% rev' };
