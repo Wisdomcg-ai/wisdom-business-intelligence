@@ -1041,12 +1041,20 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
     actions.updateOpExLine(lineId, updates);
   };
 
-  // Phase 50 (FCST-BUG-02): Total team costs to display in BudgetFramework =
-  // Step 4 team (members + new hires + departures, salary + super) PLUS the
-  // OpEx lines auto-classified as team (e.g. Xero "Wages and Salaries"). The
-  // P&L rollup excludes these OpEx lines from the OpEx total — we surface
-  // them here so the breakdown reads correctly.
-  const totalTeamCostsForBudget = year1TeamCosts + opexClassifiedTeamCosts;
+  // Step 4 is the single source of truth for team cost. After Phase 54-02
+  // (Xero auto-fill on first open), Step 4 always carries the full team
+  // headcount with salary + super pulled from Xero PayRun history. Adding
+  // `opexClassifiedTeamCosts` (the Xero "Wages and Salaries" P&L line) on
+  // top of `year1TeamCosts` double-counts the same wages — JDS confirmed
+  // production showed $5,184,624 ≈ 2× the actual $2,562,502.
+  //
+  // Fallback: if Step 4 is genuinely empty (no team members AND no new
+  // hires), fall back to the OpEx-classified total so businesses that
+  // haven't filled Step 4 yet still see a non-zero "Team Costs" row.
+  const hasStep4TeamData = teamMembers.length > 0 || newHires.length > 0;
+  const totalTeamCostsForBudget = hasStep4TeamData
+    ? year1TeamCosts
+    : opexClassifiedTeamCosts;
 
   return (
     <div className="space-y-6">
