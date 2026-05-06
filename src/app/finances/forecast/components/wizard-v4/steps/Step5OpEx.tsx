@@ -174,6 +174,32 @@ function BudgetFramework({
                     )}
                   </div>
                 </div>
+
+                {/* Implied Net Profit — reactive to OpEx changes so the operator
+                    can see how their adjustments hit the bottom line in real time.
+                    Implied profit = Gross Profit − Team Costs − OpEx.
+                    Color: green if ≥ target net profit %, amber if positive but
+                    below target, red if negative. */}
+                {(() => {
+                  const impliedProfit = budget.grossProfit - budget.teamCosts - opex;
+                  const impliedProfitPct = budget.revenue > 0
+                    ? (impliedProfit / budget.revenue) * 100
+                    : 0;
+                  const meetsTarget = impliedProfitPct >= budget.netProfitPct;
+                  const colorClass = impliedProfit < 0
+                    ? 'text-red-600'
+                    : meetsTarget
+                      ? 'text-green-600'
+                      : 'text-amber-600';
+                  return (
+                    <div className="border-t border-gray-100 pt-2 flex justify-between items-baseline">
+                      <span className="text-xs text-gray-500">Implied Net Profit</span>
+                      <span className={`text-sm font-semibold tabular-nums ${colorClass}`}>
+                        {formatCurrency(impliedProfit)} ({impliedProfitPct.toFixed(1)}%)
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -693,12 +719,17 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
         continue;
       }
 
-      // Get suggested value based on the classified behavior
+      // Get suggested value based on the classified behavior.
+      // Variable lines now seed `pct` from prior-year revenue (5th arg) so
+      // forecast amounts scale with revenue growth instead of being pinned
+      // to priorYearAnnual. The 4th arg (forecast goal) is retained for
+      // back-compat but ignored for variable seeding.
       const suggested = getSuggestedValue(
         result.behavior,
         line.priorYearAnnual,
         line.priorYearMonthly,
-        goals.year1?.revenue
+        goals.year1?.revenue,
+        priorYear?.revenue?.total,
       );
 
       // Only update if behavior is different from current (avoid unnecessary updates)
