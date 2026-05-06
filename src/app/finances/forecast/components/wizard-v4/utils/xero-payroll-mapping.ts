@@ -247,6 +247,110 @@ export function extractCompensationFromPayTemplate(
   return { standardHours: ordinaryHoursPerWeek };
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 54-01 — PayRun-history derivation helpers
+//
+// For AU tenants on `CalculationType=ENTEREARNINGSRATE` (the common
+// timesheet-driven payroll setup), the PayTemplate genuinely doesn't carry
+// hours/salary — see 54-RESEARCH.md §1. Hours/salary ARE derivable from
+// recent POSTED PayRun history with high reliability (validated against 5
+// JDS employees in research §3, all yielding the expected 37.5 h/wk
+// full-time figure).
+//
+// `deriveHoursAndSalaryFromPayRun` is consumed by route.ts AFTER the
+// existing `extractCompensationFromPayTemplate` call, applied via `??=`
+// precedence so PayTemplate-supplied values are NEVER overridden.
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Phase 54-01 — Period factors for converting PayRun aggregates into
+ * per-week / per-year terms. Validated in 54-RESEARCH.md §3 against 5 JDS
+ * employees, all yielding the expected 37.5 h/wk full-time figure.
+ *
+ * MONTHLY uses 4.33 (52/12) rather than 4 — Xero monthly pay periods
+ * average 4.33 weeks. FOURWEEKLY/TWICEMONTHLY/QUARTERLY are included for
+ * completeness but rare in AU payroll; values match the standard
+ * pay-cycle conversion table.
+ */
+export const WEEKS_PER_PERIOD_BY_CALENDAR_TYPE: Record<string, number> = {
+  WEEKLY: 1,
+  FORTNIGHTLY: 2,
+  FOURWEEKLY: 4,
+  TWICEMONTHLY: 2.165, // 52/24
+  MONTHLY: 4.33,        // 52/12
+  QUARTERLY: 13,
+};
+
+export const PERIODS_PER_YEAR_BY_CALENDAR_TYPE: Record<string, number> = {
+  WEEKLY: 52,
+  FORTNIGHTLY: 26,
+  FOURWEEKLY: 13,
+  TWICEMONTHLY: 24,
+  MONTHLY: 12,
+  QUARTERLY: 4,
+};
+
+/**
+ * Phase 54-01 — Derive { hoursPerWeek, annualSalary } from a PayRun aggregate
+ * for an employee whose PayTemplate doesn't carry these values (i.e. the
+ * common AU `ENTEREARNINGSRATE` timesheet-driven payroll setup).
+ *
+ * Inputs:
+ *   - avgWagesPerPeriod: arithmetic mean of Wages across N recent POSTED
+ *     pay runs (caller computes this; recommended N = 4 to dilute
+ *     bonuses/leave loading per research §10).
+ *   - hourlyRate: from PayTemplate.EarningsLines[0].RatePerUnit. May be
+ *     undefined for salaried employees — annual salary is still derivable
+ *     without it; hoursPerWeek is not.
+ *   - calendarType: raw Xero CalendarType string (case-insensitive); join
+ *     against the per-PayRun PayrollCalendarID, NOT a tenant-wide assumption.
+ *
+ * Returns `{}` when calendarType is missing/unknown OR avgWagesPerPeriod
+ * is negative (defensive — corrupt data should never be applied).
+ *
+ * Returns partial result `{ annualSalary }` (no hoursPerWeek) when
+ * hourlyRate is missing or zero — annual derivation does not require rate.
+ *
+ * Math (validated against 5 JDS employees in 54-RESEARCH.md §3):
+ *   hoursPerWeek = (avgWagesPerPeriod / hourlyRate) / weeksPerPeriod
+ *   annualSalary = round(avgWagesPerPeriod * periodsPerYear)
+ *
+ * Pitfalls handled:
+ *   - Multiple earnings lines per employee (research §10): caller passes the
+ *     primary line's rate; aggregate Wages includes all lines, so derived
+ *     hours may be slightly inflated. Acceptable — operator corrects in Step 4.
+ *   - Bonuses/overtime/leave loading inflate Wages for affected periods.
+ *     Mitigated by caller's 4-period averaging (not this helper's concern).
+ *
+ * Phase 54-01 — caller MUST apply this result via `??=` against existing
+ * PayTemplate-extracted values. Salaried employees (whose PayTemplate
+ * already supplies AnnualSalary) must NOT be second-guessed. See route.ts
+ * per-employee loop for the application pattern.
+ */
+export function deriveHoursAndSalaryFromPayRun(
+  avgWagesPerPeriod: number,
+  hourlyRate: number | undefined,
+  calendarType: string | undefined | null,
+): { hoursPerWeek?: number; annualSalary?: number } {
+  if (!calendarType) return {};
+  if (avgWagesPerPeriod < 0) return {};
+  const key = calendarType.toUpperCase();
+  const weeksPerPeriod = WEEKS_PER_PERIOD_BY_CALENDAR_TYPE[key];
+  const periodsPerYear = PERIODS_PER_YEAR_BY_CALENDAR_TYPE[key];
+  if (weeksPerPeriod == null || periodsPerYear == null) return {};
+
+  const annualSalary = Math.round(avgWagesPerPeriod * periodsPerYear);
+  const result: { hoursPerWeek?: number; annualSalary?: number } = { annualSalary };
+
+  // Hours derivation requires a positive rate (guard `> 0`, not just `!= null` —
+  // Xero occasionally returns 0 as a placeholder rate for employees mid-setup,
+  // and division by zero would silently produce Infinity in the response).
+  if (hourlyRate != null && hourlyRate > 0) {
+    result.hoursPerWeek = (avgWagesPerPeriod / hourlyRate) / weeksPerPeriod;
+  }
+  return result;
+}
+
 /**
  * Shape of a single employee in the GET /api/Xero/employees response. Mirrors
  * the wire-format JSON returned by route.ts (snake_case, wizard-normalised
@@ -269,6 +373,12 @@ export interface XeroEmployeeApiShape {
   pay_frequency?: PayFrequency;
   employment_type?: string;
   calculation_type?: 'hourly' | 'salaried';
+  // Phase 54-01 — provenance hint for derived fields. 'paytemplate' = all
+  // populated values came from PayTemplate or OrdinaryHoursPerWeek.
+  // 'payrun_history' = ≥1 value came from PayRun derivation. 'mixed' = some
+  // PayTemplate, some derived. Undefined when nothing was populated at all.
+  // Optional — Step 4 import path ignores it; future UI can show provenance hints.
+  derived_from?: 'paytemplate' | 'payrun_history' | 'mixed';
   is_active: boolean;
   from_xero: boolean;
 }
