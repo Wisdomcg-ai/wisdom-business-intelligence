@@ -173,10 +173,70 @@ function installCustomFetch(
 
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
+const WIZARD_VERSION = 10; // Must stay in sync with useForecastWizard.ts.
+
+/**
+ * Pre-seed localStorage with a wizard state that already contains the given
+ * members / hires / departures. This bypasses the post-mount seeding pattern
+ * so the wizard's INITIAL render observes the seeded data — critical for
+ * 54-02 because the auto-fill effect inspects state.teamMembers.length on
+ * the first render.
+ */
+function prefillWizardStorage(
+  businessId: string,
+  fiscalYear: number,
+  opts: {
+    teamMembers?: TeamMember[];
+    newHires?: NewHire[];
+    departures?: Departure[];
+  },
+): void {
+  const state = {
+    wizardVersion: WIZARD_VERSION,
+    businessId,
+    fiscalYearStart: fiscalYear,
+    status: 'draft',
+    forecastDuration: 3,
+    durationLocked: false,
+    currentStep: 1,
+    activeYear: 1,
+    businessProfile: null,
+    goals: {
+      year1: { revenue: 0, grossProfitPct: 50, netProfitPct: 15 },
+      year2: { revenue: 0, grossProfitPct: 52, netProfitPct: 17 },
+      year3: { revenue: 0, grossProfitPct: 55, netProfitPct: 20 },
+    },
+    priorYear: null,
+    currentYTD: null,
+    revenuePattern: 'seasonal',
+    revenueLines: [],
+    cogsLines: [],
+    teamMembers: opts.teamMembers ?? [],
+    newHires: opts.newHires ?? [],
+    departures: opts.departures ?? [],
+    bonuses: [],
+    commissions: [],
+    defaultOpExIncreasePct: 3,
+    opexLines: [],
+    capexItems: [],
+    investments: [],
+    plannedSpends: [],
+    otherExpenses: [],
+  };
+  const key = `forecast-wizard-v4-${businessId}-${fiscalYear}`;
+  window.localStorage.setItem(key, JSON.stringify(state));
+}
+
+let nextIdCounter = 1;
+function nextId(): string {
+  return `seed-${nextIdCounter++}`;
+}
+
 beforeEach(() => {
   if (typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.clear();
   }
+  nextIdCounter = 1;
   consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -185,48 +245,18 @@ afterEach(() => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// Step4Harness — real-hook pattern matching phase-52-step4-reimport.
-// `initialMembers` / `initialNewHires` / `initialDepartures` are seeded once
-// on first mount via the wizard's actions API.
+// Step4Harness — real-hook pattern. State is seeded UPFRONT via
+// prefillWizardStorage (NOT via post-mount actions) so the auto-fill effect
+// observes the truly-empty / truly-non-empty signal on the first render.
 // ────────────────────────────────────────────────────────────────────────────
 function Step4Harness({
   businessId,
-  initialMembers,
-  initialNewHires,
-  initialDepartures,
   onState,
 }: {
   businessId: string;
-  initialMembers?: SeedMember[];
-  initialNewHires?: SeedNewHire[];
-  initialDepartures?: (SeedDeparture | ((state: ForecastWizardState) => SeedDeparture | null))[];
   onState?: (state: ForecastWizardState) => void;
 }) {
   const wizard = useForecastWizard(FY_START_YEAR, businessId);
-  const seededRef = React.useRef(false);
-
-  React.useEffect(() => {
-    if (!seededRef.current) {
-      seededRef.current = true;
-      if (initialMembers && initialMembers.length > 0) {
-        initialMembers.forEach((m) => wizard.actions.addTeamMember(m));
-      }
-      if (initialNewHires && initialNewHires.length > 0) {
-        initialNewHires.forEach((h) => wizard.actions.addNewHire(h));
-      }
-      if (initialDepartures && initialDepartures.length > 0) {
-        initialDepartures.forEach((d) => {
-          if (typeof d === 'function') {
-            const resolved = d(wizard.state);
-            if (resolved) wizard.actions.addDeparture(resolved);
-          } else {
-            wizard.actions.addDeparture(d);
-          }
-        });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   React.useEffect(() => {
     onState?.(wizard.state);
@@ -239,6 +269,21 @@ function Step4Harness({
       fiscalYear={FISCAL_YEAR_END}
     />
   );
+}
+
+/** Convert a SeedMember to a fully-typed TeamMember (assigns id). */
+function asTeamMember(seed: SeedMember): TeamMember {
+  return { id: nextId(), ...seed } as TeamMember;
+}
+
+/** Convert a SeedNewHire to a fully-typed NewHire (assigns id). */
+function asNewHire(seed: SeedNewHire): NewHire {
+  return { id: nextId(), ...seed } as NewHire;
+}
+
+/** Convert a SeedDeparture to a fully-typed Departure (assigns id). */
+function asDeparture(seed: SeedDeparture): Departure {
+  return { id: nextId(), ...seed } as Departure;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -321,8 +366,13 @@ describe('Phase 54-02 — Soft auto-fill + new-employees banner', () => {
     }
     // Sentinel set.
     expect(window.localStorage.getItem('wizard-v4:step4-visited:biz-af-1')).toBe('1');
-    // Auto-fill fired exactly once.
-    expect(harness.callCount).toBe(1);
+    // Auto-fill fired once, then banner probe fired again after the import
+    // transitioned teamMembers.length 0→N (gated re-arm — by design). The
+    // banner probe finds all returned employees in knownIds and renders no
+    // banner. Total: 2 calls.
+    expect(harness.callCount).toBe(2);
+    // Banner must NOT render — every fetched employee was just imported.
+    expect(screen.queryByRole('button', { name: /review new xero employees/i })).toBeNull();
   });
 
   it('Test 2: Sentinel suppresses auto-fill on subsequent mounts', async () => {
@@ -353,19 +403,24 @@ describe('Phase 54-02 — Soft auto-fill + new-employees banner', () => {
   it('Test 3: Auto-fill does NOT fire when teamMembers is non-empty (banner probe DOES fire)', async () => {
     // Banner-probe fetch returns ALICE only — so newOnes is empty (banner won't render),
     // but the fetch DID fire — this distinguishes the gating from "no effect at all".
-    const seededAlice = seedXeroMember({
-      name: 'Alice Salaried',
-      xeroEmployeeId: 'emp-alice-1',
-      email: 'alice@example.com',
-      currentSalary: 98000,
-      payFrequency: 'fortnightly',
+    prefillWizardStorage('biz-af-3', FY_START_YEAR, {
+      teamMembers: [
+        asTeamMember(
+          seedXeroMember({
+            name: 'Alice Salaried',
+            xeroEmployeeId: 'emp-alice-1',
+            email: 'alice@example.com',
+            currentSalary: 98000,
+            payFrequency: 'fortnightly',
+          }),
+        ),
+      ],
     });
     const harness = installFetchSequence([[ALICE_BASE]]);
     let latestState: ForecastWizardState | null = null;
     render(
       <Step4Harness
         businessId="biz-af-3"
-        initialMembers={[seededAlice]}
         onState={(s) => {
           latestState = s;
         }}
@@ -379,27 +434,32 @@ describe('Phase 54-02 — Soft auto-fill + new-employees banner', () => {
     await waitFor(() => {
       expect(harness.callCount).toBe(1);
     });
+    await new Promise((r) => setTimeout(r, 50));
     // Auto-fill did NOT add anything (still 1 member, the seeded one).
     expect(latestState!.teamMembers.length).toBe(1);
     // Sentinel NOT set (auto-fill effect short-circuited before sentinel write).
     expect(window.localStorage.getItem('wizard-v4:step4-visited:biz-af-3')).toBeNull();
+    // No banner rendered (Alice was already known).
+    expect(screen.queryByRole('button', { name: /review new xero employees/i })).toBeNull();
   });
 
   it('Test 4: Auto-fill does NOT fire when newHires is non-empty', async () => {
+    prefillWizardStorage('biz-af-4', FY_START_YEAR, {
+      newHires: [
+        asNewHire({
+          role: 'Designer',
+          type: 'full-time',
+          hoursPerWeek: 38,
+          startMonth: '2025-09',
+          salary: 60000,
+        }),
+      ],
+    });
     const harness = installFetchSequence([[ALICE_BASE, BOB_BASE]]);
     let latestState: ForecastWizardState | null = null;
     render(
       <Step4Harness
         businessId="biz-af-4"
-        initialNewHires={[
-          {
-            role: 'Designer',
-            type: 'full-time',
-            hoursPerWeek: 38,
-            startMonth: '2025-09',
-            salary: 60000,
-          },
-        ]}
         onState={(s) => {
           latestState = s;
         }}
@@ -420,26 +480,24 @@ describe('Phase 54-02 — Soft auto-fill + new-employees banner', () => {
   });
 
   it('Test 5: Auto-fill does NOT fire when departures is non-empty', async () => {
-    const seededAlice = seedXeroMember({
-      name: 'Alice Salaried',
-      xeroEmployeeId: 'emp-alice-1',
-      email: 'alice@example.com',
-      currentSalary: 98000,
-      payFrequency: 'fortnightly',
+    const aliceMember = asTeamMember(
+      seedXeroMember({
+        name: 'Alice Salaried',
+        xeroEmployeeId: 'emp-alice-1',
+        email: 'alice@example.com',
+        currentSalary: 98000,
+        payFrequency: 'fortnightly',
+      }),
+    );
+    prefillWizardStorage('biz-af-5', FY_START_YEAR, {
+      teamMembers: [aliceMember],
+      departures: [asDeparture({ teamMemberId: aliceMember.id, endMonth: '2025-12' })],
     });
     const harness = installFetchSequence([[ALICE_BASE, BOB_BASE]]);
     let latestState: ForecastWizardState | null = null;
     render(
       <Step4Harness
         businessId="biz-af-5"
-        initialMembers={[seededAlice]}
-        initialDepartures={[
-          (state) => {
-            const tm = state.teamMembers[0];
-            if (!tm) return null;
-            return { teamMemberId: tm.id, endMonth: '2025-12' };
-          },
-        ]}
         onState={(s) => {
           latestState = s;
         }}
@@ -563,17 +621,21 @@ describe('Phase 54-02 — Soft auto-fill + new-employees banner', () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   it('Test 9: Banner appears when fetched employees include unknown _xeroEmployeeId', async () => {
-    const seededAlice = seedXeroMember({
-      name: 'Alice Salaried',
-      xeroEmployeeId: 'emp-alice-1',
-      email: 'alice@example.com',
-      currentSalary: 98000,
-      payFrequency: 'fortnightly',
+    prefillWizardStorage('biz-bn-9', FY_START_YEAR, {
+      teamMembers: [
+        asTeamMember(
+          seedXeroMember({
+            name: 'Alice Salaried',
+            xeroEmployeeId: 'emp-alice-1',
+            email: 'alice@example.com',
+            currentSalary: 98000,
+            payFrequency: 'fortnightly',
+          }),
+        ),
+      ],
     });
     installFetchSequence([[ALICE_BASE, CHARLIE_BASE]]);
-    render(
-      <Step4Harness businessId="biz-bn-9" initialMembers={[seededAlice]} />,
-    );
+    render(<Step4Harness businessId="biz-bn-9" />);
     // Banner appears with the count + Review button.
     const reviewBtn = await screen.findByRole(
       'button',
@@ -590,12 +652,18 @@ describe('Phase 54-02 — Soft auto-fill + new-employees banner', () => {
   });
 
   it('Test 10: Banner Review opens the existing 52-01 modal pre-checked with new ones only', async () => {
-    const seededAlice = seedXeroMember({
-      name: 'Alice Salaried',
-      xeroEmployeeId: 'emp-alice-1',
-      email: 'alice@example.com',
-      currentSalary: 98000,
-      payFrequency: 'fortnightly',
+    prefillWizardStorage('biz-bn-10', FY_START_YEAR, {
+      teamMembers: [
+        asTeamMember(
+          seedXeroMember({
+            name: 'Alice Salaried',
+            xeroEmployeeId: 'emp-alice-1',
+            email: 'alice@example.com',
+            currentSalary: 98000,
+            payFrequency: 'fortnightly',
+          }),
+        ),
+      ],
     });
     let latestState: ForecastWizardState | null = null;
     installFetchSequence([[ALICE_BASE, CHARLIE_BASE]]);
@@ -603,7 +671,6 @@ describe('Phase 54-02 — Soft auto-fill + new-employees banner', () => {
     render(
       <Step4Harness
         businessId="biz-bn-10"
-        initialMembers={[seededAlice]}
         onState={(s) => {
           latestState = s;
         }}
@@ -639,18 +706,22 @@ describe('Phase 54-02 — Soft auto-fill + new-employees banner', () => {
   });
 
   it('Test 11: Banner dismiss hides for the rest of the component lifetime', async () => {
-    const seededAlice = seedXeroMember({
-      name: 'Alice Salaried',
-      xeroEmployeeId: 'emp-alice-1',
-      email: 'alice@example.com',
-      currentSalary: 98000,
-      payFrequency: 'fortnightly',
+    prefillWizardStorage('biz-bn-11', FY_START_YEAR, {
+      teamMembers: [
+        asTeamMember(
+          seedXeroMember({
+            name: 'Alice Salaried',
+            xeroEmployeeId: 'emp-alice-1',
+            email: 'alice@example.com',
+            currentSalary: 98000,
+            payFrequency: 'fortnightly',
+          }),
+        ),
+      ],
     });
     installFetchSequence([[ALICE_BASE, CHARLIE_BASE]]);
     const user = userEvent.setup();
-    render(
-      <Step4Harness businessId="biz-bn-11" initialMembers={[seededAlice]} />,
-    );
+    render(<Step4Harness businessId="biz-bn-11" />);
     const dismissBtn = await screen.findByRole(
       'button',
       { name: /dismiss new-employees banner/i },
@@ -668,26 +739,24 @@ describe('Phase 54-02 — Soft auto-fill + new-employees banner', () => {
     // Seed Alice as a Xero-imported member, then mark Alice as departing.
     // Fetch returns Alice ONLY → she should appear in knownIds via the
     // departure resolution path → newOnes is empty → no banner.
-    const seededAlice = seedXeroMember({
-      name: 'Alice Salaried',
-      xeroEmployeeId: 'emp-alice-1',
-      email: 'alice@example.com',
-      currentSalary: 98000,
-      payFrequency: 'fortnightly',
+    const aliceMember = asTeamMember(
+      seedXeroMember({
+        name: 'Alice Salaried',
+        xeroEmployeeId: 'emp-alice-1',
+        email: 'alice@example.com',
+        currentSalary: 98000,
+        payFrequency: 'fortnightly',
+      }),
+    );
+    prefillWizardStorage('biz-bn-12', FY_START_YEAR, {
+      teamMembers: [aliceMember],
+      departures: [asDeparture({ teamMemberId: aliceMember.id, endMonth: '2025-12' })],
     });
     installFetchSequence([[ALICE_BASE]]);
     let latestState: ForecastWizardState | null = null;
     render(
       <Step4Harness
         businessId="biz-bn-12"
-        initialMembers={[seededAlice]}
-        initialDepartures={[
-          (state) => {
-            const tm = state.teamMembers[0];
-            if (!tm) return null;
-            return { teamMemberId: tm.id, endMonth: '2025-12' };
-          },
-        ]}
         onState={(s) => {
           latestState = s;
         }}
@@ -705,17 +774,21 @@ describe('Phase 54-02 — Soft auto-fill + new-employees banner', () => {
   });
 
   it('Test 13a: Banner probe silent on 404', async () => {
-    const seededAlice = seedXeroMember({
-      name: 'Alice Salaried',
-      xeroEmployeeId: 'emp-alice-1',
-      email: 'alice@example.com',
-      currentSalary: 98000,
-      payFrequency: 'fortnightly',
+    prefillWizardStorage('biz-bn-13a', FY_START_YEAR, {
+      teamMembers: [
+        asTeamMember(
+          seedXeroMember({
+            name: 'Alice Salaried',
+            xeroEmployeeId: 'emp-alice-1',
+            email: 'alice@example.com',
+            currentSalary: 98000,
+            payFrequency: 'fortnightly',
+          }),
+        ),
+      ],
     });
     const harness = installCustomFetch(() => new Response('Not Found', { status: 404 }));
-    render(
-      <Step4Harness businessId="biz-bn-13a" initialMembers={[seededAlice]} />,
-    );
+    render(<Step4Harness businessId="biz-bn-13a" />);
     await waitFor(() => {
       expect(harness.callCount).toBe(1);
     });
@@ -725,19 +798,23 @@ describe('Phase 54-02 — Soft auto-fill + new-employees banner', () => {
   });
 
   it('Test 13b: Banner probe silent on network throw', async () => {
-    const seededAlice = seedXeroMember({
-      name: 'Alice Salaried',
-      xeroEmployeeId: 'emp-alice-1',
-      email: 'alice@example.com',
-      currentSalary: 98000,
-      payFrequency: 'fortnightly',
+    prefillWizardStorage('biz-bn-13b', FY_START_YEAR, {
+      teamMembers: [
+        asTeamMember(
+          seedXeroMember({
+            name: 'Alice Salaried',
+            xeroEmployeeId: 'emp-alice-1',
+            email: 'alice@example.com',
+            currentSalary: 98000,
+            payFrequency: 'fortnightly',
+          }),
+        ),
+      ],
     });
     const harness = installCustomFetch(() => {
       throw new Error('network');
     });
-    render(
-      <Step4Harness businessId="biz-bn-13b" initialMembers={[seededAlice]} />,
-    );
+    render(<Step4Harness businessId="biz-bn-13b" />);
     await waitFor(() => {
       expect(harness.callCount).toBe(1);
     });
@@ -774,7 +851,14 @@ describe('Phase 54-02 — Soft auto-fill + new-employees banner', () => {
     // remount). NOTE: the sentinel-before-fetch guarantees that even if the
     // ref were reset by StrictMode's second mount, the localStorage check
     // would short-circuit on the second pass.
-    expect(harness.callCount).toBe(1);
+    //
+    // After auto-fill imports the 2 employees, teamMembers.length transitions
+    // 0→2 → banner probe effect fires once (gated by bannerProbeRef per
+    // businessId, so it fires AT MOST once per businessId regardless of
+    // StrictMode). Banner probe finds all imports in knownIds → no banner.
+    //
+    // Total expected fetches: 1 (auto-fill) + 1 (post-import banner probe) = 2.
+    expect(harness.callCount).toBe(2);
     // Each Xero employee imported exactly once → no duplicates.
     const allXeroIds = [
       ...latestState!.teamMembers.map((m) => m._xeroEmployeeId),
