@@ -261,11 +261,17 @@ describe('Bug 1 — FCST-BUG-01: Step 3 input integrity', () => {
 // Bug 2 — FCST-BUG-02: Step 5 OpEx total includes team-classified lines
 // ────────────────────────────────────────────────────────────────────────────
 describe('Bug 2 — FCST-BUG-02: Step 5 OpEx total includes team-classified lines', () => {
-  it('Test 2.1 (display fix): BudgetFramework Team Costs row includes auto-classified team OpEx lines', () => {
+  // Updated 2026-05-07: Phase 54-02 made Step 4 the single source of truth
+  // for team cost (Xero auto-fill always populates members on first open).
+  // Adding `opexClassifiedTeamCosts` on top of `year1TeamCosts` double-counts
+  // the same Xero wages — JDS production showed ~2× the actual figure
+  // ($5.18M vs $2.56M). New contract: when Step 4 has any team data, ONLY
+  // year1TeamCosts is shown; OpEx auto-classified lines are excluded from
+  // both the Team Costs row AND the OpEx total (already excluded from rollup).
+  it('Test 2.1 (display fix): BudgetFramework Team Costs row uses Step 4 ONLY when team data exists (no double-count)', () => {
     // Set up state with one Step-4 team member salary $100k AND an OpEx line
-    // 'Wages and Salaries' $5000/mo ($60k/yr) auto-classified as team.
-    // Revenue must be > grossProfit baseline to avoid availableOpEx going
-    // negative and obscuring the test signal.
+    // 'Wages and Salaries' $5000/mo ($60k/yr) auto-classified as team. Step 4
+    // is the source of truth — the wages OpEx line must NOT be added on top.
     const wagesLine: OpExLine = {
       id: 'opex-wages',
       name: 'Wages and Salaries',
@@ -314,18 +320,61 @@ describe('Bug 2 — FCST-BUG-02: Step 5 OpEx total includes team-classified line
     const row = teamCostLabel.parentElement;
     expect(row).toBeTruthy();
     const rowText = row?.textContent || '';
-    // Step 4 team: $100k + $11.5k super = $111.5k
-    // Plus auto-classified Wages OpEx line: $60k
-    // Expected: $171.5k (or close — exact value depends on super rate logic).
-    // Bug: only $111.5k displayed (missing the $60k Wages line).
-    // We assert the displayed number is at LEAST $160k (Wages line included).
+    // Step 4 team: $100k salary + ~$11.5k super ≈ $111.5k.
+    // The OpEx 'Wages and Salaries' line ($60k) MUST NOT be added on top —
+    // it's the same wages viewed from a different angle. Expect ~$111-115k,
+    // strictly LESS than $130k (which would imply the wages line was added).
     const numericMatches = rowText.match(/\$([\d,]+)/);
     expect(numericMatches, `Expected currency value in "${rowText}"`).toBeTruthy();
     const displayedNum = parseInt(numericMatches![1].replace(/,/g, ''), 10);
     expect(
       displayedNum,
-      `BudgetFramework Team Costs should include the $60k auto-classified Wages OpEx line (got ${displayedNum})`
-    ).toBeGreaterThanOrEqual(160_000);
+      `BudgetFramework Team Costs should be ~$111k (Step 4 only), NOT include the $60k Wages OpEx line (got ${displayedNum})`
+    ).toBeLessThan(130_000);
+    expect(
+      displayedNum,
+      `BudgetFramework Team Costs should be ≥ $100k base salary (got ${displayedNum})`
+    ).toBeGreaterThanOrEqual(100_000);
+  });
+
+  it('Test 2.1b (fallback): when Step 4 is empty, BudgetFramework Team Costs falls back to OpEx auto-classified Wages line', () => {
+    // Edge case: business that hasn't filled Step 4 yet (no team members AND
+    // no new hires). The Xero "Wages and Salaries" P&L line should still
+    // surface as Team Costs so the framework reads correctly.
+    const wagesLine: OpExLine = {
+      id: 'opex-wages',
+      name: 'Wages and Salaries',
+      priorYearAnnual: 60_000,
+      costBehavior: 'fixed',
+      monthlyAmount: 5_000,
+    };
+    const monthly = emptyMonthly();
+    for (const k of Object.keys(monthly)) monthly[k] = 100_000;
+    const revLine = makeRevenueLine('rev-1', 'Hardware', monthly);
+
+    const state = makeStubState({
+      revenueLines: [revLine],
+      teamMembers: [], // empty Step 4
+      opexLines: [wagesLine],
+      goals: {
+        year1: { revenue: 1_200_000, grossProfitPct: 100, netProfitPct: 0 },
+        year2: { revenue: 0, grossProfitPct: 0, netProfitPct: 0 },
+        year3: { revenue: 0, grossProfitPct: 0, netProfitPct: 0 },
+      },
+    });
+    const actions = makeStubActions();
+    render(<Step5OpEx state={state} actions={actions} fiscalYear={FISCAL_YEAR_END} />);
+
+    const teamCostLabel = screen.getByText(/^−\s*Team Costs$/i);
+    const row = teamCostLabel.parentElement;
+    const numericMatches = (row?.textContent || '').match(/\$([\d,]+)/);
+    expect(numericMatches).toBeTruthy();
+    const displayedNum = parseInt(numericMatches![1].replace(/,/g, ''), 10);
+    expect(
+      displayedNum,
+      `Empty-Step-4 fallback should show OpEx Wages ($60k), got ${displayedNum}`
+    ).toBeGreaterThanOrEqual(55_000);
+    expect(displayedNum).toBeLessThan(70_000);
   });
 
   it('Test 2.2 (reactivity): changing a per-line OpEx value updates BudgetFramework Available OpEx in same render', () => {
