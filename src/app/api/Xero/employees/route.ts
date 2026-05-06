@@ -9,6 +9,10 @@ import {
   mapXeroPayrollCalendarToFrequency,
   normaliseXeroEmployment,
   extractCompensationFromPayTemplate,
+  // Phase 54-01: PayRun-history derivation fallback for ENTEREARNINGSRATE
+  // employees whose PayTemplate doesn't carry hours/salary. Helper is pure;
+  // period-factor constants are encapsulated inside it.
+  deriveHoursAndSalaryFromPayRun,
 } from '@/app/finances/forecast/components/wizard-v4/utils/xero-payroll-mapping';
 
 export const dynamic = 'force-dynamic';
@@ -89,6 +93,14 @@ interface XeroEmployee {
   // Phase 52 (XERO-S4-04): branch hint for the import modal UI — does the
   // employee's pay derive from a unit rate (hourly) or an annual salary?
   calculation_type?: 'hourly' | 'salaried';
+  // Phase 54-01 (XERO-S4-PAYRUN-01): provenance hint for derived fields.
+  //   'paytemplate'    — all populated values came from PayTemplate / OrdinaryHoursPerWeek
+  //   'payrun_history' — ≥1 value came from PayRun derivation
+  //   'mixed'          — some PayTemplate, some derived
+  //   undefined        — nothing was populated at all (empty PayTemplate AND no PayRun history)
+  // Optional / additive — Step 4 import path ignores it; future UI can show
+  // provenance hints (e.g. "estimated from last 4 pay runs").
+  derived_from?: 'paytemplate' | 'payrun_history' | 'mixed';
 }
 
 
@@ -278,6 +290,146 @@ export async function GET(request: NextRequest) {
       console.warn('[Xero Employees] PayrollCalendars fetch threw:', calErr);
     }
 
+    // ────────────────────────────────────────────────────────────────────────
+    // Phase 54-01 (XERO-S4-PAYRUN-01) — PayRuns aggregator
+    //
+    // Fetches the most recent PayRuns (Xero's default page size on the list
+    // endpoint), filters to POSTED, takes the last 4, and fetches each
+    // detail to build a per-employee aggregate map. Used as a fallback for
+    // employees whose PayTemplate doesn't supply hours/salary (the common AU
+    // ENTEREARNINGSRATE timesheet-driven setup — see 54-RESEARCH.md §1).
+    //
+    // Rate-limit math (research §6): 1 list + 4 detail = +5 calls. Total per
+    // import ≈ 25 for an 18-employee tenant. Xero limits: 60/min, 5000/day.
+    // Comfortable margin.
+    //
+    // Failure-tolerant: 401/403/404 (no payroll history scope, payroll not
+    // enabled, or region with no AU payroll) is logged and skipped — the
+    // route still returns the existing PayTemplate-derived shape with
+    // hours/salary undefined where they would have been derived.
+    //
+    // Pitfall (research §10): employees with multiple OrdinaryEarnings lines
+    // (e.g. primary trade rate + secondary admin rate). Wages aggregates
+    // BOTH; we use the primary line's RatePerUnit, so derived hours may be
+    // slightly inflated. Operator can correct in Step 4. Future enhancement:
+    // weight by line count.
+    //
+    // Pitfall (research §10): bonuses/overtime/leave loading inflate Wages
+    // for affected periods. Mitigated by 4-period averaging; not eliminated.
+    // Acceptable for MVP.
+    // ────────────────────────────────────────────────────────────────────────
+    interface PayRunAggregate {
+      totalWages: number;
+      periodCount: number;
+      // Calendar resolved from per-PayRun PayrollCalendarID join. Stores the
+      // first non-undefined calendar we see for an employee — pay calendars
+      // don't change run-to-run for a single employee in normal operation. If
+      // an employee DOES switch calendars mid-window (rare), derivation uses
+      // the earlier calendar's factors, which may produce slightly inflated /
+      // deflated hours. Acceptable for MVP per F1 in 54-01-PLAN-CHECK.md;
+      // operator can correct in Step 4.
+      calendarType: string | undefined;
+    }
+    const payrunAggregateByEmployeeId = new Map<string, PayRunAggregate>();
+
+    try {
+      const payrunsListResponse = await fetch(
+        'https://api.xero.com/payroll.xro/1.0/PayRuns?order=PayRunPeriodEndDate%20DESC',
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'xero-tenant-id': connection.tenant_id,
+            'Accept': 'application/json',
+          },
+        }
+      );
+      if (payrunsListResponse.ok) {
+        const payrunsListData = await payrunsListResponse.json();
+        const allPayRuns: any[] = payrunsListData?.PayRuns ?? [];
+        // Filter: POSTED only — DRAFT runs aren't real payroll data
+        // (research §5).
+        const postedPayRuns = allPayRuns.filter((pr) => pr.PayRunStatus === 'POSTED');
+        // Take the last 4 most recent. List is already sorted DESC by
+        // PayRunPeriodEndDate via the order= query param above.
+        const recentPayRuns = postedPayRuns.slice(0, 4);
+        console.log(
+          '[Xero Employees] PayRuns: fetched', allPayRuns.length, 'total,',
+          postedPayRuns.length, 'posted, using', recentPayRuns.length, 'most recent'
+        );
+
+        // Sequential detail fetches (research §7 — parallel would risk
+        // rate-limit pressure spikes; 4 sequential is well within budget).
+        for (const pr of recentPayRuns) {
+          try {
+            const detailResponse = await fetch(
+              `https://api.xero.com/payroll.xro/1.0/PayRuns/${pr.PayRunID}`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'xero-tenant-id': connection.tenant_id,
+                  'Accept': 'application/json',
+                },
+              }
+            );
+            if (!detailResponse.ok) {
+              console.warn(
+                '[Xero Employees] PayRun detail fetch failed:',
+                pr.PayRunID, detailResponse.status
+              );
+              continue;
+            }
+            const detailData = await detailResponse.json();
+            const detail = detailData?.PayRuns?.[0];
+            if (!detail) continue;
+
+            // Per-PayRun calendar lookup. Different employees may be on
+            // different pay calendars (e.g. weekly admin vs fortnightly
+            // trade) — must use the run's own PayrollCalendarID, NOT a
+            // single tenant-wide assumption.
+            const runCalendarType = detail.PayrollCalendarID
+              ? calendarById.get(detail.PayrollCalendarID)
+              : undefined;
+
+            for (const slip of detail.Payslips ?? []) {
+              if (!slip.EmployeeID || typeof slip.Wages !== 'number') continue;
+              const existing = payrunAggregateByEmployeeId.get(slip.EmployeeID);
+              if (existing) {
+                existing.totalWages += slip.Wages;
+                existing.periodCount += 1;
+                if (existing.calendarType == null && runCalendarType != null) {
+                  existing.calendarType = runCalendarType;
+                }
+              } else {
+                payrunAggregateByEmployeeId.set(slip.EmployeeID, {
+                  totalWages: slip.Wages,
+                  periodCount: 1,
+                  calendarType: runCalendarType,
+                });
+              }
+            }
+          } catch (detailErr) {
+            console.warn(
+              '[Xero Employees] PayRun detail fetch threw:',
+              pr.PayRunID, detailErr
+            );
+          }
+        }
+        console.log(
+          '[Xero Employees] PayRuns: aggregated for',
+          payrunAggregateByEmployeeId.size, 'employees'
+        );
+      } else {
+        // 401 (missing scope), 403 (payroll not enabled), 404 (region with
+        // no AU payroll) — all non-fatal. Existing PayTemplate path still works.
+        console.warn(
+          '[Xero Employees] PayRuns list fetch failed:',
+          payrunsListResponse.status
+        );
+      }
+    } catch (prErr) {
+      console.warn('[Xero Employees] PayRuns aggregator threw:', prErr);
+    }
+
     // Fetch employees from Xero Payroll API (AU)
     // Note: Xero has different payroll APIs for different regions
     // We're using the Australian payroll API v1.0
@@ -425,6 +577,89 @@ export async function GET(request: NextRequest) {
           console.error(`[Xero Employees] Failed to fetch details for ${emp.EmployeeID}:`, detailError);
         }
 
+        // ────────────────────────────────────────────────────────────────────
+        // Phase 54-01 (XERO-S4-PAYRUN-01) — PayRun-derived fallback
+        //
+        // Only fires when PayTemplate didn't supply a value (the
+        // ENTEREARNINGSRATE case — see 54-RESEARCH.md §1). Salaried employees
+        // with PayTemplate.AnnualSalary are NEVER overridden — derivation is
+        // applied via per-field `if (X == null && derived.X != null)` guards
+        // (the explicit form of `??=`).
+        //
+        // Provenance ('derived_from'):
+        //   - 'payrun_history' — every populated value came from derivation
+        //   - 'mixed'          — some PayTemplate, some derived
+        //   - 'paytemplate'    — derivation contributed nothing (everything
+        //                        already populated, or derivation returned
+        //                        nothing for this employee)
+        //   - undefined        — nothing populated at all (no PayTemplate
+        //                        AND no PayRun history)
+        // ────────────────────────────────────────────────────────────────────
+        let derivedFrom: 'paytemplate' | 'payrun_history' | 'mixed' | undefined;
+
+        const aggregate = payrunAggregateByEmployeeId.get(emp.EmployeeID);
+        // Provenance is computed against the THREE derivable fields only —
+        // annualSalary, standardHours, hoursPerWeek. hourlyRate and
+        // calculationType are never derived (they come from PayTemplate or
+        // not at all), so their provenance doesn't affect the
+        // 'mixed' vs 'payrun_history' classification.
+        //
+        // The 'mixed' case fires when at least one of the three derivable
+        // fields came from PayTemplate (e.g. NumberOfUnitsPerWeek was set,
+        // giving us standardHours from PayTemplate) AND derivation also
+        // contributed (e.g. annualSalary derived for an hourly employee
+        // where PayTemplate doesn't carry it).
+        const hadPayTemplateDerivableValue =
+          annualSalary != null ||
+          standardHours != null ||
+          hoursPerWeek != null;
+        // 'paytemplate' provenance also counts hourlyRate / calculationType
+        // since the field is reported when ANY value was populated, even
+        // ones that aren't themselves derivable.
+        const hadAnyPayTemplateValue =
+          hadPayTemplateDerivableValue ||
+          calculationType != null ||
+          hourlyRate != null;
+
+        if (aggregate && aggregate.periodCount > 0) {
+          const avgWagesPerPeriod = aggregate.totalWages / aggregate.periodCount;
+          const derived = deriveHoursAndSalaryFromPayRun(
+            avgWagesPerPeriod,
+            hourlyRate,
+            aggregate.calendarType,
+          );
+
+          // Apply ONLY to undefined fields. PayTemplate values WIN.
+          let appliedAnyDerivation = false;
+          if (annualSalary == null && derived.annualSalary != null) {
+            annualSalary = derived.annualSalary;
+            appliedAnyDerivation = true;
+          }
+          if (standardHours == null && derived.hoursPerWeek != null) {
+            standardHours = derived.hoursPerWeek;
+            appliedAnyDerivation = true;
+          }
+          if (hoursPerWeek == null && derived.hoursPerWeek != null) {
+            hoursPerWeek = derived.hoursPerWeek;
+            appliedAnyDerivation = true;
+          }
+
+          if (appliedAnyDerivation) {
+            // 'mixed' only if a DERIVABLE field was already filled by
+            // PayTemplate. hourlyRate-only-from-PT alongside derived hours
+            // is still 'payrun_history' (the operator-visible
+            // hours/salary came from derivation).
+            derivedFrom = hadPayTemplateDerivableValue ? 'mixed' : 'payrun_history';
+          } else if (hadAnyPayTemplateValue) {
+            derivedFrom = 'paytemplate';
+          }
+          // else: nothing populated at all — leave derivedFrom undefined.
+        } else if (hadAnyPayTemplateValue) {
+          // No PayRun aggregate for this employee. derivedFrom is
+          // 'paytemplate' if anything was populated, otherwise undefined.
+          derivedFrom = 'paytemplate';
+        }
+
         employees.push({
           employee_id: emp.EmployeeID,
           first_name: emp.FirstName || '',
@@ -444,6 +679,8 @@ export async function GET(request: NextRequest) {
           pay_frequency: payFrequency,
           standard_hours: standardHours,
           calculation_type: calculationType,
+          // Phase 54-01 — provenance hint (additive; existing consumers ignore).
+          derived_from: derivedFrom,
         });
       }
     }
