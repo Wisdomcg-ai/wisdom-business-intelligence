@@ -13,6 +13,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import { encrypt, decrypt } from '@/lib/utils/encryption';
 
 // Standardized refresh threshold - refresh if token expires within 15 minutes.
@@ -500,6 +501,39 @@ async function refreshTokenWithRetry(
       });
 
       console.error(`[Token Manager] Permanent token error: ${errorInfo.error} - ${errorInfo.message}`);
+
+      // ─── Phase 53-05: Sentry capture for system-detected deactivation. ──
+      // ONE event per real deactivation. User-initiated disconnects use the
+      // /api/Xero/disconnect DELETE path (53-01) and never reach this branch,
+      // so everything captured here is unintentional / observable failure.
+      // The cron route (53-04) intentionally does NOT capture deactivations
+      // — that would double-report; only the canonical event below fires.
+      // Wrapped in try/catch so a Sentry outage NEVER aborts the deactivation
+      // DB write that follows.
+      try {
+        Sentry.captureMessage('Xero connection deactivated', {
+          level: 'error',
+          tags: {
+            invariant: 'xero_connection_deactivated',
+            tenant_id: postFailureRow?.tenant_id ?? ctx.tenant_id ?? 'unknown',
+            business_id: postFailureRow?.business_id ?? ctx.business_id ?? 'unknown',
+            connection_id: connectionId,
+            error_code: errorCode || 'unknown',
+            // Sentry tags MUST be strings — coerce attempt explicitly.
+            retry_count: String(attempt),
+          },
+          extra: {
+            xero_status: response.status,
+            // Truncate to 4KB to stay well under Sentry's per-event size cap
+            // and avoid leaking arbitrary-length response bodies.
+            xero_error_body: errorText.slice(0, 4096),
+            xero_message: errorInfo.message,
+            attempt,
+          },
+        } as any);
+      } catch {
+        // Sentry outage must never abort the deactivation write below.
+      }
 
       // Mark connection as inactive
       await supabase

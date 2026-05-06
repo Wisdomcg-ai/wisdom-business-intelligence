@@ -196,6 +196,14 @@ export async function GET(request: NextRequest) {
       // future requests stop picking it up. Without this the dead connection stays
       // is_active=true and competes with the user's reconnected fresh row in the
       // Try-N connection lookup.
+      //
+      // Phase 53-05: Sentry capture is centralized in token-manager.ts; do NOT add a second capture here.
+      // The token-manager already fired Sentry.captureMessage('Xero connection
+      // deactivated', { tags: { invariant: 'xero_connection_deactivated', ... } })
+      // before returning shouldDeactivate=true. Adding another capture here would
+      // double-report the same root cause and violate the "exactly ONE event per
+      // failure" invariant in 53-05-PLAN.md must_haves.truths[2]. The DB write
+      // below is harmless (idempotent — token-manager already wrote is_active=false).
       if (tokenResult.shouldDeactivate && connection?.id) {
         console.log('[Xero Employees] Deactivating connection with permanent token error:', connection.id);
         await supabase

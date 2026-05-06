@@ -177,26 +177,32 @@ export async function GET(req: NextRequest) {
           }
         } else if (result.shouldDeactivate) {
           // token-manager already wrote is_active=false internally per
-          // 53-03's tightened policy. We record the status and Sentry-capture
-          // for ops visibility (53-05 will enrich the tags).
+          // 53-03's tightened policy AND fired the canonical Sentry event
+          // (`xero_connection_deactivated`) per 53-05.
+          //
+          // Phase 53-05 (Issue C from PLAN-CHECK): the per-connection
+          // `cron_refresh_xero_tokens_deactivated` Sentry capture that
+          // previously lived here has been REMOVED. Token-manager fires the
+          // canonical event with full diagnostic context (xero_status,
+          // xero_error_body, retry_count, etc.). Capturing again here would
+          // produce TWO Sentry events for ONE root cause — violating the
+          // 53-05 "exactly ONE Sentry event per failure" invariant.
+          //
+          // Cron retains:
+          //   - Aggregate capture (`cron_refresh_xero_tokens` on aggregate
+          //     errors) below.
+          //   - Per-connection FAILURE capture (`cron_refresh_xero_tokens_failed`
+          //     for transient failures that did NOT deactivate — those are
+          //     still cron-context-specific signal worth capturing).
+          //   - Per-connection THROW capture
+          //     (`cron_refresh_xero_tokens_per_connection`) for unexpected
+          //     exceptions outside the normal failure path.
           deactivated += 1
           results.push({
             ...baseResult,
             status: 'deactivated',
             error: result.message,
           })
-          safeSentryCapture(
-            new Error(
-              `Xero connection deactivated by refresh cron: ${result.error ?? 'unknown'}`,
-            ),
-            {
-              invariant: 'cron_refresh_xero_tokens_deactivated',
-              connection_id: row.id,
-              business_id: row.business_id,
-              tenant_id: row.tenant_id,
-            },
-            { error: result.error, message: result.message },
-          )
         } else {
           // Transient failure. Will be retried on the next cron tick (or by
           // a user-driven sync) — token-manager's policy already discriminated

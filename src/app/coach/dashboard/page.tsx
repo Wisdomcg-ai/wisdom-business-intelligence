@@ -138,7 +138,11 @@ export default function CoachDashboardPage() {
         sessionsThisWeekResult,
         unreadMessagesResult,
         todaySessionsResult,
-        lastWeekSessionsResult
+        lastWeekSessionsResult,
+        // Phase 53-05 — 11th leg: per-business Xero connection health.
+        // Non-fatal: any failure returns an empty Map and the dashboard
+        // renders with status='none' for affected rows.
+        xeroHealthMap
       ] = await Promise.all([
         // Latest completed weekly review per business (actual client completion)
         businessIds.length > 0
@@ -319,6 +323,36 @@ export default function CoachDashboardPage() {
           } catch {
             return { data: null, count: 0, error: null }
           }
+        })(),
+
+        // Phase 53-05 — Xero connection health. Returns Map<business_id, status>.
+        // Non-fatal: console.warn on failure, dashboard still renders.
+        // No Sentry capture — this is a UI nicety, not a system invariant.
+        (async () => {
+          const empty = new Map<string, ClientMetrics['xeroConnectionHealth']>()
+          if (businessIds.length === 0) return empty
+          try {
+            const params = businessIds
+              .map((id) => `business_ids[]=${encodeURIComponent(id)}`)
+              .join('&')
+            const res = await fetch(`/api/Xero/connection-health?${params}`)
+            if (!res.ok) {
+              console.warn('[Dashboard] connection-health fetch failed:', res.status)
+              return empty
+            }
+            const json = await res.json()
+            const map = new Map<string, ClientMetrics['xeroConnectionHealth']>()
+            for (const r of (json.results ?? []) as Array<{
+              business_id: string
+              status: ClientMetrics['xeroConnectionHealth']
+            }>) {
+              map.set(r.business_id, r.status)
+            }
+            return map
+          } catch (err) {
+            console.warn('[Dashboard] connection-health fetch error:', err)
+            return empty
+          }
         })()
       ])
 
@@ -417,7 +451,12 @@ export default function CoachDashboardPage() {
           roadmapRevenue: revenue || null,
           openLoopsCount: ownerId ? openLoopsByUser.get(ownerId) || 0 : 0,
           openIssuesCount: ownerId ? issuesByUser.get(ownerId) || 0 : 0,
-          industry: profile?.industry || b.industry || undefined
+          industry: profile?.industry || b.industry || undefined,
+          // Phase 53-05 — Xero connection health from the parallel fetch
+          // above. Default to 'none' for any business not in the map (the
+          // endpoint silently filtered it OR the fetch failed — either
+          // way the safe default is "no connection visible").
+          xeroConnectionHealth: xeroHealthMap.get(b.id) ?? 'none',
         }
       })
 
