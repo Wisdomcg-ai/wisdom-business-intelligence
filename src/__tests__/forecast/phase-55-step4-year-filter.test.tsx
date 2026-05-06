@@ -340,3 +340,5 @@ describe('Phase 55-01 — UX-S4-04: Step 4 year-card filter', () => {
     expect(card3).toHaveAttribute('aria-pressed', 'false');
   });
 });
+
+// CI trigger nudge
