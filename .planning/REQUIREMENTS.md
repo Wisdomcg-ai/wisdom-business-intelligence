@@ -74,6 +74,11 @@
 - [ ] **DB-05**: Rename the two date-only migration files (`20260424_cfo_email_log.sql`, `20260427_unique_active_forecast_per_fy.sql`) to full `YYYYMMDDHHMMSS` form for ordering consistency.
 - [ ] **DB-06**: Tighten the 3 over-permissive RLS policies (`swot_templates`, `kpi_benchmarks`, `kpi_definitions` use `USING (true)`) — confirm intent (system reference data vs per-business). Add comments to the migration; only narrow if intent is per-business.
 
+### Xero Step 4 Employee Import Completion (XERO-S4)
+*Goal: Step 4 (Team) Xero import returns complete employee data — hours/week + annual salary populated for AU tenants on `CalculationType=ENTEREARNINGSRATE` (timesheet-driven payroll). Emergent from JDS production verification 2026-05-06; lives outside the v1.1 hardening blast-radius sequence but follows the same per-plan atomic-PR pattern.*
+
+- [ ] **XERO-S4-PAYRUN-01**: Extend `/api/Xero/employees` to derive `hours_per_week` and `annual_salary` from the last 4 POSTED PayRuns when PayTemplate doesn't supply them. Pure helper `deriveHoursAndSalaryFromPayRun` in `xero-payroll-mapping.ts`; failure-tolerant aggregator in route.ts; PayTemplate values WIN via `??=` precedence; optional `derived_from` provenance field on response.
+
 ---
 
 ## Future Requirements (Deferred Beyond v1.1)
@@ -143,6 +148,7 @@ These were identified in the audit but deferred to a later milestone — too dis
 | DB-04 | Phase 49 | Database Integrity Hygiene |
 | DB-05 | Phase 49 | Database Integrity Hygiene |
 | DB-06 | Phase 49 | Database Integrity Hygiene |
+| XERO-S4-PAYRUN-01 | Phase 54 | Xero Step 4 Employee Import Completion (54-01) |
 
 ---
 
