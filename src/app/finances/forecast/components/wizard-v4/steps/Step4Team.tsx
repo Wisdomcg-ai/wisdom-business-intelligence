@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback, memo } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, memo } from 'react';
 import { Plus, Trash2, HelpCircle, ChevronDown, ChevronUp, Info, Calendar, Sparkles, X, Briefcase, UserCheck, Loader2, Users, UserPlus, TrendingUp, DollarSign, Target, Lightbulb, ArrowRight, DownloadCloud, RefreshCw } from 'lucide-react';
 import {
   ForecastWizardState,
@@ -83,6 +83,76 @@ interface TeamRow {
 
 const STANDARD_HOURS = 38;
 const DEFAULT_WEEKS = 48;
+
+/**
+ * Phase 54-02 — Add Xero employees to the wizard via the Operator Option D
+ * path (addNewHire if start_date > today + 7 days, else addTeamMember).
+ *
+ * EXTRACTED FROM the body of the existing `importSelectedXeroEmployees`
+ * (52-01) — see /tmp/54-02-importSelected-before.txt in the 54-02 PR diff.
+ * The extracted body is byte-for-byte identical to the original loop
+ * EXCEPT for the removed `if (!selectedXeroEmployeeIds.has(...)) continue;`
+ * filter (the filter moves UP into the original button caller, where it
+ * stays). Every other field, fallback, and provenance assignment is
+ * preserved EXACTLY: `?? STANDARD_HOURS` fallback for hoursPerWeek, the
+ * `7 * 24 * 60 * 60 * 1000` cutoff literal, `_xeroEmployeeId` /
+ * `_xeroImportedAt` / `_xeroFingerprint` provenance on BOTH addNewHire AND
+ * addTeamMember branches, `isFromXero: true` only on the addTeamMember
+ * branch, `increasePct: 0` only on the addTeamMember branch.
+ *
+ * Callers (post-54-02):
+ *   1. importSelectedXeroEmployees (existing 52-01 button) — pre-filters
+ *      by selectedXeroEmployeeIds, then calls this helper with the
+ *      filtered list.
+ *   2. autoFillFromXero effect (new in 54-02) — calls with ALL fetched
+ *      employees (no filter), gated by truly-empty + sentinel
+ *      preconditions.
+ */
+function addXeroEmployeesToWizard(
+  emps: XeroEmployeeApiShape[],
+  actions: WizardActions,
+): void {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const cutoff = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+  for (const emp of emps) {
+    const enriched = enrichWizardMemberFromXeroEmployee(emp);
+    const startDate = emp.start_date ? new Date(emp.start_date) : undefined;
+    const isPlannedHire = !!startDate && !isNaN(startDate.getTime()) && startDate > cutoff;
+    if (isPlannedHire) {
+      const startMonth = `${startDate!.getFullYear()}-${String(startDate!.getMonth() + 1).padStart(2, '0')}`;
+      actions.addNewHire({
+        role: enriched.role!,
+        type: enriched.type!,
+        hoursPerWeek: enriched.hoursPerWeek ?? STANDARD_HOURS,
+        hourlyRate: enriched.hourlyRate,
+        startMonth,
+        salary: enriched.currentSalary ?? 0,
+        payFrequency: enriched.payFrequency,
+        standardHours: enriched.standardHours,
+        _xeroEmployeeId: enriched._xeroEmployeeId,
+        _xeroImportedAt: enriched._xeroImportedAt,
+        _xeroFingerprint: enriched._xeroFingerprint,
+      });
+    } else {
+      actions.addTeamMember({
+        name: enriched.name!,
+        role: enriched.role!,
+        type: enriched.type!,
+        hoursPerWeek: enriched.hoursPerWeek ?? STANDARD_HOURS,
+        hourlyRate: enriched.hourlyRate,
+        currentSalary: enriched.currentSalary ?? 0,
+        increasePct: 0,
+        payFrequency: enriched.payFrequency,
+        standardHours: enriched.standardHours,
+        isFromXero: true,
+        _xeroEmployeeId: enriched._xeroEmployeeId,
+        _xeroImportedAt: enriched._xeroImportedAt,
+        _xeroFingerprint: enriched._xeroFingerprint,
+      });
+    }
+  }
+}
 
 const calculateFTE = (hoursPerWeek: number): number => {
   return Math.round((hoursPerWeek / STANDARD_HOURS) * 100) / 100;
@@ -1514,47 +1584,10 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
    */
   const importSelectedXeroEmployees = useCallback(() => {
     if (!xeroEmployees) return;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const cutoff = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-    for (const emp of xeroEmployees) {
-      if (!selectedXeroEmployeeIds.has(emp.employee_id)) continue;
-      const enriched = enrichWizardMemberFromXeroEmployee(emp);
-      const startDate = emp.start_date ? new Date(emp.start_date) : undefined;
-      const isPlannedHire = !!startDate && !isNaN(startDate.getTime()) && startDate > cutoff;
-      if (isPlannedHire) {
-        const startMonth = `${startDate!.getFullYear()}-${String(startDate!.getMonth() + 1).padStart(2, '0')}`;
-        actions.addNewHire({
-          role: enriched.role!,
-          type: enriched.type!,
-          hoursPerWeek: enriched.hoursPerWeek ?? STANDARD_HOURS,
-          hourlyRate: enriched.hourlyRate,
-          startMonth,
-          salary: enriched.currentSalary ?? 0,
-          payFrequency: enriched.payFrequency,
-          standardHours: enriched.standardHours,
-          _xeroEmployeeId: enriched._xeroEmployeeId,
-          _xeroImportedAt: enriched._xeroImportedAt,
-          _xeroFingerprint: enriched._xeroFingerprint,
-        });
-      } else {
-        actions.addTeamMember({
-          name: enriched.name!,
-          role: enriched.role!,
-          type: enriched.type!,
-          hoursPerWeek: enriched.hoursPerWeek ?? STANDARD_HOURS,
-          hourlyRate: enriched.hourlyRate,
-          currentSalary: enriched.currentSalary ?? 0,
-          increasePct: 0,
-          payFrequency: enriched.payFrequency,
-          standardHours: enriched.standardHours,
-          isFromXero: true,
-          _xeroEmployeeId: enriched._xeroEmployeeId,
-          _xeroImportedAt: enriched._xeroImportedAt,
-          _xeroFingerprint: enriched._xeroFingerprint,
-        });
-      }
-    }
+    // Phase 54-02: filter THEN call shared helper (extraction preserves the
+    // 52-01 button's behavior — only the inline loop body moved out).
+    const selected = xeroEmployees.filter((e) => selectedXeroEmployeeIds.has(e.employee_id));
+    addXeroEmployeesToWizard(selected, actions);
     setShowXeroImport(false);
     setSelectedXeroEmployeeIds(new Set());
   }, [xeroEmployees, selectedXeroEmployeeIds, actions]);
@@ -1613,6 +1646,146 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
   const [pendingDecisions, setPendingDecisions] = useState<
     Record<string, Partial<Record<XeroTrackedField, ReconciliationDecision>>>
   >({});
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Phase 54-02 — Soft auto-fill on truly-empty Step 4 + new-employees banner.
+  //
+  // Refs survive React StrictMode double-mount; sentinel survives navigation.
+  // Auto-fill effect writes the sentinel BEFORE the fetch so any re-render
+  // during the in-flight request does NOT re-fire (and so a back-navigate
+  // re-mount does NOT re-poll a known-broken connection — the operator
+  // clears localStorage to re-arm).
+  //
+  // Banner-probe effect is gated on teamMembers.length > 0 (auto-fill effect
+  // handles the empty case). Diffs returned employee_id list against the
+  // wizard's _xeroEmployeeId provenance and surfaces a non-blocking banner
+  // when Xero has employees the wizard hasn't seen.
+  // ────────────────────────────────────────────────────────────────────────
+  const autoFillRef = useRef(false);
+  const lastAutoFillBusinessIdRef = useRef<string | undefined>(undefined);
+  const bannerProbeRef = useRef<string | undefined>(undefined);
+  const [newEmployeesBanner, setNewEmployeesBanner] = useState<XeroEmployeeApiShape[]>([]);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  // Auto-fill effect: fires once per (businessId × truly-empty × no-sentinel).
+  useEffect(() => {
+    // Re-arm if businessId changed (rare — tenant switch mid-session).
+    if (lastAutoFillBusinessIdRef.current !== state.businessId) {
+      autoFillRef.current = false;
+      lastAutoFillBusinessIdRef.current = state.businessId;
+    }
+    if (autoFillRef.current) return;
+    if (!state.businessId) return;
+
+    // Truly-empty gate: zero current + zero hires + zero departures.
+    if (state.teamMembers.length !== 0) return;
+    if ((state.newHires?.length ?? 0) !== 0) return;
+    if ((state.departures?.length ?? 0) !== 0) return;
+
+    // Sentinel: per-business localStorage key. Operator clearing localStorage
+    // is the documented escape hatch to re-arm.
+    const sentinelKey = `wizard-v4:step4-visited:${state.businessId}`;
+    try {
+      if (typeof window !== 'undefined' && window.localStorage.getItem(sentinelKey)) {
+        autoFillRef.current = true;
+        return;
+      }
+    } catch {
+      // localStorage unavailable (private mode etc.) — still proceed; the
+      // ref guard prevents double-fire within the session.
+    }
+
+    // ALL guards passed — set ref + sentinel BEFORE fetch so any re-render
+    // during the in-flight fetch does NOT re-fire.
+    autoFillRef.current = true;
+    try {
+      if (typeof window !== 'undefined') window.localStorage.setItem(sentinelKey, '1');
+    } catch {
+      /* no-op */
+    }
+
+    const businessId = state.businessId;
+    // No cancellation flag: once auto-fill fires (sentinel + ref both set),
+    // we WANT the import to complete even if the component unmounts before
+    // the fetch resolves (e.g. React 18 StrictMode dev double-mount cleanup,
+    // or operator navigating away mid-fetch). Wizard state is global via
+    // reducer — applying the import remotely is safe. Returning the import
+    // ALSO solves StrictMode test 13c which expects exactly N imports under
+    // dev double-mount.
+    (async () => {
+      try {
+        const res = await fetch(`/api/Xero/employees?business_id=${businessId}`);
+        if (res.status === 404) return; // silent — no Xero connection
+        const data = await res.json();
+        if (data.expired || data.needs_reconnect) return; // silent
+        if (data.error) return; // silent (incl. rate limit)
+        const emps: XeroEmployeeApiShape[] = (data.employees ?? []) as XeroEmployeeApiShape[];
+        if (emps.length === 0) return; // silent — no rows to fill
+        addXeroEmployeesToWizard(emps, actions);
+      } catch {
+        // silent — operator has the explicit "Import from Xero" button as
+        // an escape hatch.
+      }
+    })();
+    // Intentionally narrow deps: businessId is the only re-arm signal. We do
+    // NOT depend on teamMembers.length — once auto-fill fires (and members
+    // appear), the autoFillRef guard prevents re-entry without needing a
+    // dependency on the very state we just mutated.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.businessId]);
+
+  // Banner probe effect: fires once per (businessId × non-empty mount).
+  useEffect(() => {
+    if (!state.businessId) return;
+    if (state.teamMembers.length === 0) return; // auto-fill handles empty
+    if (bannerProbeRef.current === state.businessId) return;
+    bannerProbeRef.current = state.businessId;
+
+    const businessId = state.businessId;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/Xero/employees?business_id=${businessId}`);
+        if (cancelled) return;
+        if (res.status === 404) return; // silent
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.expired || data.needs_reconnect) return; // silent
+        if (data.error) return; // silent
+        const xeroEmps: XeroEmployeeApiShape[] = (data.employees ?? []) as XeroEmployeeApiShape[];
+        if (xeroEmps.length === 0) return; // silent
+
+        // Build knownIds: every wizard member with _xeroEmployeeId, plus
+        // departures resolved through state.teamMembers (so a departing
+        // employee doesn't re-surface as "new").
+        const knownIds = new Set<string>();
+        for (const m of state.teamMembers) {
+          if (m._xeroEmployeeId) knownIds.add(m._xeroEmployeeId);
+        }
+        for (const h of state.newHires ?? []) {
+          if (h._xeroEmployeeId) knownIds.add(h._xeroEmployeeId);
+        }
+        for (const d of state.departures ?? []) {
+          const tm = state.teamMembers.find((m) => m.id === d.teamMemberId);
+          if (tm?._xeroEmployeeId) knownIds.add(tm._xeroEmployeeId);
+        }
+
+        const newOnes = xeroEmps.filter((e) => !knownIds.has(e.employee_id));
+        if (newOnes.length === 0) return; // silent — nothing new
+        if (cancelled) return;
+        setNewEmployeesBanner(newOnes);
+      } catch {
+        // silent
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Same narrow-deps rationale as auto-fill effect; teamMembers.length is
+    // a re-arm signal so the probe re-runs when the empty→non-empty
+    // transition happens (e.g. immediately after auto-fill imports).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.businessId, state.teamMembers.length]);
 
   // Visibility gate: Refresh button only shown when at least one row carries
   // _xeroFingerprint (i.e. an import has happened on this wizard).
@@ -3345,6 +3518,50 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
             )}
           </div>
         </div>
+
+        {/* Phase 54-02 (XERO-S4-AUTOFILL-02) — Non-blocking banner above the
+            team table when Xero has employees the wizard hasn't seen. Click
+            "Review" to open the existing 52-01 import modal pre-checked
+            with the new ones only. Dismiss is session-scoped (not persisted). */}
+        {newEmployeesBanner.length > 0 && !bannerDismissed && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center justify-between mx-6 mt-4">
+            <div className="flex items-center gap-2 text-sm text-blue-900">
+              <Users className="w-4 h-4 text-blue-600" />
+              <span>
+                {newEmployeesBanner.length} new employee
+                {newEmployeesBanner.length === 1 ? '' : 's'} in Xero since your last import — review.
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  // Reuse the EXISTING 52-01 import modal: pre-load it with
+                  // the filtered new-only list AND pre-check every row.
+                  setXeroEmployees(newEmployeesBanner);
+                  setSelectedXeroEmployeeIds(
+                    new Set(newEmployeesBanner.map((e) => e.employee_id)),
+                  );
+                  setXeroImportError(null);
+                  setXeroImportLoading(false);
+                  setShowXeroImport(true);
+                }}
+                aria-label="Review new Xero employees"
+                className="px-3 py-1 text-sm font-medium text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 rounded-md"
+              >
+                Review
+              </button>
+              <button
+                type="button"
+                onClick={() => setBannerDismissed(true)}
+                aria-label="Dismiss new-employees banner"
+                className="p-1 text-blue-700 hover:bg-blue-100 rounded"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         <TeamTable rows={employeeRows} totals={employeeTotals} />
       </div>
