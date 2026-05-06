@@ -140,6 +140,13 @@ function Step4Harness({
   const wizard = useForecastWizard(FY_START_YEAR, businessId);
   const seededRef = React.useRef(false);
 
+  // Phase 54-02: 52-02 tests exercise the explicit Refresh-from-Xero modal
+  // (reconciliation flow) — auto-fill must NOT also fire here. Set the
+  // sentinel before mount so Step4Team's auto-fill effect short-circuits.
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(`wizard-v4:step4-visited:${businessId}`, '1');
+  }
+
   React.useEffect(() => {
     if (!seededRef.current) {
       seededRef.current = true;

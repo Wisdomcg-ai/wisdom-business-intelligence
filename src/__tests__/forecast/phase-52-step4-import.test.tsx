@@ -149,6 +149,15 @@ function Step4Harness({
   const wizard = useForecastWizard(FY_START_YEAR, businessId);
   const seededRef = React.useRef(false);
 
+  // Phase 54-02: 52-01 tests exercise the explicit Import-from-Xero modal —
+  // the auto-fill effect introduced by 54-02 must NOT also fire here, or
+  // we'd see double-imports (52-01 tests assert exact import counts).
+  // Setting the sentinel before mount makes Step4Team's auto-fill effect
+  // short-circuit on its localStorage check.
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(`wizard-v4:step4-visited:${businessId}`, '1');
+  }
+
   React.useEffect(() => {
     if (!seededRef.current) {
       seededRef.current = true;
