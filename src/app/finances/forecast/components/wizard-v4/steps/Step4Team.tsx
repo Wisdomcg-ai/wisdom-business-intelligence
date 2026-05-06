@@ -13,7 +13,7 @@ import {
   TeamMember,
   SUPER_RATE,
 } from '../types';
-import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+import { getFiscalYear, getFiscalMonthIndex, getFiscalYearDateRange, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 // Phase 52-01 (XERO-S4-01/03/04) — Import-from-Xero modal + Option D edit affordance.
 // Phase 52-02 (XERO-S4-05) — Refresh-from-Xero reconciliation flow (4 new helpers).
 import {
@@ -1387,6 +1387,182 @@ function TeamPlanningOverview({
 }
 
 // ============================================
+// PHASE 55-01 — YEAR FILTER CARDS (UX-S4-04)
+// ============================================
+// Three clickable year-summary cards rendered above the team tables.
+// Click toggles the parent's `selectedYear` filter state. Card counts
+// (headcount/cost) ALWAYS show full-year derived totals — they are NOT
+// affected by the selected filter (the filter only changes which rows
+// are visible in the tables below). Reuses TeamPlanningOverview's
+// timeline derivation rules so both views stay consistent.
+
+interface YearFilterCardsProps {
+  teamMembers: ForecastWizardState['teamMembers'];
+  newHires: ForecastWizardState['newHires'];
+  departures: ForecastWizardState['departures'];
+  bonuses: ForecastWizardState['bonuses'];
+  goals: ForecastWizardState['goals'];
+  fiscalYear: number;
+  duration: 1 | 2 | 3;
+  selectedYear: 1 | 2 | 3 | null;
+  onSelectYear: (year: 1 | 2 | 3) => void;
+}
+
+function YearFilterCards({
+  teamMembers,
+  newHires,
+  departures,
+  bonuses,
+  goals,
+  fiscalYear,
+  duration,
+  selectedYear,
+  onSelectYear,
+}: YearFilterCardsProps) {
+  const ysm = DEFAULT_YEAR_START_MONTH;
+
+  const getFYFromMonth = (monthKey: string): number => {
+    const [yearStr, monthStr] = monthKey.split('-');
+    const date = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
+    return getFiscalYear(date, ysm);
+  };
+  const getMonthsInFY = (startMonth: string, fy: number): number => {
+    const startFY = getFYFromMonth(startMonth);
+    if (startFY > fy) return 0;
+    if (startFY < fy) return 12;
+    const month = parseInt(startMonth.split('-')[1]);
+    const fyMonth = getFiscalMonthIndex(month, ysm) + 1;
+    return 13 - fyMonth;
+  };
+  const getMonthsBeforeDeparture = (endMonth: string, fy: number): number => {
+    const endFY = getFYFromMonth(endMonth);
+    if (endFY > fy) return 12;
+    if (endFY < fy) return 0;
+    const month = parseInt(endMonth.split('-')[1]);
+    const fyMonth = getFiscalMonthIndex(month, ysm) + 1;
+    return fyMonth;
+  };
+
+  // Full-year derived metrics per year (mirrors TeamTimelineSummary's logic).
+  const yearData = useMemo(() => {
+    const years: { year: 1 | 2 | 3; headcount: number; fte: number; totalCost: number }[] = [];
+    for (let i = 1; i <= duration; i++) {
+      const yearNum = i as 1 | 2 | 3;
+      const targetFY = fiscalYear + yearNum - 1;
+      let headcount = 0;
+      let totalFTE = 0;
+      let totalCost = 0;
+
+      for (const member of teamMembers) {
+        const departure = departures.find((d) => d.teamMemberId === member.id);
+        const yearsOfIncrease = i - 1;
+        const salary = member.newSalary * Math.pow(1 + (member.increasePct || 0) / 100, yearsOfIncrease);
+        const superAmount = member.type !== 'contractor' ? salary * SUPER_RATE : 0;
+        let monthsWorked = 12;
+        if (departure) {
+          monthsWorked = getMonthsBeforeDeparture(departure.endMonth, targetFY);
+        }
+        if (monthsWorked > 0) {
+          headcount++;
+          totalFTE += STANDARD_HOURS > 0 ? Math.round((member.hoursPerWeek / STANDARD_HOURS) * 100) / 100 : 0;
+          totalCost += ((salary + superAmount) * monthsWorked) / 12;
+        }
+      }
+
+      for (const hire of newHires) {
+        const hireFY = getFYFromMonth(hire.startMonth);
+        if (hireFY > targetFY) continue;
+        const yearsAfterStart = targetFY - hireFY;
+        const salary = hire.salary * Math.pow(1.03, yearsAfterStart);
+        const superAmount = hire.type !== 'contractor' ? salary * SUPER_RATE : 0;
+        const monthsWorked = getMonthsInFY(hire.startMonth, targetFY);
+        if (monthsWorked > 0) {
+          headcount++;
+          totalFTE += STANDARD_HOURS > 0 ? Math.round((hire.hoursPerWeek / STANDARD_HOURS) * 100) / 100 : 0;
+          totalCost += ((salary + superAmount) * monthsWorked) / 12;
+        }
+      }
+
+      const bonusTotal = bonuses.reduce((sum, b) => sum + b.amount, 0);
+      totalCost += bonusTotal;
+
+      years.push({ year: yearNum, headcount, fte: Math.round(totalFTE * 10) / 10, totalCost: Math.round(totalCost) });
+    }
+    return years;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamMembers, newHires, departures, bonuses, fiscalYear, duration, goals]);
+
+  // Always render three card slots (greyed when out-of-duration) for layout
+  // stability. Click only enabled for the in-range cards.
+  const slots: (1 | 2 | 3)[] = [1, 2, 3];
+
+  return (
+    <div className="grid grid-cols-3 gap-4" data-testid="year-filter-cards">
+      {slots.map((yearNum) => {
+        const data = yearData.find((y) => y.year === yearNum);
+        const inRange = !!data && yearNum <= duration;
+        const isSelected = selectedYear === yearNum;
+        const isCurrentYear = yearNum === 1;
+
+        // Disabled state for years beyond duration: render a placeholder card.
+        if (!inRange) {
+          return (
+            <div
+              key={yearNum}
+              className="p-4 rounded-xl border border-dashed border-gray-200 bg-gray-50/50 text-gray-400 text-sm"
+              aria-hidden="true"
+            >
+              <div className="text-[11px] font-bold uppercase tracking-wider">FY{fiscalYear + yearNum - 1}</div>
+              <div className="mt-2 text-xs">Outside forecast duration</div>
+            </div>
+          );
+        }
+
+        const baseClasses = 'relative p-4 rounded-xl transition-all duration-200 text-left w-full cursor-pointer';
+        const palette = isCurrentYear
+          ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-md'
+          : 'bg-white border border-gray-200 hover:bg-gray-50';
+        const selectedRing = isSelected ? 'ring-2 ring-blue-400 ring-offset-2' : '';
+
+        return (
+          <button
+            key={yearNum}
+            type="button"
+            role="button"
+            aria-pressed={isSelected}
+            aria-label={`Filter team table to FY${fiscalYear + yearNum - 1}`}
+            onClick={() => onSelectYear(yearNum)}
+            data-testid={`year-card-${yearNum}`}
+            className={`${baseClasses} ${palette} ${selectedRing}`}
+          >
+            <div className={`text-[11px] font-bold uppercase tracking-wider ${isCurrentYear ? 'text-blue-100' : 'text-gray-500'}`}>
+              FY{fiscalYear + yearNum - 1}
+            </div>
+            <div className="mt-2 flex items-end gap-2">
+              <span className={`text-3xl font-bold tabular-nums ${isCurrentYear ? 'text-white' : 'text-gray-900'}`}>
+                {data!.headcount}
+              </span>
+              <span className={`text-sm mb-1 ${isCurrentYear ? 'text-blue-100' : 'text-gray-500'}`}>
+                team
+              </span>
+            </div>
+            <div className={`mt-1 text-xs ${isCurrentYear ? 'text-blue-100' : 'text-gray-500'}`}>
+              {data!.fte} FTE
+            </div>
+            <div className={`mt-2 text-sm font-semibold tabular-nums ${isCurrentYear ? 'text-white' : 'text-gray-900'}`}>
+              {formatCurrency(data!.totalCost)}
+            </div>
+            <div className={`text-[10px] uppercase tracking-wide ${isCurrentYear ? 'text-blue-100' : 'text-gray-500'}`}>
+              total cost
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============================================
 // MAIN COMPONENT
 // ============================================
 
@@ -1403,6 +1579,41 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
   const [showAddHire, setShowAddHire] = useState(false);
   const [hireType, setHireType] = useState<'employee' | 'contractor'>('employee');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  // ─── Phase 55-01: Year-card filter (UX-S4-04) ──────────────────────────
+  // Local-only view filter. Default null on every mount — NOT persisted to
+  // wizard state (this is a viewer concern, not part of the saved plan).
+  // null = "All years" (no filter, no badges).
+  const [selectedYear, setSelectedYear] = useState<1 | 2 | 3 | null>(null);
+
+  // Section-header dismiss state (per businessId, persisted in localStorage).
+  const yearFilterHintKey = `wizard-v4:step4-yearfilter-hint:${state.businessId}`;
+  const [yearFilterHintDismissed, setYearFilterHintDismissed] = useState<boolean>(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = window.localStorage.getItem(yearFilterHintKey);
+      setYearFilterHintDismissed(stored === '1');
+    } catch {
+      // localStorage may be unavailable (private mode, SSR) — fall back to shown.
+      setYearFilterHintDismissed(false);
+    }
+  }, [yearFilterHintKey]);
+
+  const dismissYearFilterHint = useCallback(() => {
+    setYearFilterHintDismissed(true);
+    try {
+      window.localStorage.setItem(yearFilterHintKey, '1');
+    } catch {
+      // ignore — UI state still reflects dismissal for this session
+    }
+  }, [yearFilterHintKey]);
+
+  const handleSelectYear = useCallback((year: 1 | 2 | 3) => {
+    setSelectedYear((prev) => (prev === year ? null : year));
+  }, []);
+
+  const clearSelectedYear = useCallback(() => setSelectedYear(null), []);
 
   // Phase 51 (UX-S4-01): Termination modal state. Pending end month defaults to
   // mid-FY (December of the calendar year that starts the current FY) so the
@@ -2105,9 +2316,47 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
     return { employeeRows: employees, contractorRows: contractors };
   }, [teamMembers, newHires, departures, bonuses, commissions, revenueLines]);
 
-  // Calculate totals
+  // ─── Phase 55-01: Year-active predicate + filtered row sets ────────────
+  // A row is "active in FY{N}" when it matches the SAME timeline rules used
+  // by TeamPlanningOverview's `calculateActualHeadcount` (lines 1128-1156):
+  //   - Existing teamMember: NOT departed before targetFY (FY of endMonth >= targetFY)
+  //   - New hire: started by targetFY (FY of startMonth <= targetFY)
+  // selectedYear === null → no filter, all rows pass.
+  const getFYFromMonthKey = useCallback((monthKey: string): number => {
+    if (!monthKey) return fiscalYear;
+    const [yearStr, monthStr] = monthKey.split('-');
+    const date = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
+    return getFiscalYear(date, DEFAULT_YEAR_START_MONTH);
+  }, [fiscalYear]);
+
+  const isRowActiveInYear = useCallback((row: TeamRow, year: 1 | 2 | 3): boolean => {
+    const targetFY = fiscalYear + year - 1;
+    if (row.isNewHire && row.startMonth) {
+      const hireFY = getFYFromMonthKey(row.startMonth);
+      // Hire is on payroll in targetFY if they started in targetFY or earlier.
+      return hireFY <= targetFY;
+    }
+    // Existing teamMember: included unless they departed BEFORE targetFY.
+    if (row.endMonth) {
+      const endFY = getFYFromMonthKey(row.endMonth);
+      return endFY >= targetFY;
+    }
+    return true;
+  }, [fiscalYear, getFYFromMonthKey]);
+
+  const visibleEmployeeRows = useMemo(() => {
+    if (selectedYear === null) return employeeRows;
+    return employeeRows.filter((row) => isRowActiveInYear(row, selectedYear));
+  }, [employeeRows, selectedYear, isRowActiveInYear]);
+
+  const visibleContractorRows = useMemo(() => {
+    if (selectedYear === null) return contractorRows;
+    return contractorRows.filter((row) => isRowActiveInYear(row, selectedYear));
+  }, [contractorRows, selectedYear, isRowActiveInYear]);
+
+  // Calculate totals from visible rows so the table footer reflects what's shown.
   const employeeTotals = useMemo(() => {
-    return employeeRows.reduce(
+    return visibleEmployeeRows.reduce(
       (acc, row) => ({
         salary: acc.salary + row.salary,
         super: acc.super + row.superAmount,
@@ -2117,10 +2366,10 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
       }),
       { salary: 0, super: 0, bonus: 0, commission: 0, total: 0 }
     );
-  }, [employeeRows]);
+  }, [visibleEmployeeRows]);
 
   const contractorTotals = useMemo(() => {
-    return contractorRows.reduce(
+    return visibleContractorRows.reduce(
       (acc, row) => ({
         cost: acc.cost + row.salary,
         bonus: acc.bonus + row.bonusAmount,
@@ -2128,7 +2377,7 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
       }),
       { cost: 0, bonus: 0, total: 0 }
     );
-  }, [contractorRows]);
+  }, [visibleContractorRows]);
 
   // Handler functions
   const handleAddEmployee = () => {
@@ -2338,6 +2587,35 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
     );
   };
 
+  // ─── Phase 55-01: Per-row year badges ─────────────────────────────────
+  // When a year is selected, surface "Starts {Mon YYYY}" on hires that begin
+  // in that FY and "Leaves {Mon YYYY}" on members departing in that FY.
+  // No badge when selectedYear === null (no anchor year for the relative copy).
+  const formatMonthLabel = useCallback((monthKey: string): string => {
+    if (!monthKey) return '';
+    const [yearStr, monthStr] = monthKey.split('-');
+    const monthIdx = parseInt(monthStr, 10) - 1;
+    const monthAbbrev = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][monthIdx] || '';
+    return `${monthAbbrev} ${yearStr}`;
+  }, []);
+
+  const getRowYearBadge = useCallback((row: TeamRow): { kind: 'starts' | 'leaves'; label: string } | null => {
+    if (selectedYear === null) return null;
+    const targetFY = fiscalYear + selectedYear - 1;
+    if (row.isNewHire && row.startMonth) {
+      const hireFY = getFYFromMonthKey(row.startMonth);
+      if (hireFY === targetFY) {
+        return { kind: 'starts', label: `Starts ${formatMonthLabel(row.startMonth)}` };
+      }
+    } else if (row.endMonth) {
+      const endFY = getFYFromMonthKey(row.endMonth);
+      if (endFY === targetFY) {
+        return { kind: 'leaves', label: `Leaves ${formatMonthLabel(row.endMonth)}` };
+      }
+    }
+    return null;
+  }, [selectedYear, fiscalYear, getFYFromMonthKey, formatMonthLabel]);
+
   // Table component
   const [showDetailColumns, setShowDetailColumns] = useState(false);
 
@@ -2431,20 +2709,36 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const yearBadge = getRowYearBadge(row);
+            return (
             <tr key={row.id} className={`hover:bg-gray-50 ${row.isNewHire ? 'bg-green-50/30' : ''}`}>
               {/* Name */}
               <td className="px-2 py-1.5">
-                {row.isNewHire ? (
-                  <span className="text-gray-400 italic">TBD</span>
-                ) : (
-                  <input
-                    type="text"
-                    value={row.name}
-                    onChange={(e) => actions.updateTeamMember(row.teamMemberId!, { name: e.target.value })}
-                    className="w-full px-1.5 py-1 text-sm border border-transparent hover:border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy bg-transparent truncate"
-                  />
-                )}
+                <div className="flex items-center gap-1.5">
+                  {row.isNewHire ? (
+                    <span className="text-gray-400 italic">TBD</span>
+                  ) : (
+                    <input
+                      type="text"
+                      value={row.name}
+                      onChange={(e) => actions.updateTeamMember(row.teamMemberId!, { name: e.target.value })}
+                      className="w-full px-1.5 py-1 text-sm border border-transparent hover:border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy bg-transparent truncate"
+                    />
+                  )}
+                  {yearBadge && (
+                    <span
+                      data-testid={`year-badge-${yearBadge.kind}-${row.id}`}
+                      className={`shrink-0 inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded-full whitespace-nowrap ${
+                        yearBadge.kind === 'starts'
+                          ? 'bg-green-100 text-green-700 border border-green-200'
+                          : 'bg-red-100 text-red-700 border border-red-200'
+                      }`}
+                    >
+                      {yearBadge.label}
+                    </span>
+                  )}
+                </div>
               </td>
 
               {/* Role */}
@@ -2922,7 +3216,8 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                 </button>
               </td>
             </tr>
-          ))}
+            );
+          })}
 
           {rows.length === 0 && (
             <tr>
@@ -3285,13 +3580,70 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
         </span>
       </div>
 
+      {/* ─── Phase 55-01: Year-card filter ──────────────────────────────────
+          Three clickable FY summary cards (Y1/Y2/Y3 of forecast). Click a
+          card → set selectedYear → filter team tables. Click again → clear.
+          Card counts (headcount/cost) ALWAYS show full-year totals; the filter
+          only changes which rows are visible in the tables below. */}
+      <YearFilterCards
+        teamMembers={teamMembers}
+        newHires={newHires}
+        departures={departures}
+        bonuses={bonuses}
+        goals={goals}
+        fiscalYear={fiscalYear}
+        duration={duration}
+        selectedYear={selectedYear}
+        onSelectYear={handleSelectYear}
+      />
+
+      {/* Section-header hint (per-business dismissible) */}
+      {!yearFilterHintDismissed && (
+        <div className="flex items-start justify-between gap-3 px-2">
+          <p className="text-xs text-gray-500 italic" data-testid="year-filter-hint">
+            Build your team plan once — it covers all 3 years. Click a year card above to see who&apos;s on payroll then.
+          </p>
+          <button
+            type="button"
+            aria-label="Dismiss year filter hint"
+            onClick={dismissYearFilterHint}
+            className="shrink-0 text-gray-400 hover:text-gray-600"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Filter pill — only when a year is selected */}
+      {selectedYear !== null && (
+        <div
+          data-testid="year-filter-pill"
+          className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm flex items-center justify-between"
+        >
+          <span className="text-blue-900">
+            Showing FY{fiscalYear + selectedYear - 1} ({getFiscalYearDateRange(fiscalYear + selectedYear - 1, DEFAULT_YEAR_START_MONTH).replace(' - ', ' – ')})
+          </span>
+          <button
+            type="button"
+            onClick={clearSelectedYear}
+            className="text-xs text-blue-700 hover:text-blue-900 font-medium underline"
+          >
+            Show all years
+          </button>
+        </div>
+      )}
+
       {/* TEAM MEMBERS SECTION */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <UserCheck className="w-5 h-5 text-brand-navy" />
             <h3 className="text-lg font-semibold text-gray-900">Team Members</h3>
-            <span className="text-sm text-gray-500">({employeeRows.length})</span>
+            <span className="text-sm text-gray-500" data-testid="team-members-count">
+              ({selectedYear === null
+                ? employeeRows.length
+                : `${visibleEmployeeRows.length} of ${employeeRows.length}`})
+            </span>
             <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded">+12% Super</span>
           </div>
           <div className="flex gap-2">
@@ -3346,7 +3698,7 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
           </div>
         </div>
 
-        <TeamTable rows={employeeRows} totals={employeeTotals} />
+        <TeamTable rows={visibleEmployeeRows} totals={employeeTotals} />
       </div>
 
       {/* CONTRACTORS SECTION */}
@@ -3355,7 +3707,11 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
           <div className="flex items-center gap-2">
             <Briefcase className="w-5 h-5 text-orange-600" />
             <h3 className="text-lg font-semibold text-gray-900">Contractors</h3>
-            <span className="text-sm text-gray-500">({contractorRows.length})</span>
+            <span className="text-sm text-gray-500" data-testid="contractors-count">
+              ({selectedYear === null
+                ? contractorRows.length
+                : `${visibleContractorRows.length} of ${contractorRows.length}`})
+            </span>
             <span className="text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded">No Super</span>
           </div>
           <div className="flex gap-2">
@@ -3376,7 +3732,7 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
           </div>
         </div>
 
-        <TeamTable rows={contractorRows} isContractor totals={contractorTotals} />
+        <TeamTable rows={visibleContractorRows} isContractor totals={contractorTotals} />
       </div>
 
       {/* Add Team Member Modal */}
