@@ -138,7 +138,7 @@ No dependency on prior Phase 54 plans (this is the first plan in the phase). Bui
 
 ## PR
 
-To be opened as `feat(54-01): derive Xero employee hours + salary from PayRun history` against `main`. Branch: `feat/54-01-payrun-derived-hours-salary`. PR link will be appended once opened.
+[#114 — feat(54-01): derive Xero employee hours + salary from PayRun history](https://github.com/Wisdomcg-ai/wisdom-business-intelligence/pull/114) — opened 2026-05-06 against `main`. Branch: `feat/54-01-payrun-derived-hours-salary`. Awaiting CI.
 
 ## Self-Check: PASSED
 
