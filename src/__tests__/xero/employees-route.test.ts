@@ -87,7 +87,7 @@ describe('GET /api/Xero/employees — PayrollCalendars join + new fields', () =>
     process.env.SUPABASE_SERVICE_KEY = 'service-key';
   });
 
-  it('Test A — fetches PayrollCalendars first, then joins CalendarType to populate pay_frequency + standard_hours + calculation_type', async () => {
+  it('Test A — fetches PayrollCalendars first, then PayRuns list, then joins CalendarType to populate pay_frequency + standard_hours + calculation_type', async () => {
     const fetchSpy = vi.spyOn(global, 'fetch')
       // 1. /PayrollCalendars
       .mockResolvedValueOnce(makeJsonResponse({
@@ -95,6 +95,8 @@ describe('GET /api/Xero/employees — PayrollCalendars join + new fields', () =>
           { PayrollCalendarID: 'cal-fortnight', CalendarType: 'FORTNIGHTLY', Name: 'Fortnightly' },
         ],
       }))
+      // 1b. Phase 54-01 — /PayRuns list (empty: aggregator short-circuits silently)
+      .mockResolvedValueOnce(makeJsonResponse({ PayRuns: [] }))
       // 2. /Employees list
       .mockResolvedValueOnce(makeJsonResponse({
         Employees: [
@@ -128,17 +130,20 @@ describe('GET /api/Xero/employees — PayrollCalendars join + new fields', () =>
     expect(e.annual_salary).toBe(98000);
     expect(e.employment_type).toBe('full-time');
 
-    // Verify call order: PayrollCalendars first, then Employees, then Employees/{id}
+    // Verify call order: PayrollCalendars → PayRuns list → Employees → Employees/{id}
     const urls = fetchSpy.mock.calls.map((c) => String(c[0]));
     expect(urls[0]).toContain('/PayrollCalendars');
-    expect(urls[1]).toContain('/Employees');
-    expect(urls[1]).not.toContain('/Employees/emp-1');
-    expect(urls[2]).toContain('/Employees/emp-1');
+    expect(urls[1]).toContain('/PayRuns');
+    expect(urls[2]).toContain('/Employees');
+    expect(urls[2]).not.toContain('/Employees/emp-1');
+    expect(urls[3]).toContain('/Employees/emp-1');
   });
 
   it('Test B — reads EmploymentBasis (not EmploymentType) when both differ', async () => {
     vi.spyOn(global, 'fetch')
       .mockResolvedValueOnce(makeJsonResponse({ PayrollCalendars: [] }))
+      // Phase 54-01 — empty PayRuns list short-circuits the aggregator.
+      .mockResolvedValueOnce(makeJsonResponse({ PayRuns: [] }))
       .mockResolvedValueOnce(makeJsonResponse({
         Employees: [
           { EmployeeID: 'emp-2', FirstName: 'Sam', LastName: 'Casual', Status: 'ACTIVE' },
@@ -166,6 +171,8 @@ describe('GET /api/Xero/employees — PayrollCalendars join + new fields', () =>
   it('Test C — falls back to EmploymentType when EmploymentBasis is missing', async () => {
     vi.spyOn(global, 'fetch')
       .mockResolvedValueOnce(makeJsonResponse({ PayrollCalendars: [] }))
+      // Phase 54-01 — empty PayRuns list short-circuits the aggregator.
+      .mockResolvedValueOnce(makeJsonResponse({ PayRuns: [] }))
       .mockResolvedValueOnce(makeJsonResponse({
         Employees: [
           { EmployeeID: 'emp-3', FirstName: 'Pat', LastName: 'Part', Status: 'ACTIVE' },
@@ -191,6 +198,8 @@ describe('GET /api/Xero/employees — PayrollCalendars join + new fields', () =>
     vi.spyOn(global, 'fetch')
       // PayrollCalendars returns 500 — must be tolerated
       .mockResolvedValueOnce(new Response('Internal Server Error', { status: 500 }) as any)
+      // Phase 54-01 — empty PayRuns list short-circuits the aggregator.
+      .mockResolvedValueOnce(makeJsonResponse({ PayRuns: [] }))
       .mockResolvedValueOnce(makeJsonResponse({
         Employees: [
           { EmployeeID: 'emp-4', FirstName: 'Joe', LastName: 'NoCal', Status: 'ACTIVE' },
@@ -225,6 +234,8 @@ describe('GET /api/Xero/employees — PayrollCalendars join + new fields', () =>
           { PayrollCalendarID: 'cal-weekly', CalendarType: 'WEEKLY' },
         ],
       }))
+      // Phase 54-01 — empty PayRuns list short-circuits the aggregator.
+      .mockResolvedValueOnce(makeJsonResponse({ PayRuns: [] }))
       .mockResolvedValueOnce(makeJsonResponse({
         Employees: [
           { EmployeeID: 'emp-5', FirstName: 'Bea', LastName: 'Hourly', Status: 'ACTIVE' },
@@ -256,5 +267,347 @@ describe('GET /api/Xero/employees — PayrollCalendars join + new fields', () =>
     expect(e.calculation_type).toBe('hourly');
     expect(e.annual_salary).toBeUndefined();
     expect(e.pay_frequency).toBe('weekly');
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Phase 54-01 — PayRun-history derivation cases (F–J)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  it('Test F — ENTEREARNINGSRATE happy path: derives hours_per_week + annual_salary from PayRun aggregate; DRAFT runs ignored', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      // PayrollCalendars
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayrollCalendars: [
+          { PayrollCalendarID: 'cal-fortnight', CalendarType: 'FORTNIGHTLY' },
+        ],
+      }))
+      // PayRuns list — 4 POSTED + 1 DRAFT (DRAFT must be filtered)
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayRuns: [
+          { PayRunID: 'pr-1', PayRunStatus: 'POSTED', PayrollCalendarID: 'cal-fortnight' },
+          { PayRunID: 'pr-2', PayRunStatus: 'POSTED', PayrollCalendarID: 'cal-fortnight' },
+          { PayRunID: 'pr-3', PayRunStatus: 'POSTED', PayrollCalendarID: 'cal-fortnight' },
+          { PayRunID: 'pr-4', PayRunStatus: 'POSTED', PayrollCalendarID: 'cal-fortnight' },
+          { PayRunID: 'draft-id', PayRunStatus: 'DRAFT', PayrollCalendarID: 'cal-fortnight' },
+        ],
+      }))
+      // PayRun details × 4 (one payslip each, EmployeeID emp-jds, Wages 6339)
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayRuns: [{
+          PayRunID: 'pr-1',
+          PayRunStatus: 'POSTED',
+          PayrollCalendarID: 'cal-fortnight',
+          Payslips: [{ EmployeeID: 'emp-jds', PayslipID: 'ps-1', FirstName: 'Alex', LastName: 'Howard', Wages: 6339, Tax: 1756, Super: 760.68, NetPay: 4583 }],
+        }],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayRuns: [{
+          PayRunID: 'pr-2',
+          PayRunStatus: 'POSTED',
+          PayrollCalendarID: 'cal-fortnight',
+          Payslips: [{ EmployeeID: 'emp-jds', PayslipID: 'ps-2', FirstName: 'Alex', LastName: 'Howard', Wages: 6339, Tax: 1756, Super: 760.68, NetPay: 4583 }],
+        }],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayRuns: [{
+          PayRunID: 'pr-3',
+          PayRunStatus: 'POSTED',
+          PayrollCalendarID: 'cal-fortnight',
+          Payslips: [{ EmployeeID: 'emp-jds', PayslipID: 'ps-3', FirstName: 'Alex', LastName: 'Howard', Wages: 6339, Tax: 1756, Super: 760.68, NetPay: 4583 }],
+        }],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayRuns: [{
+          PayRunID: 'pr-4',
+          PayRunStatus: 'POSTED',
+          PayrollCalendarID: 'cal-fortnight',
+          Payslips: [{ EmployeeID: 'emp-jds', PayslipID: 'ps-4', FirstName: 'Alex', LastName: 'Howard', Wages: 6339, Tax: 1756, Super: 760.68, NetPay: 4583 }],
+        }],
+      }))
+      // Employees list
+      .mockResolvedValueOnce(makeJsonResponse({
+        Employees: [
+          { EmployeeID: 'emp-jds', FirstName: 'Alex', LastName: 'Howard', Status: 'ACTIVE' },
+        ],
+      }))
+      // Employees/emp-jds detail — ENTEREARNINGSRATE, no NumberOfUnitsPerWeek, no AnnualSalary
+      .mockResolvedValueOnce(makeJsonResponse({
+        Employees: [{
+          EmployeeID: 'emp-jds',
+          PayrollCalendarID: 'cal-fortnight',
+          EmploymentBasis: 'FULLTIME',
+          // OrdinaryHoursPerWeek deliberately omitted — mimics JDS reality
+          PayTemplate: {
+            EarningsLines: [{
+              EarningsRateID: 'er-jds',
+              CalculationType: 'ENTEREARNINGSRATE',
+              RatePerUnit: '84.52',
+            }],
+          },
+        }],
+      }));
+
+    const { GET } = await import('@/app/api/Xero/employees/route');
+    const res = await GET(makeRequest());
+    expect(res.status).toBe(200);
+    const data: any = await res.json();
+    expect(data.employees).toHaveLength(1);
+    const e = data.employees[0];
+    expect(e.hourly_rate).toBe(84.52);
+    expect(e.hours_per_week).toBeDefined();
+    expect(Math.abs(e.hours_per_week - 37.5)).toBeLessThanOrEqual(0.05);
+    expect(e.standard_hours).toBeDefined();
+    expect(Math.abs(e.standard_hours - 37.5)).toBeLessThanOrEqual(0.05);
+    expect(e.annual_salary).toBe(164814);
+    expect(e.calculation_type).toBe('hourly');
+    expect(e.pay_frequency).toBe('fortnightly');
+    expect(e.derived_from).toBe('payrun_history');
+
+    // DRAFT pay run must NOT have been fetched
+    const urls = fetchSpy.mock.calls.map((c) => String(c[0]));
+    expect(urls.filter((u) => u.includes('/PayRuns/draft-id')).length).toBe(0);
+  });
+
+  it('Test G — PayTemplate AnnualSalary WINS over PayRun derivation (no override)', async () => {
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayrollCalendars: [
+          { PayrollCalendarID: 'cal-fortnight', CalendarType: 'FORTNIGHTLY' },
+        ],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayRuns: [
+          { PayRunID: 'pr-1', PayRunStatus: 'POSTED', PayrollCalendarID: 'cal-fortnight' },
+        ],
+      }))
+      // One POSTED detail with Wages=10000 — would derive 10000*26 = 260000
+      // if precedence were broken.
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayRuns: [{
+          PayRunID: 'pr-1',
+          PayRunStatus: 'POSTED',
+          PayrollCalendarID: 'cal-fortnight',
+          Payslips: [{ EmployeeID: 'emp-sal', PayslipID: 'ps-1', FirstName: 'Sal', LastName: 'Aried', Wages: 10000, Tax: 0, Super: 0, NetPay: 10000 }],
+        }],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        Employees: [
+          { EmployeeID: 'emp-sal', FirstName: 'Sal', LastName: 'Aried', Status: 'ACTIVE' },
+        ],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        Employees: [{
+          EmployeeID: 'emp-sal',
+          PayrollCalendarID: 'cal-fortnight',
+          EmploymentBasis: 'FULLTIME',
+          OrdinaryHoursPerWeek: '38',
+          PayTemplate: {
+            EarningsLines: [
+              { EarningsRateID: 'er-s', CalculationType: 'ANNUALSALARY', AnnualSalary: '120000' },
+            ],
+          },
+        }],
+      }));
+
+    const { GET } = await import('@/app/api/Xero/employees/route');
+    const res = await GET(makeRequest());
+    const data: any = await res.json();
+    const e = data.employees[0];
+    // PayTemplate value WINS — not 260000 from derivation.
+    expect(e.annual_salary).toBe(120000);
+    expect(e.standard_hours).toBe(38);
+    expect(e.calculation_type).toBe('salaried');
+    // No derivation contributed because nothing was undefined.
+    expect(e.derived_from).toBe('paytemplate');
+  });
+
+  it('Test H — mixed: PayTemplate supplies hourly_rate + standard_hours; PayRun derives annual_salary only', async () => {
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayrollCalendars: [
+          { PayrollCalendarID: 'cal-weekly', CalendarType: 'WEEKLY' },
+        ],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayRuns: [
+          { PayRunID: 'pr-1', PayRunStatus: 'POSTED', PayrollCalendarID: 'cal-weekly' },
+        ],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayRuns: [{
+          PayRunID: 'pr-1',
+          PayRunStatus: 'POSTED',
+          PayrollCalendarID: 'cal-weekly',
+          Payslips: [{ EmployeeID: 'emp-mix', PayslipID: 'ps-1', FirstName: 'Mix', LastName: 'Ed', Wages: 1900, Tax: 0, Super: 0, NetPay: 1900 }],
+        }],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        Employees: [
+          { EmployeeID: 'emp-mix', FirstName: 'Mix', LastName: 'Ed', Status: 'ACTIVE' },
+        ],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        Employees: [{
+          EmployeeID: 'emp-mix',
+          PayrollCalendarID: 'cal-weekly',
+          EmploymentBasis: 'FULLTIME',
+          PayTemplate: {
+            EarningsLines: [{
+              EarningsRateID: 'er-mix',
+              CalculationType: 'USEEARNINGSRATE',
+              RatePerUnit: '50',
+              NumberOfUnitsPerWeek: '38',
+            }],
+          },
+        }],
+      }));
+
+    const { GET } = await import('@/app/api/Xero/employees/route');
+    const res = await GET(makeRequest());
+    const data: any = await res.json();
+    const e = data.employees[0];
+    expect(e.hourly_rate).toBe(50);
+    expect(e.standard_hours).toBe(38);
+    expect(e.hours_per_week).toBe(38); // PayTemplate-derived, not 1900/50/1=38 derivation (same number)
+    // PayTemplate didn't supply annualSalary for hourly → derivation fills it.
+    expect(e.annual_salary).toBe(Math.round(1900 * 52)); // 98800
+    expect(e.calculation_type).toBe('hourly');
+    expect(e.derived_from).toBe('mixed');
+  });
+
+  it('Test I — PayRuns 403 (missing payroll history scope) is non-fatal; route returns existing PayTemplate-derived shape', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayrollCalendars: [
+          { PayrollCalendarID: 'cal-fortnight', CalendarType: 'FORTNIGHTLY' },
+        ],
+      }))
+      // PayRuns list returns 403
+      .mockResolvedValueOnce(new Response('Forbidden', { status: 403 }) as any)
+      .mockResolvedValueOnce(makeJsonResponse({
+        Employees: [
+          { EmployeeID: 'emp-403', FirstName: 'Far', LastName: 'Bidden', Status: 'ACTIVE' },
+        ],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        Employees: [{
+          EmployeeID: 'emp-403',
+          PayrollCalendarID: 'cal-fortnight',
+          EmploymentBasis: 'FULLTIME',
+          PayTemplate: {
+            EarningsLines: [{
+              EarningsRateID: 'er-403',
+              CalculationType: 'ENTEREARNINGSRATE',
+              RatePerUnit: '84.52',
+            }],
+          },
+        }],
+      }));
+
+    const { GET } = await import('@/app/api/Xero/employees/route');
+    const res = await GET(makeRequest());
+    expect(res.status).toBe(200);
+    const data: any = await res.json();
+    const e = data.employees[0];
+    expect(e.hourly_rate).toBe(84.52);
+    expect(e.hours_per_week).toBeUndefined();
+    expect(e.standard_hours).toBeUndefined();
+    expect(e.annual_salary).toBeUndefined();
+    expect(e.calculation_type).toBe('hourly');
+    // hourly_rate + calculation_type came from PayTemplate, so 'paytemplate'.
+    expect(e.derived_from).toBe('paytemplate');
+
+    // console.warn should have been called noting the PayRuns failure or 403.
+    const warned = warnSpy.mock.calls
+      .map((c) => c.map(String).join(' '))
+      .join('\n');
+    expect(/PayRuns|403/.test(warned)).toBe(true);
+  });
+
+  it('Test J — multi-calendar aggregation: per-PayRun calendar lookup picks correct factors per employee', async () => {
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayrollCalendars: [
+          { PayrollCalendarID: 'cal-weekly', CalendarType: 'WEEKLY' },
+          { PayrollCalendarID: 'cal-fortnight', CalendarType: 'FORTNIGHTLY' },
+        ],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayRuns: [
+          { PayRunID: 'pr-w', PayRunStatus: 'POSTED', PayrollCalendarID: 'cal-weekly' },
+          { PayRunID: 'pr-f', PayRunStatus: 'POSTED', PayrollCalendarID: 'cal-fortnight' },
+        ],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayRuns: [{
+          PayRunID: 'pr-w',
+          PayRunStatus: 'POSTED',
+          PayrollCalendarID: 'cal-weekly',
+          Payslips: [{ EmployeeID: 'emp-w', PayslipID: 'ps-w', FirstName: 'Wee', LastName: 'Kly', Wages: 1500, Tax: 0, Super: 0, NetPay: 1500 }],
+        }],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        PayRuns: [{
+          PayRunID: 'pr-f',
+          PayRunStatus: 'POSTED',
+          PayrollCalendarID: 'cal-fortnight',
+          Payslips: [{ EmployeeID: 'emp-f', PayslipID: 'ps-f', FirstName: 'Fort', LastName: 'Nightly', Wages: 6339, Tax: 0, Super: 0, NetPay: 6339 }],
+        }],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        Employees: [
+          { EmployeeID: 'emp-w', FirstName: 'Wee', LastName: 'Kly', Status: 'ACTIVE' },
+          { EmployeeID: 'emp-f', FirstName: 'Fort', LastName: 'Nightly', Status: 'ACTIVE' },
+        ],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        Employees: [{
+          EmployeeID: 'emp-w',
+          PayrollCalendarID: 'cal-weekly',
+          EmploymentBasis: 'FULLTIME',
+          PayTemplate: {
+            EarningsLines: [{
+              EarningsRateID: 'er-w',
+              CalculationType: 'ENTEREARNINGSRATE',
+              RatePerUnit: '40',
+            }],
+          },
+        }],
+      }))
+      .mockResolvedValueOnce(makeJsonResponse({
+        Employees: [{
+          EmployeeID: 'emp-f',
+          PayrollCalendarID: 'cal-fortnight',
+          EmploymentBasis: 'FULLTIME',
+          PayTemplate: {
+            EarningsLines: [{
+              EarningsRateID: 'er-f',
+              CalculationType: 'ENTEREARNINGSRATE',
+              RatePerUnit: '84.52',
+            }],
+          },
+        }],
+      }));
+
+    const { GET } = await import('@/app/api/Xero/employees/route');
+    const res = await GET(makeRequest());
+    const data: any = await res.json();
+    expect(data.employees).toHaveLength(2);
+    const byId: Record<string, any> = Object.fromEntries(
+      data.employees.map((e: any) => [e.employee_id, e]),
+    );
+
+    // Weekly: 1500/40/1 = 37.5; 1500*52 = 78000
+    expect(Math.abs(byId['emp-w'].hours_per_week - 37.5)).toBeLessThanOrEqual(0.05);
+    expect(byId['emp-w'].annual_salary).toBe(78000);
+    expect(byId['emp-w'].pay_frequency).toBe('weekly');
+    expect(byId['emp-w'].derived_from).toBe('payrun_history');
+
+    // Fortnightly: 6339/84.52/2 ≈ 37.5; 6339*26 = 164814
+    expect(Math.abs(byId['emp-f'].hours_per_week - 37.5)).toBeLessThanOrEqual(0.05);
+    expect(byId['emp-f'].annual_salary).toBe(164814);
+    expect(byId['emp-f'].pay_frequency).toBe('fortnightly');
+    expect(byId['emp-f'].derived_from).toBe('payrun_history');
   });
 });
