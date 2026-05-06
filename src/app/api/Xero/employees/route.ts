@@ -37,10 +37,26 @@ function parseXeroDate(dateStr: string | undefined | null): string | undefined {
   return undefined;
 }
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
+// Module-level supabase client REMOVED: a warm Vercel function instance
+// shared the same client across requests, and Next.js's patched fetch was
+// memoizing the row-lookup HTTP call against PostgREST. Result: requests
+// for ~80s after a disconnect/reconnect cycle saw the OLD (now-deleted)
+// xero_connections row instead of the freshly-upserted one — diagnosed via
+// production logs showing `connection_id: 110c0074` (deleted) when the DB
+// only held `77403edc` (current).
+//
+// Fix: create the supabase client per-request inside GET(). Each request
+// gets a fresh client with no shared fetch dedup state.
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY!,
+    {
+      auth: { persistSession: false },
+      global: { fetch: (url, opts) => fetch(url, { ...opts, cache: 'no-store' }) },
+    },
+  );
+}
 
 // Phase 52 (XERO-S4-01..04): EMPLOYMENT_TYPE_MAP removed; replaced by
 // `normaliseXeroEmployment` in src/app/finances/forecast/components/wizard-v4/
@@ -88,6 +104,10 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Per-request supabase client — see getSupabaseAdmin() comment above for
+    // why this can't be module-level.
+    const supabase = getSupabaseAdmin();
 
     // Get the Xero connection — try all ID formats directly
     let connection: any = null;
