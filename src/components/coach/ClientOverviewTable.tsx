@@ -36,6 +36,89 @@ export interface ClientMetrics {
   openLoopsCount: number
   openIssuesCount: number
   industry?: string
+  // Phase 53-05 — server-authoritative xero_connections health derived
+  // from /api/Xero/connection-health. Defaulted to 'none' upstream when
+  // the endpoint fails or the business has no connection row.
+  xeroConnectionHealth: 'verified' | 'stale' | 'dead' | 'none'
+}
+
+// Phase 53-05 — sort rank for the Xero health column. Lower = surfaces
+// first when the column is sorted ascending (operationally useful — the
+// coach wants dead connections at the top of the list).
+const XERO_HEALTH_RANK: Record<ClientMetrics['xeroConnectionHealth'], number> = {
+  dead: 0,
+  stale: 1,
+  none: 2,
+  verified: 3,
+}
+
+/**
+ * Phase 53-05 — small status pill rendered in the Xero column. Click on
+ * `dead` navigates to the existing OAuth re-auth flow (no new endpoint
+ * needed — `/api/Xero/auth` is the established connect entry point used
+ * everywhere else in the codebase).
+ *
+ * Visibility: pill itself is `hidden sm:inline-flex` so it doesn't
+ * crowd mobile. The `<tr>` background tint (applied separately) gives
+ * the mobile signal — coach scrolling on a phone still sees a red row
+ * for dead connections.
+ */
+function XeroHealthPill({
+  businessId,
+  health,
+}: {
+  businessId: string
+  health: ClientMetrics['xeroConnectionHealth']
+}) {
+  if (health === 'dead') {
+    const href = `/api/Xero/auth?business_id=${encodeURIComponent(businessId)}&return_to=${encodeURIComponent('/coach/dashboard')}`
+    return (
+      <a
+        href={href}
+        className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition-colors"
+        aria-label="Xero disconnected — click to reconnect"
+        title="Xero connection lost. Click to reconnect."
+      >
+        <AlertTriangle className="w-3 h-3" />
+        Xero
+      </a>
+    )
+  }
+  if (health === 'verified') {
+    return (
+      <span
+        className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-green-50 border border-green-200 text-green-700"
+        aria-label="Xero verified within the last 12 hours"
+        title="Xero connection verified within the last 12 hours."
+      >
+        <CheckCircle className="w-3 h-3" />
+        Xero
+      </span>
+    )
+  }
+  if (health === 'stale') {
+    return (
+      <span
+        className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-yellow-50 border border-yellow-200 text-yellow-700"
+        aria-label="Xero stale — alive but no successful refresh in over 12 hours"
+        title="Xero connection alive but no successful refresh in over 12 hours."
+      >
+        <Clock className="w-3 h-3" />
+        Xero
+      </span>
+    )
+  }
+  // none
+  return (
+    <span
+      className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-gray-50 border border-gray-200 text-gray-500"
+      aria-label="No Xero connection set up"
+      title="No Xero connection set up for this business."
+    >
+      <Minus className="w-3 h-3" />
+      No Xero
+    </span>
+  )
 }
 
 interface ClientOverviewTableProps {
@@ -43,7 +126,7 @@ interface ClientOverviewTableProps {
   isLoading?: boolean
 }
 
-type SortField = 'businessName' | 'status' | 'lastLogin' | 'lastWeeklyReview' | 'lastDashboardUpdate' | 'lastAssessmentScore' | 'roadmapLevel' | 'daysSinceActivity'
+type SortField = 'businessName' | 'status' | 'lastLogin' | 'lastWeeklyReview' | 'lastDashboardUpdate' | 'lastAssessmentScore' | 'roadmapLevel' | 'daysSinceActivity' | 'xeroConnectionHealth'
 type SortDirection = 'asc' | 'desc'
 type StatusFilter = 'all' | 'active' | 'at-risk' | 'pending' | 'inactive' | 'needs-attention'
 
@@ -129,6 +212,11 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
           break
         case 'daysSinceActivity':
           comparison = a.daysSinceActivity - b.daysSinceActivity
+          break
+        case 'xeroConnectionHealth':
+          comparison =
+            XERO_HEALTH_RANK[a.xeroConnectionHealth] -
+            XERO_HEALTH_RANK[b.xeroConnectionHealth]
           break
       }
 
@@ -370,6 +458,18 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
                   <SortIcon field="status" />
                 </div>
               </th>
+              {/* Phase 53-05 — Xero connection health column. Hidden on
+                  small breakpoints to match the pill's responsive behavior;
+                  the row's bg-red tint provides the mobile signal. */}
+              <th
+                className="px-4 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors hidden sm:table-cell"
+                onClick={() => handleSort('xeroConnectionHealth')}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  Xero
+                  <SortIcon field="xeroConnectionHealth" />
+                </div>
+              </th>
               <th
                 className="px-4 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
                 onClick={() => handleSort('daysSinceActivity')}
@@ -436,7 +536,14 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
             {filteredAndSortedClients.map((client) => (
               <tr
                 key={client.id}
-                className={`hover:bg-gray-50 transition-colors ${client.needsAttention ? 'bg-amber-50/50' : ''}`}
+                data-xero-health={client.xeroConnectionHealth}
+                className={`hover:bg-gray-50 transition-colors ${
+                  client.xeroConnectionHealth === 'dead'
+                    ? 'bg-red-50/40'
+                    : client.needsAttention
+                      ? 'bg-amber-50/50'
+                      : ''
+                }`}
               >
                 {/* Client Name */}
                 <td className="px-6 py-4">
@@ -463,6 +570,14 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
                 {/* Status */}
                 <td className="px-4 py-4 text-center">
                   {getStatusBadge(client.status)}
+                </td>
+
+                {/* Phase 53-05 — Xero connection health pill */}
+                <td className="px-4 py-4 text-center hidden sm:table-cell">
+                  <XeroHealthPill
+                    businessId={client.id}
+                    health={client.xeroConnectionHealth}
+                  />
                 </td>
 
                 {/* Last Active */}

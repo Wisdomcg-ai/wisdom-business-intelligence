@@ -205,11 +205,44 @@ describe('Cron refresh-xero-tokens — aggregation', () => {
     expect(byId.c2.status).toBe('refreshed')
     expect(byId.c3.status).toBe('deactivated')
 
-    // Sentry capture fires once for the deactivation, with the correct invariant tag.
-    expect(captureExceptionMock).toHaveBeenCalledTimes(1)
-    const [, ctx] = captureExceptionMock.mock.calls[0]
-    expect(ctx?.tags?.invariant).toBe('cron_refresh_xero_tokens_deactivated')
-    expect(ctx?.tags?.connection_id).toBe('c3')
+    // Phase 53-05 Issue C: per-connection deactivation Sentry capture
+    // (`cron_refresh_xero_tokens_deactivated`) is REMOVED. Token-manager
+    // fires the canonical `xero_connection_deactivated` event centrally —
+    // emitting a second event here would violate
+    // must_haves.truths[2] ("exactly ONE Sentry event per failure").
+    // Cron retains aggregate + per-connection-failure (transient) captures.
+    expect(captureExceptionMock).not.toHaveBeenCalled()
+  })
+
+  it('Test 5b (53-05 Issue C) — when shouldDeactivate=true, cron does NOT call Sentry.captureException for the deactivation', async () => {
+    const past = new Date(Date.now() - 60 * 1000).toISOString()
+
+    mockConnectionsQuery([
+      fakeRow({ id: 'cDead', business_id: 'bDead', tenant_id: 'tDead', expires_at: past }),
+    ])
+
+    getValidAccessTokenMock.mockResolvedValueOnce({
+      success: false,
+      error: 'token_expired_permanently',
+      message: 'Refresh token has expired (60 days)',
+      shouldDeactivate: true,
+    })
+
+    const { GET } = await import('@/app/api/cron/refresh-xero-tokens/route')
+    const res = await GET(
+      makeRequest({ Authorization: 'Bearer test-cron-secret' }),
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.deactivated).toBe(1)
+    expect(body.failed).toBe(0)
+    expect(body.results[0].status).toBe('deactivated')
+
+    // Verify NO per-connection Sentry capture fires from the cron route on
+    // deactivation. The token-manager (post-53-05) fires the canonical
+    // `xero_connection_deactivated` event with the same tags + the full
+    // diagnostic context. Capturing again here would double-report.
+    expect(captureExceptionMock).not.toHaveBeenCalled()
   })
 
   it('Test 6: per-connection throw is isolated; loop continues, status=failed, Sentry captured', async () => {
