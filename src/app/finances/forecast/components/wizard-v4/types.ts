@@ -403,7 +403,15 @@ export interface PlannedSpend {
 
 // Loan repayment: PMT = P × [r(1+r)^n] / [(1+r)^n - 1]
 export function calculateLoanPayment(principal: number, annualRate: number, termMonths: number): number {
-  if (annualRate <= 0 || termMonths <= 0) return Math.round(principal / termMonths);
+  // why: termMonths=0 must short-circuit to 0 BEFORE the rate guard —
+  // the previous combined `if (rate<=0 || term<=0) return principal/term`
+  // returned Infinity (or NaN when principal=0) for term=0 because of the
+  // `principal / 0` divide. All real call sites in getBreakdownWithTaxonomy
+  // already gate on `termMonths > 0` before invoking, so 0 here means an
+  // unconfigured loan — surface 0 rather than poison the rollup with Infinity.
+  // P1A Audit Division-By-Zero-001.
+  if (termMonths <= 0) return 0;
+  if (annualRate <= 0) return Math.round(principal / termMonths);
   const r = annualRate / 100 / 12;
   const n = termMonths;
   const payment = principal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
