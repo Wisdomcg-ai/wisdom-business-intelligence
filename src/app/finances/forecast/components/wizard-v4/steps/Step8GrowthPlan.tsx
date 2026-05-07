@@ -911,19 +911,23 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
                       </tr>
                     );
                   })}
+                  {/* Phase 57 (T06, B3): step numbers swapped along with the
+                      step renumber. "Edit expenses" → OpEx is now slot 6.
+                      "Audit subscriptions" → Subscriptions is now slot 5.
+                      Both the goToStep target and the visible label updated. */}
                   <tr className="bg-gray-50/50">
                     <td colSpan={colCount} className="pl-10 pr-4 py-2 flex items-center gap-4">
-                      <button
-                        onClick={() => actions.goToStep(5)}
-                        className="text-xs font-medium text-brand-navy hover:underline flex items-center gap-1"
-                      >
-                        Edit expenses in Step 5 <ArrowRight className="w-3 h-3" />
-                      </button>
                       <button
                         onClick={() => actions.goToStep(6)}
                         className="text-xs font-medium text-brand-navy hover:underline flex items-center gap-1"
                       >
-                        Audit subscriptions in Step 6 <ArrowRight className="w-3 h-3" />
+                        Edit expenses in Step 6 <ArrowRight className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => actions.goToStep(5)}
+                        className="text-xs font-medium text-brand-navy hover:underline flex items-center gap-1"
+                      >
+                        Audit subscriptions in Step 5 <ArrowRight className="w-3 h-3" />
                       </button>
                     </td>
                   </tr>

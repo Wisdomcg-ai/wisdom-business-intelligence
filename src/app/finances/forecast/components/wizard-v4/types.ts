@@ -796,6 +796,37 @@ export interface ForecastWizardState {
   // Subscriptions row. Default `[]` until the mount-time fetch resolves;
   // soft-migration (T03, B3) sets it explicitly on legacy v10 drafts.
   subscriptions: VendorBudget[];
+
+  /**
+   * Phase 57 (T03, B3) — set `true` by the v10→v11 soft-migration when any
+   * existing OpExLine has `accountId` set but `accountCode` undefined. This
+   * happens to drafts created before T01's ingest change (which populates
+   * `accountCode` only on fresh Xero ingest, not retroactively). When `true`,
+   * the Step 6 OpEx UI (T11, B4) renders a "Refresh from Xero" nudge banner
+   * — clicking it re-ingests `/api/Xero/chart-of-accounts` and re-classifies
+   * opexLines with populated `accountCode`. Until the operator refreshes,
+   * the rollup (T07) uses ONLY accountCode-based exclusion (no name
+   * fallback), so legacy unrefreshed forecasts continue to double-count
+   * subscription spend. The banner is the documented mitigation — see
+   * PLAN.md risk register R6.
+   *
+   * Optional and unset on fresh forecasts (created post-Phase-57). Cleared
+   * by Step 6 once the operator confirms the refresh.
+   */
+  needsAccountCodeRefresh?: boolean;
+
+  /**
+   * Phase 57 (T03/T04, B3) — highest step the operator has reached in this
+   * forecast. Used by StepBar (T13, B5) to gate which steps are clickable:
+   * any step <= maxVisitedStep is jumpable. Initialized to 1 in
+   * `createInitialState`; advanced monotonically inside `nextStep` and
+   * `goToStep` whenever the new step exceeds the ceiling (T04). Never
+   * decreases on `prevStep`. Soft-migration (T03) sets
+   * `parsed.maxVisitedStep = parsed.currentStep || 1` for legacy v10 drafts
+   * that pre-date this field — operator returning to a draft mid-flow keeps
+   * access to all previously visited steps.
+   */
+  maxVisitedStep: WizardStep;
 }
 
 export interface WizardActions {
@@ -934,14 +965,25 @@ export interface ForecastSummary {
   year3?: YearlySummary; // Optional for 1yr and 2yr forecasts
 }
 
-// Step configuration for the step bar
+// Step configuration for the step bar.
+//
+// Phase 57 (T05, B3): swapped slots 5 and 6 so Subscriptions comes before
+// OpEx — the operator sees subscription commitments before they budget
+// discretionary expenses. Component file names (Step5OpEx.tsx,
+// Step6Subscriptions.tsx) retained for git-history continuity; the
+// renderStep switch in ForecastWizardV4.tsx maps the new step numbers to
+// the original components.
+//
+// Per CONTEXT.md "Step labels" locked decision: keep label "OpEx" (do NOT
+// rename to "Discretionary OpEx"). The label change to "Subscriptions" at
+// slot 5 is the only label edit in this swap.
 export const WIZARD_STEPS = [
   { step: 1, label: 'Goals', shortLabel: '1' },
   { step: 2, label: 'Prior Year', shortLabel: '2' },
   { step: 3, label: 'Revenue & COGS', shortLabel: '3' },
   { step: 4, label: 'Team', shortLabel: '4' },
-  { step: 5, label: 'OpEx', shortLabel: '5' },
-  { step: 6, label: 'Subscriptions', shortLabel: '6' },
+  { step: 5, label: 'Subscriptions', shortLabel: '5' },
+  { step: 6, label: 'OpEx', shortLabel: '6' },
   { step: 7, label: 'CapEx', shortLabel: '7' },
   { step: 8, label: 'Growth Plan', shortLabel: '8' },
   { step: 9, label: 'Review', shortLabel: '9' },

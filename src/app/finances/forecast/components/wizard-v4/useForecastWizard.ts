@@ -51,7 +51,19 @@ import type {
 } from './types/assumptions';
 
 // Bump this to force all users to re-init from APIs (invalidates stale localStorage)
-const WIZARD_VERSION = 10; // Phase 44 Sub-phase A — long-format xero_pl_lines + new pl-summary read path. Old caches showed stale "Xero not connected" state.
+//
+// Version history (recent):
+//  10 — Phase 44 Sub-phase A: long-format xero_pl_lines + new pl-summary read
+//       path. Old caches showed stale "Xero not connected" state.
+//  11 — Phase 57 (B3, T03): wizard step 5↔6 swap (Subscriptions before OpEx).
+//       Soft-migration block in loadStateFromStorage remaps stored
+//       `currentStep` so in-flight v10 drafts land on the correct step in v11.
+//       Also defaults `state.subscriptions = []` (T02) and
+//       `state.maxVisitedStep = currentStep || 1` (T04) on legacy drafts, and
+//       sets `state.needsAccountCodeRefresh = true` when any opexLine has
+//       `accountId` set but `accountCode` undefined (R6 mitigation —
+//       Step 6 banner consumed by T11 in B4).
+const WIZARD_VERSION = 11;
 
 // Single source of truth for whether an OpEx line should be excluded from the
 // OpEx rollup (because team wages are generated separately by convertTeam()).
@@ -154,14 +166,22 @@ const createInitialState = (fiscalYearStart: number, businessId: string): Foreca
   // resolves. Populated from /api/subscription-budgets?business_id=... on
   // wizard mount. T07 (B2) will read this for the rollup.
   subscriptions: [],
+  // Phase 57 (T03/T04, B3): operator starts at step 1. Advanced by
+  // `nextStep`/`goToStep` (T04). Soft-migration carries this forward for
+  // legacy v10 drafts so visited steps remain clickable post-swap.
+  maxVisitedStep: 1,
 });
 
 // LocalStorage key for wizard state persistence
 const getStorageKey = (businessId: string, fiscalYear: number) =>
   `forecast-wizard-v4-${businessId}-${fiscalYear}`;
 
-// Try to load state from localStorage
-const loadStateFromStorage = (businessId: string, fiscalYear: number): ForecastWizardState | null => {
+// Try to load state from localStorage.
+//
+// Exported for testing — Phase 57 (T03, B3) added a non-trivial v10 → v11
+// soft-migration block that warrants direct unit-test coverage. The hook
+// itself remains the production entry point.
+export const loadStateFromStorage = (businessId: string, fiscalYear: number): ForecastWizardState | null => {
   if (typeof window === 'undefined') return null;
   try {
     const key = getStorageKey(businessId, fiscalYear);
@@ -198,6 +218,79 @@ const loadStateFromStorage = (businessId: string, fiscalYear: number): ForecastW
             WIZARD_VERSION,
             ') — attempting load. Missing fields will fall through to defaults.',
           );
+
+          // Phase 57 (T03, B3) — v10 → v11 step 5↔6 swap migration.
+          //
+          // In v10: step 5 = OpEx, step 6 = Subscriptions
+          // In v11: step 5 = Subscriptions, step 6 = OpEx
+          //   (per CONTEXT.md "Step ordering — swap 5↔6 only" locked decision)
+          //
+          // Remap currentStep so a draft last open on the OpEx step continues
+          // to land on OpEx (now step 6), and similarly for Subscriptions.
+          // Steps 1–4 and 7–9 are unchanged. The migration is read-only on the
+          // localStorage row itself — we mutate `parsed` in memory; the next
+          // autosave reserializes at v11. If the operator opens an old browser
+          // tab still running v10 code afterward, the existing
+          // `storedVersion > WIZARD_VERSION` guard above discards the v11 row
+          // and they get a fresh draft (acceptable — same behavior as every
+          // prior version bump).
+          //
+          // Also defaults newly-required fields:
+          //   - state.subscriptions: VendorBudget[] (T02 added; was undefined
+          //     on v10) — already handled by the legacy block at the bottom of
+          //     this function via `Array.isArray(parsed.subscriptions)` guard,
+          //     duplicated here so v10 drafts that took this branch are also
+          //     covered before any consumer in this function sees them.
+          //   - state.maxVisitedStep: WizardStep (T04 added in v11) — set to
+          //     `parsed.currentStep || 1` so an operator returning to a draft
+          //     mid-flow retains access to every step they've already visited.
+          //
+          // R6 mitigation: legacy opexLines lack `accountCode` (T01 only
+          // populates on fresh Xero ingest, not retroactively). Flag the draft
+          // so the Step 6 OpEx UI (T11, B4) can render a "Refresh from Xero"
+          // nudge banner. Cleared once the operator runs the refresh.
+          if (storedVersion !== undefined && storedVersion < 11) {
+            if (parsed.currentStep === 5) {
+              console.log(
+                '[ForecastWizard] Phase 57 migration: currentStep 5 → 6 (OpEx kept its meaning, just moved one slot right).',
+              );
+              parsed.currentStep = 6;
+            } else if (parsed.currentStep === 6) {
+              console.log(
+                '[ForecastWizard] Phase 57 migration: currentStep 6 → 5 (Subscriptions kept its meaning, just moved one slot left).',
+              );
+              parsed.currentStep = 5;
+            }
+            // Steps 1-4 and 7-9 unchanged.
+
+            // T02 default — subscriptions field added post-v10. Mirror the
+            // bottom-of-function guard so this branch is self-contained.
+            if (!Array.isArray(parsed.subscriptions)) {
+              parsed.subscriptions = [];
+            }
+
+            // T04 default — maxVisitedStep added in v11. Carry the operator's
+            // existing progress so previously-visited steps stay clickable.
+            if (parsed.maxVisitedStep === undefined) {
+              parsed.maxVisitedStep = parsed.currentStep || 1;
+            }
+
+            // R6 mitigation — flag legacy opexLines without accountCode so
+            // the Step 6 OpEx UI prompts a Xero refresh.
+            if (Array.isArray(parsed.opexLines)) {
+              const hasLegacyOpexLine = parsed.opexLines.some(
+                (line: { accountCode?: string; accountId?: string } | null | undefined) =>
+                  !!line && line.accountCode === undefined && line.accountId !== undefined,
+              );
+              if (hasLegacyOpexLine) {
+                parsed.needsAccountCodeRefresh = true;
+                console.log(
+                  '[ForecastWizard] Phase 57 migration: legacy opexLines detected (missing accountCode). Set needsAccountCodeRefresh=true so Step 6 prompts a Xero refresh.',
+                );
+              }
+            }
+          }
+
           parsed.migratedFromVersion = storedVersion;
         }
         // P0-16 (Phase 56): Clamp activeYear when restored state has it set
@@ -245,6 +338,16 @@ const loadStateFromStorage = (businessId: string, fiscalYear: number): ForecastW
         // overwrites with live data from /api/subscription-budgets.
         if (!Array.isArray(parsed.subscriptions)) {
           parsed.subscriptions = [];
+        }
+
+        // Phase 57 (T04, B3): default `maxVisitedStep` for any draft that
+        // lacks it. Catches drafts saved by code that pre-dates v11 even when
+        // the version-mismatch branch above didn't run (e.g. wizardVersion
+        // undefined or pre-v10 schemas where the field never existed).
+        // Intentionally checks `typeof !== 'number'` rather than `=== undefined`
+        // to also harden against accidental string/null persistence.
+        if (typeof parsed.maxVisitedStep !== 'number') {
+          parsed.maxVisitedStep = parsed.currentStep || 1;
         }
 
         return parsed as ForecastWizardState;
@@ -403,8 +506,22 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
   }, [businessId, fiscalYearStart]);
 
   // Navigation
+  //
+  // Phase 57 (T04, B3) — `maxVisitedStep` advances monotonically alongside
+  // `currentStep`. It tracks the highest step the operator has reached and is
+  // consumed by StepBar (T13, B5) to gate which steps are clickable. The
+  // ceiling never decreases on `prevStep` — visiting a lower step doesn't
+  // un-visit the higher step.
   const goToStep = useCallback((step: WizardStep) => {
-    setState((prev) => ({ ...prev, currentStep: step }));
+    setState((prev) => ({
+      ...prev,
+      currentStep: step,
+      // Advance the ceiling when jumping forward (covers programmatic callers
+      // like ForecastWizardV4.tsx's `actions.goToStep(7)` after CapEx confirm
+      // and the `actions.goToStep(initialStep)` restore-from-saved path).
+      // Backward jumps don't decrease the ceiling.
+      maxVisitedStep: step > prev.maxVisitedStep ? step : prev.maxVisitedStep,
+    }));
   }, []);
 
   const nextStep = useCallback(() => {
@@ -413,9 +530,15 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       // Skip Growth Plan step for single-year forecasts
       if (next === 8 && prev.forecastDuration === 1) next = 9;
       if (next > 9) return prev;
+      const nextStepValue = next as WizardStep;
       return {
         ...prev,
-        currentStep: next as WizardStep,
+        currentStep: nextStepValue,
+        // Phase 57 (T04): monotonic advance — the new step is by construction
+        // greater than the previous currentStep, but compare against the
+        // ceiling to be safe when forecastDuration jumps over Step 8.
+        maxVisitedStep:
+          nextStepValue > prev.maxVisitedStep ? nextStepValue : prev.maxVisitedStep,
         durationLocked: prev.currentStep === 1 ? true : prev.durationLocked,
       };
     });
@@ -427,6 +550,9 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       // Skip Growth Plan step for single-year forecasts
       if (next === 8 && prev.forecastDuration === 1) next = 7;
       if (next < 1) return prev;
+      // Phase 57 (T04): prevStep does NOT modify maxVisitedStep — visiting a
+      // lower step doesn't lower the ceiling. The operator's already-seen
+      // forward steps remain clickable.
       return { ...prev, currentStep: next as WizardStep };
     });
   }, []);

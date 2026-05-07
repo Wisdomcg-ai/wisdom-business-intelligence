@@ -1,5 +1,12 @@
 'use client';
 
+// Step5OpEx.tsx
+//
+// Phase 57 (T05, B3) — this component now renders at currentStep === 6
+// (was step 5 pre-Phase-57). The file name is retained for git-history
+// continuity. See WIZARD_STEPS in ../types.ts for the canonical step
+// numbering and ForecastWizardV4.tsx renderStep() for the switch.
+
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Plus, Trash2, HelpCircle, ChevronDown, X, Info } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, CostBehavior, OpExLine, SUPER_RATE, calculateNewSalary, InputMode } from '../types';
