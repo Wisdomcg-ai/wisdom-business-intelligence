@@ -132,33 +132,32 @@ export async function POST(request: Request) {
 
       resultForecastId = updated.id
     } else {
-      // Deactivate any existing active forecast for the same (business, FY, type)
-      // before inserting. The partial unique index unique_active_forecast_per_fy
-      // would otherwise reject the insert with 23505.
-      await supabase
-        .from('financial_forecasts')
-        .update({ is_active: false })
-        .eq('business_id', profileId)
-        .eq('fiscal_year', fiscalYear)
-        .eq('forecast_type', 'forecast')
-        .eq('is_active', true)
+      // P0-15 — atomic deactivate+insert under pg_advisory_xact_lock keyed on
+      // (business, fiscal_year). Two concurrent POSTs to /generate could
+      // otherwise both deactivate-then-insert with overlapping windows,
+      // leaving multiple is_active=true rows that the partial unique index
+      // unique_active_forecast_per_fy fails to catch (it only fires when the
+      // 2nd INSERT physically commits AFTER the 1st). The RPC runs both
+      // statements in a single transaction so the lock holds across both.
+      const { data: rpcData, error: rpcError } = await supabase.rpc(
+        'create_active_forecast_locked',
+        {
+          p_business_id: profileId,
+          p_fiscal_year: fiscalYear,
+          p_forecast_type: 'forecast',
+          p_row: forecastData as Record<string, unknown>,
+        }
+      )
 
-      // INSERT new forecast
-      const { data: inserted, error: insertError } = await supabase
-        .from('financial_forecasts')
-        .insert(forecastData)
-        .select('id')
-        .single()
-
-      if (insertError) {
-        console.error('[wizard-v4/generate] Insert error:', insertError)
+      if (rpcError || !rpcData?.id) {
+        console.error('[wizard-v4/generate] Locked-insert error:', rpcError)
         return NextResponse.json(
-          { error: 'Failed to create forecast', details: insertError.message },
+          { error: 'Failed to create forecast', details: rpcError?.message ?? 'no id returned' },
           { status: 500 }
         )
       }
 
-      resultForecastId = inserted.id
+      resultForecastId = rpcData.id as string
     }
 
     // ── Phase 44 D-12 — atomic save + materialize via Postgres RPC ─────────
