@@ -2021,6 +2021,37 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       plannedSpends: state.plannedSpends,
       // Phase 57 (T09): at-save-time snapshot of active vendor budgets.
       subscriptions: subscriptionsSnapshot,
+      // Hotfix (fix/step2-byMonth-priorYear-restore): at-save-time snapshot
+      // of category-level prior-year monthly figures so the saved-assumptions
+      // fallback in ForecastWizardV4.tsx can reconstruct
+      // priorYear.{revenue,cogs,opex,otherIncome,otherExpenses}.byMonth when
+      // the live Xero refresh fails. Only populated when state.priorYear has
+      // monthly data — absent priorYear (pre-Xero-refresh draft) → omit field
+      // so old/new readers behave identically (current empty-byMonth fallback).
+      // Section-level (revenue/cogs/opex) — matches what Step2PriorYear consumes.
+      priorYearByMonth: state.priorYear
+        ? {
+            revenue: state.priorYear.revenue?.byMonth ?? {},
+            cogs: state.priorYear.cogs?.byMonth ?? {},
+            opex: state.priorYear.opex?.byMonth ?? {},
+            // otherIncome/otherExpenses are themselves optional on PriorYearData
+            // (undefined = "no Other Income at all"). Round-trip the distinction:
+            // present → snapshot total + byMonth; absent → omit so the fallback
+            // can mirror it (omitting from PriorYearData entirely).
+            otherIncome: state.priorYear.otherIncome
+              ? {
+                  total: state.priorYear.otherIncome.total,
+                  byMonth: state.priorYear.otherIncome.byMonth ?? {},
+                }
+              : undefined,
+            otherExpenses: state.priorYear.otherExpenses
+              ? {
+                  total: state.priorYear.otherExpenses.total,
+                  byMonth: state.priorYear.otherExpenses.byMonth ?? {},
+                }
+              : undefined,
+          }
+        : undefined,
     };
   }, [state]);
 

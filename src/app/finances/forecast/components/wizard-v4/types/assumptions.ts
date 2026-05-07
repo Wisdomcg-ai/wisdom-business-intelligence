@@ -250,6 +250,43 @@ export interface SubscriptionVendorSnapshot {
 }
 
 // ============================================================
+// PRIOR-YEAR MONTHLY SNAPSHOT
+// ============================================================
+
+/**
+ * Hotfix (fix/step2-byMonth-priorYear-restore) —
+ * At-save-time snapshot of category-level prior-year monthly figures so the
+ * saved-assumptions fallback in `ForecastWizardV4.tsx` can reconstruct
+ * `state.priorYear.{revenue,cogs,opex,otherIncome,otherExpenses}.byMonth`
+ * when the live Xero pl-summary refresh fails (e.g., dual-business-id
+ * resolver miss). Without this, Step 2's monthly comparison table falls back
+ * to seasonality-synthesized values for the FY-prior column and the
+ * operator sees flat fake data.
+ *
+ * Shape mirrors the consumer in `Step2PriorYear.tsx` (~lines 471-1023):
+ *   priorYear.revenue.byMonth[monthKey]
+ *   priorYear.cogs.byMonth[monthKey]
+ *   priorYear.opex.byMonth[monthKey]
+ *   priorYear.otherIncome?.byMonth[monthKey]
+ *   priorYear.otherExpenses?.byMonth[monthKey]
+ *
+ * Month keys are 'YYYY-MM' strings (e.g., '2024-07'). Optional + nested-
+ * optional so old saves (pre-fix) load cleanly: absent → fallback retains
+ * existing empty-byMonth behavior, no crash. `otherIncome`/`otherExpenses`
+ * include `total` because PriorYearData treats those whole sections as
+ * optional (undefined = "no Other Income at all"); we need to round-trip
+ * that distinction so a fallback restore knows whether to populate the
+ * section or omit it entirely.
+ */
+export interface PriorYearByMonthSnapshot {
+  revenue?: Record<string, number>;
+  cogs?: Record<string, number>;
+  opex?: Record<string, number>;
+  otherIncome?: { total: number; byMonth: Record<string, number> };
+  otherExpenses?: { total: number; byMonth: Record<string, number> };
+}
+
+// ============================================================
 // MASTER ASSUMPTIONS OBJECT
 // ============================================================
 
@@ -291,6 +328,14 @@ export interface ForecastAssumptions {
 
   // Subscription audit (populated after Step 6)
   subscriptions?: SubscriptionAuditSummary;
+
+  /**
+   * Hotfix (fix/step2-byMonth-priorYear-restore) — at-save-time snapshot of
+   * category-level prior-year monthly figures. Optional for back-compat with
+   * forecasts saved before this field existed. See PriorYearByMonthSnapshot
+   * docstring above for full rationale.
+   */
+  priorYearByMonth?: PriorYearByMonthSnapshot;
 }
 
 // ============================================================
