@@ -595,6 +595,42 @@ export function classifyOpExLines(
   return results;
 }
 
+// Conservative defaults by category for new businesses with no prior-year
+// revenue. Used when priorYearRevenue is missing so variable lines don't
+// silently default to 0% (which underforecasts OpEx 30-50%).
+// Values are AU SMB industry-typical mid-points; operator should review.
+const DEFAULT_VARIABLE_PCT_BY_CATEGORY: Array<{ keywords: string[]; pct: number }> = [
+  // Marketing / advertising / promotion
+  { keywords: ['marketing', 'advertising', 'advert', 'promotion', 'promo', 'media', 'campaign', 'seo', 'sem', 'adwords', 'facebook ad', 'google ad'], pct: 5 },
+  // Sales commissions / affiliate
+  { keywords: ['commission', 'affiliate', 'referral', 'kickback'], pct: 5 },
+  // Merchant / transaction / payment fees
+  { keywords: ['merchant', 'transaction fee', 'payment fee', 'stripe fee', 'paypal', 'eftpos', 'bank fee', 'card fee'], pct: 2 },
+  // Freight / shipping / delivery / postage
+  { keywords: ['freight', 'shipping', 'delivery', 'postage', 'courier', 'logistics'], pct: 3 },
+  // Packaging / consumables
+  { keywords: ['packaging', 'consumable', 'wrap', 'box', 'label'], pct: 2 },
+  // Contractors / sub-contractors (variable scope work)
+  { keywords: ['contractor', 'subcontractor', 'sub-contractor'], pct: 5 },
+  // Travel
+  { keywords: ['travel', 'flight', 'hotel', 'accommodation', 'mileage'], pct: 2 },
+  // Software / saas (variable seat-based)
+  { keywords: ['software', 'saas', 'subscription', 'license', 'licence'], pct: 3 },
+  // Rent / occupancy (variable when revenue-pegged)
+  { keywords: ['rent', 'lease', 'occupancy', 'premises'], pct: 10 },
+  // Utilities
+  { keywords: ['electricity', 'gas', 'water', 'utilities', 'utility', 'power'], pct: 2 },
+];
+
+function defaultVariablePctForAccount(accountName?: string): number {
+  if (!accountName) return 3; // safe conservative fallback (better than 0)
+  const normalized = normalizeAccountName(accountName);
+  for (const { keywords, pct } of DEFAULT_VARIABLE_PCT_BY_CATEGORY) {
+    if (keywords.some(k => matchKeyword(normalized, k))) return pct;
+  }
+  return 3; // unknown variable category — small non-zero default
+}
+
 /**
  * Get suggested default value based on behavior and prior year.
  *
@@ -608,6 +644,11 @@ export function classifyOpExLines(
  *
  * `yearlyRevenueTarget` (3rd positional, kept for back-compat) is now
  * IGNORED for variable lines. Pass `priorYearRevenue` via the new param.
+ *
+ * For new businesses with NO prior-year revenue, variable lines fall back
+ * to a conservative category-default percentage (see
+ * DEFAULT_VARIABLE_PCT_BY_CATEGORY) keyed off `accountName` instead of
+ * silently returning 0%. Pass `accountName` so the lookup can match.
  */
 export function getSuggestedValue(
   behavior: CostBehavior,
@@ -616,6 +657,7 @@ export function getSuggestedValue(
   /** @deprecated — use priorYearRevenue for variable seeding */
   _yearlyRevenueTarget?: number,
   priorYearRevenue?: number,
+  accountName?: string,
 ): { value: number; unit: string } {
   switch (behavior) {
     case 'fixed':
@@ -631,7 +673,9 @@ export function getSuggestedValue(
         const pct = (priorYearAnnual / priorYearRevenue) * 100;
         return { value: Math.round(pct * 10) / 10, unit: '% rev' };
       }
-      return { value: 0, unit: '% rev' };
+      // No prior-year revenue (new business) — fall back to a category
+      // default rather than 0%, which silently underforecasts OpEx.
+      return { value: defaultVariablePctForAccount(accountName), unit: '% rev' };
 
     case 'seasonal':
       return { value: 3, unit: '% growth' };

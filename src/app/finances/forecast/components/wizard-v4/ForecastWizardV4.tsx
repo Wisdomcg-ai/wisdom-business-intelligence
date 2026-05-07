@@ -1049,6 +1049,17 @@ export function ForecastWizardV4({
               });
             }
 
+            // P0-17: build the set of currently-valid team member IDs so the
+            // restorers below can drop saved departures/bonuses/commissions
+            // that reference team members deleted between save and reload.
+            // Without this, orphaned IDs flow into rollups and either crash
+            // (find returns undefined → .salary on undefined) or silently
+            // ignore the line. Source of truth at restore time is the `team`
+            // local built above (Xero data preferred, saved-team fallback) —
+            // not state.teamMembers, which the restorer's setState batch may
+            // not yet have flushed.
+            const validTeamIds = new Set(team.map((m) => m.id));
+
             // Restore departures
             if (savedAssumptions.team?.departures?.length > 0) {
               savedAssumptions.team.departures.forEach((departure: {
@@ -1062,12 +1073,15 @@ export function ForecastWizardV4({
                 const endMonth = departure.endMonth ||
                   (departure.departureMonth ? `${fiscalYear - 1}-${String(departure.departureMonth + 6).padStart(2, '0')}` : '');
 
-                if (memberId) {
-                  actionsRef.current.addDeparture({
-                    teamMemberId: memberId,
-                    endMonth: endMonth,
-                  });
+                if (!memberId) return;
+                if (!validTeamIds.has(memberId)) {
+                  console.warn('[ForecastWizardV4] Dropping departure for missing team member:', memberId);
+                  return;
                 }
+                actionsRef.current.addDeparture({
+                  teamMemberId: memberId,
+                  endMonth: endMonth,
+                });
               });
             }
 
@@ -1081,13 +1095,16 @@ export function ForecastWizardV4({
                 month: number;
               }) => {
                 const memberId = bonus.teamMemberId || bonus.employeeId;
-                if (memberId) {
-                  actionsRef.current.addBonus({
-                    teamMemberId: memberId,
-                    amount: bonus.amount,
-                    month: bonus.month,
-                  });
+                if (!memberId) return;
+                if (!validTeamIds.has(memberId)) {
+                  console.warn('[ForecastWizardV4] Dropping bonus for missing team member:', memberId);
+                  return;
                 }
+                actionsRef.current.addBonus({
+                  teamMemberId: memberId,
+                  amount: bonus.amount,
+                  month: bonus.month,
+                });
               });
             }
 
@@ -1101,14 +1118,17 @@ export function ForecastWizardV4({
                 percentOfRevenue: number;
               }) => {
                 const memberId = commission.teamMemberId || commission.employeeId;
-                if (memberId) {
-                  actionsRef.current.addCommission({
-                    teamMemberId: memberId,
-                    revenueLineId: commission.revenueLineId,
-                    percentOfRevenue: commission.percentOfRevenue,
-                    timing: 'monthly',
-                  });
+                if (!memberId) return;
+                if (!validTeamIds.has(memberId)) {
+                  console.warn('[ForecastWizardV4] Dropping commission for missing team member:', memberId);
+                  return;
                 }
+                actionsRef.current.addCommission({
+                  teamMemberId: memberId,
+                  revenueLineId: commission.revenueLineId,
+                  percentOfRevenue: commission.percentOfRevenue,
+                  timing: 'monthly',
+                });
               });
             }
 

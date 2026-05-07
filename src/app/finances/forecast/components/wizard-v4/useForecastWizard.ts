@@ -59,27 +59,57 @@ function shouldExcludeFromOpEx(line: { name: string; isTeamCostOverride?: boolea
   return line.isTeamCostOverride !== undefined ? line.isTeamCostOverride : isTeamCost(line.name);
 }
 
-// Remap month keys from prior year to forecast year (same position, different year)
-// e.g., { "2024-07": 50000 } → { "2025-07": 50000 } when targetFYStart=2025
+// Remap month keys from prior year to forecast year by CALENDAR MONTH (not
+// positional index). e.g. { "2024-07": 50000 } → { "2025-07": 50000 } when
+// targetFYStart=2025. Calendar-month anchoring preserves seasonality
+// regardless of whether the forecast uses a Jul-start (AU FY), Jan-start
+// (CY) or any other fiscal year configuration. Positional remapping (the
+// previous behavior) silently inverts seasonal patterns whenever the
+// prior-year and forecast-year fiscal start months differ.
+//
+// P0-18 (Phase 56) fix: anchor by calendar month so a switch from Jul-start
+// to Jan-start (or any reseed where saved data was indexed under a
+// different start month) does not corrupt the time shape.
+//
+// Note: this function only handles the YEAR shift. The START-MONTH dimension
+// is encoded in the keys themselves (YYYY-MM), so once the target keys are
+// generated for the chosen fiscalYearStart + yearStartMonth, the calendar
+// month from the prior key maps cleanly onto the same calendar month in the
+// target window. No separate "fiscal-start change" handler is needed because
+// the keys are stable across fiscal-start changes.
 function remapMonthKeysToForecastYear(
   priorByMonth: Record<string, number>,
-  targetFYStart: number
+  targetFYStart: number,
+  yearStartMonth: number = 7,
 ): Record<string, number> {
-  const targetKeys = generateMonthKeys(targetFYStart);
-  const priorKeys = Object.keys(priorByMonth).sort();
+  const targetKeys = generateMonthKeys(targetFYStart, yearStartMonth);
+  const priorKeys = Object.keys(priorByMonth);
   const result: Record<string, number> = {};
 
   if (priorKeys.length === 0) return result;
 
-  // If keys already match the target year, return as-is
-  if (priorKeys[0] === targetKeys[0]) return { ...priorByMonth };
+  // If keys already match the target year, return as-is.
+  if (priorByMonth[targetKeys[0]] !== undefined && priorKeys.every(k => targetKeys.includes(k))) {
+    return { ...priorByMonth };
+  }
 
-  // Map by position: prior month 0 → target month 0, etc.
-  priorKeys.forEach((key, idx) => {
-    if (idx < 12 && targetKeys[idx]) {
-      result[targetKeys[idx]] = priorByMonth[key] || 0;
+  // Index prior values by calendar month ('MM') so we can re-anchor onto
+  // whichever target year contains that calendar month. Sum collisions
+  // defensively (shouldn't happen for a single-year prior dataset but
+  // protects against malformed inputs that would otherwise silently drop).
+  const priorByCalMonth: Record<string, number> = {};
+  for (const key of priorKeys) {
+    const m = key.length >= 7 ? key.slice(5, 7) : '';
+    if (!m) continue;
+    priorByCalMonth[m] = (priorByCalMonth[m] ?? 0) + (priorByMonth[key] || 0);
+  }
+
+  for (const tKey of targetKeys) {
+    const m = tKey.slice(5, 7);
+    if (priorByCalMonth[m] !== undefined) {
+      result[tKey] = priorByCalMonth[m];
     }
-  });
+  }
 
   return result;
 }
