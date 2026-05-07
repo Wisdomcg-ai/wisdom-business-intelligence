@@ -1426,12 +1426,69 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
 
       // OpEx - handle all cost behaviors including seasonal
       const defaultIncrease = state.defaultOpExIncreasePct || 3;
+
+      // Phase 57 T07 (B2) — Subscriptions feed the rollup.
+      //
+      // Step 5 (Subscriptions, post-B3 swap) persists a per-vendor monthlyBudget
+      // and a list of accountCodes. The rollup uses these in two ways:
+      //
+      // 1. `subscriptions` (this year) = Σ(active vendor monthly × 12) grown
+      //    by `defaultOpExIncreasePct` for Y2/Y3. Per CONTEXT.md "Locked
+      //    decisions → Multi-year derivation": no per-vendor Y2/Y3 fields.
+      //    Growth is parameterized by state.defaultOpExIncreasePct; do NOT
+      //    hard-code 1.03 — operator overrides must be honored.
+      //
+      // 2. `coveredAccountCodes` is the set of accountCodes that any active
+      //    vendor claims. The OpEx accumulator below SKIPS lines whose
+      //    `accountCode` is in this set — the prevention against the
+      //    pre-Phase-57 double-count where the same Xero software account
+      //    contributed to both opex (Step 6) and subscription_budgets (Step 5).
+      //
+      // No name-based fallback (per plan-check Blocker 2). Legacy v10 drafts
+      // where opexLines lack `accountCode` will continue to double-count
+      // until the operator runs the T11 "Refresh from Xero" nudge banner.
+      // This is documented behavior — see PLAN.md risk register R6.
+      //
+      // Critical invariant: when state.subscriptions === [] (legacy
+      // forecasts), activeSubs is empty, year1Subscriptions === 0,
+      // coveredAccountCodes is empty, no opexLines are excluded, and
+      // netProfit is identical to pre-Phase-57. JDS baseline at
+      // .planning/phases/57-subscriptions-flow-restructure/jds-baseline-pre-phase-57.json
+      // locks the wizard.y1.netProfit number for regression checking.
+      const activeSubscriptions = state.subscriptions.filter(v => v.isActive);
+      const year1Subscriptions = activeSubscriptions.reduce(
+        (s, v) => s + (v.monthlyBudget || 0) * 12,
+        0,
+      );
+      const subscriptionGrowthFactor = Math.pow(1 + defaultIncrease / 100, yearNum - 1);
+      const subscriptions = year1Subscriptions * subscriptionGrowthFactor;
+
+      const coveredAccountCodes = new Set<string>();
+      for (const v of activeSubscriptions) {
+        if (!v.accountCodes) continue;
+        for (const code of v.accountCodes) {
+          if (typeof code === 'string' && code.trim()) {
+            coveredAccountCodes.add(code.trim());
+          }
+        }
+      }
+
       const opex = state.opexLines.reduce((sum, line) => {
         // Skip one-time expenses that don't belong to this year
         if (line.isOneTime && line.oneTimeYear && line.oneTimeYear !== yearNum) return sum;
         // Skip expenses that haven't started yet
         if (line.startYear && line.startYear > yearNum) return sum;
         if (shouldExcludeFromOpEx(line)) return sum;
+
+        // Phase 57 T07: skip lines covered by Step 5 Subscriptions to prevent
+        // double-counting the same Xero account in both buckets. ONLY
+        // accountCode-based exclusion — no name fallback. Lines with
+        // `accountCode === undefined` (legacy drafts) fall through and
+        // contribute to opex as before; the T11 banner nudges the operator
+        // to refresh.
+        if (line.accountCode && coveredAccountCodes.has(line.accountCode)) {
+          return sum;
+        }
 
         // P0-1: honor explicit Y2/Y3 annual overrides before formula derivation.
         // Variable lines have a separate y2/y3PercentOverride path handled below.
@@ -1557,6 +1614,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       const netProfit =
         grossProfit
         - teamCosts
+        - subscriptions // Phase 57 T07 (B2): subscriptions are now their own bucket
         - opex
         - finalDepreciation
         - otherExpenses // user-entered one-offs (Step 7), NOT Xero other_expense bucket
@@ -1571,6 +1629,12 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         grossProfit: Math.round(grossProfit),
         grossProfitPct: Math.round(grossProfitPct * 10) / 10,
         teamCosts: Math.round(teamCosts),
+        // Phase 57 T07 (B2): subscriptions = Σ(active vendor monthly × 12)
+        // grown by defaultOpExIncreasePct for Y2/Y3. Equals 0 when
+        // state.subscriptions is empty (legacy forecasts), in which case
+        // netProfit is unchanged from pre-Phase-57. See comment block above
+        // the OpEx reduce for the full invariant statement.
+        subscriptions: Math.round(subscriptions),
         opex: Math.round(opex),
         depreciation: Math.round(finalDepreciation),
         investments: Math.round(finalInvestments),
