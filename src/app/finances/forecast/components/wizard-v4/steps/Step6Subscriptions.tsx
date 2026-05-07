@@ -236,6 +236,15 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isManualMode, setIsManualMode] = useState(false);
   const [showAddVendor, setShowAddVendor] = useState(false);
+
+  // Hotfix: per-vendor lazy-load state for restored vendors that have
+  // transactionCount > 0 but transactions: [] (the DB doesn't persist the
+  // detail array — see /api/subscription-budgets schema). When the operator
+  // expands such a vendor, we fetch from /api/Xero/subscription-transactions
+  // and merge into the vendor object. Result is cached on vendor.transactions
+  // so subsequent expand/collapse is instant.
+  const [loadingTxnKeys, setLoadingTxnKeys] = useState<Set<string>>(new Set());
+  const [txnFetchErrorKeys, setTxnFetchErrorKeys] = useState<Set<string>>(new Set());
   const startMonthOptions = useMemo(
     () => buildStartMonthOptions(state.fiscalYearStart ?? fiscalYear - 1),
     [state.fiscalYearStart, fiscalYear],
@@ -508,9 +517,136 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
   };
 
   const toggleVendorExpanded = (vendorKey: string) => {
+    // Capture the vendor *before* the state update so we know whether we need
+    // to lazy-fetch transactions. We use the post-toggle expanded state to
+    // decide: only fetch when the operator is expanding (not collapsing).
+    const target = vendors.find(v => v.vendorKey === vendorKey);
+    const willExpand = target ? !target.isExpanded : false;
+
     setVendors(prev => prev.map(v =>
       v.vendorKey === vendorKey ? { ...v, isExpanded: !v.isExpanded } : v
     ));
+
+    // Hotfix: lazy-fetch per-vendor transactions when expanding a restored
+    // vendor that has count > 0 but no detail array. Skip in manual mode
+    // (manual vendors never have Xero transactions). Skip if already loading
+    // or already fetched (transactions populated).
+    if (
+      !target ||
+      !willExpand ||
+      isManualMode ||
+      target.transactionCount <= 0 ||
+      target.transactions.length > 0 ||
+      loadingTxnKeys.has(vendorKey)
+    ) {
+      return;
+    }
+
+    const accountCodes = target.accountCodes && target.accountCodes.length > 0
+      ? target.accountCodes
+      : null;
+    if (!accountCodes) {
+      // No account codes recorded on the vendor — can't scope a fetch. This
+      // happens for older saved budgets that predate Phase 51 (UX-S6-01).
+      // Surface the failure so the operator knows expand won't help.
+      setTxnFetchErrorKeys(prev => {
+        const next = new Set(prev);
+        next.add(vendorKey);
+        return next;
+      });
+      return;
+    }
+
+    void fetchVendorTransactions(target.vendorKey, target.vendorName, accountCodes);
+  };
+
+  // Hotfix: pulls transactions for a single vendor by re-running the
+  // existing analyze endpoint against just that vendor's account codes.
+  // Match the response on vendorKey (preferred) or vendorName (fallback)
+  // and merge the transactions[] into the local vendor record.
+  const fetchVendorTransactions = async (
+    vendorKey: string,
+    vendorName: string,
+    accountCodes: string[],
+  ) => {
+    setLoadingTxnKeys(prev => {
+      const next = new Set(prev);
+      next.add(vendorKey);
+      return next;
+    });
+    setTxnFetchErrorKeys(prev => {
+      if (!prev.has(vendorKey)) return prev;
+      const next = new Set(prev);
+      next.delete(vendorKey);
+      return next;
+    });
+
+    try {
+      const response = await fetch('/api/Xero/subscription-transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          business_id: businessId,
+          account_codes: accountCodes,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Fetch failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      const matchedVendor = (data.vendors || []).find(
+        (v: any) => v.vendorKey === vendorKey || v.vendorName === vendorName,
+      );
+
+      if (!matchedVendor || !Array.isArray(matchedVendor.transactions)) {
+        // Endpoint returned but no matching vendor/transactions — treat as
+        // an error so the operator gets a retry option rather than the old
+        // silent "No transaction details available" footer.
+        throw new Error('No matching vendor in response');
+      }
+
+      const fetchedTransactions: RecentTransaction[] = matchedVendor.transactions.map((t: any) => ({
+        date: t.date,
+        description: t.description,
+        amount: t.amount,
+        source: t.source,
+        period: t.period,
+      }));
+
+      setVendors(prev => prev.map(v => {
+        if (v.vendorKey !== vendorKey) return v;
+        // Preserve the operator's edits to monthlyBudget/isActive/etc — only
+        // patch fields that were missing because the DB doesn't persist them.
+        return {
+          ...v,
+          transactions: fetchedTransactions,
+          firstTransaction: v.firstTransaction || matchedVendor.firstTransaction || '',
+          monthsSpan: v.monthsSpan > 0 ? v.monthsSpan : (matchedVendor.monthsSpan || 0),
+          // Backfill FY counts/amounts when missing — useful for the per-FY
+          // panel headers (e.g. "Current FY YTD (12 transactions - $1,234)").
+          priorFYAmount: v.priorFYAmount || matchedVendor.priorFYAmount || 0,
+          priorFYCount: v.priorFYCount || matchedVendor.priorFYCount || 0,
+          currentFYAmount: v.currentFYAmount || matchedVendor.currentFYAmount || 0,
+          currentFYCount: v.currentFYCount || matchedVendor.currentFYCount || 0,
+        };
+      }));
+    } catch (err) {
+      console.error('[Subscriptions] Lazy-fetch transactions failed for', vendorKey, err);
+      setTxnFetchErrorKeys(prev => {
+        const next = new Set(prev);
+        next.add(vendorKey);
+        return next;
+      });
+    } finally {
+      setLoadingTxnKeys(prev => {
+        if (!prev.has(vendorKey)) return prev;
+        const next = new Set(prev);
+        next.delete(vendorKey);
+        return next;
+      });
+    }
   };
 
   const toggleVendorActive = (vendorKey: string) => {
@@ -1425,7 +1561,39 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                                 </div>
                               )}
 
-                              {vendor.transactions.length === 0 && (
+                              {/* Hotfix: per-vendor lazy-load states. */}
+                              {vendor.transactions.length === 0 && loadingTxnKeys.has(vendor.vendorKey) && (
+                                <div className="flex items-center gap-2 text-sm text-gray-600">
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  Loading transactions...
+                                </div>
+                              )}
+
+                              {vendor.transactions.length === 0
+                                && !loadingTxnKeys.has(vendor.vendorKey)
+                                && txnFetchErrorKeys.has(vendor.vendorKey) && (
+                                <div className="flex items-center gap-3">
+                                  <p className="text-sm text-red-600">Failed to load transactions.</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const codes = vendor.accountCodes && vendor.accountCodes.length > 0
+                                        ? vendor.accountCodes
+                                        : null;
+                                      if (!codes) return;
+                                      void fetchVendorTransactions(vendor.vendorKey, vendor.vendorName, codes);
+                                    }}
+                                    disabled={!vendor.accountCodes || vendor.accountCodes.length === 0}
+                                    className="text-xs px-2 py-1 bg-white border border-red-300 text-red-700 rounded hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    Try again
+                                  </button>
+                                </div>
+                              )}
+
+                              {vendor.transactions.length === 0
+                                && !loadingTxnKeys.has(vendor.vendorKey)
+                                && !txnFetchErrorKeys.has(vendor.vendorKey) && (
                                 <p className="text-sm text-gray-500">No transaction details available</p>
                               )}
 
