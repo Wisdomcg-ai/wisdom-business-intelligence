@@ -14,7 +14,7 @@ import { Step2PriorYear } from './steps/Step2PriorYear';
 import { Step3RevenueCOGS } from './steps/Step3RevenueCOGS';
 import { Step4Team } from './steps/Step4Team';
 import { Step5OpEx } from './steps/Step5OpEx';
-import { Step6Subscriptions } from './steps/Step6Subscriptions';
+import { Step6Subscriptions, type Step6SubscriptionsHandle } from './steps/Step6Subscriptions';
 import { Step6CapEx } from './steps/Step6CapEx'; // Now Step 7
 import { Step8GrowthPlan } from './steps/Step8GrowthPlan';
 import { Step8Review } from './steps/Step8Review';
@@ -82,6 +82,12 @@ export function ForecastWizardV4({
   const [isEditingName, setIsEditingName] = useState(false);
   const [showSaveAsModal, setShowSaveAsModal] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  // Phase 57 T13 (B5): ref into Step6Subscriptions so the StepBar can
+  // synchronously flush pending vendor-budget saves before navigating
+  // to another step. The handle exposes flushPendingSaves(): Promise<void>
+  // (T12 wiring). Only meaningful when state.currentStep === 5 (the
+  // Subscriptions step post-Phase-57 step swap).
+  const subscriptionsStepRef = useRef<Step6SubscriptionsHandle>(null);
 
   // Load initial data from APIs - only once on mount
   useEffect(() => {
@@ -1569,7 +1575,10 @@ export function ForecastWizardV4({
       // Per CONTEXT.md "Step labels" locked decision: keep "OpEx" (do NOT
       // rename to "Discretionary OpEx").
       case 5:
-        return <Step6Subscriptions state={state} actions={actions} fiscalYear={fiscalYear} businessId={businessId} />;
+        // Phase 57 T13 (B5): forward imperative ref so StepBar can call
+        // flushPendingSaves() before navigating away — prevents losing
+        // a debounced subscription-budget API write to a faster click.
+        return <Step6Subscriptions ref={subscriptionsStepRef} state={state} actions={actions} fiscalYear={fiscalYear} businessId={businessId} />;
       case 6:
         // Phase 57 T11 (B4): businessId passed so the legacy "Refresh from Xero"
         // nudge banner can re-ingest chart-of-accounts and populate accountCodes
@@ -1798,11 +1807,34 @@ export function ForecastWizardV4({
       )}
 
       {/* Step Bar */}
+      {/*
+        Phase 57 T13 (B5): clickable nav. Any step <= maxVisitedStep is
+        clickable in either direction. Before currentStep mutates, flush
+        Step 5's pending subscription-budget save (T12 ref) and the
+        wizard-state autosave. On flush failure, toast + stay put.
+      */}
       <div className="flex-shrink-0 bg-white border-b border-gray-200">
         <StepBar
           steps={state.forecastDuration === 1 ? WIZARD_STEPS.filter(s => s.step !== 8) as unknown as typeof WIZARD_STEPS : WIZARD_STEPS}
           currentStep={state.currentStep}
-          onStepClick={actions.goToStep}
+          maxVisitedStep={state.maxVisitedStep}
+          state={state}
+          onStepClickAsync={async (target) => {
+            try {
+              if (state.currentStep === 5 && subscriptionsStepRef.current) {
+                await subscriptionsStepRef.current.flushPendingSaves();
+              }
+              // Persist wizard state — saveDraft writes to localStorage +
+              // (when forecastId present) to the server. We intentionally
+              // do not await the server round-trip when offline; saveDraft's
+              // own error path surfaces toasts.
+              await actions.saveDraft(existingForecastId);
+              actions.goToStep(target);
+            } catch (err) {
+              console.error('[StepBar T13] Flush before goToStep failed:', err);
+              toast.error('Could not save your changes. Staying on current step.');
+            }
+          }}
         />
       </div>
 
