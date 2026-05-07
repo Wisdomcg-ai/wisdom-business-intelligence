@@ -52,6 +52,13 @@ import type {
 // Bump this to force all users to re-init from APIs (invalidates stale localStorage)
 const WIZARD_VERSION = 10; // Phase 44 Sub-phase A — long-format xero_pl_lines + new pl-summary read path. Old caches showed stale "Xero not connected" state.
 
+// Single source of truth for whether an OpEx line should be excluded from the
+// OpEx rollup (because team wages are generated separately by convertTeam()).
+// Used by both the summary rollup and the assumptions export so they cannot drift.
+function shouldExcludeFromOpEx(line: { name: string; isTeamCostOverride?: boolean }): boolean {
+  return line.isTeamCostOverride !== undefined ? line.isTeamCostOverride : isTeamCost(line.name);
+}
+
 // Remap month keys from prior year to forecast year (same position, different year)
 // e.g., { "2024-07": 50000 } → { "2025-07": 50000 } when targetFYStart=2025
 function remapMonthKeysToForecastYear(
@@ -981,11 +988,22 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
               const totalSeasonality = seasonality.reduce((s: number, v: number) => s + v, 0);
               const lineY1 = Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
               const share = year1Total > 0 ? lineY1 / year1Total : 1 / revenueLines.length;
-              const lineTarget = goalRevenue * share;
+              const lineTarget = Math.round(goalRevenue * share);
               const monthly: { [key: string]: number } = {};
+              // P0-14: absorb rounding residue into the last month so the
+              // per-line annual sum exactly equals lineTarget (matches the
+              // initializeFromXero residue-absorption convention).
+              let runningSum = 0;
               monthKeys.forEach((key, idx) => {
-                const factor = (seasonality[idx] ?? 8.33) / totalSeasonality;
-                monthly[key] = Math.round(lineTarget * factor);
+                const isLast = idx === monthKeys.length - 1;
+                if (isLast) {
+                  monthly[key] = lineTarget - runningSum;
+                } else {
+                  const factor = (seasonality[idx] ?? 8.33) / totalSeasonality;
+                  const monthVal = Math.round(lineTarget * factor);
+                  monthly[key] = monthVal;
+                  runningSum += monthVal;
+                }
               });
               line[yearKey] = monthly;
             });
@@ -1078,14 +1096,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         const monthly = yearNum === 1 ? line.year1Monthly
           : yearNum === 2 ? line.year2Monthly
           : line.year3Monthly;
-        if (monthly && Object.keys(monthly).length > 0) {
-          return sum + Object.values(monthly).reduce((a, b) => a + b, 0);
-        }
-        // Fallback to formula — apply Y2/Y3 trend adjustment
+        // P0-5: y2y3Trend must apply to BOTH paths (manual monthly AND formula),
+        // otherwise the toggle is silently ignored when monthly entries exist.
         const trendAdj = yearNum === 1 ? 0
           : line.y2y3Trend === 'improves' ? -2
           : line.y2y3Trend === 'increases' ? 2
           : 0;
+        if (monthly && Object.keys(monthly).length > 0) {
+          const manualSum = Object.values(monthly).reduce((a, b) => a + b, 0);
+          return sum + manualSum * (1 + trendAdj / 100);
+        }
         if (line.costBehavior === 'fixed') {
           const baseMonthly = (line.monthlyAmount || 0) * (1 + trendAdj / 100);
           return sum + baseMonthly * 12;
@@ -1165,7 +1185,8 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
 
         // Calculate salary with increases for subsequent years
         const yearsAfterStart = targetFY - hireFY;
-        const hireIncreasePct = 3 / 100; // Standard 3% annual salary increase
+        // P0-7: honor per-hire increasePct; default 3% to preserve prior behavior.
+        const hireIncreasePct = (hire.increasePct ?? 3) / 100;
         const salary = hire.salary * Math.pow(1 + hireIncreasePct, yearsAfterStart);
         const superAmount = hire.type !== 'contractor' ? salary * SUPER_RATE : 0;
 
@@ -1175,15 +1196,36 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         teamCosts += proRataSalary + proRataSuper;
       }
 
-      // Bonuses (assume same each year for now)
-      const bonusTotal = state.bonuses.reduce((sum, b) => sum + b.amount, 0);
+      // Bonuses — P0-6: skip bonuses for departed employees whose departure
+      // month is on or before the bonus month within the target fiscal year.
+      // Bonus.month is calendar 1-12; map to a YYYY-MM key in this FY using the
+      // same convention generateMonthKeys() uses (months >= ysm in start-cal-year,
+      // months < ysm in next cal-year).
+      const bonusFYStartCalYear = state.fiscalYearStart + (yearNum - 1);
+      const bonusTotal = state.bonuses.reduce((sum, b) => {
+        const calYear = b.month >= ysm ? bonusFYStartCalYear : bonusFYStartCalYear + 1;
+        const bonusKey = `${calYear}-${String(b.month).padStart(2, '0')}`;
+        const departure = state.departures.find(d => d.teamMemberId === b.teamMemberId);
+        if (departure && departure.endMonth < bonusKey) return sum;
+        return sum + b.amount;
+      }, 0);
       teamCosts += bonusTotal;
 
       // Commissions - based on percentage of linked revenue line
+      // P0-13: when per-line Y2/Y3 monthly is empty but the year revenue total
+      // exists (e.g., via goals fallback), scale the line revenue by its Y1
+      // share of total Y1 revenue so commissions track multi-year trajectory.
       for (const commission of state.commissions) {
         const revLine = state.revenueLines.find(r => r.id === commission.revenueLineId);
         if (!revLine) continue;
-        const lineRevenue = getRevenueLineYearTotal(revLine, yearNum);
+        let lineRevenue = getRevenueLineYearTotal(revLine, yearNum);
+        if (lineRevenue === 0 && yearNum > 1 && revenue > 0) {
+          const lineY1 = getRevenueLineYearTotal(revLine, 1);
+          const totalY1 = state.revenueLines.reduce((s, r) => s + getRevenueLineYearTotal(r, 1), 0);
+          if (totalY1 > 0) {
+            lineRevenue = revenue * (lineY1 / totalY1);
+          }
+        }
         teamCosts += lineRevenue * (commission.percentOfRevenue / 100);
       }
 
@@ -1194,7 +1236,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         if (line.isOneTime && line.oneTimeYear && line.oneTimeYear !== yearNum) return sum;
         // Skip expenses that haven't started yet
         if (line.startYear && line.startYear > yearNum) return sum;
-        if (line.isTeamCostOverride !== undefined ? line.isTeamCostOverride : isTeamCost(line.name)) return sum;
+        if (shouldExcludeFromOpEx(line)) return sum;
+
+        // P0-1: honor explicit Y2/Y3 annual overrides before formula derivation.
+        // Variable lines have a separate y2/y3PercentOverride path handled below.
+        if (yearNum === 2 && typeof line.y2Override === 'number') {
+          return sum + line.y2Override;
+        }
+        if (yearNum === 3 && typeof line.y3Override === 'number') {
+          return sum + line.y3Override;
+        }
 
         let lineAmount = 0;
         switch (line.costBehavior) {
@@ -1205,10 +1256,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
             lineAmount = baseAmount * Math.pow(increaseFactor, yearNum - 1);
             break;
           }
-          case 'variable':
-            // Percentage of revenue
-            lineAmount = revenue * ((line.percentOfRevenue || 0) / 100);
+          case 'variable': {
+            // Percentage of revenue — honor per-year % override if present.
+            const pct = yearNum === 2 && typeof line.y2PercentOverride === 'number'
+              ? line.y2PercentOverride
+              : yearNum === 3 && typeof line.y3PercentOverride === 'number'
+                ? line.y3PercentOverride
+                : (line.percentOfRevenue || 0);
+            lineAmount = revenue * (pct / 100);
             break;
+          }
           case 'adhoc':
             // Expected annual amount (same each year)
             lineAmount = line.expectedAnnualAmount || 0;
@@ -1402,7 +1459,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
     // Build OpEx assumptions — filter out team cost lines to prevent double-counting
     // (team wages are generated separately by convertTeam())
     const opexLineAssumptions: OpExLineAssumption[] = state.opexLines
-      .filter(line => !(line.isTeamCostOverride !== undefined ? line.isTeamCostOverride : isTeamCost(line.name)))
+      .filter(line => !shouldExcludeFromOpEx(line))
       .map(line => ({
       accountId: line.accountId || line.id,
       accountName: line.name,
