@@ -8,7 +8,7 @@
 // numbering and ForecastWizardV4.tsx renderStep() for the switch.
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Plus, Trash2, HelpCircle, ChevronDown, X, Info } from 'lucide-react';
+import { Plus, Trash2, HelpCircle, ChevronDown, X, Info, AlertTriangle } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, CostBehavior, OpExLine, SUPER_RATE, calculateNewSalary, InputMode } from '../types';
 import { classifyExpense, getSuggestedValue, isTeamCost } from '../utils/opex-classifier';
 import { getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
@@ -18,6 +18,11 @@ interface Step5OpExProps {
   actions: WizardActions;
   fiscalYear: number;
   industry?: string;
+  // Phase 57 T11 (B4): used by the legacy "Refresh from Xero" nudge banner to
+  // re-ingest chart-of-accounts when state.needsAccountCodeRefresh === true.
+  // Optional so tests / fixtures that don't go through ForecastWizardV4 still
+  // typecheck. When undefined the refresh button no-ops with a console warn.
+  businessId?: string;
 }
 
 // Cost behavior options with colors.
@@ -702,7 +707,7 @@ function VariablePercentInput({
 // ============================================
 // MAIN COMPONENT
 // ============================================
-export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExProps) {
+export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: Step5OpExProps) {
   const { opexLines, priorYear, goals, teamMembers, newHires, departures, forecastDuration, revenueLines, cogsLines, defaultOpExIncreasePct, activeYear } = state;
 
   // Check if a line should be treated as a team cost
@@ -1024,12 +1029,39 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
     }
   }, [calculateY1Amount, revenueByYear, effectiveDefaultGrowth]);
 
-  // Total OpEx by year — uses activeOpexLines (team costs already excluded)
-  const opexByYear = useMemo(() => ({
-    y1: activeOpexLines.reduce((sum, line) => sum + calculateY1Amount(line), 0),
-    y2: activeOpexLines.reduce((sum, line) => sum + calculateYearAmount(line, 2, effectiveDefaultGrowth), 0),
-    y3: activeOpexLines.reduce((sum, line) => sum + calculateYearAmount(line, 3, effectiveDefaultGrowth), 0),
-  }), [activeOpexLines, calculateY1Amount, calculateYearAmount, effectiveDefaultGrowth]);
+  // Total OpEx by year — uses activeOpexLines (team costs already excluded).
+  //
+  // Phase 57 T11 (B4): also exclude lines whose accountCode is covered by an
+  // active Step 5 subscription. This keeps BudgetFramework's "Your OpEx"
+  // total in sync with the rollup (T07), which excludes the same lines.
+  // Without this filter, BudgetFramework would over-state OpEx vs the
+  // canonical summary on any forecast with active subscriptions.
+  // Note: coveredAccountCodes is built later in render (depends on
+  // state.subscriptions); since we need it here, lift the Set computation
+  // inline as a useMemo dep. The Set construction is O(N) — cheap.
+  const coveredAccountCodesForOpExTotal = useMemo(() => {
+    const set = new Set<string>();
+    for (const v of state.subscriptions) {
+      if (!v.isActive) continue;
+      for (const code of (v.accountCodes || [])) {
+        if (typeof code === 'string' && code.trim()) set.add(code.trim());
+      }
+    }
+    return set;
+  }, [state.subscriptions]);
+
+  const isLineCovered = useCallback((line: OpExLine): boolean => {
+    return !!line.accountCode && coveredAccountCodesForOpExTotal.has(line.accountCode);
+  }, [coveredAccountCodesForOpExTotal]);
+
+  const opexByYear = useMemo(() => {
+    const uncovered = activeOpexLines.filter(line => !isLineCovered(line));
+    return {
+      y1: uncovered.reduce((sum, line) => sum + calculateY1Amount(line), 0),
+      y2: uncovered.reduce((sum, line) => sum + calculateYearAmount(line, 2, effectiveDefaultGrowth), 0),
+      y3: uncovered.reduce((sum, line) => sum + calculateYearAmount(line, 3, effectiveDefaultGrowth), 0),
+    };
+  }, [activeOpexLines, isLineCovered, calculateY1Amount, calculateYearAmount, effectiveDefaultGrowth]);
 
   // Phase 57 T10 (B4) — Subscriptions by year for the BudgetFramework.
   //
@@ -1153,6 +1185,71 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
     ? year1TeamCosts
     : opexClassifiedTeamCosts;
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Phase 57 T11 (B4) — Covered-by-Step-5 badge + legacy refresh banner
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // The set of accountCodes claimed by active subscriptions is already
+  // built above as `coveredAccountCodesForOpExTotal` (computed earlier so
+  // opexByYear can filter covered lines). Alias here for render-block
+  // readability — same memoized Set, same identity.
+  const coveredAccountCodes = coveredAccountCodesForOpExTotal;
+
+  // Convenience flag for the explanatory caption. Avoids re-checking inside
+  // the render block.
+  const hasActiveSubscriptions = useMemo(
+    () => state.subscriptions.some(v => v.isActive),
+    [state.subscriptions],
+  );
+
+  // Refresh-from-Xero banner state. The banner ONLY appears for forecasts
+  // migrated from v10 → v11 where opexLines lack `accountCode` (T03 sets the
+  // flag). Once the operator clicks "Refresh from Xero" we re-ingest
+  // chart-of-accounts, populate accountCodes by name match, and clear the
+  // flag so the banner disappears.
+  const [isRefreshingFromXero, setIsRefreshingFromXero] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
+  const handleRefreshFromXero = useCallback(async () => {
+    if (!businessId) {
+      console.warn('[Step5OpEx T11] handleRefreshFromXero called without businessId — no-op');
+      setRefreshError('Cannot refresh — business identifier missing.');
+      return;
+    }
+    setIsRefreshingFromXero(true);
+    setRefreshError(null);
+    try {
+      const res = await fetch(`/api/Xero/chart-of-accounts?business_id=${encodeURIComponent(businessId)}`);
+      if (!res.ok) {
+        throw new Error(`chart-of-accounts returned ${res.status}`);
+      }
+      const payload = await res.json();
+      const accounts: Array<{ code?: string; accountId?: string; name?: string }> = payload?.accounts || [];
+
+      // Re-classify opexLines — for each line with no accountCode, find a
+      // matching account by accountId or by display name and copy its code.
+      // Lines that already have accountCode are left untouched.
+      const updatedOpexLines = state.opexLines.map((line) => {
+        if (line.accountCode) return line;
+        const match = accounts.find((a) => {
+          if (line.accountId && a.accountId && a.accountId === line.accountId) return true;
+          if (a.name && line.name && a.name.trim().toLowerCase() === line.name.trim().toLowerCase()) return true;
+          return false;
+        });
+        if (match?.code) return { ...line, accountCode: match.code };
+        return line;
+      });
+
+      actions.setOpExLines(updatedOpexLines);
+      actions.setNeedsAccountCodeRefresh(false);
+    } catch (err) {
+      console.error('[Step5OpEx T11] Xero refresh failed', err);
+      setRefreshError('Could not refresh from Xero. Please try again.');
+    } finally {
+      setIsRefreshingFromXero(false);
+    }
+  }, [businessId, state.opexLines, actions]);
+
   return (
     <div className="space-y-6">
       {/* Budget Framework */}
@@ -1169,6 +1266,37 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
       {/* Guidance Panel */}
       {showGuidance && (
         <GuidancePanel onDismiss={() => setShowGuidance(false)} />
+      )}
+
+      {/* Phase 57 T11 (B4) — legacy "Refresh from Xero" nudge banner.
+          Renders only when state.needsAccountCodeRefresh === true (set by
+          T03's v10 → v11 soft-migration on legacy drafts where opexLines
+          have accountId but no accountCode). Until refreshed, T07's
+          rollup can't exclude subscription-covered OpEx lines, so the
+          forecast double-counts software spend — banner is the R6 mitigation. */}
+      {state.needsAccountCodeRefresh && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-amber-900">
+              This forecast was created before Phase 57. Click &quot;Refresh from Xero&quot; to enable accurate subscription accounting.
+            </p>
+            <p className="text-xs text-amber-700 mt-1">
+              Until you refresh, OpEx lines covering subscription accounts may be double-counted in your forecast.
+            </p>
+            {refreshError && (
+              <p className="text-xs text-red-700 mt-1">{refreshError}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleRefreshFromXero}
+            disabled={isRefreshingFromXero}
+            className="px-3 py-1.5 text-sm font-medium rounded-md bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+          >
+            {isRefreshingFromXero ? 'Refreshing…' : 'Refresh from Xero'}
+          </button>
+        </div>
       )}
 
       {/* Year Tabs + Table */}
@@ -1255,6 +1383,16 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
             Add Expense
           </button>
         </div>
+
+        {/* Phase 57 T11 (B4): clarifying caption when at least one active
+            subscription exists — explains why some rows show "Covered by Step 5". */}
+        {hasActiveSubscriptions && (
+          <div className="px-5 py-2 bg-blue-50/40 border-b border-gray-200">
+            <p className="text-xs text-gray-600">
+              Lines marked &quot;Covered by Step 5&quot; don&apos;t contribute to OpEx — their cost is captured in your Subscriptions audit.
+            </p>
+          </div>
+        )}
 
         {/* Add Line Form */}
         {showAddLine && (
@@ -1370,6 +1508,60 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
                 const forecastAmount = getActiveYearAmount(line);
                 const isY2Y3 = activeYear > 1;
                 const style = getBehaviorStyle(line.costBehavior);
+
+                // Phase 57 T11 (B4): is this OpEx line covered by an active
+                // Step 5 subscription? Match strictly on accountCode (per
+                // PLAN.md plan-check Blocker 2 — no name fallback). Lines
+                // without accountCode (legacy drafts pre-refresh) fall
+                // through and contribute to OpEx as before — the banner
+                // above prompts the operator to refresh.
+                const isCoveredBySubscription = !!line.accountCode && coveredAccountCodes.has(line.accountCode);
+
+                // Render a muted row with the "Covered by Step 5" badge for
+                // covered lines. Per CONTEXT.md (line 36) we DON'T hide
+                // these — transparency over invisibility. Values display
+                // as "—" and inputs are disabled because the contribution
+                // is dictated by the Step 5 vendor budget; T07 ensures
+                // these lines contribute zero to the rollup.
+                if (isCoveredBySubscription) {
+                  return (
+                    <tr key={line.id} className="opacity-60 bg-blue-50/30">
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-600">{line.name}</span>
+                          <span
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200"
+                            title="This account is budgeted in Step 5 Subscriptions. Edit the vendor budget there to change this contribution."
+                          >
+                            Covered by Step 5
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right text-sm text-gray-400 tabular-nums whitespace-nowrap">
+                        {line.priorYearAnnual > 0 ? formatCurrency(line.priorYearAnnual) : '—'}
+                      </td>
+                      <td colSpan={isY2Y3 ? 4 : 3} className="px-3 py-2">
+                        <span className="text-xs text-gray-400 italic">
+                          Contribution comes from Step 5
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right text-sm text-gray-400 tabular-nums whitespace-nowrap bg-white">
+                        —
+                      </td>
+                      <td className="w-20 py-2 text-center">
+                        <div className="flex items-center gap-1 justify-center opacity-0 group-hover:opacity-100 transition-all">
+                          <button
+                            onClick={() => actions.removeOpExLine(line.id)}
+                            className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                            title="Remove this OpEx row"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
 
                 // Calculate monthly and annual values based on behavior type
                 const getWorkingValues = () => {

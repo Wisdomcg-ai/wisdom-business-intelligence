@@ -882,6 +882,10 @@ export interface WizardActions {
   updateOpExLine: (lineId: string, updates: Partial<OpExLine>) => void;
   addOpExLine: (line: Omit<OpExLine, 'id'>) => void;
   removeOpExLine: (lineId: string) => void;
+  // Phase 57 T11 (B4): clear the legacy "Refresh from Xero" nudge banner once
+  // the operator has re-ingested chart-of-accounts and opexLines have populated
+  // accountCodes. Set to true by T03's soft-migration on legacy v10 drafts.
+  setNeedsAccountCodeRefresh: (needsRefresh: boolean) => void;
 
   // Step 6: CapEx & Investments (legacy)
   addCapExItem: (item: Omit<CapExItem, 'id' | 'annualDepreciation'>) => void;

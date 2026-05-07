@@ -938,6 +938,17 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     }));
   }, []);
 
+  // Phase 57 T11 (B4) — clear the legacy "Refresh from Xero" nudge banner once
+  // the operator has triggered the refresh and opexLines have populated
+  // accountCodes. The banner only shows when needsAccountCodeRefresh === true,
+  // which is set on v10 → v11 migration in loadStateFromStorage.
+  const setNeedsAccountCodeRefresh = useCallback((needsRefresh: boolean) => {
+    setState((prev) => ({
+      ...prev,
+      needsAccountCodeRefresh: needsRefresh,
+    }));
+  }, []);
+
   const updateOpExLine = useCallback((lineId: string, updates: Partial<OpExLine>) => {
     setState((prev) => ({
       ...prev,
@@ -2122,6 +2133,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     updateOpExLine,
     addOpExLine,
     removeOpExLine,
+    setNeedsAccountCodeRefresh,
     addCapExItem,
     updateCapExItem,
     removeCapExItem,
