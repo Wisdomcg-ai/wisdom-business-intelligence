@@ -608,13 +608,18 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
 
   // ─── Completion Checklist ──────────────────────────────────────────────────
 
+  // Phase 57 (T06, B3): swapped slots 5 and 6 — Subscriptions is now step 5,
+  // OpEx is now step 6. Subscriptions `hasData` predicate also updated to
+  // read state.subscriptions (T02 added the field) instead of the legacy
+  // opexLines.isSubscription scan, since Step 5 (Subscriptions) is now the
+  // canonical source of truth for active vendor budgets.
   const completionSteps = useMemo(() => [
     { step: 1, label: 'Goals', hasData: goals.year1.revenue > 0, icon: Target },
     { step: 2, label: 'Prior Year', hasData: !!state.priorYear, icon: FileCheck },
     { step: 3, label: 'Revenue & COGS', hasData: state.revenueLines.length > 0, icon: TrendingUp },
     { step: 4, label: 'Team', hasData: state.teamMembers.length > 0 || state.newHires.length > 0, icon: Users },
-    { step: 5, label: 'OpEx', hasData: state.opexLines.length > 0, icon: Receipt },
-    { step: 6, label: 'Subscriptions', hasData: state.opexLines.some(l => l.isSubscription), icon: Wallet },
+    { step: 5, label: 'Subscriptions', hasData: state.subscriptions.some(v => v.isActive), icon: Wallet },
+    { step: 6, label: 'OpEx', hasData: state.opexLines.length > 0, icon: Receipt },
     { step: 7, label: 'CapEx & Other', hasData: state.capexItems.length > 0 || state.otherExpenses.length > 0, icon: Building2 },
   ], [goals, state]);
 

@@ -1803,8 +1803,13 @@ export function ForecastWizardV4({
         />
       </div>
 
-      {/* Year Tabs - Only show for relevant steps and multi-year forecasts */}
-      {[3, 4, 5].includes(state.currentStep) && state.forecastDuration > 1 && (
+      {/* Year Tabs - Only show for relevant steps and multi-year forecasts.
+          Phase 57 (T06, B3): swapped 5 → 6 because the OpEx step (now slot 6)
+          is multi-year and needs the year-tab selector, while Subscriptions
+          (now slot 5) is intentionally Y1-only per CONTEXT.md "Multi-year
+          derivation" — Y2/Y3 subscription totals derive from Y1 × growth%
+          with no per-year vendor overrides in this phase. */}
+      {[3, 4, 6].includes(state.currentStep) && state.forecastDuration > 1 && (
         <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6">
           <YearTabs
             activeYear={state.activeYear}
@@ -1844,8 +1849,11 @@ export function ForecastWizardV4({
             {state.currentStep === 2 && "Review your prior year performance to inform your forecast"}
             {state.currentStep === 3 && "Set your revenue and cost of goods targets"}
             {state.currentStep === 4 && "Plan your team costs including salaries, increases, and new hires"}
-            {state.currentStep === 5 && "Classify operating expenses as Fixed, Variable, or Ad-hoc"}
-            {state.currentStep === 6 && "Audit your subscriptions and identify potential savings"}
+            {/* Phase 57 (T06, B3): swapped — Subscriptions is now step 5,
+                OpEx is now step 6. Description strings track the new
+                ordering. */}
+            {state.currentStep === 5 && "Audit your subscriptions and identify potential savings"}
+            {state.currentStep === 6 && "Classify operating expenses as Fixed, Variable, or Ad-hoc"}
             {state.currentStep === 7 && "Plan any capital expenditures and strategic investments"}
             {state.currentStep === 8 && "Review and adjust your multi-year growth assumptions"}
             {state.currentStep === 9 && "Review your complete forecast before generating"}
