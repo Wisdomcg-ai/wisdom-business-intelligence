@@ -493,8 +493,13 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
 
   // Adjusted year data with what-if toggles applied
   const adjustedData = useMemo((): YearlySummary => {
-    if (activeYear !== 1) return yearData; // What-if only applies to Y1
-
+    // P0-12 (Phase 56): Apply toggles to whichever year is active. The
+    // previous early-return for activeYear !== 1 silently fell back to
+    // unadjusted yearData on Y2/Y3 so multi-year scenario analysis was
+    // always wrong. Toggle deltas are stored as Y1 dollar amounts; applying
+    // them flat to Y2/Y3 is an over-simplification (P1 refinement: scale
+    // revenue/cogs deltas by year-over-year ratio) but is dramatically
+    // more correct than discarding them entirely.
     const activeToggles = whatIfToggles.filter(t => t.enabled);
     if (activeToggles.length === 0) return yearData;
 
