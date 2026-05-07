@@ -1155,7 +1155,8 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
 
         // Calculate salary with increases for subsequent years
         const yearsAfterStart = targetFY - hireFY;
-        const hireIncreasePct = 3 / 100; // Standard 3% annual salary increase
+        // P0-7: honor per-hire increasePct; default 3% to preserve prior behavior.
+        const hireIncreasePct = (hire.increasePct ?? 3) / 100;
         const salary = hire.salary * Math.pow(1 + hireIncreasePct, yearsAfterStart);
         const superAmount = hire.type !== 'contractor' ? salary * SUPER_RATE : 0;
 
