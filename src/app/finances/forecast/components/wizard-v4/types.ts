@@ -237,6 +237,9 @@ export interface NewHire {
   startMonth: string; // YYYY-MM
   salary: number; // Annual salary (calculated for casuals from hourly × hours × weeks)
   superAmount: number;
+  // Annual salary increase % applied for years AFTER the hire's start year.
+  // Default 3 if undefined to preserve historical behavior.
+  increasePct?: number;
   includeInHeadcount?: boolean; // For contractors - whether to include in headcount calculations
   // Phase 51 (UX-S4-02): PT/casual schedule input mode.
   // undefined → treat as 'hours' (current behaviour) for back-compat.
