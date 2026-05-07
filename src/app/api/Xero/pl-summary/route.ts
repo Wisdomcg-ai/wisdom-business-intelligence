@@ -55,10 +55,33 @@ export async function GET(request: NextRequest) {
 
     const fiscalYear = fiscalYearParam ? parseInt(fiscalYearParam) : new Date().getFullYear() + 1
 
-    const { connection } = await resolveXeroBusinessId(supabase, businessId)
+    const { connection, connectionBusinessId } = await resolveXeroBusinessId(supabase, businessId)
     if (!connection) {
+      // Issue B (hotfix step2-secondaries) — distinguish "no Xero connection"
+      // from "lookup failure due to dual-business-id mismatch".
+      //
+      // resolveXeroBusinessId tries up to 3 lookup paths (direct,
+      // businesses.id → business_profiles.id, business_profiles.id →
+      // businesses.id). It returns `connection: null` in two cases:
+      //   1) The business genuinely has no Xero connection (legitimate
+      //      "not connected" state — the wizard should show the connect
+      //      prompt as it does today).
+      //   2) The lookups found a profile/business mapping (so
+      //      connectionBusinessId !== queried businessId) but the
+      //      corresponding xero_connections row is missing, suggesting a
+      //      dual-id desync (memory note `project_dual_id`).
+      //
+      // We surface case (2) via a `lookup_error` field so the wizard can
+      // show "Couldn't load Xero data — please refresh or reconnect" instead
+      // of pretending the tenant has no Xero at all. This is purely a
+      // visibility fix — the underlying dual-id resolution is Phase 53
+      // territory and is NOT touched here.
+      const lookup_error =
+        connectionBusinessId !== businessId
+          ? 'xero_connection_lookup_failed: resolver found a business/profile mapping for the queried id but no xero_connections row. Likely dual-id desync (businesses.id vs business_profiles.id).'
+          : null
       return NextResponse.json({
-        summary: { has_xero_data: false } as HistoricalPLSummary,
+        summary: { has_xero_data: false, lookup_error } as HistoricalPLSummary,
       })
     }
 
