@@ -506,8 +506,22 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
   }, [businessId, fiscalYearStart]);
 
   // Navigation
+  //
+  // Phase 57 (T04, B3) — `maxVisitedStep` advances monotonically alongside
+  // `currentStep`. It tracks the highest step the operator has reached and is
+  // consumed by StepBar (T13, B5) to gate which steps are clickable. The
+  // ceiling never decreases on `prevStep` — visiting a lower step doesn't
+  // un-visit the higher step.
   const goToStep = useCallback((step: WizardStep) => {
-    setState((prev) => ({ ...prev, currentStep: step }));
+    setState((prev) => ({
+      ...prev,
+      currentStep: step,
+      // Advance the ceiling when jumping forward (covers programmatic callers
+      // like ForecastWizardV4.tsx's `actions.goToStep(7)` after CapEx confirm
+      // and the `actions.goToStep(initialStep)` restore-from-saved path).
+      // Backward jumps don't decrease the ceiling.
+      maxVisitedStep: step > prev.maxVisitedStep ? step : prev.maxVisitedStep,
+    }));
   }, []);
 
   const nextStep = useCallback(() => {
@@ -516,9 +530,15 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       // Skip Growth Plan step for single-year forecasts
       if (next === 8 && prev.forecastDuration === 1) next = 9;
       if (next > 9) return prev;
+      const nextStepValue = next as WizardStep;
       return {
         ...prev,
-        currentStep: next as WizardStep,
+        currentStep: nextStepValue,
+        // Phase 57 (T04): monotonic advance — the new step is by construction
+        // greater than the previous currentStep, but compare against the
+        // ceiling to be safe when forecastDuration jumps over Step 8.
+        maxVisitedStep:
+          nextStepValue > prev.maxVisitedStep ? nextStepValue : prev.maxVisitedStep,
         durationLocked: prev.currentStep === 1 ? true : prev.durationLocked,
       };
     });
@@ -530,6 +550,9 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       // Skip Growth Plan step for single-year forecasts
       if (next === 8 && prev.forecastDuration === 1) next = 7;
       if (next < 1) return prev;
+      // Phase 57 (T04): prevStep does NOT modify maxVisitedStep — visiting a
+      // lower step doesn't lower the ceiling. The operator's already-seen
+      // forward steps remain clickable.
       return { ...prev, currentStep: next as WizardStep };
     });
   }, []);
