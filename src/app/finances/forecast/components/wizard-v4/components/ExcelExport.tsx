@@ -353,27 +353,67 @@ export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
     XLSX.utils.book_append_sheet(wb, wsT, 'Team');
 
     // ── Subscriptions Tab ──
+    // Phase 57 T15: read from state.subscriptions (VendorBudget[]) — the new
+    // post-Phase-57 source of truth. Pre-Phase-57 this filtered opexLines by
+    // the dead `isSubscription` flag and produced an empty tab on every
+    // forecast. Y2/Y3 grow with state.defaultOpExIncreasePct (CONTEXT.md line
+    // 34: "subscriptions Y2/Y3 grow with state.defaultOpExIncreasePct").
     const sRows: Row[] = [
       ['SUBSCRIPTION AUDIT'],
       [],
     ];
-    const subLines = opexLines.filter(l => l.isSubscription);
-    if (subLines.length > 0) {
-      sRows.push(['Vendor', 'Cost Behaviour', 'Monthly', 'Annual', 'Prior Year']);
-      subLines.forEach(l => {
-        const monthly = l.costBehavior === 'fixed' ? (l.monthlyAmount || 0) : 0;
-        sRows.push([l.name, l.costBehavior, monthly, monthly * 12, l.priorYearAnnual]);
+    const activeSubs = (state.subscriptions || []).filter(v => v.isActive);
+    const subGrowthPct = state.defaultOpExIncreasePct ?? 3;
+    const subGrowthFactor = (year: 2 | 3) => Math.pow(1 + subGrowthPct / 100, year - 1);
+    if (activeSubs.length > 0) {
+      sRows.push([
+        'Vendor', 'Category', 'Frequency', 'Account Codes',
+        'Monthly Budget', `Annual ${fy(0)}`, `Annual ${fy(1)}`, `Annual ${fy(2)}`,
+      ]);
+      let totalMonthly = 0;
+      let totalY1 = 0;
+      let totalY2 = 0;
+      let totalY3 = 0;
+      activeSubs.forEach(v => {
+        const monthly = v.monthlyBudget || 0;
+        const annualY1 = monthly * 12;
+        const annualY2 = annualY1 * subGrowthFactor(2);
+        const annualY3 = annualY1 * subGrowthFactor(3);
+        totalMonthly += monthly;
+        totalY1 += annualY1;
+        totalY2 += annualY2;
+        totalY3 += annualY3;
+        sRows.push([
+          v.vendorName,
+          v.category ?? '',
+          v.frequency,
+          (v.accountCodes ?? []).join(', '),
+          Math.round(monthly),
+          Math.round(annualY1),
+          Math.round(annualY2),
+          Math.round(annualY3),
+        ]);
       });
       sRows.push([]);
-      const totalMonthly = subLines.reduce((s, l) => s + (l.monthlyAmount || 0), 0);
-      sRows.push(['TOTAL', '', totalMonthly, totalMonthly * 12]);
+      sRows.push([
+        'TOTAL', '', '', '',
+        Math.round(totalMonthly),
+        Math.round(totalY1),
+        Math.round(totalY2),
+        Math.round(totalY3),
+      ]);
+      sRows.push([]);
+      sRows.push([`Y2/Y3 growth applied: ${subGrowthPct}%/year (state.defaultOpExIncreasePct)`]);
     } else {
       sRows.push(['No subscription audit data available.']);
-      sRows.push(['Run the Subscription Audit in Step 6 of the forecast wizard to populate this tab.']);
+      sRows.push(['Run the Subscription Audit in Step 5 of the forecast wizard to populate this tab.']);
     }
 
     const wsS = XLSX.utils.aoa_to_sheet(sRows);
-    wsS['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
+    wsS['!cols'] = [
+      { wch: 28 }, { wch: 18 }, { wch: 12 }, { wch: 18 },
+      { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+    ];
     XLSX.utils.book_append_sheet(wb, wsS, 'Subscriptions');
 
     // Download

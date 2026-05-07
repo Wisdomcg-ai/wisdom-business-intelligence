@@ -53,28 +53,30 @@ const STEP_PROMPTS: Record<WizardStep, { title: string; suggestions: string[] }>
       'How do I structure sales commissions?',
     ],
   },
+  // Phase 57 T14 (B5): swap keys to match new wizard ordering. New order
+  // is 5=Subscriptions, 6=OpEx, 7=CapEx — see WIZARD_STEPS in types.ts.
   5: {
-    title: 'Operating Expenses',
+    title: 'Subscriptions Audit',
     suggestions: [
-      'Which costs can I reduce?',
-      'What increase % is reasonable?',
-      'How do my costs compare to benchmarks?',
+      'Do I have any duplicate SaaS tools?',
+      'Which subscriptions can I consolidate?',
+      'Are there cheaper recurring vendor alternatives?',
     ],
   },
   6: {
+    title: 'Operating Expenses',
+    suggestions: [
+      'Which fixed/variable costs can I reduce?',
+      'What annual increase % is reasonable for ad-hoc spend?',
+      'How do my discretionary OpEx compare to benchmarks?',
+    ],
+  },
+  7: {
     title: 'CapEx & Investments',
     suggestions: [
       'Should I lease or buy this equipment?',
       'What depreciation method should I use?',
       'How do I prioritize investments?',
-    ],
-  },
-  7: {
-    title: 'Other Expenses',
-    suggestions: [
-      'What expenses am I missing?',
-      'Are there tax implications I should consider?',
-      'How do I budget for unexpected costs?',
     ],
   },
   8: {

@@ -393,7 +393,12 @@ Planned Changes:
 `;
     },
   },
-  5: {
+  // Phase 57 T14 (B5): swapped keys 5↔6 to match new wizard ordering
+  // (Subscriptions is now Step 5, OpEx is now Step 6 — see ForecastWizardV4
+  // renderStep + WIZARD_STEPS in types.ts). The narrative bodies travel
+  // with the keys, so step 5 references vendor/SaaS/recurring spend and
+  // step 6 references fixed/variable/ad-hoc OpEx classification.
+  6: {
     title: 'Operating Expenses',
     icon: <DollarSign className="w-4 h-4" />,
     quickActions: [
@@ -583,9 +588,13 @@ What questions should I be asking about these expenses? Are there common areas w
       };
 
       return `
-**Step 5: Operating Expenses**
+**Step 6: Operating Expenses**
 Planning Year: FY${(fiscalYear + activeYear - 1).toString().slice(-2)}
 Active Year: Year ${activeYear} of forecast
+
+Classify operating expenses as fixed, variable, ad-hoc, or seasonal.
+Subscription accounts already covered in Step 5 are marked with a "covered
+by Step 5" badge and contribute zero to this rollup (no double-counting).
 
 OpEx Summary:
 - Total Expense Lines: ${state.opexLines.length}
@@ -607,7 +616,10 @@ ${state.opexLines
 `;
     },
   },
-  6: {
+  // Phase 57 T14 (B5): subscription content moved to key 5 (was key 6).
+  // Reads from state.subscriptions (VendorBudget[]) — the new post-Phase-57
+  // source of truth — instead of state.opexLines.isSubscription (dead flag).
+  5: {
     title: 'Subscriptions',
     icon: <Settings className="w-4 h-4" />,
     quickActions: [
@@ -615,42 +627,44 @@ ${state.opexLines
         label: 'Audit Subscriptions',
         icon: '🔎',
         promptBuilder: (state, fiscalYear, activeYear) => {
-          const subscriptions = state.opexLines.filter(l => l.isSubscription);
-          const totalSubs = subscriptions.reduce((sum, l) => sum + (l.monthlyAmount || 0) * 12, 0);
+          const subscriptions = (state.subscriptions || []).filter(v => v.isActive);
+          const totalSubs = subscriptions.reduce((sum, v) => sum + (v.monthlyBudget || 0) * 12, 0);
 
           const subList = subscriptions
-            .sort((a, b) => (b.monthlyAmount || 0) - (a.monthlyAmount || 0))
-            .map(l => `- ${l.name}: ${formatCurrency((l.monthlyAmount || 0) * 12)}/yr (${formatCurrency(l.monthlyAmount || 0)}/mo)`)
+            .slice()
+            .sort((a, b) => (b.monthlyBudget || 0) - (a.monthlyBudget || 0))
+            .map(v => `- ${v.vendorName}: ${formatCurrency((v.monthlyBudget || 0) * 12)}/yr (${formatCurrency(v.monthlyBudget || 0)}/mo, ${v.frequency})`)
             .join('\n') || '- No subscriptions tagged yet';
 
-          return `Please help me audit my software subscriptions:
+          return `Please help me audit my recurring software subscriptions and SaaS vendors:
 
 **Total Annual Subscription Spend:** ${formatCurrency(totalSubs)}
 
-**Current Subscriptions:**
+**Current Vendors:**
 ${subList}
 
-Are there any potential duplicates or overlapping tools? What questions should I be asking about each subscription? Are there any categories of tools that small businesses often overspend on?`;
+Are there any potential duplicates or overlapping tools? Which vendors above 1% of revenue deserve scrutiny? What questions should I be asking about each recurring subscription? Are there any categories of SaaS tools that small businesses often overspend on?`;
         },
       },
       {
         label: 'Find Alternatives',
         icon: '💡',
         promptBuilder: (state) => {
-          const subscriptions = state.opexLines.filter(l => l.isSubscription);
-          const totalSubs = subscriptions.reduce((sum, l) => sum + (l.monthlyAmount || 0) * 12, 0);
+          const subscriptions = (state.subscriptions || []).filter(v => v.isActive);
+          const totalSubs = subscriptions.reduce((sum, v) => sum + (v.monthlyBudget || 0) * 12, 0);
 
           const topSubs = subscriptions
-            .sort((a, b) => (b.monthlyAmount || 0) - (a.monthlyAmount || 0))
+            .slice()
+            .sort((a, b) => (b.monthlyBudget || 0) - (a.monthlyBudget || 0))
             .slice(0, 5)
-            .map(l => `- ${l.name}: ${formatCurrency((l.monthlyAmount || 0) * 12)}/yr`)
+            .map(v => `- ${v.vendorName}: ${formatCurrency((v.monthlyBudget || 0) * 12)}/yr (${v.frequency})`)
             .join('\n');
 
-          return `I'm spending ${formatCurrency(totalSubs)}/year on subscriptions. Here are my largest:
+          return `I'm spending ${formatCurrency(totalSubs)}/year on recurring vendor subscriptions. Here are my largest SaaS line items:
 
 ${topSubs}
 
-What questions should I ask myself when evaluating whether each subscription is worth it? What are some signs that a subscription might be redundant or underutilized?`;
+What questions should I ask myself when evaluating whether each recurring subscription is worth it? What are some signs that a SaaS tool might be redundant or underutilized?`;
         },
       },
     ],
@@ -660,20 +674,25 @@ What questions should I ask myself when evaluating whether each subscription is 
       'Are there cheaper alternatives?',
     ],
     contextBuilder: (state, fiscalYear, activeYear) => {
-      const subscriptions = state.opexLines.filter(l => l.isSubscription);
-      const totalSubs = subscriptions.reduce((sum, l) => sum + (l.monthlyAmount || 0) * 12, 0);
+      const subscriptions = (state.subscriptions || []).filter(v => v.isActive);
+      const totalSubs = subscriptions.reduce((sum, v) => sum + (v.monthlyBudget || 0) * 12, 0);
 
       return `
-**Step 6: Subscriptions Audit**
+**Step 5: Subscriptions Audit**
 Planning Year: FY${(fiscalYear + activeYear - 1).toString().slice(-2)}
 
+Walk through every recurring software subscription and SaaS vendor. Confirm
+each vendor's monthly budget, frequency, and account-code mapping. Subscriptions
+feed the forecast P&L directly and appear as a dedicated line in the OpEx
+Budget framework on the next step (Step 6).
+
 Subscription Summary:
-- Total Subscriptions: ${subscriptions.length}
+- Active Vendors: ${subscriptions.length}
 - Annual Subscription Spend: ${formatCurrency(totalSubs)}
 
-Subscriptions:
+Vendors:
 ${subscriptions.length > 0
-  ? subscriptions.map(l => `- ${l.name}: ${formatCurrency((l.monthlyAmount || 0) * 12)}/yr`).join('\n')
+  ? subscriptions.map(v => `- ${v.vendorName}: ${formatCurrency((v.monthlyBudget || 0) * 12)}/yr (${v.frequency})`).join('\n')
   : '- No subscriptions tagged yet'}
 `;
     },
@@ -866,7 +885,7 @@ What are the biggest risks in this forecast? What assumptions should I stress te
     ],
     contextBuilder: (state, fiscalYear, activeYear) => {
       return `
-**Step 8: Final Review**
+**Step 8: Growth Plan**
 Forecast Duration: ${state.forecastDuration} year(s)
 
 Goals Summary:
