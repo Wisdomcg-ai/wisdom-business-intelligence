@@ -730,6 +730,7 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
         line.priorYearMonthly,
         goals.year1?.revenue,
         priorYear?.revenue?.total,
+        line.name,
       );
 
       // Only update if behavior is different from current (avoid unnecessary updates)
