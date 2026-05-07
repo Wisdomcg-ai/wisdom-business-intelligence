@@ -50,7 +50,9 @@ type HealthStatus = 'good' | 'ok' | 'concern';
 
 const emptySummary: YearlySummary = {
   revenue: 0, cogs: 0, grossProfit: 0, grossProfitPct: 0,
-  teamCosts: 0, opex: 0, depreciation: 0, investments: 0, otherExpenses: 0,
+  // Phase 57 T07 (B2): subscriptions added to YearlySummary; defaults to 0 for
+  // the fallback summary. Real waterfall + advisor consumer wiring lands in T08 (B4).
+  teamCosts: 0, subscriptions: 0, opex: 0, depreciation: 0, investments: 0, otherExpenses: 0,
   otherIncome: 0, xeroOtherExpense: 0,
   netProfit: 0, netProfitPct: 0,
 };
@@ -587,6 +589,10 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
       grossProfit,
       grossProfitPct: revenue > 0 ? (grossProfit / revenue) * 100 : 0,
       teamCosts,
+      // Phase 57 T07 (B2): YearlySummary.subscriptions added to the type.
+      // Stubbed at 0 here so the type compiles; T08 (B4) wires this into the
+      // scenario-adjusted summary alongside the waterfall and advisor reads.
+      subscriptions: 0,
       opex,
       depreciation,
       investments,

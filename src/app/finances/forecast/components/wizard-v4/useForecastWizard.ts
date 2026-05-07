@@ -1571,6 +1571,11 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         grossProfit: Math.round(grossProfit),
         grossProfitPct: Math.round(grossProfitPct * 10) / 10,
         teamCosts: Math.round(teamCosts),
+        // Phase 57 T07 (B2): subscriptions field added to YearlySummary type
+        // here. Real computation lands in the next commit alongside the OpEx
+        // accountCode exclusion. Stubbed at 0 in this commit so the type
+        // change is reviewable in isolation and netProfit is unchanged.
+        subscriptions: 0,
         opex: Math.round(opex),
         depreciation: Math.round(finalDepreciation),
         investments: Math.round(finalInvestments),

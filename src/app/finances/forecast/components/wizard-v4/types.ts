@@ -904,6 +904,17 @@ export interface YearlySummary {
   grossProfit: number;
   grossProfitPct: number;
   teamCosts: number;
+  /**
+   * Phase 57 (T07, B2): forecasted subscription spend for this year.
+   *   Y1 = Σ(active vendor monthlyBudget × 12)
+   *   YN = Y1 × (1 + state.defaultOpExIncreasePct / 100)^(N-1)
+   *
+   * Always present; defaults to 0 when state.subscriptions is empty (legacy
+   * forecasts pre-Phase-57). Subtracted from netProfit alongside teamCosts and
+   * opex. Step8Review consumer code lands in T08 (B4); this type field ships
+   * in B2 with the rollup math so the math compiles standalone.
+   */
+  subscriptions: number;
   opex: number;
   depreciation: number;
   investments?: number;
