@@ -206,6 +206,37 @@ function computeCoverageFromRows(rows: WideXeroRow[]): XeroCoverage {
   }
 }
 
+// P0-10: defensive reclassification. Some tenants have accounts typed as
+// 'revenue' upstream that are economically Other Income (dividends, interest
+// received, government grants, royalties). Including them in operating
+// revenue inflates the baseline and cascades into Y2/Y3. Name-match these
+// known patterns and reroute to other_income for aggregation. This sits
+// alongside the upstream catalog/parser classification (which already
+// handles sections explicitly titled "Other Income"); this catches the
+// remaining leak when the COA mis-types or the section title is generic.
+const OTHER_INCOME_NAME_PATTERNS = [
+  'dividend',
+  'interest received',
+  'interest income',
+  'interest earned',
+  'grant',           // government / R&D / industry grants
+  'jobkeeper',
+  'jobsaver',
+  'cashflow boost',
+  'royalt',          // royalties / royalty income
+  'rebate received',
+  'rental income',   // unless rent is core revenue (rare for SMB clients)
+  'gain on sale',
+  'gain on disposal',
+  'foreign exchange gain',
+  'fx gain',
+];
+
+function looksLikeOtherIncome(accountName: string): boolean {
+  const n = accountName.toLowerCase();
+  return OTHER_INCOME_NAME_PATTERNS.some(p => n.includes(p));
+}
+
 /**
  * Aggregate xero_pl_lines for a date range into a PeriodSummary.
  * Uses account_type enum directly — no string pattern matching.
@@ -257,11 +288,19 @@ function aggregatePeriod(
     const values = line.monthly_values || {}
     let lineTotal = 0
 
+    // P0-10: if upstream typed this as 'revenue' but the name is a known
+    // other-income pattern (dividends, grants, interest received, etc.),
+    // reroute to other_income to keep operating revenue baseline clean.
+    const effectiveType: XeroAccountType =
+      line.account_type === 'revenue' && looksLikeOtherIncome(line.account_name)
+        ? 'other_income'
+        : line.account_type
+
     for (const mk of monthKeys) {
       const val = values[mk] || 0
       lineTotal += val
 
-      switch (line.account_type) {
+      switch (effectiveType) {
         case 'revenue':
           revenueByMonth[mk] += val
           totalRevenue += val
@@ -286,7 +325,7 @@ function aggregatePeriod(
     }
 
     // Build line items for revenue and COGS.
-    if (line.account_type === 'revenue' && lineTotal !== 0) {
+    if (effectiveType === 'revenue' && lineTotal !== 0) {
       revenueLines.push({
         account_name: line.account_name,
         category: 'Revenue',
@@ -294,7 +333,7 @@ function aggregatePeriod(
         by_month: Object.fromEntries(monthKeys.map(mk => [mk, values[mk] || 0])),
         percent_of_revenue: 100,
       })
-    } else if (line.account_type === 'cogs' && lineTotal !== 0) {
+    } else if (effectiveType === 'cogs' && lineTotal !== 0) {
       // percent_of_revenue intentionally NOT set here — totalRevenue is
       // mid-aggregation in this loop and not final yet. Filled after the
       // loop via the second pass below.
@@ -304,7 +343,7 @@ function aggregatePeriod(
         total: lineTotal,
         by_month: Object.fromEntries(monthKeys.map(mk => [mk, values[mk] || 0])),
       })
-    } else if (line.account_type === 'opex' && lineTotal !== 0) {
+    } else if (effectiveType === 'opex' && lineTotal !== 0) {
       opexAccounts[line.account_name] = {
         total: lineTotal,
         account_name: line.account_name,
