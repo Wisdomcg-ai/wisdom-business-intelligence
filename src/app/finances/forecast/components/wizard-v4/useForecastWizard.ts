@@ -138,6 +138,18 @@ const loadStateFromStorage = (businessId: string, fiscalYear: number): ForecastW
         if (parsed.wizardVersion !== WIZARD_VERSION) {
           return null;
         }
+        // P0-16 (Phase 56): Clamp activeYear when restored state has it set
+        // beyond the saved forecastDuration. Without this, opening a stored
+        // 1yr forecast that previously had activeYear=3 would crash downstream
+        // (undefined month references in the rollup) or render empty Y2/Y3
+        // tabs that don't exist.
+        const restoredDuration = (parsed.forecastDuration as ForecastDuration) || 3;
+        const restoredActiveYear = parsed.activeYear as 1 | 2 | 3 | undefined;
+        if (restoredActiveYear && restoredActiveYear > restoredDuration) {
+          console.warn('[ForecastWizard] activeYear', restoredActiveYear, '> forecastDuration', restoredDuration, '— clamping to 1');
+          parsed.activeYear = 1;
+        }
+
         // Backward compat: convert legacy capexItems/investments to plannedSpends
         if ((!parsed.plannedSpends || parsed.plannedSpends.length === 0) &&
             (parsed.capexItems?.length > 0 || parsed.investments?.length > 0)) {
@@ -742,6 +754,13 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       ...prev,
       plannedSpends: (prev.plannedSpends || []).filter(item => item.id !== id),
     }));
+  }, []);
+
+  // Bulk replace — used by save/load restore path so saved plannedSpends
+  // (CapEx, leases, one-offs) survive a reload. Single setter so restore
+  // batches in one render with the rest of the restore chain.
+  const setPlannedSpends = useCallback((items: PlannedSpend[]) => {
+    setState(prev => ({ ...prev, plannedSpends: items || [] }));
   }, []);
 
   // Step 7: Other Expenses
@@ -1660,6 +1679,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
     addPlannedSpend,
     updatePlannedSpend,
     removePlannedSpend,
+    setPlannedSpends,
     addOtherExpense,
     updateOtherExpense,
     removeOtherExpense,

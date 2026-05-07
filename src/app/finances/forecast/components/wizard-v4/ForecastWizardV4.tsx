@@ -68,6 +68,12 @@ export function ForecastWizardV4({
   actionsRef.current = actions;
   const isInitialLoadRef = useRef(true);
   const stateVersionRef = useRef(0);
+  // P0-3 (Phase 56): Suppress autosave while the saved-assumptions restore
+  // chain is in flight. Without this, the queued setTimeout(..., 0) restorers
+  // can finish AFTER the autosave debounce fires off freshly-initialized state,
+  // capturing a `summary` that doesn't include the user's saved values
+  // (e.g. revenue lines just restored). See Audit 3 A2.
+  const isRestoringAssumptionsRef = useRef(false);
 
   // Forecast naming - use existing name if editing, otherwise default
   const [forecastName, setForecastName] = useState(
@@ -886,11 +892,18 @@ export function ForecastWizardV4({
           // If editing an existing forecast, restore saved user data (new hires, departures, etc.)
           if (savedAssumptions) {
             console.log('[ForecastWizardV4] Restoring saved assumptions:', savedAssumptions);
+            // P0-3: Suppress autosave until the restore chain finishes. The
+            // forEach restorers below run synchronously (planned hires, departures,
+            // bonuses, commissions, capex) but the goals/revenue/cogs/opex/
+            // plannedSpends restorers run inside the setTimeout below, so we
+            // must not clear the flag until that callback completes.
+            isRestoringAssumptionsRef.current = true;
 
             // ALWAYS restore user's saved forecast values (year1Monthly, etc.) if they exist
             // Xero gives prior year data, but saved assumptions have user's customized forecast
             // Use setTimeout to ensure this runs AFTER initializeFromXero's setState completes
             setTimeout(() => {
+              try {
               // Restore goals from saved assumptions (overrides business_goals defaults)
               if (savedAssumptions.goals) {
                 console.log('[ForecastWizardV4] Restoring saved goals:', savedAssumptions.goals);
@@ -989,6 +1002,21 @@ export function ForecastWizardV4({
                   console.log('[ForecastWizardV4] Restoring saved OpEx forecast:', restoredOpExLines.length, 'lines');
                   actionsRef.current.setOpExLines(restoredOpExLines);
                 }
+              }
+
+              // P0-2 (Phase 56): Restore planned spends (CapEx, leases, one-offs).
+              // buildAssumptions saves these at assumptions.plannedSpends but the
+              // load path previously never read them back, silently dropping
+              // every Step 6 entry on each reload.
+              if (Array.isArray(savedAssumptions.plannedSpends) && savedAssumptions.plannedSpends.length > 0) {
+                console.log('[ForecastWizardV4] Restoring saved planned spends:', savedAssumptions.plannedSpends.length, 'items');
+                actionsRef.current.setPlannedSpends(savedAssumptions.plannedSpends);
+              }
+              } finally {
+                // P0-3: Restore complete — re-enable autosave. Always runs,
+                // even if a restorer above threw, so autosave never stays
+                // permanently suppressed.
+                isRestoringAssumptionsRef.current = false;
               }
             }, 0);
 
@@ -1119,6 +1147,9 @@ export function ForecastWizardV4({
       } catch (err) {
         console.error('Failed to load data:', err);
         setError('Failed to load business data. You can still enter data manually.');
+        // P0-3 safety: never leave the restore flag stuck on an error path —
+        // otherwise autosave stays permanently suppressed for this session.
+        isRestoringAssumptionsRef.current = false;
       } finally {
         setIsLoading(false);
       }
@@ -1147,6 +1178,10 @@ export function ForecastWizardV4({
   // Autosave functionality - save draft after 3 seconds of no changes
   const performAutoSave = useCallback(async () => {
     if (isLoading || isSaving || isAutoSaving || isReadOnly) return;
+    // P0-3: Skip while saved-assumptions restore is in flight. The restore
+    // chain is async (setTimeout) and any save fired during the gap captures
+    // a `summary` computed from freshly-init state, not the restored values.
+    if (isRestoringAssumptionsRef.current) return;
 
     setIsAutoSaving(true);
     setSaveError(false);

@@ -493,8 +493,13 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
 
   // Adjusted year data with what-if toggles applied
   const adjustedData = useMemo((): YearlySummary => {
-    if (activeYear !== 1) return yearData; // What-if only applies to Y1
-
+    // P0-12 (Phase 56): Apply toggles to whichever year is active. The
+    // previous early-return for activeYear !== 1 silently fell back to
+    // unadjusted yearData on Y2/Y3 so multi-year scenario analysis was
+    // always wrong. Toggle deltas are stored as Y1 dollar amounts; applying
+    // them flat to Y2/Y3 is an over-simplification (P1 refinement: scale
+    // revenue/cogs deltas by year-over-year ratio) but is dramatically
+    // more correct than discarding them entirely.
     const activeToggles = whatIfToggles.filter(t => t.enabled);
     if (activeToggles.length === 0) return yearData;
 
@@ -514,7 +519,22 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
     // don't currently adjust other_income or xero_other_expense.
     const otherIncome = yearData.otherIncome ?? 0;
     const xeroOtherExpense = yearData.xeroOtherExpense ?? 0;
-    const netProfit = grossProfit - teamCosts - opex - otherExpenses + otherIncome - xeroOtherExpense;
+    // P0-11 (Phase 56): Include depreciation + investments in the net-profit
+    // formula. The original adjusted calc dropped depreciation, so toggling
+    // any scenario silently inflated NP by the depreciation amount vs the
+    // unadjusted view. Mirrors the canonical formula in useForecastWizard
+    // calculateYearSummary.
+    const depreciation = yearData.depreciation ?? 0;
+    const investments = yearData.investments ?? 0;
+    const netProfit =
+      grossProfit
+      - teamCosts
+      - opex
+      - depreciation
+      - otherExpenses
+      - investments
+      + otherIncome
+      - xeroOtherExpense;
 
     return {
       revenue,
@@ -523,7 +543,8 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
       grossProfitPct: revenue > 0 ? (grossProfit / revenue) * 100 : 0,
       teamCosts,
       opex,
-      depreciation: yearData.depreciation,
+      depreciation,
+      investments,
       otherExpenses,
       otherIncome,
       xeroOtherExpense,

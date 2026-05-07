@@ -707,6 +707,8 @@ export interface WizardActions {
   addPlannedSpend: (item: Omit<PlannedSpend, 'id'>) => void;
   updatePlannedSpend: (id: string, updates: Partial<PlannedSpend>) => void;
   removePlannedSpend: (id: string) => void;
+  // Bulk replace — used by save/load restore path
+  setPlannedSpends: (items: PlannedSpend[]) => void;
 
   // Step 7: Other Expenses
   addOtherExpense: (expense: Omit<OtherExpense, 'id'>) => void;
