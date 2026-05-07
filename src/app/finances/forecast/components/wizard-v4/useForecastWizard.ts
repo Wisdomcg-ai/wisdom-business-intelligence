@@ -1165,8 +1165,19 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         teamCosts += proRataSalary + proRataSuper;
       }
 
-      // Bonuses (assume same each year for now)
-      const bonusTotal = state.bonuses.reduce((sum, b) => sum + b.amount, 0);
+      // Bonuses — P0-6: skip bonuses for departed employees whose departure
+      // month is on or before the bonus month within the target fiscal year.
+      // Bonus.month is calendar 1-12; map to a YYYY-MM key in this FY using the
+      // same convention generateMonthKeys() uses (months >= ysm in start-cal-year,
+      // months < ysm in next cal-year).
+      const bonusFYStartCalYear = state.fiscalYearStart + (yearNum - 1);
+      const bonusTotal = state.bonuses.reduce((sum, b) => {
+        const calYear = b.month >= ysm ? bonusFYStartCalYear : bonusFYStartCalYear + 1;
+        const bonusKey = `${calYear}-${String(b.month).padStart(2, '0')}`;
+        const departure = state.departures.find(d => d.teamMemberId === b.teamMemberId);
+        if (departure && departure.endMonth < bonusKey) return sum;
+        return sum + b.amount;
+      }, 0);
       teamCosts += bonusTotal;
 
       // Commissions - based on percentage of linked revenue line
