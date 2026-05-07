@@ -10,10 +10,16 @@ interface YearTabsProps {
 }
 
 export function YearTabs({ activeYear, onYearChange, fiscalYear, forecastDuration = 3 }: YearTabsProps) {
+  // Sublabel reflects the actual data granularity rendered in each year's
+  // grid. Phase 57+ stores Y2/Y3 as `year2Monthly`/`year3Monthly` (12-month
+  // arrays); the legacy `year2Quarterly`/`year3Quarterly` shape is read-only
+  // back-compat (see types.ts:92-95). The UI grid is monthly for all 3 years,
+  // so the sublabel must say "Monthly" for Y2/Y3 too — labelling them
+  // "Quarterly" misled operators (May 2026 user report).
   const allYears = [
     { year: 1 as const, label: `FY${fiscalYear}`, sublabel: 'Monthly' },
-    { year: 2 as const, label: `FY${fiscalYear + 1}`, sublabel: 'Quarterly' },
-    { year: 3 as const, label: `FY${fiscalYear + 2}`, sublabel: 'Quarterly' },
+    { year: 2 as const, label: `FY${fiscalYear + 1}`, sublabel: 'Monthly' },
+    { year: 3 as const, label: `FY${fiscalYear + 2}`, sublabel: 'Monthly' },
   ];
 
   // Filter years based on forecast duration
