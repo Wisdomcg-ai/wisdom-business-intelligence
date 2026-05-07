@@ -737,6 +737,13 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
     }));
   }, []);
 
+  // Bulk replace — used by save/load restore path so saved plannedSpends
+  // (CapEx, leases, one-offs) survive a reload. Single setter so restore
+  // batches in one render with the rest of the restore chain.
+  const setPlannedSpends = useCallback((items: PlannedSpend[]) => {
+    setState(prev => ({ ...prev, plannedSpends: items || [] }));
+  }, []);
+
   // Step 7: Other Expenses
   const addOtherExpense = useCallback((expense: Omit<OtherExpense, 'id'>) => {
     setState((prev) => ({
@@ -1603,6 +1610,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
     addPlannedSpend,
     updatePlannedSpend,
     removePlannedSpend,
+    setPlannedSpends,
     addOtherExpense,
     updateOtherExpense,
     removeOtherExpense,

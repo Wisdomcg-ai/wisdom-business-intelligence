@@ -990,6 +990,15 @@ export function ForecastWizardV4({
                   actionsRef.current.setOpExLines(restoredOpExLines);
                 }
               }
+
+              // P0-2 (Phase 56): Restore planned spends (CapEx, leases, one-offs).
+              // buildAssumptions saves these at assumptions.plannedSpends but the
+              // load path previously never read them back, silently dropping
+              // every Step 6 entry on each reload.
+              if (Array.isArray(savedAssumptions.plannedSpends) && savedAssumptions.plannedSpends.length > 0) {
+                console.log('[ForecastWizardV4] Restoring saved planned spends:', savedAssumptions.plannedSpends.length, 'items');
+                actionsRef.current.setPlannedSpends(savedAssumptions.plannedSpends);
+              }
             }, 0);
 
             // Restore planned hires (new hires added by user)
