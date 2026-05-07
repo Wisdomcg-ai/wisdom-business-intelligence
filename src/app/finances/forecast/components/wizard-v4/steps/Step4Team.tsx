@@ -4331,8 +4331,15 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
 
       {/* Phase 51 (UX-S4-01): Termination modal. Forward-looking only — salary
           continues through the chosen end month, then drops to zero. Operator
-          decision: no remove-from-FY-entirely option. */}
-      {terminatingMember && (
+          decision: no remove-from-FY-entirely option.
+          Phase 56 P1 (Audit-2 BUG-012): block end months before the member's
+          earliest valid start. Existing TeamMembers are assumed to be employed
+          at FY start (no startMonth field on TeamMember). */}
+      {terminatingMember && (() => {
+        const fiscalYearStartKey = `${fiscalYear - 1}-07`;
+        const earliestValidEnd = fiscalYearStartKey;
+        const departureInvalid = !!pendingEndMonth && pendingEndMonth < earliestValidEnd;
+        return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[80]">
           <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
             <div className="flex items-center justify-between mb-4">
@@ -4359,12 +4366,20 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                 placeholder="Select end month"
                 className="w-full py-2"
               />
+              {departureInvalid && (
+                <p className="text-xs text-red-600 mt-1.5">
+                  End month must be on or after FY start ({earliestValidEnd}). For
+                  members who left before FY start, remove them from the team list
+                  instead.
+                </p>
+              )}
             </div>
             <div className="flex gap-3">
               <button
                 type="button"
+                disabled={departureInvalid}
                 onClick={() => {
-                  if (terminatingMember && pendingEndMonth) {
+                  if (terminatingMember && pendingEndMonth && !departureInvalid) {
                     actions.addDeparture({
                       teamMemberId: terminatingMember.id,
                       endMonth: pendingEndMonth,
@@ -4372,7 +4387,11 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                   }
                   setTerminatingMember(null);
                 }}
-                className="flex-1 px-4 py-2 bg-brand-navy text-white text-sm font-medium rounded-lg hover:bg-brand-navy/90"
+                className={`flex-1 px-4 py-2 text-white text-sm font-medium rounded-lg ${
+                  departureInvalid
+                    ? 'bg-gray-300 cursor-not-allowed'
+                    : 'bg-brand-navy hover:bg-brand-navy/90'
+                }`}
               >
                 Confirm
               </button>
@@ -4386,7 +4405,8 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Phase 52-01 (XERO-S4-01) — Import-from-Xero modal. Inline (no global
           Modal component per 52-RESEARCH anti-pattern). Loading skeleton ↔
