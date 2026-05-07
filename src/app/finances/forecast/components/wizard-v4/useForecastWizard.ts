@@ -1140,7 +1140,14 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
           const baseMonthly = (line.monthlyAmount || 0) * (1 + trendAdj / 100);
           return sum + baseMonthly * 12;
         }
-        const adjustedPct = (line.percentOfRevenue || 0) + trendAdj;
+        // why: percentOfRevenue is canonically 0-100 but legacy/import paths
+        // have historically stored it as a 0-1 decimal. Without this guard a
+        // value of 0.30 silently becomes (0.30 + trendAdj)/100 ≈ 0.003 → COGS
+        // 100× understated. Mirror this same dual-unit hazard guard at every
+        // site that divides percentOfRevenue by 100 (commissions below).
+        const rawPct = line.percentOfRevenue || 0;
+        const normalizedPct = rawPct > 1 ? rawPct : rawPct * 100;
+        const adjustedPct = normalizedPct + trendAdj;
         return sum + (revenue * adjustedPct) / 100;
       }, 0);
 
@@ -1256,7 +1263,13 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
             lineRevenue = revenue * (lineY1 / totalY1);
           }
         }
-        teamCosts += lineRevenue * (commission.percentOfRevenue / 100);
+        // why: same dual-unit hazard as COGS percentOfRevenue above. If a
+        // legacy/import path stored commission % as a 0-1 decimal (e.g., 0.05
+        // instead of 5), `0.05 / 100 = 0.0005` → commissions silently 50×
+        // understated. P1A Audit Team-Commission-001.
+        const rawCommissionPct = commission.percentOfRevenue || 0;
+        const normalizedCommissionPct = rawCommissionPct > 1 ? rawCommissionPct : rawCommissionPct * 100;
+        teamCosts += lineRevenue * (normalizedCommissionPct / 100);
       }
 
       // OpEx - handle all cost behaviors including seasonal
@@ -1303,8 +1316,17 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
           case 'seasonal': {
             // Use prior year pattern with growth applied
             const priorTotal = line.priorYearAnnual || 0;
-            if (line.seasonalTargetAmount && yearNum === 1) {
+            // why: honor explicit per-year seasonal target overrides before
+            // falling back to growth formula. Mirrors P0-1 y2Override/y3Override
+            // pattern. Without these guards Y2/Y3 silently reverted to formula
+            // even when the user set a distinct target per year.
+            // P1A Seasonal-OpEx-Y1-Override-001.
+            if (yearNum === 1 && typeof line.seasonalTargetAmount === 'number') {
               lineAmount = line.seasonalTargetAmount;
+            } else if (yearNum === 2 && typeof line.y2SeasonalTargetAmount === 'number') {
+              lineAmount = line.y2SeasonalTargetAmount;
+            } else if (yearNum === 3 && typeof line.y3SeasonalTargetAmount === 'number') {
+              lineAmount = line.y3SeasonalTargetAmount;
             } else {
               const growthPct = line.seasonalGrowthPct ?? defaultIncrease;
               lineAmount = priorTotal * Math.pow(1 + growthPct / 100, yearNum);
