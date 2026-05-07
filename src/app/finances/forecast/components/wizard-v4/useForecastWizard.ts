@@ -52,6 +52,13 @@ import type {
 // Bump this to force all users to re-init from APIs (invalidates stale localStorage)
 const WIZARD_VERSION = 10; // Phase 44 Sub-phase A — long-format xero_pl_lines + new pl-summary read path. Old caches showed stale "Xero not connected" state.
 
+// Single source of truth for whether an OpEx line should be excluded from the
+// OpEx rollup (because team wages are generated separately by convertTeam()).
+// Used by both the summary rollup and the assumptions export so they cannot drift.
+function shouldExcludeFromOpEx(line: { name: string; isTeamCostOverride?: boolean }): boolean {
+  return line.isTeamCostOverride !== undefined ? line.isTeamCostOverride : isTeamCost(line.name);
+}
+
 // Remap month keys from prior year to forecast year (same position, different year)
 // e.g., { "2024-07": 50000 } → { "2025-07": 50000 } when targetFYStart=2025
 function remapMonthKeysToForecastYear(
@@ -1175,7 +1182,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         if (line.isOneTime && line.oneTimeYear && line.oneTimeYear !== yearNum) return sum;
         // Skip expenses that haven't started yet
         if (line.startYear && line.startYear > yearNum) return sum;
-        if (line.isTeamCostOverride !== undefined ? line.isTeamCostOverride : isTeamCost(line.name)) return sum;
+        if (shouldExcludeFromOpEx(line)) return sum;
+
+        // P0-1: honor explicit Y2/Y3 annual overrides before formula derivation.
+        // Variable lines have a separate y2/y3PercentOverride path handled below.
+        if (yearNum === 2 && typeof line.y2Override === 'number') {
+          return sum + line.y2Override;
+        }
+        if (yearNum === 3 && typeof line.y3Override === 'number') {
+          return sum + line.y3Override;
+        }
 
         let lineAmount = 0;
         switch (line.costBehavior) {
@@ -1186,10 +1202,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
             lineAmount = baseAmount * Math.pow(increaseFactor, yearNum - 1);
             break;
           }
-          case 'variable':
-            // Percentage of revenue
-            lineAmount = revenue * ((line.percentOfRevenue || 0) / 100);
+          case 'variable': {
+            // Percentage of revenue — honor per-year % override if present.
+            const pct = yearNum === 2 && typeof line.y2PercentOverride === 'number'
+              ? line.y2PercentOverride
+              : yearNum === 3 && typeof line.y3PercentOverride === 'number'
+                ? line.y3PercentOverride
+                : (line.percentOfRevenue || 0);
+            lineAmount = revenue * (pct / 100);
             break;
+          }
           case 'adhoc':
             // Expected annual amount (same each year)
             lineAmount = line.expectedAnnualAmount || 0;
