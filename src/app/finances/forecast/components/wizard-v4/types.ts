@@ -796,6 +796,37 @@ export interface ForecastWizardState {
   // Subscriptions row. Default `[]` until the mount-time fetch resolves;
   // soft-migration (T03, B3) sets it explicitly on legacy v10 drafts.
   subscriptions: VendorBudget[];
+
+  /**
+   * Phase 57 (T03, B3) — set `true` by the v10→v11 soft-migration when any
+   * existing OpExLine has `accountId` set but `accountCode` undefined. This
+   * happens to drafts created before T01's ingest change (which populates
+   * `accountCode` only on fresh Xero ingest, not retroactively). When `true`,
+   * the Step 6 OpEx UI (T11, B4) renders a "Refresh from Xero" nudge banner
+   * — clicking it re-ingests `/api/Xero/chart-of-accounts` and re-classifies
+   * opexLines with populated `accountCode`. Until the operator refreshes,
+   * the rollup (T07) uses ONLY accountCode-based exclusion (no name
+   * fallback), so legacy unrefreshed forecasts continue to double-count
+   * subscription spend. The banner is the documented mitigation — see
+   * PLAN.md risk register R6.
+   *
+   * Optional and unset on fresh forecasts (created post-Phase-57). Cleared
+   * by Step 6 once the operator confirms the refresh.
+   */
+  needsAccountCodeRefresh?: boolean;
+
+  /**
+   * Phase 57 (T03/T04, B3) — highest step the operator has reached in this
+   * forecast. Used by StepBar (T13, B5) to gate which steps are clickable:
+   * any step <= maxVisitedStep is jumpable. Initialized to 1 in
+   * `createInitialState`; advanced monotonically inside `nextStep` and
+   * `goToStep` whenever the new step exceeds the ceiling (T04). Never
+   * decreases on `prevStep`. Soft-migration (T03) sets
+   * `parsed.maxVisitedStep = parsed.currentStep || 1` for legacy v10 drafts
+   * that pre-date this field — operator returning to a draft mid-flow keeps
+   * access to all previously visited steps.
+   */
+  maxVisitedStep: WizardStep;
 }
 
 export interface WizardActions {
