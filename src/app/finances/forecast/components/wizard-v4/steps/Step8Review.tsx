@@ -51,7 +51,8 @@ type HealthStatus = 'good' | 'ok' | 'concern';
 const emptySummary: YearlySummary = {
   revenue: 0, cogs: 0, grossProfit: 0, grossProfitPct: 0,
   // Phase 57 T07 (B2): subscriptions added to YearlySummary; defaults to 0 for
-  // the fallback summary. Real waterfall + advisor consumer wiring lands in T08 (B4).
+  // the fallback summary used when forecastDuration shrinks below activeYear.
+  // T08 (B4) wires the live value into the waterfall + advisor + scenario math.
   teamCosts: 0, subscriptions: 0, opex: 0, depreciation: 0, investments: 0, otherExpenses: 0,
   otherIncome: 0, xeroOtherExpense: 0,
   netProfit: 0, netProfitPct: 0,
@@ -95,11 +96,19 @@ function getBarColor(item: { value: number; isSubtotal?: boolean; isTotal?: bool
 }
 
 function PLWaterfallChart({ data }: { data: YearlySummary }) {
+  // Phase 57 T08 (B4): explicit Subscriptions bar between Team and OpEx so the
+  // operator sees subscriptions as their own bucket on the P&L. Hidden when
+  // `data.subscriptions === 0` (no active vendors / legacy forecasts) to
+  // keep the chart clean — readers default to 0 via T07's required type
+  // field, so the `?? 0` is belt-and-braces against any stale-shape summary
+  // object that might leak in from external callers.
+  const subscriptions = data.subscriptions ?? 0;
   const items: WaterfallItem[] = [
     { name: 'Revenue', value: data.revenue },
     { name: 'COGS', value: -data.cogs },
     { name: 'Gross Profit', value: data.grossProfit, isSubtotal: true },
     { name: 'Team', value: -data.teamCosts },
+    ...(subscriptions > 0 ? [{ name: 'Subscriptions', value: -subscriptions }] : []),
     { name: 'OpEx', value: -data.opex },
     ...((data.investments || 0) > 0 ? [{ name: 'Invest', value: -(data.investments || 0) }] : []),
     { name: 'Other', value: -data.otherExpenses },
@@ -566,6 +575,15 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
     // don't currently adjust other_income or xero_other_expense.
     const otherIncome = yearData.otherIncome ?? 0;
     const xeroOtherExpense = yearData.xeroOtherExpense ?? 0;
+    // Phase 57 T08 (B4): subscriptions pass through unchanged. Per CONTEXT.md
+    // "Out of scope": no `totalSubscriptionsAdj` overlay — subscription what-if
+    // is Phase 58+. The base value (computed by T07's rollup, defaulted to 0
+    // for legacy forecasts) MUST still be subtracted from netProfit so the
+    // adjusted P&L matches the canonical formula in
+    // useForecastWizard.calculateYearSummary. Without this subtraction,
+    // toggling any scenario would silently inflate NP by the subscription
+    // amount.
+    const subscriptions = yearData.subscriptions ?? 0;
     // P0-11 (Phase 56): Include depreciation + investments in the net-profit
     // formula. The original adjusted calc dropped depreciation, so toggling
     // any scenario silently inflated NP by the depreciation amount vs the
@@ -576,6 +594,7 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
     const netProfit =
       grossProfit
       - teamCosts
+      - subscriptions // Phase 57 T08 (B4): subtract subscriptions alongside opex
       - opex
       - depreciation
       - otherExpenses
@@ -589,10 +608,9 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
       grossProfit,
       grossProfitPct: revenue > 0 ? (grossProfit / revenue) * 100 : 0,
       teamCosts,
-      // Phase 57 T07 (B2): YearlySummary.subscriptions added to the type.
-      // Stubbed at 0 here so the type compiles; T08 (B4) wires this into the
-      // scenario-adjusted summary alongside the waterfall and advisor reads.
-      subscriptions: 0,
+      // Phase 57 T08 (B4): pass through unchanged. Subscription what-if scenario
+      // overlay is deferred per CONTEXT.md "Out of scope".
+      subscriptions,
       opex,
       depreciation,
       investments,
@@ -666,6 +684,23 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
           type: 'warning',
           message: `Team costs are ${formatPercent(teamPct)} of revenue. Consider if all new hires are essential for Year 1 or if some can be delayed.`,
           stepLink: 4,
+        });
+      }
+    }
+
+    // Phase 57 T08 (B4): Subscriptions sanity check.
+    // Threshold > 10% of revenue surfaces an informational nudge — vendor
+    // audit may yield savings. Severity 'info' (not 'warning') because the
+    // benchmark is industry-dependent. Step link points to Step 5
+    // (Subscriptions in the post-B3 ordering).
+    const subs = y1.subscriptions ?? 0;
+    if (y1.revenue > 0 && subs > 0) {
+      const subsPct = (subs / y1.revenue) * 100;
+      if (subsPct > 10) {
+        items.push({
+          type: 'info',
+          message: `Subscriptions are ${formatPercent(subsPct)} of revenue. Above 10% suggests a vendor audit could surface savings.`,
+          stepLink: 5,
         });
       }
     }

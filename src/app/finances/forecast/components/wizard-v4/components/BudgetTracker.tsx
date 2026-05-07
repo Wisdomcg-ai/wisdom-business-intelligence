@@ -13,7 +13,7 @@ interface BudgetTrackerProps {
 }
 
 export function BudgetTracker({ state, currentStep, subscriptionSavings = 0 }: BudgetTrackerProps) {
-  const { goals, teamMembers, newHires, departures, cogsLines, opexLines, capexItems } = state;
+  const { goals, teamMembers, newHires, departures, cogsLines, opexLines, capexItems, subscriptions, defaultOpExIncreasePct } = state;
   const fiscalYearStart = state.fiscalYearStart;
   const duration = state.forecastDuration;
 
@@ -24,6 +24,9 @@ export function BudgetTracker({ state, currentStep, subscriptionSavings = 0 }: B
       revenue: number;
       cogs: number;
       teamCosts: number;
+      // Phase 57 T10 (B4): subscriptions surfaced in BudgetTracker for parity
+      // with BudgetFramework. Mirrors useForecastWizard.calculateYearSummary.
+      subscriptions: number;
       targetProfit: number;
       targetProfitPct: number;
       availableForExpenses: number;
@@ -34,6 +37,15 @@ export function BudgetTracker({ state, currentStep, subscriptionSavings = 0 }: B
       utilizationPct: number;
       isOverBudget: boolean;
     }[] = [];
+
+    // Phase 57 T10 (B4): subscriptions baseline (Y1) + parameterized growth.
+    // Pulls from state.subscriptions and state.defaultOpExIncreasePct so an
+    // operator override of the default OpEx growth rate flows through here
+    // identically to BudgetFramework + the rollup. Hard-coding 1.03 would
+    // silently diverge.
+    const subsGrowth = 1 + (defaultOpExIncreasePct ?? 3) / 100;
+    const activeSubs = subscriptions.filter(v => v.isActive);
+    const y1Subscriptions = activeSubs.reduce((sum, v) => sum + (v.monthlyBudget || 0) * 12, 0);
 
     for (let yearNum = 1; yearNum <= duration; yearNum++) {
       const yearKey = `year${yearNum}` as 'year1' | 'year2' | 'year3';
@@ -102,7 +114,11 @@ export function BudgetTracker({ state, currentStep, subscriptionSavings = 0 }: B
       }
 
       const targetProfit = Math.round(revenue * (targetProfitPct / 100));
-      const availableForExpenses = revenue - cogs - teamCosts - targetProfit;
+      // Phase 57 T10 (B4): subscriptions deducted before the discretionary OpEx
+      // ceiling — keeps BudgetTracker.availableForExpenses in sync with
+      // BudgetFramework.availableOpEx and the rollup's net-profit formula.
+      const yearSubscriptions = y1Subscriptions * Math.pow(subsGrowth, yearNum - 1);
+      const availableForExpenses = revenue - cogs - teamCosts - yearSubscriptions - targetProfit;
 
       // Calculate OpEx allocated
       const opexAllocated = opexLines.reduce((sum, line) => {
@@ -144,6 +160,7 @@ export function BudgetTracker({ state, currentStep, subscriptionSavings = 0 }: B
         revenue: Math.round(revenue),
         cogs: Math.round(cogs),
         teamCosts: Math.round(teamCosts),
+        subscriptions: Math.round(yearSubscriptions),
         targetProfit,
         targetProfitPct,
         availableForExpenses: Math.round(availableForExpenses),
@@ -157,7 +174,7 @@ export function BudgetTracker({ state, currentStep, subscriptionSavings = 0 }: B
     }
 
     return budgets;
-  }, [goals, teamMembers, newHires, departures, cogsLines, opexLines, capexItems, fiscalYearStart, duration, subscriptionSavings]);
+  }, [goals, teamMembers, newHires, departures, cogsLines, opexLines, capexItems, fiscalYearStart, duration, subscriptionSavings, subscriptions, defaultOpExIncreasePct]);
 
   const y1Budget = yearBudgets[0];
   if (!y1Budget || y1Budget.revenue === 0) return null;
@@ -321,8 +338,8 @@ export function BudgetTracker({ state, currentStep, subscriptionSavings = 0 }: B
               <div className="text-sm font-bold text-white tabular-nums">{formatCurrency(y1Budget.revenue)}</div>
             </div>
             <div className="text-center p-2 rounded-lg bg-white/5">
-              <div className="text-[10px] text-slate-500 uppercase mb-1">COGS + Team</div>
-              <div className="text-sm font-bold text-white tabular-nums">{formatCurrency(y1Budget.cogs + y1Budget.teamCosts)}</div>
+              <div className="text-[10px] text-slate-500 uppercase mb-1">COGS + Team + Subs</div>
+              <div className="text-sm font-bold text-white tabular-nums">{formatCurrency(y1Budget.cogs + y1Budget.teamCosts + y1Budget.subscriptions)}</div>
             </div>
             <div className="text-center p-2 rounded-lg bg-white/5">
               <div className="text-[10px] text-slate-500 uppercase mb-1">Target Profit</div>

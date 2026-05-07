@@ -208,6 +208,45 @@ export interface SubscriptionAuditSummary {
   cancelAnnual: number;
   potentialSavings: number; // reduce + cancel
   costPerEmployee?: number;
+
+  // ----------------------------------------------------------
+  // Phase 57 (T09, B4) — at-save-time vendor snapshot.
+  //
+  // The legacy fields above were populated by the old subscription-audit
+  // experience (essential/review/reduce/cancel buckets). Phase 57 added the
+  // first-class vendor list, so buildAssumptions now also writes a structural
+  // snapshot of every active VendorBudget at save time. `subscription_budgets`
+  // remains the live source of truth for the BUSINESS — this snapshot is the
+  // self-contained copy on the saved forecast so an operator opening a Q2
+  // forecast in Q3 sees the same numbers even if the live table has drifted.
+  //
+  // Fields are optional so existing readers (AssumptionsTab, ForecastAssumptionCards)
+  // continue to compile without changes; legacy fields are still populated by
+  // buildAssumptions for back-compat.
+  // ----------------------------------------------------------
+  /** Number of active vendors at save time. */
+  activeVendorCount?: number;
+  /** Annual growth % applied to subscriptions for Y2/Y3 (state.defaultOpExIncreasePct). */
+  annualGrowthPct?: number;
+  /** Snapshot of every active vendor at save time. */
+  vendors?: SubscriptionVendorSnapshot[];
+}
+
+/**
+ * Phase 57 (T09, B4) — single-vendor snapshot persisted inside
+ * SubscriptionAuditSummary.vendors at save time. Mirrors the runtime
+ * VendorBudget shape from `wizard-v4/types.ts` but is intentionally narrower:
+ * we only persist the inputs that drive the rollup + reporting consumers,
+ * not the full Step6 detection metadata (transactionCount, etc., which is
+ * cheap to recompute on demand from `subscription_budgets`).
+ */
+export interface SubscriptionVendorSnapshot {
+  vendorKey: string;
+  vendorName: string;
+  monthlyBudget: number;
+  frequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc' | 'one-time';
+  category?: string;
+  accountCodes?: string[];
 }
 
 // ============================================================

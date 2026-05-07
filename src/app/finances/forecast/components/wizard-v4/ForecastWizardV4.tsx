@@ -1571,7 +1571,10 @@ export function ForecastWizardV4({
       case 5:
         return <Step6Subscriptions state={state} actions={actions} fiscalYear={fiscalYear} businessId={businessId} />;
       case 6:
-        return <Step5OpEx state={state} actions={actions} fiscalYear={fiscalYear} industry={state.businessProfile?.industry} />;
+        // Phase 57 T11 (B4): businessId passed so the legacy "Refresh from Xero"
+        // nudge banner can re-ingest chart-of-accounts and populate accountCodes
+        // on opexLines for forecasts created before Phase 57.
+        return <Step5OpEx state={state} actions={actions} fiscalYear={fiscalYear} businessId={businessId} industry={state.businessProfile?.industry} />;
       case 7:
         return <Step6CapEx state={state} actions={actions} fiscalYear={fiscalYear} businessId={businessId} />;
       case 8:
