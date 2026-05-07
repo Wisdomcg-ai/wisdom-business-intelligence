@@ -225,13 +225,35 @@ const saveStateToStorage = (state: ForecastWizardState) => {
   }
 };
 
-export function useForecastWizard(fiscalYearStart: number, businessId: string) {
+export function useForecastWizard(fiscalYearStart: number, businessId: string, startFresh?: boolean) {
   // Track if we've initialized from storage to avoid overwriting
   const initializedRef = useRef(false);
   // Track if we restored from localStorage (has meaningful data)
   const [wasRestoredFromStorage, setWasRestoredFromStorage] = useState(false);
 
   const [state, setState] = useState<ForecastWizardState>(() => {
+    // Phase 56 (P1 B1): when the caller signals startFresh (e.g. "Create New
+    // Forecast"), bypass the localStorage read entirely and clear any stored
+    // draft so a stale hydrated state can never leak into the new forecast.
+    // Without this, the useState initializer ran BEFORE the effect that
+    // clears localStorage, so the in-memory state still carried newHires,
+    // departures, plannedSpends, currentStep, activeYear, etc., from the
+    // previous session — and `initializeFromXero` only overwrites a subset
+    // of fields (revenue/cogs/opex/team/priorYear/goals), leaving the rest
+    // intact via its `...prev` spread. End result: "fresh" forecasts silently
+    // inherited Step 4/5/6/7 work from the user's prior draft.
+    if (startFresh) {
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem(getStorageKey(businessId, fiscalYearStart));
+        } catch {
+          /* ignore */
+        }
+      }
+      initializedRef.current = true;
+      return createInitialState(fiscalYearStart, businessId);
+    }
+
     // Try to load from localStorage first
     const stored = loadStateFromStorage(businessId, fiscalYearStart);
     if (stored) {

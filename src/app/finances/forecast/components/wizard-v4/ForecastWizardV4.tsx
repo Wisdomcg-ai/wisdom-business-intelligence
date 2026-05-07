@@ -48,7 +48,7 @@ export function ForecastWizardV4({
   onComplete,
   onClose,
 }: ForecastWizardV4Props) {
-  const { state, actions, summary, wasRestoredFromStorage, clearLocalStorage } = useForecastWizard(fiscalYear - 1, businessId);
+  const { state, actions, summary, wasRestoredFromStorage, clearLocalStorage } = useForecastWizard(fiscalYear - 1, businessId, startFresh);
   const wizardPathname = usePathname();
   const integrationsHref = wizardPathname.includes('/coach/clients/')
     ? wizardPathname.replace(/\/view\/.*$/, '/view/integrations')
