@@ -58,6 +58,7 @@ function BudgetFramework({
   state,
   year1TeamCosts,
   opexByYear,
+  subscriptionsByYear,
   fiscalYear,
   actualRevenue,
   actualCOGS,
@@ -65,6 +66,10 @@ function BudgetFramework({
   state: ForecastWizardState;
   year1TeamCosts: number;
   opexByYear: { y1: number; y2: number; y3: number };
+  // Phase 57 T10 (B4): explicit Subscriptions line in the OpEx-budget breakdown.
+  // Y1 = Σ(active vendor monthlyBudget × 12); YN grows by state.defaultOpExIncreasePct.
+  // Computed by parent and passed in so this component stays presentational.
+  subscriptionsByYear: { y1: number; y2: number; y3: number };
   fiscalYear: number;
   actualRevenue: { y1: number; y2: number; y3: number };
   actualCOGS: { y1: number; y2: number; y3: number };
@@ -89,10 +94,25 @@ function BudgetFramework({
         ? Math.round(year1TeamCosts * 1.03)
         : Math.round(year1TeamCosts * 1.03 * 1.03);
 
-    const targetProfit = revenue * (netProfitPct / 100);
-    const availableOpEx = grossProfit - teamCosts - targetProfit;
+    // Phase 57 T10 (B4): subscriptions enter the budget framework as an explicit
+    // deduction so the operator sees what's locked-in before the discretionary
+    // OpEx ceiling. Source: subscriptionsByYear prop (computed by parent from
+    // state.subscriptions; mirrors useForecastWizard summary.year{N}.subscriptions
+    // math — Y1 raw, YN grown by state.defaultOpExIncreasePct).
+    const subscriptions = year === 1
+      ? subscriptionsByYear.y1
+      : year === 2
+        ? subscriptionsByYear.y2
+        : subscriptionsByYear.y3;
 
-    return { revenue, cogs, grossProfit, grossProfitPct, teamCosts, targetProfit, netProfitPct, availableOpEx };
+    const targetProfit = revenue * (netProfitPct / 100);
+    // Phase 57 T10 (B4): subtract subscriptions alongside teamCosts so the
+    // "Available OpEx" ceiling honors what Step 5 has already committed.
+    // For legacy forecasts with state.subscriptions === [], subscriptions === 0
+    // and the formula collapses to the pre-Phase-57 behavior.
+    const availableOpEx = grossProfit - teamCosts - subscriptions - targetProfit;
+
+    return { revenue, cogs, grossProfit, grossProfitPct, teamCosts, subscriptions, targetProfit, netProfitPct, availableOpEx };
   };
 
   const y1Budget = calculateYearBudget(1);
@@ -114,7 +134,7 @@ function BudgetFramework({
         <div className="flex items-center gap-3 mb-2">
           <h3 className="text-sm font-semibold text-gray-900">OpEx Budget</h3>
           <span className="text-xs text-gray-400">|</span>
-          <p className="text-xs text-gray-500">Revenue − COGS − Team − <strong className="text-gray-700">Profit</strong> = Available for OpEx</p>
+          <p className="text-xs text-gray-500">Revenue − COGS − Team − Subscriptions − <strong className="text-gray-700">Profit</strong> = Available for OpEx</p>
         </div>
         <p className="text-xs text-gray-500 leading-relaxed">
           Most businesses budget expenses and hope there's profit left. Smart businesses flip this—set your profit target first, then spend only what remains. Your margin becomes a decision, not an afterthought.
@@ -152,6 +172,11 @@ function BudgetFramework({
                     <span>− Team Costs</span>
                     <span className="tabular-nums">{formatCurrency(budget.teamCosts)}</span>
                   </div>
+                  {/* Phase 57 T10 (B4): explicit Subscriptions deduction line. */}
+                  <div className="flex justify-between text-gray-500">
+                    <span>− Subscriptions</span>
+                    <span className="tabular-nums">{formatCurrency(budget.subscriptions)}</span>
+                  </div>
                   <div className="flex justify-between text-gray-700 font-medium">
                     <span>− Target Profit ({budget.netProfitPct}%)</span>
                     <span className="tabular-nums">{formatCurrency(budget.targetProfit)}</span>
@@ -184,11 +209,16 @@ function BudgetFramework({
 
                 {/* Implied Net Profit — reactive to OpEx changes so the operator
                     can see how their adjustments hit the bottom line in real time.
-                    Implied profit = Gross Profit − Team Costs − OpEx.
+                    Phase 57 T10 (B4): formula now includes Subscriptions to match
+                    the canonical net-profit calc in useForecastWizard. Without
+                    this subtraction, the implied number would silently
+                    over-state NP by the subscription amount on any forecast
+                    with active vendors.
+                    Implied profit = Gross Profit − Team Costs − Subscriptions − OpEx.
                     Color: green if ≥ target net profit %, amber if positive but
                     below target, red if negative. */}
                 {(() => {
-                  const impliedProfit = budget.grossProfit - budget.teamCosts - opex;
+                  const impliedProfit = budget.grossProfit - budget.teamCosts - budget.subscriptions - opex;
                   const impliedProfitPct = budget.revenue > 0
                     ? (impliedProfit / budget.revenue) * 100
                     : 0;
@@ -1001,6 +1031,34 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
     y3: activeOpexLines.reduce((sum, line) => sum + calculateYearAmount(line, 3, effectiveDefaultGrowth), 0),
   }), [activeOpexLines, calculateY1Amount, calculateYearAmount, effectiveDefaultGrowth]);
 
+  // Phase 57 T10 (B4) — Subscriptions by year for the BudgetFramework.
+  //
+  // Sourced directly from `state.subscriptions` rather than from a hook-supplied
+  // summary because Step5OpEx props don't include `summary`. The math MUST
+  // mirror useForecastWizard.calculateYearSummary's subscription block (T07,
+  // wizard-v4/useForecastWizard.ts:~1586) exactly:
+  //   Y1 = Σ(activeVendor.monthlyBudget × 12)
+  //   YN = Y1 × (1 + state.defaultOpExIncreasePct / 100)^(N-1)
+  //
+  // Growth rate is parameterized by `effectiveDefaultGrowth` (which itself
+  // reads `state.defaultOpExIncreasePct ?? 3`). Hard-coding 1.03 here would
+  // diverge from the rollup whenever the operator overrides the default
+  // OpEx growth — same behavior the OpEx accumulator above honors.
+  //
+  // Legacy forecasts (state.subscriptions === []): all three years are 0,
+  // BudgetFramework's "− Subscriptions" line shows $0, and "Available OpEx"
+  // is identical to pre-Phase-57.
+  const subscriptionsByYear = useMemo(() => {
+    const activeSubs = state.subscriptions.filter(v => v.isActive);
+    const y1 = activeSubs.reduce((sum, v) => sum + (v.monthlyBudget || 0) * 12, 0);
+    const growthFactor = 1 + effectiveDefaultGrowth / 100;
+    return {
+      y1,
+      y2: y1 * growthFactor,
+      y3: y1 * Math.pow(growthFactor, 2),
+    };
+  }, [state.subscriptions, effectiveDefaultGrowth]);
+
   // Prior year total for comparison — also uses activeOpexLines
   const totalPriorYear = activeOpexLines.reduce((sum, line) => sum + line.priorYearAnnual, 0);
   const activeYearTotal = activeYear === 1 ? opexByYear.y1 : activeYear === 2 ? opexByYear.y2 : opexByYear.y3;
@@ -1102,6 +1160,7 @@ export function Step5OpEx({ state, actions, fiscalYear, industry }: Step5OpExPro
         state={state}
         year1TeamCosts={totalTeamCostsForBudget}
         opexByYear={opexByYear}
+        subscriptionsByYear={subscriptionsByYear}
         fiscalYear={fiscalYear}
         actualRevenue={actualRevenue}
         actualCOGS={actualCOGS}
