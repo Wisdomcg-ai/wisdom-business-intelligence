@@ -48,6 +48,8 @@ import type {
   PlannedHire,
   OpExLineAssumption,
   CapExItem as CapExAssumptionItem,
+  SubscriptionAuditSummary,
+  SubscriptionVendorSnapshot,
 } from './types/assumptions';
 
 // Bump this to force all users to re-init from APIs (invalidates stale localStorage)
@@ -1885,6 +1887,60 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       };
     });
 
+    // Phase 57 (T09, B4) — snapshot active subscriptions into the
+    // assumptions payload. `subscription_budgets` remains the live source of
+    // truth for the BUSINESS, but this snapshot captures what we ASSUMED at
+    // save time so a saved forecast can be reopened later with consistent
+    // numbers even if the live table has drifted (vendors added, removed,
+    // amounts changed).
+    //
+    // Restore reconciliation (live vs snapshot drift banner) is deliberately
+    // out of scope for Phase 57 per CONTEXT.md "Out of scope". T02 already
+    // implements "live wins" at mount time by fetching /api/subscription-budgets
+    // and ignoring the snapshot. This task only implements the WRITE path.
+    //
+    // Legacy fields (auditedAt, accountsIncluded, vendorCount, essential/review/
+    // reduce/cancelAnnual, potentialSavings) are populated with sensible defaults
+    // so existing readers (AssumptionsTab, ForecastAssumptionCards) continue to
+    // render without churn — those readers consume essential/review/reduce
+    // buckets which the new vendor flow doesn't classify, so we zero them out
+    // and surface only `totalAnnual` derived from the actual vendor list.
+    const activeSubscriptions = state.subscriptions.filter(v => v.isActive);
+    const totalAnnualSubscriptions = activeSubscriptions.reduce(
+      (sum, v) => sum + (v.monthlyBudget || 0) * 12,
+      0,
+    );
+    const subscriptionVendorSnapshots: SubscriptionVendorSnapshot[] =
+      activeSubscriptions.map(v => ({
+        vendorKey: v.vendorKey,
+        vendorName: v.vendorName,
+        monthlyBudget: v.monthlyBudget,
+        frequency: v.frequency,
+        category: v.category,
+        accountCodes: v.accountCodes,
+      }));
+    const subscriptionsSnapshot: SubscriptionAuditSummary = {
+      // Legacy audit metadata — set to safe defaults; the new vendor flow
+      // doesn't run the old essential/review/reduce/cancel classifier.
+      auditedAt: now,
+      accountsIncluded: Array.from(
+        new Set(
+          activeSubscriptions.flatMap(v => v.accountCodes ?? []).filter(Boolean),
+        ),
+      ),
+      vendorCount: activeSubscriptions.length,
+      totalAnnual: Math.round(totalAnnualSubscriptions),
+      essentialAnnual: 0,
+      reviewAnnual: 0,
+      reduceAnnual: 0,
+      cancelAnnual: 0,
+      potentialSavings: 0,
+      // Phase 57 fields — actual snapshot data.
+      activeVendorCount: activeSubscriptions.length,
+      annualGrowthPct: state.defaultOpExIncreasePct ?? 3,
+      vendors: subscriptionVendorSnapshots,
+    };
+
     return {
       version: 1,
       createdAt: now,
@@ -1943,6 +1999,8 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         items: capexItems,
       },
       plannedSpends: state.plannedSpends,
+      // Phase 57 (T09): at-save-time snapshot of active vendor budgets.
+      subscriptions: subscriptionsSnapshot,
     };
   }, [state]);
 
