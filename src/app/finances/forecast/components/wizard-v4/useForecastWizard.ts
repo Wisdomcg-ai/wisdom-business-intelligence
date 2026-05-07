@@ -1182,10 +1182,20 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
       teamCosts += bonusTotal;
 
       // Commissions - based on percentage of linked revenue line
+      // P0-13: when per-line Y2/Y3 monthly is empty but the year revenue total
+      // exists (e.g., via goals fallback), scale the line revenue by its Y1
+      // share of total Y1 revenue so commissions track multi-year trajectory.
       for (const commission of state.commissions) {
         const revLine = state.revenueLines.find(r => r.id === commission.revenueLineId);
         if (!revLine) continue;
-        const lineRevenue = getRevenueLineYearTotal(revLine, yearNum);
+        let lineRevenue = getRevenueLineYearTotal(revLine, yearNum);
+        if (lineRevenue === 0 && yearNum > 1 && revenue > 0) {
+          const lineY1 = getRevenueLineYearTotal(revLine, 1);
+          const totalY1 = state.revenueLines.reduce((s, r) => s + getRevenueLineYearTotal(r, 1), 0);
+          if (totalY1 > 0) {
+            lineRevenue = revenue * (lineY1 / totalY1);
+          }
+        }
         teamCosts += lineRevenue * (commission.percentOfRevenue / 100);
       }
 
