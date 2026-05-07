@@ -714,6 +714,18 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     });
   }, []);
 
+  // Step 2: Prior Year — DISPLAY-ONLY refresh.
+  // Updates priorYear (totals, byMonth, otherIncome, otherExpenses, seasonality)
+  // without rebuilding revenueLines/cogsLines/opexLines. Use this on the
+  // always-on Xero refresh path that runs every wizard mount / hard-refresh —
+  // operator customizations on Steps 3 (revenue splits/seasonality), 5 (COGS
+  // costBehavior), and 6 (OpEx monthlyAmount/accountCode overrides) MUST
+  // survive a refresh. The full-init variant (`setPriorYear` above) is
+  // reserved for first-time setup paths only.
+  const setPriorYearDisplay = useCallback((data: PriorYearData) => {
+    setState((prev) => ({ ...prev, priorYear: data }));
+  }, []);
+
   // Step 3: Revenue & COGS
   const setRevenuePattern = useCallback((pattern: RevenuePattern) => {
     setState((prev) => ({ ...prev, revenuePattern: pattern }));
@@ -2101,6 +2113,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     setForecastDuration,
     updateGoals,
     setPriorYear,
+    setPriorYearDisplay,
     setRevenuePattern,
     setRevenueLines,
     setCOGSLines,
