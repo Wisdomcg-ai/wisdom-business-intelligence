@@ -79,6 +79,7 @@ function makeStubState(): ForecastWizardState {
     investments: [],
     plannedSpends: [],
     otherExpenses: [],
+    subscriptions: [],
   };
 }
 
