@@ -248,8 +248,6 @@ export function ForecastWizardV4({
             const plData = await plRes.json();
             const freshPriorFY = plData.summary?.prior_fy;
             if (freshPriorFY && freshPriorFY.total_revenue != null) {
-              const cachedRevenue = state.priorYear?.revenue?.total || 0;
-              const freshRevenue = freshPriorFY.total_revenue;
               const totalRevenue = freshPriorFY.total_revenue;
               const totalCogs = freshPriorFY.total_cogs;
               const totalOpex = freshPriorFY.operating_expenses;
@@ -301,42 +299,39 @@ export function ForecastWizardV4({
                   ? freshPriorFY.seasonality_pattern : Array(12).fill(100 / 12),
               };
 
-              // ALWAYS replace cached priorYear with fresh API data. The prior
-              // gate (`Math.abs(cachedRevenue - freshRevenue) > 1`) only checked
-              // revenue, so when downstream fields (other_income, other_expense,
-              // opex composition, etc.) changed but revenue stayed identical,
-              // the cache was kept and the fresh data discarded — that hid the
-              // Phase 44.2 other_income recovery for any tenant whose Xero
-              // revenue total didn't move (e.g. JDS FY25: same $9.91M revenue
-              // pre/post Path A but other_income went from missing → $651,
-              // making net profit display -$651 instead of $0).
-              // priorYear is read-only display state — replacing it never
-              // clobbers user inputs.
-              actionsRef.current.setPriorYear(freshPriorYear);
-
-              // Re-initialize revenue/COGS lines from fresh data ONLY when
-              // cached data is genuinely stale or missing — gating prevents
-              // overwriting user-customized line splits (which is why this
-              // optimization existed in the first place; keep it).
-              if (Math.abs((cachedRevenue || 0) - freshRevenue) > 1 || !state.priorYear) {
-                console.log('[ForecastWizardV4] Re-initializing user-line splits (cached:', cachedRevenue, 'fresh:', freshRevenue, ')');
-                const currentYTDData = plData.summary?.current_ytd;
-                actionsRef.current.initializeFromXero({
-                  priorYear: freshPriorYear,
-                  team: state.teamMembers || [],
-                  // Phase 44.3: pass goals so refresh path also honors Year 1 target.
-                  goals: state.goals,
-                  currentYTD: currentYTDData ? {
-                    revenue_by_month: currentYTDData.revenue_by_month,
-                    total_revenue: currentYTDData.total_revenue,
-                    months_count: currentYTDData.months_count,
-                    // Phase 44.3 (FCST-02/04): per-line YTD breakdown for target-aware init.
-                    revenue_lines: currentYTDData.revenue_lines,
-                  } : undefined,
-                });
-              } else {
-                console.log('[ForecastWizardV4] priorYear refreshed from Xero; user-line splits preserved (revenue unchanged)');
-              }
+              // ALWAYS refresh priorYear DISPLAY data with fresh API values.
+              // setPriorYearDisplay updates priorYear (totals, byMonth,
+              // other_income, other_expenses, seasonality) WITHOUT rebuilding
+              // revenueLines/cogsLines/opexLines, so operator customizations
+              // on Steps 3 (revenue splits/seasonality), 5 (COGS costBehavior),
+              // and 6 (OpEx monthlyAmount/accountCode overrides) survive the
+              // refresh.
+              //
+              // The previous implementation called the destructive
+              // `setPriorYear` here, which rebuilt all three line arrays from
+              // scratch every hard-refresh — silently wiping operator work.
+              // The "preserve splits" gate that followed was dead code: the
+              // splits had already been destroyed before the gate decided
+              // whether to skip `initializeFromXero`. Both have been replaced
+              // by this single display-only call.
+              //
+              // Why a display refresh is still needed: Phase 44.2 fixed
+              // tenants where Xero revenue stayed identical but downstream
+              // fields (other_income, other_expense, opex composition)
+              // changed — without a refresh, those updates were silently
+              // discarded (e.g. JDS FY25: same $9.91M revenue pre/post Path A
+              // but other_income went from missing → $651, making net profit
+              // display -$651 instead of $0). Display refresh keeps that fix
+              // intact.
+              //
+              // First-time line initialization happens elsewhere:
+              //   - operator confirms parsed prior-year data → Step2PriorYear
+              //     calls `setPriorYear` (full init)
+              //   - fresh wizard reconstructs from saved assumptions → the
+              //     fallback path below calls `setPriorYear` (full init)
+              //   - fresh wizard with no cache → the `initializeFromXero`
+              //     path further down calls it
+              actionsRef.current.setPriorYearDisplay(freshPriorYear);
 
               // COGS=0 re-sync hack removed — pl-summary now reads directly from
               // xero_pl_lines with correct account_type enum. No stale data possible.

@@ -844,7 +844,18 @@ export interface WizardActions {
   updateGoals: (goals: Goals) => void;
 
   // Step 2: Prior Year
+  // Initialization: replaces priorYear AND rebuilds revenue/COGS/OpEx lines
+  // from the data. Call this only on first-time setup paths (operator confirms
+  // parsed prior-year data, or saved-forecast fallback rebuilds a fresh wizard
+  // from assumptions). NEVER call this on a hard-refresh of an existing
+  // forecast — it will wipe operator customizations on Steps 3/5/6.
   setPriorYear: (data: PriorYearData) => void;
+
+  // Display-only: refreshes priorYear (for banner totals, byMonth, otherIncome,
+  // etc.) without touching revenueLines/cogsLines/opexLines. Safe to call on
+  // every wizard mount / hard-refresh. Use this on the always-on Xero refresh
+  // path so operator customizations on Steps 3/5/6 survive.
+  setPriorYearDisplay: (data: PriorYearData) => void;
 
   // Step 3: Revenue & COGS
   setRevenuePattern: (pattern: RevenuePattern) => void;
