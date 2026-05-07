@@ -298,7 +298,15 @@ export interface OpExLine {
   expectedMonths?: string[]; // Which months to spread across (e.g., ['2026-03', '2026-09'])
   // For seasonal costs:
   seasonalGrowthPct?: number; // Annual growth % to apply to the seasonal pattern
-  seasonalTargetAmount?: number; // Target annual amount (alternative to growth %)
+  seasonalTargetAmount?: number; // Target annual amount (alternative to growth %) — Y1
+  // why: pre-P1 the rollup only honored seasonalTargetAmount when yearNum===1,
+  // so Y2/Y3 silently reverted to the growth-formula even when the operator
+  // wanted distinct per-year targets. Mirrors the y2Override/y3Override
+  // pattern (P0-1) for fixed/variable lines. UI for setting these per-year
+  // targets is a future enhancement — type+rollup wired now so the data path
+  // is unblocked. P1A Audit Seasonal-OpEx-Y1-Override-001.
+  y2SeasonalTargetAmount?: number; // Override seasonal target for Y2
+  y3SeasonalTargetAmount?: number; // Override seasonal target for Y3
   // Multi-year planning:
   startYear?: 1 | 2 | 3; // Which year this expense starts (default: 1)
   isOneTime?: boolean; // If true, only occurs in oneTimeYear

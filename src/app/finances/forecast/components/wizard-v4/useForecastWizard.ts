@@ -1316,8 +1316,17 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
           case 'seasonal': {
             // Use prior year pattern with growth applied
             const priorTotal = line.priorYearAnnual || 0;
-            if (line.seasonalTargetAmount && yearNum === 1) {
+            // why: honor explicit per-year seasonal target overrides before
+            // falling back to growth formula. Mirrors P0-1 y2Override/y3Override
+            // pattern. Without these guards Y2/Y3 silently reverted to formula
+            // even when the user set a distinct target per year.
+            // P1A Seasonal-OpEx-Y1-Override-001.
+            if (yearNum === 1 && typeof line.seasonalTargetAmount === 'number') {
               lineAmount = line.seasonalTargetAmount;
+            } else if (yearNum === 2 && typeof line.y2SeasonalTargetAmount === 'number') {
+              lineAmount = line.y2SeasonalTargetAmount;
+            } else if (yearNum === 3 && typeof line.y3SeasonalTargetAmount === 'number') {
+              lineAmount = line.y3SeasonalTargetAmount;
             } else {
               const growthPct = line.seasonalGrowthPct ?? defaultIncrease;
               lineAmount = priorTotal * Math.pow(1 + growthPct / 100, yearNum);
