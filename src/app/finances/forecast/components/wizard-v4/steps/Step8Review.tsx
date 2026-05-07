@@ -280,6 +280,14 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
   const [activeYear, setActiveYear] = useState<1 | 2 | 3>(1);
   const [whatIfToggles, setWhatIfToggles] = useState<WhatIfToggle[]>([]);
 
+  // Fix 1 (Audit-2 BUG-008): clamp activeYear when forecastDuration shrinks
+  // Prevents crashes when stale state references year2/year3 on a 1-year forecast
+  useEffect(() => {
+    if (activeYear > forecastDuration) {
+      setActiveYear(1);
+    }
+  }, [activeYear, forecastDuration]);
+
   // ─── AI Narrative ─────────────────────────────────────────────────────────
   const [aiNarrative, setAiNarrative] = useState<string | null>(null);
   const [aiSentiment, setAiSentiment] = useState<string | null>(null);
