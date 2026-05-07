@@ -2517,15 +2517,28 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
     return true;
   }, [fiscalYear, getFYFromMonthKey]);
 
+  // Phase 56 P1 (Audit-4 BUG-005): hide members who departed BEFORE the
+  // forecast FY started. They cannot contribute to any forecast year and
+  // only clutter the operator view. Phase 55 year-card filter already
+  // hides them when a year is selected; this extends the same hide to
+  // the default (selectedYear === null) view.
+  const fiscalYearStartFY = fiscalYear; // FY1 == fiscalYear
+  const isPreForecastDeparture = useCallback((row: TeamRow): boolean => {
+    if (row.isNewHire || !row.endMonth) return false;
+    return getFYFromMonthKey(row.endMonth) < fiscalYearStartFY;
+  }, [getFYFromMonthKey, fiscalYearStartFY]);
+
   const visibleEmployeeRows = useMemo(() => {
-    if (selectedYear === null) return employeeRows;
-    return employeeRows.filter((row) => isRowActiveInYear(row, selectedYear));
-  }, [employeeRows, selectedYear, isRowActiveInYear]);
+    const base = employeeRows.filter((row) => !isPreForecastDeparture(row));
+    if (selectedYear === null) return base;
+    return base.filter((row) => isRowActiveInYear(row, selectedYear));
+  }, [employeeRows, selectedYear, isRowActiveInYear, isPreForecastDeparture]);
 
   const visibleContractorRows = useMemo(() => {
-    if (selectedYear === null) return contractorRows;
-    return contractorRows.filter((row) => isRowActiveInYear(row, selectedYear));
-  }, [contractorRows, selectedYear, isRowActiveInYear]);
+    const base = contractorRows.filter((row) => !isPreForecastDeparture(row));
+    if (selectedYear === null) return base;
+    return base.filter((row) => isRowActiveInYear(row, selectedYear));
+  }, [contractorRows, selectedYear, isRowActiveInYear, isPreForecastDeparture]);
 
   // Calculate totals from visible rows so the table footer reflects what's shown.
   const employeeTotals = useMemo(() => {
