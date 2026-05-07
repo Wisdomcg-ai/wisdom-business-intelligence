@@ -48,7 +48,7 @@ export function ForecastWizardV4({
   onComplete,
   onClose,
 }: ForecastWizardV4Props) {
-  const { state, actions, summary, wasRestoredFromStorage, clearLocalStorage } = useForecastWizard(fiscalYear - 1, businessId);
+  const { state, actions, summary, wasRestoredFromStorage, clearLocalStorage } = useForecastWizard(fiscalYear - 1, businessId, startFresh);
   const wizardPathname = usePathname();
   const integrationsHref = wizardPathname.includes('/coach/clients/')
     ? wizardPathname.replace(/\/view\/.*$/, '/view/integrations')
@@ -764,11 +764,16 @@ export function ForecastWizardV4({
               byMonth: priorOpexByMonth,
               byLine: opexByLine,
             },
-            otherIncome: priorFY?.other_income ? {
+            // Phase 56 (P1 B5): explicit undefined/null check (not truthy).
+            // A truthy guard treats `0` as "no value" and silently strips a
+            // legitimate-but-zero Xero figure. Match the refresh path semantics
+            // (lines ~286-293): undefined/null → field absent, omit; any
+            // present value (including 0) → trust Xero.
+            otherIncome: priorFY?.other_income !== undefined && priorFY?.other_income !== null ? {
               total: priorFY.other_income,
               byMonth: priorFY.other_income_by_month || {},
             } : undefined,
-            otherExpenses: priorFY?.other_expenses ? {
+            otherExpenses: priorFY?.other_expenses !== undefined && priorFY?.other_expenses !== null ? {
               total: priorFY.other_expenses,
               byMonth: priorFY.other_expenses_by_month || {},
             } : undefined,
@@ -1643,42 +1648,54 @@ export function ForecastWizardV4({
 
           {/* Right: Actions with Auto-save Status */}
           <div className="flex-shrink-0 flex items-center gap-2">
-            {/* Auto-save status indicator - matching Goals wizard style */}
+            {/* Save status indicator - matching Goals wizard style.
+                Phase 56 P1 (B4): distinguish DRAFT (auto-save every 3s) vs
+                SCENARIO (explicit "Save Scenario" / "Generate Forecast"
+                action). Users were confused whether their work was actually
+                committed — "All changes saved" looked identical regardless
+                of which path ran. Now: auto-save says "Draft saved", manual
+                save says "Saving scenario..." while in flight. */}
             <div className="relative group">
               <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${
-                isAutoSaving ? 'bg-amber-50 border-amber-200' :
+                (isSaving || isAutoSaving) ? 'bg-amber-50 border-amber-200' :
                 saveError ? 'bg-red-50 border-red-200' :
                 lastSaved ? 'bg-green-50 border-green-200' :
                 'bg-gray-50 border-gray-200'
               }`}>
-                {isAutoSaving && (
+                {(isSaving || isAutoSaving) && (
                   <Loader2 className="animate-spin h-4 w-4 text-amber-600" />
                 )}
-                {!isAutoSaving && lastSaved && !saveError && (
+                {!isSaving && !isAutoSaving && lastSaved && !saveError && (
                   <Cloud className="h-4 w-4 text-green-600" />
                 )}
-                {saveError && (
+                {saveError && !isSaving && !isAutoSaving && (
                   <CloudOff className="h-4 w-4 text-red-600" />
                 )}
-                {!isAutoSaving && !lastSaved && !saveError && (
+                {!isSaving && !isAutoSaving && !lastSaved && !saveError && (
                   <div className="h-2 w-2 rounded-full bg-gray-400" />
                 )}
                 <span className={`text-xs sm:text-sm font-medium ${
-                  isAutoSaving ? 'text-amber-600' :
+                  (isSaving || isAutoSaving) ? 'text-amber-600' :
                   saveError ? 'text-red-600' :
                   lastSaved ? 'text-green-600' :
                   'text-gray-500'
                 }`}>
-                  {isAutoSaving ? 'Saving...' :
+                  {isSaving ? 'Saving scenario…' :
+                   isAutoSaving ? 'Auto-saving draft…' :
                    saveError ? 'Failed to save' :
-                   lastSaved ? 'All changes saved' :
-                   'Draft'}
+                   lastSaved ? 'Draft saved' :
+                   'Not saved yet'}
                 </span>
               </div>
-              {/* Tooltip explaining auto-save */}
-              <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
-                <p className="font-semibold mb-1">Auto-Save Enabled</p>
-                <p className="text-slate-300">Your progress is automatically saved as you make changes. Changes save 3 seconds after you stop typing.</p>
+              {/* Tooltip explaining the two save modes */}
+              <div className="absolute right-0 top-full mt-2 w-72 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
+                <p className="font-semibold mb-1">Two save modes</p>
+                <p className="text-slate-300 mb-2">
+                  <span className="font-semibold text-white">Draft</span> — auto-saves 3s after you stop typing. Safe to close the tab; your inputs persist.
+                </p>
+                <p className="text-slate-300">
+                  <span className="font-semibold text-white">Scenario</span> — committed only when you click <span className="font-semibold">Save Scenario</span> or <span className="font-semibold">Generate Forecast</span> on Step 8.
+                </p>
               </div>
             </div>
 

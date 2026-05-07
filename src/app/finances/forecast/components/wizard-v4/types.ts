@@ -653,6 +653,15 @@ export interface ForecastWizardState {
   // Version marker for localStorage invalidation
   wizardVersion?: number;
 
+  // Phase 56 (P1 B2): when present, indicates the draft was loaded from a
+  // localStorage entry written by an older WIZARD_VERSION. Carries the prior
+  // version number so debug tooling can trace which fields fell through to
+  // defaults. Cleared on next save (saveStateToStorage rewrites wizardVersion
+  // to the current WIZARD_VERSION) but the marker on the live state is
+  // intentional — it allows downstream code to surface a "restored from
+  // older version" notice if needed.
+  migratedFromVersion?: number;
+
   // Metadata
   businessId: string;
   fiscalYearStart: number;

@@ -165,8 +165,35 @@ const loadStateFromStorage = (businessId: string, fiscalYear: number): ForecastW
       const parsed = JSON.parse(stored);
       // Validate it has the expected structure and matching version
       if (parsed && parsed.businessId === businessId && parsed.fiscalYearStart === fiscalYear) {
-        if (parsed.wizardVersion !== WIZARD_VERSION) {
+        // Phase 56 (P1 B2): soft version handling. Previously, ANY mismatch
+        // returned null and discarded the user's in-progress draft — every
+        // WIZARD_VERSION bump silently wiped work for every active user.
+        // New behaviour: if the stored version is older (or missing), load
+        // the draft anyway. Fields the new schema added are simply undefined
+        // and fall through to the existing defaults already handled below
+        // (and in createInitialState). Only refuse to load when the stored
+        // version is NEWER than the running code (downgrade — incompatible
+        // and unsafe to assume schema-compatible).
+        const storedVersion: number | undefined = typeof parsed.wizardVersion === 'number' ? parsed.wizardVersion : undefined;
+        if (storedVersion !== undefined && storedVersion > WIZARD_VERSION) {
+          console.warn(
+            '[ForecastWizard] Stored draft is newer than the app (',
+            storedVersion,
+            '>',
+            WIZARD_VERSION,
+            ') — discarding to avoid schema downgrade.',
+          );
           return null;
+        }
+        if (storedVersion !== WIZARD_VERSION) {
+          console.warn(
+            '[ForecastWizard] Wizard version mismatch (stored=',
+            storedVersion,
+            'app=',
+            WIZARD_VERSION,
+            ') — attempting load. Missing fields will fall through to defaults.',
+          );
+          parsed.migratedFromVersion = storedVersion;
         }
         // P0-16 (Phase 56): Clamp activeYear when restored state has it set
         // beyond the saved forecastDuration. Without this, opening a stored
@@ -225,13 +252,35 @@ const saveStateToStorage = (state: ForecastWizardState) => {
   }
 };
 
-export function useForecastWizard(fiscalYearStart: number, businessId: string) {
+export function useForecastWizard(fiscalYearStart: number, businessId: string, startFresh?: boolean) {
   // Track if we've initialized from storage to avoid overwriting
   const initializedRef = useRef(false);
   // Track if we restored from localStorage (has meaningful data)
   const [wasRestoredFromStorage, setWasRestoredFromStorage] = useState(false);
 
   const [state, setState] = useState<ForecastWizardState>(() => {
+    // Phase 56 (P1 B1): when the caller signals startFresh (e.g. "Create New
+    // Forecast"), bypass the localStorage read entirely and clear any stored
+    // draft so a stale hydrated state can never leak into the new forecast.
+    // Without this, the useState initializer ran BEFORE the effect that
+    // clears localStorage, so the in-memory state still carried newHires,
+    // departures, plannedSpends, currentStep, activeYear, etc., from the
+    // previous session — and `initializeFromXero` only overwrites a subset
+    // of fields (revenue/cogs/opex/team/priorYear/goals), leaving the rest
+    // intact via its `...prev` spread. End result: "fresh" forecasts silently
+    // inherited Step 4/5/6/7 work from the user's prior draft.
+    if (startFresh) {
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem(getStorageKey(businessId, fiscalYearStart));
+        } catch {
+          /* ignore */
+        }
+      }
+      initializedRef.current = true;
+      return createInitialState(fiscalYearStart, businessId);
+    }
+
     // Try to load from localStorage first
     const stored = loadStateFromStorage(businessId, fiscalYearStart);
     if (stored) {
