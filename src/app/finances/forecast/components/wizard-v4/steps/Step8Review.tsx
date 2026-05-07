@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Lightbulb,
   ChevronRight, ChevronDown, Users, Building2, Receipt, Wallet,
@@ -297,11 +297,32 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
   // ─── AI Scenario ──────────────────────────────────────────────────────────
   const [aiScenarioLoaded, setAiScenarioLoaded] = useState(false);
 
-  const loadAiNarrative = useCallback(async () => {
-    if (narrativeLoaded || summary.year1.revenue === 0) return;
-    setIsLoadingNarrative(true);
-    try {
-      const response = await fetch('/api/ai/forecast-insights', {
+  // Phase 56 P1 (Audit-2 BUG-013): debounce + abort. Previously the
+  // useEffect re-ran on every loadAiNarrative dep change (which itself
+  // re-ran on every summary/goals tick), causing concurrent in-flight
+  // fetches and stale narratives. Now we debounce by 2.5s and abort
+  // any in-flight request when the inputs change again.
+  const narrativeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const narrativeAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (summary.year1.revenue === 0) return;
+
+    // Cancel any pending debounce tick when inputs change.
+    if (narrativeTimerRef.current) {
+      clearTimeout(narrativeTimerRef.current);
+    }
+
+    narrativeTimerRef.current = setTimeout(() => {
+      // Abort any in-flight request before starting a new one.
+      if (narrativeAbortRef.current) {
+        narrativeAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      narrativeAbortRef.current = controller;
+
+      setIsLoadingNarrative(true);
+      fetch('/api/ai/forecast-insights', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -315,30 +336,46 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
             newHireCount: state.newHires.length,
           },
         }),
-      });
-      if (response.ok) {
-        const { result } = await response.json();
-        if (result?.narrative) {
-          setAiNarrative(result.narrative);
-          setAiSentiment(result.sentiment || null);
-        }
-      }
-    } catch (error) {
-      console.warn('[Step8] AI narrative failed:', error);
-    } finally {
-      setIsLoadingNarrative(false);
-      setNarrativeLoaded(true);
-    }
-  }, [summary, state.goals, fiscalYear, forecastDuration, state.teamMembers.length, state.newHires.length, narrativeLoaded]);
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) return;
+          const { result } = await response.json();
+          if (controller.signal.aborted) return;
+          if (result?.narrative) {
+            setAiNarrative(result.narrative);
+            setAiSentiment(result.sentiment || null);
+          }
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === 'AbortError') return;
+          console.warn('[Step8] AI narrative failed:', error);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setIsLoadingNarrative(false);
+            setNarrativeLoaded(true);
+          }
+        });
+    }, 2500);
 
-  // Load narrative when summary has data (with cleanup on unmount)
+    return () => {
+      if (narrativeTimerRef.current) {
+        clearTimeout(narrativeTimerRef.current);
+        narrativeTimerRef.current = null;
+      }
+    };
+  }, [summary, state.goals, fiscalYear, forecastDuration, state.teamMembers.length, state.newHires.length]);
+
+  // Cancel any pending request when the component unmounts.
   useEffect(() => {
-    const controller = new AbortController();
-    if (summary.year1.revenue > 0 && !narrativeLoaded) {
-      loadAiNarrative();
-    }
-    return () => controller.abort();
-  }, [summary.year1.revenue, narrativeLoaded, loadAiNarrative]);
+    return () => {
+      if (narrativeAbortRef.current) {
+        narrativeAbortRef.current.abort();
+        narrativeAbortRef.current = null;
+      }
+    };
+  }, []);
 
   // Get the active year's summary
   const getYearData = (yr: 1 | 2 | 3): YearlySummary => {
