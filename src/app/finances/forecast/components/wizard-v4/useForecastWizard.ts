@@ -1405,7 +1405,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
     // Build OpEx assumptions — filter out team cost lines to prevent double-counting
     // (team wages are generated separately by convertTeam())
     const opexLineAssumptions: OpExLineAssumption[] = state.opexLines
-      .filter(line => !(line.isTeamCostOverride !== undefined ? line.isTeamCostOverride : isTeamCost(line.name)))
+      .filter(line => !shouldExcludeFromOpEx(line))
       .map(line => ({
       accountId: line.accountId || line.id,
       accountName: line.name,
