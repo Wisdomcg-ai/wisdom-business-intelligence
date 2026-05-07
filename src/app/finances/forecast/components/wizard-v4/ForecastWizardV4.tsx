@@ -373,6 +373,28 @@ export function ForecastWizardV4({
               const forecastData = await forecastRes.json();
               const savedAssumptions = forecastData?.forecast?.assumptions || null;
               if (savedAssumptions) {
+                // ─── KNOWN LIMITATION: monthly priorYear data is not in assumptions ──────
+                // The saved-assumptions fallback ships an empty `byMonth: {}` for revenue,
+                // cogs, opex (and a flat seasonality fallback if not stored). This is
+                // because `buildAssumptions` (useForecastWizard.ts) only persists per-line
+                // `priorYearTotal` plus a 12-element `seasonalityPattern` — there is no
+                // `priorYearMonthly` / `priorYearByMonth` field on RevenueLineAssumption,
+                // COGSLineAssumption, or OpExLineAssumption (see types/assumptions.ts).
+                //
+                // Consequence: Step2PriorYear.buildMonthlyComparison sees `byMonth: {}`,
+                // sets `hasMonthlyData = false`, and falls back to seasonality-derived
+                // synthesized monthly columns instead of actual prior-year monthly
+                // history. Annual totals are correct; the monthly comparison table is
+                // an approximation until the always-on Xero refresh (lines 244-339)
+                // populates real `byMonth` from `/api/Xero/pl-summary`.
+                //
+                // Fixing this properly requires extending the assumptions schema to
+                // store per-line monthly priorYear data at save time — out of scope
+                // for this hotfix per the Step 2 secondary-issues spec. Tracked as
+                // a separate follow-up. For now, the empty `byMonth: {}` below is
+                // intentional: there is no source data in `savedAssumptions` to
+                // populate it from.
+                // ───────────────────────────────────────────────────────────────────────
                 // Reconstruct prior year data from saved assumptions
                 const revenueByLine = (savedAssumptions.revenue?.lines || []).map((line: {
                   accountId: string; accountName: string; priorYearTotal: number;

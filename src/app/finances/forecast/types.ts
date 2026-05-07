@@ -555,6 +555,16 @@ export type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read
 export interface HistoricalPLSummary {
   has_xero_data: boolean
 
+  // Issue B (hotfix step2-secondaries) — set by /api/Xero/pl-summary when the
+  // resolver succeeded at finding a business/profile mapping but no matching
+  // xero_connections row exists, signalling a dual-id desync (memory note
+  // `project_dual_id`). When non-null, this is the wizard's signal to surface
+  // a "Couldn't load Xero data — please refresh or reconnect" toast/banner
+  // instead of treating the result as a clean "not connected" state.
+  // null/undefined when the connection lookup is fine (or when the tenant
+  // genuinely has no Xero connection).
+  lookup_error?: string | null
+
   // Prior complete FY - the baseline for comparison
   prior_fy?: PeriodSummary
 
