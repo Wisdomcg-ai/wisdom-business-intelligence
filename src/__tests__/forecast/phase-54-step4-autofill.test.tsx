@@ -222,6 +222,7 @@ function prefillWizardStorage(
     investments: [],
     plannedSpends: [],
     otherExpenses: [],
+    subscriptions: [],
   };
   const key = `forecast-wizard-v4-${businessId}-${fiscalYear}`;
   window.localStorage.setItem(key, JSON.stringify(state));

@@ -20,6 +20,7 @@ import {
   Investment,
   OtherExpense,
   PlannedSpend,
+  VendorBudget,
   ForecastSummary,
   YearlySummary,
   BusinessProfile,
@@ -149,6 +150,10 @@ const createInitialState = (fiscalYearStart: number, businessId: string): Foreca
   investments: [],
   plannedSpends: [],
   otherExpenses: [],
+  // Phase 57 (T02): empty until the mount-time fetch in useForecastWizard
+  // resolves. Populated from /api/subscription-budgets?business_id=... on
+  // wizard mount. T07 (B2) will read this for the rollup.
+  subscriptions: [],
 });
 
 // LocalStorage key for wizard state persistence
@@ -232,6 +237,16 @@ const loadStateFromStorage = (businessId: string, fiscalYear: number): ForecastW
             })),
           ];
         }
+
+        // Phase 57 (T02): default `subscriptions` to [] on legacy drafts that
+        // predate this field. Without this, downstream consumers (T07 rollup
+        // in B2) would see `state.subscriptions === undefined` and crash on
+        // `state.subscriptions.reduce(...)`. The mount-time fetch then
+        // overwrites with live data from /api/subscription-budgets.
+        if (!Array.isArray(parsed.subscriptions)) {
+          parsed.subscriptions = [];
+        }
+
         return parsed as ForecastWizardState;
       }
     }
@@ -314,6 +329,70 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     }, 500);
     return () => clearTimeout(timeoutId);
   }, [state]);
+
+  // Phase 57 (T02) — load subscription budgets into wizard state on mount.
+  // Mirrors the GET-on-mount pattern Step6Subscriptions.tsx uses today; the
+  // hook now owns the load so the rollup (T07, B2) and BudgetFramework
+  // (T10, B4) can read `state.subscriptions` without re-fetching. Step6
+  // continues to manage its own local state and POST debounce until T12 (B4)
+  // wires it to read/write through this state field as the single source of
+  // truth.
+  //
+  // Silent-fail policy: a network error or empty response leaves
+  // `state.subscriptions === []`. The wizard remains usable; the rollup
+  // simply contributes 0 from subscriptions until the operator visits Step
+  // 6 and saves vendor budgets.
+  useEffect(() => {
+    if (!businessId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/subscription-budgets?business_id=${encodeURIComponent(businessId)}`);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (cancelled) return;
+        const budgets = Array.isArray(json?.budgets) ? json.budgets : [];
+        if (budgets.length === 0) return;
+        // Map API row shape -> VendorBudget. Field names mirror
+        // Step6Subscriptions.tsx:304-324 (loadExistingBudgets path) so future
+        // T12 wiring can replace the component-local mapping with a no-op
+        // pass-through to state.subscriptions.
+        const vendors: VendorBudget[] = budgets.map((b: {
+          vendor_key?: string;
+          vendor_name?: string;
+          frequency?: string;
+          monthly_budget?: number;
+          is_active?: boolean;
+          account_codes?: string[];
+          last_transaction_date?: string;
+          transaction_count?: number;
+          avg_transaction_amount?: number;
+          last_12_months_spend?: number;
+        }) => ({
+          vendorKey: typeof b.vendor_key === 'string' ? b.vendor_key : '',
+          vendorName: typeof b.vendor_name === 'string' ? b.vendor_name : '',
+          frequency: (b.frequency as VendorBudget['frequency']) || 'monthly',
+          monthlyBudget: typeof b.monthly_budget === 'number' ? b.monthly_budget : 0,
+          isActive: b.is_active !== false,
+          accountCodes: Array.isArray(b.account_codes) ? b.account_codes : [],
+          lastTransactionDate: typeof b.last_transaction_date === 'string' ? b.last_transaction_date : undefined,
+          transactionCount: typeof b.transaction_count === 'number' ? b.transaction_count : undefined,
+          avgTransactionAmount: typeof b.avg_transaction_amount === 'number' ? b.avg_transaction_amount : undefined,
+          last12MonthsSpend: typeof b.last_12_months_spend === 'number' ? b.last_12_months_spend : undefined,
+        }));
+        setState((prev) => ({ ...prev, subscriptions: vendors }));
+      } catch {
+        // Silent fail — wizard remains usable without subs.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Only re-fire when the active business changes; fiscal year change
+    // alone does not invalidate subscription budgets (subscription_budgets
+    // is keyed by business_id, not fiscal year).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId]);
 
   // Function to clear localStorage (for starting fresh)
   const clearLocalStorage = useCallback(() => {
@@ -870,6 +949,17 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     setState((prev) => ({
       ...prev,
       otherExpenses: prev.otherExpenses.filter((exp) => exp.id !== expenseId),
+    }));
+  }, []);
+
+  // Phase 57 (T02) — bulk replace subscriptions. Invoked by the mount-time
+  // loader below; T12 (B4) will additionally invoke this from
+  // Step6Subscriptions on every vendor edit so the rollup (T07) sees changes
+  // synchronously.
+  const setSubscriptions = useCallback((vendors: VendorBudget[]) => {
+    setState((prev) => ({
+      ...prev,
+      subscriptions: vendors,
     }));
   }, []);
 
@@ -1797,6 +1887,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     addOtherExpense,
     updateOtherExpense,
     removeOtherExpense,
+    setSubscriptions,
     initializeFromXero,
     saveDraft,
     generateForecast,

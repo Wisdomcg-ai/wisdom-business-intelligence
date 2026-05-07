@@ -360,6 +360,52 @@ export interface OtherExpense {
   notes?: string;
 }
 
+/**
+ * Phase 57 (T02) — Subscription vendor budget held in wizard state.
+ *
+ * Mirrors the shape that Step6Subscriptions.tsx currently maintains in
+ * component-local state and persists to `subscription_budgets` via
+ * `/api/subscription-budgets` POST. Promoted to a shared type so the
+ * forecast rollup (T07, B2) and BudgetFramework (T10, B4) can consume
+ * `state.subscriptions` directly without re-fetching.
+ *
+ * The mount-time loader in useForecastWizard.ts (T02) populates this from
+ * GET /api/subscription-budgets?business_id=... on wizard mount. T12 (B4)
+ * will wire Step6Subscriptions to read/write through this state field as the
+ * single source of truth — currently Step6 retains its own component-local
+ * state and the API POST debounce.
+ *
+ * `accountCodes[]` is the join key: T07 excludes any OpExLine whose
+ * `accountCode` ∈ Σ(active subscriptions' accountCodes) from the OpEx
+ * accumulator, preventing the "OpEx + Subscriptions both counted" double-count.
+ */
+export interface VendorBudget {
+  vendorKey: string;
+  vendorName: string;
+  // Frequency the vendor charges at — used for display + reconciliation.
+  // Note: Step6Subscriptions allows 'ad-hoc' as a UI label; both shapes are
+  // accepted here for back-compat with existing component state.
+  frequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc' | 'one-time';
+  monthlyBudget: number;
+  // Active flag — only active vendors contribute to the rollup (T07).
+  isActive: boolean;
+  // Xero account codes this vendor is associated with. Phase 57 join key.
+  // Optional for back-compat with vendors saved before Phase 51.
+  accountCodes?: string[];
+  // Optional metadata fields — preserved through state for round-trip with
+  // localStorage and the API. Step6Subscriptions may set additional fields
+  // (suggestedFrequency, totalAmount, transactions, etc.) on its own; those
+  // remain compatible with this type via excess-property tolerance because
+  // setSubscriptions accepts VendorBudget[] and structural typing allows
+  // additional fields. T12 (B4) will narrow this if needed.
+  category?: string;
+  startMonth?: string;
+  lastTransactionDate?: string;
+  transactionCount?: number;
+  avgTransactionAmount?: number;
+  last12MonthsSpend?: number;
+}
+
 // Unified planned spending — replaces CapExItem + Investment
 export type SpendType = 'asset' | 'one-off' | 'monthly';
 export type PaymentMethod = 'outright' | 'finance' | 'lease'; // LEGACY — preserved for back-compat
@@ -742,6 +788,14 @@ export interface ForecastWizardState {
 
   // Step 7: Other Expenses
   otherExpenses: OtherExpense[];
+
+  // Step 6 Subscriptions (Phase 57 T02) — vendor budgets loaded on wizard
+  // mount from /api/subscription-budgets and kept in sync as the operator
+  // edits in Step 6. T07 (B2) will read this to compute the subscriptions
+  // line on the rollup; T10 (B4) consumes it for the BudgetFramework
+  // Subscriptions row. Default `[]` until the mount-time fetch resolves;
+  // soft-migration (T03, B3) sets it explicitly on legacy v10 drafts.
+  subscriptions: VendorBudget[];
 }
 
 export interface WizardActions {
@@ -817,6 +871,11 @@ export interface WizardActions {
   addOtherExpense: (expense: Omit<OtherExpense, 'id'>) => void;
   updateOtherExpense: (expenseId: string, updates: Partial<OtherExpense>) => void;
   removeOtherExpense: (expenseId: string) => void;
+
+  // Step 6 Subscriptions (Phase 57 T02) — bulk replace. T12 (B4) will wire
+  // Step6Subscriptions to call this on every vendor edit. For T02 the action
+  // is invoked once by the mount-time loader in useForecastWizard.ts.
+  setSubscriptions: (vendors: VendorBudget[]) => void;
 
   // Initialize from external data
   initializeFromXero: (data: {
