@@ -1561,10 +1561,17 @@ export function ForecastWizardV4({
         return <Step3RevenueCOGS state={state} actions={actions} fiscalYear={fiscalYear} />;
       case 4:
         return <Step4Team state={state} actions={actions} fiscalYear={fiscalYear} forecastDuration={state.forecastDuration} />;
+      // Phase 57 (T05, B3): Subscriptions placed before OpEx so the operator
+      // sees subscription commitments before they budget discretionary
+      // expenses. Component file names retained for git-history continuity:
+      //   - Step6Subscriptions.tsx now renders at currentStep === 5
+      //   - Step5OpEx.tsx       now renders at currentStep === 6
+      // Per CONTEXT.md "Step labels" locked decision: keep "OpEx" (do NOT
+      // rename to "Discretionary OpEx").
       case 5:
-        return <Step5OpEx state={state} actions={actions} fiscalYear={fiscalYear} industry={state.businessProfile?.industry} />;
-      case 6:
         return <Step6Subscriptions state={state} actions={actions} fiscalYear={fiscalYear} businessId={businessId} />;
+      case 6:
+        return <Step5OpEx state={state} actions={actions} fiscalYear={fiscalYear} industry={state.businessProfile?.industry} />;
       case 7:
         return <Step6CapEx state={state} actions={actions} fiscalYear={fiscalYear} businessId={businessId} />;
       case 8:

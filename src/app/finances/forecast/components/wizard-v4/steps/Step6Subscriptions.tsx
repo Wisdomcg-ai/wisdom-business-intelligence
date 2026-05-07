@@ -1,5 +1,12 @@
 'use client';
 
+// Step6Subscriptions.tsx
+//
+// Phase 57 (T05, B3) — this component now renders at currentStep === 5
+// (was step 6 pre-Phase-57). The file name is retained for git-history
+// continuity. See WIZARD_STEPS in ../types.ts for the canonical step
+// numbering and ForecastWizardV4.tsx renderStep() for the switch.
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Search, CreditCard, AlertCircle, CheckCircle, Loader2, RefreshCw,
