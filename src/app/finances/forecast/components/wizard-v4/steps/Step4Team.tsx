@@ -2517,15 +2517,28 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
     return true;
   }, [fiscalYear, getFYFromMonthKey]);
 
+  // Phase 56 P1 (Audit-4 BUG-005): hide members who departed BEFORE the
+  // forecast FY started. They cannot contribute to any forecast year and
+  // only clutter the operator view. Phase 55 year-card filter already
+  // hides them when a year is selected; this extends the same hide to
+  // the default (selectedYear === null) view.
+  const fiscalYearStartFY = fiscalYear; // FY1 == fiscalYear
+  const isPreForecastDeparture = useCallback((row: TeamRow): boolean => {
+    if (row.isNewHire || !row.endMonth) return false;
+    return getFYFromMonthKey(row.endMonth) < fiscalYearStartFY;
+  }, [getFYFromMonthKey, fiscalYearStartFY]);
+
   const visibleEmployeeRows = useMemo(() => {
-    if (selectedYear === null) return employeeRows;
-    return employeeRows.filter((row) => isRowActiveInYear(row, selectedYear));
-  }, [employeeRows, selectedYear, isRowActiveInYear]);
+    const base = employeeRows.filter((row) => !isPreForecastDeparture(row));
+    if (selectedYear === null) return base;
+    return base.filter((row) => isRowActiveInYear(row, selectedYear));
+  }, [employeeRows, selectedYear, isRowActiveInYear, isPreForecastDeparture]);
 
   const visibleContractorRows = useMemo(() => {
-    if (selectedYear === null) return contractorRows;
-    return contractorRows.filter((row) => isRowActiveInYear(row, selectedYear));
-  }, [contractorRows, selectedYear, isRowActiveInYear]);
+    const base = contractorRows.filter((row) => !isPreForecastDeparture(row));
+    if (selectedYear === null) return base;
+    return base.filter((row) => isRowActiveInYear(row, selectedYear));
+  }, [contractorRows, selectedYear, isRowActiveInYear, isPreForecastDeparture]);
 
   // Calculate totals from visible rows so the table footer reflects what's shown.
   const employeeTotals = useMemo(() => {
@@ -2594,8 +2607,14 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
     resetAISuggestion();
   };
 
+  // Phase 56 P1 (Audit-4 BUG-004): reject NewHire start months before FY
+  // start. Same person otherwise costed twice when already a TeamMember.
+  const fiscalYearStartKey = `${fiscalYear - 1}-07`;
+  const newHireStartTooEarly = !!newHireData.startMonth && newHireData.startMonth < fiscalYearStartKey;
+
   const handleAddNewHire = () => {
     if (!newHireData.role.trim()) return;
+    if (newHireStartTooEarly) return;
 
     const isContractor = hireType === 'contractor';
     let salary = newHireData.salary;
@@ -4237,6 +4256,13 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                   placeholder="Select start month"
                   className="w-full py-2"
                 />
+                {newHireStartTooEarly && (
+                  <p className="text-xs text-red-600 mt-1.5">
+                    Hire date must be on or after FY start ({fiscalYearStartKey}). If
+                    this person is already employed, add them as a Team Member
+                    instead.
+                  </p>
+                )}
               </div>
 
               {hireType === 'employee' && newHireData.type === 'part-time' && (
@@ -4312,8 +4338,13 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
             <div className="flex gap-3 mt-6">
               <button
                 onClick={handleAddNewHire}
+                disabled={newHireStartTooEarly}
                 className={`flex-1 px-4 py-2 text-white text-sm font-medium rounded-lg ${
-                  hireType === 'contractor' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'
+                  newHireStartTooEarly
+                    ? 'bg-gray-300 cursor-not-allowed'
+                    : hireType === 'contractor'
+                      ? 'bg-orange-600 hover:bg-orange-700'
+                      : 'bg-green-600 hover:bg-green-700'
                 }`}
               >
                 Add {hireType === 'contractor' ? 'Contractor' : 'Team Member'}
@@ -4331,8 +4362,15 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
 
       {/* Phase 51 (UX-S4-01): Termination modal. Forward-looking only — salary
           continues through the chosen end month, then drops to zero. Operator
-          decision: no remove-from-FY-entirely option. */}
-      {terminatingMember && (
+          decision: no remove-from-FY-entirely option.
+          Phase 56 P1 (Audit-2 BUG-012): block end months before the member's
+          earliest valid start. Existing TeamMembers are assumed to be employed
+          at FY start (no startMonth field on TeamMember). */}
+      {terminatingMember && (() => {
+        const fiscalYearStartKey = `${fiscalYear - 1}-07`;
+        const earliestValidEnd = fiscalYearStartKey;
+        const departureInvalid = !!pendingEndMonth && pendingEndMonth < earliestValidEnd;
+        return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[80]">
           <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
             <div className="flex items-center justify-between mb-4">
@@ -4359,12 +4397,20 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                 placeholder="Select end month"
                 className="w-full py-2"
               />
+              {departureInvalid && (
+                <p className="text-xs text-red-600 mt-1.5">
+                  End month must be on or after FY start ({earliestValidEnd}). For
+                  members who left before FY start, remove them from the team list
+                  instead.
+                </p>
+              )}
             </div>
             <div className="flex gap-3">
               <button
                 type="button"
+                disabled={departureInvalid}
                 onClick={() => {
-                  if (terminatingMember && pendingEndMonth) {
+                  if (terminatingMember && pendingEndMonth && !departureInvalid) {
                     actions.addDeparture({
                       teamMemberId: terminatingMember.id,
                       endMonth: pendingEndMonth,
@@ -4372,7 +4418,11 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                   }
                   setTerminatingMember(null);
                 }}
-                className="flex-1 px-4 py-2 bg-brand-navy text-white text-sm font-medium rounded-lg hover:bg-brand-navy/90"
+                className={`flex-1 px-4 py-2 text-white text-sm font-medium rounded-lg ${
+                  departureInvalid
+                    ? 'bg-gray-300 cursor-not-allowed'
+                    : 'bg-brand-navy hover:bg-brand-navy/90'
+                }`}
               >
                 Confirm
               </button>
@@ -4386,7 +4436,8 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Phase 52-01 (XERO-S4-01) — Import-from-Xero modal. Inline (no global
           Modal component per 52-RESEARCH anti-pattern). Loading skeleton ↔

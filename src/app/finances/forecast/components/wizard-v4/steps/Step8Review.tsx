@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Lightbulb,
   ChevronRight, ChevronDown, Users, Building2, Receipt, Wallet,
@@ -280,6 +280,14 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
   const [activeYear, setActiveYear] = useState<1 | 2 | 3>(1);
   const [whatIfToggles, setWhatIfToggles] = useState<WhatIfToggle[]>([]);
 
+  // Fix 1 (Audit-2 BUG-008): clamp activeYear when forecastDuration shrinks
+  // Prevents crashes when stale state references year2/year3 on a 1-year forecast
+  useEffect(() => {
+    if (activeYear > forecastDuration) {
+      setActiveYear(1);
+    }
+  }, [activeYear, forecastDuration]);
+
   // ─── AI Narrative ─────────────────────────────────────────────────────────
   const [aiNarrative, setAiNarrative] = useState<string | null>(null);
   const [aiSentiment, setAiSentiment] = useState<string | null>(null);
@@ -289,11 +297,32 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
   // ─── AI Scenario ──────────────────────────────────────────────────────────
   const [aiScenarioLoaded, setAiScenarioLoaded] = useState(false);
 
-  const loadAiNarrative = useCallback(async () => {
-    if (narrativeLoaded || summary.year1.revenue === 0) return;
-    setIsLoadingNarrative(true);
-    try {
-      const response = await fetch('/api/ai/forecast-insights', {
+  // Phase 56 P1 (Audit-2 BUG-013): debounce + abort. Previously the
+  // useEffect re-ran on every loadAiNarrative dep change (which itself
+  // re-ran on every summary/goals tick), causing concurrent in-flight
+  // fetches and stale narratives. Now we debounce by 2.5s and abort
+  // any in-flight request when the inputs change again.
+  const narrativeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const narrativeAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (summary.year1.revenue === 0) return;
+
+    // Cancel any pending debounce tick when inputs change.
+    if (narrativeTimerRef.current) {
+      clearTimeout(narrativeTimerRef.current);
+    }
+
+    narrativeTimerRef.current = setTimeout(() => {
+      // Abort any in-flight request before starting a new one.
+      if (narrativeAbortRef.current) {
+        narrativeAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      narrativeAbortRef.current = controller;
+
+      setIsLoadingNarrative(true);
+      fetch('/api/ai/forecast-insights', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -307,30 +336,46 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
             newHireCount: state.newHires.length,
           },
         }),
-      });
-      if (response.ok) {
-        const { result } = await response.json();
-        if (result?.narrative) {
-          setAiNarrative(result.narrative);
-          setAiSentiment(result.sentiment || null);
-        }
-      }
-    } catch (error) {
-      console.warn('[Step8] AI narrative failed:', error);
-    } finally {
-      setIsLoadingNarrative(false);
-      setNarrativeLoaded(true);
-    }
-  }, [summary, state.goals, fiscalYear, forecastDuration, state.teamMembers.length, state.newHires.length, narrativeLoaded]);
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) return;
+          const { result } = await response.json();
+          if (controller.signal.aborted) return;
+          if (result?.narrative) {
+            setAiNarrative(result.narrative);
+            setAiSentiment(result.sentiment || null);
+          }
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === 'AbortError') return;
+          console.warn('[Step8] AI narrative failed:', error);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setIsLoadingNarrative(false);
+            setNarrativeLoaded(true);
+          }
+        });
+    }, 2500);
 
-  // Load narrative when summary has data (with cleanup on unmount)
+    return () => {
+      if (narrativeTimerRef.current) {
+        clearTimeout(narrativeTimerRef.current);
+        narrativeTimerRef.current = null;
+      }
+    };
+  }, [summary, state.goals, fiscalYear, forecastDuration, state.teamMembers.length, state.newHires.length]);
+
+  // Cancel any pending request when the component unmounts.
   useEffect(() => {
-    const controller = new AbortController();
-    if (summary.year1.revenue > 0 && !narrativeLoaded) {
-      loadAiNarrative();
-    }
-    return () => controller.abort();
-  }, [summary.year1.revenue, narrativeLoaded, loadAiNarrative]);
+    return () => {
+      if (narrativeAbortRef.current) {
+        narrativeAbortRef.current.abort();
+        narrativeAbortRef.current = null;
+      }
+    };
+  }, []);
 
   // Get the active year's summary
   const getYearData = (yr: 1 | 2 | 3): YearlySummary => {
@@ -634,6 +679,33 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
         });
       }
     }
+
+    // Phase 56 P1 (Audit-4 BUG-012): Y2/Y3 line sums vs goal divergence.
+    // Threshold = greater of 1% or $100. Surface as a warning so the
+    // operator decides whether to align lines with goals or update the
+    // goal. Do NOT auto-correct — this is a calibration signal.
+    const checkGoalLineDivergence = (
+      yearLabel: 'Y2' | 'Y3',
+      yearKey: 'year2' | 'year3',
+    ) => {
+      const yearSummary = summary[yearKey];
+      const yearGoal = state.goals[yearKey];
+      if (!yearSummary || !yearGoal || !yearGoal.revenue) return;
+      const goalRev = yearGoal.revenue;
+      const lineSum = yearSummary.revenue;
+      const drift = Math.abs(lineSum - goalRev);
+      const threshold = Math.max(goalRev * 0.01, 100);
+      if (drift > threshold) {
+        const driftPct = goalRev > 0 ? (drift / goalRev) * 100 : 0;
+        items.push({
+          type: 'warning',
+          message: `${yearLabel} revenue line sums (${formatCurrency(lineSum)}) differ from your ${yearLabel} goal (${formatCurrency(goalRev)}) by ${formatCurrency(drift)} (${formatPercent(driftPct)}). Update line items in Step 3 or revise the goal in Step 1.`,
+          stepLink: 3,
+        });
+      }
+    };
+    if (forecastDuration >= 2) checkGoalLineDivergence('Y2', 'year2');
+    if (forecastDuration >= 3) checkGoalLineDivergence('Y3', 'year3');
 
     // Revenue per employee
     const totalHeadcount = state.teamMembers.length + state.newHires.length;
