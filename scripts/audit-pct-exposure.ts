@@ -98,6 +98,23 @@ const DEFAULT_OUTPUT = path.join(
 const outputPath = args.output ?? DEFAULT_OUTPUT
 
 // ---------------------------------------------------------------------------
+// PR #126 merge timestamp.
+//
+// PR #126 ("fix(56-p1a): calculation safety fixes") introduced the
+// `normalizedPct = pct > 1 ? pct : pct * 100` guard in `useForecastWizard.ts`
+// that this audit detects. Forecasts whose `wizard_state` was last persisted
+// BEFORE this merge timestamp cannot have been corrupted by the guard — the
+// buggy code wasn't deployed yet. Including them in the audit produces
+// false-positive CRITICALs (e.g., JDS FY26: legitimate sub-1% lines totaling
+// 61.3 percentage-points were flagged as a $63.7M delta even though the
+// wizard_state was last saved before PR #126 merged).
+//
+// Source: `gh pr view 126 --json mergedAt -q .mergedAt` → 2026-05-07T04:02:31Z.
+// ---------------------------------------------------------------------------
+
+const PR_126_MERGE_TIMESTAMP = new Date('2026-05-07T04:02:31Z')
+
+// ---------------------------------------------------------------------------
 // Supabase client — service role.
 // ---------------------------------------------------------------------------
 
@@ -366,7 +383,11 @@ function fmtMoney(n: number | null | undefined): string {
   return `${sign}$${abs.toLocaleString('en-US')}`
 }
 
-function buildMarkdown(rows: AuditRow[], capturedAt: string): string {
+function buildMarkdown(
+  rows: AuditRow[],
+  capturedAt: string,
+  skippedPre126Count: number,
+): string {
   const exposed = rows.filter(
     (r) => r.cogsSubOnePctCount > 0 || r.commissionSubOnePctCount > 0,
   )
@@ -387,6 +408,10 @@ function buildMarkdown(rows: AuditRow[], capturedAt: string): string {
   lines.push('# normalizedPct exposure audit')
   lines.push('')
   lines.push(`**Captured:** ${capturedAt}`)
+  lines.push('')
+  lines.push(
+    `**Note:** Forecasts whose \`updated_at\` is before ${PR_126_MERGE_TIMESTAMP.toISOString()} are skipped because the normalizedPct bug post-dates them — sub-1% percentages on those rows are legitimate, not corruption. ${skippedPre126Count} forecast(s) skipped under this filter for this run.`,
+  )
   lines.push('')
   lines.push('## Background')
   lines.push('')
@@ -427,6 +452,7 @@ function buildMarkdown(rows: AuditRow[], capturedAt: string): string {
   lines.push('')
   lines.push('## Summary')
   lines.push('')
+  lines.push(`- Forecasts skipped (pre-PR-#126 saves): **${skippedPre126Count}**`)
   lines.push(`- Active forecasts scanned: **${rows.length}**`)
   lines.push(`- Forecasts with sub-1% percentage lines: **${exposed.length}**`)
   lines.push(`- Total absolute Y1 delta across exposed tenants: **${fmtMoney(totalAbsDelta)}**`)
@@ -505,7 +531,7 @@ function buildMarkdown(rows: AuditRow[], capturedAt: string): string {
 // Console summary (compact, mirrors what we're writing to disk).
 // ---------------------------------------------------------------------------
 
-function printConsoleSummary(rows: AuditRow[]): void {
+function printConsoleSummary(rows: AuditRow[], skippedPre126Count: number): void {
   const exposed = rows.filter(
     (r) => r.cogsSubOnePctCount > 0 || r.commissionSubOnePctCount > 0,
   )
@@ -515,6 +541,9 @@ function printConsoleSummary(rows: AuditRow[]): void {
   )
   console.log('')
   console.log('=== AUDIT SUMMARY ===')
+  console.log(
+    `Pre-PR-#126 filter: ${skippedPre126Count} forecast(s) skipped (last saved before ${PR_126_MERGE_TIMESTAMP.toISOString()}), ${rows.length} scanned`,
+  )
   console.log(`Active forecasts scanned: ${rows.length}`)
   console.log(`Exposed (sub-1% pct lines): ${exposed.length}`)
   console.log(`Total absolute Y1 delta: ${fmtMoney(totalAbsDelta)}`)
@@ -561,11 +590,35 @@ async function main() {
     process.exit(1)
   }
 
-  const forecasts = (forecastsData ?? []) as ForecastRow[]
-  console.log(`[AUDIT] Loaded ${forecasts.length} active forecast(s).`)
+  const allForecasts = (forecastsData ?? []) as ForecastRow[]
+  console.log(`[AUDIT] Loaded ${allForecasts.length} active forecast(s).`)
+
+  // Filter out forecasts last saved BEFORE PR #126 merged. The normalizedPct
+  // bug post-dates them, so any sub-1% percentage lines they contain are
+  // legitimate and not symptoms of the corruption this audit hunts for.
+  const skippedPre126: Array<{ id: string; tenantHint: string; updatedAt: string }> = []
+  const forecasts: ForecastRow[] = []
+  for (const f of allForecasts) {
+    const updatedAt = f.updated_at ? new Date(f.updated_at) : null
+    if (updatedAt && !Number.isNaN(updatedAt.getTime()) && updatedAt < PR_126_MERGE_TIMESTAMP) {
+      console.log(
+        `[AUDIT] Skipping ${f.id}: last saved ${f.updated_at}, predates PR #126 (${PR_126_MERGE_TIMESTAMP.toISOString()})`,
+      )
+      skippedPre126.push({
+        id: f.id,
+        tenantHint: f.business_id,
+        updatedAt: f.updated_at,
+      })
+      continue
+    }
+    forecasts.push(f)
+  }
+  console.log(
+    `[AUDIT] Pre-PR-#126 filter: ${skippedPre126.length} skipped, ${forecasts.length} eligible for audit.`,
+  )
 
   if (forecasts.length === 0) {
-    console.log('[AUDIT] Nothing to audit — exiting.')
+    console.log('[AUDIT] Nothing to audit after pre-PR-#126 filter — exiting.')
     return
   }
 
@@ -613,14 +666,19 @@ async function main() {
   )
 
   // 4. Console summary.
-  printConsoleSummary(rows)
+  printConsoleSummary(rows, skippedPre126.length)
 
   // 5. Write markdown to disk.
   const outDir = path.dirname(outputPath)
   if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true })
-  const md = buildMarkdown(rows, capturedAt)
+  const md = buildMarkdown(rows, capturedAt, skippedPre126.length)
   writeFileSync(outputPath, md)
   console.log(`[AUDIT] Wrote markdown report: ${outputPath}`)
+
+  // 6. Final tally line for ops visibility.
+  console.log(
+    `[AUDIT] ${skippedPre126.length} forecasts skipped (predate PR #126), ${rows.length} scanned`,
+  )
 }
 
 main().catch((e) => {
