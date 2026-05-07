@@ -969,11 +969,22 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
               const totalSeasonality = seasonality.reduce((s: number, v: number) => s + v, 0);
               const lineY1 = Object.values(line.year1Monthly).reduce((a, b) => a + b, 0);
               const share = year1Total > 0 ? lineY1 / year1Total : 1 / revenueLines.length;
-              const lineTarget = goalRevenue * share;
+              const lineTarget = Math.round(goalRevenue * share);
               const monthly: { [key: string]: number } = {};
+              // P0-14: absorb rounding residue into the last month so the
+              // per-line annual sum exactly equals lineTarget (matches the
+              // initializeFromXero residue-absorption convention).
+              let runningSum = 0;
               monthKeys.forEach((key, idx) => {
-                const factor = (seasonality[idx] ?? 8.33) / totalSeasonality;
-                monthly[key] = Math.round(lineTarget * factor);
+                const isLast = idx === monthKeys.length - 1;
+                if (isLast) {
+                  monthly[key] = lineTarget - runningSum;
+                } else {
+                  const factor = (seasonality[idx] ?? 8.33) / totalSeasonality;
+                  const monthVal = Math.round(lineTarget * factor);
+                  monthly[key] = monthVal;
+                  runningSum += monthVal;
+                }
               });
               line[yearKey] = monthly;
             });
