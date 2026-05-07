@@ -764,11 +764,16 @@ export function ForecastWizardV4({
               byMonth: priorOpexByMonth,
               byLine: opexByLine,
             },
-            otherIncome: priorFY?.other_income ? {
+            // Phase 56 (P1 B5): explicit undefined/null check (not truthy).
+            // A truthy guard treats `0` as "no value" and silently strips a
+            // legitimate-but-zero Xero figure. Match the refresh path semantics
+            // (lines ~286-293): undefined/null → field absent, omit; any
+            // present value (including 0) → trust Xero.
+            otherIncome: priorFY?.other_income !== undefined && priorFY?.other_income !== null ? {
               total: priorFY.other_income,
               byMonth: priorFY.other_income_by_month || {},
             } : undefined,
-            otherExpenses: priorFY?.other_expenses ? {
+            otherExpenses: priorFY?.other_expenses !== undefined && priorFY?.other_expenses !== null ? {
               total: priorFY.other_expenses,
               byMonth: priorFY.other_expenses_by_month || {},
             } : undefined,
