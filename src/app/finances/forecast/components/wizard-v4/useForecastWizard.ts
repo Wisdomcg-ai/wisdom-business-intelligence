@@ -447,10 +447,17 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       // Create OpEx lines from prior year data - default to fixed cost behavior
       const opexLines: OpExLine[] = data.opex.byLine.map((line) => {
         const monthlyAvg = line.monthlyAvg || line.total / 12;
+        // Phase 57 (T01): populate accountCode from API row when present.
+        // Trim defends against whitespace-padded codes from Xero.
+        const rawCode = (line as { account_code?: unknown }).account_code;
+        const accountCode = typeof rawCode === 'string' && rawCode.trim().length > 0
+          ? rawCode.trim()
+          : undefined;
         return {
           id: line.id,
           name: line.name,
           accountId: line.id,
+          accountCode,
           priorYearAnnual: line.total,
           costBehavior: 'fixed' as const,
           monthlyAmount: Math.round(monthlyAvg),
@@ -1118,10 +1125,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         // Create OpEx lines from prior year data - default to fixed cost behavior
         const opexLines: OpExLine[] = data.priorYear.opex.byLine.map((line) => {
           const monthlyAvg = line.monthlyAvg || line.total / 12;
+          // Phase 57 (T01): populate accountCode from API row when present.
+          const rawCode = (line as { account_code?: unknown }).account_code;
+          const accountCode = typeof rawCode === 'string' && rawCode.trim().length > 0
+            ? rawCode.trim()
+            : undefined;
           return {
             id: line.id,
             name: line.name,
             accountId: line.id,
+            accountCode,
             priorYearAnnual: line.total,
             costBehavior: 'fixed' as const, // Default - user can change to variable or adhoc
             monthlyAmount: Math.round(monthlyAvg),

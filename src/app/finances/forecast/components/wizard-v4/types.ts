@@ -284,6 +284,15 @@ export interface OpExLine {
   id: string;
   name: string;
   accountId?: string;
+  /**
+   * Phase 57: Xero account code (e.g. "5100"). Used as the join key with
+   * VendorBudget.accountCodes[] to detect subscription-covered OpEx lines and
+   * exclude them from the rollup. Optional for back-compat; legacy lines saved
+   * before Phase 57 have only accountId/accountName. Soft-migration in
+   * useForecastWizard.ts (Phase 57 v10→v11, T03) will surface a "Refresh from
+   * Xero" banner when this is missing.
+   */
+  accountCode?: string;
   priorYearAnnual: number;
   priorYearMonthly?: MonthlyData; // Monthly breakdown from prior year for seasonal pattern
   costBehavior: CostBehavior; // 'fixed' | 'variable' | 'adhoc' | 'seasonal'
@@ -636,7 +645,12 @@ export interface PriorYearData {
   opex: {
     total: number;
     byMonth: MonthlyData;
-    byLine: { id: string; name: string; total: number; monthlyAvg: number; isOneOff: boolean; oneOffMonth?: number }[];
+    // Phase 57 (T01): account_code is optional on the API surface today (some
+    // PriorYearData producers omit it). When present, useForecastWizard.ts
+    // ingest paths (initializeFromXero, refreshOpExLines) populate
+    // OpExLine.accountCode from this field so the Phase 57 subscription
+    // exclusion can match by code.
+    byLine: { id: string; name: string; total: number; monthlyAvg: number; isOneOff: boolean; oneOffMonth?: number; account_code?: string }[];
   };
   otherIncome?: {
     total: number;
