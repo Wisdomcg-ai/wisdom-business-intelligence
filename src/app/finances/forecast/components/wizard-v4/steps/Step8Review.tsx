@@ -643,6 +643,33 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
       }
     }
 
+    // Phase 56 P1 (Audit-4 BUG-012): Y2/Y3 line sums vs goal divergence.
+    // Threshold = greater of 1% or $100. Surface as a warning so the
+    // operator decides whether to align lines with goals or update the
+    // goal. Do NOT auto-correct — this is a calibration signal.
+    const checkGoalLineDivergence = (
+      yearLabel: 'Y2' | 'Y3',
+      yearKey: 'year2' | 'year3',
+    ) => {
+      const yearSummary = summary[yearKey];
+      const yearGoal = state.goals[yearKey];
+      if (!yearSummary || !yearGoal || !yearGoal.revenue) return;
+      const goalRev = yearGoal.revenue;
+      const lineSum = yearSummary.revenue;
+      const drift = Math.abs(lineSum - goalRev);
+      const threshold = Math.max(goalRev * 0.01, 100);
+      if (drift > threshold) {
+        const driftPct = goalRev > 0 ? (drift / goalRev) * 100 : 0;
+        items.push({
+          type: 'warning',
+          message: `${yearLabel} revenue line sums (${formatCurrency(lineSum)}) differ from your ${yearLabel} goal (${formatCurrency(goalRev)}) by ${formatCurrency(drift)} (${formatPercent(driftPct)}). Update line items in Step 3 or revise the goal in Step 1.`,
+          stepLink: 3,
+        });
+      }
+    };
+    if (forecastDuration >= 2) checkGoalLineDivergence('Y2', 'year2');
+    if (forecastDuration >= 3) checkGoalLineDivergence('Y3', 'year3');
+
     // Revenue per employee
     const totalHeadcount = state.teamMembers.length + state.newHires.length;
     if (totalHeadcount > 0 && y1.revenue > 0) {
