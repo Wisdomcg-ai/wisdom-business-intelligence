@@ -298,7 +298,15 @@ export interface OpExLine {
   expectedMonths?: string[]; // Which months to spread across (e.g., ['2026-03', '2026-09'])
   // For seasonal costs:
   seasonalGrowthPct?: number; // Annual growth % to apply to the seasonal pattern
-  seasonalTargetAmount?: number; // Target annual amount (alternative to growth %)
+  seasonalTargetAmount?: number; // Target annual amount (alternative to growth %) — Y1
+  // why: pre-P1 the rollup only honored seasonalTargetAmount when yearNum===1,
+  // so Y2/Y3 silently reverted to the growth-formula even when the operator
+  // wanted distinct per-year targets. Mirrors the y2Override/y3Override
+  // pattern (P0-1) for fixed/variable lines. UI for setting these per-year
+  // targets is a future enhancement — type+rollup wired now so the data path
+  // is unblocked. P1A Audit Seasonal-OpEx-Y1-Override-001.
+  y2SeasonalTargetAmount?: number; // Override seasonal target for Y2
+  y3SeasonalTargetAmount?: number; // Override seasonal target for Y3
   // Multi-year planning:
   startYear?: 1 | 2 | 3; // Which year this expense starts (default: 1)
   isOneTime?: boolean; // If true, only occurs in oneTimeYear
@@ -395,7 +403,15 @@ export interface PlannedSpend {
 
 // Loan repayment: PMT = P × [r(1+r)^n] / [(1+r)^n - 1]
 export function calculateLoanPayment(principal: number, annualRate: number, termMonths: number): number {
-  if (annualRate <= 0 || termMonths <= 0) return Math.round(principal / termMonths);
+  // why: termMonths=0 must short-circuit to 0 BEFORE the rate guard —
+  // the previous combined `if (rate<=0 || term<=0) return principal/term`
+  // returned Infinity (or NaN when principal=0) for term=0 because of the
+  // `principal / 0` divide. All real call sites in getBreakdownWithTaxonomy
+  // already gate on `termMonths > 0` before invoking, so 0 here means an
+  // unconfigured loan — surface 0 rather than poison the rollup with Infinity.
+  // P1A Audit Division-By-Zero-001.
+  if (termMonths <= 0) return 0;
+  if (annualRate <= 0) return Math.round(principal / termMonths);
   const r = annualRate / 100 / 12;
   const n = termMonths;
   const payment = principal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
@@ -404,6 +420,52 @@ export function calculateLoanPayment(principal: number, annualRate: number, term
 
 export function calculateTotalInterest(principal: number, monthlyPayment: number, termMonths: number): number {
   return Math.round(monthlyPayment * termMonths - principal);
+}
+
+/**
+ * Sum the interest portion of a loan's monthly payments for a given window
+ * of months in the amortization schedule. Each month: interest = balance × r,
+ * principal = payment − interest, balance −= principal.
+ *
+ * why: pre-P1 the rollup spread `totalInterest / years` evenly across years,
+ * which ignored principal paydown. For a $100K loan @ 5% APR / 5yr the true
+ * Y1 interest is ≈$4.7K (declining each year as balance shrinks); the old
+ * code reported the same value (~$3.8K avg) every year. This helper walks
+ * the real schedule so multi-year P&L tracks reality.
+ *
+ * @param principal     Initial loan balance.
+ * @param annualRate    Annual interest rate as percent (e.g. 5 for 5%).
+ * @param termMonths    Total months in loan term.
+ * @param startMonthIdx 0-based month index in the schedule to start summing.
+ * @param monthsInWindow Number of months to sum (clipped to remaining term).
+ * @returns Rounded interest dollars accrued in the window.
+ *
+ * P1A Audit Lease-Interest-001.
+ */
+export function calculateAmortizedInterestForWindow(
+  principal: number,
+  annualRate: number,
+  termMonths: number,
+  startMonthIdx: number,
+  monthsInWindow: number,
+): number {
+  if (principal <= 0 || termMonths <= 0 || monthsInWindow <= 0) return 0;
+  if (startMonthIdx >= termMonths) return 0;
+  const r = annualRate > 0 ? annualRate / 100 / 12 : 0;
+  // Standard amortizing payment (PMT). When rate==0, payment is principal/n.
+  const payment = r > 0
+    ? (principal * (r * Math.pow(1 + r, termMonths))) / (Math.pow(1 + r, termMonths) - 1)
+    : principal / termMonths;
+  let balance = principal;
+  let interestAccrued = 0;
+  const endIdx = Math.min(termMonths, startMonthIdx + monthsInWindow);
+  for (let i = 0; i < endIdx; i++) {
+    const interestThisMonth = balance * r;
+    const principalThisMonth = payment - interestThisMonth;
+    if (i >= startMonthIdx) interestAccrued += interestThisMonth;
+    balance -= principalThisMonth;
+  }
+  return Math.round(interestAccrued);
 }
 
 // Phase 50 plan 50-02 (FCST-BUG-04): split P&L impact into depreciation and
@@ -464,13 +526,31 @@ function getBreakdownWithTaxonomy(
       }
       let interestExp = 0;
       if (termMonths > 0 && item.interest_rate !== undefined) {
-        const monthlyPayment = calculateLoanPayment(
+        // why: pre-P1 used `totalInterest / years` which ignored principal
+        // paydown — every year reported the same average interest. Real
+        // amortization has interest declining each year. Reproducer: $100K
+        // loan @ 5% / 5yr → Y1≈$4.7K, Y2≈$3.8K, ... not flat.
+        // P1A Lease-Interest-001.
+        // Y1 covers the (13 - item.month) months from the spend's fiscal
+        // start month through year-end. Y2/Y3 each cover 12 months
+        // continuing in the schedule (clipped at termMonths).
+        const monthsInY1 = Math.max(0, 13 - item.month);
+        let startIdx = 0;
+        let monthsInWindow = monthsInY1;
+        if (yearNum === 2) {
+          startIdx = monthsInY1;
+          monthsInWindow = 12;
+        } else if (yearNum === 3) {
+          startIdx = monthsInY1 + 12;
+          monthsInWindow = 12;
+        }
+        interestExp = calculateAmortizedInterestForWindow(
           item.amount,
           item.interest_rate,
           termMonths,
+          startIdx,
+          monthsInWindow,
         );
-        const totalInterest = monthlyPayment * termMonths - item.amount;
-        interestExp = Math.round(totalInterest / (termMonths / 12));
       }
       return {
         depreciation: dep,

@@ -698,15 +698,19 @@ describe('Bug 4 — FCST-BUG-04: lease/finance taxonomy', () => {
       interest_rate: 6, // 6% APR
       useful_life_months: 60,
     };
-    // monthlyPayment via PMT(100_000, 6%, 60) = 1933 (rounded)
-    // totalInterest = 1933*60 - 100_000 = 15_980
-    // annualInterest = 15_980 / 5 = 3_196
-    // monthlyDep = 100_000 / 60 = 1666.67; *12 = 20_000
-    // total = 20_000 + 3_196 = 23_196 (NOT $24_000 of full lease payment)
+    // why: Y1 reflects amortized interest (largest in early years); was previously
+    // locked to buggy flat-spread value $23,199 — see Phase 56 P1a Lease-Interest-001.
+    // PMT(100_000, 6%/12, 60) = 1933.28/mo. Amortizing month-by-month:
+    //   Y1 interest = sum of (balance × r) for months 0..11 ≈ 5_519
+    //   Y1 depreciation = 100_000 / 60 × 12 = 20_000
+    //   Y1 total = 25_519 (NOT $24_000 of full lease payment, NOT $23_199 flat-spread)
     const site1 = siteOnePLImpact(item, 1);
-    expect(site1).toBeCloseTo(23_199, -1);
+    expect(site1).toBeCloseTo(25_519, -1);
     // CRITICAL: must NOT equal $24,000 (the buggy full-payment expensing)
-    expect(site1).toBeLessThan(24_000);
+    // Note: amortized Y1 interest legitimately exceeds $24K because Y1 carries
+    // the largest outstanding principal; the "less than full lease payment"
+    // assertion is no longer meaningful at the annual level.
+    expect(site1).toBeLessThan(26_000);
     // Lockstep — Site 2 must match Site 1 within ±$2 rounding tolerance
     const site2 = siteTwoPLImpact(item, 1);
     expect(Math.abs(site1 - site2)).toBeLessThanOrEqual(2);
@@ -725,9 +729,11 @@ describe('Bug 4 — FCST-BUG-04: lease/finance taxonomy', () => {
       interest_rate: 6,
       useful_life_months: 60,
     };
+    // why: Y1 reflects amortized interest (largest in early years); was previously
+    // locked to buggy flat-spread value $23,199 — see Phase 56 P1a Lease-Interest-001.
     const site1 = siteOnePLImpact(item, 1);
-    expect(site1).toBeCloseTo(23_199, -1);
-    expect(site1).toBeLessThan(24_000);
+    expect(site1).toBeCloseTo(25_519, -1);
+    expect(site1).toBeLessThan(26_000);
     const site2 = siteTwoPLImpact(item, 1);
     expect(Math.abs(site1 - site2)).toBeLessThanOrEqual(2);
   });
