@@ -1431,14 +1431,13 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
           const baseMonthly = (line.monthlyAmount || 0) * (1 + trendAdj / 100);
           return sum + baseMonthly * 12;
         }
-        // why: percentOfRevenue is canonically 0-100 but legacy/import paths
-        // have historically stored it as a 0-1 decimal. Without this guard a
-        // value of 0.30 silently becomes (0.30 + trendAdj)/100 ≈ 0.003 → COGS
-        // 100× understated. Mirror this same dual-unit hazard guard at every
-        // site that divides percentOfRevenue by 100 (commissions below).
-        const rawPct = line.percentOfRevenue || 0;
-        const normalizedPct = rawPct > 1 ? rawPct : rawPct * 100;
-        const adjustedPct = normalizedPct + trendAdj;
+        // why: sub-1% percentages are legitimate (e.g., a COGS line at 0.5%
+        // of revenue). The dual-unit guard from #126 (P56 P1a) misclassified
+        // them as 0-1 decimals and inflated 100× (e.g., JDS Y1 COGS went
+        // $6.65M → $76.15M). Trust the input format — all wizard inputs are
+        // stored as 0-100 percentages. If a real dual-unit hazard ever
+        // appears, fix it at the input boundary, not here.
+        const adjustedPct = (line.percentOfRevenue || 0) + trendAdj;
         return sum + (revenue * adjustedPct) / 100;
       }, 0);
 
@@ -1554,13 +1553,11 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
             lineRevenue = revenue * (lineY1 / totalY1);
           }
         }
-        // why: same dual-unit hazard as COGS percentOfRevenue above. If a
-        // legacy/import path stored commission % as a 0-1 decimal (e.g., 0.05
-        // instead of 5), `0.05 / 100 = 0.0005` → commissions silently 50×
-        // understated. P1A Audit Team-Commission-001.
-        const rawCommissionPct = commission.percentOfRevenue || 0;
-        const normalizedCommissionPct = rawCommissionPct > 1 ? rawCommissionPct : rawCommissionPct * 100;
-        teamCosts += lineRevenue * (normalizedCommissionPct / 100);
+        // why: sub-1% commissions are legitimate (e.g., 0.3% of revenue).
+        // The dual-unit guard from #126 (P56 P1a Team-Commission-001)
+        // misclassified them as 0-1 decimals and inflated 100×. Trust the
+        // input format — all wizard inputs are stored as 0-100 percentages.
+        teamCosts += lineRevenue * ((commission.percentOfRevenue || 0) / 100);
       }
 
       // OpEx - handle all cost behaviors including seasonal
