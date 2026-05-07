@@ -2594,8 +2594,14 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
     resetAISuggestion();
   };
 
+  // Phase 56 P1 (Audit-4 BUG-004): reject NewHire start months before FY
+  // start. Same person otherwise costed twice when already a TeamMember.
+  const fiscalYearStartKey = `${fiscalYear - 1}-07`;
+  const newHireStartTooEarly = !!newHireData.startMonth && newHireData.startMonth < fiscalYearStartKey;
+
   const handleAddNewHire = () => {
     if (!newHireData.role.trim()) return;
+    if (newHireStartTooEarly) return;
 
     const isContractor = hireType === 'contractor';
     let salary = newHireData.salary;
@@ -4237,6 +4243,13 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                   placeholder="Select start month"
                   className="w-full py-2"
                 />
+                {newHireStartTooEarly && (
+                  <p className="text-xs text-red-600 mt-1.5">
+                    Hire date must be on or after FY start ({fiscalYearStartKey}). If
+                    this person is already employed, add them as a Team Member
+                    instead.
+                  </p>
+                )}
               </div>
 
               {hireType === 'employee' && newHireData.type === 'part-time' && (
@@ -4312,8 +4325,13 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
             <div className="flex gap-3 mt-6">
               <button
                 onClick={handleAddNewHire}
+                disabled={newHireStartTooEarly}
                 className={`flex-1 px-4 py-2 text-white text-sm font-medium rounded-lg ${
-                  hireType === 'contractor' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'
+                  newHireStartTooEarly
+                    ? 'bg-gray-300 cursor-not-allowed'
+                    : hireType === 'contractor'
+                      ? 'bg-orange-600 hover:bg-orange-700'
+                      : 'bg-green-600 hover:bg-green-700'
                 }`}
               >
                 Add {hireType === 'contractor' ? 'Contractor' : 'Team Member'}
