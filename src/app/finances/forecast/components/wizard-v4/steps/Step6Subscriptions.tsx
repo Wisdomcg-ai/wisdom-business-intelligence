@@ -7,11 +7,11 @@
 // continuity. See WIZARD_STEPS in ../types.ts for the canonical step
 // numbering and ForecastWizardV4.tsx renderStep() for the switch.
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   Search, CreditCard, AlertCircle, CheckCircle, Loader2, RefreshCw,
   ChevronDown, ChevronRight, Save, DollarSign, Calendar, TrendingUp,
-  Plus, Trash2, PenLine
+  Plus, Trash2, PenLine, AlertTriangle
 } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency } from '../types';
 
@@ -20,6 +20,32 @@ interface Step6SubscriptionsProps {
   actions: WizardActions;
   fiscalYear: number;
   businessId: string;
+}
+
+/**
+ * Phase 57 T12 (B4) — Imperative handle exposed via forwardRef so the
+ * StepBar (T13/B5) can synchronously flush pending subscription-budget
+ * saves before navigating away. Without this, an autosave debounce in
+ * flight could fire AFTER the operator has jumped to another step,
+ * landing on a stale URL or racing with another step's save.
+ *
+ * Usage (T13/B5):
+ *   const stepRef = useRef<Step6SubscriptionsHandle>(null);
+ *   <Step6Subscriptions ref={stepRef} ... />
+ *   // before goToStep:
+ *   await stepRef.current?.flushPendingSaves();
+ */
+export interface Step6SubscriptionsHandle {
+  /**
+   * Cancels any pending debounced autosave timer and immediately POSTs the
+   * current vendor list to /api/subscription-budgets. Resolves once the
+   * network call returns. No-op when nothing is pending or no active
+   * vendors exist; does NOT reject on save errors (the component's existing
+   * error UI handles that). The promise resolves either way so callers
+   * can `await` without worrying about uncaught rejections from a transient
+   * network issue.
+   */
+  flushPendingSaves: () => Promise<void>;
 }
 
 interface AccountOption {
@@ -195,7 +221,10 @@ function buildStartMonthOptions(fiscalYearStart: number): Array<{ value: string;
   return options;
 }
 
-export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: Step6SubscriptionsProps) {
+// Phase 57 T12 (B4): forwardRef so T13/B5's StepBar can call flushPendingSaves
+// before navigating away. Inner function signature unchanged from pre-T12.
+export const Step6Subscriptions = forwardRef<Step6SubscriptionsHandle, Step6SubscriptionsProps>(
+function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
   const [phase, setPhase] = useState<Phase>('select-accounts');
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [vendors, setVendors] = useState<VendorBudget[]>([]);
@@ -612,6 +641,62 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
     };
   }, [vendors, phase, saveSubscriptionBudgets, isManualMode]);
 
+  // Phase 57 T12 (B4) — flushPendingSaves exposed via ref for T13/B5's
+  // clickable nav. Cancels the in-flight debounce timer and immediately
+  // POSTs the current vendor list. Resolves once the network call returns
+  // (or immediately if there's nothing to save). Never rejects — the
+  // component's existing error UI surfaces failures; rejecting here would
+  // break callers that just want to await before navigation.
+  useImperativeHandle(ref, () => ({
+    flushPendingSaves: async () => {
+      // Cancel any pending debounced save.
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+      }
+      // No vendors to save (initial render, or all excluded) → no-op.
+      if (vendors.length === 0) return;
+      const activeCount = vendors.filter(v => v.isActive).length;
+      if (activeCount === 0) return;
+      try {
+        await saveSubscriptionBudgets();
+      } catch (err) {
+        // saveSubscriptionBudgets handles UI error state itself; swallow here
+        // so the caller's `await flushPendingSaves()` never rejects.
+        console.warn('[Step6Subscriptions T12] flushPendingSaves error (non-fatal):', err);
+      }
+    },
+  }), [saveSubscriptionBudgets, vendors]);
+
+  // Phase 57 T12 (B4) — Gap warning banner.
+  //
+  // Surfaces the case where the operator's vendor budgets are materially
+  // below historical spend on the analyzed accounts — a "did you forget a
+  // vendor?" hint. CONTEXT.md (line 30) specifies a 15% threshold:
+  //   show warning when Σ(activeVendor.monthlyBudget × 12) < 0.85 × historical
+  //
+  // Historical source: summary.priorFYTotal (FULL prior-FY spend on all
+  // analyzed accounts, before any vendor exclusions). We use prior-FY
+  // total — not last-12-months totalAmount — because operators set
+  // budgets relative to a complete fiscal year of data.
+  //
+  // Gating:
+  //   - Only render in 'review' phase, post-analysis.
+  //   - Only when historicalAccountTotal > 0 (avoid divide-by-zero noise).
+  //   - Manual mode has no historical context → don't render.
+  //   - Threshold is strict (> 15%) to avoid false alarms on small budgets.
+  const gapWarning = useMemo(() => {
+    if (isManualMode) return null;
+    if (phase !== 'review') return null;
+    const historical = summary?.priorFYTotal ?? 0;
+    if (historical <= 0) return null;
+    const vendorAnnual = totals.annualBudget;
+    if (vendorAnnual >= historical * 0.85) return null;
+    const gap = historical - vendorAnnual;
+    const gapPct = (gap / historical) * 100;
+    return { historical, vendorAnnual, gap, gapPct };
+  }, [isManualMode, phase, summary?.priorFYTotal, totals.annualBudget]);
+
   const selectedAccountCount = accounts.filter(acc => acc.isSelected).length;
 
   if (isLoading) {
@@ -853,6 +938,33 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
               <p className="text-sm text-purple-100">{monthsRemaining} months left</p>
             </div>
           </div>
+
+          {/* Phase 57 T12 (B4) — Gap warning banner.
+              Shown when active vendor budgets are < 85% of historical
+              prior-FY spend on the analyzed accounts. Soft hint, not a
+              blocker — operator may have intentionally cut subscriptions
+              and the forecast trusts their budget per CONTEXT.md (line 32). */}
+          {gapWarning && (
+            <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-amber-900">
+                    Your vendor budgets are {gapWarning.gapPct.toFixed(0)}% below historical spend
+                  </p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    Historical: {formatCurrency(gapWarning.historical)}/yr.
+                    Your budget: {formatCurrency(gapWarning.vendorAnnual)}/yr.
+                    Gap: {formatCurrency(gapWarning.gap)}/yr.
+                  </p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    If you&apos;ve intentionally cut subscriptions, this is fine — the forecast uses your budget.
+                    If you&apos;ve missed a vendor, add it before continuing.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* P&L Reconciliation Check — Xero mode only */}
           {!isManualMode && summary?.reconciliation && (
@@ -1403,4 +1515,7 @@ export function Step6Subscriptions({ state, actions, fiscalYear, businessId }: S
       )}
     </div>
   );
-}
+});
+
+// Phase 57 T12 (B4): preserve named display in DevTools after the forwardRef wrap.
+Step6Subscriptions.displayName = 'Step6Subscriptions';
