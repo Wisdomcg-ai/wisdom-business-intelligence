@@ -1066,14 +1066,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string) {
         const monthly = yearNum === 1 ? line.year1Monthly
           : yearNum === 2 ? line.year2Monthly
           : line.year3Monthly;
-        if (monthly && Object.keys(monthly).length > 0) {
-          return sum + Object.values(monthly).reduce((a, b) => a + b, 0);
-        }
-        // Fallback to formula — apply Y2/Y3 trend adjustment
+        // P0-5: y2y3Trend must apply to BOTH paths (manual monthly AND formula),
+        // otherwise the toggle is silently ignored when monthly entries exist.
         const trendAdj = yearNum === 1 ? 0
           : line.y2y3Trend === 'improves' ? -2
           : line.y2y3Trend === 'increases' ? 2
           : 0;
+        if (monthly && Object.keys(monthly).length > 0) {
+          const manualSum = Object.values(monthly).reduce((a, b) => a + b, 0);
+          return sum + manualSum * (1 + trendAdj / 100);
+        }
         if (line.costBehavior === 'fixed') {
           const baseMonthly = (line.monthlyAmount || 0) * (1 + trendAdj / 100);
           return sum + baseMonthly * 12;
