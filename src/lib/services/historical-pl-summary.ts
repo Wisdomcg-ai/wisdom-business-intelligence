@@ -232,8 +232,17 @@ const OTHER_INCOME_NAME_PATTERNS = [
   'fx gain',
 ];
 
-function looksLikeOtherIncome(accountName: string): boolean {
-  const n = accountName.toLowerCase();
+// Exported for regression testing — see
+// src/__tests__/services/historical-pl-other-income.test.ts.
+export function looksLikeOtherIncome(accountName: string): boolean {
+  const n = accountName.toLowerCase().trimStart();
+  // Why: Xero's P&L Sales section is the truth source for operating revenue.
+  // Don't second-guess accounts named "Sales - X" — Xero already classified
+  // them as operating revenue. JDS's "Sales - Rental Income" was being demoted
+  // to other_income by the 'rental income' substring match, under-reporting
+  // Step 2 Total Revenue by $70,633 for FY25. See investigation:
+  // .planning/debug/jds-step2-recon-gap-2026-05-08.md.
+  if (n.startsWith('sales')) return false;
   return OTHER_INCOME_NAME_PATTERNS.some(p => n.includes(p));
 }
 
