@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, formatPercent, PriorYearData } from '../types';
 import { parsePLFile } from '../utils/parsePLFile';
+import { resolvePriorYearSecondary } from '../utils/resolve-prior-year-secondaries';
 
 interface Step2PriorYearProps {
   state: ForecastWizardState;
@@ -493,6 +494,15 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
       // hotfix scope; we call setPriorYear (destructive) where the auto-refresh
       // calls setPriorYearDisplay. Any future schema change should update both
       // call sites in lockstep.
+      //
+      // Divergence note (fix/refresh-button-preserve-other-income): the
+      // otherIncome/otherExpenses fall-through below intentionally diverges
+      // from the always-on path's simpler cache-on-undefined branch. The
+      // operator-triggered refresh runs against an already-populated
+      // `state.priorYear`, so when Xero returns 0 for these secondary buckets
+      // we prefer the cached value the operator can see on screen rather
+      // than wiping the row. The always-on path can keep its simpler shape
+      // because it runs on initial mount when the cache may itself be empty.
       const revenueByLine = (freshPriorFY.revenue_lines || []).map((line: { account_name: string; total: number; by_month?: Record<string, number> }, idx: number) => ({
         id: `revenue-${idx}`, name: line.account_name, total: line.total, byMonth: line.by_month || {},
       }));
@@ -505,6 +515,26 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
         total: cat.total, monthlyAvg: cat.monthly_average || cat.total / 12, isOneOff: false,
         account_code: cat.account_code,
       }));
+
+      // Other Income / Other Expenses preservation (fix/refresh-button-preserve-other-income).
+      // See `utils/resolve-prior-year-secondaries.ts` for the full rationale.
+      // Short version: historical-pl-summary always returns these as numbers
+      // (0 when classification is empty), so the prior `!== undefined && !==
+      // null` guard never fell back to the cached value — a tenant where Xero
+      // returned 0 (account-type miss, mid-deploy matcher change) silently
+      // wiped the visible Other Income on click. The resolver trusts non-zero
+      // API values, falls back to cached non-zero when the API returns 0, and
+      // keeps `byMonth` in sync with `total` either way.
+      const resolvedOtherIncome = resolvePriorYearSecondary({
+        apiTotal: freshPriorFY.other_income,
+        apiByMonth: freshPriorFY.other_income_by_month,
+        cached: priorYear?.otherIncome,
+      });
+      const resolvedOtherExpenses = resolvePriorYearSecondary({
+        apiTotal: freshPriorFY.other_expenses,
+        apiByMonth: freshPriorFY.other_expenses_by_month,
+        cached: priorYear?.otherExpenses,
+      });
 
       const freshPriorYear: PriorYearData = {
         revenue: { total: totalRevenue, byMonth: freshPriorFY.revenue_by_month || {}, byLine: revenueByLine },
@@ -523,14 +553,8 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
           total: totalOpex, byLine: opexByLine,
           byMonth: freshPriorFY.opex_by_month || {},
         },
-        otherIncome: freshPriorFY.other_income !== undefined && freshPriorFY.other_income !== null ? {
-          total: freshPriorFY.other_income,
-          byMonth: freshPriorFY.other_income_by_month || {},
-        } : priorYear?.otherIncome,
-        otherExpenses: freshPriorFY.other_expenses !== undefined && freshPriorFY.other_expenses !== null ? {
-          total: freshPriorFY.other_expenses,
-          byMonth: freshPriorFY.other_expenses_by_month || {},
-        } : priorYear?.otherExpenses,
+        otherIncome: resolvedOtherIncome,
+        otherExpenses: resolvedOtherExpenses,
         seasonalityPattern: freshPriorFY.seasonality_pattern?.length === 12
           ? freshPriorFY.seasonality_pattern : Array(12).fill(100 / 12),
       };
