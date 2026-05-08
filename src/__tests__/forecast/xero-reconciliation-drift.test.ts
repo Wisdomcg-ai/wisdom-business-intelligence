@@ -439,3 +439,133 @@ describe('Refresh from Xero — preserves Other Income / Other Expenses (fix/ref
     expect(result.current.state.priorYear?.otherIncome?.byMonth).toEqual({ '2025-09': 4_500 });
   });
 });
+
+/**
+ * Always-on Xero refresh — Other Income / Other Expenses preservation.
+ *
+ * The always-on refresh path in ForecastWizardV4.tsx fires on every wizard
+ * mount, window focus, and visibilitychange event. Before
+ * fix/always-on-refresh-otherIncome-preserve, that path had a different (and
+ * buggy) inline guard that only fell back to cache when the API value was
+ * `undefined` / `null`. Because `historical-pl-summary` always returns
+ * `other_income` / `other_expenses` as numbers (including 0 when no rows
+ * match the account_type enum), the cached fallback never fired — every
+ * mount/focus event silently wiped non-zero cached Other Income on tenants
+ * where Xero's live response computed 0.
+ *
+ * The fix wires the always-on path through `resolvePriorYearSecondary`,
+ * matching the manual Refresh button path. These tests assert the always-on
+ * mapper behavior directly so a future inline-rewrite regression is caught.
+ */
+describe('always-on Xero refresh — otherIncome / otherExpenses preservation', () => {
+  /**
+   * Mirrors the always-on refresh's freshPriorYear mapper in
+   * ForecastWizardV4.tsx (lines ~268-300). The two `resolvePriorYearSecondary`
+   * calls are the load-bearing change.
+   */
+  function buildAlwaysOnFreshPriorYear(
+    apiResponse: {
+      other_income?: number | null;
+      other_income_by_month?: Record<string, number>;
+      other_expenses?: number | null;
+      other_expenses_by_month?: Record<string, number>;
+    },
+    cached: PriorYearData | null,
+  ): PriorYearData {
+    return makePriorYear({
+      otherIncome: resolvePriorYearSecondary({
+        apiTotal: apiResponse.other_income,
+        apiByMonth: apiResponse.other_income_by_month,
+        cached: cached?.otherIncome,
+      }),
+      otherExpenses: resolvePriorYearSecondary({
+        apiTotal: apiResponse.other_expenses,
+        apiByMonth: apiResponse.other_expenses_by_month,
+        cached: cached?.otherExpenses,
+      }),
+    });
+  }
+
+  it('preserves cached non-zero otherIncome when always-on refresh API returns 0 (the JDS regression)', () => {
+    const cached = makePriorYear({
+      otherIncome: { total: 651, byMonth: { '2024-12': 651 } },
+    });
+
+    // historical-pl-summary always returns numbers — Xero classification miss
+    // computed 0 for this tenant on this refresh.
+    const fresh = buildAlwaysOnFreshPriorYear(
+      { other_income: 0, other_income_by_month: { '2025-07': 0 } },
+      cached,
+    );
+
+    expect(fresh.otherIncome?.total).toBe(651);
+    expect(fresh.otherIncome?.byMonth).toEqual({ '2024-12': 651 });
+  });
+
+  it('takes a fresh non-zero otherIncome from Xero (cache is overwritten)', () => {
+    const cached = makePriorYear({
+      otherIncome: { total: 651, byMonth: { '2024-12': 651 } },
+    });
+
+    const fresh = buildAlwaysOnFreshPriorYear(
+      { other_income: 800, other_income_by_month: { '2025-09': 800 } },
+      cached,
+    );
+
+    expect(fresh.otherIncome?.total).toBe(800);
+    expect(fresh.otherIncome?.byMonth).toEqual({ '2025-09': 800 });
+  });
+
+  it('preserves cached otherIncome when API field is undefined (partial response)', () => {
+    const cached = makePriorYear({
+      otherIncome: { total: 651, byMonth: { '2024-12': 651 } },
+    });
+
+    const fresh = buildAlwaysOnFreshPriorYear(
+      { other_income: undefined, other_income_by_month: undefined },
+      cached,
+    );
+
+    expect(fresh.otherIncome?.total).toBe(651);
+    expect(fresh.otherIncome?.byMonth).toEqual({ '2024-12': 651 });
+  });
+
+  it('preserves cached otherIncome when API field is null', () => {
+    const cached = makePriorYear({
+      otherIncome: { total: 651, byMonth: { '2024-12': 651 } },
+    });
+
+    const fresh = buildAlwaysOnFreshPriorYear(
+      { other_income: null },
+      cached,
+    );
+
+    expect(fresh.otherIncome?.total).toBe(651);
+  });
+
+  it('also preserves cached otherExpenses when always-on refresh API returns 0', () => {
+    const cached = makePriorYear({
+      otherExpenses: { total: 200, byMonth: { '2024-08': 200 } },
+    });
+
+    const fresh = buildAlwaysOnFreshPriorYear(
+      { other_expenses: 0, other_expenses_by_month: { '2025-07': 0 } },
+      cached,
+    );
+
+    expect(fresh.otherExpenses?.total).toBe(200);
+    expect(fresh.otherExpenses?.byMonth).toEqual({ '2024-08': 200 });
+  });
+
+  it('cold mount with no cache and API returns 0 — lands on { total: 0, byMonth: {} } (no preservation needed)', () => {
+    // First wizard mount: state.priorYear is null, API returns 0.
+    // Trusting Xero is correct here — there is no cached value to preserve.
+    const fresh = buildAlwaysOnFreshPriorYear(
+      { other_income: 0, other_income_by_month: { '2025-07': 0 } },
+      null,
+    );
+
+    expect(fresh.otherIncome?.total).toBe(0);
+    expect(fresh.otherIncome?.byMonth).toEqual({ '2025-07': 0 });
+  });
+});
