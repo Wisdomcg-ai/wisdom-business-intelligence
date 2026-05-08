@@ -661,7 +661,19 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     // ═════════════════════════════════════════════════════════════════════════
     // PER-LINE DISTRIBUTION WITH PER-LINE RESIDUE ABSORPTION
     // ═════════════════════════════════════════════════════════════════════════
-    revenueLines.forEach((line) => {
+    // Issue 1 (May 2026 user report) — accumulate the per-line updates into
+    // a single new array and dispatch ONE setRevenueLines call at the end,
+    // instead of N independent updateRevenueLine calls. The previous loop
+    // worked under React 18 batching for the monthly grid (each child re-
+    // reads its own line), but the SUMMARY view computes derived totals
+    // (linePercentages, totalRevenue, cogsLinePercentages) from the whole
+    // revenueLines array. Sequential updateRevenueLine calls each produced
+    // a different array reference within the same batch, and downstream
+    // useMemo dep checks (which compare references) could miss intermediate
+    // states. A single atomic setRevenueLines guarantees all readers see
+    // the final, fully-redistributed array on the very next render — no
+    // stale partial states.
+    const updatedRevenueLines = revenueLines.map((line) => {
       const seasonality = getEffectiveSeasonality(line, priorYear?.seasonalityPattern);
       const updates: Partial<typeof line> = {};
       const lineYearTarget = lineYearTargets[line.id];
@@ -754,10 +766,9 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         updates.year3Monthly = y3Monthly;
       }
 
-      if (Object.keys(updates).length > 0) {
-        actions.updateRevenueLine(line.id, updates);
-      }
+      return Object.keys(updates).length > 0 ? { ...line, ...updates } : line;
     });
+    actions.setRevenueLines(updatedRevenueLines);
   };
 
   // Get prior year total for a revenue line
@@ -1022,6 +1033,19 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   // Current COGS line percentages (of total COGS).
   // Last line absorbs rounding residue so the displayed sum is exactly 100%
   // (independent rounding per line drifts to 98/99/101/102 with 3+ lines).
+  //
+  // Issue 1 (May 2026 user report): pattern changes (Seasonal/Straight-line/
+  // Manual) redistribute the active year's per-month values across revenue
+  // lines, which can shift `totalRevenue` by rounding residue ($1–$2). When
+  // that residue happens to round-trip identically (same goal × same weights →
+  // same total), `totalRevenue` was bit-identical and React would skip the
+  // recompute, leaving the summary's COGS % shares stale even though the
+  // monthly grid had visibly redistributed. `revenuePattern` and `revenueLines`
+  // are now in the dep list so a pattern toggle ALWAYS triggers a fresh
+  // computation — variable-COGS rows depend on per-month revenue, not just
+  // the annual total, so reading from `revenueLines` directly is the correct
+  // dependency surface (handlePatternChange always produces a new revenueLines
+  // array reference via setState).
   const cogsLinePercentages = useMemo(() => {
     const pcts: Record<string, number> = {};
     if (cogsLines.length === 0) return pcts;
@@ -1045,7 +1069,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
       }
     });
     return pcts;
-  }, [cogsLines, totalCOGS, totalRevenue, activeYear]);
+  }, [cogsLines, totalCOGS, totalRevenue, activeYear, revenuePattern, revenueLines]);
 
   const cogsPctTotal = Object.values(cogsLinePercentages).reduce((a, b) => a + b, 0);
 
