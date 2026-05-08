@@ -820,38 +820,31 @@ export function ForecastWizardV4({
               byMonth: priorOpexByMonth,
               byLine: opexByLine,
             },
-            // Phase 56 (P1 B5): explicit undefined/null check (not truthy).
-            // A truthy guard treats `0` as "no value" and silently strips a
-            // legitimate-but-zero Xero figure. Match the refresh path semantics
-            // (lines ~286-293): undefined/null → field absent, omit; any
-            // present value (including 0) → trust Xero.
-            // Hotfix (fix/step2-byMonth-priorYear-restore): when Xero didn't
-            // deliver these sections, fall back to the saved snapshot. Snapshot
-            // explicitly omits these fields when the original priorYear had no
-            // Other Income/Expenses, so undefined-from-snapshot correctly maps
-            // to undefined here (no false "0 Other Income" injection).
-            otherIncome: priorFY?.other_income !== undefined && priorFY?.other_income !== null
-              ? {
-                  total: priorFY.other_income,
-                  byMonth: priorFY.other_income_by_month || {},
-                }
-              : priorYearMonthlySnapshot?.otherIncome
-                ? {
-                    total: priorYearMonthlySnapshot.otherIncome.total,
-                    byMonth: priorYearMonthlySnapshot.otherIncome.byMonth ?? {},
-                  }
-                : undefined,
-            otherExpenses: priorFY?.other_expenses !== undefined && priorFY?.other_expenses !== null
-              ? {
-                  total: priorFY.other_expenses,
-                  byMonth: priorFY.other_expenses_by_month || {},
-                }
-              : priorYearMonthlySnapshot?.otherExpenses
-                ? {
-                    total: priorYearMonthlySnapshot.otherExpenses.total,
-                    byMonth: priorYearMonthlySnapshot.otherExpenses.byMonth ?? {},
-                  }
-                : undefined,
+            // Phase 56 (P1 B5) + fix/sweep-all-otherIncome-zero-overwrite-sites:
+            // The previous inline `!== undefined && !== null` guard treated a
+            // legitimate-but-zero API value as "trust Xero" and overwrote the
+            // saved snapshot — but `historical-pl-summary` always returns
+            // `other_income` / `other_expenses` as numbers (0 when no rows
+            // match the account_type enum), so a tenant where Xero classifies
+            // nothing into Other Income (matcher change, account-type miss)
+            // silently lost the visible row on every saved-assumptions
+            // reconstruction. Route both fields through `resolvePriorYearSecondary`
+            // (the same helper used by the always-on refresh and the manual
+            // Refresh from Xero button) so the saved snapshot acts as the cached
+            // fallback when the API returns 0 / null / undefined. The snapshot
+            // explicitly omits these sections when the original priorYear had
+            // no Other Income/Expenses at all, so undefined-from-snapshot still
+            // maps to undefined (no false "0 Other Income" injection).
+            otherIncome: resolvePriorYearSecondary({
+              apiTotal: priorFY?.other_income,
+              apiByMonth: priorFY?.other_income_by_month,
+              cached: priorYearMonthlySnapshot?.otherIncome,
+            }),
+            otherExpenses: resolvePriorYearSecondary({
+              apiTotal: priorFY?.other_expenses,
+              apiByMonth: priorFY?.other_expenses_by_month,
+              cached: priorYearMonthlySnapshot?.otherExpenses,
+            }),
             seasonalityPattern: priorFY?.seasonality_pattern?.length === 12
               ? priorFY.seasonality_pattern
               : savedAssumptions?.revenue?.seasonalityPattern?.length === 12
