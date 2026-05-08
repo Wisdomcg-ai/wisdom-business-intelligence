@@ -1,6 +1,8 @@
 # normalizedPct exposure audit
 
-**Captured:** 2026-05-07T12:24:35.096Z
+**Captured:** 2026-05-07T21:27:52.155Z
+
+**Note:** Forecasts whose `updated_at` is before 2026-05-07T04:02:31.000Z are skipped because the normalizedPct bug post-dates them — sub-1% percentages on those rows are legitimate, not corruption. 22 forecast(s) skipped under this filter for this run.
 
 ## Background
 
@@ -31,11 +33,12 @@ Severity is keyed off `|cogsDelta| + |commissionDelta|`:
 
 ## Summary
 
-- Active forecasts scanned: **23**
-- Forecasts with sub-1% percentage lines: **3**
-- Total absolute Y1 delta across exposed tenants: **$133,275,034**
+- Forecasts skipped (pre-PR-#126 saves): **22**
+- Active forecasts scanned: **1**
+- Forecasts with sub-1% percentage lines: **1**
+- Total absolute Y1 delta across exposed tenants: **$69,497,994**
 - Severity breakdown:
-  - CRITICAL: 2
+  - CRITICAL: 1
   - HIGH: 0
   - MEDIUM: 0
   - LOW: 0
@@ -44,43 +47,13 @@ Severity is keyed off `|cogsDelta| + |commissionDelta|`:
 
 | Tenant | business_id | forecast_id | sub-1% COGS | sub-1% Comm. | wizard Y1 cogs | corrected Y1 cogs | Δ COGS | Δ Comm. | Total Δ | Severity |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Just Digital Signage | `900aa935-ae8c-4913-baf7-169260fa19ef` | `1a03be71-e6c8-4755-8a5b-1035128197dc` | 17 | 0 | $76,150,793 | $6,652,799.435 | $69,497,994 | $0 | $69,497,994 | CRITICAL |
-| Just Digital Signage | `900aa935-ae8c-4913-baf7-169260fa19ef` | `58f5a43c-de8e-4a11-a9e4-4789dd4634de` | 17 | 0 | $6,075,420 | -$57,701,620.47 | $63,777,040 | $0 | $63,777,040 | CRITICAL |
-| My Business | `2d9944f9-3ef4-483d-9e34-ede57632284a` | `b943025a-a018-4854-8c84-ba183cd6a0ac` | 17 | 0 | $0 | $0 | $0 | $0 | $0 | NONE |
-
-## Per-tenant notes
-
-### My Business (`2d9944f9-3ef4-483d-9e34-ede57632284a`)
-
-- wizard_state.year1.revenue is missing or zero — delta computations are 0 by definition. Forecast may pre-date wizard_state persistence (operator never re-saved).
+| Just Digital Signage | `900aa935-ae8c-4913-baf7-169260fa19ef` | `1a03be71-e6c8-4755-8a5b-1035128197dc` | 17 | 0 | $6,652,799 | -$62,845,194.565 | $69,497,994 | $0 | $69,497,994 | CRITICAL |
 
 ## All scanned forecasts
 
 | Tenant | forecast_id | sub-1% COGS | sub-1% Comm. | Severity |
 | --- | --- | ---: | ---: | --- |
-| (unknown:47ddde06-1fdb-4a5c-894f-f9ffdbeaae6f) | `c51f32bf-ad45-4104-99c9-694489a408ae` | 0 | 0 | NONE |
-| (unknown:946b6e4e-e676-420e-a335-db6a72a8444b) | `34a0b97a-35be-4222-9dc5-fc404188a5ff` | 0 | 0 | NONE |
-| ABC Cleaning Services | `a0eebb09-afe1-44de-b449-601127ab63ce` | 0 | 0 | NONE |
-| Digital Bond | `36063a02-cf50-4020-b08b-1ec1df7b799b` | 0 | 0 | NONE |
-| Distinct Directions | `f9c0867b-55a2-43d5-bde0-410875e459dc` | 0 | 0 | NONE |
-| Distinct Directions | `cd8a1a79-7d3e-426d-9e6e-246573089dc1` | 0 | 0 | NONE |
-| Dragon Roofing | `102189f9-3d4d-4731-92be-bcf734d4d039` | 0 | 0 | NONE |
-| Efficient Living | `d1e9134d-24ce-49cb-bfb6-af11cd6d3fd3` | 0 | 0 | NONE |
-| Envisage Australia Pty Ltd | `9e9c3f8f-c9a7-4564-85ba-6b000742f169` | 0 | 0 | NONE |
-| Envisage Australia Pty Ltd | `efff076b-676d-49a6-a78a-21c521050364` | 0 | 0 | NONE |
-| Espresso Services Plus | `d9ed25c6-65bb-4126-8ae0-cb2c317905f2` | 0 | 0 | NONE |
-| First Logistics | `c3669f26-7799-4feb-831f-f74d59644409` | 0 | 0 | NONE |
-| Fit2Shine | `a781f35b-c12f-4809-a048-5aa57481bfe9` | 0 | 0 | NONE |
 | Just Digital Signage | `1a03be71-e6c8-4755-8a5b-1035128197dc` | 17 | 0 | CRITICAL |
-| Just Digital Signage | `58f5a43c-de8e-4a11-a9e4-4789dd4634de` | 17 | 0 | CRITICAL |
-| JVJ Civil and Asphalt | `e24f1707-ea75-4d9a-ba09-b07349fa5eb2` | 0 | 0 | NONE |
-| My Business | `b943025a-a018-4854-8c84-ba183cd6a0ac` | 17 | 0 | NONE |
-| Oh Nine | `bfeb56c7-e2a1-4c07-8164-04809aadb9b3` | 0 | 0 | NONE |
-| Precision Electrical Group | `dfebcb57-87fa-4d59-afe1-b08226f88331` | 0 | 0 | NONE |
-| Precision Electrical Group | `e31c64f5-48c5-4de3-b6b2-06b41b8b8152` | 0 | 0 | NONE |
-| Sydney Pressed Metal | `6dd15be2-643d-4331-b7b1-4d56dac098da` | 0 | 0 | NONE |
-| Sydney Pressed Metal | `c9e5f284-f826-4056-b24f-949f50d8f85a` | 0 | 0 | NONE |
-| WISDOM CFO | `a878a705-12e4-48c8-8c21-a5ecf34e71fc` | 0 | 0 | NONE |
 
 ## Next steps
 

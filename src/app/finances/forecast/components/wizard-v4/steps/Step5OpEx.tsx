@@ -134,33 +134,39 @@ function BudgetFramework({
   ];
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50">
-        <div className="flex items-center gap-3 mb-2">
+    // Hotfix (Issue 2): made compact + sticky so the operator can see the
+    // budget breakdown and Available OpEx number while scrolling through
+    // OpEx line edits below. The verbose explainer paragraph was dropped
+    // (operator already saw it on first visit); the formula stays visible
+    // in the header. Padding reduced (px-5 py-4 → px-4 py-2; p-5 → p-3)
+    // and the per-year breakdown grid gap tightened so the whole panel
+    // collapses into ~150-180px tall depending on forecast duration.
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+      <div className="px-4 py-2 border-b border-gray-100 bg-gray-50">
+        <div className="flex items-center gap-3 flex-wrap">
           <h3 className="text-sm font-semibold text-gray-900">OpEx Budget</h3>
           <span className="text-xs text-gray-400">|</span>
           <p className="text-xs text-gray-500">Revenue − COGS − Team − Subscriptions − <strong className="text-gray-700">Profit</strong> = Available for OpEx</p>
         </div>
-        <p className="text-xs text-gray-500 leading-relaxed">
-          Most businesses budget expenses and hope there's profit left. Smart businesses flip this—set your profit target first, then spend only what remains. Your margin becomes a decision, not an afterthought.
-        </p>
       </div>
 
-      <div className="p-5">
-        <div className={`grid gap-6 ${years.length === 1 ? 'grid-cols-1 max-w-md' : years.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+      <div className="p-3">
+        <div className={`grid gap-4 ${years.length === 1 ? 'grid-cols-1 max-w-md' : years.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
           {years.map(({ label, budget, opex, yearNum }) => {
             const isOverBudget = opex > budget.availableOpEx;
             const utilizationPct = budget.availableOpEx > 0 ? Math.min((opex / budget.availableOpEx) * 100, 100) : 0;
             const overAmount = opex - budget.availableOpEx;
 
             return (
-              <div key={label} className="space-y-3">
+              // Hotfix (Issue 2): tightened vertical rhythm (space-y-3 → space-y-2)
+              // so the sticky banner stays compact when there are 2-3 years.
+              <div key={label} className="space-y-2">
                 <div className="text-center">
                   <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
                 </div>
 
                 {/* Budget breakdown */}
-                <div className="space-y-1.5 text-sm">
+                <div className="space-y-1 text-sm">
                   <div className="flex justify-between text-gray-600">
                     <span>Revenue</span>
                     <span className="tabular-nums">{formatCurrency(budget.revenue)}</span>
@@ -1252,16 +1258,25 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
 
   return (
     <div className="space-y-6">
-      {/* Budget Framework */}
-      <BudgetFramework
-        state={state}
-        year1TeamCosts={totalTeamCostsForBudget}
-        opexByYear={opexByYear}
-        subscriptionsByYear={subscriptionsByYear}
-        fiscalYear={fiscalYear}
-        actualRevenue={actualRevenue}
-        actualCOGS={actualCOGS}
-      />
+      {/* Budget Framework
+          Hotfix (Issue 2): pin to top of viewport while operator scrolls
+          the OpEx table below. The wrapper uses sticky positioning + a
+          small negative top offset (-top-1) and bg-white so the underlying
+          page scrolls beneath without showing through. z-20 keeps it above
+          the OpEx table headers (which use sticky top-0 with z-10 inside
+          the table). pt-1 adds a tiny breathing space against the page
+          chrome above (matches the prior layout's first-child gap). */}
+      <div className="sticky top-0 z-20 bg-white pt-1 -mx-1 px-1">
+        <BudgetFramework
+          state={state}
+          year1TeamCosts={totalTeamCostsForBudget}
+          opexByYear={opexByYear}
+          subscriptionsByYear={subscriptionsByYear}
+          fiscalYear={fiscalYear}
+          actualRevenue={actualRevenue}
+          actualCOGS={actualCOGS}
+        />
+      </div>
 
       {/* Guidance Panel */}
       {showGuidance && (

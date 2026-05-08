@@ -631,6 +631,25 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
   // read state.subscriptions (T02 added the field) instead of the legacy
   // opexLines.isSubscription scan, since Step 5 (Subscriptions) is now the
   // canonical source of truth for active vendor budgets.
+  //
+  // Hotfix 2026-05-07: Step 7 (CapEx & Other) was always showing as
+  // incomplete because the predicate read `state.capexItems` — the legacy
+  // CapEx field. Step 6CapEx.tsx (which renders as Step 7 in the post-Phase-57
+  // ordering) writes to `state.plannedSpends` (the unified replacement) so
+  // adding CapEx items never flipped the checklist green.
+  //
+  // The fix uses `maxVisitedStep >= 7` as the primary signal: a forecast with
+  // zero planned spends is a perfectly valid forecast (some operators have no
+  // CapEx), so "operator visited the step" is the right completion rule.
+  // We fall back to data-presence (`plannedSpends` OR legacy `capexItems` OR
+  // `otherExpenses`) so any v10 draft that was completed before
+  // `maxVisitedStep` existed in state still shows green.
+  const capexStepComplete =
+    state.maxVisitedStep >= 7
+    || state.plannedSpends.length > 0
+    || state.capexItems.length > 0
+    || state.otherExpenses.length > 0;
+
   const completionSteps = useMemo(() => [
     { step: 1, label: 'Goals', hasData: goals.year1.revenue > 0, icon: Target },
     { step: 2, label: 'Prior Year', hasData: !!state.priorYear, icon: FileCheck },
@@ -638,8 +657,8 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
     { step: 4, label: 'Team', hasData: state.teamMembers.length > 0 || state.newHires.length > 0, icon: Users },
     { step: 5, label: 'Subscriptions', hasData: state.subscriptions.some(v => v.isActive), icon: Wallet },
     { step: 6, label: 'OpEx', hasData: state.opexLines.length > 0, icon: Receipt },
-    { step: 7, label: 'CapEx & Other', hasData: state.capexItems.length > 0 || state.otherExpenses.length > 0, icon: Building2 },
-  ], [goals, state]);
+    { step: 7, label: 'CapEx & Other', hasData: capexStepComplete, icon: Building2 },
+  ], [goals, state, capexStepComplete]);
 
   const completedCount = completionSteps.filter(s => s.hasData).length;
 

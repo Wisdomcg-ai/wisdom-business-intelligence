@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   BarChart3,
@@ -156,6 +156,16 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
   const [dataQuality, setDataQuality] = useState<DataQuality>('verified')
   const [perTenantQuality, setPerTenantQuality] = useState<PerTenantQuality[]>([])
 
+  // Issue B (hotfix step2-secondaries) — pl-summary lookup_error visibility.
+  // When the resolver finds a business/profile mapping but no xero_connections
+  // row (dual-id desync, memory note `project_dual_id`), the API now sets
+  // `summary.lookup_error`. We capture it here to (a) defeat the no_sync
+  // banner suppression below, and (b) fire a one-shot toast so the operator
+  // knows Xero data couldn't load. We do NOT fix the underlying dual-id
+  // resolution — that's Phase 53 territory.
+  const [lookupError, setLookupError] = useState<string | null>(null)
+  const lookupErrorToastFiredRef = useRef(false)
+
   // Current YTD data from pl-summary API
   const [currentYTD, setCurrentYTD] = useState<{
     revenue_by_month: Record<string, number>;
@@ -202,6 +212,22 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
         if (data.summary?.data_quality) setDataQuality(data.summary.data_quality);
         if (Array.isArray(data.summary?.per_tenant_quality)) {
           setPerTenantQuality(data.summary.per_tenant_quality);
+        }
+        // Issue B (hotfix step2-secondaries) — surface dual-id lookup
+        // failures. The route returns `lookup_error: string` when the
+        // resolver found a business/profile mapping but no xero_connections
+        // row. Pre-hotfix: this returned `has_xero_data: false` silently
+        // and the wizard treated it as "not connected". Now: capture the
+        // error, defeat banner suppression, fire a one-shot toast.
+        const newLookupError: string | null = data.summary?.lookup_error ?? null;
+        setLookupError(newLookupError);
+        if (newLookupError && !lookupErrorToastFiredRef.current) {
+          lookupErrorToastFiredRef.current = true;
+          toast.error("Couldn't load Xero data — please refresh or reconnect", {
+            description:
+              'A connection to Xero was expected but not found for this business. Try refreshing the page; if the problem persists, reconnect Xero from the Integrations tab.',
+            duration: 8000,
+          });
         }
       }
     } catch (error) {
@@ -927,9 +953,22 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
           'no_sync' if xero_connections.is_active is false or sync_jobs is in
           'running'/unknown, but xero_pl_lines may still hold last-good data.
           Telling the coach to "Connect Xero" when YTD is visibly populated is
-          contradictory; partial / failed / stale still fire correctly. */}
+          contradictory; partial / failed / stale still fire correctly.
+
+          Issue B (hotfix step2-secondaries) — when pl-summary returns a
+          `lookup_error` (dual-id desync, see useState comment above), DO NOT
+          suppress no_sync. The cached YTD is stale relative to the live Xero
+          state because we couldn't talk to the connection at all; surfacing
+          the banner alongside the toast gives the operator a recovery path
+          (refresh / reconnect) instead of pretending everything is fine. */}
       <DataIntegrityBanner
-        quality={dataQuality === 'no_sync' && (currentYTD?.months_count ?? 0) > 0 ? 'verified' : dataQuality}
+        quality={
+          dataQuality === 'no_sync' &&
+          (currentYTD?.months_count ?? 0) > 0 &&
+          !lookupError
+            ? 'verified'
+            : dataQuality
+        }
         perTenantQuality={perTenantQuality}
         lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
       />

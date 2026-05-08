@@ -373,6 +373,25 @@ export function ForecastWizardV4({
               const forecastData = await forecastRes.json();
               const savedAssumptions = forecastData?.forecast?.assumptions || null;
               if (savedAssumptions) {
+                // ─── PRIOR-YEAR MONTHLY RESTORE (fix/step2-byMonth-priorYear-restore) ──
+                // Hotfix: read category-level priorYear monthly figures from the
+                // `priorYearByMonth` snapshot persisted by buildAssumptions. When
+                // present, Step2PriorYear's `buildMonthlyComparison` sees real
+                // monthly history and renders actual numbers instead of falling back
+                // to seasonality-synthesized values.
+                //
+                // Backward compatibility: forecasts saved BEFORE the schema added
+                // `priorYearByMonth` will have it absent → snapshot.revenue/cogs/opex
+                // resolve to undefined → we keep the legacy empty-byMonth behavior
+                // (no crash, no regression). The always-on Xero refresh in this
+                // component (around lines 244-339) still populates real byMonth from
+                // /api/Xero/pl-summary as before.
+                // ───────────────────────────────────────────────────────────────────────
+                const priorYearSnapshot = savedAssumptions.priorYearByMonth;
+                const revenueByMonth = priorYearSnapshot?.revenue ?? {};
+                const cogsByMonth = priorYearSnapshot?.cogs ?? {};
+                const opexByMonth = priorYearSnapshot?.opex ?? {};
+
                 // Reconstruct prior year data from saved assumptions
                 const revenueByLine = (savedAssumptions.revenue?.lines || []).map((line: {
                   accountId: string; accountName: string; priorYearTotal: number;
@@ -380,6 +399,7 @@ export function ForecastWizardV4({
                   id: line.accountId || `revenue-${idx}`,
                   name: line.accountName,
                   total: Math.round(line.priorYearTotal || 0),
+                  // Per-line byMonth not snapshotted — Step2 reads category-level only.
                   byMonth: {},
                 }));
 
@@ -411,11 +431,11 @@ export function ForecastWizardV4({
                   (sum: number, l: { priorYearTotal?: number }) => sum + (l.priorYearTotal || 0), 0);
 
                 const priorYear: PriorYearData = {
-                  revenue: { total: Math.round(totalRevenue), byMonth: {}, byLine: revenueByLine },
+                  revenue: { total: Math.round(totalRevenue), byMonth: revenueByMonth, byLine: revenueByLine },
                   cogs: {
                     total: Math.round(totalCogs),
                     percentOfRevenue: totalRevenue ? Math.round((totalCogs / totalRevenue) * 1000) / 10 : 0,
-                    byMonth: {},
+                    byMonth: cogsByMonth,
                     byLine: cogsByLine,
                   },
                   grossProfit: {
@@ -423,7 +443,21 @@ export function ForecastWizardV4({
                     percent: totalRevenue ? Math.round(((totalRevenue - totalCogs) / totalRevenue) * 1000) / 10 : 0,
                     byMonth: {},
                   },
-                  opex: { total: Math.round(totalOpex), byMonth: {}, byLine: opexByLine },
+                  opex: { total: Math.round(totalOpex), byMonth: opexByMonth, byLine: opexByLine },
+                  // Restore otherIncome/otherExpenses when the snapshot carried them.
+                  // Absent in the snapshot → omit (matches "no Other Income at all").
+                  otherIncome: priorYearSnapshot?.otherIncome
+                    ? {
+                        total: priorYearSnapshot.otherIncome.total,
+                        byMonth: priorYearSnapshot.otherIncome.byMonth ?? {},
+                      }
+                    : undefined,
+                  otherExpenses: priorYearSnapshot?.otherExpenses
+                    ? {
+                        total: priorYearSnapshot.otherExpenses.total,
+                        byMonth: priorYearSnapshot.otherExpenses.byMonth ?? {},
+                      }
+                    : undefined,
                   seasonalityPattern: savedAssumptions.revenue?.seasonalityPattern?.length === 12
                     ? savedAssumptions.revenue.seasonalityPattern
                     : Array(12).fill(100 / 12),
@@ -697,9 +731,17 @@ export function ForecastWizardV4({
           console.log('[ForecastWizardV4] Revenue lines:', revenueByLine.length, 'COGS lines:', cogsByLine.length);
 
           // Preserve full precision — no rounding in data layer
-          const priorRevenueByMonth = priorFY?.revenue_by_month || {};
-          const priorCogsByMonth = priorFY?.cogs_by_month || {};
-          const priorOpexByMonth = priorFY?.opex_by_month || {};
+          // Hotfix (fix/step2-byMonth-priorYear-restore): when Xero pl-summary
+          // didn't return monthly maps (priorFY missing or partial), fall back
+          // to the at-save-time snapshot. Old saves (no snapshot) keep the
+          // legacy empty-byMonth behavior.
+          const priorYearMonthlySnapshot = savedAssumptions?.priorYearByMonth;
+          const priorRevenueByMonth =
+            priorFY?.revenue_by_month || priorYearMonthlySnapshot?.revenue || {};
+          const priorCogsByMonth =
+            priorFY?.cogs_by_month || priorYearMonthlySnapshot?.cogs || {};
+          const priorOpexByMonth =
+            priorFY?.opex_by_month || priorYearMonthlySnapshot?.opex || {};
 
           // Calculate totals - prefer Xero data, fall back to saved assumptions
           // Use ?? (not ||) so that 0 is treated as a valid value, not falsy
@@ -770,14 +812,33 @@ export function ForecastWizardV4({
             // legitimate-but-zero Xero figure. Match the refresh path semantics
             // (lines ~286-293): undefined/null → field absent, omit; any
             // present value (including 0) → trust Xero.
-            otherIncome: priorFY?.other_income !== undefined && priorFY?.other_income !== null ? {
-              total: priorFY.other_income,
-              byMonth: priorFY.other_income_by_month || {},
-            } : undefined,
-            otherExpenses: priorFY?.other_expenses !== undefined && priorFY?.other_expenses !== null ? {
-              total: priorFY.other_expenses,
-              byMonth: priorFY.other_expenses_by_month || {},
-            } : undefined,
+            // Hotfix (fix/step2-byMonth-priorYear-restore): when Xero didn't
+            // deliver these sections, fall back to the saved snapshot. Snapshot
+            // explicitly omits these fields when the original priorYear had no
+            // Other Income/Expenses, so undefined-from-snapshot correctly maps
+            // to undefined here (no false "0 Other Income" injection).
+            otherIncome: priorFY?.other_income !== undefined && priorFY?.other_income !== null
+              ? {
+                  total: priorFY.other_income,
+                  byMonth: priorFY.other_income_by_month || {},
+                }
+              : priorYearMonthlySnapshot?.otherIncome
+                ? {
+                    total: priorYearMonthlySnapshot.otherIncome.total,
+                    byMonth: priorYearMonthlySnapshot.otherIncome.byMonth ?? {},
+                  }
+                : undefined,
+            otherExpenses: priorFY?.other_expenses !== undefined && priorFY?.other_expenses !== null
+              ? {
+                  total: priorFY.other_expenses,
+                  byMonth: priorFY.other_expenses_by_month || {},
+                }
+              : priorYearMonthlySnapshot?.otherExpenses
+                ? {
+                    total: priorYearMonthlySnapshot.otherExpenses.total,
+                    byMonth: priorYearMonthlySnapshot.otherExpenses.byMonth ?? {},
+                  }
+                : undefined,
             seasonalityPattern: priorFY?.seasonality_pattern?.length === 12
               ? priorFY.seasonality_pattern
               : savedAssumptions?.revenue?.seasonalityPattern?.length === 12
