@@ -569,3 +569,112 @@ describe('always-on Xero refresh — otherIncome / otherExpenses preservation', 
     expect(fresh.otherIncome?.byMonth).toEqual({ '2025-07': 0 });
   });
 });
+
+/**
+ * Saved-assumptions reconstruction path — Other Income / Other Expenses preservation.
+ *
+ * The wizard has a third Xero-driven priorYear builder (in addition to the
+ * always-on refresh and the manual Refresh button): the saved-assumptions
+ * reconstruction in ForecastWizardV4.tsx (~line 800) that fires when a
+ * forecast loads with a stored snapshot and a fresh `priorFY` from
+ * historical-pl-summary. Before fix/sweep-all-otherIncome-zero-overwrite-sites,
+ * that path used the same buggy `!== undefined && !== null` inline check that
+ * #146 / #147 fixed elsewhere — a tenant where Xero's live response computed 0
+ * for Other Income silently dropped the visible row even when the saved
+ * snapshot still carried the correct historical value.
+ *
+ * The fix routes the saved-assumptions path through `resolvePriorYearSecondary`
+ * with the snapshot acting as `cached`. These tests mirror the load-bearing
+ * mapper shape so a future inline rewrite is caught.
+ */
+describe('saved-assumptions reconstruction — otherIncome / otherExpenses preservation (fix/sweep-all-otherIncome-zero-overwrite-sites)', () => {
+  /**
+   * Mirrors the saved-assumptions priorYear builder in ForecastWizardV4.tsx
+   * (the ~line 833 site). `priorFY` is the fresh historical-pl-summary
+   * response; `priorYearMonthlySnapshot` is the saved snapshot — the cache
+   * equivalent for this path.
+   */
+  function buildSavedAssumptionsPriorYear(
+    priorFY: {
+      other_income?: number | null;
+      other_income_by_month?: Record<string, number>;
+      other_expenses?: number | null;
+      other_expenses_by_month?: Record<string, number>;
+    },
+    priorYearMonthlySnapshot: {
+      otherIncome?: { total: number; byMonth: Record<string, number> };
+      otherExpenses?: { total: number; byMonth: Record<string, number> };
+    } | undefined,
+  ) {
+    return {
+      otherIncome: resolvePriorYearSecondary({
+        apiTotal: priorFY?.other_income,
+        apiByMonth: priorFY?.other_income_by_month,
+        cached: priorYearMonthlySnapshot?.otherIncome,
+      }),
+      otherExpenses: resolvePriorYearSecondary({
+        apiTotal: priorFY?.other_expenses,
+        apiByMonth: priorFY?.other_expenses_by_month,
+        cached: priorYearMonthlySnapshot?.otherExpenses,
+      }),
+    };
+  }
+
+  it('preserves snapshot otherIncome when priorFY.other_income === 0 (the regression this PR fixes)', () => {
+    // priorFY.other_income === 0 (Xero classification miss); snapshot has
+    // the historically correct $651 — the value Matt sees on screen and
+    // expects to keep across saved-assumptions reconstruction.
+    const result = buildSavedAssumptionsPriorYear(
+      { other_income: 0, other_income_by_month: { '2025-07': 0 } },
+      { otherIncome: { total: 651, byMonth: { '2024-12': 651 } } },
+    );
+
+    // Snapshot value survives.
+    expect(result.otherIncome?.total).toBe(651);
+    expect(result.otherIncome?.byMonth).toEqual({ '2024-12': 651 });
+  });
+
+  it('preserves snapshot otherExpenses when priorFY.other_expenses === 0', () => {
+    const result = buildSavedAssumptionsPriorYear(
+      { other_expenses: 0, other_expenses_by_month: { '2025-07': 0 } },
+      { otherExpenses: { total: 200, byMonth: { '2024-08': 200 } } },
+    );
+
+    expect(result.otherExpenses?.total).toBe(200);
+    expect(result.otherExpenses?.byMonth).toEqual({ '2024-08': 200 });
+  });
+
+  it('takes priorFY value when both API and snapshot have non-zero values (Xero is authoritative)', () => {
+    const result = buildSavedAssumptionsPriorYear(
+      { other_income: 4_500, other_income_by_month: { '2025-09': 4_500 } },
+      { otherIncome: { total: 651, byMonth: { '2024-12': 651 } } },
+    );
+
+    expect(result.otherIncome?.total).toBe(4_500);
+    expect(result.otherIncome?.byMonth).toEqual({ '2025-09': 4_500 });
+  });
+
+  it('returns undefined when priorFY field is absent and snapshot has no otherIncome (genuinely no Other Income)', () => {
+    // Snapshot explicitly omits the section when the original priorYear had
+    // no Other Income; the reconstruction must keep that as undefined rather
+    // than injecting a false "0 Other Income" row.
+    const result = buildSavedAssumptionsPriorYear(
+      { other_income: undefined },
+      { otherIncome: undefined },
+    );
+
+    expect(result.otherIncome).toBeUndefined();
+  });
+
+  it('lands on concrete zero when priorFY.other_income === 0 and snapshot is absent (cold load, no cache)', () => {
+    // No saved snapshot for this section — trust the API zero rather than
+    // returning undefined.
+    const result = buildSavedAssumptionsPriorYear(
+      { other_income: 0, other_income_by_month: { '2025-07': 0 } },
+      undefined,
+    );
+
+    expect(result.otherIncome?.total).toBe(0);
+    expect(result.otherIncome?.byMonth).toEqual({ '2025-07': 0 });
+  });
+});
