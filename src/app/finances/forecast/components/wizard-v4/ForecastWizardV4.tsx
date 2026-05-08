@@ -1490,6 +1490,22 @@ export function ForecastWizardV4({
                   isOneOff: false,
                 })),
               },
+              // Phase 57 hotfix (handleRefreshFromXero — wizard top Refresh button):
+              // otherIncome / otherExpenses were missing from this priorYear
+              // builder. Clicking Refresh in the wizard header wiped both fields
+              // from state.priorYear via initializeFromXero, regardless of cache
+              // or API state. PRs #146/#147/#149 fixed the always-on auto-refresh
+              // and saved-assumptions paths but did not touch this third site.
+              otherIncome: resolvePriorYearSecondary({
+                apiTotal: priorFY?.other_income,
+                apiByMonth: priorFY?.other_income_by_month,
+                cached: state.priorYear?.otherIncome,
+              }),
+              otherExpenses: resolvePriorYearSecondary({
+                apiTotal: priorFY?.other_expenses,
+                apiByMonth: priorFY?.other_expenses_by_month,
+                cached: state.priorYear?.otherExpenses,
+              }),
               seasonalityPattern: priorFY?.seasonality_pattern?.length === 12
                 ? priorFY.seasonality_pattern
                 : Array(12).fill(100 / 12),
