@@ -26,6 +26,7 @@ import { useForecastWizard } from '@/app/finances/forecast/components/wizard-v4/
 import type {
   PriorYearData,
 } from '@/app/finances/forecast/components/wizard-v4/types';
+import { resolvePriorYearSecondary } from '@/app/finances/forecast/components/wizard-v4/utils/resolve-prior-year-secondaries';
 
 const FY_START_YEAR = 2025; // FY26 (July 2025 → June 2026)
 
@@ -264,5 +265,177 @@ describe('Xero reconciliation drift — detection + recovery', () => {
     // This documents the threshold; if it changes, this test is the canary.
     expect(drift?.revenueDrift).toBe(false);
     expect(Math.abs(drift?.revenue.delta ?? 0)).toBeLessThanOrEqual(1);
+  });
+});
+
+/**
+ * Regression: PR #139 added a "Refresh from Xero" button that destructively
+ * rebuilds line arrays from the live pl-summary response. JDS hit a follow-on
+ * bug where clicking the button blanked Other Income — the API was returning
+ * `other_income: 0` (account-type miss / matcher change) and the existing
+ * `!== undefined && !== null` guard let the zero overwrite a visible cached
+ * value. Fix: `resolvePriorYearSecondary` falls back to the cached non-zero
+ * total when the API returns 0/undefined/null, keeping `byMonth` in sync.
+ *
+ * These cases lock the resolver behavior. Pair them with the
+ * `setPriorYear` round-trip below to prove the resolved payload survives the
+ * destructive reducer end-to-end.
+ */
+describe('Refresh from Xero — preserves Other Income / Other Expenses (fix/refresh-button-preserve-other-income)', () => {
+  it('uses non-zero API value over cache when both exist', () => {
+    const resolved = resolvePriorYearSecondary({
+      apiTotal: 4_000,
+      apiByMonth: { '2025-07': 4_000 },
+      cached: { total: 651, byMonth: { '2024-07': 651 } },
+    });
+    expect(resolved).toEqual({ total: 4_000, byMonth: { '2025-07': 4_000 } });
+  });
+
+  it('preserves cached non-zero total when API returns 0 (the JDS regression)', () => {
+    const resolved = resolvePriorYearSecondary({
+      apiTotal: 0,
+      apiByMonth: {
+        '2025-07': 0, '2025-08': 0, '2025-09': 0, '2025-10': 0, '2025-11': 0, '2025-12': 0,
+        '2026-01': 0, '2026-02': 0, '2026-03': 0, '2026-04': 0, '2026-05': 0, '2026-06': 0,
+      },
+      cached: {
+        total: 651,
+        byMonth: { '2024-07': 100, '2024-08': 200, '2024-09': 351 },
+      },
+    });
+    // Total survives.
+    expect(resolved?.total).toBe(651);
+    // byMonth survives — not the API zero map.
+    expect(resolved?.byMonth).toEqual({ '2024-07': 100, '2024-08': 200, '2024-09': 351 });
+  });
+
+  it('preserves cached non-zero total when API field is undefined', () => {
+    const resolved = resolvePriorYearSecondary({
+      apiTotal: undefined,
+      apiByMonth: undefined,
+      cached: { total: 12_500, byMonth: { '2024-12': 12_500 } },
+    });
+    expect(resolved).toEqual({ total: 12_500, byMonth: { '2024-12': 12_500 } });
+  });
+
+  it('returns concrete zero when both API and cache are zero (no Other Income at all)', () => {
+    const resolved = resolvePriorYearSecondary({
+      apiTotal: 0,
+      apiByMonth: {},
+      cached: { total: 0, byMonth: {} },
+    });
+    expect(resolved).toEqual({ total: 0, byMonth: {} });
+  });
+
+  it('returns concrete zero when API returns 0 and there is no cached value', () => {
+    const resolved = resolvePriorYearSecondary({
+      apiTotal: 0,
+      apiByMonth: { '2025-07': 0 },
+      cached: undefined,
+    });
+    // Tenant genuinely has no Other Income — record the API answer, not undefined.
+    expect(resolved).toEqual({ total: 0, byMonth: { '2025-07': 0 } });
+  });
+
+  it('returns undefined when API field is absent and there is no cache', () => {
+    const resolved = resolvePriorYearSecondary({
+      apiTotal: undefined,
+      apiByMonth: undefined,
+      cached: undefined,
+    });
+    expect(resolved).toBeUndefined();
+  });
+
+  it('uses non-zero API value when there is no cached value', () => {
+    const resolved = resolvePriorYearSecondary({
+      apiTotal: 7_000,
+      apiByMonth: { '2025-07': 7_000 },
+      cached: undefined,
+    });
+    expect(resolved).toEqual({ total: 7_000, byMonth: { '2025-07': 7_000 } });
+  });
+
+  it('handles negative API totals as meaningful (rebates, refunds posted to Other Income)', () => {
+    const resolved = resolvePriorYearSecondary({
+      apiTotal: -250,
+      apiByMonth: { '2025-07': -250 },
+      cached: { total: 1_000, byMonth: { '2024-07': 1_000 } },
+    });
+    // Non-zero API wins — even when negative.
+    expect(resolved).toEqual({ total: -250, byMonth: { '2025-07': -250 } });
+  });
+
+  it('round-trip: cached otherIncome survives a destructive setPriorYear when fresh payload uses the resolver', () => {
+    const { result } = renderHook(() =>
+      useForecastWizard(FY_START_YEAR, 'test-refresh-preserves-other-income'),
+    );
+
+    // 1) Initialize with a forecast that has $651 Other Income (the JDS shape
+    //    that flushed Phase 44.2 — Xero added the value, the always-on
+    //    refresh picked it up, the user saw it).
+    const initialPriorYear = makePriorYear({
+      otherIncome: { total: 651, byMonth: { '2024-12': 651 } },
+      otherExpenses: { total: 200, byMonth: { '2024-08': 200 } },
+    });
+    act(() => {
+      result.current.actions.setPriorYear(initialPriorYear);
+    });
+    expect(result.current.state.priorYear?.otherIncome?.total).toBe(651);
+    expect(result.current.state.priorYear?.otherExpenses?.total).toBe(200);
+
+    // 2) Operator clicks Refresh from Xero. The live pl-summary response now
+    //    returns `other_income: 0` and `other_expenses: 0` (matcher change /
+    //    classification miss). The Refresh handler builds `freshPriorYear`
+    //    by passing the API values through `resolvePriorYearSecondary`, so
+    //    the cached non-zero totals survive into the destructive setPriorYear
+    //    rebuild that follows.
+    const apiSaysZero = makePriorYear({
+      otherIncome: resolvePriorYearSecondary({
+        apiTotal: 0,
+        apiByMonth: { '2025-07': 0 },
+        cached: result.current.state.priorYear?.otherIncome,
+      }),
+      otherExpenses: resolvePriorYearSecondary({
+        apiTotal: 0,
+        apiByMonth: { '2025-07': 0 },
+        cached: result.current.state.priorYear?.otherExpenses,
+      }),
+    });
+    act(() => {
+      result.current.actions.setPriorYear(apiSaysZero);
+    });
+
+    // 3) Both totals AND byMonth survive the refresh end-to-end.
+    expect(result.current.state.priorYear?.otherIncome?.total).toBe(651);
+    expect(result.current.state.priorYear?.otherIncome?.byMonth).toEqual({ '2024-12': 651 });
+    expect(result.current.state.priorYear?.otherExpenses?.total).toBe(200);
+    expect(result.current.state.priorYear?.otherExpenses?.byMonth).toEqual({ '2024-08': 200 });
+  });
+
+  it('round-trip: legitimate Xero update (non-zero → non-zero) lands; cache is overwritten', () => {
+    const { result } = renderHook(() =>
+      useForecastWizard(FY_START_YEAR, 'test-refresh-takes-genuine-update'),
+    );
+
+    act(() => {
+      result.current.actions.setPriorYear(
+        makePriorYear({ otherIncome: { total: 651, byMonth: { '2024-12': 651 } } }),
+      );
+    });
+
+    // Xero now reports a different non-zero value (real journal posted).
+    const updated = makePriorYear({
+      otherIncome: resolvePriorYearSecondary({
+        apiTotal: 4_500,
+        apiByMonth: { '2025-09': 4_500 },
+        cached: result.current.state.priorYear?.otherIncome,
+      }),
+    });
+    act(() => {
+      result.current.actions.setPriorYear(updated);
+    });
+
+    expect(result.current.state.priorYear?.otherIncome?.total).toBe(4_500);
+    expect(result.current.state.priorYear?.otherIncome?.byMonth).toEqual({ '2025-09': 4_500 });
   });
 });
