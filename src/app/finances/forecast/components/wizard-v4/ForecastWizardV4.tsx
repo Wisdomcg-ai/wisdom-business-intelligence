@@ -24,6 +24,7 @@ import { WIZARD_STEPS, PriorYearData, TeamMember, Goals } from './types';
 // new Phase 52 fields (payFrequency, standardHours, _xeroEmployeeId,
 // _xeroImportedAt, _xeroFingerprint) flow through every entry path.
 import { enrichWizardMemberFromXeroEmployee } from './utils/xero-payroll-mapping';
+import { resolvePriorYearSecondary } from './utils/resolve-prior-year-secondaries';
 
 interface ForecastWizardV4Props {
   businessId: string;
@@ -282,19 +283,31 @@ export function ForecastWizardV4({
                   byMonth: freshPriorFY.opex_by_month || {},
                 },
                 // Other Income / Other Expenses preservation:
-                // If the refresh response includes the field (even as 0), trust
-                // it — Xero is telling us the current value. If the field is
-                // missing entirely (undefined), preserve the cached value so a
-                // partial API response doesn't silently wipe data the user
-                // previously had (e.g. from a Step 2 manual P&L import).
-                otherIncome: freshPriorFY.other_income !== undefined && freshPriorFY.other_income !== null ? {
-                  total: freshPriorFY.other_income,
-                  byMonth: freshPriorFY.other_income_by_month || {},
-                } : state.priorYear?.otherIncome,
-                otherExpenses: freshPriorFY.other_expenses !== undefined && freshPriorFY.other_expenses !== null ? {
-                  total: freshPriorFY.other_expenses,
-                  byMonth: freshPriorFY.other_expenses_by_month || {},
-                } : state.priorYear?.otherExpenses,
+                // `historical-pl-summary` always returns these as numbers
+                // (0 when no rows match the account_type enum) — the field is
+                // never undefined post-Phase 44. The original
+                // `!== undefined && !== null` guard therefore never fired the
+                // cached fallback: an always-on refresh that hit a tenant
+                // where the live API computed 0 (Xero account-type miss,
+                // mid-deploy classification change, etc.) silently wiped the
+                // user's visible Other Income — the regression Matt hit on
+                // JDS where $651 of cached Other Income would disappear on
+                // every wizard mount/focus/visibility event.
+                //
+                // `resolvePriorYearSecondary` (shared with the manual Step 2
+                // Refresh button path) keeps non-zero API values, falls back
+                // to non-zero cached values when the API returns 0, and only
+                // commits to a 0 result when both are zero/absent.
+                otherIncome: resolvePriorYearSecondary({
+                  apiTotal: freshPriorFY.other_income,
+                  apiByMonth: freshPriorFY.other_income_by_month,
+                  cached: state.priorYear?.otherIncome,
+                }),
+                otherExpenses: resolvePriorYearSecondary({
+                  apiTotal: freshPriorFY.other_expenses,
+                  apiByMonth: freshPriorFY.other_expenses_by_month,
+                  cached: state.priorYear?.otherExpenses,
+                }),
                 seasonalityPattern: freshPriorFY.seasonality_pattern?.length === 12
                   ? freshPriorFY.seasonality_pattern : Array(12).fill(100 / 12),
               };

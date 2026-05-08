@@ -22,11 +22,17 @@
  * `byMonth` is carried alongside `total` in every branch so the per-month
  * columns stay in sync with the totals row.
  *
- * The always-on refresh path (ForecastWizardV4.tsx) deliberately keeps its
- * simpler cache-on-undefined guard — it runs at mount when the cache may be
- * empty, and trusting fresh Xero is the right default. This helper is for
- * the operator-triggered refresh, which always runs against an already-
- * populated `state.priorYear`.
+ * Both refresh paths use this helper:
+ *   - The always-on refresh in ForecastWizardV4.tsx (fires on mount / focus /
+ *     visibilitychange) — previously had a buggy `!== undefined && !== null`
+ *     inline guard that wiped cached non-zero Other Income whenever the API
+ *     returned 0. Replaced 2026-05 in fix/always-on-refresh-otherIncome-preserve.
+ *   - The operator-triggered "Refresh from Xero" button (Step2PriorYear.tsx)
+ *     introduced in PR #146.
+ *
+ * On a cold mount with no cache, `cached` is undefined and the helper
+ * returns the API value (including 0 / `{ total: 0, byMonth: {} }`), which is
+ * the right default — trust Xero when there's nothing to preserve.
  */
 
 export interface SecondaryBucket {
