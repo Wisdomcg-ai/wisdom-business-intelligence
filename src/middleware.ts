@@ -91,7 +91,8 @@ export async function middleware(request: NextRequest) {
     '/coach/login',
     '/admin/login',
     '/login',
-    '/reports/view'  // Phase 35 — public token-signed report view
+    '/reports/view',  // Phase 35 — public token-signed report view
+    '/finances/forecast/preview-v2'  // prototype review — mock data only, no auth needed
   ]
   // Check if it's a public route OR the home page OR legal pages OR standalone public pages
   const isPublicRoute = pathname === '/' || pathname === '/privacy' || pathname === '/terms' || pathname.startsWith('/bali-retreat') || pathname.startsWith('/ai-advantage') || publicRoutes.some(route => pathname.startsWith(route))
