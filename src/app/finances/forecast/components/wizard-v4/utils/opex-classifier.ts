@@ -8,8 +8,17 @@
  * 3. Pattern analysis from prior year data (CV analysis)
  * 4. Industry-specific overrides
  *
- * NOTE: Team costs (wages, super, payroll tax, contractors) are handled
+ * NOTE: Team costs (wages, super, contractors, leave provisions) are handled
  * separately in the Team tab and should be excluded from OpEx classification.
+ *
+ * IMPORTANT: workcover/workers-compensation and payroll tax/payroll levy are
+ * NOT excluded from OpEx — Step 4 (Team) only models wages/super/contractors/
+ * bonuses. If we excluded these statutory on-costs they would vanish from
+ * the forecast entirely (operator sees them in Xero but not in the plan).
+ * They are routed to the `fixed` OpEx bucket so they appear in Step 6 OpEx;
+ * operator can override behavior to `variable` (% of revenue) if their
+ * payroll genuinely scales with sales. See hotfix
+ * `fix/workcover-classifier-step9-capex-check` (2026-05-07).
  */
 
 import { CostBehavior } from '../types';
@@ -26,15 +35,32 @@ const TEAM_COST_KEYWORDS = [
   'superannuation', 'super guarantee', 'sgc',
   // Employment related
   'contractor', 'subcontractor', 'labour', 'labor',
-  'workers comp', 'workers compensation', 'workcover',
   'staff cost', 'employee', 'personnel',
   'director fee', 'directors fee',
   // Leave provisions
   'annual leave', 'sick leave', 'leave provision', 'leave entitlement',
   // Benefits
   'fringe benefit', 'fbt', 'allowance',
-  // Payroll tax
+  // NOTE: workcover/workers-compensation and payroll tax/payroll levy are
+  // intentionally NOT in this list. Step 4 (Team) doesn't model statutory
+  // on-costs, so excluding them from OpEx hides them from the forecast
+  // entirely. See file-header note for rationale. They are now classified
+  // as 'fixed' OpEx via CLASSIFICATION_PATTERNS below.
+  //
+  // CAVEAT for `payroll` keyword above: bare "payroll" still matches "payroll
+  // tax" via substring, but `isTeamCost` is checked BEFORE pattern matching.
+  // The reverse — "payroll tax" must NOT be classified as team — is handled
+  // by `isTeamCostExcept` which short-circuits when one of these on-cost
+  // markers is present. See changes below.
+];
+
+// On-cost / statutory accounts whose names contain a TEAM_COST_KEYWORD
+// substring (e.g. "payroll" in "payroll tax") but which should be classified
+// as OpEx, not excluded as team. Checked first inside `isTeamCost` so the
+// substring match against `payroll` doesn't accidentally re-exclude them.
+const TEAM_COST_OPEX_OVERRIDE_KEYWORDS = [
   'payroll tax', 'payroll levy',
+  'workcover', 'workers comp', 'workers compensation',
 ];
 
 // ============================================================================
@@ -57,6 +83,15 @@ const CLASSIFICATION_PATTERNS: Record<CostBehavior, string[]> = {
     'income protection', 'key person', 'life insurance',
     'vehicle insurance', 'motor insurance', 'car insurance',
     'cyber insurance', 'management liability',
+
+    // ===== STATUTORY PAYROLL ON-COSTS =====
+    // Workcover / workers compensation premiums + payroll tax / payroll levy.
+    // Step 4 (Team) doesn't model these, so they live in Step 6 (OpEx) as
+    // fixed cost. Operator can override to 'variable' (% of revenue) if their
+    // payroll genuinely scales with sales. Default 'fixed' matches the typical
+    // SMB pattern where these are paid as a roughly-constant monthly amount.
+    'workcover', 'workers comp', 'workers compensation',
+    'payroll tax', 'payroll levy',
 
     // ===== SUBSCRIPTIONS & SOFTWARE =====
     'subscription', 'software', 'saas', 'license', 'licence',
@@ -357,10 +392,23 @@ function normalizeAccountName(name: string): string {
 }
 
 /**
- * Check if an account name represents a team cost
+ * Check if an account name represents a team cost.
+ *
+ * Statutory on-costs (workcover, workers compensation, payroll tax, payroll
+ * levy) are NOT team costs in this codebase — Step 4 (Team) doesn't model
+ * them, so excluding them from OpEx would drop them out of the forecast
+ * entirely. They are short-circuited to `false` here so the OpEx
+ * classifier picks them up downstream as `fixed` cost behavior.
  */
 export function isTeamCost(accountName: string): boolean {
   const normalized = normalizeAccountName(accountName);
+
+  // OpEx override: account names like "Payroll Tax" or "Workers Compensation"
+  // contain TEAM_COST_KEYWORD substrings ("payroll", or fuzzy "workers") but
+  // belong in OpEx, not Team. Check this FIRST so the override wins.
+  if (TEAM_COST_OPEX_OVERRIDE_KEYWORDS.some(k => normalized.includes(k))) {
+    return false;
+  }
 
   // Check if "super" appears but not as part of another word like "supermarket"
   if (/\bsuper\b/.test(normalized) && !normalized.includes('supermarket')) {
