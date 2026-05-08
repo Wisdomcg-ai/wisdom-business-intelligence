@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   BarChart3,
@@ -19,7 +19,8 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronUp,
-  Sparkles
+  Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, formatPercent, PriorYearData } from '../types';
 import { parsePLFile } from '../utils/parsePLFile';
@@ -126,7 +127,7 @@ import type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read
 const MONTHS = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
 
 export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2PriorYearProps) {
-  const { priorYear } = state;
+  const { priorYear, revenueLines, cogsLines, opexLines } = state;
   // In planning season (extended forecast), prior year is 2 back (FY2025), current is 1 back (FY2026)
   const currentFY = getCurrentFiscalYear(DEFAULT_YEAR_START_MONTH);
   const isExtended = isNearYearEnd(new Date(), DEFAULT_YEAR_START_MONTH, 3) && fiscalYear === currentFY + 1;
@@ -444,6 +445,174 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
       setUploadedFileName(null);
     }
   }, [parsedData, actions]);
+
+  // Hotfix (regression from PR #136): operator-controlled "Refresh from Xero".
+  //
+  // Background: PR #136 fixed a real bug where every wizard mount silently wiped
+  // operator customizations (Steps 3/5/6) by calling the destructive
+  // `setPriorYear` on the always-on Xero refresh path. The fix swapped that for
+  // `setPriorYearDisplay`, which only updates `state.priorYear` totals and
+  // leaves `revenueLines/cogsLines/opexLines` alone — preserving customizations
+  // but also leaving the line arrays anchored to whatever Xero composition
+  // existed at forecast-creation time. When Xero data drifts (late journals,
+  // period close, account renames), Step 2 banners show fresh Xero while
+  // Step 5 BudgetFramework / Step 6 OpEx read stale lines → silent divergence.
+  //
+  // Operator-controlled refresh is the visibility + recovery path: fetch fresh
+  // pl-summary (same endpoint the auto-refresh uses), confirm with the operator
+  // (this WILL reset their line-level customizations), then call the destructive
+  // `setPriorYear` to rebuild lines from current Xero. We DO NOT remove
+  // setPriorYearDisplay or revert the auto-refresh path — only adding a manual
+  // override the operator can invoke when they see drift.
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefreshFromXero = useCallback(async () => {
+    const confirmed = window.confirm(
+      'Refresh will reset your line-level customizations in Steps 3, 5, and 6 to match current Xero.\n\nStep 4 (Team) and Step 5 (Subscriptions) will not be affected.\n\nContinue?'
+    );
+    if (!confirmed) return;
+
+    setIsRefreshing(true);
+    try {
+      const plRes = await fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`);
+      if (!plRes.ok) {
+        throw new Error(`pl-summary returned ${plRes.status}`);
+      }
+      const plData = await plRes.json();
+      const freshPriorFY = plData.summary?.prior_fy;
+      if (!freshPriorFY || freshPriorFY.total_revenue == null) {
+        throw new Error('No prior-year P&L data available from Xero');
+      }
+
+      const totalRevenue = freshPriorFY.total_revenue;
+      const totalCogs = freshPriorFY.total_cogs;
+      const totalOpex = freshPriorFY.operating_expenses;
+
+      // Mirrors freshPriorYear builder in ForecastWizardV4.tsx:255-300 (the
+      // always-on refresh path). Kept inline here rather than extracted —
+      // hotfix scope; we call setPriorYear (destructive) where the auto-refresh
+      // calls setPriorYearDisplay. Any future schema change should update both
+      // call sites in lockstep.
+      const revenueByLine = (freshPriorFY.revenue_lines || []).map((line: { account_name: string; total: number; by_month?: Record<string, number> }, idx: number) => ({
+        id: `revenue-${idx}`, name: line.account_name, total: line.total, byMonth: line.by_month || {},
+      }));
+      const cogsByLine = (freshPriorFY.cogs_lines || []).map((line: { account_name: string; total: number; by_month?: Record<string, number>; percent_of_revenue?: number }, idx: number) => ({
+        id: `cogs-${idx}`, name: line.account_name, total: line.total,
+        byMonth: line.by_month || {}, percentOfRevenue: line.percent_of_revenue || 0,
+      }));
+      const opexByLine = (freshPriorFY.operating_expenses_by_category || []).map((cat: { account_name?: string; category?: string; total: number; monthly_average?: number; account_code?: string }, idx: number) => ({
+        id: `opex-${idx}`, name: cat.account_name || cat.category,
+        total: cat.total, monthlyAvg: cat.monthly_average || cat.total / 12, isOneOff: false,
+        account_code: cat.account_code,
+      }));
+
+      const freshPriorYear: PriorYearData = {
+        revenue: { total: totalRevenue, byMonth: freshPriorFY.revenue_by_month || {}, byLine: revenueByLine },
+        cogs: {
+          total: totalCogs,
+          percentOfRevenue: totalRevenue ? (totalCogs / totalRevenue) * 100 : 0,
+          byMonth: freshPriorFY.cogs_by_month || {},
+          byLine: cogsByLine,
+        },
+        grossProfit: {
+          total: freshPriorFY.gross_profit || (totalRevenue - totalCogs),
+          percent: freshPriorFY.gross_margin_percent || (totalRevenue ? ((totalRevenue - totalCogs) / totalRevenue) * 100 : 0),
+          byMonth: {},
+        },
+        opex: {
+          total: totalOpex, byLine: opexByLine,
+          byMonth: freshPriorFY.opex_by_month || {},
+        },
+        otherIncome: freshPriorFY.other_income !== undefined && freshPriorFY.other_income !== null ? {
+          total: freshPriorFY.other_income,
+          byMonth: freshPriorFY.other_income_by_month || {},
+        } : priorYear?.otherIncome,
+        otherExpenses: freshPriorFY.other_expenses !== undefined && freshPriorFY.other_expenses !== null ? {
+          total: freshPriorFY.other_expenses,
+          byMonth: freshPriorFY.other_expenses_by_month || {},
+        } : priorYear?.otherExpenses,
+        seasonalityPattern: freshPriorFY.seasonality_pattern?.length === 12
+          ? freshPriorFY.seasonality_pattern : Array(12).fill(100 / 12),
+      };
+
+      // Destructive: rebuilds revenueLines / cogsLines / opexLines from fresh
+      // Xero. This is the whole point of the operator-triggered refresh.
+      actions.setPriorYear(freshPriorYear);
+
+      toast.success('Refreshed from Xero — your customizations have been reset to match current data');
+      // Reset banner dismissal — operator will see drift again only if Xero
+      // drifts in the future. The just-completed refresh resolves any prior
+      // drift, so any dismissal that was hiding it is no longer relevant.
+      setDriftBannerDismissed(false);
+    } catch (err) {
+      console.error('[Step2PriorYear] Refresh from Xero failed:', err);
+      toast.error('Refresh from Xero failed', {
+        description: err instanceof Error ? err.message : 'Unknown error',
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [businessId, fiscalYear, actions, priorYear]);
+
+  // Hotfix Part 2 — reconciliation drift banner.
+  //
+  // After PR #136, the always-on Xero refresh updates `priorYear` totals but
+  // leaves `revenueLines / cogsLines / opexLines` untouched (so operator
+  // customizations survive a hard-refresh). The trade-off: when Xero data
+  // drifts post-creation, those line arrays go stale. Because Step 5
+  // BudgetFramework, Step 6 OpEx, and the rollup all derive from the line
+  // arrays — not from `priorYear` — the operator sees a silent numeric
+  // mismatch with no error, no banner, no warning.
+  //
+  // This banner makes the divergence visible. Threshold $1 lives below
+  // rounding noise from the per-line `Math.round` in setPriorYear (each line
+  // can contribute up to $0.50 of rounding; we'd need 3+ lines to cross $1).
+  //
+  // Field choice per source: revenue uses Σ(year1Monthly) — that's what Step 5
+  // BudgetFramework's `actualRevenue.y1` reads, the actual reconciliation
+  // surface. COGS uses Σ(priorYearTotal) — the field setPriorYear populates
+  // from `data.cogs.byLine[].total` (year1Monthly is rarely present on COGS).
+  // OpEx uses Σ(priorYearAnnual) — matches Step5OpEx.tsx:1095 (the existing
+  // "stale" reference flagged in the regression report).
+  const driftAnalysis = useMemo(() => {
+    if (!priorYear || priorYear.revenue.total === 0) {
+      return null;
+    }
+
+    const revenueLineSum = revenueLines.reduce((total, line) => {
+      const monthly = Object.values(line.year1Monthly || {}).reduce((s, v) => s + (v || 0), 0);
+      return total + monthly;
+    }, 0);
+
+    const cogsLineSum = cogsLines.reduce((total, line) => {
+      return total + (line.priorYearTotal || 0);
+    }, 0);
+
+    const opexLineSum = opexLines.reduce((total, line) => {
+      return total + (line.priorYearAnnual || 0);
+    }, 0);
+
+    const revenueDelta = priorYear.revenue.total - revenueLineSum;
+    const cogsDelta = priorYear.cogs.total - cogsLineSum;
+    const opexDelta = priorYear.opex.total - opexLineSum;
+
+    const DRIFT_THRESHOLD = 1; // $1, ignores rounding noise.
+    const hasRevenueDrift = Math.abs(revenueDelta) > DRIFT_THRESHOLD;
+    const hasCogsDrift = Math.abs(cogsDelta) > DRIFT_THRESHOLD;
+    const hasOpexDrift = Math.abs(opexDelta) > DRIFT_THRESHOLD;
+
+    return {
+      hasDrift: hasRevenueDrift || hasCogsDrift || hasOpexDrift,
+      revenue: { xero: priorYear.revenue.total, lines: revenueLineSum, delta: revenueDelta, drift: hasRevenueDrift },
+      cogs: { xero: priorYear.cogs.total, lines: cogsLineSum, delta: cogsDelta, drift: hasCogsDrift },
+      opex: { xero: priorYear.opex.total, lines: opexLineSum, delta: opexDelta, drift: hasOpexDrift },
+    };
+  }, [priorYear, revenueLines, cogsLines, opexLines]);
+
+  // Dismissible — operator may have intentionally customized lines and accept
+  // the divergence. Dismissal is per-mount (not persisted) so a fresh refresh
+  // re-surfaces the warning if drift returns.
+  const [driftBannerDismissed, setDriftBannerDismissed] = useState(false);
 
   const handleCancelParsedData = useCallback(() => {
     setParsedData(null);
@@ -803,6 +972,57 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
         perTenantQuality={perTenantQuality}
         lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
       />
+
+      {/* Reconciliation drift banner — Hotfix Part 2.
+          Surfaces when priorYear totals (fresh from Xero) diverge from the
+          line-array sums (stale, snapshotted at forecast creation). See the
+          driftAnalysis useMemo above for source-of-truth fields per category. */}
+      {driftAnalysis?.hasDrift && !driftBannerDismissed && (
+        <div
+          role="alert"
+          aria-label="Reconciliation drift warning"
+          className="bg-amber-50 border border-amber-300 rounded-xl p-4"
+          data-testid="drift-banner"
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-900">
+                Your line items don&apos;t match current Xero totals.
+              </p>
+              <p className="text-sm text-amber-800 mt-1">
+                Step 2 banners show the latest Xero figures, but the line items used in Steps 5 and 6 are based on the data when this forecast was first created. Click <span className="font-semibold">&ldquo;Refresh from Xero&rdquo;</span> above to update line items, or keep your customizations as-is.
+              </p>
+              <ul className="mt-2 space-y-0.5 text-xs text-amber-900">
+                {driftAnalysis.revenue.drift && (
+                  <li data-testid="drift-row-revenue">
+                    Revenue: Xero shows {formatCurrency(driftAnalysis.revenue.xero)}, line items sum to {formatCurrency(driftAnalysis.revenue.lines)} (drift {formatCurrency(driftAnalysis.revenue.delta)})
+                  </li>
+                )}
+                {driftAnalysis.cogs.drift && (
+                  <li data-testid="drift-row-cogs">
+                    Cost of Sales: Xero shows {formatCurrency(driftAnalysis.cogs.xero)}, line items sum to {formatCurrency(driftAnalysis.cogs.lines)} (drift {formatCurrency(driftAnalysis.cogs.delta)})
+                  </li>
+                )}
+                {driftAnalysis.opex.drift && (
+                  <li data-testid="drift-row-opex">
+                    Operating Expenses: Xero shows {formatCurrency(driftAnalysis.opex.xero)}, line items sum to {formatCurrency(driftAnalysis.opex.lines)} (drift {formatCurrency(driftAnalysis.opex.delta)})
+                  </li>
+                )}
+              </ul>
+            </div>
+            <button
+              onClick={() => setDriftBannerDismissed(true)}
+              className="flex-shrink-0 text-amber-700 hover:text-amber-900 transition-colors"
+              aria-label="Dismiss drift warning"
+              data-testid="drift-banner-dismiss"
+            >
+              <XCircle className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header with guidance */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5">
         <div className="flex items-start gap-4">
@@ -831,6 +1051,29 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Refresh from Xero — operator-controlled override.
+          Hotfix (regression from PR #136): the always-on refresh now preserves
+          customizations, so when Xero data drifts the line arrays go stale.
+          This button lets the operator deliberately reset customizations and
+          re-pull from current Xero. See handleRefreshFromXero comments above. */}
+      <div className="flex items-center justify-end gap-2">
+        <span className="text-xs text-gray-500">
+          Showing prior-year totals from Xero. Line items in Steps 3, 5, and 6 are kept as you customized them.
+        </span>
+        <button
+          onClick={handleRefreshFromXero}
+          disabled={isRefreshing}
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {isRefreshing ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <RefreshCw className="w-4 h-4" />
+          )}
+          {isRefreshing ? 'Refreshing…' : 'Refresh from Xero'}
+        </button>
       </div>
 
       {/* Summary Cards */}
