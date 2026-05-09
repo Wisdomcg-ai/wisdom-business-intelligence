@@ -27,6 +27,7 @@ import SaveVersionModal from './components/SaveVersionModal'
 import VersionsTab from './components/VersionsTab'
 import XeroConnectionPanel from './components/XeroConnectionPanel'
 import ForecastTabs, { FORECAST_TAB_IDS, type ForecastTab } from './components/ForecastTabs'
+import ForecastOverview from './components/ForecastOverview'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useXeroSync } from './hooks/useXeroSync'
 import { useVersionManager } from './hooks/useVersionManager'
@@ -674,9 +675,16 @@ export default function FinancialForecastPage() {
 
         {/* Content */}
         {activeTab === 'overview' && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-500">
-            Overview dashboard loading…
-          </div>
+          <ForecastOverview
+            forecast={forecast}
+            plLines={plLines}
+            assumptions={parsedAssumptions}
+            fiscalYear={selectedFiscalYear || forecast.fiscal_year}
+            yearStartMonth={fiscalYearStart}
+            businessId={businessId}
+            onSwitchTab={(tab) => setActiveTab(tab)}
+            onEditPlan={() => setShowForecastSelector(true)}
+          />
         )}
 
         {activeTab === 'pl' && (
