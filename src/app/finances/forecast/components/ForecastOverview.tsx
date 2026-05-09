@@ -887,6 +887,13 @@ function TrajectoryCard({
         <div className="h-[260px] sm:h-[300px] flex items-center justify-center text-sm text-gray-400">
           Loading trajectory…
         </div>
+      ) : chartData.every((row) => row.value === 0) ? (
+        <div className="h-[260px] sm:h-[300px] flex flex-col items-center justify-center text-sm text-gray-500 gap-1">
+          <span>No {style.label.toLowerCase()} data for this fiscal year.</span>
+          <span className="text-xs text-gray-400">
+            Connect Xero or build a forecast for this year to populate the chart.
+          </span>
+        </div>
       ) : (
         <div className="w-full h-[260px] sm:h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
