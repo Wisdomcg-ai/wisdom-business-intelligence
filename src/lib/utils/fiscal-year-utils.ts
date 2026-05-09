@@ -74,6 +74,35 @@ export function getFiscalMonthLabels(yearStartMonth: number = DEFAULT_YEAR_START
 }
 
 /**
+ * Get ordered month abbreviations with 2-digit calendar year suffix.
+ *
+ * yearStartMonth=7, fiscalYear=2026:
+ *   ['Jul 25', 'Aug 25', 'Sep 25', 'Oct 25', 'Nov 25', 'Dec 25',
+ *    'Jan 26', 'Feb 26', 'Mar 26', 'Apr 26', 'May 26', 'Jun 26']
+ *
+ * yearStartMonth=1, fiscalYear=2026:
+ *   ['Jan 26', 'Feb 26', ..., 'Dec 26']
+ */
+export function getFiscalMonthLabelsWithYear(
+  fiscalYear: number,
+  yearStartMonth: number = DEFAULT_YEAR_START_MONTH,
+): string[] {
+  const labels: string[] = []
+  for (let i = 0; i < 12; i++) {
+    const calMonth = calendarMonthFromFiscalIndex(i, yearStartMonth)
+    const calYear =
+      yearStartMonth === 1
+        ? fiscalYear
+        : calMonth >= yearStartMonth
+          ? fiscalYear - 1
+          : fiscalYear
+    const yy = String(calYear % 100).padStart(2, '0')
+    labels.push(`${MONTH_ABBREVS[calMonth - 1]} ${yy}`)
+  }
+  return labels
+}
+
+/**
  * Get the fiscal-month index (0..11) of the last calendar month whose
  * month-end has fully passed as of `today`. Returns -1 when the fiscal year
  * hasn't started yet, and 11 when the fiscal year has fully ended.

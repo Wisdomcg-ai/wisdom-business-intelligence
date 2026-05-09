@@ -47,6 +47,7 @@ import {
   generateFiscalMonthKeys,
   getExpectedLastActualIndex,
   getFiscalMonthLabels,
+  getFiscalMonthLabelsWithYear,
 } from '@/lib/utils/fiscal-year-utils'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -311,6 +312,13 @@ export default function ForecastOverview({
     () => getFiscalMonthLabels(yearStartMonth),
     [yearStartMonth],
   )
+  // Year-suffixed labels (e.g. "Jul 25" / "Jun 26") for the monthly trend
+  // headers and the trajectory chart x-axis. Bare-month labels are kept for
+  // the Insights card where the surrounding sentence already implies the year.
+  const monthLabelsWithYear = useMemo(
+    () => getFiscalMonthLabelsWithYear(fiscalYear, yearStartMonth),
+    [fiscalYear, yearStartMonth],
+  )
   // Calendar floor: April 2026 should show as actual on May 10 even if Xero
   // hasn't synced yet — we surface the gap via `staleSyncMonths` instead of
   // misclassifying an already-closed month as forecast.
@@ -392,14 +400,14 @@ export default function ForecastOverview({
         businessId={businessId}
         fiscalYear={fiscalYear}
         yearStartMonth={yearStartMonth}
-        monthLabels={monthLabels}
+        monthLabels={monthLabelsWithYear}
         revenuePlan={revenuePlan}
         grossPlan={grossPlan}
         netPlan={netPlan}
       />
       <MonthlyTrendCard
         totals={totals}
-        monthLabels={monthLabels}
+        monthLabels={monthLabelsWithYear}
         revenuePlan={revenuePlan}
         grossPlan={grossPlan}
         netPlan={netPlan}
