@@ -80,12 +80,30 @@ export function isDateInFiscalYear(date: Date, fiscalYear: number, yearStartMont
 }
 
 /**
- * Get available fiscal years for selection
+ * Get available fiscal years for selection.
+ *
+ * Default: prior FY + current FY — gives operators a one-click view of the
+ * just-finished historical year alongside the in-progress year.
+ *
+ * Planning season extension: when within the planning-season window
+ * (typically last 3 months of FY), append next FY so coaches can prepare
+ * next year's plan. Outside the planning window the selector stays clean
+ * with just `[prior, current]`.
+ *
+ * Examples (AU FY, yearStartMonth=7):
+ *   - Today is 2026-05 (May 2026, planning season): [FY25, FY26, FY27]
+ *   - Today is 2026-08 (Aug 2026, no planning):     [FY26, FY27]
+ *   - Today is 2025-12 (Dec 2025, mid-FY26):        [FY25, FY26]
  */
 export function getAvailableFiscalYears(yearStartMonth: number = DEFAULT_YEAR_START_MONTH): { year: number; label: string; isCurrent: boolean }[] {
   const currentFY = getCurrentFiscalYear(yearStartMonth)
-  return [
+  const tabs = [
+    { year: currentFY - 1, label: getFiscalYearLabel(currentFY - 1, yearStartMonth), isCurrent: false },
     { year: currentFY, label: getFiscalYearLabel(currentFY, yearStartMonth), isCurrent: true },
-    { year: currentFY + 1, label: getFiscalYearLabel(currentFY + 1, yearStartMonth), isCurrent: false },
   ]
+  // Planning season — surface NEXT FY too so coaches can prepare next year's plan.
+  if (isPlanningSeasonActive(yearStartMonth)) {
+    tabs.push({ year: currentFY + 1, label: getFiscalYearLabel(currentFY + 1, yearStartMonth), isCurrent: false })
+  }
+  return tabs
 }

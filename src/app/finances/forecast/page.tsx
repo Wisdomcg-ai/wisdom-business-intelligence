@@ -33,7 +33,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useXeroSync } from './hooks/useXeroSync'
 import { useVersionManager } from './hooks/useVersionManager'
 import { useXeroKeepalive } from '@/hooks/useXeroKeepalive'
-import { getForecastFiscalYear, isPlanningSeasonActive, getAvailableFiscalYears, getCurrentFiscalYear, getFiscalYearLabel } from './utils/fiscal-year'
+import { isPlanningSeasonActive, getAvailableFiscalYears, getCurrentFiscalYear, getFiscalYearLabel } from './utils/fiscal-year'
 import { getMonthsUntilYearEnd } from '@/lib/utils/fiscal-year-utils'
 import { FYSelectorTabs } from './components/FYSelectorTabs'
 import { PlanningSeasonBanner } from './components/PlanningSeasonBanner'
@@ -242,8 +242,11 @@ export default function FinancialForecastPage() {
       setPlanningSeasonActive(isPlanning)
       setMonthsRemaining(getMonthsUntilYearEnd(new Date(), yearStart))
 
-      // Use selectedFiscalYear if user has already chosen one, otherwise use default
-      const fiscalYear = selectedFiscalYear ?? getForecastFiscalYear(yearStart)
+      // Use selectedFiscalYear if user has already chosen one, otherwise default to
+      // CURRENT FY (FY containing today). The PlanningSeasonBanner provides an explicit
+      // "Plan next year" affordance for coaches who want to jump to next FY during the
+      // Apr–Jun planning window.
+      const fiscalYear = selectedFiscalYear ?? getCurrentFiscalYear(yearStart)
       if (!selectedFiscalYear) {
         setSelectedFiscalYear(fiscalYear)
       }
