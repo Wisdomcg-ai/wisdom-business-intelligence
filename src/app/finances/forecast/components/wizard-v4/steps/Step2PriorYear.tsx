@@ -592,21 +592,23 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
   // rounding noise from the per-line `Math.round` in setPriorYear (each line
   // can contribute up to $0.50 of rounding; we'd need 3+ lines to cross $1).
   //
-  // Field choice per source: revenue uses Σ(year1Monthly) — that's what Step 5
-  // BudgetFramework's `actualRevenue.y1` reads, the actual reconciliation
-  // surface. COGS uses Σ(priorYearTotal) — the field setPriorYear populates
-  // from `data.cogs.byLine[].total` (year1Monthly is rarely present on COGS).
-  // OpEx uses Σ(priorYearAnnual) — matches Step5OpEx.tsx:1095 (the existing
-  // "stale" reference flagged in the regression report).
+  // Compare the Xero-ingested totals (priorYear.{cat}.total) against the
+  // prior-year line baselines stored separately from the operator-editable
+  // forecast lines. Revenue baseline lives in priorYear.revenue.byLine[].total
+  // (the Xero-ingested values, NOT the forecast revenueLines that operators
+  // edit on Step 3). COGS uses cogsLines[].priorYearTotal and OpEx uses
+  // opexLines[].priorYearAnnual — both are dedicated prior-year fields on
+  // the forecast lines that hold the original Xero baseline even after
+  // operator edits to forward-looking values.
   const driftAnalysis = useMemo(() => {
     if (!priorYear || priorYear.revenue.total === 0) {
       return null;
     }
 
-    const revenueLineSum = revenueLines.reduce((total, line) => {
-      const monthly = Object.values(line.year1Monthly || {}).reduce((s, v) => s + (v || 0), 0);
-      return total + monthly;
-    }, 0);
+    const revenueLineSum = (priorYear.revenue.byLine || []).reduce(
+      (total, line) => total + (line.total || 0),
+      0
+    );
 
     const cogsLineSum = cogsLines.reduce((total, line) => {
       return total + (line.priorYearTotal || 0);
@@ -636,7 +638,7 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
       cogs: { xero: priorYear.cogs.total, lines: cogsLineSum, delta: cogsDelta, drift: hasCogsDrift },
       opex: { xero: priorYear.opex.total, lines: opexLineSum, delta: opexDelta, drift: hasOpexDrift },
     };
-  }, [priorYear, revenueLines, cogsLines, opexLines]);
+  }, [priorYear, cogsLines, opexLines]);
 
   // Dismissible — operator may have intentionally customized lines and accept
   // the divergence. Dismissal is per-mount (not persisted) so a fresh refresh
