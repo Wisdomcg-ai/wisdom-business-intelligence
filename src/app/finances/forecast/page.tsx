@@ -573,6 +573,7 @@ export default function FinancialForecastPage() {
                 availableYears={getAvailableFiscalYears(fiscalYearStart)}
                 selectedYear={selectedFiscalYear}
                 onSelectYear={setSelectedFiscalYear}
+                yearStartMonth={fiscalYearStart}
               />
             </div>
           )}
