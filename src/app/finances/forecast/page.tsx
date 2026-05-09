@@ -26,7 +26,7 @@ import CSVImportWizard from './components/CSVImportWizard'
 import SaveVersionModal from './components/SaveVersionModal'
 import VersionsTab from './components/VersionsTab'
 import XeroConnectionPanel from './components/XeroConnectionPanel'
-import ForecastTabs, { type ForecastTab } from './components/ForecastTabs'
+import ForecastTabs, { FORECAST_TAB_IDS, type ForecastTab } from './components/ForecastTabs'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useXeroSync } from './hooks/useXeroSync'
 import { useVersionManager } from './hooks/useVersionManager'
@@ -53,14 +53,15 @@ export default function FinancialForecastPage() {
   const [xeroConnection, setXeroConnection] = useState<XeroConnection | null>(null)
 
   const [activeTab, setActiveTab] = useState<ForecastTab>(() => {
-    // Remember last active tab from localStorage
+    // Remember last active tab from localStorage; default to 'overview' for new users
+    // and for any saved value that's no longer a valid tab.
     if (typeof window !== 'undefined') {
       const savedTab = localStorage.getItem('forecast-active-tab')
-      if (savedTab && ['pl', 'assumptions', 'versions'].includes(savedTab)) {
+      if (savedTab && (FORECAST_TAB_IDS as readonly string[]).includes(savedTab)) {
         return savedTab as ForecastTab
       }
     }
-    return 'pl'
+    return 'overview'
   })
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -672,6 +673,12 @@ export default function FinancialForecastPage() {
         <ForecastTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
         {/* Content */}
+        {activeTab === 'overview' && (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-500">
+            Overview dashboard loading…
+          </div>
+        )}
+
         {activeTab === 'pl' && (
           <PLForecastTable
             forecast={forecast}
