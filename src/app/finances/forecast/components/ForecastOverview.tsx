@@ -45,6 +45,7 @@ import type { FinancialForecast, PLLine } from '../types'
 import type { ForecastAssumptions } from './wizard-v4/types/assumptions'
 import {
   generateFiscalMonthKeys,
+  getExpectedLastActualIndex,
   getFiscalMonthLabels,
 } from '@/lib/utils/fiscal-year-utils'
 
@@ -126,13 +127,28 @@ interface MonthlyTotals {
   planTeam: number[]
   planOpex: number[]
   planSubs: number[]
-  /** Index of the last fully-actual month (-1 if none). */
+  /**
+   * Index of the last month treated as actual on the dashboard.
+   *
+   * This is the MAX of:
+   *   - dataLastActualIndex — last month with non-zero actual_months data
+   *   - expectedLastActualIndex — last month whose calendar month-end has passed
+   *
+   * Using the calendar floor means April shows as actual on May 10 even if
+   * Xero hasn't synced yet (the row will read $0 and `staleSyncMonths` lists
+   * the gap so the footer can prompt the user to re-sync).
+   */
   lastActualIndex: number
+  /** Months between dataLastActualIndex+1 and expectedLastActualIndex (i.e. expected-actual but missing data). */
+  staleSyncMonths: number[]
+  /** Last month-with-data index — kept for consumers that need the data-only signal (KPI strip "this month"). */
+  dataLastActualIndex: number
 }
 
 function buildMonthlyTotals(
   plLines: PLLine[],
   monthKeys: readonly string[],
+  expectedLastActualIndex: number = -1,
 ): MonthlyTotals {
   const blank = () => Array<number>(monthKeys.length).fill(0)
   const revenue = blank()
@@ -188,12 +204,26 @@ function buildMonthlyTotals(
   const grossProfit = revenue.map((r, i) => r - cogs[i])
   const netProfit = grossProfit.map((gp, i) => gp - team[i] - opex[i] - subs[i])
 
-  // The "last actual" index is the highest index that had any actuals
-  let lastActualIndex = -1
+  // The data-driven last-actual index is the highest index that had any actuals
+  let dataLastActualIndex = -1
   for (let i = hasActuals.length - 1; i >= 0; i -= 1) {
     if (hasActuals[i]) {
-      lastActualIndex = i
+      dataLastActualIndex = i
       break
+    }
+  }
+
+  // Effective cutoff = max(data, calendar). On May 10 with no April sync,
+  // dataLastActualIndex=8 (Mar) but expectedLastActualIndex=9 (Apr) → 9.
+  // The April column will render zeros (matching the missing data) but the
+  // footer surfaces "Apr 26 expected but not yet synced" to the operator.
+  const lastActualIndex = Math.max(dataLastActualIndex, expectedLastActualIndex)
+
+  // Months that should be actual by calendar but lack any data → sync gap.
+  const staleSyncMonths: number[] = []
+  if (expectedLastActualIndex > dataLastActualIndex) {
+    for (let i = dataLastActualIndex + 1; i <= expectedLastActualIndex; i += 1) {
+      staleSyncMonths.push(i)
     }
   }
 
@@ -210,6 +240,8 @@ function buildMonthlyTotals(
     planOpex,
     planSubs,
     lastActualIndex,
+    staleSyncMonths,
+    dataLastActualIndex,
   }
 }
 
@@ -279,8 +311,18 @@ export default function ForecastOverview({
     () => getFiscalMonthLabels(yearStartMonth),
     [yearStartMonth],
   )
+  // Calendar floor: April 2026 should show as actual on May 10 even if Xero
+  // hasn't synced yet — we surface the gap via `staleSyncMonths` instead of
+  // misclassifying an already-closed month as forecast.
+  const expectedLastActualIndex = useMemo(
+    () => getExpectedLastActualIndex(fiscalYear, yearStartMonth),
+    [fiscalYear, yearStartMonth],
+  )
 
-  const totals = useMemo(() => buildMonthlyTotals(plLines, monthKeys), [plLines, monthKeys])
+  const totals = useMemo(
+    () => buildMonthlyTotals(plLines, monthKeys, expectedLastActualIndex),
+    [plLines, monthKeys, expectedLastActualIndex],
+  )
 
   // Plan targets — pull from wizard assumptions if available, fall back to forecast
   const revenuePlan =
@@ -417,12 +459,17 @@ function KpiStrip({
   cashLoading,
   cashUnavailable,
 }: KpiStripProps) {
-  const lastActualIndex = totals.lastActualIndex
-  const monthsElapsed = lastActualIndex + 1 // number of months with actuals so far
+  // KPI strip uses the data-driven cutoff (NOT the calendar floor) for YTD and
+  // "this month" — including stale-sync months would show $0 as "this month"
+  // and understate YTD totals. The calendar-floor lastActualIndex is reserved
+  // for the monthly trend table / trajectory chart where the column label
+  // ("Apr 26") needs to read as actual even when data hasn't synced yet.
+  const dataIdx = totals.dataLastActualIndex
+  const monthsElapsed = dataIdx + 1 // number of months with actuals so far
   const ytdProrate = (annualPlan: number) =>
     monthsElapsed > 0 ? Math.round((annualPlan / 12) * monthsElapsed) : 0
 
-  // YTD = sum of actual months only (slice up to lastActualIndex inclusive)
+  // YTD = sum of actual months only (slice up to dataIdx inclusive)
   const ytdSlice = (xs: number[]) =>
     monthsElapsed > 0 ? sum(xs.slice(0, monthsElapsed)) : 0
 
@@ -436,7 +483,7 @@ function KpiStrip({
   }
 
   // "This month" = latest actual month, or first forecast month if no actuals yet
-  const thisMonthIdx = lastActualIndex >= 0 ? lastActualIndex : 0
+  const thisMonthIdx = dataIdx >= 0 ? dataIdx : 0
   const thisMonth = (xs: number[]) => xs[thisMonthIdx] || 0
 
   const cards: KpiCardProps[] = [
@@ -1146,9 +1193,15 @@ function MonthlyTrendCard({
 
       <footer className="px-5 sm:px-6 py-3 text-xs text-gray-500 border-t border-gray-100 flex items-center justify-between gap-3">
         <span>
-          {lastActualIndex >= 0
-            ? `* Months after ${monthLabels[lastActualIndex]} are forecast — earlier columns are actuals from Xero`
-            : '* All months are forecast — connect Xero to load actuals'}
+          {totals.staleSyncMonths.length > 0 ? (
+            <span className="text-amber-700">
+              ⚠ {totals.staleSyncMonths.map((i) => monthLabels[i]).join(', ')} closed but not yet synced from Xero — sync to populate actuals.
+            </span>
+          ) : lastActualIndex >= 0 ? (
+            `* Months after ${monthLabels[lastActualIndex]} are forecast — earlier columns are actuals from Xero`
+          ) : (
+            '* All months are forecast — connect Xero to load actuals'
+          )}
         </span>
         <button
           type="button"
@@ -1284,7 +1337,9 @@ function ScorecardCard({
   yearStartMonth,
   assumptions,
 }: ScorecardCardProps) {
-  const monthsElapsed = totals.lastActualIndex + 1
+  // Use the data-driven cutoff so YTD margins/ratios don't get distorted by
+  // empty stale-sync months (e.g. April reads $0 → would crash margin to 0%).
+  const monthsElapsed = totals.dataLastActualIndex + 1
 
   // YTD slices (actuals only — same as KPI strip)
   const ytdSlice = (xs: number[]) =>
@@ -1490,7 +1545,9 @@ function largestOpExCategory(
  */
 function actualMonthlyGrossMargins(totals: MonthlyTotals): number[] {
   const out: number[] = []
-  const last = totals.lastActualIndex
+  // Use the data cutoff: stale-sync months have $0 revenue and would falsely
+  // appear as a 0% margin month if we used the calendar floor here.
+  const last = totals.dataLastActualIndex
   for (let i = 0; i <= last; i += 1) {
     const r = totals.revenue[i]
     if (r > 0) out.push((totals.grossProfit[i] / r) * 100)
@@ -1550,7 +1607,9 @@ function generateInsights({
   assumptions,
 }: InsightsCardProps): Insight[] {
   const insights: Insight[] = []
-  const monthsElapsed = totals.lastActualIndex + 1
+  // Insights are derived from real data — use the data cutoff so we don't
+  // generate "rev below plan" warnings just because Apr hasn't synced yet.
+  const monthsElapsed = totals.dataLastActualIndex + 1
   if (monthsElapsed <= 0) return insights // no actuals → no insights
 
   const ytdSlice = (xs: number[]) => sum(xs.slice(0, monthsElapsed))
@@ -1574,7 +1633,7 @@ function generateInsights({
     const variance = ytdRevenue - planRevYTD
     const variancePct = variance / planRevYTD
     if (variancePct > INSIGHT_VARIANCE_THRESHOLD) {
-      const strongest = strongestActualMonth(totals.revenue, monthLabels, totals.lastActualIndex)
+      const strongest = strongestActualMonth(totals.revenue, monthLabels, totals.dataLastActualIndex)
       insights.push({
         id: 'rev-above',
         text: `Revenue is ${fmtMoney(variance, { compact: true })} above plan YTD${strongest ? `, driven by ${strongest} performance` : ''}.`,
