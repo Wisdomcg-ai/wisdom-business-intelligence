@@ -117,6 +117,14 @@ interface MonthlyTotals {
   opex: number[]
   subs: number[]
   netProfit: number[]
+  /**
+   * Per-category monthly plan = sum of forecast_months across each line in
+   * that category. Used for variance highlighting on the monthly trend table.
+   */
+  planCogs: number[]
+  planTeam: number[]
+  planOpex: number[]
+  planSubs: number[]
   /** Index of the last fully-actual month (-1 if none). */
   lastActualIndex: number
 }
@@ -131,11 +139,16 @@ function buildMonthlyTotals(
   const team = blank()
   const opex = blank()
   const subs = blank()
+  const planCogs = blank()
+  const planTeam = blank()
+  const planOpex = blank()
+  const planSubs = blank()
   const hasActuals = Array<boolean>(monthKeys.length).fill(false)
 
   for (const line of plLines) {
     const actualMonths = (line.actual_months || {}) as Record<string, number>
     const forecastMonths = (line.forecast_months || {}) as Record<string, number>
+    const opexGroup = isOpEx(line) ? classifyOpExLine(line) : null
 
     monthKeys.forEach((key, i) => {
       const a = Number(actualMonths[key]) || 0
@@ -143,6 +156,20 @@ function buildMonthlyTotals(
       // Prefer actual when present; fall back to forecast for the projection bucket
       const value = a !== 0 ? a : f
       if (a !== 0) hasActuals[i] = true
+
+      // Per-category monthly plan (forecast_months only — that's the plan)
+      if (f !== 0) {
+        if (isCOGS(line)) {
+          planCogs[i] += f
+        } else if (opexGroup === 'team') {
+          planTeam[i] += f
+        } else if (opexGroup === 'subs') {
+          planSubs[i] += f
+        } else if (opexGroup === 'opex') {
+          planOpex[i] += f
+        }
+      }
+
       if (value === 0) return
 
       if (isRevenue(line)) {
@@ -150,9 +177,8 @@ function buildMonthlyTotals(
       } else if (isCOGS(line)) {
         cogs[i] += value
       } else if (isOpEx(line)) {
-        const group = classifyOpExLine(line)
-        if (group === 'team') team[i] += value
-        else if (group === 'subs') subs[i] += value
+        if (opexGroup === 'team') team[i] += value
+        else if (opexGroup === 'subs') subs[i] += value
         else opex[i] += value
       }
     })
@@ -170,7 +196,20 @@ function buildMonthlyTotals(
     }
   }
 
-  return { revenue, cogs, grossProfit, team, opex, subs, netProfit, lastActualIndex }
+  return {
+    revenue,
+    cogs,
+    grossProfit,
+    team,
+    opex,
+    subs,
+    netProfit,
+    planCogs,
+    planTeam,
+    planOpex,
+    planSubs,
+    lastActualIndex,
+  }
 }
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
@@ -274,7 +313,13 @@ export default function ForecastOverview({
         netPlan={netPlan}
         onOpenPL={() => onSwitchTab('pl')}
       />
-      <ScorecardPlaceholder />
+      <ScorecardCard
+        plLines={plLines}
+        totals={totals}
+        fiscalYear={fiscalYear}
+        yearStartMonth={yearStartMonth}
+        assumptions={assumptions}
+      />
       <InsightsPlaceholder />
       <FooterLinks
         onEditPlan={onEditPlan}
@@ -851,13 +896,13 @@ function MonthlyTrendCard({
 
   const rows: TableRow[] = [
     { kind: 'header', label: 'Revenue', values: totals.revenue, plan: planRevenueMonthly },
-    { kind: 'sub',    label: 'COGS',    values: totals.cogs },
+    { kind: 'sub',    label: 'COGS',    values: totals.cogs, plan: totals.planCogs, invertVariance: true },
     { kind: 'header', label: 'Gross Profit', values: totals.grossProfit, plan: planGPMonthly },
     { kind: 'sub',    label: 'Margin', values: grossMargin, isPct: true },
     { kind: 'rule',   label: '', values: [] },
-    { kind: 'detail', label: 'Team',          values: totals.team, invertVariance: true },
-    { kind: 'detail', label: 'OpEx',          values: totals.opex, invertVariance: true },
-    { kind: 'detail', label: 'Subscriptions', values: totals.subs, invertVariance: true },
+    { kind: 'detail', label: 'Team',          values: totals.team, plan: totals.planTeam, invertVariance: true },
+    { kind: 'detail', label: 'OpEx',          values: totals.opex, plan: totals.planOpex, invertVariance: true },
+    { kind: 'detail', label: 'Subscriptions', values: totals.subs, plan: totals.planSubs, invertVariance: true },
     { kind: 'rule',   label: '', values: [] },
     { kind: 'header', label: 'Net Profit',    values: totals.netProfit, plan: planNPMonthly },
     { kind: 'sub',    label: 'Margin',        values: netMargin, isPct: true },
@@ -948,7 +993,9 @@ function MonthlyTrendCard({
                       const above = delta > VARIANCE_TOL_PCT
                       const below = delta < -VARIANCE_TOL_PCT
                       if (row.invertVariance) {
+                        // Cost row: actual below plan = good (green), above = bad (amber)
                         if (above) varianceClass = 'text-amber-700 font-medium'
+                        else if (below) varianceClass = 'text-emerald-700 font-medium'
                       } else {
                         if (above) varianceClass = 'text-emerald-700 font-medium'
                         else if (below) varianceClass = 'text-amber-700 font-medium'
@@ -1007,33 +1054,240 @@ function LegendDot({ color, label, outline }: { color: string; label: string; ou
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Section 4 — Scorecard placeholder (Phase 58.2)
+// Section 4 — KPI scorecard (Phase 58.2)
+//
+// Four traffic-light cards computed YTD from forecast_pl_lines:
+//   1. YoY Revenue Growth — current FY YTD vs prior FY same-period (target 10%)
+//   2. Gross Margin       — current FY YTD GP / Revenue          (target 60%)
+//   3. Net Margin         — current FY YTD NP / Revenue          (target 15%)
+//   4. OpEx Ratio         — current FY YTD OpEx / Revenue        (target ≤ 18%)
+//
+// Targets default to the values above and are overridable via wizard
+// assumptions.goals.year1 (revenue + grossProfitPct + netProfitPct only — no
+// dedicated growth or OpEx target lives in the schema yet).
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ScorecardPlaceholder() {
+const SCORECARD_DEFAULTS = {
+  revenueGrowthPct: 10, // %
+  grossMarginPct: 60, // %
+  netMarginPct: 15, // %
+  opexRatioPct: 18, // %  (max — lower is better)
+} as const
+
+type ScoreStatus = 'green' | 'amber' | 'red'
+
+interface ScorecardCardProps {
+  plLines: PLLine[]
+  totals: MonthlyTotals
+  fiscalYear: number
+  yearStartMonth: number
+  assumptions: ForecastAssumptions | null
+}
+
+/**
+ * Build prior-FY same-period revenue from the same plLines, by re-keying the
+ * actual_months map with the previous-year keys (e.g. "2024-07" → "2023-07")
+ * and summing the months that were "actual" in the current FY (i.e. up to
+ * `monthsElapsed`). Returns null if no data exists for the prior period.
+ */
+function computePriorYearRevenueYTD(
+  plLines: PLLine[],
+  fiscalYear: number,
+  yearStartMonth: number,
+  monthsElapsed: number,
+): number | null {
+  if (monthsElapsed <= 0) return null
+  const priorYear = fiscalYear - 1
+  const priorKeys = generateFiscalMonthKeys(priorYear, yearStartMonth).slice(0, monthsElapsed)
+  let total = 0
+  let foundAny = false
+  for (const line of plLines) {
+    if (!isRevenue(line)) continue
+    const am = (line.actual_months || {}) as Record<string, number>
+    for (const k of priorKeys) {
+      const v = Number(am[k])
+      if (Number.isFinite(v) && v !== 0) {
+        total += v
+        foundAny = true
+      }
+    }
+  }
+  return foundAny ? total : null
+}
+
+function statusForGrowth(actualPct: number, targetPct: number): ScoreStatus {
+  // Green: >= target. Amber: 0% to target-3pt. Red: < 0%.
+  if (actualPct >= targetPct) return 'green'
+  if (actualPct >= 0) return 'amber'
+  return 'red'
+}
+
+function statusForMargin(actualPct: number, targetPct: number): ScoreStatus {
+  // Green: >= target. Amber: target-2pt..target. Red: < target-2pt.
+  if (actualPct >= targetPct) return 'green'
+  if (actualPct >= targetPct - 2) return 'amber'
+  return 'red'
+}
+
+function statusForOpExRatio(actualPct: number, targetPct: number): ScoreStatus {
+  // Green: <= target. Amber: target..target+2pt. Red: > target+2pt.
+  if (actualPct <= targetPct) return 'green'
+  if (actualPct <= targetPct + 2) return 'amber'
+  return 'red'
+}
+
+const STATUS_DOT: Record<ScoreStatus, string> = {
+  green: 'bg-emerald-500',
+  amber: 'bg-amber-500',
+  red: 'bg-red-500',
+}
+
+const STATUS_TEXT: Record<ScoreStatus, string> = {
+  green: 'text-emerald-600',
+  amber: 'text-amber-600',
+  red: 'text-red-600',
+}
+
+function fmtPct(n: number, opts: { signed?: boolean; digits?: number } = {}): string {
+  const { signed = false, digits = 0 } = opts
+  if (!Number.isFinite(n)) return '—'
+  const body = `${Math.abs(n).toFixed(digits)}%`
+  if (signed) return n >= 0 ? `+${body}` : `−${body}`
+  return n < 0 ? `−${body}` : body
+}
+
+function ScorecardCard({
+  plLines,
+  totals,
+  fiscalYear,
+  yearStartMonth,
+  assumptions,
+}: ScorecardCardProps) {
+  const monthsElapsed = totals.lastActualIndex + 1
+
+  // YTD slices (actuals only — same as KPI strip)
+  const ytdSlice = (xs: number[]) =>
+    monthsElapsed > 0 ? sum(xs.slice(0, monthsElapsed)) : 0
+
+  const ytdRevenue = ytdSlice(totals.revenue)
+  const ytdGP = ytdSlice(totals.grossProfit)
+  const ytdNP = ytdSlice(totals.netProfit)
+  const ytdOpEx =
+    ytdSlice(totals.team) + ytdSlice(totals.opex) + ytdSlice(totals.subs)
+
+  // Targets — wizard assumptions override defaults where available
+  const grossMarginTarget =
+    assumptions?.goals?.year1?.grossProfitPct ?? SCORECARD_DEFAULTS.grossMarginPct
+  const netMarginTarget =
+    assumptions?.goals?.year1?.netProfitPct ?? SCORECARD_DEFAULTS.netMarginPct
+  const opexRatioTarget = SCORECARD_DEFAULTS.opexRatioPct
+  const revenueGrowthTarget = SCORECARD_DEFAULTS.revenueGrowthPct
+
+  // Calculations
+  const priorRevYTD = useMemo(
+    () => computePriorYearRevenueYTD(plLines, fiscalYear, yearStartMonth, monthsElapsed),
+    [plLines, fiscalYear, yearStartMonth, monthsElapsed],
+  )
+  const growthPct =
+    priorRevYTD != null && priorRevYTD > 0
+      ? ((ytdRevenue / priorRevYTD) - 1) * 100
+      : null
+
+  const grossMarginPct = ytdRevenue > 0 ? (ytdGP / ytdRevenue) * 100 : null
+  const netMarginPct = ytdRevenue > 0 ? (ytdNP / ytdRevenue) * 100 : null
+  const opexRatioPct = ytdRevenue > 0 ? (ytdOpEx / ytdRevenue) * 100 : null
+
+  const cards: ScorecardItem[] = [
+    {
+      label: 'Revenue Growth',
+      value: growthPct,
+      status: growthPct != null ? statusForGrowth(growthPct, revenueGrowthTarget) : null,
+      target: `${revenueGrowthTarget}%`,
+      helper: growthPct != null ? 'vs prior year YTD' : 'Need prior year data',
+      formatter: (v) => fmtPct(v, { signed: true }),
+    },
+    {
+      label: 'Gross Margin',
+      value: grossMarginPct,
+      status: grossMarginPct != null ? statusForMargin(grossMarginPct, grossMarginTarget) : null,
+      target: `${grossMarginTarget}%`,
+      helper: 'GP / Revenue YTD',
+      formatter: (v) => fmtPct(v, { digits: 1 }),
+    },
+    {
+      label: 'Net Margin',
+      value: netMarginPct,
+      status: netMarginPct != null ? statusForMargin(netMarginPct, netMarginTarget) : null,
+      target: `${netMarginTarget}%`,
+      helper: 'NP / Revenue YTD',
+      formatter: (v) => fmtPct(v, { digits: 1 }),
+    },
+    {
+      label: 'OpEx Ratio',
+      value: opexRatioPct,
+      status: opexRatioPct != null ? statusForOpExRatio(opexRatioPct, opexRatioTarget) : null,
+      target: `≤ ${opexRatioTarget}%`,
+      helper: 'OpEx / Revenue YTD',
+      formatter: (v) => fmtPct(v, { digits: 1 }),
+    },
+  ]
+
   return (
     <section className="bg-white border border-gray-200 rounded-xl p-5 sm:p-6">
-      <header className="mb-3 flex items-center justify-between gap-3">
+      <header className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900 flex items-center gap-2">
             <Target className="w-5 h-5 text-brand-navy" />
             KPI scorecard
           </h2>
-          <p className="text-sm text-gray-500 mt-0.5">Health check vs your targets</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Health check vs your targets · year-to-date
+          </p>
         </div>
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-50 text-gray-500 border border-gray-200">
-          Coming soon · 58.2
-        </span>
       </header>
-      <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
-        Traffic-light KPI scorecard ships in Phase 58.2 — Revenue Growth, Gross Margin, Net Margin and OpEx ratios computed against your targets.
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {cards.map((c) => <ScorecardItemCard key={c.label} {...c} />)}
       </div>
     </section>
   )
 }
 
+interface ScorecardItem {
+  label: string
+  value: number | null
+  status: ScoreStatus | null
+  target: string
+  helper: string
+  formatter: (v: number) => string
+}
+
+function ScorecardItemCard({ label, value, status, target, helper, formatter }: ScorecardItem) {
+  const valueDisplay = value == null ? '—' : formatter(value)
+  const valueColor = status == null ? 'text-gray-400' : STATUS_TEXT[status]
+  return (
+    <article className="relative bg-white border border-gray-200 rounded-lg p-4 flex flex-col gap-2">
+      {status != null && (
+        <span
+          className={`absolute top-3 right-3 w-2.5 h-2.5 rounded-full ${STATUS_DOT[status]}`}
+          aria-label={`Status: ${status}`}
+        />
+      )}
+      <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
+        {label}
+      </span>
+      <div className={`text-3xl font-semibold tabular-nums leading-none ${valueColor}`}>
+        {valueDisplay}
+      </div>
+      <div className="text-xs text-gray-500">Target: {target}</div>
+      <div className="text-[11px] text-gray-400 pt-1 border-t border-gray-100 mt-1">
+        {helper}
+      </div>
+    </article>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Section 5 — Insights placeholder (Phase 58.2)
+// Section 5 — Insights placeholder (real implementation in Phase 58.2 — Part 2)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function InsightsPlaceholder() {
