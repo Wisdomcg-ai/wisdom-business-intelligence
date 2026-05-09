@@ -1,8 +1,11 @@
 'use client'
 
-import { TrendingUp, Settings, Clock } from 'lucide-react'
+import { LayoutDashboard, TrendingUp, Settings, Clock } from 'lucide-react'
 
-export type ForecastTab = 'pl' | 'assumptions' | 'versions'
+export type ForecastTab = 'overview' | 'pl' | 'assumptions' | 'versions'
+
+/** All valid tab IDs — used for localStorage migration validation. */
+export const FORECAST_TAB_IDS: readonly ForecastTab[] = ['overview', 'pl', 'assumptions', 'versions'] as const
 
 interface ForecastTabsProps {
   activeTab: ForecastTab
@@ -10,9 +13,10 @@ interface ForecastTabsProps {
 }
 
 const tabs: { id: ForecastTab; label: string; icon: typeof TrendingUp }[] = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'pl', label: 'P&L Forecast', icon: TrendingUp },
   { id: 'assumptions', label: 'Assumptions', icon: Settings },
-  { id: 'versions', label: 'Versions', icon: Clock }
+  { id: 'versions', label: 'Versions', icon: Clock },
 ]
 
 export default function ForecastTabs({ activeTab, onTabChange }: ForecastTabsProps) {
