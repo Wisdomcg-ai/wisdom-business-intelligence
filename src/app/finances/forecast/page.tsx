@@ -652,15 +652,17 @@ export default function FinancialForecastPage() {
           />
         </div>
 
-        {/* KPI Summary */}
-        <ForecastKPISummary
-          assumptions={parsedAssumptions}
-          forecast={forecast}
-          plLines={plLines}
-        />
+        {/* KPI Summary — hidden on Overview tab (Overview has its own scorecard) */}
+        {activeTab !== 'overview' && (
+          <ForecastKPISummary
+            assumptions={parsedAssumptions}
+            forecast={forecast}
+            plLines={plLines}
+          />
+        )}
 
-        {/* Multi-Year Summary (Year 2/3) */}
-        {parsedAssumptions && (
+        {/* Multi-Year Summary (Year 2/3) — hidden on Overview tab */}
+        {activeTab !== 'overview' && parsedAssumptions && (
           <ForecastMultiYearSummary
             assumptions={parsedAssumptions}
             fiscalYear={selectedFiscalYear || forecast.fiscal_year}
