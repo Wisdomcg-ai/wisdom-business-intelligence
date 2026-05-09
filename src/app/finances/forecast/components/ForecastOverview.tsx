@@ -294,9 +294,58 @@ export default function ForecastOverview({
       ? Math.round((assumptions.goals.year1.netProfitPct / 100) * revenuePlan)
       : forecast.net_profit_goal ?? sum(totals.netProfit)
 
+  // Phase 58.3 — pull live cash balance from Xero. The Cash KPI card renders
+  // a "—" placeholder until this resolves (or stays placeholder if the tenant
+  // has no bank accounts / no Xero connection). Errors are intentionally
+  // swallowed → cash card simply stays in placeholder state, never blocks
+  // the rest of the dashboard.
+  const [cashPosition, setCashPosition] = useState<number | null>(null)
+  const [cashAsOf, setCashAsOf] = useState<string | null>(null)
+  const [cashLoading, setCashLoading] = useState(true)
+  const [cashUnavailable, setCashUnavailable] = useState(false)
+
+  useEffect(() => {
+    if (!businessId) return
+    let cancelled = false
+    setCashLoading(true)
+    setCashUnavailable(false)
+
+    fetch(`/api/Xero/balance-sheet?business_id=${encodeURIComponent(businessId)}&cash_only=true`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return (await res.json()) as { cash: number | null; currency: string; as_of: string }
+      })
+      .then((json) => {
+        if (cancelled) return
+        setCashPosition(json.cash)
+        setCashAsOf(json.as_of ?? null)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        console.warn('[ForecastOverview] cash position fetch failed', err)
+        setCashUnavailable(true)
+      })
+      .finally(() => {
+        if (!cancelled) setCashLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [businessId])
+
   return (
     <div className="space-y-6">
-      <KpiStrip totals={totals} revenuePlan={revenuePlan} grossPlan={grossPlan} netPlan={netPlan} />
+      <KpiStrip
+        totals={totals}
+        revenuePlan={revenuePlan}
+        grossPlan={grossPlan}
+        netPlan={netPlan}
+        cashPosition={cashPosition}
+        cashAsOf={cashAsOf}
+        cashLoading={cashLoading}
+        cashUnavailable={cashUnavailable}
+      />
       <TrajectoryCard
         businessId={businessId}
         fiscalYear={fiscalYear}
@@ -350,9 +399,24 @@ interface KpiStripProps {
   revenuePlan: number
   grossPlan: number
   netPlan: number
+  /** Live Xero bank balance, null when unavailable / no bank accounts. */
+  cashPosition: number | null
+  cashAsOf: string | null
+  cashLoading: boolean
+  /** True when the BS endpoint errored (auth, no connection, etc). */
+  cashUnavailable: boolean
 }
 
-function KpiStrip({ totals, revenuePlan, grossPlan, netPlan }: KpiStripProps) {
+function KpiStrip({
+  totals,
+  revenuePlan,
+  grossPlan,
+  netPlan,
+  cashPosition,
+  cashAsOf,
+  cashLoading,
+  cashUnavailable,
+}: KpiStripProps) {
   const lastActualIndex = totals.lastActualIndex
   const monthsElapsed = lastActualIndex + 1 // number of months with actuals so far
   const ytdProrate = (annualPlan: number) =>
@@ -410,6 +474,10 @@ function KpiStrip({ totals, revenuePlan, grossPlan, netPlan }: KpiStripProps) {
       label: 'Cash Position',
       cashMode: true,
       accent: 'navy',
+      cashPosition,
+      cashAsOf,
+      cashLoading,
+      cashUnavailable,
     },
   ]
 
@@ -439,6 +507,10 @@ type KpiCardProps =
       label: string
       accent: 'navy' | 'teal' | 'orange'
       cashMode: true
+      cashPosition: number | null
+      cashAsOf: string | null
+      cashLoading: boolean
+      cashUnavailable: boolean
     }
 
 const ACCENT_STROKE: Record<'navy' | 'teal' | 'orange', string> = {
@@ -454,23 +526,54 @@ const ACCENT_FILL: Record<'navy' | 'teal' | 'orange', string> = {
 
 function KpiCard(props: KpiCardProps) {
   if (props.cashMode) {
+    const { cashPosition, cashAsOf, cashLoading, cashUnavailable } = props
+    const hasCash = cashPosition != null && Number.isFinite(cashPosition)
+
+    // Format the as-of date as "as of 7 May 2026" — falls back gracefully
+    // when no date string is present.
+    const asOfLabel = (() => {
+      if (!cashAsOf) return null
+      const d = new Date(cashAsOf)
+      if (Number.isNaN(d.getTime())) return null
+      return d.toLocaleDateString('en-AU', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+    })()
+
+    const helperText = cashUnavailable
+      ? 'Connect Xero to see your live cash position.'
+      : !hasCash && !cashLoading
+      ? 'No bank accounts found in Xero.'
+      : asOfLabel
+      ? `Live bank balance from Xero · as of ${asOfLabel}`
+      : 'Live bank balance from Xero'
+
     return (
       <article className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-3.5">
         <header className="flex items-start justify-between gap-2">
           <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
             {props.label}
           </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-50 text-gray-500 border border-gray-200">
-            Coming soon
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+            <DollarSign className="w-3 h-3" strokeWidth={2.5} />
+            Live
           </span>
         </header>
         <div>
-          <div className="text-3xl font-semibold text-gray-300 tabular-nums leading-none">—</div>
-          <div className="mt-1 text-xs text-gray-400">Cash from Xero · Phase 58.3</div>
+          <div
+            className={`text-3xl font-semibold tabular-nums leading-none ${
+              hasCash ? 'text-gray-900' : 'text-gray-300'
+            }`}
+          >
+            {cashLoading && !hasCash ? '…' : hasCash ? fmtMoney(cashPosition!, { compact: true }) : '—'}
+          </div>
+          <div className="mt-1 text-xs text-gray-500">Available cash</div>
         </div>
         <div className="h-9" />
-        <p className="text-xs text-gray-400 pt-1 border-t border-gray-100 mt-1 pt-3">
-          We&apos;ll wire your live bank balance from Xero in the next release.
+        <p className="text-xs text-gray-500 pt-1 border-t border-gray-100 mt-1 pt-3">
+          {helperText}
         </p>
       </article>
     )

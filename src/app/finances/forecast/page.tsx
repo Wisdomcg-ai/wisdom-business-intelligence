@@ -28,6 +28,7 @@ import VersionsTab from './components/VersionsTab'
 import XeroConnectionPanel from './components/XeroConnectionPanel'
 import ForecastTabs, { FORECAST_TAB_IDS, type ForecastTab } from './components/ForecastTabs'
 import ForecastOverview from './components/ForecastOverview'
+import ForecastEmptyState from './components/ForecastEmptyState'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useXeroSync } from './hooks/useXeroSync'
 import { useVersionManager } from './hooks/useVersionManager'
@@ -437,28 +438,23 @@ export default function FinancialForecastPage() {
     return forecastMonths.length === 0 || forecastMonths.every(key => !line.forecast_months[key])
   })
 
-  // Skip welcome screen — go straight to forecast selector/wizard
+  // Phase 58.3 — inline empty state for tenants who haven't built a forecast.
+  // Replaces the legacy auto-show ForecastSelector flow that fired here.
+  // The "Create Forecast" CTA inside ForecastEmptyState opens the wizard
+  // fresh; the existing ForecastSelector remains accessible later via the
+  // page-header "Forecast Builder" button (modal path lower down).
   if (isNewForecast && !showWizardV4 && !skipWelcome) {
     return (
       <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
-        {/* Auto-show forecast selector — no welcome/start screen */}
-        <ForecastSelector
+        <ForecastEmptyState
           businessId={businessId}
-          businessName={activeBusiness?.name}
           fiscalYear={selectedFiscalYear || forecast.fiscal_year}
-          onSelectForecast={(id, name) => {
-            setSelectedForecastId(id)
-            setSelectedForecastName(name)
-            setWizardStartFresh(false)
-            setShowWizardV4(true)
-          }}
-          onCreateNew={() => {
+          onCreateForecast={() => {
             setSelectedForecastId(null)
             setSelectedForecastName(null)
             setWizardStartFresh(true)
             setShowWizardV4(true)
           }}
-          onClose={() => setSkipWelcome(true)}
         />
       </div>
     )
