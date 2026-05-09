@@ -28,6 +28,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import {
   Bar,
   CartesianGrid,
@@ -320,7 +321,17 @@ export default function ForecastOverview({
         yearStartMonth={yearStartMonth}
         assumptions={assumptions}
       />
-      <InsightsPlaceholder />
+      <InsightsCard
+        plLines={plLines}
+        totals={totals}
+        monthLabels={monthLabels}
+        fiscalYear={fiscalYear}
+        yearStartMonth={yearStartMonth}
+        revenuePlan={revenuePlan}
+        grossPlan={grossPlan}
+        netPlan={netPlan}
+        assumptions={assumptions}
+      />
       <FooterLinks
         onEditPlan={onEditPlan}
         onOpenPL={() => onSwitchTab('pl')}
@@ -1287,27 +1298,343 @@ function ScorecardItemCard({ label, value, status, target, helper, formatter }: 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Section 5 — Insights placeholder (real implementation in Phase 58.2 — Part 2)
+// Section 5 — Heuristic insights (Phase 58.2)
+//
+// Evaluates 8 rules against current data and surfaces the top 3 by urgency
+// (HIGH > MED > LOW; tie-break by absolute variance). Pure heuristics — no AI.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function InsightsPlaceholder() {
+const INSIGHT_VARIANCE_THRESHOLD = 0.05 // 5%
+
+type InsightSeverity = 'positive' | 'warning' | 'neutral'
+type InsightUrgency = 'HIGH' | 'MED' | 'LOW'
+
+interface Insight {
+  id: string
+  text: string
+  severity: InsightSeverity
+  urgency: InsightUrgency
+  /** Absolute variance magnitude — used for tie-breaking within urgency tier. */
+  magnitude: number
+}
+
+const URGENCY_RANK: Record<InsightUrgency, number> = { HIGH: 3, MED: 2, LOW: 1 }
+
+interface InsightsCardProps {
+  plLines: PLLine[]
+  totals: MonthlyTotals
+  monthLabels: string[]
+  fiscalYear: number
+  yearStartMonth: number
+  revenuePlan: number
+  grossPlan: number
+  netPlan: number
+  assumptions: ForecastAssumptions | null
+}
+
+/**
+ * Determine the strongest revenue month in the actual window.
+ * Returns the month label, or null if no actuals.
+ */
+function strongestActualMonth(values: number[], labels: string[], lastActualIndex: number): string | null {
+  if (lastActualIndex < 0) return null
+  let best = -Infinity
+  let idx = -1
+  for (let i = 0; i <= lastActualIndex; i += 1) {
+    if (values[i] > best) {
+      best = values[i]
+      idx = i
+    }
+  }
+  return idx >= 0 ? labels[idx] : null
+}
+
+/**
+ * Find the largest OpEx variance contributor across team/opex/subs YTD.
+ * Returns a friendly category name.
+ */
+function largestOpExCategory(
+  totals: MonthlyTotals,
+  monthsElapsed: number,
+  opexPlan: number,
+): string {
+  if (monthsElapsed <= 0) return 'operating costs'
+  const slice = (xs: number[]) => sum(xs.slice(0, monthsElapsed))
+  const teamYTD = slice(totals.team)
+  const opexYTD = slice(totals.opex)
+  const subsYTD = slice(totals.subs)
+  // Prorated even-split per category isn't reliably known; just pick the
+  // largest absolute YTD bucket as the contributor signal.
+  const items: Array<{ label: string; value: number }> = [
+    { label: 'team costs', value: teamYTD },
+    { label: 'general opex', value: opexYTD },
+    { label: 'subscriptions', value: subsYTD },
+  ]
+  items.sort((a, b) => b.value - a.value)
+  return items[0]?.label ?? 'operating costs'
+}
+
+/**
+ * Compute monthly gross-margin pct only for months with revenue, restricted
+ * to actual months. Returns the array of margin pcts (0..100).
+ */
+function actualMonthlyGrossMargins(totals: MonthlyTotals): number[] {
+  const out: number[] = []
+  const last = totals.lastActualIndex
+  for (let i = 0; i <= last; i += 1) {
+    const r = totals.revenue[i]
+    if (r > 0) out.push((totals.grossProfit[i] / r) * 100)
+  }
+  return out
+}
+
+/**
+ * Find a single line item running >20% over its own forecast YTD.
+ * Returns { name, actualYTD, plannedYTD, variancePct } or null.
+ */
+function findCategoryOverBudget(
+  plLines: PLLine[],
+  fiscalYear: number,
+  yearStartMonth: number,
+  monthsElapsed: number,
+): { name: string; actual: number; planned: number; variancePct: number } | null {
+  if (monthsElapsed <= 0) return null
+  const monthKeys = generateFiscalMonthKeys(fiscalYear, yearStartMonth).slice(0, monthsElapsed)
+  let worst: { name: string; actual: number; planned: number; variancePct: number } | null = null
+  for (const line of plLines) {
+    // Only consider expense-side lines
+    if (isRevenue(line) || isCOGS(line)) continue
+    if (!isOpEx(line)) continue
+    const am = (line.actual_months || {}) as Record<string, number>
+    const fm = (line.forecast_months || {}) as Record<string, number>
+    let actual = 0
+    let planned = 0
+    for (const k of monthKeys) {
+      actual += Number(am[k]) || 0
+      planned += Number(fm[k]) || 0
+    }
+    if (planned <= 0 || actual <= 0) continue
+    const variancePct = ((actual - planned) / planned) * 100
+    if (variancePct <= 20) continue
+    if (!worst || variancePct > worst.variancePct) {
+      worst = {
+        name: line.account_name || line.subcategory || line.category || 'a category',
+        actual,
+        planned,
+        variancePct,
+      }
+    }
+  }
+  return worst
+}
+
+function generateInsights({
+  plLines,
+  totals,
+  monthLabels,
+  fiscalYear,
+  yearStartMonth,
+  revenuePlan,
+  grossPlan,
+  netPlan,
+  assumptions,
+}: InsightsCardProps): Insight[] {
+  const insights: Insight[] = []
+  const monthsElapsed = totals.lastActualIndex + 1
+  if (monthsElapsed <= 0) return insights // no actuals → no insights
+
+  const ytdSlice = (xs: number[]) => sum(xs.slice(0, monthsElapsed))
+  const proratedPlan = (annual: number) =>
+    annual > 0 ? (annual / 12) * monthsElapsed : 0
+
+  const ytdRevenue = ytdSlice(totals.revenue)
+  const ytdNP = ytdSlice(totals.netProfit)
+  const ytdOpEx =
+    ytdSlice(totals.team) + ytdSlice(totals.opex) + ytdSlice(totals.subs)
+
+  const planRevYTD = proratedPlan(revenuePlan)
+  const opexAnnualPlan =
+    revenuePlan > 0 && grossPlan > 0 && netPlan != null
+      ? Math.max(0, grossPlan - netPlan) // GP − NP = OpEx (excludes COGS)
+      : 0
+  const planOpExYTD = proratedPlan(opexAnnualPlan)
+
+  // ── Rule 1 / 2 — Revenue YTD vs plan ───────────────────────────────────────
+  if (planRevYTD > 0) {
+    const variance = ytdRevenue - planRevYTD
+    const variancePct = variance / planRevYTD
+    if (variancePct > INSIGHT_VARIANCE_THRESHOLD) {
+      const strongest = strongestActualMonth(totals.revenue, monthLabels, totals.lastActualIndex)
+      insights.push({
+        id: 'rev-above',
+        text: `Revenue is ${fmtMoney(variance, { compact: true })} above plan YTD${strongest ? `, driven by ${strongest} performance` : ''}.`,
+        severity: 'positive',
+        urgency: 'LOW',
+        magnitude: Math.abs(variance),
+      })
+    } else if (variancePct < -INSIGHT_VARIANCE_THRESHOLD) {
+      const gap = Math.abs(variance)
+      insights.push({
+        id: 'rev-below',
+        text: `Revenue is ${fmtMoney(gap, { compact: true })} below plan — focus on closing the ${fmtMoney(gap, { compact: true })} gap by year-end.`,
+        severity: 'warning',
+        urgency: 'HIGH',
+        magnitude: gap,
+      })
+    }
+  }
+
+  // ── Rule 3 — OpEx YTD over budget ──────────────────────────────────────────
+  if (planOpExYTD > 0) {
+    const variance = ytdOpEx - planOpExYTD
+    const variancePct = variance / planOpExYTD
+    if (variancePct > INSIGHT_VARIANCE_THRESHOLD) {
+      const contributor = largestOpExCategory(totals, monthsElapsed, planOpExYTD)
+      insights.push({
+        id: 'opex-over',
+        text: `Operating costs are ${fmtMoney(variance, { compact: true })} over budget — ${contributor} is the biggest contributor.`,
+        severity: 'warning',
+        urgency: 'MED',
+        magnitude: Math.abs(variance),
+      })
+    }
+  }
+
+  // ── Rule 4 / 5 — Gross margin trend (last 3mo vs prior 6mo avg) ───────────
+  const margins = actualMonthlyGrossMargins(totals)
+  if (margins.length >= 4) {
+    const last3 = margins.slice(-3)
+    const prior6 = margins.slice(Math.max(0, margins.length - 9), margins.length - 3)
+    if (prior6.length > 0) {
+      const last3Avg = sum(last3) / last3.length
+      const prior6Avg = sum(prior6) / prior6.length
+      const delta = last3Avg - prior6Avg
+      if (delta < -1) {
+        insights.push({
+          id: 'gm-down',
+          text: `Gross margin has slipped ${Math.abs(delta).toFixed(1)}pt over the last 3 months — review pricing or COGS.`,
+          severity: 'warning',
+          urgency: 'MED',
+          magnitude: Math.abs(delta),
+        })
+      } else if (delta > 1) {
+        insights.push({
+          id: 'gm-up',
+          text: `Gross margin has improved ${delta.toFixed(1)}pt over the last 3 months — keep doing what's working.`,
+          severity: 'positive',
+          urgency: 'LOW',
+          magnitude: delta,
+        })
+      }
+    }
+  }
+
+  // ── Rule 6 — Net margin above target ───────────────────────────────────────
+  if (ytdRevenue > 0) {
+    const target = assumptions?.goals?.year1?.netProfitPct ?? SCORECARD_DEFAULTS.netMarginPct
+    const current = (ytdNP / ytdRevenue) * 100
+    if (current > target) {
+      insights.push({
+        id: 'np-above',
+        text: `Net margin is ${current.toFixed(1)}% (above ${target}% target) — strong profitability.`,
+        severity: 'positive',
+        urgency: 'LOW',
+        magnitude: current - target,
+      })
+    }
+  }
+
+  // ── Rule 7 — Year-end forecast vs plan ─────────────────────────────────────
+  if (revenuePlan > 0) {
+    const yearEndForecast = sum(totals.revenue) // actuals + forecasted
+    const variance = yearEndForecast - revenuePlan
+    const variancePct = variance / revenuePlan
+    if (Math.abs(variancePct) > INSIGHT_VARIANCE_THRESHOLD) {
+      const direction = variance >= 0 ? 'above' : 'below'
+      insights.push({
+        id: 'fy-forecast',
+        text: `Forecast year-end revenue is ${fmtMoney(Math.abs(variance), { compact: true })} ${direction} plan (${fmtMoney(yearEndForecast, { compact: true })} vs ${fmtMoney(revenuePlan, { compact: true })}).`,
+        severity: variance >= 0 ? 'neutral' : 'warning',
+        urgency: variance < 0 ? 'HIGH' : 'LOW',
+        magnitude: Math.abs(variance),
+      })
+    }
+  }
+
+  // ── Rule 8 — Single category running >20% over budget ──────────────────────
+  const overBudgetLine = findCategoryOverBudget(plLines, fiscalYear, yearStartMonth, monthsElapsed)
+  if (overBudgetLine) {
+    insights.push({
+      id: `cat-over-${overBudgetLine.name}`,
+      text: `${overBudgetLine.name} is running ${overBudgetLine.variancePct.toFixed(0)}% over budget (${fmtMoney(overBudgetLine.actual, { compact: true })} vs ${fmtMoney(overBudgetLine.planned, { compact: true })}).`,
+      severity: 'warning',
+      urgency: 'HIGH',
+      magnitude: overBudgetLine.actual - overBudgetLine.planned,
+    })
+  }
+
+  return insights
+}
+
+function pickTopInsights(all: Insight[], n: number): Insight[] {
+  return [...all]
+    .sort((a, b) => {
+      const dr = URGENCY_RANK[b.urgency] - URGENCY_RANK[a.urgency]
+      if (dr !== 0) return dr
+      return b.magnitude - a.magnitude
+    })
+    .slice(0, n)
+}
+
+const SEVERITY_ICON: Record<InsightSeverity, LucideIcon> = {
+  positive: TrendingUp,
+  warning: AlertTriangle,
+  neutral: Activity,
+}
+const SEVERITY_COLOR: Record<InsightSeverity, string> = {
+  positive: 'text-emerald-600',
+  warning: 'text-amber-600',
+  neutral: 'text-gray-600',
+}
+
+function InsightsCard(props: InsightsCardProps) {
+  const allInsights = useMemo(() => generateInsights(props), [props])
+  const top = useMemo(() => pickTopInsights(allInsights, 3), [allInsights])
+
   return (
     <section className="bg-white border border-gray-200 rounded-xl p-5 sm:p-6">
-      <header className="mb-3 flex items-center justify-between gap-3">
+      <header className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900 flex items-center gap-2">
             <Activity className="w-5 h-5 text-brand-navy" />
             Insights this month
           </h2>
-          <p className="text-sm text-gray-500 mt-0.5">Auto-generated commentary based on your numbers</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Auto-generated commentary based on your numbers
+          </p>
         </div>
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-50 text-gray-500 border border-gray-200">
-          Coming soon · 58.2
-        </span>
       </header>
-      <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
-        Heuristic commentary (variance vs plan, trend changes, cost ratios) ships in Phase 58.2.
-      </div>
+
+      {top.length === 0 ? (
+        <div className="rounded-lg bg-gray-50 border border-gray-100 p-4 text-sm text-gray-700">
+          Everything&apos;s tracking close to plan. Solid month.
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {top.map((ins) => {
+            const Icon = SEVERITY_ICON[ins.severity]
+            return (
+              <li key={ins.id} className="flex items-start gap-3">
+                <Icon
+                  className={`w-4 h-4 mt-0.5 shrink-0 ${SEVERITY_COLOR[ins.severity]}`}
+                  strokeWidth={2.25}
+                />
+                <span className="text-sm text-gray-700 leading-relaxed">{ins.text}</span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </section>
   )
 }
