@@ -620,10 +620,15 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
     const cogsDelta = priorYear.cogs.total - cogsLineSum;
     const opexDelta = priorYear.opex.total - opexLineSum;
 
-    const DRIFT_THRESHOLD = 1; // $1, ignores rounding noise.
-    const hasRevenueDrift = Math.abs(revenueDelta) > DRIFT_THRESHOLD;
-    const hasCogsDrift = Math.abs(cogsDelta) > DRIFT_THRESHOLD;
-    const hasOpexDrift = Math.abs(opexDelta) > DRIFT_THRESHOLD;
+    // Threshold ignores rounding noise from original ingest.
+    // $7 drift on $9.9M revenue is per-line cent-rounding at capture time,
+    // not real drift. Real drift (Xero updated post-creation) is typically
+    // thousands of dollars.
+    const driftThreshold = (xeroTotal: number) =>
+      Math.max(100, Math.abs(xeroTotal) * 0.001);
+    const hasRevenueDrift = Math.abs(revenueDelta) > driftThreshold(priorYear.revenue.total);
+    const hasCogsDrift = Math.abs(cogsDelta) > driftThreshold(priorYear.cogs.total);
+    const hasOpexDrift = Math.abs(opexDelta) > driftThreshold(priorYear.opex.total);
 
     return {
       hasDrift: hasRevenueDrift || hasCogsDrift || hasOpexDrift,
