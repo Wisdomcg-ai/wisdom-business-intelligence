@@ -1,7 +1,7 @@
 'use client'
 
 import { Lock } from 'lucide-react'
-import { getFiscalYearDateRange } from '../utils/fiscal-year'
+import { getCurrentFiscalYear, getFiscalYearDateRange } from '../utils/fiscal-year'
 
 export interface FYOption {
   year: number
@@ -14,6 +14,20 @@ interface FYSelectorTabsProps {
   selectedYear: number
   onSelectYear: (year: number) => void
   isLockedMap?: Record<number, boolean>
+  /** Year-start month (1-12), defaults to 7 (AU FY). */
+  yearStartMonth?: number
+}
+
+/**
+ * Returns the descriptor for a given fiscal year relative to today.
+ *   - tab.year < currentFY  → "Prior"
+ *   - tab.year === currentFY → "Current"
+ *   - tab.year > currentFY  → "Forecast"
+ */
+function descriptorFor(year: number, currentFY: number): 'Prior' | 'Current' | 'Forecast' {
+  if (year < currentFY) return 'Prior'
+  if (year > currentFY) return 'Forecast'
+  return 'Current'
 }
 
 export function FYSelectorTabs({
@@ -21,7 +35,10 @@ export function FYSelectorTabs({
   selectedYear,
   onSelectYear,
   isLockedMap = {},
+  yearStartMonth = 7,
 }: FYSelectorTabsProps) {
+  const currentFY = getCurrentFiscalYear(yearStartMonth)
+
   // If only one year, render as informational label rather than interactive selector
   if (availableYears.length <= 1) {
     const single = availableYears[0]
@@ -42,13 +59,14 @@ export function FYSelectorTabs({
       {availableYears.map((fy) => {
         const isSelected = fy.year === selectedYear
         const isLocked = isLockedMap[fy.year] === true
+        const descriptor = descriptorFor(fy.year, currentFY)
 
         return (
           <button
             key={fy.year}
             onClick={() => onSelectYear(fy.year)}
             className={`
-              flex flex-col items-center px-4 py-2 rounded-full border transition-all text-left min-w-[100px]
+              flex flex-col items-center px-4 py-2.5 rounded-full border transition-all text-left min-w-[100px]
               ${isSelected
                 ? 'bg-brand-navy text-white border-brand-navy shadow-sm'
                 : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
@@ -64,11 +82,11 @@ export function FYSelectorTabs({
               )}
             </div>
             <span
-              className={`text-xs mt-0.5 leading-none ${
-                isSelected ? 'text-white/70' : 'text-gray-400'
+              className={`text-[10px] uppercase tracking-wide leading-none mt-1 ${
+                isSelected ? 'text-white/70' : 'text-gray-500/80'
               }`}
             >
-              {getFiscalYearDateRange(fy.year)}
+              {descriptor}
             </span>
           </button>
         )
