@@ -74,6 +74,79 @@ export function getFiscalMonthLabels(yearStartMonth: number = DEFAULT_YEAR_START
 }
 
 /**
+ * Get ordered month abbreviations with 2-digit calendar year suffix.
+ *
+ * yearStartMonth=7, fiscalYear=2026:
+ *   ['Jul 25', 'Aug 25', 'Sep 25', 'Oct 25', 'Nov 25', 'Dec 25',
+ *    'Jan 26', 'Feb 26', 'Mar 26', 'Apr 26', 'May 26', 'Jun 26']
+ *
+ * yearStartMonth=1, fiscalYear=2026:
+ *   ['Jan 26', 'Feb 26', ..., 'Dec 26']
+ */
+export function getFiscalMonthLabelsWithYear(
+  fiscalYear: number,
+  yearStartMonth: number = DEFAULT_YEAR_START_MONTH,
+): string[] {
+  const labels: string[] = []
+  for (let i = 0; i < 12; i++) {
+    const calMonth = calendarMonthFromFiscalIndex(i, yearStartMonth)
+    const calYear =
+      yearStartMonth === 1
+        ? fiscalYear
+        : calMonth >= yearStartMonth
+          ? fiscalYear - 1
+          : fiscalYear
+    const yy = String(calYear % 100).padStart(2, '0')
+    labels.push(`${MONTH_ABBREVS[calMonth - 1]} ${yy}`)
+  }
+  return labels
+}
+
+/**
+ * Get the fiscal-month index (0..11) of the last calendar month whose
+ * month-end has fully passed as of `today`. Returns -1 when the fiscal year
+ * hasn't started yet, and 11 when the fiscal year has fully ended.
+ *
+ * Examples (yearStartMonth=7):
+ *   today=2026-05-10, fiscalYear=2026 → 9 (April 2026, idx 9 in Jul-Jun layout)
+ *   today=2026-05-01, fiscalYear=2026 → 9 (April closed Apr 30)
+ *   today=2025-07-15, fiscalYear=2026 → -1 (no month closed yet inside FY26)
+ *   today=2026-07-05, fiscalYear=2026 → 11 (June 2026 closed, FY done)
+ *   today=2026-05-10, fiscalYear=2027 → -1 (FY27 hasn't started)
+ *
+ * Used by dashboards to surface "April should be actual but data hasn't
+ * synced yet" — the cutoff is the calendar truth, not whatever happens to
+ * exist in actual_months.
+ */
+export function getExpectedLastActualIndex(
+  fiscalYear: number,
+  yearStartMonth: number = DEFAULT_YEAR_START_MONTH,
+  today: Date = new Date(),
+): number {
+  const fyStart = getFiscalYearStartDate(fiscalYear, yearStartMonth)
+  const fyEnd = getFiscalYearEndDate(fiscalYear, yearStartMonth)
+
+  // Compute first-of-current-month (everything before this is closed)
+  const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+
+  // FY hasn't started yet
+  if (currentMonthStart <= fyStart) return -1
+
+  // FY fully ended → all 12 months are actual
+  if (currentMonthStart > fyEnd) return 11
+
+  // Last closed month = month BEFORE current month
+  const lastClosed = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+  const lastClosedCalMonth = lastClosed.getMonth() + 1 // 1-12
+
+  // Translate calendar month → fiscal-month index
+  const idx = getFiscalMonthIndex(lastClosedCalMonth, yearStartMonth)
+  // Clamp to [0, 11] — the fyStart/fyEnd guards above ensure we land here only
+  // when lastClosed is within the FY window.
+  return Math.max(0, Math.min(11, idx))
+}
+
+/**
  * Generate YYYY-MM month keys for a fiscal year.
  * yearStartMonth=7, fiscalYear=2026: ['2025-07', '2025-08', ..., '2026-06']
  * yearStartMonth=1, fiscalYear=2026: ['2026-01', '2026-02', ..., '2026-12']
