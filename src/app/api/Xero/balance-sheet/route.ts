@@ -74,6 +74,13 @@ function mapSubtotalLabel(xeroLabel: string): string {
  * Fetches Xero /Reports/BalanceSheet for the given month and parses it
  * into the Calxa flat-section format with 4 columns:
  *   Current Actuals | Prior Actuals | Variance | % Variance
+ *
+ * Phase 58.3: when `cash_only=true` is passed, returns only the bank account
+ * balance summary used by the forecast Overview's Cash KPI card:
+ *   { cash: number | null, currency: string, as_of: string }
+ * In this mode `month` is optional (defaults to today). Bank rows are detected
+ * by looking inside the Assets section for sub-sections titled "Bank" — this
+ * is how Xero's standardLayout BS groups bank accounts.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -87,9 +94,13 @@ export async function GET(request: NextRequest) {
     const businessId = searchParams.get('business_id')
     const month = searchParams.get('month') // YYYY-MM
     const compare = (searchParams.get('compare') ?? 'yoy') as BalanceSheetCompare
+    const cashOnly = searchParams.get('cash_only') === 'true'
 
-    if (!businessId || !month) {
-      return NextResponse.json({ error: 'business_id and month are required' }, { status: 400 })
+    if (!businessId) {
+      return NextResponse.json({ error: 'business_id is required' }, { status: 400 })
+    }
+    if (!cashOnly && !month) {
+      return NextResponse.json({ error: 'month is required' }, { status: 400 })
     }
 
     const hasAccess = await verifyBusinessAccess(user.id, businessId)
@@ -127,10 +138,20 @@ export async function GET(request: NextRequest) {
 
     const accessToken = tokenResult.accessToken!
     const tenantId = connection.tenant_id
-    const reportDate = lastDayOfMonth(month)
+
+    // Phase 58.3: cash-only mode uses today as the report date when no month
+    // is supplied, since the Cash KPI card only ever needs the current balance.
+    const today = new Date()
+    const todayMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+    const reportDate = lastDayOfMonth(month ?? todayMonth)
     const timeframe = compare === 'mom' ? 'MONTH' : 'YEAR'
 
-    const xeroUrl = `https://api.xero.com/api.xro/2.0/Reports/BalanceSheet?date=${reportDate}&periods=1&timeframe=${timeframe}&standardLayout=true`
+    // Cash-only requests don't need a comparison column — keep the standard
+    // layout so we can locate the "Bank" sub-section consistently with the
+    // full BS path.
+    const xeroUrl = cashOnly
+      ? `https://api.xero.com/api.xro/2.0/Reports/BalanceSheet?date=${reportDate}&periods=1&timeframe=MONTH&standardLayout=true`
+      : `https://api.xero.com/api.xro/2.0/Reports/BalanceSheet?date=${reportDate}&periods=1&timeframe=${timeframe}&standardLayout=true`
     const xeroResp = await fetch(xeroUrl, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -151,11 +172,64 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Empty response from Xero' }, { status: 502 })
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Phase 58.3 — cash_only branch
+    // Walks the Assets section, finds the "Bank" sub-section, and returns
+    // the sum of its line items (excluding any SummaryRow within). Returns
+    // { cash: null } when no bank section / no rows are found, so the UI
+    // can render a friendly placeholder.
+    // ─────────────────────────────────────────────────────────────────────
+    if (cashOnly) {
+      let cashSum: number | null = null
+
+      for (const row of (report.Rows ?? [])) {
+        if (row.RowType !== 'Section') continue
+        const sectionTitle = (row.Title ?? '').trim()
+        // The standardLayout BS nests Bank accounts directly inside Assets
+        // (sub-section title "Bank") OR sometimes lifts them to a top-level
+        // section also titled "Bank". Handle both.
+        const isAssetsLike = sectionTitle === 'Assets' || sectionTitle === 'Bank'
+        if (!isAssetsLike) continue
+
+        const collectFromRows = (rows: any[]) => {
+          for (const r of rows) {
+            if (r.RowType === 'Section') {
+              const innerTitle = (r.Title ?? '').trim()
+              if (innerTitle === 'Bank') {
+                for (const lineRow of (r.Rows ?? [])) {
+                  if (lineRow.RowType !== 'Row') continue
+                  const v = parseAmount(lineRow.Cells?.[1]?.Value ?? '')
+                  if (v !== null) {
+                    cashSum = (cashSum ?? 0) + v
+                  }
+                }
+              }
+            } else if (r.RowType === 'Row' && sectionTitle === 'Bank') {
+              const v = parseAmount(r.Cells?.[1]?.Value ?? '')
+              if (v !== null) {
+                cashSum = (cashSum ?? 0) + v
+              }
+            }
+          }
+        }
+
+        collectFromRows(row.Rows ?? [])
+      }
+
+      return NextResponse.json({
+        cash: cashSum,
+        currency: 'AUD',
+        as_of: reportDate,
+      })
+    }
+
     // Extract period labels from the Header row
+    // (At this point cashOnly is false → `month` is guaranteed non-null by the
+    // upfront validation, but narrow it explicitly for the type checker.)
     const headerRow = report.Rows?.find((r: any) => r.RowType === 'Header')
     const currentLabel = headerRow?.Cells?.[1]?.Value
       ? formatXeroLabel(headerRow.Cells[1].Value)
-      : month
+      : (month as string)
     const priorLabel = headerRow?.Cells?.[2]?.Value
       ? formatXeroLabel(headerRow.Cells[2].Value)
       : ''
