@@ -49,6 +49,25 @@ import {
   getFiscalMonthLabels,
   getFiscalMonthLabelsWithYear,
 } from '@/lib/utils/fiscal-year-utils'
+import { getCurrentFiscalYear } from '../utils/fiscal-year'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FY mode — determines copy / visuals per selected FY tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `prior`   — selected FY ended before current FY → show finals / retrospective copy
+ * `current` — selected FY === current FY          → today's logic (variance vs plan)
+ * `future`  — selected FY > current FY            → show plan-only copy, no judgment
+ */
+type FYMode = 'prior' | 'current' | 'future'
+
+function resolveFYMode(selectedFY: number, yearStartMonth: number): FYMode {
+  const currentFY = getCurrentFiscalYear(yearStartMonth)
+  if (selectedFY < currentFY) return 'prior'
+  if (selectedFY > currentFY) return 'future'
+  return 'current'
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -341,6 +360,17 @@ export default function ForecastOverview({
     [plLines, monthKeys, expectedLastActualIndex],
   )
 
+  // Per-FY mode — drives copy / traffic-light visibility for KPI strip,
+  // scorecard, and insights. Computed once per fiscalYear/yearStartMonth pair.
+  const fyMode = useMemo<FYMode>(
+    () => resolveFYMode(fiscalYear, yearStartMonth),
+    [fiscalYear, yearStartMonth],
+  )
+
+  // Last-edit timestamp surfaces in the future-FY insights message
+  // ("Forecast based on assumptions set in {date}.").
+  const lastEditedAt = forecast.updated_at ?? null
+
   // Plan targets — pull from wizard assumptions if available, fall back to forecast
   const revenuePlan =
     assumptions?.goals?.year1?.revenue ?? forecast.revenue_goal ?? sum(totals.revenue)
@@ -404,6 +434,7 @@ export default function ForecastOverview({
         cashAsOf={cashAsOf}
         cashLoading={cashLoading}
         cashUnavailable={cashUnavailable}
+        fyMode={fyMode}
       />
       <TrajectoryCard
         businessId={businessId}
@@ -428,6 +459,7 @@ export default function ForecastOverview({
         fiscalYear={fiscalYear}
         yearStartMonth={yearStartMonth}
         assumptions={assumptions}
+        fyMode={fyMode}
       />
       <InsightsCard
         plLines={plLines}
@@ -439,6 +471,8 @@ export default function ForecastOverview({
         grossPlan={grossPlan}
         netPlan={netPlan}
         assumptions={assumptions}
+        fyMode={fyMode}
+        lastEditedAt={lastEditedAt}
       />
       <FooterLinks
         onEditPlan={onEditPlan}
@@ -464,6 +498,8 @@ interface KpiStripProps {
   cashLoading: boolean
   /** True when the BS endpoint errored (auth, no connection, etc). */
   cashUnavailable: boolean
+  /** Selected FY relationship to today — drives copy & status pill visibility. */
+  fyMode: FYMode
 }
 
 function KpiStrip({
@@ -475,6 +511,7 @@ function KpiStrip({
   cashAsOf,
   cashLoading,
   cashUnavailable,
+  fyMode,
 }: KpiStripProps) {
   // KPI strip uses the data-driven cutoff (NOT the calendar floor) for YTD and
   // "this month" — including stale-sync months would show $0 as "this month"
@@ -503,45 +540,78 @@ function KpiStrip({
   const thisMonthIdx = dataIdx >= 0 ? dataIdx : 0
   const thisMonth = (xs: number[]) => xs[thisMonthIdx] || 0
 
+  // Last 6 actual months for prior-FY sparklines (use full series since the
+  // year is closed; sparkline() above clips to thisMonthIdx which collapses
+  // to the year-end for prior FY).
+  const sparklinePriorFY = (xs: number[]) => xs.slice(Math.max(0, xs.length - 6))
+
+  // Future-FY sparklines = the plan trajectory across the 12 months. Useful
+  // to show whether the plan is flat / front-loaded / ramping.
+  const sparklineFuture = (xs: number[]) => xs.slice(0, 12)
+
+  /**
+   * Build a KPI card for Revenue / GP / NP, adapted per fyMode:
+   *   - prior   → "Final" pill, year-end actual is the big number
+   *   - current → today's logic (this-month big number, YTD vs prorated plan)
+   *   - future  → "Plan" pill, monthly plan big number, plan-only sub-rows
+   */
+  const buildKpiCard = (
+    label: string,
+    series: number[],
+    annualPlan: number,
+    accent: 'navy' | 'teal' | 'orange',
+  ): KpiCardProps => {
+    const yearEnd = yearTotal(series)
+    if (fyMode === 'prior') {
+      return {
+        label,
+        accent,
+        kind: 'prior',
+        bigNumber: yearEnd,
+        sparkline: sparklinePriorFY(series),
+        actualFinal: yearEnd,
+        plannedFinal: annualPlan,
+      }
+    }
+    if (fyMode === 'future') {
+      // Annualised plan: the most reliable signal is annualPlan / 12.
+      const monthlyPlan = annualPlan > 0 ? annualPlan / 12 : 0
+      return {
+        label,
+        accent,
+        kind: 'future',
+        bigNumber: monthlyPlan,
+        sparkline: sparklineFuture(series),
+        annualPlan,
+      }
+    }
+    // current
+    return {
+      label,
+      accent,
+      kind: 'current',
+      thisMonth: thisMonth(series),
+      sparkline: sparkline(series),
+      ytd: ytdSlice(series),
+      ytdPlanProrated: ytdProrate(annualPlan),
+      yearEnd,
+      yearEndPlan: annualPlan,
+    }
+  }
+
   const cards: KpiCardProps[] = [
-    {
-      label: 'Revenue',
-      thisMonth: thisMonth(totals.revenue),
-      sparkline: sparkline(totals.revenue),
-      ytd: ytdSlice(totals.revenue),
-      ytdPlanProrated: ytdProrate(revenuePlan),
-      yearEnd: yearTotal(totals.revenue),
-      yearEndPlan: revenuePlan,
-      accent: 'navy',
-    },
-    {
-      label: 'Gross Profit',
-      thisMonth: thisMonth(totals.grossProfit),
-      sparkline: sparkline(totals.grossProfit),
-      ytd: ytdSlice(totals.grossProfit),
-      ytdPlanProrated: ytdProrate(grossPlan),
-      yearEnd: yearTotal(totals.grossProfit),
-      yearEndPlan: grossPlan,
-      accent: 'teal',
-    },
-    {
-      label: 'Net Profit',
-      thisMonth: thisMonth(totals.netProfit),
-      sparkline: sparkline(totals.netProfit),
-      ytd: ytdSlice(totals.netProfit),
-      ytdPlanProrated: ytdProrate(netPlan),
-      yearEnd: yearTotal(totals.netProfit),
-      yearEndPlan: netPlan,
-      accent: 'orange',
-    },
+    buildKpiCard('Revenue', totals.revenue, revenuePlan, 'navy'),
+    buildKpiCard('Gross Profit', totals.grossProfit, grossPlan, 'teal'),
+    buildKpiCard('Net Profit', totals.netProfit, netPlan, 'orange'),
     {
       label: 'Cash Position',
-      cashMode: true,
+      kind: 'cash',
       accent: 'navy',
       cashPosition,
       cashAsOf,
       cashLoading,
       cashUnavailable,
+      fyMode,
     },
   ]
 
@@ -557,6 +627,7 @@ function KpiStrip({
 
 type KpiCardProps =
   | {
+      kind: 'current'
       label: string
       thisMonth: number
       sparkline: number[]
@@ -565,16 +636,33 @@ type KpiCardProps =
       yearEnd: number
       yearEndPlan: number
       accent: 'navy' | 'teal' | 'orange'
-      cashMode?: false
     }
   | {
+      kind: 'prior'
+      label: string
+      bigNumber: number
+      sparkline: number[]
+      actualFinal: number
+      plannedFinal: number
+      accent: 'navy' | 'teal' | 'orange'
+    }
+  | {
+      kind: 'future'
+      label: string
+      bigNumber: number
+      sparkline: number[]
+      annualPlan: number
+      accent: 'navy' | 'teal' | 'orange'
+    }
+  | {
+      kind: 'cash'
       label: string
       accent: 'navy' | 'teal' | 'orange'
-      cashMode: true
       cashPosition: number | null
       cashAsOf: string | null
       cashLoading: boolean
       cashUnavailable: boolean
+      fyMode: FYMode
     }
 
 const ACCENT_STROKE: Record<'navy' | 'teal' | 'orange', string> = {
@@ -589,60 +677,31 @@ const ACCENT_FILL: Record<'navy' | 'teal' | 'orange', string> = {
 }
 
 function KpiCard(props: KpiCardProps) {
-  if (props.cashMode) {
-    const { cashPosition, cashAsOf, cashLoading, cashUnavailable } = props
-    const hasCash = cashPosition != null && Number.isFinite(cashPosition)
+  if (props.kind === 'cash') return <KpiCashCard {...props} />
+  if (props.kind === 'prior') return <KpiPriorCard {...props} />
+  if (props.kind === 'future') return <KpiFutureCard {...props} />
+  return <KpiCurrentCard {...props} />
+}
 
-    // Format the as-of date as "as of 7 May 2026" — falls back gracefully
-    // when no date string is present.
-    const asOfLabel = (() => {
-      if (!cashAsOf) return null
-      const d = new Date(cashAsOf)
-      if (Number.isNaN(d.getTime())) return null
-      return d.toLocaleDateString('en-AU', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    })()
+/** Shared neutral "Final" pill for prior FY (the year is closed; no judgment). */
+function FinalPill() {
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
+      Final
+    </span>
+  )
+}
 
-    const helperText = cashUnavailable
-      ? 'Connect Xero to see your live cash position.'
-      : !hasCash && !cashLoading
-      ? 'No bank accounts found in Xero.'
-      : asOfLabel
-      ? `Live bank balance from Xero · as of ${asOfLabel}`
-      : 'Live bank balance from Xero'
+/** Shared neutral "Plan" pill for future FY (no actuals yet). */
+function PlanPill() {
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
+      Plan
+    </span>
+  )
+}
 
-    return (
-      <article className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-3.5">
-        <header className="flex items-start justify-between gap-2">
-          <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
-            {props.label}
-          </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
-            <DollarSign className="w-3 h-3" strokeWidth={2.5} />
-            Live
-          </span>
-        </header>
-        <div>
-          <div
-            className={`text-3xl font-semibold tabular-nums leading-none ${
-              hasCash ? 'text-gray-900' : 'text-gray-300'
-            }`}
-          >
-            {cashLoading && !hasCash ? '…' : hasCash ? fmtMoney(cashPosition!, { compact: true }) : '—'}
-          </div>
-          <div className="mt-1 text-xs text-gray-500">Available cash</div>
-        </div>
-        <div className="h-9" />
-        <p className="text-xs text-gray-500 pt-1 border-t border-gray-100 mt-1 pt-3">
-          {helperText}
-        </p>
-      </article>
-    )
-  }
-
+function KpiCurrentCard(props: Extract<KpiCardProps, { kind: 'current' }>) {
   const { label, thisMonth, sparkline, ytd, ytdPlanProrated, yearEnd, yearEndPlan, accent } = props
   const ytdPct = ytdPlanProrated > 0 ? ytd / ytdPlanProrated : 1
   const yearEndDelta = yearEnd - yearEndPlan
@@ -709,6 +768,174 @@ function KpiCard(props: KpiCardProps) {
           </dd>
         </div>
       </dl>
+    </article>
+  )
+}
+
+function KpiPriorCard(props: Extract<KpiCardProps, { kind: 'prior' }>) {
+  const { label, bigNumber, sparkline, actualFinal, plannedFinal, accent } = props
+  const delta = actualFinal - plannedFinal
+  const hasPlan = plannedFinal > 0
+
+  return (
+    <article className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-3.5">
+      <header className="flex items-start justify-between gap-2">
+        <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
+          {label}
+        </span>
+        <FinalPill />
+      </header>
+
+      <div>
+        <div className="text-3xl font-semibold text-gray-900 tabular-nums leading-none">
+          {fmtMoney(bigNumber, { compact: true })}
+        </div>
+        <div className="mt-1 text-xs text-gray-500">Final</div>
+      </div>
+
+      <Sparkline values={sparkline} stroke={ACCENT_STROKE[accent]} fill={ACCENT_FILL[accent]} />
+
+      <dl className="text-xs space-y-1.5 pt-1 border-t border-gray-100 mt-1">
+        <div className="flex items-baseline justify-between gap-2 pt-2">
+          <dt className="text-gray-500">Final vs plan</dt>
+          <dd className="text-gray-700 tabular-nums">
+            {fmtMoney(actualFinal, { compact: true })}
+            {hasPlan && (
+              <>
+                <span className="text-gray-400"> vs {fmtMoney(plannedFinal, { compact: true })}</span>
+                <span
+                  className={`ml-1 font-medium ${
+                    delta >= 0 ? 'text-emerald-600' : 'text-red-600'
+                  }`}
+                >
+                  ({fmtMoney(delta, { compact: true, signed: true })})
+                </span>
+              </>
+            )}
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-2">
+          <dt className="text-gray-500 flex items-center gap-1">Year-end actual</dt>
+          <dd className="text-gray-700 tabular-nums">{fmtMoney(actualFinal, { compact: true })}</dd>
+        </div>
+      </dl>
+    </article>
+  )
+}
+
+function KpiFutureCard(props: Extract<KpiCardProps, { kind: 'future' }>) {
+  const { label, bigNumber, sparkline, annualPlan, accent } = props
+
+  return (
+    <article className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-3.5">
+      <header className="flex items-start justify-between gap-2">
+        <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
+          {label}
+        </span>
+        <PlanPill />
+      </header>
+
+      <div>
+        <div className="text-3xl font-semibold text-gray-900 tabular-nums leading-none">
+          {fmtMoney(bigNumber, { compact: true })}
+        </div>
+        <div className="mt-1 text-xs text-gray-500">monthly plan</div>
+      </div>
+
+      <Sparkline values={sparkline} stroke={ACCENT_STROKE[accent]} fill={ACCENT_FILL[accent]} />
+
+      <dl className="text-xs space-y-1.5 pt-1 border-t border-gray-100 mt-1">
+        <div className="flex items-baseline justify-between gap-2 pt-2">
+          <dt className="text-gray-500">Annual plan</dt>
+          <dd className="text-gray-700 tabular-nums">
+            {annualPlan > 0 ? fmtMoney(annualPlan, { compact: true }) : '—'}
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-2">
+          <dt className="text-gray-500">Year-end target</dt>
+          <dd className="text-gray-700 tabular-nums">
+            {annualPlan > 0 ? fmtMoney(annualPlan, { compact: true }) : '—'}
+          </dd>
+        </div>
+      </dl>
+    </article>
+  )
+}
+
+function KpiCashCard(props: Extract<KpiCardProps, { kind: 'cash' }>) {
+  const { cashPosition, cashAsOf, cashLoading, cashUnavailable, fyMode } = props
+  const hasCash = cashPosition != null && Number.isFinite(cashPosition)
+
+  // Future FY: no cash forecast available — render explicit "—" with note.
+  // Prior FY: still show the live balance with retrospective copy. The Xero
+  // BS endpoint returns "as of today" which is correct context regardless of
+  // which FY tab is selected (cash is a balance, not an FY-bound flow).
+  const isFuture = fyMode === 'future'
+
+  // Format the as-of date as "as of 7 May 2026" — falls back gracefully
+  // when no date string is present.
+  const asOfLabel = (() => {
+    if (!cashAsOf) return null
+    const d = new Date(cashAsOf)
+    if (Number.isNaN(d.getTime())) return null
+    return d.toLocaleDateString('en-AU', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    })
+  })()
+
+  const subline =
+    fyMode === 'prior' ? 'Cash at year-end' : isFuture ? 'Cash forecast unavailable' : 'Available cash'
+
+  const helperText = isFuture
+    ? "Cash position depends on cashflow timing and isn't projected by this model."
+    : cashUnavailable
+    ? 'Connect Xero to see your live cash position.'
+    : !hasCash && !cashLoading
+    ? 'No bank accounts found in Xero.'
+    : asOfLabel
+    ? `Live bank balance from Xero · as of ${asOfLabel}`
+    : 'Live bank balance from Xero'
+
+  const showLivePill = !isFuture
+  const bigDisplay = isFuture
+    ? '—'
+    : cashLoading && !hasCash
+    ? '…'
+    : hasCash
+    ? fmtMoney(cashPosition!, { compact: true })
+    : '—'
+
+  return (
+    <article className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-3.5">
+      <header className="flex items-start justify-between gap-2">
+        <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
+          {props.label}
+        </span>
+        {showLivePill ? (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+            <DollarSign className="w-3 h-3" strokeWidth={2.5} />
+            Live
+          </span>
+        ) : (
+          <PlanPill />
+        )}
+      </header>
+      <div>
+        <div
+          className={`text-3xl font-semibold tabular-nums leading-none ${
+            hasCash && !isFuture ? 'text-gray-900' : 'text-gray-300'
+          }`}
+        >
+          {bigDisplay}
+        </div>
+        <div className="mt-1 text-xs text-gray-500">{subline}</div>
+      </div>
+      <div className="h-9" />
+      <p className="text-xs text-gray-500 pt-1 border-t border-gray-100 mt-1 pt-3">
+        {helperText}
+      </p>
     </article>
   )
 }
@@ -1275,6 +1502,7 @@ interface ScorecardCardProps {
   fiscalYear: number
   yearStartMonth: number
   assumptions: ForecastAssumptions | null
+  fyMode: FYMode
 }
 
 /**
@@ -1364,21 +1592,23 @@ function ScorecardCard({
   fiscalYear,
   yearStartMonth,
   assumptions,
+  fyMode,
 }: ScorecardCardProps) {
-  // Use the data-driven cutoff so YTD margins/ratios don't get distorted by
-  // empty stale-sync months (e.g. April reads $0 → would crash margin to 0%).
-  const monthsElapsed = totals.dataLastActualIndex + 1
+  // Window for slicing actuals: prior FY uses the FULL year (final results);
+  // current FY uses YTD up to the data cutoff so margins aren't distorted by
+  // empty stale-sync months. Future FY ignores actuals entirely (plan only).
+  const monthsForActuals =
+    fyMode === 'prior' ? totals.revenue.length : totals.dataLastActualIndex + 1
 
-  // YTD slices (actuals only — same as KPI strip)
-  const ytdSlice = (xs: number[]) =>
-    monthsElapsed > 0 ? sum(xs.slice(0, monthsElapsed)) : 0
+  const sliceActuals = (xs: number[]) =>
+    monthsForActuals > 0 ? sum(xs.slice(0, monthsForActuals)) : 0
 
-  const ytdRevenue = ytdSlice(totals.revenue)
-  const ytdGP = ytdSlice(totals.grossProfit)
-  const ytdNP = ytdSlice(totals.netProfit)
-  const ytdTeam = ytdSlice(totals.team)
-  const ytdOpEx =
-    ytdTeam + ytdSlice(totals.opex) + ytdSlice(totals.subs)
+  const actualRevenue = sliceActuals(totals.revenue)
+  const actualGP = sliceActuals(totals.grossProfit)
+  const actualNP = sliceActuals(totals.netProfit)
+  const actualTeam = sliceActuals(totals.team)
+  const actualOpEx =
+    actualTeam + sliceActuals(totals.opex) + sliceActuals(totals.subs)
 
   // Targets — wizard assumptions override defaults where available
   const grossMarginTarget =
@@ -1389,67 +1619,122 @@ function ScorecardCard({
   const revenueGrowthTarget = SCORECARD_DEFAULTS.revenueGrowthPct
   const wagesTarget = SCORECARD_DEFAULTS.wagesPct
 
-  // Calculations
-  const priorRevYTD = useMemo(
-    () => computePriorYearRevenueYTD(plLines, fiscalYear, yearStartMonth, monthsElapsed),
-    [plLines, fiscalYear, yearStartMonth, monthsElapsed],
+  // Prior-year revenue: for current FY this is "same period last year" (YTD);
+  // for prior FY it's full prior year. Future FY skips growth comparison.
+  const priorRevForGrowth = useMemo(
+    () => computePriorYearRevenueYTD(plLines, fiscalYear, yearStartMonth, monthsForActuals),
+    [plLines, fiscalYear, yearStartMonth, monthsForActuals],
   )
+
+  // Current/prior FY use actual numerators; future FY uses plan targets.
+  const isFuture = fyMode === 'future'
+  const isPrior = fyMode === 'prior'
+
   const growthPct =
-    priorRevYTD != null && priorRevYTD > 0
-      ? ((ytdRevenue / priorRevYTD) - 1) * 100
+    !isFuture && priorRevForGrowth != null && priorRevForGrowth > 0
+      ? ((actualRevenue / priorRevForGrowth) - 1) * 100
       : null
 
-  const grossMarginPct = ytdRevenue > 0 ? (ytdGP / ytdRevenue) * 100 : null
-  const netMarginPct = ytdRevenue > 0 ? (ytdNP / ytdRevenue) * 100 : null
-  const opexRatioPct = ytdRevenue > 0 ? (ytdOpEx / ytdRevenue) * 100 : null
-  // Wages % = total team cost / revenue YTD. Team is already classified by
-  // the haystack TEAM_HINTS (wages, super, payroll tax, workcover, bonus,
-  // commission, contractor, etc) — same numerator as the Monthly P&L "Team"
-  // row, so the two views reconcile by construction.
-  const wagesPct = ytdRevenue > 0 ? (ytdTeam / ytdRevenue) * 100 : null
+  const grossMarginPct = !isFuture && actualRevenue > 0 ? (actualGP / actualRevenue) * 100 : null
+  const netMarginPct = !isFuture && actualRevenue > 0 ? (actualNP / actualRevenue) * 100 : null
+  const opexRatioPct = !isFuture && actualRevenue > 0 ? (actualOpEx / actualRevenue) * 100 : null
+  // Wages % — same numerator as the Monthly P&L "Team" row; reconciles by
+  // construction. Future FY uses plan-only and falls through to the helper text.
+  const wagesPct = !isFuture && actualRevenue > 0 ? (actualTeam / actualRevenue) * 100 : null
+
+  // Helper copy adapts to mode. Future FY shows the target as the headline value.
+  const periodHelper = (currentText: string, priorText: string) =>
+    isPrior ? priorText : currentText
 
   const cards: ScorecardItem[] = [
     {
       label: 'Revenue Growth',
-      value: growthPct,
-      status: growthPct != null ? statusForGrowth(growthPct, revenueGrowthTarget) : null,
+      // Future FY: show target growth as the value (no actual comparison).
+      value: isFuture ? revenueGrowthTarget : growthPct,
+      status: isFuture
+        ? null
+        : growthPct != null
+        ? statusForGrowth(growthPct, revenueGrowthTarget)
+        : null,
       target: `${revenueGrowthTarget}%`,
-      helper: growthPct != null ? 'vs prior year YTD' : 'Need prior year data',
-      formatter: (v) => fmtPct(v, { signed: true }),
+      helper: isFuture
+        ? 'Plan target'
+        : growthPct != null
+        ? periodHelper('vs prior year YTD', 'vs prior year final')
+        : 'Need prior year data',
+      formatter: (v) => fmtPct(v, { signed: !isFuture }),
+      hideStatusDot: isFuture,
     },
     {
       label: 'Gross Margin',
-      value: grossMarginPct,
-      status: grossMarginPct != null ? statusForMargin(grossMarginPct, grossMarginTarget) : null,
+      value: isFuture ? grossMarginTarget : grossMarginPct,
+      status: isFuture
+        ? null
+        : grossMarginPct != null
+        ? statusForMargin(grossMarginPct, grossMarginTarget)
+        : null,
       target: `${grossMarginTarget}%`,
-      helper: 'GP / Revenue YTD',
-      formatter: (v) => fmtPct(v, { digits: 1 }),
+      helper: isFuture
+        ? 'Plan target'
+        : periodHelper('GP / Revenue YTD', 'GP / Revenue · final'),
+      formatter: (v) => fmtPct(v, { digits: isFuture ? 0 : 1 }),
+      hideStatusDot: isFuture,
     },
     {
       label: 'Net Margin',
-      value: netMarginPct,
-      status: netMarginPct != null ? statusForMargin(netMarginPct, netMarginTarget) : null,
+      value: isFuture ? netMarginTarget : netMarginPct,
+      status: isFuture
+        ? null
+        : netMarginPct != null
+        ? statusForMargin(netMarginPct, netMarginTarget)
+        : null,
       target: `${netMarginTarget}%`,
-      helper: 'NP / Revenue YTD',
-      formatter: (v) => fmtPct(v, { digits: 1 }),
+      helper: isFuture
+        ? 'Plan target'
+        : periodHelper('NP / Revenue YTD', 'NP / Revenue · final'),
+      formatter: (v) => fmtPct(v, { digits: isFuture ? 0 : 1 }),
+      hideStatusDot: isFuture,
     },
     {
       label: 'OpEx Ratio',
-      value: opexRatioPct,
-      status: opexRatioPct != null ? statusForOpExRatio(opexRatioPct, opexRatioTarget) : null,
+      value: isFuture ? opexRatioTarget : opexRatioPct,
+      status: isFuture
+        ? null
+        : opexRatioPct != null
+        ? statusForOpExRatio(opexRatioPct, opexRatioTarget)
+        : null,
       target: `≤ ${opexRatioTarget}%`,
-      helper: 'OpEx / Revenue YTD',
-      formatter: (v) => fmtPct(v, { digits: 1 }),
+      helper: isFuture
+        ? 'Plan target'
+        : periodHelper('OpEx / Revenue YTD', 'OpEx / Revenue · final'),
+      formatter: (v) => fmtPct(v, { digits: isFuture ? 0 : 1 }),
+      hideStatusDot: isFuture,
     },
     {
       label: 'Wages %',
-      value: wagesPct,
-      status: wagesPct != null ? statusForWagesRatio(wagesPct, wagesTarget) : null,
+      value: isFuture ? wagesTarget : wagesPct,
+      status: isFuture
+        ? null
+        : wagesPct != null
+        ? statusForWagesRatio(wagesPct, wagesTarget)
+        : null,
       target: `≤ ${wagesTarget}%`,
-      helper: 'Total team cost / Revenue (industry avg ~35%)',
+      helper: isFuture
+        ? 'Plan target (industry avg ~35%)'
+        : periodHelper(
+            'Total team cost / Revenue (industry avg ~35%)',
+            'Total team cost / Revenue · final (industry avg ~35%)',
+          ),
       formatter: (v) => fmtPct(v, { digits: 0 }),
+      hideStatusDot: isFuture,
     },
   ]
+
+  const subtitle = isFuture
+    ? 'Plan targets · no actuals to score yet'
+    : isPrior
+    ? 'Final results vs your targets · year complete'
+    : 'Health check vs your targets · year-to-date'
 
   return (
     <section className="bg-white border border-gray-200 rounded-xl p-5 sm:p-6">
@@ -1459,9 +1744,7 @@ function ScorecardCard({
             <Target className="w-5 h-5 text-brand-navy" />
             KPI scorecard
           </h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Health check vs your targets · year-to-date
-          </p>
+          <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>
         </div>
       </header>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -1478,18 +1761,42 @@ interface ScorecardItem {
   target: string
   helper: string
   formatter: (v: number) => string
+  /**
+   * When true, suppress the traffic-light dot AND render the value in neutral
+   * gray. Used for future FY where no judgment can be made yet (the value is
+   * the plan target itself, not a measured outcome).
+   */
+  hideStatusDot?: boolean
 }
 
-function ScorecardItemCard({ label, value, status, target, helper, formatter }: ScorecardItem) {
+function ScorecardItemCard({
+  label,
+  value,
+  status,
+  target,
+  helper,
+  formatter,
+  hideStatusDot,
+}: ScorecardItem) {
   const valueDisplay = value == null ? '—' : formatter(value)
-  const valueColor = status == null ? 'text-gray-400' : STATUS_TEXT[status]
+  // Future FY: explicitly neutral so the card reads as informational, not graded.
+  const valueColor =
+    hideStatusDot || status == null ? 'text-gray-700' : STATUS_TEXT[status]
   return (
     <article className="relative bg-white border border-gray-200 rounded-lg p-4 flex flex-col gap-2">
-      {status != null && (
+      {!hideStatusDot && status != null && (
         <span
           className={`absolute top-3 right-3 w-2.5 h-2.5 rounded-full ${STATUS_DOT[status]}`}
           aria-label={`Status: ${status}`}
         />
+      )}
+      {hideStatusDot && (
+        <span
+          className="absolute top-3 right-3 inline-flex items-center px-1.5 py-0 rounded-full text-[9px] uppercase tracking-wide font-medium bg-gray-100 text-gray-500 border border-gray-200"
+          aria-label="Plan target"
+        >
+          Plan
+        </span>
       )}
       <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
         {label}
@@ -1538,6 +1845,9 @@ interface InsightsCardProps {
   grossPlan: number
   netPlan: number
   assumptions: ForecastAssumptions | null
+  fyMode: FYMode
+  /** Forecast.updated_at — surfaced in the future-FY informational message. */
+  lastEditedAt: string | null
 }
 
 /**
@@ -1586,11 +1896,13 @@ function largestOpExCategory(
  * Compute monthly gross-margin pct only for months with revenue, restricted
  * to actual months. Returns the array of margin pcts (0..100).
  */
-function actualMonthlyGrossMargins(totals: MonthlyTotals): number[] {
+function actualMonthlyGrossMargins(totals: MonthlyTotals, monthsWindow?: number): number[] {
   const out: number[] = []
-  // Use the data cutoff: stale-sync months have $0 revenue and would falsely
-  // appear as a 0% margin month if we used the calendar floor here.
-  const last = totals.dataLastActualIndex
+  // Use the data cutoff by default: stale-sync months have $0 revenue and
+  // would falsely appear as a 0% margin month. Callers (e.g. prior FY
+  // insights) can override the window to include the full closed year.
+  const last =
+    monthsWindow != null ? monthsWindow - 1 : totals.dataLastActualIndex
   for (let i = 0; i <= last; i += 1) {
     const r = totals.revenue[i]
     if (r > 0) out.push((totals.grossProfit[i] / r) * 100)
@@ -1648,12 +1960,16 @@ function generateInsights({
   grossPlan,
   netPlan,
   assumptions,
+  fyMode,
 }: InsightsCardProps): Insight[] {
   const insights: Insight[] = []
-  // Insights are derived from real data — use the data cutoff so we don't
-  // generate "rev below plan" warnings just because Apr hasn't synced yet.
-  const monthsElapsed = totals.dataLastActualIndex + 1
+  // Window: prior FY uses the full year (final results); current FY uses the
+  // data cutoff so we don't warn "rev below plan" just because Apr hasn't
+  // synced yet. Future FY is handled separately by the calling component.
+  const monthsElapsed =
+    fyMode === 'prior' ? totals.revenue.length : totals.dataLastActualIndex + 1
   if (monthsElapsed <= 0) return insights // no actuals → no insights
+  const isPrior = fyMode === 'prior'
 
   const ytdSlice = (xs: number[]) => sum(xs.slice(0, monthsElapsed))
   const proratedPlan = (annual: number) =>
@@ -1671,15 +1987,21 @@ function generateInsights({
       : 0
   const planOpExYTD = proratedPlan(opexAnnualPlan)
 
-  // ── Rule 1 / 2 — Revenue YTD vs plan ───────────────────────────────────────
-  if (planRevYTD > 0) {
-    const variance = ytdRevenue - planRevYTD
-    const variancePct = variance / planRevYTD
+  // For prior FY, the "prorated plan" is just the full annual plan (year is done).
+  const planRevWindow = isPrior ? Math.max(planRevYTD, revenuePlan) : planRevYTD
+  const planOpExWindow = isPrior ? Math.max(planOpExYTD, opexAnnualPlan) : planOpExYTD
+
+  // ── Rule 1 / 2 — Revenue vs plan (YTD or full-year if prior) ───────────────
+  if (planRevWindow > 0) {
+    const variance = ytdRevenue - planRevWindow
+    const variancePct = variance / planRevWindow
     if (variancePct > INSIGHT_VARIANCE_THRESHOLD) {
-      const strongest = strongestActualMonth(totals.revenue, monthLabels, totals.dataLastActualIndex)
+      const strongest = strongestActualMonth(totals.revenue, monthLabels, monthsElapsed - 1)
       insights.push({
         id: 'rev-above',
-        text: `Revenue is ${fmtMoney(variance, { compact: true })} above plan YTD${strongest ? `, driven by ${strongest} performance` : ''}.`,
+        text: isPrior
+          ? `Year ended ${fmtMoney(variance, { compact: true })} above plan${strongest ? `, driven by strong ${strongest} performance` : ''}.`
+          : `Revenue is ${fmtMoney(variance, { compact: true })} above plan YTD${strongest ? `, driven by ${strongest} performance` : ''}.`,
         severity: 'positive',
         urgency: 'LOW',
         magnitude: Math.abs(variance),
@@ -1688,7 +2010,9 @@ function generateInsights({
       const gap = Math.abs(variance)
       insights.push({
         id: 'rev-below',
-        text: `Revenue is ${fmtMoney(gap, { compact: true })} below plan — focus on closing the ${fmtMoney(gap, { compact: true })} gap by year-end.`,
+        text: isPrior
+          ? `Year ended ${fmtMoney(gap, { compact: true })} below plan.`
+          : `Revenue is ${fmtMoney(gap, { compact: true })} below plan — focus on closing the ${fmtMoney(gap, { compact: true })} gap by year-end.`,
         severity: 'warning',
         urgency: 'HIGH',
         magnitude: gap,
@@ -1696,15 +2020,17 @@ function generateInsights({
     }
   }
 
-  // ── Rule 3 — OpEx YTD over budget ──────────────────────────────────────────
-  if (planOpExYTD > 0) {
-    const variance = ytdOpEx - planOpExYTD
-    const variancePct = variance / planOpExYTD
+  // ── Rule 3 — OpEx over budget (YTD or full-year if prior) ──────────────────
+  if (planOpExWindow > 0) {
+    const variance = ytdOpEx - planOpExWindow
+    const variancePct = variance / planOpExWindow
     if (variancePct > INSIGHT_VARIANCE_THRESHOLD) {
-      const contributor = largestOpExCategory(totals, monthsElapsed, planOpExYTD)
+      const contributor = largestOpExCategory(totals, monthsElapsed, planOpExWindow)
       insights.push({
         id: 'opex-over',
-        text: `Operating costs are ${fmtMoney(variance, { compact: true })} over budget — ${contributor} is the biggest contributor.`,
+        text: isPrior
+          ? `Operating costs ended ${fmtMoney(variance, { compact: true })} over budget — ${contributor} was the biggest contributor.`
+          : `Operating costs are ${fmtMoney(variance, { compact: true })} over budget — ${contributor} is the biggest contributor.`,
         severity: 'warning',
         urgency: 'MED',
         magnitude: Math.abs(variance),
@@ -1713,7 +2039,8 @@ function generateInsights({
   }
 
   // ── Rule 4 / 5 — Gross margin trend (last 3mo vs prior 6mo avg) ───────────
-  const margins = actualMonthlyGrossMargins(totals)
+  // For prior FY this is the trend of the closed year ("ended strong" signal).
+  const margins = actualMonthlyGrossMargins(totals, monthsElapsed)
   if (margins.length >= 4) {
     const last3 = margins.slice(-3)
     const prior6 = margins.slice(Math.max(0, margins.length - 9), margins.length - 3)
@@ -1724,7 +2051,9 @@ function generateInsights({
       if (delta < -1) {
         insights.push({
           id: 'gm-down',
-          text: `Gross margin has slipped ${Math.abs(delta).toFixed(1)}pt over the last 3 months — review pricing or COGS.`,
+          text: isPrior
+            ? `Gross margin slipped ${Math.abs(delta).toFixed(1)}pt over the final 3 months of the year.`
+            : `Gross margin has slipped ${Math.abs(delta).toFixed(1)}pt over the last 3 months — review pricing or COGS.`,
           severity: 'warning',
           urgency: 'MED',
           magnitude: Math.abs(delta),
@@ -1732,7 +2061,9 @@ function generateInsights({
       } else if (delta > 1) {
         insights.push({
           id: 'gm-up',
-          text: `Gross margin has improved ${delta.toFixed(1)}pt over the last 3 months — keep doing what's working.`,
+          text: isPrior
+            ? `Gross margin improved ${delta.toFixed(1)}pt over the final 3 months — strong finish.`
+            : `Gross margin has improved ${delta.toFixed(1)}pt over the last 3 months — keep doing what's working.`,
           severity: 'positive',
           urgency: 'LOW',
           magnitude: delta,
@@ -1741,14 +2072,16 @@ function generateInsights({
     }
   }
 
-  // ── Rule 6 — Net margin above target ───────────────────────────────────────
+  // ── Rule 6 — Net margin (above target) ─────────────────────────────────────
   if (ytdRevenue > 0) {
     const target = assumptions?.goals?.year1?.netProfitPct ?? SCORECARD_DEFAULTS.netMarginPct
     const current = (ytdNP / ytdRevenue) * 100
     if (current > target) {
       insights.push({
         id: 'np-above',
-        text: `Net margin is ${current.toFixed(1)}% (above ${target}% target) — strong profitability.`,
+        text: isPrior
+          ? `Final net margin: ${current.toFixed(1)}% (above ${target}% target) — strong profitability.`
+          : `Net margin is ${current.toFixed(1)}% (above ${target}% target) — strong profitability.`,
         severity: 'positive',
         urgency: 'LOW',
         magnitude: current - target,
@@ -1756,8 +2089,9 @@ function generateInsights({
     }
   }
 
-  // ── Rule 7 — Year-end forecast vs plan ─────────────────────────────────────
-  if (revenuePlan > 0) {
+  // ── Rule 7 — Year-end forecast vs plan (current FY only) ──────────────────
+  // Skip for prior FY — Rule 1/2 already covered the final-vs-plan story.
+  if (!isPrior && revenuePlan > 0) {
     const yearEndForecast = sum(totals.revenue) // actuals + forecasted
     const variance = yearEndForecast - revenuePlan
     const variancePct = variance / revenuePlan
@@ -1773,12 +2107,14 @@ function generateInsights({
     }
   }
 
-  // ── Rule 8 — Single category running >20% over budget ──────────────────────
+  // ── Rule 8 — Single category over budget ──────────────────────────────────
   const overBudgetLine = findCategoryOverBudget(plLines, fiscalYear, yearStartMonth, monthsElapsed)
   if (overBudgetLine) {
     insights.push({
       id: `cat-over-${overBudgetLine.name}`,
-      text: `${overBudgetLine.name} is running ${overBudgetLine.variancePct.toFixed(0)}% over budget (${fmtMoney(overBudgetLine.actual, { compact: true })} vs ${fmtMoney(overBudgetLine.planned, { compact: true })}).`,
+      text: isPrior
+        ? `${overBudgetLine.name} ended ${overBudgetLine.variancePct.toFixed(0)}% over budget (${fmtMoney(overBudgetLine.actual, { compact: true })} vs ${fmtMoney(overBudgetLine.planned, { compact: true })}).`
+        : `${overBudgetLine.name} is running ${overBudgetLine.variancePct.toFixed(0)}% over budget (${fmtMoney(overBudgetLine.actual, { compact: true })} vs ${fmtMoney(overBudgetLine.planned, { compact: true })}).`,
       severity: 'warning',
       urgency: 'HIGH',
       magnitude: overBudgetLine.actual - overBudgetLine.planned,
@@ -1810,8 +2146,40 @@ const SEVERITY_COLOR: Record<InsightSeverity, string> = {
 }
 
 function InsightsCard(props: InsightsCardProps) {
-  const allInsights = useMemo(() => generateInsights(props), [props])
+  const { fyMode, lastEditedAt } = props
+  // Future FY: heuristic rules don't apply (no actuals to compare). Show a
+  // single informational message and skip the rule pipeline entirely.
+  const futureMessage = useMemo(() => {
+    if (fyMode !== 'future') return null
+    const editedDate = (() => {
+      if (!lastEditedAt) return null
+      const d = new Date(lastEditedAt)
+      if (Number.isNaN(d.getTime())) return null
+      return d.toLocaleDateString('en-AU', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+    })()
+    return editedDate
+      ? `Forecast based on assumptions set on ${editedDate}. Edit the plan to update projections.`
+      : `Forecast based on plan assumptions. Edit the plan to update projections.`
+  }, [fyMode, lastEditedAt])
+
+  const allInsights = useMemo(
+    () => (fyMode === 'future' ? [] : generateInsights(props)),
+    [fyMode, props],
+  )
   const top = useMemo(() => pickTopInsights(allInsights, 3), [allInsights])
+
+  const heading =
+    fyMode === 'prior' ? 'Year in review' : fyMode === 'future' ? 'Forecast notes' : 'Insights this month'
+  const subhead =
+    fyMode === 'prior'
+      ? 'How the year played out vs your plan'
+      : fyMode === 'future'
+      ? 'No actuals yet — adjust the plan to change projections'
+      : 'Auto-generated commentary based on your numbers'
 
   return (
     <section className="bg-white border border-gray-200 rounded-xl p-5 sm:p-6">
@@ -1819,17 +2187,24 @@ function InsightsCard(props: InsightsCardProps) {
         <div>
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900 flex items-center gap-2">
             <Activity className="w-5 h-5 text-brand-navy" />
-            Insights this month
+            {heading}
           </h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Auto-generated commentary based on your numbers
-          </p>
+          <p className="text-sm text-gray-500 mt-0.5">{subhead}</p>
         </div>
       </header>
 
-      {top.length === 0 ? (
+      {fyMode === 'future' ? (
+        <ul className="space-y-3">
+          <li className="flex items-start gap-3">
+            <Activity className="w-4 h-4 mt-0.5 shrink-0 text-gray-600" strokeWidth={2.25} />
+            <span className="text-sm text-gray-700 leading-relaxed">{futureMessage}</span>
+          </li>
+        </ul>
+      ) : top.length === 0 ? (
         <div className="rounded-lg bg-gray-50 border border-gray-100 p-4 text-sm text-gray-700">
-          Everything&apos;s tracking close to plan. Solid month.
+          {fyMode === 'prior'
+            ? "The year tracked close to plan — no major variances to flag."
+            : "Everything's tracking close to plan. Solid month."}
         </div>
       ) : (
         <ul className="space-y-3">
