@@ -76,7 +76,16 @@ export interface ForecastOverviewProps {
 
 const REVENUE_CATEGORIES = ['revenue', 'trading revenue', 'other revenue']
 const COGS_CATEGORIES = ['cost of sales', 'cogs', 'direct costs', 'cost of goods sold']
-const TEAM_HINTS = ['wages', 'salary', 'salaries', 'payroll', 'super', 'team', 'employee']
+// Team / wages haystack — drives both the Monthly P&L "Team" row and the
+// Wages % scorecard card. Includes the full team-cost taxonomy: wages/salary,
+// statutory on-costs (super, payroll tax, workcover), and variable comp
+// (bonus, commission, contractor) so "team cost ratio" lines up with what
+// Matt thinks of as people-cost.
+const TEAM_HINTS = [
+  'wages', 'salary', 'salaries', 'payroll', 'super', 'superannuation',
+  'team', 'employee', 'workcover', "worker's comp", 'workers comp',
+  'bonus', 'commission', 'contractor',
+]
 const SUBS_HINTS = ['subscription', 'software', 'saas', 'licence', 'license']
 
 function isRevenue(line: Pick<PLLine, 'category' | 'account_type'>): boolean {
@@ -1238,15 +1247,16 @@ function LegendDot({ color, label, outline }: { color: string; label: string; ou
 // ─────────────────────────────────────────────────────────────────────────────
 // Section 4 — KPI scorecard (Phase 58.2)
 //
-// Four traffic-light cards computed YTD from forecast_pl_lines:
+// Five traffic-light cards computed YTD from forecast_pl_lines:
 //   1. YoY Revenue Growth — current FY YTD vs prior FY same-period (target 10%)
 //   2. Gross Margin       — current FY YTD GP / Revenue          (target 60%)
 //   3. Net Margin         — current FY YTD NP / Revenue          (target 15%)
 //   4. OpEx Ratio         — current FY YTD OpEx / Revenue        (target ≤ 18%)
+//   5. Wages %            — current FY YTD Team / Revenue        (target ≤ 35%)
 //
 // Targets default to the values above and are overridable via wizard
 // assumptions.goals.year1 (revenue + grossProfitPct + netProfitPct only — no
-// dedicated growth or OpEx target lives in the schema yet).
+// dedicated growth / OpEx / wages target lives in the schema yet).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SCORECARD_DEFAULTS = {
@@ -1254,6 +1264,7 @@ const SCORECARD_DEFAULTS = {
   grossMarginPct: 60, // %
   netMarginPct: 15, // %
   opexRatioPct: 18, // %  (max — lower is better)
+  wagesPct: 35, // %  (max — industry avg, lower is better)
 } as const
 
 type ScoreStatus = 'green' | 'amber' | 'red'
@@ -1318,6 +1329,15 @@ function statusForOpExRatio(actualPct: number, targetPct: number): ScoreStatus {
   return 'red'
 }
 
+function statusForWagesRatio(actualPct: number, targetPct: number): ScoreStatus {
+  // Wages tolerance is wider than generic OpEx — payroll moves slowly and
+  // industry benchmarks vary. Spec: green ≤target, amber target+1..target+5,
+  // red >target+5. Equality at target = green.
+  if (actualPct <= targetPct) return 'green'
+  if (actualPct <= targetPct + 5) return 'amber'
+  return 'red'
+}
+
 const STATUS_DOT: Record<ScoreStatus, string> = {
   green: 'bg-emerald-500',
   amber: 'bg-amber-500',
@@ -1356,8 +1376,9 @@ function ScorecardCard({
   const ytdRevenue = ytdSlice(totals.revenue)
   const ytdGP = ytdSlice(totals.grossProfit)
   const ytdNP = ytdSlice(totals.netProfit)
+  const ytdTeam = ytdSlice(totals.team)
   const ytdOpEx =
-    ytdSlice(totals.team) + ytdSlice(totals.opex) + ytdSlice(totals.subs)
+    ytdTeam + ytdSlice(totals.opex) + ytdSlice(totals.subs)
 
   // Targets — wizard assumptions override defaults where available
   const grossMarginTarget =
@@ -1366,6 +1387,7 @@ function ScorecardCard({
     assumptions?.goals?.year1?.netProfitPct ?? SCORECARD_DEFAULTS.netMarginPct
   const opexRatioTarget = SCORECARD_DEFAULTS.opexRatioPct
   const revenueGrowthTarget = SCORECARD_DEFAULTS.revenueGrowthPct
+  const wagesTarget = SCORECARD_DEFAULTS.wagesPct
 
   // Calculations
   const priorRevYTD = useMemo(
@@ -1380,6 +1402,11 @@ function ScorecardCard({
   const grossMarginPct = ytdRevenue > 0 ? (ytdGP / ytdRevenue) * 100 : null
   const netMarginPct = ytdRevenue > 0 ? (ytdNP / ytdRevenue) * 100 : null
   const opexRatioPct = ytdRevenue > 0 ? (ytdOpEx / ytdRevenue) * 100 : null
+  // Wages % = total team cost / revenue YTD. Team is already classified by
+  // the haystack TEAM_HINTS (wages, super, payroll tax, workcover, bonus,
+  // commission, contractor, etc) — same numerator as the Monthly P&L "Team"
+  // row, so the two views reconcile by construction.
+  const wagesPct = ytdRevenue > 0 ? (ytdTeam / ytdRevenue) * 100 : null
 
   const cards: ScorecardItem[] = [
     {
@@ -1414,6 +1441,14 @@ function ScorecardCard({
       helper: 'OpEx / Revenue YTD',
       formatter: (v) => fmtPct(v, { digits: 1 }),
     },
+    {
+      label: 'Wages %',
+      value: wagesPct,
+      status: wagesPct != null ? statusForWagesRatio(wagesPct, wagesTarget) : null,
+      target: `≤ ${wagesTarget}%`,
+      helper: 'Total team cost / Revenue (industry avg ~35%)',
+      formatter: (v) => fmtPct(v, { digits: 0 }),
+    },
   ]
 
   return (
@@ -1429,7 +1464,7 @@ function ScorecardCard({
           </p>
         </div>
       </header>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         {cards.map((c) => <ScorecardItemCard key={c.label} {...c} />)}
       </div>
     </section>
