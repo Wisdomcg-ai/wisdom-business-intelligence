@@ -304,6 +304,42 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   // Generate month keys for the active year (Y1 starts at fiscalYear-1, Y2 at fiscalYear, Y3 at fiscalYear+1)
   const monthKeys = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
 
+  // ─── Peak/Low helpers (Summary view) ─────────────────────────────────────
+  // Surfaces the highest and lowest month from a line's monthly distribution.
+  // When operators toggle the revenue pattern (Straight Line / Seasonal /
+  // Manual), annual line totals stay pinned to the goal — only the monthly
+  // distribution changes. Without these columns the toggle appears broken in
+  // Summary view. Peak/Low shifts visibly: Straight Line → all months equal,
+  // Seasonal → Peak Dec / Low Feb, etc.
+  const getPeakLow = (
+    monthly: MonthlyData | undefined,
+  ): { peak: { label: string; value: number } | null; low: { label: string; value: number } | null } => {
+    if (!monthly) return { peak: null, low: null };
+    let peakIdx = -1;
+    let lowIdx = -1;
+    let peakVal = -Infinity;
+    let lowVal = Infinity;
+    for (let i = 0; i < monthKeys.length; i++) {
+      const v = monthly[monthKeys[i]] || 0;
+      if (v > peakVal) { peakVal = v; peakIdx = i; }
+      if (v < lowVal) { lowVal = v; lowIdx = i; }
+    }
+    if (peakIdx < 0 || lowIdx < 0 || peakVal <= 0) return { peak: null, low: null };
+    return {
+      peak: { label: months[peakIdx], value: peakVal },
+      low: { label: months[lowIdx], value: lowVal },
+    };
+  };
+  // Short money form: $120k, $1.2m, $850 — keeps Peak/Low cells narrow.
+  const formatMoneyShort = (n: number): string => {
+    if (!Number.isFinite(n) || n === 0) return '$0';
+    const abs = Math.abs(n);
+    const sign = n < 0 ? '-' : '';
+    if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}m`;
+    if (abs >= 1_000) return `${sign}$${Math.round(abs / 1_000)}k`;
+    return `${sign}$${Math.round(abs)}`;
+  };
+
   // Determine which months are actuals (locked) vs projected (editable)
   const actualMonthKeys = useMemo(() => {
     if (!currentYTD?.revenue_by_month) return new Set<string>();
@@ -1244,22 +1280,27 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '30%' }}>Line Item</th>
-                <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '18%' }}>Prior Year</th>
-                <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '14%' }}>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '24%' }}>Line Item</th>
+                <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '14%' }}>Prior Year</th>
+                <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '12%' }}>
                   % Split
                   {(activeYear === 2 || activeYear === 3) && (
                     <span className="ml-1 text-gray-400 normal-case">/ Growth</span>
                   )}
                 </th>
-                <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '20%' }}>Forecast {activeYear === 1 ? 'Y1' : `Y${activeYear}`}</th>
-                <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '18%' }}>vs Prior / % of Rev</th>
+                {/* Peak/Low — visible on md+ so pattern toggles (Straight/Seasonal/Manual)
+                    are obvious in summary view. Annual totals stay constant when goal
+                    is pinned, so monthly extremes are the visual signal of distribution. */}
+                <th className="hidden md:table-cell px-2 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '11%' }}>Peak</th>
+                <th className="hidden md:table-cell px-2 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '11%' }}>Low</th>
+                <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '16%' }}>Forecast {activeYear === 1 ? 'Y1' : `Y${activeYear}`}</th>
+                <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '12%' }}>vs Prior / % of Rev</th>
               </tr>
             </thead>
             <tbody>
               {/* REVENUE section header */}
               <tr className="bg-gray-50">
-                <td colSpan={5} className="px-4 py-2">
+                <td colSpan={7} className="px-4 py-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Revenue</span>
                     <button
@@ -1279,6 +1320,12 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                 const currentMixPct = linePercentages[line.id] || 0;
                 const growthPct = priorTotal > 0 ? ((forecastTotal - priorTotal) / priorTotal) * 100 : 0;
                 const isExpanded = expandedRevLines.has(line.id);
+                const lineMonthly = activeYear === 1
+                  ? line.year1Monthly
+                  : activeYear === 2
+                    ? (line.year2Monthly || {})
+                    : (line.year3Monthly || {});
+                const { peak, low } = getPeakLow(lineMonthly);
                 return (
                   <React.Fragment key={line.id}>
                     <tr className="border-b border-gray-100 hover:bg-gray-50">
@@ -1327,6 +1374,20 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                           }
                         />
                       </td>
+                      <td className="hidden md:table-cell px-2 py-2.5 text-right text-xs text-gray-600 tabular-nums">
+                        {peak ? (
+                          <span><span className="text-gray-400">{peak.label}</span> {formatMoneyShort(peak.value)}</span>
+                        ) : (
+                          <span className="text-gray-300">&mdash;</span>
+                        )}
+                      </td>
+                      <td className="hidden md:table-cell px-2 py-2.5 text-right text-xs text-gray-600 tabular-nums">
+                        {low ? (
+                          <span><span className="text-gray-400">{low.label}</span> {formatMoneyShort(low.value)}</span>
+                        ) : (
+                          <span className="text-gray-300">&mdash;</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5 text-right text-sm font-semibold text-gray-900">
                         {formatCurrency(forecastTotal)}
                       </td>
@@ -1351,7 +1412,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                     {/* Expanded monthly detail row */}
                     {isExpanded && (
                       <tr className="bg-gray-50 border-b border-gray-100">
-                        <td colSpan={5} className="px-6 py-3">
+                        <td colSpan={7} className="px-6 py-3">
                           <div className="grid grid-cols-12 gap-1">
                             {monthKeys.map((key, idx) => {
                               const isActual = activeYear === 1 && isActualMonth(key);
@@ -1403,6 +1464,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                     {linePctTotal}%{linePctTotal !== 100 && (linePctTotal < 100 ? ' under' : ' over')}
                   </span>
                 </td>
+                <td className="hidden md:table-cell"></td>
+                <td className="hidden md:table-cell"></td>
                 <td className="px-4 py-2.5 text-right text-sm text-gray-900">{formatCurrency(totalRevenue)}</td>
                 <td className="px-4 py-2.5 text-right text-sm">
                   {priorYear && priorYear.revenue.total > 0 ? (
@@ -1414,11 +1477,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
               </tr>
 
               {/* Spacer */}
-              <tr><td colSpan={5} className="py-2"></td></tr>
+              <tr><td colSpan={7} className="py-2"></td></tr>
 
               {/* COST OF SALES section header */}
               <tr className="bg-gray-50">
-                <td colSpan={5} className="px-4 py-2">
+                <td colSpan={7} className="px-4 py-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Cost of Sales</span>
@@ -1446,6 +1509,12 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                 const currentPct = cogsLinePercentages[line.id] || 0;
                 const lineAmount = calculateCOGSAmount(line);
                 const pctOfRev = totalRevenue > 0 ? (lineAmount / totalRevenue * 100) : 0;
+                const cogsLineMonthly = activeYear === 1
+                  ? line.year1Monthly
+                  : activeYear === 2
+                    ? (line.year2Monthly || {})
+                    : (line.year3Monthly || {});
+                const { peak: cogsPeak, low: cogsLow } = getPeakLow(cogsLineMonthly);
                 return (
                   <tr key={line.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="px-4 py-2.5">
@@ -1504,6 +1573,20 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                         <span className="text-xs text-gray-400">%</span>
                       </div>
                     </td>
+                    <td className="hidden md:table-cell px-2 py-2.5 text-right text-xs text-gray-600 tabular-nums">
+                      {cogsPeak ? (
+                        <span><span className="text-gray-400">{cogsPeak.label}</span> {formatMoneyShort(cogsPeak.value)}</span>
+                      ) : (
+                        <span className="text-gray-300">&mdash;</span>
+                      )}
+                    </td>
+                    <td className="hidden md:table-cell px-2 py-2.5 text-right text-xs text-gray-600 tabular-nums">
+                      {cogsLow ? (
+                        <span><span className="text-gray-400">{cogsLow.label}</span> {formatMoneyShort(cogsLow.value)}</span>
+                      ) : (
+                        <span className="text-gray-300">&mdash;</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-right text-sm font-semibold text-gray-900">
                       {formatCurrency(lineAmount)}
                     </td>
@@ -1524,7 +1607,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
               {cogsLines.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
                     {priorYear && priorYear.cogs.byLine.length === 0 ? (
                       <>
                         <div className="font-medium text-gray-700 mb-1">No Cost of Sales accounts found in Xero</div>
@@ -1548,6 +1631,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                     {cogsPctTotal}%
                   </span>
                 </td>
+                <td className="hidden md:table-cell"></td>
+                <td className="hidden md:table-cell"></td>
                 <td className="px-4 py-2.5 text-right text-sm text-gray-900">{formatCurrency(totalCOGS)}</td>
                 <td className="px-4 py-2.5 text-right text-sm text-gray-500">
                   {totalRevenue > 0 ? `${(totalCOGS / totalRevenue * 100).toFixed(1)}%` : '\u2014'}
