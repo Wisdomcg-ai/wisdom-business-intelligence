@@ -55,10 +55,11 @@ export default function FinancialForecastPage() {
   const [xeroConnection, setXeroConnection] = useState<XeroConnection | null>(null)
 
   const [activeTab, setActiveTab] = useState<ForecastTab>(() => {
-    // Remember last active tab from localStorage; default to 'overview' for new users
-    // and for any saved value that's no longer a valid tab.
+    // Phase 58 migration: force all existing users to Overview on first load.
+    // After they navigate, the new v2 key tracks their preference.
+    // Ignore the legacy `forecast-active-tab` key entirely.
     if (typeof window !== 'undefined') {
-      const savedTab = localStorage.getItem('forecast-active-tab')
+      const savedTab = localStorage.getItem('forecast-active-tab-v2')
       if (savedTab && (FORECAST_TAB_IDS as readonly string[]).includes(savedTab)) {
         return savedTab as ForecastTab
       }
@@ -121,10 +122,10 @@ export default function FinancialForecastPage() {
   // Keep Xero tokens fresh while user is on this page
   useXeroKeepalive(businessId || null, !!xeroConnection)
 
-  // Save active tab to localStorage whenever it changes
+  // Save active tab to localStorage whenever it changes (Phase 58: v2 key)
   useEffect(() => {
     if (mounted) {
-      localStorage.setItem('forecast-active-tab', activeTab)
+      localStorage.setItem('forecast-active-tab-v2', activeTab)
     }
   }, [activeTab, mounted])
 
