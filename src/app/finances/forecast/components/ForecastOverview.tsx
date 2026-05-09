@@ -1607,8 +1607,12 @@ function ScorecardCard({
   const actualGP = sliceActuals(totals.grossProfit)
   const actualNP = sliceActuals(totals.netProfit)
   const actualTeam = sliceActuals(totals.team)
+  // OpEx Ratio is a separate KPI from Wages %. Team cost is already shown via
+  // Wages % — including it here would double-count it across the two cards
+  // (e.g. JDS would read 46% OpEx Ratio when the true non-team operating cost
+  // ratio is ~16%). Keep `actualTeam` separate for the Wages % card below.
   const actualOpEx =
-    actualTeam + sliceActuals(totals.opex) + sliceActuals(totals.subs)
+    sliceActuals(totals.opex) + sliceActuals(totals.subs)
 
   // Targets — wizard assumptions override defaults where available
   const grossMarginTarget =

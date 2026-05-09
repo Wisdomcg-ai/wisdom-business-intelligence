@@ -139,11 +139,16 @@ export async function GET(request: NextRequest) {
     const accessToken = tokenResult.accessToken!
     const tenantId = connection.tenant_id
 
-    // Phase 58.3: cash-only mode uses today as the report date when no month
-    // is supplied, since the Cash KPI card only ever needs the current balance.
+    // Cash-only mode queries Xero AS OF today — the Cash KPI card shows the
+    // current bank balance, not the projected end-of-month balance. Querying
+    // 31 May while it's still 10 May returned a future-dated, misleading
+    // figure. The full balance-sheet endpoint keeps month-end semantics for
+    // back-compat with the Calxa-style monthly report.
     const today = new Date()
-    const todayMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
-    const reportDate = lastDayOfMonth(month ?? todayMonth)
+    const todayDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    const reportDate = cashOnly
+      ? todayDate
+      : lastDayOfMonth(month as string)
     const timeframe = compare === 'mom' ? 'MONTH' : 'YEAR'
 
     // Cash-only requests don't need a comparison column — keep the standard
