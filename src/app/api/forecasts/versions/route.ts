@@ -2,6 +2,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import type { WhatIfParameters } from '@/app/finances/forecast/types'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -158,7 +159,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('Error creating version:', error)
+    Sentry.captureException(error, { tags: { route: 'forecasts/versions' }, extra: { context: "Error creating version" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -193,14 +194,14 @@ export async function GET(request: Request) {
       .order('version_number', { ascending: false })
 
     if (error) {
-      console.error('Error fetching versions from Supabase:', error)
+      Sentry.captureException(error, { tags: { route: 'forecasts/versions' }, extra: { context: "Error fetching versions from Supabase" } } as any)
       return NextResponse.json({ error: 'Failed to fetch versions', details: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ versions: versions || [] })
 
   } catch (error) {
-    console.error('Error fetching versions:', error)
+    Sentry.captureException(error, { tags: { route: 'forecasts/versions' }, extra: { context: "Error fetching versions" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

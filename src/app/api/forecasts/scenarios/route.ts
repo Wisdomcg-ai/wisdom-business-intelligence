@@ -3,6 +3,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -70,14 +71,14 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: true })
 
     if (error) {
-      console.error('Error fetching scenarios:', error)
+      Sentry.captureException(error, { tags: { route: 'forecasts/scenarios' }, extra: { context: "Error fetching scenarios" } } as any)
       return NextResponse.json({ error: 'Failed to fetch scenarios' }, { status: 500 })
     }
 
     return NextResponse.json({ scenarios: scenarios || [] })
 
   } catch (error) {
-    console.error('Error in GET /api/forecasts/scenarios:', error)
+    Sentry.captureException(error, { tags: { route: 'forecasts/scenarios' }, extra: { context: "Error in GET /api/forecasts/scenarios" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -135,7 +136,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Error creating scenario:', error)
+      Sentry.captureException(error, { tags: { route: 'forecasts/scenarios' }, extra: { context: "Error creating scenario" } } as any)
       return NextResponse.json(
         { error: 'Failed to create scenario' },
         { status: 500 }
@@ -145,7 +146,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ scenario })
 
   } catch (error) {
-    console.error('Error in POST /api/forecasts/scenarios:', error)
+    Sentry.captureException(error, { tags: { route: 'forecasts/scenarios' }, extra: { context: "Error in POST /api/forecasts/scenarios" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -185,7 +186,7 @@ export async function PATCH(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Error updating scenario:', error)
+      Sentry.captureException(error, { tags: { route: 'forecasts/scenarios' }, extra: { context: "Error updating scenario" } } as any)
       return NextResponse.json(
         { error: 'Failed to update scenario' },
         { status: 500 }
@@ -195,7 +196,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ scenario })
 
   } catch (error) {
-    console.error('Error in PATCH /api/forecasts/scenarios:', error)
+    Sentry.captureException(error, { tags: { route: 'forecasts/scenarios' }, extra: { context: "Error in PATCH /api/forecasts/scenarios" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -244,7 +245,7 @@ export async function DELETE(request: NextRequest) {
       .eq('user_id', authenticatedUserId)  // Use verified user ID
 
     if (error) {
-      console.error('Error deleting scenario:', error)
+      Sentry.captureException(error, { tags: { route: 'forecasts/scenarios' }, extra: { context: "Error deleting scenario" } } as any)
       return NextResponse.json(
         { error: 'Failed to delete scenario' },
         { status: 500 }
@@ -254,7 +255,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true })
 
   } catch (error) {
-    console.error('Error in DELETE /api/forecasts/scenarios:', error)
+    Sentry.captureException(error, { tags: { route: 'forecasts/scenarios' }, extra: { context: "Error in DELETE /api/forecasts/scenarios" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

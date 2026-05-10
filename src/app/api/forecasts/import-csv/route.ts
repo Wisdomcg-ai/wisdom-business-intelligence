@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import type { PLLine } from '@/app/finances/forecast/types'
+import * as Sentry from '@sentry/nextjs'
 
 // Maximum lines allowed in a single import
 const MAX_IMPORT_LINES = 500
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
       .eq('forecast_id', forecastId)
 
     if (deleteError) {
-      console.error('[CSV Import] Error deleting existing lines:', deleteError)
+      Sentry.captureException(deleteError, { tags: { route: 'forecasts/import-csv' }, extra: { context: "[CSV Import] Error deleting existing lines" } } as any)
       return NextResponse.json(
         { error: 'Failed to clear existing data' },
         { status: 500 }
@@ -122,21 +123,23 @@ export async function POST(request: NextRequest) {
       .insert(linesToInsert)
 
     if (insertError) {
-      console.error('[CSV Import] Error inserting lines:', insertError)
+      Sentry.captureException(insertError, { tags: { route: 'forecasts/import-csv' }, extra: { context: "[CSV Import] Error inserting lines" } } as any)
       return NextResponse.json(
         { error: 'Failed to import data' },
         { status: 500 }
       )
     }
 
-    console.log(`[CSV Import] Successfully imported ${lines.length} lines for forecast ${forecastId}`)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[CSV Import] Successfully imported ${lines.length} lines for forecast ${forecastId}`)
+    }
 
     return NextResponse.json({
       success: true,
       linesImported: lines.length
     })
   } catch (error) {
-    console.error('[CSV Import] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'forecasts/import-csv' }, extra: { context: "[CSV Import] Error" } } as any)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

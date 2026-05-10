@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { ExcelExportService } from '@/app/finances/forecast/services/excel-export-service'
 import { PDFExportService } from '@/app/finances/forecast/services/pdf-export-service'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest) {
       .order('display_order')
 
     if (plError) {
-      console.error('Error fetching P&L lines:', plError)
+      Sentry.captureException(plError, { tags: { route: 'forecasts/export' }, extra: { context: "Error fetching P&L lines" } } as any)
       return NextResponse.json({ error: 'Failed to fetch forecast data' }, { status: 500 })
     }
 
@@ -146,7 +147,7 @@ export async function GET(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Error in GET /api/forecasts/export:', error)
+    Sentry.captureException(error, { tags: { route: 'forecasts/export' }, extra: { context: "Error in GET /api/forecasts/export" } } as any)
     return NextResponse.json({
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'
