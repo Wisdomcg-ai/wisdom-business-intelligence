@@ -119,6 +119,11 @@ jobs:
           # warnings; provide a placeholder. The Sentry source-map upload is
           # disabled in next.config.js when SENTRY_AUTH_TOKEN is unset.
           NEXT_PUBLIC_SENTRY_DSN: 'https://example@sentry.io/0'
+          # SEC-08 (Phase 46 plan 46-04): sentry.{server,edge}.config.ts now
+          # throw at module load if SENTRY_DSN is unset in production.
+          # next build's page-data collection treats CI as production-like,
+          # so a placeholder is required to avoid build failure.
+          SENTRY_DSN: 'https://example@sentry.io/0'
           # Skip Sentry CLI work in CI builds (no auth token available)
           SENTRY_AUTH_TOKEN: ''
           # next build collects page data, which loads route handlers that
