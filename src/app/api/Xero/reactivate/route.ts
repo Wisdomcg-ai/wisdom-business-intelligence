@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
 
@@ -104,7 +105,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    console.log('[Xero Reactivate] Attempting to reactivate connection:', connection.id);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero Reactivate] Attempting to reactivate connection:', connection.id);
+    }
 
     // 53-02: delegate refresh to centralized token-manager.
     // - Pass { id } so getValidAccessToken re-fetches the row internally
@@ -158,7 +161,7 @@ export async function POST(request: NextRequest) {
       .eq('id', connection.id);
 
     if (updateError) {
-      console.error('[Xero Reactivate] Failed to flip is_active:', updateError);
+      Sentry.captureException(updateError, { tags: { route: 'Xero/reactivate' }, extra: { context: "[Xero Reactivate] Failed to flip is_active" } } as any);
       return NextResponse.json({
         success: false,
         error: 'save_failed',
@@ -174,7 +177,9 @@ export async function POST(request: NextRequest) {
       .eq('id', connection.id)
       .single();
 
-    console.log('[Xero Reactivate] Connection reactivated successfully:', connection.id);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero Reactivate] Connection reactivated successfully:', connection.id);
+    }
 
     return NextResponse.json({
       success: true,
@@ -188,7 +193,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[Xero Reactivate] Error:', error);
+    Sentry.captureException(error, { tags: { route: 'Xero/reactivate' }, extra: { context: "[Xero Reactivate] Error" } } as any);
     return NextResponse.json({
       success: false,
       error: 'internal_error',

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
 
@@ -99,7 +100,7 @@ export async function GET(request: NextRequest) {
       return_to: pending.return_to || '/integrations',
     });
   } catch (error) {
-    console.error('[Xero Pending] Error:', error);
+    Sentry.captureException(error, { tags: { route: 'Xero/pending-connection' }, extra: { context: "[Xero Pending] Error" } } as any);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

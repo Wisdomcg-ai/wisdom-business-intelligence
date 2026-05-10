@@ -26,6 +26,15 @@ import { NextRequest } from 'next/server'
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
+// Phase 46-04 SEC-07 sweep: pl-summary/route.ts now imports @sentry/nextjs
+// for error capture. Mock per-file to keep forecast-read-service.test.ts
+// shape assertions intact (RESEARCH.md SEC-07 cross-cutting).
+vi.mock('@sentry/nextjs', () => ({
+  captureException: vi.fn(),
+  captureMessage: vi.fn(),
+  addBreadcrumb: vi.fn(),
+}))
+
 vi.mock('@/lib/supabase/server', () => ({
   createRouteHandlerClient: vi.fn(async () => ({
     auth: {

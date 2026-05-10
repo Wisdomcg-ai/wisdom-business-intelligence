@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken, checkConnectionHealth } from '@/lib/xero/token-manager';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +58,9 @@ export async function GET(request: NextRequest) {
     // Get Xero connection using admin client (resolves businesses.id vs business_profiles.id)
     const { connection, connectionBusinessId } = await resolveXeroBusinessId(supabaseAdmin, businessId);
 
-    console.log('[Xero Status] Connection for business:', businessId, 'resolved:', connectionBusinessId, 'found:', !!connection);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero Status] Connection for business:', businessId, 'resolved:', connectionBusinessId, 'found:', !!connection);
+    }
 
     if (!connection) {
       return NextResponse.json({
@@ -73,7 +76,9 @@ export async function GET(request: NextRequest) {
     const tokenResult = await getValidAccessToken(connection, supabaseAdmin);
 
     if (!tokenResult.success) {
-      console.log('[Xero Status] Token refresh failed:', tokenResult.error, tokenResult.message);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Xero Status] Token refresh failed:', tokenResult.error, tokenResult.message);
+      }
       return NextResponse.json({
         connected: false,
         expired: true,
@@ -109,7 +114,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[Xero Status] Error:', error);
+    Sentry.captureException(error, { tags: { route: 'Xero/status' }, extra: { context: "[Xero Status] Error" } } as any);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

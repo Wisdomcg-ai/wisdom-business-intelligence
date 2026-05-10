@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { syncBusinessXeroPL } from '@/lib/xero/sync-orchestrator'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: result.status !== 'error', sync: result })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    console.error('[sync-forecast/shim] Error:', message)
+    Sentry.captureException(message, { tags: { route: 'Xero/sync-forecast' }, extra: { context: "[sync-forecast/shim] Error" } } as any)
     return NextResponse.json({ error: 'Failed to sync Xero data', detail: message }, { status: 500 })
   }
 }

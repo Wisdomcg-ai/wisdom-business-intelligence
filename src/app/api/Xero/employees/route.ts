@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import * as Sentry from '@sentry/nextjs'
 // Phase 52 (XERO-S4-01..04): mapping helpers extracted to a pure module so
 // the route + wizard first-load + Plan 52-01 import modal all share one
 // canonical Xero-→-wizard mapping path.
@@ -192,7 +193,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log('[Xero Employees] Connection lookup:', { business_id, found: !!connection, connBizId: connection?.business_id });
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero Employees] Connection lookup:', { business_id, found: !!connection, connBizId: connection?.business_id });
+    }
 
     if (!connection) {
       return NextResponse.json(
@@ -205,7 +208,7 @@ export async function GET(request: NextRequest) {
     const tokenResult = await getValidAccessToken(connection, supabase);
 
     if (!tokenResult.success) {
-      console.error('[Xero Employees] Token refresh failed:', tokenResult.error, tokenResult.message);
+      Sentry.captureException(tokenResult.error ?? new Error(tokenResult.message ?? 'Token refresh failed'), { tags: { route: 'Xero/employees' }, extra: { context: 'Token refresh failed', message: tokenResult.message } } as any);
 
       // If the token-manager flagged the connection for deactivation (e.g. refresh
       // token expired beyond Xero's 60-day window), actually deactivate it here so
@@ -221,7 +224,9 @@ export async function GET(request: NextRequest) {
       // failure" invariant in 53-05-PLAN.md must_haves.truths[2]. The DB write
       // below is harmless (idempotent — token-manager already wrote is_active=false).
       if (tokenResult.shouldDeactivate && connection?.id) {
-        console.log('[Xero Employees] Deactivating connection with permanent token error:', connection.id);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Xero Employees] Deactivating connection with permanent token error:', connection.id);
+        }
         await supabase
           .from('xero_connections')
           .update({ is_active: false, updated_at: new Date().toISOString() })
@@ -265,12 +270,14 @@ export async function GET(request: NextRequest) {
             calendarById.set(cal.PayrollCalendarID, cal.CalendarType);
           }
         }
-        console.log('[Xero Employees] Loaded', calendarById.size, 'payroll calendars');
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Xero Employees] Loaded', calendarById.size, 'payroll calendars');
+        }
       } else {
-        console.warn('[Xero Employees] PayrollCalendars fetch failed:', calendarsResponse.status);
+        Sentry.captureMessage(`[Xero Employees] PayrollCalendars fetch failed status=${calendarsResponse.status}`, 'warning' as any);
       }
     } catch (calErr) {
-      console.warn('[Xero Employees] PayrollCalendars fetch threw:', calErr);
+      Sentry.captureException(calErr, { tags: { route: 'Xero/employees' }, extra: { context: 'PayrollCalendars fetch threw' }, level: 'warning' } as any);
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -335,10 +342,12 @@ export async function GET(request: NextRequest) {
         // Take the last 4 most recent. List is already sorted DESC by
         // PayRunPeriodEndDate via the order= query param above.
         const recentPayRuns = postedPayRuns.slice(0, 4);
-        console.log(
-          '[Xero Employees] PayRuns: fetched', allPayRuns.length, 'total,',
-          postedPayRuns.length, 'posted, using', recentPayRuns.length, 'most recent'
-        );
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(
+            '[Xero Employees] PayRuns: fetched', allPayRuns.length, 'total,',
+            postedPayRuns.length, 'posted, using', recentPayRuns.length, 'most recent'
+          );
+        }
 
         // Sequential detail fetches (research §7 — parallel would risk
         // rate-limit pressure spikes; 4 sequential is well within budget).
@@ -355,9 +364,9 @@ export async function GET(request: NextRequest) {
               }
             );
             if (!detailResponse.ok) {
-              console.warn(
-                '[Xero Employees] PayRun detail fetch failed:',
-                pr.PayRunID, detailResponse.status
+              Sentry.captureMessage(
+                `[Xero Employees] PayRun detail fetch failed PayRunID=${pr.PayRunID} status=${detailResponse.status}`,
+                'warning' as any,
               );
               continue;
             }
@@ -391,33 +400,40 @@ export async function GET(request: NextRequest) {
               }
             }
           } catch (detailErr) {
-            console.warn(
-              '[Xero Employees] PayRun detail fetch threw:',
-              pr.PayRunID, detailErr
-            );
+            Sentry.captureException(detailErr, {
+              tags: { route: 'Xero/employees' },
+              extra: { context: 'PayRun detail fetch threw', PayRunID: pr.PayRunID },
+              level: 'warning',
+            } as any);
           }
         }
-        console.log(
-          '[Xero Employees] PayRuns: aggregated for',
-          payrunAggregateByEmployeeId.size, 'employees'
-        );
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(
+            '[Xero Employees] PayRuns: aggregated for',
+            payrunAggregateByEmployeeId.size, 'employees'
+          );
+        }
       } else {
         // 401 (missing scope), 403 (payroll not enabled), 404 (region with
         // no AU payroll) — all non-fatal. Existing PayTemplate path still works.
-        console.warn(
-          '[Xero Employees] PayRuns list fetch failed:',
-          payrunsListResponse.status
+        Sentry.captureMessage(
+          `[Xero Employees] PayRuns list fetch failed status=${payrunsListResponse.status}`,
+          'warning' as any,
         );
       }
     } catch (prErr) {
-      console.warn('[Xero Employees] PayRuns aggregator threw:', prErr);
+      Sentry.captureException(prErr, { tags: { route: 'Xero/employees' }, extra: { context: 'PayRuns aggregator threw' }, level: 'warning' } as any);
     }
 
     // Fetch employees from Xero Payroll API (AU)
     // Note: Xero has different payroll APIs for different regions
     // We're using the Australian payroll API v1.0
-    console.log('[Xero Employees] Fetching employees from Xero Payroll AU...');
-    console.log('[Xero Employees] Tenant ID:', connection.tenant_id);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero Employees] Fetching employees from Xero Payroll AU...');
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero Employees] Tenant ID:', connection.tenant_id);
+    }
 
     const employeesResponse = await fetch(
       'https://api.xero.com/payroll.xro/1.0/Employees',
@@ -430,19 +446,25 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    console.log('[Xero Employees] Response status:', employeesResponse.status);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero Employees] Response status:', employeesResponse.status);
+    }
 
     if (!employeesResponse.ok) {
       const errorText = await employeesResponse.text();
-      console.error('[Xero Employees] Failed to fetch employees:', employeesResponse.status);
-      console.error('[Xero Employees] Error response:', errorText);
+      Sentry.captureException(employeesResponse.status, { tags: { route: 'Xero/employees' }, extra: { context: "[Xero Employees] Failed to fetch employees" } } as any);
+      Sentry.captureException(errorText, { tags: { route: 'Xero/employees' }, extra: { context: "[Xero Employees] Error response" } } as any);
 
       // Handle various error cases
       if (employeesResponse.status === 401) {
         // 401 usually means: payroll scopes not authorized
         // User needs to disconnect and reconnect Xero to authorize payroll
-        console.log('[Xero Employees] 401 error - Payroll scopes likely not authorized');
-        console.log('[Xero Employees] User should reconnect Xero to authorize payroll access');
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Xero Employees] 401 error - Payroll scopes likely not authorized');
+        }
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Xero Employees] User should reconnect Xero to authorize payroll access');
+        }
         return NextResponse.json({
           success: true,
           employees: [],
@@ -454,7 +476,9 @@ export async function GET(request: NextRequest) {
 
       // If payroll API not available (403/404)
       if (employeesResponse.status === 403 || employeesResponse.status === 404) {
-        console.log('[Xero Employees] Payroll API not available for this org');
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Xero Employees] Payroll API not available for this org');
+        }
         return NextResponse.json({
           success: true,
           employees: [],
@@ -470,7 +494,9 @@ export async function GET(request: NextRequest) {
     }
 
     const employeesData = await employeesResponse.json();
-    console.log('[Xero Employees] Raw response:', JSON.stringify(employeesData).substring(0, 500));
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero Employees] Raw response:', JSON.stringify(employeesData).substring(0, 500));
+    }
 
     const employees: XeroEmployee[] = [];
 
@@ -557,7 +583,7 @@ export async function GET(request: NextRequest) {
             }
           }
         } catch (detailError) {
-          console.error(`[Xero Employees] Failed to fetch details for ${emp.EmployeeID}:`, detailError);
+          Sentry.captureException(detailError, { tags: { route: 'Xero/employees' }, extra: { context: "[Xero Employees] Failed to fetch details for ${emp.EmployeeID}" } } as any);
         }
 
         // ────────────────────────────────────────────────────────────────────
@@ -668,7 +694,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log(`[Xero Employees] Found ${employees.length} employees`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[Xero Employees] Found ${employees.length} employees`);
+    }
 
     // Sort by name
     employees.sort((a, b) => a.full_name.localeCompare(b.full_name));
@@ -681,7 +709,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[Xero Employees] Error:', error);
+    Sentry.captureException(error, { tags: { route: 'Xero/employees' }, extra: { context: "[Xero Employees] Error" } } as any);
     return NextResponse.json(
       { error: 'Failed to fetch employees' },
       { status: 500 }

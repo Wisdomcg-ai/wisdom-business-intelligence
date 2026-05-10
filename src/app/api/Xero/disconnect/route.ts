@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
 
@@ -153,7 +154,7 @@ export async function POST(request: NextRequest) {
       .select('id, business_id, tenant_id, is_active');
 
     if (deleteError) {
-      console.error('[Xero Disconnect] Delete failed:', deleteError);
+      Sentry.captureException(deleteError, { tags: { route: 'Xero/disconnect' }, extra: { context: "[Xero Disconnect] Delete failed" } } as any);
       return NextResponse.json(
         {
           success: false,
@@ -201,7 +202,7 @@ export async function POST(request: NextRequest) {
       })),
     });
   } catch (error) {
-    console.error('[Xero Disconnect] Unexpected error:', error);
+    Sentry.captureException(error, { tags: { route: 'Xero/disconnect' }, extra: { context: "[Xero Disconnect] Unexpected error" } } as any);
     return NextResponse.json(
       {
         success: false,

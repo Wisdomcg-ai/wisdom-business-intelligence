@@ -28,6 +28,7 @@ import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { getHistoricalSummary } from '@/lib/services/historical-pl-summary'
 import type { HistoricalPLSummary } from '@/app/finances/forecast/types'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -95,7 +96,7 @@ export async function GET(request: NextRequest) {
     // Return a structured 500 — never silently fall back to legacy logic.
     const message = String(error?.message ?? error)
     const isInvariant = message.includes('INVARIANT VIOLATED')
-    console.error('[Xero P&L Summary] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'Xero/pl-summary' }, extra: { context: "[Xero P&L Summary] Error" } } as any)
     return NextResponse.json(
       {
         error: isInvariant ? message : 'Internal server error',

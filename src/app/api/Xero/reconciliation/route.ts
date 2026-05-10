@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest) {
     // Get valid access token
     const tokenResult = await getValidAccessToken(connection, supabase)
     if (!tokenResult.success) {
-      console.error('[Reconciliation] Token refresh failed:', tokenResult.error)
+      Sentry.captureException(tokenResult.error, { tags: { route: 'Xero/reconciliation' }, extra: { context: "[Reconciliation] Token refresh failed" } } as any)
       return NextResponse.json({ error: 'Xero connection expired' }, { status: 401 })
     }
 
@@ -105,7 +106,7 @@ export async function GET(request: NextRequest) {
       hasMore = transactions.length >= 100
       if (hasMore) unreconciledCount = 100 // Show "100+" in the UI
     } else {
-      console.error('[Reconciliation] BankTransactions fetch failed:', txnResponse.status)
+      Sentry.captureException(txnResponse.status, { tags: { route: 'Xero/reconciliation' }, extra: { context: "[Reconciliation] BankTransactions fetch failed" } } as any)
     }
 
     // Fetch bank accounts for context
@@ -133,7 +134,7 @@ export async function GET(request: NextRequest) {
         }
       }
     } catch (err) {
-      console.error('[Reconciliation] Error fetching bank accounts:', err)
+      Sentry.captureException(err, { tags: { route: 'Xero/reconciliation' }, extra: { context: "[Reconciliation] Error fetching bank accounts" } } as any)
     }
 
     const isClean = unreconciledCount === 0
@@ -152,7 +153,7 @@ export async function GET(request: NextRequest) {
           { onConflict: 'business_id' }
         )
     } catch (err) {
-      console.error('[Reconciliation] Error updating financial_metrics:', err)
+      Sentry.captureException(err, { tags: { route: 'Xero/reconciliation' }, extra: { context: "[Reconciliation] Error updating financial_metrics" } } as any)
       // Non-fatal
     }
 
@@ -165,7 +166,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('[Reconciliation] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'Xero/reconciliation' }, extra: { context: "[Reconciliation] Error" } } as any)
     return NextResponse.json({ error: 'Failed to check reconciliation status' }, { status: 500 })
   }
 }

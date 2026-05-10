@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids';
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
 
@@ -62,12 +63,16 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (!forecast) {
-      console.log('[Xero accounts] No forecast found');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Xero accounts] No forecast found');
+      }
       // No forecast data yet - return empty list
       return NextResponse.json({ accounts: [] });
     }
 
-    console.log('[Xero accounts] Forecast found:', forecast.id, 'fiscal_year:', forecast.fiscal_year);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero accounts] Forecast found:', forecast.id, 'fiscal_year:', forecast.fiscal_year);
+    }
 
     // Fetch P&L lines separately to avoid ambiguous relationship issue
     const { data: plLines, error: plError } = await supabase
@@ -76,13 +81,17 @@ export async function GET(request: NextRequest) {
       .eq('forecast_id', forecast.id);
 
     if (plError) {
-      console.log('[Xero accounts] Error fetching P&L lines:', plError.message);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Xero accounts] Error fetching P&L lines:', plError.message);
+      }
       return NextResponse.json({ accounts: [] });
     }
 
     // Debug: Log unique categories found
     const uniqueCategories = [...new Set(plLines.map((l: { category?: string }) => l.category || 'null'))];
-    console.log('[Xero accounts] P&L lines count:', plLines.length, 'Unique categories:', uniqueCategories);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero accounts] P&L lines count:', plLines.length, 'Unique categories:', uniqueCategories);
+    }
 
     // Helper function to check if category is an expense type
     // Uses flexible matching like pl-summary does
@@ -139,10 +148,12 @@ export async function GET(request: NextRequest) {
       .filter((acc: { ytd_total: number }) => acc.ytd_total > 0)
       .sort((a: { ytd_total: number }, b: { ytd_total: number }) => b.ytd_total - a.ytd_total);
 
-    console.log('[Xero accounts] Returning', accounts.length, 'expense accounts');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero accounts] Returning', accounts.length, 'expense accounts');
+    }
     return NextResponse.json({ accounts });
   } catch (err) {
-    console.error('[Xero accounts] Error:', err);
+    Sentry.captureException(err, { tags: { route: 'Xero/accounts' }, extra: { context: "[Xero accounts] Error" } } as any);
     return NextResponse.json(
       { error: 'Failed to fetch accounts' },
       { status: 500 }
