@@ -83,6 +83,10 @@ export default function FinancialForecastPage() {
   const [fiscalYearStart, setFiscalYearStart] = useState<number>(7) // default AU FY
   const [planningSeasonActive, setPlanningSeasonActive] = useState(false)
   const [monthsRemaining, setMonthsRemaining] = useState(0)
+  // Set when a forecast exists for the FY immediately prior to the one
+  // currently being viewed (used to surface a "View/edit FYxx" link in
+  // the empty state during planning season).
+  const [priorFiscalYearWithForecast, setPriorFiscalYearWithForecast] = useState<number | null>(null)
 
   // Xero sync hook
   const {
@@ -242,13 +246,31 @@ export default function FinancialForecastPage() {
       setPlanningSeasonActive(isPlanning)
       setMonthsRemaining(getMonthsUntilYearEnd(new Date(), yearStart))
 
-      // Use selectedFiscalYear if user has already chosen one, otherwise default to
-      // CURRENT FY (FY containing today). The PlanningSeasonBanner provides an explicit
-      // "Plan next year" affordance for coaches who want to jump to next FY during the
-      // Apr–Jun planning window.
-      const fiscalYear = selectedFiscalYear ?? getCurrentFiscalYear(yearStart)
+      // Default-year resolution. During planning season (within 3 months of FY
+      // end) the natural unit of work is *next* FY — coaches budget the new
+      // year before it starts. Outside planning season, the current FY is the
+      // default. Either way, a user-chosen selectedFiscalYear overrides.
+      const targetFY = isPlanning
+        ? getCurrentFiscalYear(yearStart) + 1
+        : getCurrentFiscalYear(yearStart)
+      const fiscalYear = selectedFiscalYear ?? targetFY
       if (!selectedFiscalYear) {
         setSelectedFiscalYear(fiscalYear)
+      }
+
+      // Detect whether a forecast exists for the prior FY so the empty state
+      // can surface a "View/edit FY{prior}" affordance when the planning-season
+      // default lands on a year the business hasn't started yet.
+      try {
+        const { data: priorRows } = await supabase
+          .from('forecasts')
+          .select('id')
+          .eq('business_id', bizId)
+          .eq('fiscal_year', fiscalYear - 1)
+          .limit(1)
+        setPriorFiscalYearWithForecast(priorRows && priorRows.length > 0 ? fiscalYear - 1 : null)
+      } catch {
+        setPriorFiscalYearWithForecast(null)
       }
 
       const { forecast: loadedForecast, error: forecastError } =
@@ -453,6 +475,9 @@ export default function FinancialForecastPage() {
         <ForecastEmptyState
           businessId={businessId}
           fiscalYear={selectedFiscalYear || forecast.fiscal_year}
+          priorFiscalYearWithForecast={priorFiscalYearWithForecast}
+          onSwitchFiscalYear={setSelectedFiscalYear}
+          yearStartMonth={fiscalYearStart}
           onCreateForecast={() => {
             setSelectedForecastId(null)
             setSelectedForecastName(null)
