@@ -2,6 +2,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
+import * as Sentry from '@sentry/nextjs'
 
 // Generate a secure random password
 function generateSecurePassword(length = 16): string {
@@ -23,15 +24,17 @@ export async function POST(request: Request) {
     // Check if user is authenticated and is super admin
     const { data: { user }, error: userError } = await supabase.auth.getUser()
 
-    console.log('[Admin Client Create] User check:', {
-      hasUser: !!user,
-      userId: user?.id,
-      email: user?.email,
-      userError: userError?.message
-    })
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Admin Client Create] User check:', {
+        hasUser: !!user,
+        userId: user?.id,
+        email: user?.email,
+        userError: userError?.message
+      })
+    }
 
     if (userError || !user) {
-      console.error('[Admin Client Create] Not authenticated:', userError)
+      Sentry.captureException(userError ?? new Error('Not authenticated'), { tags: { route: 'admin/clients' }, extra: { context: 'Not authenticated' } } as any)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -42,15 +45,17 @@ export async function POST(request: Request) {
       .eq('user_id', user.id)
       .single()
 
-    console.log('[Admin Client Create] Role check:', {
-      hasUser: !!user,
-      hasRole: !!roleData,
-      role: roleData?.role,
-      roleError: systemRoleError?.message
-    })
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Admin Client Create] Role check:', {
+        hasUser: !!user,
+        hasRole: !!roleData,
+        role: roleData?.role,
+        roleError: systemRoleError?.message
+      })
+    }
 
     if (!roleData || roleData.role !== 'super_admin') {
-      console.error('[Admin Client Create] Access denied. Role:', roleData?.role)
+      Sentry.captureMessage(`[Admin Client Create] Access denied. Role: ${roleData?.role}`, 'warning' as any)
       return NextResponse.json({
         error: 'Access denied. Super admin privileges required.',
         currentRole: roleData?.role || 'none'
@@ -142,7 +147,7 @@ export async function POST(request: Request) {
     const authData = await authResponse.json()
 
     if (!authResponse.ok || authData.error) {
-      console.error('Auth error:', authData)
+      Sentry.captureException(new Error('Auth error'), { tags: { route: 'admin/clients' }, extra: { context: 'Auth error', authData } } as any)
       const errorMessage = authData.msg || authData.error?.message || authData.message || 'Unknown error'
       return NextResponse.json(
         { error: `Failed to create user: ${errorMessage}` },
@@ -173,7 +178,7 @@ export async function POST(request: Request) {
       }, { onConflict: 'id' })
 
     if (userMirrorError) {
-      console.error('[Admin Client Create] Failed to mirror user into public.users:', userMirrorError)
+      Sentry.captureException(userMirrorError, { tags: { route: 'admin/clients' }, extra: { context: 'Failed to mirror user into public.users' } } as any)
       // Non-fatal: continue, but the team tab will show Unknown until a backfill runs
     }
 
@@ -196,7 +201,7 @@ export async function POST(request: Request) {
       .single()
 
     if (businessError) {
-      console.error('Business creation error:', businessError)
+      Sentry.captureException(businessError, { tags: { route: 'admin/clients' }, extra: { context: 'Business creation error' } } as any)
       // Rollback: Delete the auth user we just created
       try {
         await fetch(
@@ -209,9 +214,11 @@ export async function POST(request: Request) {
             }
           }
         )
-        console.log('[Admin Clients] Rolled back auth user creation due to business creation failure')
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Admin Clients] Rolled back auth user creation due to business creation failure')
+        }
       } catch (rollbackError) {
-        console.error('[Admin Clients] Failed to rollback auth user:', rollbackError)
+        Sentry.captureException(rollbackError, { tags: { route: 'admin/clients' }, extra: { context: 'Failed to rollback auth user' } } as any)
       }
       return NextResponse.json(
         { error: `Failed to create business: ${businessError.message}` },
@@ -231,7 +238,7 @@ export async function POST(request: Request) {
       })
 
     if (profileError) {
-      console.error('Business profile creation error:', profileError)
+      Sentry.captureException(profileError, { tags: { route: 'admin/clients' }, extra: { context: 'Business profile creation error' } } as any)
       // Don't fail - this is non-critical but log it
     }
 
@@ -246,7 +253,7 @@ export async function POST(request: Request) {
       })
 
     if (userRoleError) {
-      console.error('Role assignment error:', userRoleError)
+      Sentry.captureException(userRoleError, { tags: { route: 'admin/clients' }, extra: { context: 'Role assignment error' } } as any)
     }
 
     // STEP 3b: Create business_users association
@@ -268,7 +275,7 @@ export async function POST(request: Request) {
       })
 
     if (clientRoleError) {
-      console.error('System role error:', clientRoleError)
+      Sentry.captureException(clientRoleError, { tags: { route: 'admin/clients' }, extra: { context: 'System role error' } } as any)
     }
 
     // STEP 5: Create user permissions based on access level
@@ -291,7 +298,7 @@ export async function POST(request: Request) {
       })
 
     if (permissionsError) {
-      console.error('Permissions creation error:', permissionsError)
+      Sentry.captureException(permissionsError, { tags: { route: 'admin/clients' }, extra: { context: 'Permissions creation error' } } as any)
     }
 
     // STEP 6: Create onboarding progress tracker
@@ -302,7 +309,7 @@ export async function POST(request: Request) {
       })
 
     if (onboardingError) {
-      console.error('Onboarding tracking error:', onboardingError)
+      Sentry.captureException(onboardingError, { tags: { route: 'admin/clients' }, extra: { context: 'Onboarding tracking error' } } as any)
     }
 
     // STEP 6b: Create additional team members if provided
@@ -342,13 +349,15 @@ export async function POST(request: Request) {
 
           if (inviteResponse.ok) {
             teamMemberResults.push({ email: member.email, success: true })
-            console.log(`[Admin Client Create] Team member invited: ${member.email}`)
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`[Admin Client Create] Team member invited: ${member.email}`)
+            }
           } else {
             teamMemberResults.push({ email: member.email, success: false, error: inviteResult.error })
-            console.error(`[Admin Client Create] Failed to invite team member ${member.email}:`, inviteResult.error)
+            Sentry.captureException(inviteResult.error, { tags: { route: 'admin/clients' }, extra: { context: `Failed to invite team member ${member.email}` } } as any)
           }
         } catch (err) {
-          console.error(`[Admin Client Create] Error inviting team member ${member.email}:`, err)
+          Sentry.captureException(err, { tags: { route: 'admin/clients' }, extra: { context: `Error inviting team member ${member.email}` } } as any)
           teamMemberResults.push({ email: member.email, success: false, error: 'Failed to process invitation' })
         }
       }
@@ -378,10 +387,12 @@ export async function POST(request: Request) {
       emailError = emailResult.error
 
       if (!emailResult.success) {
-        console.error('Failed to send invitation email:', emailResult.error)
+        Sentry.captureException(emailResult.error, { tags: { route: 'admin/clients' }, extra: { context: 'Failed to send invitation email' } } as any)
         // Don't fail the request - client was created successfully
       } else {
-        console.log('[Admin Client Create] Invitation email sent:', emailResult.id)
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Admin Client Create] Invitation email sent:', emailResult.id)
+        }
         // Update business record to mark invitation as sent
         await supabase
           .from('businesses')
@@ -393,7 +404,9 @@ export async function POST(request: Request) {
           .eq('id', business.id)
       }
     } else {
-      console.log('[Admin Client Create] Invitation deferred - credentials stored for later')
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Admin Client Create] Invitation deferred - credentials stored for later')
+      }
     }
 
     // Return success - DO NOT include password in response for security
@@ -426,7 +439,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('Client creation error:', error)
+    Sentry.captureException(error, { tags: { route: 'admin/clients' }, extra: { context: 'Client creation error' } } as any)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }
@@ -477,14 +490,14 @@ export async function PATCH(request: Request) {
       .eq('id', clientId)
 
     if (updateError) {
-      console.error('Error updating client status:', updateError)
+      Sentry.captureException(updateError, { tags: { route: 'admin/clients' }, extra: { context: 'Error updating client status' } } as any)
       return NextResponse.json({ error: 'Failed to update client status' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, status })
 
   } catch (error) {
-    console.error('Client update error:', error)
+    Sentry.captureException(error, { tags: { route: 'admin/clients' }, extra: { context: 'Client update error' } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
@@ -563,7 +576,7 @@ export async function DELETE(request: Request) {
       .eq('id', clientId)
 
     if (businessError) {
-      console.error('Error deleting business:', businessError)
+      Sentry.captureException(businessError, { tags: { route: 'admin/clients' }, extra: { context: 'Error deleting business' } } as any)
       return NextResponse.json({ error: 'Failed to delete client business' }, { status: 500 })
     }
 
@@ -584,15 +597,17 @@ export async function DELETE(request: Request) {
       )
 
       if (!authResponse.ok) {
-        console.error('Failed to delete auth user, but business data was deleted')
+        Sentry.captureMessage('Failed to delete auth user, but business data was deleted', 'error' as any)
       }
     }
 
-    console.log('[Admin] Client deleted:', clientId)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Admin] Client deleted:', clientId)
+    }
     return NextResponse.json({ success: true })
 
   } catch (error) {
-    console.error('Client deletion error:', error)
+    Sentry.captureException(error, { tags: { route: 'admin/clients' }, extra: { context: 'Client deletion error' } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }

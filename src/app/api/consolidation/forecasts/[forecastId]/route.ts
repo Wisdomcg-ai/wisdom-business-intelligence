@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -111,7 +112,7 @@ export async function PATCH(
         .limit(1)
         .maybeSingle()
       if (connErr) {
-        console.error('[Forecast PATCH] connection lookup error:', connErr)
+        Sentry.captureException(connErr, { tags: { route: 'consolidation/forecasts/[forecastId]' }, extra: { context: "[Forecast PATCH] connection lookup error" } } as any)
         return NextResponse.json(
           {
             error: 'Failed to validate tenant_id',
@@ -140,7 +141,7 @@ export async function PATCH(
       .maybeSingle()
 
     if (error) {
-      console.error('[Forecast PATCH] update error:', error)
+      Sentry.captureException(error, { tags: { route: 'consolidation/forecasts/[forecastId]' }, extra: { context: "[Forecast PATCH] update error" } } as any)
       return NextResponse.json(
         { error: 'Failed to update forecast', detail: error.message },
         { status: 500 },
@@ -155,7 +156,7 @@ export async function PATCH(
 
     return NextResponse.json({ success: true, forecast: data })
   } catch (err) {
-    console.error('[Forecast PATCH] unhandled error, stage:', stage, err)
+    Sentry.captureException(err, { tags: { route: 'consolidation/forecasts/[forecastId]' }, extra: { context: 'unhandled error', stage } } as any)
     return NextResponse.json(
       { error: 'Internal error', stage, detail: String(err) },
       { status: 500 },

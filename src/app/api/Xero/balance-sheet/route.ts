@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import type { BalanceSheetRow, BalanceSheetData, BalanceSheetCompare } from '@/app/finances/monthly-report/types'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -167,7 +168,7 @@ export async function GET(request: NextRequest) {
 
     if (!xeroResp.ok) {
       const errText = await xeroResp.text()
-      console.error('[BalanceSheet] Xero API error:', xeroResp.status, errText)
+      Sentry.captureMessage(`[BalanceSheet] Xero API error status=${xeroResp.status}`, { level: 'error' as any, extra: { errText } } as any)
       return NextResponse.json({ error: 'Xero API error', status: xeroResp.status }, { status: 502 })
     }
 
@@ -333,7 +334,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error('[BalanceSheet] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'Xero/balance-sheet' }, extra: { context: "[BalanceSheet] Error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

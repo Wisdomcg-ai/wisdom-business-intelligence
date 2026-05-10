@@ -10,6 +10,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
 import { VENDOR_MAPPINGS, extractVendorName, createVendorKey } from '@/lib/utils/vendor-normalization';
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
 
@@ -171,14 +172,18 @@ function extractAccountBalanceByName(plReport: any, accountNames: string[]): num
   try {
     const reports = plReport?.Reports;
     if (!reports || !Array.isArray(reports) || reports.length === 0) {
-      console.log('[extractAccountBalanceByName] No reports found');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[extractAccountBalanceByName] No reports found');
+      }
       return null;
     }
 
     const report = reports[0];
     const rows = report?.Rows;
     if (!rows || !Array.isArray(rows)) {
-      console.log('[extractAccountBalanceByName] No rows found');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[extractAccountBalanceByName] No rows found');
+      }
       return null;
     }
 
@@ -187,7 +192,9 @@ function extractAccountBalanceByName(plReport: any, accountNames: string[]): num
 
     // Normalize account names for matching
     const normalizedNames = accountNames.map(n => n.toLowerCase().trim());
-    console.log('[extractAccountBalanceByName] Searching for names:', normalizedNames);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[extractAccountBalanceByName] Searching for names:', normalizedNames);
+    }
 
     function searchRows(rows: any[]): void {
       for (const row of rows) {
@@ -209,7 +216,9 @@ function extractAccountBalanceByName(plReport: any, accountNames: string[]): num
             if (!isNaN(numValue)) {
               totalBalance += numValue;
               foundAccounts.push(`${accountCell?.Value}: ${numValue}`);
-              console.log(`[extractAccountBalanceByName] MATCH: "${accountCell?.Value}" = ${numValue}`);
+              if (process.env.NODE_ENV !== 'production') {
+                console.log(`[extractAccountBalanceByName] MATCH: "${accountCell?.Value}" = ${numValue}`);
+              }
             }
           }
         }
@@ -222,12 +231,16 @@ function extractAccountBalanceByName(plReport: any, accountNames: string[]): num
 
     searchRows(rows);
 
-    console.log('[extractAccountBalanceByName] Found:', foundAccounts);
-    console.log('[extractAccountBalanceByName] Total:', totalBalance);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[extractAccountBalanceByName] Found:', foundAccounts);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[extractAccountBalanceByName] Total:', totalBalance);
+    }
 
     return foundAccounts.length > 0 ? totalBalance : null;
   } catch (error) {
-    console.error('[extractAccountBalanceByName] Error:', error);
+    Sentry.captureException(error, { tags: { route: 'Xero/subscription-transactions' }, extra: { context: "[extractAccountBalanceByName] Error" } } as any);
     return null;
   }
 }
@@ -240,14 +253,18 @@ function extractAccountBalance(plReport: any, accountCodes: string[]): number | 
   try {
     const reports = plReport?.Reports;
     if (!reports || !Array.isArray(reports) || reports.length === 0) {
-      console.log('[extractAccountBalance] No reports found in response');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[extractAccountBalance] No reports found in response');
+      }
       return null;
     }
 
     const report = reports[0];
     const rows = report?.Rows;
     if (!rows || !Array.isArray(rows)) {
-      console.log('[extractAccountBalance] No rows found in report');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[extractAccountBalance] No rows found in report');
+      }
       return null;
     }
 
@@ -317,14 +334,22 @@ function extractAccountBalance(plReport: any, accountCodes: string[]): number | 
     searchRows(rows);
 
     // Log debugging info
-    console.log('[extractAccountBalance] Searching for account codes:', accountCodes);
-    console.log('[extractAccountBalance] All accounts in report (first 20):', allAccountsInReport.slice(0, 20));
-    console.log('[extractAccountBalance] Found matching accounts:', foundAccounts);
-    console.log('[extractAccountBalance] Total balance:', totalBalance);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[extractAccountBalance] Searching for account codes:', accountCodes);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[extractAccountBalance] All accounts in report (first 20):', allAccountsInReport.slice(0, 20));
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[extractAccountBalance] Found matching accounts:', foundAccounts);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[extractAccountBalance] Total balance:', totalBalance);
+    }
 
     return foundAccounts.length > 0 ? totalBalance : null;
   } catch (error) {
-    console.error('[extractAccountBalance] Error parsing P&L report:', error);
+    Sentry.captureException(error, { tags: { route: 'Xero/subscription-transactions' }, extra: { context: "[extractAccountBalance] Error parsing P&L report" } } as any);
     return null;
   }
 }
@@ -364,8 +389,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[Subscription Txns] Starting analysis for business:', business_id);
-    console.log('[Subscription Txns] Account codes:', validAccountCodes);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Starting analysis for business:', business_id);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Account codes:', validAccountCodes);
+    }
 
     // Get the Xero connection — try all ID formats
     let connection: any = null;
@@ -403,18 +432,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (!connection) {
-      console.error('[Subscription Txns] No active Xero connection for', business_id);
+      Sentry.captureException(business_id, { tags: { route: 'Xero/subscription-transactions' }, extra: { context: "[Subscription Txns] No active Xero connection for" } } as any);
       return NextResponse.json({ error: 'No active Xero connection found' }, { status: 404 });
     }
 
     // Use Token Manager to get a valid access token
     // Token Manager handles locking, refresh, and coordination with other API calls
-    console.log('[Subscription Txns] Getting valid token via Token Manager...');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Getting valid token via Token Manager...');
+    }
 
     const tokenResult = await getValidAccessToken({ id: connection.id }, supabase);
 
     if (!tokenResult.success || !tokenResult.accessToken) {
-      console.error('[Subscription Txns] Token Manager failed:', tokenResult.error, tokenResult.message);
+      Sentry.captureException(tokenResult.error ?? new Error(tokenResult.message ?? 'Token Manager failed'), { tags: { route: 'Xero/subscription-transactions' }, extra: { context: 'Token Manager failed', message: tokenResult.message } } as any);
 
       // Check if this is a permanent failure requiring reconnection
       if (tokenResult.shouldDeactivate) {
@@ -430,7 +461,9 @@ export async function POST(request: NextRequest) {
     }
 
     const accessToken = tokenResult.accessToken;
-    console.log('[Subscription Txns] Got valid token from Token Manager');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Got valid token from Token Manager');
+    }
 
     // Calculate FY-aligned date ranges (Australian FY: July-June)
     // Use UTC dates to avoid timezone issues
@@ -461,13 +494,27 @@ export async function POST(request: NextRequest) {
     const priorFYEndStr = formatDate(priorFYEnd);
     const currentFYStartStr = formatDate(currentFYStart);
 
-    console.log('[Subscription Txns] Today:', today.toISOString());
-    console.log('[Subscription Txns] Current FY Start Year:', currentFYStartYear);
-    console.log('[Subscription Txns] Prior FY:', priorFYStartStr, 'to', priorFYEndStr);
-    console.log('[Subscription Txns] Prior FY Start timestamp:', priorFYStart.getTime());
-    console.log('[Subscription Txns] Current FY Start timestamp:', currentFYStart.getTime());
-    console.log('[Subscription Txns] Current FY YTD:', currentFYStartStr, 'to', toDateStr);
-    console.log('[Subscription Txns] Total date range:', fromDateStr, 'to', toDateStr);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Today:', today.toISOString());
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Current FY Start Year:', currentFYStartYear);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Prior FY:', priorFYStartStr, 'to', priorFYEndStr);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Prior FY Start timestamp:', priorFYStart.getTime());
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Current FY Start timestamp:', currentFYStart.getTime());
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Current FY YTD:', currentFYStartStr, 'to', toDateStr);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Total date range:', fromDateStr, 'to', toDateStr);
+    }
 
     // Track date filtering stats
     let skippedOldDates = 0;
@@ -490,7 +537,9 @@ export async function POST(request: NextRequest) {
 
       // Check if date is before prior FY start - this shouldn't happen but filter it out
       if (dateUtc < priorFYStartUtc) {
-        console.log('[Subscription Txns] SKIPPING: Transaction dated', dateStr, '(UTC:', new Date(dateUtc).toISOString(), ') is before prior FY start', priorFYStartStr);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Subscription Txns] SKIPPING: Transaction dated', dateStr, '(UTC:', new Date(dateUtc).toISOString(), ') is before prior FY start', priorFYStartStr);
+        }
         skippedOldDates++;
         return null; // Exclude transactions older than prior FY
       }
@@ -512,7 +561,9 @@ export async function POST(request: NextRequest) {
     };
 
     // Get account name mapping
-    console.log('[Subscription Txns] Fetching accounts with token:', accessToken?.substring(0, 20) + '...');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Fetching accounts with token:', accessToken?.substring(0, 20) + '...');
+    }
     const accountsResponse = await fetch(
       'https://api.xero.com/api.xro/2.0/Accounts',
       {
@@ -526,12 +577,14 @@ export async function POST(request: NextRequest) {
 
     if (!accountsResponse.ok) {
       const errorText = await accountsResponse.text();
-      console.error('[Subscription Txns] Accounts fetch error:', accountsResponse.status, errorText);
+      Sentry.captureMessage(`[Subscription Txns] Accounts fetch error status=${accountsResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
       return NextResponse.json({ error: 'Failed to fetch accounts from Xero' }, { status: 500 });
     }
 
     const accountsData = await accountsResponse.json();
-    console.log('[Subscription Txns] Got', accountsData.Accounts?.length || 0, 'accounts');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Got', accountsData.Accounts?.length || 0, 'accounts');
+    }
 
     const accountNameMap = new Map<string, string>();
     for (const acc of accountsData.Accounts || []) {
@@ -543,7 +596,9 @@ export async function POST(request: NextRequest) {
     // =====================================================
     // 1. FETCH ALL INVOICES (ACCPAY - supplier bills)
     // =====================================================
-    console.log('[Subscription Txns] Fetching invoices...');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Fetching invoices...');
+    }
 
     let totalInvoicesFetched = 0;
 
@@ -568,14 +623,16 @@ export async function POST(request: NextRequest) {
 
       if (!invoicesResponse.ok) {
         const errorText = await invoicesResponse.text();
-        console.error('[Subscription Txns] Invoice list fetch error:', invoicesResponse.status, errorText);
+        Sentry.captureMessage(`[Subscription Txns] Invoice list fetch error status=${invoicesResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
         break;
       }
 
       const invoicesData = await invoicesResponse.json();
       const invoices = invoicesData.Invoices || [];
 
-      console.log(`[Subscription Txns] Invoice page ${invoicePage}: ${invoices.length} invoices`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Subscription Txns] Invoice page ${invoicePage}: ${invoices.length} invoices`);
+      }
 
       if (invoices.length === 0) {
         hasMoreInvoices = false;
@@ -591,12 +648,16 @@ export async function POST(request: NextRequest) {
 
       // Safety limit - max 10 pages (1000 invoices)
       if (invoicePage > 10) {
-        console.log('[Subscription Txns] Reached invoice page limit');
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Subscription Txns] Reached invoice page limit');
+        }
         break;
       }
     }
 
-    console.log(`[Subscription Txns] Collected ${allInvoiceIds.length} invoice IDs`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[Subscription Txns] Collected ${allInvoiceIds.length} invoice IDs`);
+    }
 
     // Step 2: Batch fetch invoices with line items (50 at a time)
     const BATCH_SIZE = 50;
@@ -604,7 +665,9 @@ export async function POST(request: NextRequest) {
       const batchIds = allInvoiceIds.slice(i, i + BATCH_SIZE);
       const idsParam = batchIds.join(',');
 
-      console.log(`[Subscription Txns] Fetching batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(allInvoiceIds.length/BATCH_SIZE)} (${batchIds.length} invoices)`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Subscription Txns] Fetching batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(allInvoiceIds.length/BATCH_SIZE)} (${batchIds.length} invoices)`);
+      }
 
       // Add delay between batches to avoid rate limiting
       if (i > 0) {
@@ -625,7 +688,9 @@ export async function POST(request: NextRequest) {
       // Handle rate limiting
       if (batchResponse.status === 429) {
         const retryAfter = parseInt(batchResponse.headers.get('Retry-After') || '60');
-        console.log(`[Subscription Txns] Rate limited on batch, waiting ${retryAfter}s...`);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[Subscription Txns] Rate limited on batch, waiting ${retryAfter}s...`);
+        }
         await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
 
         // Retry the batch
@@ -675,7 +740,9 @@ export async function POST(request: NextRequest) {
                   totalInvoicesFetched++;
 
                   if (isCredit) {
-                    console.log(`[Subscription Txns] CREDIT FOUND (invoice retry): ${vendorName} ${dateStr} ${rawAmount}`);
+                    if (process.env.NODE_ENV !== 'production') {
+                      console.log(`[Subscription Txns] CREDIT FOUND (invoice retry): ${vendorName} ${dateStr} ${rawAmount}`);
+                    }
                   }
                 }
               }
@@ -687,7 +754,7 @@ export async function POST(request: NextRequest) {
 
       if (!batchResponse.ok) {
         const errorText = await batchResponse.text();
-        console.error('[Subscription Txns] Batch fetch error:', batchResponse.status, errorText);
+        Sentry.captureMessage(`[Subscription Txns] Batch fetch error status=${batchResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
         continue;
       }
 
@@ -730,7 +797,9 @@ export async function POST(request: NextRequest) {
               totalInvoicesFetched++;
 
               if (isCredit) {
-                console.log(`[Subscription Txns] CREDIT FOUND (invoice): ${vendorName} ${dateStr} ${rawAmount}`);
+                if (process.env.NODE_ENV !== 'production') {
+                  console.log(`[Subscription Txns] CREDIT FOUND (invoice): ${vendorName} ${dateStr} ${rawAmount}`);
+                }
               }
             }
           }
@@ -738,12 +807,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('[Subscription Txns] Total invoice transactions:', totalInvoicesFetched);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Total invoice transactions:', totalInvoicesFetched);
+    }
 
     // =====================================================
     // 2. FETCH ALL BANK TRANSACTIONS (credit card, DD)
     // =====================================================
-    console.log('[Subscription Txns] Fetching bank transactions...');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Fetching bank transactions...');
+    }
 
     let bankPage = 1;
     let hasMoreBank = true;
@@ -771,21 +844,25 @@ export async function POST(request: NextRequest) {
       // Handle rate limiting
       if (bankResponse.status === 429) {
         const retryAfter = parseInt(bankResponse.headers.get('Retry-After') || '60');
-        console.log(`[Subscription Txns] Bank rate limited, waiting ${retryAfter}s...`);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[Subscription Txns] Bank rate limited, waiting ${retryAfter}s...`);
+        }
         await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
         continue; // Retry same page
       }
 
       if (!bankResponse.ok) {
         const errorText = await bankResponse.text();
-        console.error('[Subscription Txns] Bank transaction fetch error:', bankResponse.status, errorText);
+        Sentry.captureMessage(`[Subscription Txns] Bank transaction fetch error status=${bankResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
         break;
       }
 
       const bankData = await bankResponse.json();
       const bankTxns = bankData.BankTransactions || [];
 
-      console.log(`[Subscription Txns] Bank page ${bankPage}: ${bankTxns.length} transactions`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Subscription Txns] Bank page ${bankPage}: ${bankTxns.length} transactions`);
+      }
 
       if (bankTxns.length === 0) {
         hasMoreBank = false;
@@ -829,7 +906,9 @@ export async function POST(request: NextRequest) {
             totalBankFetched++;
 
             if (isCredit) {
-              console.log(`[Subscription Txns] CREDIT FOUND (bank): ${vendorName} ${dateStr} ${rawAmount}`);
+              if (process.env.NODE_ENV !== 'production') {
+                console.log(`[Subscription Txns] CREDIT FOUND (bank): ${vendorName} ${dateStr} ${rawAmount}`);
+              }
             }
           }
         }
@@ -839,13 +918,19 @@ export async function POST(request: NextRequest) {
 
       // Safety limit - increased to 50 pages (5000 transactions) to ensure complete data
       if (bankPage > 50) {
-        console.log('[Subscription Txns] Reached bank page limit (50 pages)');
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Subscription Txns] Reached bank page limit (50 pages)');
+        }
         break;
       }
     }
 
-    console.log('[Subscription Txns] Total bank transactions:', totalBankFetched);
-    console.log('[Subscription Txns] TOTAL transactions found:', allTransactions.length);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Total bank transactions:', totalBankFetched);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] TOTAL transactions found:', allTransactions.length);
+    }
 
     // Calculate credit/debit breakdown for debugging
     const creditTransactions = allTransactions.filter(t => t.isCredit);
@@ -854,15 +939,27 @@ export async function POST(request: NextRequest) {
     const totalDebits = debitTransactions.reduce((sum, t) => sum + t.amount, 0);
     const netTotal = totalDebits + totalCredits; // Credits are negative, so this is net
 
-    console.log('[Subscription Txns] AMOUNT BREAKDOWN:');
-    console.log(`  - Debit transactions (expenses): ${debitTransactions.length} totaling ${totalDebits.toFixed(2)}`);
-    console.log(`  - Credit transactions (refunds): ${creditTransactions.length} totaling ${totalCredits.toFixed(2)}`);
-    console.log(`  - NET TOTAL: ${netTotal.toFixed(2)}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] AMOUNT BREAKDOWN:');
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`  - Debit transactions (expenses): ${debitTransactions.length} totaling ${totalDebits.toFixed(2)}`);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`  - Credit transactions (refunds): ${creditTransactions.length} totaling ${totalCredits.toFixed(2)}`);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`  - NET TOTAL: ${netTotal.toFixed(2)}`);
+    }
 
     if (creditTransactions.length > 0) {
-      console.log('[Subscription Txns] Credit transactions detail:');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Subscription Txns] Credit transactions detail:');
+      }
       creditTransactions.forEach(t => {
-        console.log(`    ${t.date} | ${t.vendor} | ${t.amount} | ${t.description?.substring(0, 50)}`);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`    ${t.date} | ${t.vendor} | ${t.amount} | ${t.description?.substring(0, 50)}`);
+        }
       });
     }
 
@@ -964,14 +1061,30 @@ export async function POST(request: NextRequest) {
     const totalAnalyzed = vendors.reduce((sum, v) => sum + v.totalAmount, 0);
     const totalMonthlyBudget = vendors.reduce((sum, v) => sum + v.suggestedMonthlyBudget, 0);
 
-    console.log('[Subscription Txns] Analysis complete:');
-    console.log(`  - Vendors found: ${vendors.length}`);
-    console.log(`  - Total analyzed: $${totalAnalyzed.toFixed(2)}`);
-    console.log(`  - Suggested monthly budget: $${totalMonthlyBudget.toFixed(2)}`);
-    console.log('[Subscription Txns] Date filtering stats:');
-    console.log(`  - Prior FY transactions: ${priorFYCount}`);
-    console.log(`  - Current FY transactions: ${currentFYCount}`);
-    console.log(`  - Skipped (older than prior FY): ${skippedOldDates}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Analysis complete:');
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`  - Vendors found: ${vendors.length}`);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`  - Total analyzed: $${totalAnalyzed.toFixed(2)}`);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`  - Suggested monthly budget: $${totalMonthlyBudget.toFixed(2)}`);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Date filtering stats:');
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`  - Prior FY transactions: ${priorFYCount}`);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`  - Current FY transactions: ${currentFYCount}`);
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`  - Skipped (older than prior FY): ${skippedOldDates}`);
+    }
 
     // Calculate FY totals for summary
     const priorFYTotal = vendors.reduce((sum, v) => sum + v.priorFYAmount, 0);
@@ -988,19 +1101,27 @@ export async function POST(request: NextRequest) {
       priorFYByMonth[month].count++;
       priorFYByMonth[month].total += t.amount;
     }
-    console.log('[Subscription Txns] PRIOR FY BREAKDOWN BY MONTH:');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] PRIOR FY BREAKDOWN BY MONTH:');
+    }
     const sortedMonths = Object.keys(priorFYByMonth).sort();
     for (const month of sortedMonths) {
-      console.log(`  ${month}: ${priorFYByMonth[month].count} txns = $${priorFYByMonth[month].total.toFixed(2)}`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`  ${month}: ${priorFYByMonth[month].count} txns = $${priorFYByMonth[month].total.toFixed(2)}`);
+      }
     }
-    console.log(`  TOTAL: ${priorFYTransactions.length} txns = $${priorFYTotal.toFixed(2)}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`  TOTAL: ${priorFYTransactions.length} txns = $${priorFYTotal.toFixed(2)}`);
+    }
 
     // =====================================================
     // 6. FETCH ACTUAL P&L BALANCES FOR RECONCILIATION
     // =====================================================
     // This fetches the ACTUAL account balance from Xero's P&L Report
     // to verify our transaction analysis is complete and accurate
-    console.log('[Subscription Txns] Fetching P&L Report for reconciliation...');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Fetching P&L Report for reconciliation...');
+    }
 
     let reconciliation = {
       priorFY: {
@@ -1022,7 +1143,9 @@ export async function POST(request: NextRequest) {
     try {
       // First, get the Xero AccountID (GUID) for our account codes
       // The P&L Report uses GUIDs, not account codes
-      console.log('[Subscription Txns] Looking up Account GUIDs for codes:', validAccountCodes);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Subscription Txns] Looking up Account GUIDs for codes:', validAccountCodes);
+      }
 
       const accountGUIDs: string[] = [];
       const accountNames: string[] = [];
@@ -1032,13 +1155,17 @@ export async function POST(request: NextRequest) {
         const accountName = accountNameMap.get(code);
         if (accountName) {
           accountNames.push(accountName);
-          console.log(`[Subscription Txns] Account ${code} = "${accountName}"`);
+          if (process.env.NODE_ENV !== 'production') {
+            console.log(`[Subscription Txns] Account ${code} = "${accountName}"`);
+          }
         }
       }
 
       // Fetch the P&L Report and search by account NAME since that's what we have
       const priorPLUrl = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${priorFYStartStr}&toDate=${priorFYEndStr}&standardLayout=true`;
-      console.log('[Subscription Txns] Prior FY P&L URL:', priorPLUrl);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Subscription Txns] Prior FY P&L URL:', priorPLUrl);
+      }
 
       const priorPLResponse = await fetch(priorPLUrl, {
         headers: {
@@ -1053,7 +1180,9 @@ export async function POST(request: NextRequest) {
 
         // Extract balance using account names instead of codes
         const priorActual = extractAccountBalanceByName(priorPLData, accountNames);
-        console.log('[Subscription Txns] Prior FY P&L actual balance:', priorActual);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Subscription Txns] Prior FY P&L actual balance:', priorActual);
+        }
 
         if (priorActual !== null) {
           reconciliation.priorFY.actual = Math.round(priorActual * 100) / 100;
@@ -1067,12 +1196,14 @@ export async function POST(request: NextRequest) {
         }
       } else {
         const errorText = await priorPLResponse.text();
-        console.error('[Subscription Txns] Prior FY P&L fetch failed:', priorPLResponse.status, errorText);
+        Sentry.captureMessage(`[Subscription Txns] Prior FY P&L fetch failed status=${priorPLResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
       }
 
       // Fetch Current FY YTD P&L Report
       const currentPLUrl = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${currentFYStartStr}&toDate=${toDateStr}&standardLayout=true`;
-      console.log('[Subscription Txns] Current FY P&L URL:', currentPLUrl);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Subscription Txns] Current FY P&L URL:', currentPLUrl);
+      }
 
       const currentPLResponse = await fetch(currentPLUrl, {
         headers: {
@@ -1085,7 +1216,9 @@ export async function POST(request: NextRequest) {
       if (currentPLResponse.ok) {
         const currentPLData = await currentPLResponse.json();
         const currentActual = extractAccountBalanceByName(currentPLData, accountNames);
-        console.log('[Subscription Txns] Current FY P&L actual balance:', currentActual);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Subscription Txns] Current FY P&L actual balance:', currentActual);
+        }
 
         if (currentActual !== null) {
           reconciliation.currentFY.actual = Math.round(currentActual * 100) / 100;
@@ -1099,13 +1232,15 @@ export async function POST(request: NextRequest) {
         }
       } else {
         const errorText = await currentPLResponse.text();
-        console.error('[Subscription Txns] Current FY P&L fetch failed:', currentPLResponse.status, errorText);
+        Sentry.captureMessage(`[Subscription Txns] Current FY P&L fetch failed status=${currentPLResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
       }
     } catch (reconcileError) {
-      console.error('[Subscription Txns] Reconciliation error:', reconcileError);
+      Sentry.captureException(reconcileError, { tags: { route: 'Xero/subscription-transactions' }, extra: { context: "[Subscription Txns] Reconciliation error" } } as any);
     }
 
-    console.log('[Subscription Txns] Reconciliation results:', reconciliation);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Txns] Reconciliation results:', reconciliation);
+    }
 
     return NextResponse.json({
       success: true,
@@ -1162,7 +1297,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (err) {
-    console.error('[Subscription Txns] Error:', err);
+    Sentry.captureException(err, { tags: { route: 'Xero/subscription-transactions' }, extra: { context: "[Subscription Txns] Error" } } as any);
     return NextResponse.json({ error: 'Failed to analyze subscriptions' }, { status: 500 });
   }
 }

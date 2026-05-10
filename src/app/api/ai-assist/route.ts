@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter';
+import * as Sentry from '@sentry/nextjs'
 import {
   sanitizeObjectForAI,
   detectPromptInjection,
@@ -124,7 +125,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ suggestion });
   } catch (error) {
-    console.error('AI assist error:', error);
+    Sentry.captureException(error, { tags: { route: 'ai-assist' }, extra: { context: "AI assist error" } } as any);
     return NextResponse.json(
       { error: 'Failed to get AI suggestion' },
       { status: 500 }

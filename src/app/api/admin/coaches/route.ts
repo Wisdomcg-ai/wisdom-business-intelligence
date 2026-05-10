@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,7 +45,7 @@ export async function GET() {
       .order('first_name')
 
     if (error) {
-      console.error('Error fetching coaches:', error)
+      Sentry.captureException(error, { tags: { route: 'admin/coaches' }, extra: { context: 'Error fetching coaches' } } as any)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -62,7 +63,7 @@ export async function GET() {
 
     return NextResponse.json({ coaches: sanitizedCoaches })
   } catch (error) {
-    console.error('Error in GET /api/admin/coaches:', error)
+    Sentry.captureException(error, { tags: { route: 'admin/coaches' }, extra: { context: 'GET /api/admin/coaches' } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (authError) {
-      console.error('Error creating auth user:', authError)
+      Sentry.captureException(authError, { tags: { route: 'admin/coaches' }, extra: { context: 'Error creating auth user' } } as any)
       return NextResponse.json({ error: authError.message }, { status: 400 })
     }
 
@@ -135,7 +136,7 @@ export async function POST(request: NextRequest) {
       })
 
     if (usersError) {
-      console.error('Error inserting into users table:', usersError)
+      Sentry.captureException(usersError, { tags: { route: 'admin/coaches' }, extra: { context: 'Error inserting into users table' } } as any)
       // Try to clean up the auth user if users insert fails
       await supabaseAdmin.auth.admin.deleteUser(newUserId)
       return NextResponse.json({ error: usersError.message }, { status: 500 })
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
       })
 
     if (rolesError) {
-      console.error('Error inserting into system_roles:', rolesError)
+      Sentry.captureException(rolesError, { tags: { route: 'admin/coaches' }, extra: { context: 'Error inserting into system_roles' } } as any)
       // Non-critical - don't fail the whole operation
     }
 
@@ -166,7 +167,7 @@ export async function POST(request: NextRequest) {
       tempPassword: password ? undefined : tempPassword // Only return if we generated it
     })
   } catch (error) {
-    console.error('Error in POST /api/admin/coaches:', error)
+    Sentry.captureException(error, { tags: { route: 'admin/coaches' }, extra: { context: 'POST /api/admin/coaches' } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -221,7 +222,7 @@ export async function PATCH(request: NextRequest) {
       .eq('id', coachId)
 
     if (updateError) {
-      console.error('Error updating coach:', updateError)
+      Sentry.captureException(updateError, { tags: { route: 'admin/coaches' }, extra: { context: 'Error updating coach' } } as any)
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
 
@@ -235,13 +236,13 @@ export async function PATCH(request: NextRequest) {
     })
 
     if (authError) {
-      console.error('Error updating auth user:', authError)
+      Sentry.captureException(authError, { tags: { route: 'admin/coaches' }, extra: { context: 'Error updating auth user' } } as any)
       // Non-critical - don't fail the whole operation
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error in PATCH /api/admin/coaches:', error)
+    Sentry.captureException(error, { tags: { route: 'admin/coaches' }, extra: { context: 'PATCH /api/admin/coaches' } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -277,13 +278,13 @@ export async function DELETE(request: NextRequest) {
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(coachId)
 
     if (deleteError) {
-      console.error('Error deleting coach:', deleteError)
+      Sentry.captureException(deleteError, { tags: { route: 'admin/coaches' }, extra: { context: 'Error deleting coach' } } as any)
       return NextResponse.json({ error: deleteError.message }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error in DELETE /api/admin/coaches:', error)
+    Sentry.captureException(error, { tags: { route: 'admin/coaches' }, extra: { context: 'DELETE /api/admin/coaches' } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

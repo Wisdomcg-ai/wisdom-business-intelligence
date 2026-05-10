@@ -24,6 +24,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -148,7 +149,7 @@ export async function POST(
     )
 
     if (rpcError) {
-      console.error('[forecast/recompute] Atomic recompute failed:', rpcError)
+      Sentry.captureException(rpcError, { tags: { route: 'forecast/[id]/recompute' }, extra: { context: "[forecast/recompute] Atomic recompute failed" } } as any)
       return NextResponse.json(
         {
           error: `Recompute failed: ${rpcError.message}`,
@@ -169,7 +170,7 @@ export async function POST(
       lines_count: result?.lines_count ?? generatedLines.length,
     })
   } catch (error) {
-    console.error('[forecast/recompute] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'forecast/[id]/recompute' }, extra: { context: "[forecast/recompute] Error" } } as any)
     const message = error instanceof Error ? error.message : String(error)
     return NextResponse.json(
       { error: 'Internal server error', detail: message },

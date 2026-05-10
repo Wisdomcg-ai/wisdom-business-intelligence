@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
 
@@ -127,7 +128,9 @@ export async function GET(request: NextRequest) {
 
     // If Xero returns 401, force a token refresh and retry once
     if (response.status === 401) {
-      console.log('[Chart of Accounts] Xero returned 401, forcing token refresh...');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Chart of Accounts] Xero returned 401, forcing token refresh...');
+      }
 
       // Expire the token in the DB to force the token manager to refresh
       await supabase
@@ -149,7 +152,7 @@ export async function GET(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[Chart of Accounts] Xero API error:', response.status, errorText);
+      Sentry.captureMessage(`[Chart of Accounts] Xero API error status=${response.status}`, { level: 'error' as any, extra: { errorText } } as any);
 
       const status = response.status === 401 || response.status === 403 ? 401
         : response.status === 429 ? 429
@@ -194,7 +197,7 @@ export async function GET(request: NextRequest) {
       totalAccounts: accounts.length,
     });
   } catch (err) {
-    console.error('[Chart of Accounts] Error:', err);
+    Sentry.captureException(err, { tags: { route: 'Xero/chart-of-accounts' }, extra: { context: "[Chart of Accounts] Error" } } as any);
     return NextResponse.json({ error: 'Failed to fetch chart of accounts' }, { status: 500 });
   }
 }

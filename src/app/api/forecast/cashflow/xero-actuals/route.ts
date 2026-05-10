@@ -19,6 +19,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,7 +84,7 @@ export async function GET(request: NextRequest) {
       .select('account_name, account_code, account_type, monthly_values')
       .in('business_id', ids.all)
     if (error) {
-      console.error('[Xero Actuals] Error:', error)
+      Sentry.captureException(error, { tags: { route: 'forecast/cashflow/xero-actuals' }, extra: { context: "[Xero Actuals] Error" } } as any)
       return NextResponse.json({ error: 'Failed to load Xero actuals' }, { status: 500 })
     }
     // D-44.2-03 quality gate — fallback path; compute via public wrapper.
@@ -96,7 +97,7 @@ export async function GET(request: NextRequest) {
   } catch (err: any) {
     const message = String(err?.message ?? err)
     const isInvariant = message.includes('INVARIANT VIOLATED')
-    console.error('[Xero Actuals] Error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/cashflow/xero-actuals' }, extra: { context: "[Xero Actuals] Error" } } as any)
     return NextResponse.json(
       { error: isInvariant ? message : 'Internal server error', invariant_violation: isInvariant || undefined },
       { status: 500 },

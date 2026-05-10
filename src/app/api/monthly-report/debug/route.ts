@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -167,7 +168,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('[Report Debug] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/debug' }, extra: { context: "[Report Debug] Error" } } as any)
     return NextResponse.json({ error: 'Debug failed' }, { status: 500 })
   }
 }

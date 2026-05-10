@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import * as Sentry from '@sentry/nextjs'
 
 export async function POST(request: NextRequest) {
   try {
@@ -64,13 +65,13 @@ export async function POST(request: NextRequest) {
     }).select()
 
     if (error) {
-      console.error('[Activity Log] Insert error:', error)
+      Sentry.captureException(error, { tags: { route: 'activity-log' }, extra: { context: "[Activity Log] Insert error" } } as any)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, data })
   } catch (error) {
-    console.error('[Activity Log] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'activity-log' }, extra: { context: "[Activity Log] Error" } } as any)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -120,7 +121,7 @@ export async function GET(request: NextRequest) {
     const { data, count, error } = await query
 
     if (error) {
-      console.error('[Activity Log] Query error:', error)
+      Sentry.captureException(error, { tags: { route: 'activity-log' }, extra: { context: "[Activity Log] Query error" } } as any)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -130,7 +131,7 @@ export async function GET(request: NextRequest) {
       hasMore: count ? offset + limit < count : false
     })
   } catch (error) {
-    console.error('[Activity Log] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'activity-log' }, extra: { context: "[Activity Log] Error" } } as any)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

@@ -1,6 +1,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -127,7 +128,7 @@ export async function GET(request: Request) {
       fiscalYearStart: profile?.fiscal_year_start ?? 7
     })
   } catch (err) {
-    console.error('[API /goals/resolve-business] Error:', err)
+    Sentry.captureException(err, { tags: { route: 'goals/resolve-business' }, extra: { context: "[API /goals/resolve-business] Error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

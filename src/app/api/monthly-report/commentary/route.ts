@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { extractVendorInfo } from '@/lib/utils/vendor-normalization'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,13 +53,13 @@ async function fetchAllXeroPages(
     const res = await fetch(`${url}${separator}page=${page}`, { headers })
 
     if (res.status === 429) {
-      console.warn(`[Commentary] Rate limited on ${dataKey} page ${page}, waiting 10s...`)
+      Sentry.captureMessage(`[Commentary] Rate limited on ${dataKey} page ${page}, waiting 10s...`, 'warning' as any)
       await sleep(10000)
       continue // retry same page
     }
 
     if (!res.ok) {
-      console.error(`[Commentary] ${dataKey} page ${page} returned ${res.status}`)
+      Sentry.captureMessage(`[Commentary] ${dataKey} page ${page} returned ${res.status}`, 'error' as any)
       break
     }
 
@@ -145,9 +146,11 @@ export async function POST(request: NextRequest) {
           }
         }
       }
-      console.log(`[Commentary] Loaded ${accountNameToCode.size} account codes from xero_pl_lines`)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Commentary] Loaded ${accountNameToCode.size} account codes from xero_pl_lines`)
+      }
     } catch (err) {
-      console.error('[Commentary] Failed to load account codes from xero_pl_lines:', err)
+      Sentry.captureException(err, { tags: { route: 'monthly-report/commentary' }, extra: { context: "[Commentary] Failed to load account codes from xero_pl_lines" } } as any)
     }
 
     // Also check account_mappings for any mapped xero_account_code
@@ -193,7 +196,9 @@ export async function POST(request: NextRequest) {
       ),
     ])
 
-    console.log(`[Commentary] Fetched ${invoices.length} invoices, ${bankTransactions.length} bank transactions for ${report_month}`)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[Commentary] Fetched ${invoices.length} invoices, ${bankTransactions.length} bank transactions for ${report_month}`)
+    }
 
     // Load settings for detail tab cross-references
     let subscriptionAccountCodes: string[] = []
@@ -331,16 +336,18 @@ export async function POST(request: NextRequest) {
     try {
       const periodMonth = `${report_month}-01`
       const result = await revertReportIfApproved(supabase, business_id, periodMonth)
-      console.log('[monthly-report/commentary] revert', { business_id, periodMonth, ...result })
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[monthly-report/commentary] revert', { business_id, periodMonth, ...result })
+      }
     } catch (revertErr) {
       // Do not fail the save if revert tracking fails — log and continue.
-      console.error('[monthly-report/commentary] revertReportIfApproved failed:', revertErr)
+      Sentry.captureException(revertErr, { tags: { route: 'monthly-report/commentary' }, extra: { context: "[monthly-report/commentary] revertReportIfApproved failed" } } as any)
     }
 
     return NextResponse.json({ success: true, commentary })
 
   } catch (error) {
-    console.error('[Commentary] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/commentary' }, extra: { context: "[Commentary] Error" } } as any)
     return NextResponse.json({ error: 'Failed to generate commentary' }, { status: 500 })
   }
 }

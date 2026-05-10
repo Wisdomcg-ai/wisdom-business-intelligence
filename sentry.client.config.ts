@@ -1,6 +1,13 @@
 import * as Sentry from "@sentry/nextjs";
 
-const SENTRY_DSN = process.env.NEXT_PUBLIC_SENTRY_DSN || "https://5f617384407d5579ae786ca49693fb1f@o4510784570916864.ingest.us.sentry.io/4510789719162880";
+// SEC-08 (Phase 46 plan 46-04): fail loud if NEXT_PUBLIC_SENTRY_DSN is
+// unset in production. In dev, undefined DSN is fine — Sentry.init({ dsn:
+// undefined }) is a no-op. The previous hardcoded fallback DSN has been
+// removed from the repo; the secret is set via Vercel env vars.
+const SENTRY_DSN = process.env.NEXT_PUBLIC_SENTRY_DSN;
+if (process.env.NODE_ENV === "production" && !SENTRY_DSN) {
+  throw new Error("NEXT_PUBLIC_SENTRY_DSN must be set in production");
+}
 
 Sentry.init({
   dsn: SENTRY_DSN,

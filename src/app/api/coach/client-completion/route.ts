@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,12 +31,12 @@ async function safeQuery<T>(
   try {
     const { data, error } = await fn()
     if (error) {
-      console.warn('[client-completion] query error:', error.message)
+      Sentry.captureMessage(`[client-completion] query error: ${error.message}`, 'warning' as any)
       return null
     }
     return data
   } catch (e: any) {
-    console.warn('[client-completion] query exception:', e.message)
+    Sentry.captureMessage(`[client-completion] query exception: ${e.message}`, 'warning' as any)
     return null
   }
 }
@@ -193,7 +194,7 @@ export async function GET() {
       .order('business_name', { ascending: true })
 
     if (bizError) {
-      console.error('[client-completion] businesses query error:', bizError)
+      Sentry.captureException(bizError, { tags: { route: 'coach/client-completion' }, extra: { context: "[client-completion] businesses query error" } } as any)
       return NextResponse.json({ error: 'Failed to load clients' }, { status: 500 })
     }
 
@@ -736,7 +737,7 @@ export async function GET() {
 
     return NextResponse.json({ clients })
   } catch (error) {
-    console.error('[client-completion] Unexpected error:', error)
+    Sentry.captureException(error, { tags: { route: 'coach/client-completion' }, extra: { context: "[client-completion] Unexpected error" } } as any)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }

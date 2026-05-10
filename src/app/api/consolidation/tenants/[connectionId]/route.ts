@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { validateTenantPatchPayload } from '@/lib/consolidation/admin-guards'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -96,7 +97,7 @@ export async function PATCH(
       .maybeSingle()
 
     if (error) {
-      console.error('[Tenant PATCH] update error:', error)
+      Sentry.captureException(error, { tags: { route: 'consolidation/tenants/[connectionId]' }, extra: { context: "[Tenant PATCH] update error" } } as any)
       return NextResponse.json(
         { error: 'Failed to update tenant', detail: error.message },
         { status: 500 },
@@ -111,7 +112,7 @@ export async function PATCH(
 
     return NextResponse.json({ success: true, tenant: data })
   } catch (err) {
-    console.error('[Tenant PATCH] unhandled error, stage:', stage, err)
+    Sentry.captureException(err, { tags: { route: 'consolidation/tenants/[connectionId]' }, extra: { context: 'unhandled PATCH error', stage } } as any)
     return NextResponse.json(
       { error: 'Internal error', stage, detail: String(err) },
       { status: 500 },

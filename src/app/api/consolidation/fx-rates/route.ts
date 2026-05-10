@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { validateFxRatePayload } from '@/lib/consolidation/admin-guards'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('[FX Rates] upsert error:', error)
+      Sentry.captureException(error, { tags: { route: 'consolidation/fx-rates' }, extra: { context: "[FX Rates] upsert error" } } as any)
       return NextResponse.json(
         { error: 'Failed to save rate', detail: error.message },
         { status: 500 },
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, rate: data })
   } catch (err) {
-    console.error('[FX Rates] unhandled POST error, stage:', stage, err)
+    Sentry.captureException(err, { tags: { route: 'consolidation/fx-rates' }, extra: { context: 'unhandled POST error', stage } } as any)
     return NextResponse.json(
       { error: 'Internal error', stage, detail: String(err) },
       { status: 500 },
@@ -127,7 +128,7 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json({ success: true, rates: data ?? [] })
   } catch (err) {
-    console.error('[FX Rates] unhandled GET error, stage:', stage, err)
+    Sentry.captureException(err, { tags: { route: 'consolidation/fx-rates' }, extra: { context: 'unhandled GET error', stage } } as any)
     return NextResponse.json(
       { error: 'Internal error', stage, detail: String(err) },
       { status: 500 },

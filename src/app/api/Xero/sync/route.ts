@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,7 +59,7 @@ async function syncXeroData(business_id: string) {
     // Use the robust token manager for refresh handling
     const tokenResult = await getValidAccessToken(connection, supabaseAdmin);
     if (!tokenResult.success) {
-      console.error('[Xero Sync] Token refresh failed:', tokenResult.error);
+      Sentry.captureException(tokenResult.error, { tags: { route: 'Xero/sync' }, extra: { context: "[Xero Sync] Token refresh failed" } } as any);
       return NextResponse.json(
         { error: tokenResult.message || 'Xero connection expired', needsReconnect: tokenResult.shouldDeactivate },
         { status: 401 }
@@ -186,7 +187,7 @@ async function syncXeroData(business_id: string) {
     });
 
   } catch (error) {
-    console.error('Sync error:', error);
+    Sentry.captureException(error, { tags: { route: 'Xero/sync' }, extra: { context: "Sync error" } } as any);
     return NextResponse.json({ error: 'Sync failed' }, { status: 500 });
   }
 }

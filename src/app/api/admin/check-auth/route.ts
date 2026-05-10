@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export async function GET() {
   const supabase = await createRouteHandlerClient()
@@ -36,7 +37,10 @@ export async function GET() {
     })
 
   } catch (error) {
-    console.error('Auth check error:', error)
+    Sentry.captureException(error, {
+      tags: { route: 'admin/check-auth' },
+      extra: { context: 'Auth check error' },
+    } as any)
     return NextResponse.json({
       error: 'Server error',
       details: 'Internal server error'

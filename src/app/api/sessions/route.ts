@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
     const { data: sessions, error: sessionsError } = await query
 
     if (sessionsError) {
-      console.error('Error loading sessions:', sessionsError)
+      Sentry.captureException(sessionsError, { tags: { route: 'sessions' }, extra: { context: "Error loading sessions" } } as any)
       return NextResponse.json({ error: 'Failed to load sessions' }, { status: 500 })
     }
 
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
     })
 
   } catch (error) {
-    console.error('Sessions API error:', error)
+    Sentry.captureException(error, { tags: { route: 'sessions' }, extra: { context: "Sessions API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
@@ -117,7 +118,7 @@ export async function POST(request: Request) {
       .single()
 
     if (sessionError) {
-      console.error('Error creating session:', sessionError)
+      Sentry.captureException(sessionError, { tags: { route: 'sessions' }, extra: { context: "Error creating session" } } as any)
       return NextResponse.json({ error: 'Failed to create session' }, { status: 500 })
     }
 
@@ -127,7 +128,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('Create session API error:', error)
+    Sentry.captureException(error, { tags: { route: 'sessions' }, extra: { context: "Create session API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }

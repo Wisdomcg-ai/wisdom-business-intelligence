@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
+import * as Sentry from '@sentry/nextjs'
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
       .select()
 
     if (error) {
-      console.error('[Login Track] Error:', error)
+      Sentry.captureException(error, { tags: { route: 'activity-log/login' }, extra: { context: "[Login Track] Error" } } as any)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -53,13 +54,13 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .then(({ error: syncError }) => {
         if (syncError) {
-          console.warn('[Login Track] Failed to sync users.last_login_at:', syncError.message)
+          Sentry.captureMessage(`[Login Track] Failed to sync users.last_login_at: ${syncError.message}`, 'warning' as any)
         }
       })
 
     return NextResponse.json({ success: true, data })
   } catch (error) {
-    console.error('[Login Track] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'activity-log/login' }, extra: { context: "[Login Track] Error" } } as any)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -93,13 +94,13 @@ export async function GET(request: NextRequest) {
       .order('login_at', { ascending: false })
 
     if (error) {
-      console.error('[Login Track] Query error:', error)
+      Sentry.captureException(error, { tags: { route: 'activity-log/login' }, extra: { context: "[Login Track] Query error" } } as any)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ data })
   } catch (error) {
-    console.error('[Login Track] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'activity-log/login' }, extra: { context: "[Login Track] Error" } } as any)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

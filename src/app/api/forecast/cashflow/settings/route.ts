@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
 
     if (error) {
-      console.error('[Cashflow Settings] GET error:', error)
+      Sentry.captureException(error, { tags: { route: 'forecast/cashflow/settings' }, extra: { context: "[Cashflow Settings] GET error" } } as any)
       return NextResponse.json({ error: 'Failed to load settings' }, { status: 500 })
     }
 
@@ -102,7 +103,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: row, is_default: false })
   } catch (err) {
-    console.error('[Cashflow Settings] GET error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/cashflow/settings' }, extra: { context: "[Cashflow Settings] GET error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -181,13 +182,13 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('[Cashflow Settings] POST error:', error)
+      Sentry.captureException(error, { tags: { route: 'forecast/cashflow/settings' }, extra: { context: "[Cashflow Settings] POST error" } } as any)
       return NextResponse.json({ error: 'Failed to save settings', detail: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ data, success: true })
   } catch (err) {
-    console.error('[Cashflow Settings] POST error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/cashflow/settings' }, extra: { context: "[Cashflow Settings] POST error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

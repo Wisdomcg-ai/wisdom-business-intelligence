@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { encrypt, decrypt } from '@/lib/utils/encryption';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
 
@@ -138,7 +139,9 @@ export async function POST(request: NextRequest) {
     if (profile?.business_id) {
       bizId = profile.business_id;
     }
-    console.log('[Xero Complete] Using canonical business_id:', bizId, 'tenants:', selectedTenants.length);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero Complete] Using canonical business_id:', bizId, 'tenants:', selectedTenants.length);
+    }
 
     const rowsToUpsert = selectedTenants.map((t) => ({
       business_id: bizId,
@@ -158,7 +161,7 @@ export async function POST(request: NextRequest) {
       .select();
 
     if (insertError) {
-      console.error('[Xero Complete] Upsert failed:', insertError, { bizId });
+      Sentry.captureException(insertError, { tags: { route: 'Xero/complete-connection' }, extra: { context: 'Upsert failed', bizId } } as any);
       return NextResponse.json(
         { error: 'Failed to save connection(s)', detail: insertError.message },
         { status: 500 }
@@ -168,17 +171,19 @@ export async function POST(request: NextRequest) {
     // Delete the pending record
     await supabaseAdmin.from('pending_xero_connections').delete().eq('id', pending_id);
 
-    console.log(
-      '[Xero Complete] Saved',
-      inserted?.length ?? 0,
-      'connection(s):',
-      selectedTenants.map((t) => t.tenantName).join(', '),
-    );
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(
+        '[Xero Complete] Saved',
+        inserted?.length ?? 0,
+        'connection(s):',
+        selectedTenants.map((t) => t.tenantName).join(', '),
+      );
+    }
 
     // Trigger initial sync per tenant in the background
     for (const t of selectedTenants) {
       triggerInitialSync(pending.business_id, accessToken, t.tenantId).catch((err) =>
-        console.error(`[Xero Complete] Initial sync failed for ${t.tenantName}:`, err),
+        Sentry.captureException(err, { tags: { route: 'Xero/complete-connection' }, extra: { context: "[Xero Complete] Initial sync failed for ${t.tenantName}" } } as any),
       );
     }
 
@@ -189,7 +194,7 @@ export async function POST(request: NextRequest) {
       redirect_to: `${pending.return_to || '/integrations'}?success=connected&syncing=true`,
     });
   } catch (error) {
-    console.error('[Xero Complete] Error:', error);
+    Sentry.captureException(error, { tags: { route: 'Xero/complete-connection' }, extra: { context: "[Xero Complete] Error" } } as any);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -229,8 +234,10 @@ async function triggerInitialSync(businessId: string, accessToken: string, tenan
       .update({ last_synced_at: new Date().toISOString() })
       .eq('business_id', businessId);
 
-    console.log('[Xero Complete] Initial sync done, cash:', totalCash);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero Complete] Initial sync done, cash:', totalCash);
+    }
   } catch (error) {
-    console.error('[Xero Complete] Sync error:', error);
+    Sentry.captureException(error, { tags: { route: 'Xero/complete-connection' }, extra: { context: "[Xero Complete] Sync error" } } as any);
   }
 }

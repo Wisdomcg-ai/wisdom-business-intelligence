@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { buildFuzzyLookup, isAccountMatch } from '@/lib/utils/account-matching'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -156,14 +157,18 @@ export async function POST(request: NextRequest) {
       return e.start_date <= reportMonthEnd
     })
 
-    console.log(`[WagesDetail] forecastId=${forecastId}, forecastFrequency=${forecastFrequency}`)
-    console.log(`[WagesDetail] ${forecastEmployees.length} forecast employees (${allForecastEmployees.length} total, ${allForecastEmployees.length - forecastEmployees.length} filtered out as future hires):`, forecastEmployees.map(e => ({
-      name: e.employee_name,
-      annual_salary: e.annual_salary,
-      monthly_cost: e.monthly_cost,
-      pay_per_period: e.pay_per_period,
-      start_date: e.start_date,
-    })))
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[WagesDetail] forecastId=${forecastId}, forecastFrequency=${forecastFrequency}`)
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[WagesDetail] ${forecastEmployees.length} forecast employees (${allForecastEmployees.length} total, ${allForecastEmployees.length - forecastEmployees.length} filtered out as future hires):`, forecastEmployees.map(e => ({
+        name: e.employee_name,
+        annual_salary: e.annual_salary,
+        monthly_cost: e.monthly_cost,
+        pay_per_period: e.pay_per_period,
+        start_date: e.start_date,
+      })))
+    }
 
     // ===== 3. Build lookups for P&L matching =====
     const actualLookup = buildFuzzyLookup(plLines, (item) => item.account_name)
@@ -182,9 +187,15 @@ export async function POST(request: NextRequest) {
     let grandActual = 0
     let grandBudget = 0
 
-    console.log(`[WagesDetail] wages_account_names from settings:`, wages_account_names)
-    console.log(`[WagesDetail] xero_pl_lines accounts:`, plLines.map(l => l.account_name))
-    console.log(`[WagesDetail] report_month: ${report_month}`)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[WagesDetail] wages_account_names from settings:`, wages_account_names)
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[WagesDetail] xero_pl_lines accounts:`, plLines.map(l => l.account_name))
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[WagesDetail] report_month: ${report_month}`)
+    }
 
     const accounts = wages_account_names.map(name => {
       let actualLine = actualLookup(name)
@@ -193,7 +204,9 @@ export async function POST(request: NextRequest) {
         if (mappedXeroName) actualLine = actualLookup(mappedXeroName)
       }
       const actual = actualLine?.monthly_values ? Math.abs(actualLine.monthly_values[report_month] || 0) : 0
-      console.log(`[WagesDetail] Account "${name}": actualLine=${actualLine ? 'found' : 'NOT FOUND'}, actual=${actual}, monthKeys=${actualLine?.monthly_values ? Object.keys(actualLine.monthly_values).slice(0,3).join(',') : 'none'}`)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[WagesDetail] Account "${name}": actualLine=${actualLine ? 'found' : 'NOT FOUND'}, actual=${actual}, monthKeys=${actualLine?.monthly_values ? Object.keys(actualLine.monthly_values).slice(0,3).join(',') : 'none'}`)
+      }
 
       let bestBudgetValue = 0
       const directBudget = budgetLookup(name)
@@ -282,14 +295,18 @@ export async function POST(request: NextRequest) {
           if (calResp.ok) {
             const calData = await calResp.json()
             const calendars = calData?.PayrollCalendars || []
-            console.log(`[WagesDetail] PayCalendars: ${calendars.length} found`, calendars.map((c: any) => ({
-              id: c.PayrollCalendarID, name: c.Name, type: c.CalendarType
-            })))
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`[WagesDetail] PayCalendars: ${calendars.length} found`, calendars.map((c: any) => ({
+                id: c.PayrollCalendarID, name: c.Name, type: c.CalendarType
+              })))
+            }
             for (const cal of calendars) {
               calendarMap.set(cal.PayrollCalendarID, cal.CalendarType || 'UNKNOWN')
             }
           } else {
-            console.log(`[WagesDetail] PayCalendars fetch failed: ${calResp.status}`)
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`[WagesDetail] PayCalendars fetch failed: ${calResp.status}`)
+            }
           }
 
           if (runsResp.ok) {
@@ -305,7 +322,9 @@ export async function POST(request: NextRequest) {
               return payDate.getFullYear() === reportYear && (payDate.getMonth() + 1) === reportMonthNum
             })
 
-            console.log(`[WagesDetail] Found ${monthPayRuns.length} POSTED pay runs in ${report_month} (of ${runsData?.PayRuns?.length || 0} total)`)
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`[WagesDetail] Found ${monthPayRuns.length} POSTED pay runs in ${report_month} (of ${runsData?.PayRuns?.length || 0} total)`)
+            }
 
             // Fetch detail for each pay run to get payslip amounts
             const payRunDetails = await Promise.all(
@@ -396,14 +415,18 @@ export async function POST(request: NextRequest) {
               await Promise.all(detailPromises)
             }
           } else {
-            console.log(`[WagesDetail] PayRuns fetch failed: ${runsResp.status} - need to reconnect Xero with payroll.payruns.read scope`)
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`[WagesDetail] PayRuns fetch failed: ${runsResp.status} - need to reconnect Xero with payroll.payruns.read scope`)
+            }
             // Don't create fake actuals — just mark payroll as unavailable
             // Budget-only data from forecast_employees will still show
           }
         }
       }
     } catch (err) {
-      console.log('[WagesDetail] Could not fetch Xero payroll data:', err)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[WagesDetail] Could not fetch Xero payroll data:', err)
+      }
     }
 
     // ===== 6. Build employee result rows =====
@@ -412,10 +435,12 @@ export async function POST(request: NextRequest) {
     let empActualTotal = 0
     let empBudgetTotal = 0
 
-    console.log(`[WagesDetail] employeePayMap has ${employeePayMap.size} Xero employees:`, Array.from(employeePayMap.values()).map(e => ({
-      name: e.name, calendarType: e.calendarType, payslipCount: e.payslips.length,
-      totalGross: e.payslips.reduce((s, p) => s + p.gross, 0),
-    })))
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[WagesDetail] employeePayMap has ${employeePayMap.size} Xero employees:`, Array.from(employeePayMap.values()).map(e => ({
+        name: e.name, calendarType: e.calendarType, payslipCount: e.payslips.length,
+        totalGross: e.payslips.reduce((s, p) => s + p.gross, 0),
+      })))
+    }
 
     // Process Xero payroll employees
     for (const [, xeData] of employeePayMap) {
@@ -509,7 +534,9 @@ export async function POST(request: NextRequest) {
     employees.sort((a, b) => b.actual_total - a.actual_total || b.budget_total - a.budget_total)
 
     const payRunDates = Array.from(payRunDatesSet).sort()
-    console.log(`[WagesDetail] ${employeePayMap.size} Xero employees, ${forecastEmployees.length} forecast employees, ${employees.length} combined, ${payRunDates.length} pay runs`)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[WagesDetail] ${employeePayMap.size} Xero employees, ${forecastEmployees.length} forecast employees, ${employees.length} combined, ${payRunDates.length} pay runs`)
+    }
 
     // If account-level P&L has no actuals but we have PayRun employee data,
     // use employee totals as the grand total (Xero Payroll doesn't always
@@ -549,7 +576,7 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error('[WagesDetail] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/wages-detail' }, extra: { context: "[WagesDetail] Error" } } as any)
     return NextResponse.json({ error: 'Failed to load wages detail' }, { status: 500 })
   }
 }

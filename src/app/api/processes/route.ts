@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import * as Sentry from '@sentry/nextjs'
 
 // GET /api/processes — list all processes for the user
 export async function GET(request: Request) {
@@ -46,13 +47,13 @@ export async function GET(request: Request) {
       .order('updated_at', { ascending: false })
 
     if (error) {
-      console.error('[Processes API] List error:', error)
+      Sentry.captureException(error, { tags: { route: 'processes' }, extra: { context: "[Processes API] List error" } } as any)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ processes: data || [] })
   } catch (error) {
-    console.error('[Processes API] Unexpected error:', error)
+    Sentry.captureException(error, { tags: { route: 'processes' }, extra: { context: "[Processes API] Unexpected error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -115,13 +116,13 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error('[Processes API] Create error:', error)
+      Sentry.captureException(error, { tags: { route: 'processes' }, extra: { context: "[Processes API] Create error" } } as any)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ process: data }, { status: 201 })
   } catch (error) {
-    console.error('[Processes API] Unexpected error:', error)
+    Sentry.captureException(error, { tags: { route: 'processes' }, extra: { context: "[Processes API] Unexpected error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

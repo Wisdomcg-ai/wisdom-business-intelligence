@@ -1,6 +1,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
+import * as Sentry from '@sentry/nextjs'
 
 export async function POST(request: Request) {
   const supabase = await createRouteHandlerClient()
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
       )
 
       if (!authResponse.ok) {
-        console.error('[Send Invitation] Auth API error:', authResponse.status, await authResponse.text())
+        Sentry.captureMessage(`[Send Invitation] Auth API error status=${authResponse.status}`, { level: 'error' as any, extra: { errText: await authResponse.text() } } as any)
         return NextResponse.json({ error: 'Could not find client user. Owner ID may be invalid.' }, { status: 404 })
       }
 
@@ -113,7 +114,7 @@ export async function POST(request: Request) {
     })
 
     if (!emailResult.success) {
-      console.error('[Send Invitation] Failed to send email:', emailResult.error)
+      Sentry.captureException(emailResult.error, { tags: { route: 'clients/send-invitation' }, extra: { context: "[Send Invitation] Failed to send email" } } as any)
       return NextResponse.json({
         error: `Failed to send invitation email: ${emailResult.error}`
       }, { status: 500 })
@@ -129,7 +130,9 @@ export async function POST(request: Request) {
       })
       .eq('id', businessId)
 
-    console.log('[Send Invitation] Email sent successfully:', emailResult.id)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Send Invitation] Email sent successfully:', emailResult.id)
+    }
 
     return NextResponse.json({
       success: true,
@@ -138,7 +141,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('[Send Invitation] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'clients/send-invitation' }, extra: { context: "[Send Invitation] Error" } } as any)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }

@@ -1,6 +1,17 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
+
+// SEC-07 (Phase 46 plan 46-04): Local helper for the demo-seeder's
+// progress logs. The seeder is dev/admin-only and noisy by design;
+// gating each call individually would be churn-heavy.
+function devLog(...args: any[]) {
+  if (process.env.NODE_ENV !== 'production') {
+    // eslint-disable-next-line no-console
+    globalThis.console.log(...args)
+  }
+}
 
 /**
  * Demo Client Setup API
@@ -58,7 +69,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Access denied. Super admin privileges required.' }, { status: 403 })
     }
 
-    console.log('[Demo Client] Starting demo client creation...')
+    devLog('[Demo Client] Starting demo client creation...')
 
     // STEP 1: Create auth user
     const authResponse = await fetch(
@@ -122,7 +133,7 @@ export async function POST(request: Request) {
         // Orphaned auth user - delete it and return error to retry
         if (listData.users && listData.users.length > 0) {
           const orphanedUserId = listData.users[0].id
-          console.log('[Demo Client] Deleting orphaned auth user:', orphanedUserId)
+          devLog('[Demo Client] Deleting orphaned auth user:', orphanedUserId)
           await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${orphanedUserId}`, {
             method: 'DELETE',
             headers: {
@@ -136,12 +147,12 @@ export async function POST(request: Request) {
           }, { status: 409 })
         }
       }
-      console.error('[Demo Client] Auth error:', authData)
+      Sentry.captureException(new Error('Demo Client Auth error'), { tags: { route: 'admin/demo-client' }, extra: { context: 'Auth error', authData } } as any)
       return NextResponse.json({ error: `Failed to create user: ${authData.msg || authData.message}` }, { status: 400 })
     }
 
     const demoUserId = authData.id
-    console.log('[Demo Client] Created auth user:', demoUserId)
+    devLog('[Demo Client] Created auth user:', demoUserId)
 
     // STEP 2: Create business record
     const { data: business, error: businessError } = await supabase
@@ -171,7 +182,7 @@ export async function POST(request: Request) {
       .single()
 
     if (businessError) {
-      console.error('[Demo Client] Business creation error:', businessError)
+      Sentry.captureException(businessError, { tags: { route: 'admin/demo-client' }, extra: { context: 'Business creation error' } } as any)
       // Rollback auth user
       await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${demoUserId}`, {
         method: 'DELETE',
@@ -184,7 +195,7 @@ export async function POST(request: Request) {
     }
 
     const businessId = business.id
-    console.log('[Demo Client] Created business:', businessId)
+    devLog('[Demo Client] Created business:', businessId)
 
     // STEP 3: Create business profile (minimal columns - schema varies)
     const { data: profile, error: profileError } = await supabase
@@ -202,7 +213,7 @@ export async function POST(request: Request) {
       .single()
 
     if (profileError) {
-      console.error('[Demo Client] Profile creation error:', profileError)
+      Sentry.captureException(profileError, { tags: { route: 'admin/demo-client' }, extra: { context: 'Profile creation error' } } as any)
     }
 
     const profileId = profile?.id
@@ -242,7 +253,7 @@ export async function POST(request: Request) {
       can_manage_users: true
     })
 
-    console.log('[Demo Client] Created roles and permissions')
+    devLog('[Demo Client] Created roles and permissions')
 
     // STEP 5: Create strategy data (Vision, Mission, Core Values)
     await supabase.from('strategy_data').insert({
@@ -261,7 +272,7 @@ export async function POST(request: Request) {
       brand_promise: 'Fixed right, priced right, on time.'
     })
 
-    console.log('[Demo Client] Created strategy data')
+    devLog('[Demo Client] Created strategy data')
 
     // STEP 6: Create completed assessment (using actual schema columns)
     await supabase.from('assessments').insert({
@@ -280,7 +291,7 @@ export async function POST(request: Request) {
       time_score: 21      // out of 40
     })
 
-    console.log('[Demo Client] Created assessment')
+    devLog('[Demo Client] Created assessment')
 
     // STEP 7: Create vision targets (3-year and 1-year goals)
     await supabase.from('vision_targets').insert({
@@ -306,7 +317,7 @@ export async function POST(request: Request) {
       ])
     })
 
-    console.log('[Demo Client] Created vision targets')
+    devLog('[Demo Client] Created vision targets')
 
     // STEP 8: Create annual targets
     const currentYear = new Date().getFullYear()
@@ -329,7 +340,7 @@ export async function POST(request: Request) {
       target_headcount: 15
     })
 
-    console.log('[Demo Client] Created annual targets')
+    devLog('[Demo Client] Created annual targets')
 
     // STEP 9: Create business KPIs
     const kpis = [
@@ -356,7 +367,7 @@ export async function POST(request: Request) {
       })
     }
 
-    console.log('[Demo Client] Created KPIs')
+    devLog('[Demo Client] Created KPIs')
 
     // STEP 10: Create strategic initiatives
     const initiatives = [
@@ -425,7 +436,7 @@ export async function POST(request: Request) {
       })
     }
 
-    console.log('[Demo Client] Created strategic initiatives')
+    devLog('[Demo Client] Created strategic initiatives')
 
     // STEP 11: Create SWOT analysis
     const { data: swotAnalysis } = await supabase
@@ -474,7 +485,7 @@ export async function POST(request: Request) {
       }
     }
 
-    console.log('[Demo Client] Created SWOT analysis')
+    devLog('[Demo Client] Created SWOT analysis')
 
     // STEP 12: Create quarterly review
     const currentQuarter = Math.ceil((new Date().getMonth() + 1) / 3)
@@ -509,7 +520,7 @@ export async function POST(request: Request) {
       }
     })
 
-    console.log('[Demo Client] Created quarterly review')
+    devLog('[Demo Client] Created quarterly review')
 
     // STEP 13: Create weekly reviews (last 8 weeks)
     const weeklyReviews = []
@@ -565,7 +576,7 @@ export async function POST(request: Request) {
       await supabase.from('weekly_reviews').insert(review)
     }
 
-    console.log('[Demo Client] Created weekly reviews')
+    devLog('[Demo Client] Created weekly reviews')
 
     // STEP 14: Create financial forecast data
     const { data: forecast } = await supabase
@@ -617,7 +628,7 @@ export async function POST(request: Request) {
       }
     }
 
-    console.log('[Demo Client] Created financial forecast')
+    devLog('[Demo Client] Created financial forecast')
 
     // STEP 15: Create team members
     const teamMembers = [
@@ -636,7 +647,7 @@ export async function POST(request: Request) {
       })
     }
 
-    console.log('[Demo Client] Created team members')
+    devLog('[Demo Client] Created team members')
 
     // STEP 16: Create some messages (coach-client communication)
     await supabase.from('messages').insert([
@@ -663,7 +674,7 @@ export async function POST(request: Request) {
       }
     ])
 
-    console.log('[Demo Client] Created messages')
+    devLog('[Demo Client] Created messages')
 
     // STEP 17: Create coaching sessions
     const nextWeek = new Date()
@@ -682,7 +693,7 @@ export async function POST(request: Request) {
       meeting_url: 'https://meet.google.com/demo-session'
     })
 
-    console.log('[Demo Client] Created coaching session')
+    devLog('[Demo Client] Created coaching session')
 
     // STEP 18: Create onboarding progress
     await supabase.from('onboarding_progress').insert({
@@ -696,9 +707,9 @@ export async function POST(request: Request) {
       assessment_completed_at: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString()
     })
 
-    console.log('[Demo Client] Created onboarding progress')
+    devLog('[Demo Client] Created onboarding progress')
 
-    console.log('[Demo Client] ✅ Demo client creation complete!')
+    devLog('[Demo Client] ✅ Demo client creation complete!')
 
     return NextResponse.json({
       success: true,
@@ -730,7 +741,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('[Demo Client] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'admin/demo-client' }, extra: { context: '[Demo Client] Error' } } as any)
     // Return generic error message to avoid exposing internal details
     return NextResponse.json(
       { error: 'Failed to create demo client. Please try again.' },
@@ -863,7 +874,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true, message: 'Demo client deleted' })
 
   } catch (error) {
-    console.error('[Demo Client] Delete error:', error)
+    Sentry.captureException(error, { tags: { route: 'admin/demo-client' }, extra: { context: '[Demo Client] Delete error' } } as any)
     return NextResponse.json({ error: 'Failed to delete demo client' }, { status: 500 })
   }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runHealthChecks } from "@/lib/health-checks";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/resend";
+import * as Sentry from '@sentry/nextjs'
 
 const BRAND_ORANGE = "#F5821F";
 const BRAND_NAVY = "#172238";
@@ -188,7 +189,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: result.success, health: health.overall });
   } catch (err) {
-    console.error("[Daily Health Report] Error:", err);
+    Sentry.captureException(err, { tags: { route: 'cron/daily-health-report' }, extra: { context: "[Daily Health Report] Error" } } as any);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Unknown error" },
       { status: 500 }

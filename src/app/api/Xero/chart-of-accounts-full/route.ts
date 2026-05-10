@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,7 +47,7 @@ async function fetchFromXeroAndCache(businessId: string, accessToken: string, te
 
   if (!xeroResp.ok) {
     const errText = await xeroResp.text()
-    console.error('[COA Full] Xero API error:', xeroResp.status, errText)
+    Sentry.captureMessage(`[COA Full] Xero API error status=${xeroResp.status}`, { level: 'error' as any, extra: { errText } } as any)
     throw new Error(`Xero API returned ${xeroResp.status}`)
   }
 
@@ -54,7 +55,7 @@ async function fetchFromXeroAndCache(businessId: string, accessToken: string, te
   const accounts = (xeroData.Accounts ?? []) as any[]
 
   if (accounts.length === 0) {
-    console.warn('[COA Full] Xero returned 0 accounts — possibly a permissions issue')
+    Sentry.captureMessage('[COA Full] Xero returned 0 accounts — possibly a permissions issue', 'warning' as any)
     return []
   }
 
@@ -80,7 +81,7 @@ async function fetchFromXeroAndCache(businessId: string, accessToken: string, te
     .upsert(rows, { onConflict: 'business_id,xero_account_id' })
 
   if (upsertError) {
-    console.error('[COA Full] Upsert error:', upsertError)
+    Sentry.captureException(upsertError, { tags: { route: 'Xero/chart-of-accounts-full' }, extra: { context: "[COA Full] Upsert error" } } as any)
     throw new Error(upsertError.message)
   }
 
@@ -174,7 +175,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: fresh ?? [], source: 'xero_refresh' })
   } catch (err) {
-    console.error('[COA Full] Error:', err)
+    Sentry.captureException(err, { tags: { route: 'Xero/chart-of-accounts-full' }, extra: { context: "[COA Full] Error" } } as any)
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Internal server error' },
       { status: 500 }

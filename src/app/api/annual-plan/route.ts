@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -120,7 +121,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(annualPlanData)
 
   } catch (error) {
-    console.error('Error fetching annual plan:', error)
+    Sentry.captureException(error, { tags: { route: 'annual-plan' }, extra: { context: "Error fetching annual plan" } } as any)
     return NextResponse.json(
       { error: 'Failed to fetch annual plan data' },
       { status: 500 }

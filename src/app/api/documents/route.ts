@@ -1,6 +1,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { notifyDocumentShared } from '@/lib/notifications'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false })
 
     if (docsError) {
-      console.error('Error loading documents:', docsError)
+      Sentry.captureException(docsError, { tags: { route: 'documents' }, extra: { context: "Error loading documents" } } as any)
       return NextResponse.json({ error: 'Failed to load documents' }, { status: 500 })
     }
 
@@ -49,7 +50,7 @@ export async function GET(request: Request) {
     })
 
   } catch (error) {
-    console.error('Get documents API error:', error)
+    Sentry.captureException(error, { tags: { route: 'documents' }, extra: { context: "Get documents API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
@@ -142,7 +143,7 @@ export async function POST(request: Request) {
       })
 
     if (uploadError) {
-      console.error('Error uploading file:', uploadError)
+      Sentry.captureException(uploadError, { tags: { route: 'documents' }, extra: { context: "Error uploading file" } } as any)
       return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 })
     }
 
@@ -160,7 +161,7 @@ export async function POST(request: Request) {
       .single()
 
     if (docError) {
-      console.error('Error creating document record:', docError)
+      Sentry.captureException(docError, { tags: { route: 'documents' }, extra: { context: "Error creating document record" } } as any)
       // Clean up uploaded file
       await supabase.storage.from('documents').remove([fileName])
       return NextResponse.json({ error: 'Failed to create document record' }, { status: 500 })
@@ -182,7 +183,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('Upload document API error:', error)
+    Sentry.captureException(error, { tags: { route: 'documents' }, extra: { context: "Upload document API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }

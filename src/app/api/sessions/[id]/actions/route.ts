@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export async function POST(
   request: Request,
@@ -58,7 +59,7 @@ export async function POST(
       .single()
 
     if (actionError) {
-      console.error('Error creating action:', actionError)
+      Sentry.captureException(actionError, { tags: { route: 'sessions/[id]/actions' }, extra: { context: "Error creating action" } } as any)
       return NextResponse.json({ error: 'Failed to create action' }, { status: 500 })
     }
 
@@ -68,7 +69,7 @@ export async function POST(
     })
 
   } catch (error) {
-    console.error('Create action API error:', error)
+    Sentry.captureException(error, { tags: { route: 'sessions/[id]/actions' }, extra: { context: "Create action API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }

@@ -1,6 +1,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import type { WhatIfParameters } from '@/app/finances/forecast/types'
+import * as Sentry from '@sentry/nextjs'
 
 export async function POST(request: Request) {
   const supabase = await createRouteHandlerClient()
@@ -79,7 +80,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('Error applying scenario:', error)
+    Sentry.captureException(error, { tags: { route: 'forecasts/apply-scenario' }, extra: { context: "Error applying scenario" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

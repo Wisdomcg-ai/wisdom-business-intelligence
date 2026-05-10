@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { deriveMonthlyRatePair } from '@/lib/consolidation/oxr'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -146,7 +147,7 @@ export async function POST(request: NextRequest) {
       .select()
 
     if (error) {
-      console.error('[FX Sync OXR] upsert error:', error)
+      Sentry.captureException(error, { tags: { route: 'consolidation/fx-rates/sync-oxr' }, extra: { context: "[FX Sync OXR] upsert error" } } as any)
       return NextResponse.json(
         { error: 'Failed to save rates', detail: error.message },
         { status: 500 },
@@ -165,7 +166,7 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (err) {
-    console.error('[FX Sync OXR] unhandled error, stage:', stage, err)
+    Sentry.captureException(err, { tags: { route: 'consolidation/fx-rates/sync-oxr' }, extra: { context: 'unhandled error', stage } } as any)
     return NextResponse.json(
       { error: 'Internal error', stage, detail: String(err) },
       { status: 500 },

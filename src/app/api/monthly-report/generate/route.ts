@@ -6,6 +6,7 @@ import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/ut
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
+import * as Sentry from '@sentry/nextjs'
 import {
   calcVariance,
   buildSubtotal,
@@ -98,7 +99,7 @@ export async function POST(request: NextRequest) {
       .eq('business_id', business_id)
 
     if (mappingsErr) {
-      console.error('[Report Generate] Error loading mappings:', mappingsErr)
+      Sentry.captureException(mappingsErr, { tags: { route: 'monthly-report/generate' }, extra: { context: "[Report Generate] Error loading mappings" } } as any)
       return NextResponse.json({ error: 'Failed to load account mappings' }, { status: 500 })
     }
 
@@ -215,7 +216,7 @@ export async function POST(request: NextRequest) {
         .in('business_id', ids.all)
 
       if (xeroErr) {
-        console.error('[Report Generate] Error loading xero_pl_lines:', xeroErr)
+        Sentry.captureException(xeroErr, { tags: { route: 'monthly-report/generate' }, extra: { context: "[Report Generate] Error loading xero_pl_lines" } } as any)
         return NextResponse.json({ error: 'Failed to load Xero actuals' }, { status: 500 })
       }
 
@@ -232,7 +233,7 @@ export async function POST(request: NextRequest) {
       xeroLines = Array.from(xeroDedup.values())
 
       if (rawXeroLines && rawXeroLines.length !== xeroLines.length) {
-        console.warn(`[Report Generate] Deduplicated xero_pl_lines: ${rawXeroLines.length} rows → ${xeroLines.length} unique accounts`)
+        Sentry.captureMessage(`[Report Generate] Deduplicated xero_pl_lines: ${rawXeroLines.length} rows → ${xeroLines.length} unique accounts`, 'warning' as any)
       }
       // D-44.2-03 quality gate — fallback path; compute via public wrapper.
       const fallbackQuality = await createForecastReadService(supabase).getDataQualityForBusiness(ids.all)
@@ -264,19 +265,21 @@ export async function POST(request: NextRequest) {
     const priorYearMonth = getPriorYearMonth(report_month)
     const nextMonth = getNextMonth(report_month)
 
-    console.log('[Report Generate] Data loaded:', {
-      xeroLines: xeroLines?.length || 0,
-      budgetPLLines: budgetPLLines.length,
-      mappings: mappings.length,
-      mappingsWithForecastLink: mappings.filter((m: any) => m.forecast_pl_line_id).length,
-      report_month,
-      fiscal_year,
-      yearStartMonth,
-      fyStart,
-      fyEnd,
-      sampleXeroMonths: xeroLines?.[0]?.monthly_values ? Object.keys(xeroLines[0].monthly_values).slice(0, 5) : [],
-      sampleBudgetMonths: budgetPLLines[0]?.forecast_months ? Object.keys(budgetPLLines[0].forecast_months).slice(0, 5) : [],
-    })
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Report Generate] Data loaded:', {
+        xeroLines: xeroLines?.length || 0,
+        budgetPLLines: budgetPLLines.length,
+        mappings: mappings.length,
+        mappingsWithForecastLink: mappings.filter((m: any) => m.forecast_pl_line_id).length,
+        report_month,
+        fiscal_year,
+        yearStartMonth,
+        fyStart,
+        fyEnd,
+        sampleXeroMonths: xeroLines?.[0]?.monthly_values ? Object.keys(xeroLines[0].monthly_values).slice(0, 5) : [],
+        sampleBudgetMonths: budgetPLLines[0]?.forecast_months ? Object.keys(budgetPLLines[0].forecast_months).slice(0, 5) : [],
+      })
+    }
 
     // Track which budget lines were matched (for budget-only section later)
     const matchedBudgetLineIds = new Set<string>()
@@ -346,7 +349,7 @@ export async function POST(request: NextRequest) {
       })
 
       if (budgetAlreadyClaimed) {
-        console.warn(`[Report Generate] Budget line "${budgetLine.account_name}" already claimed — skipping budget for Xero account "${xero.account_name}"`)
+        Sentry.captureMessage(`[Report Generate] Budget line "${budgetLine.account_name}" already claimed — skipping budget for Xero account "${xero.account_name}"`, 'warning' as any)
       }
 
       // Only use budget values if this is the first Xero account to claim this budget line
@@ -594,23 +597,25 @@ export async function POST(request: NextRequest) {
     const skippedByName = unmatchedBudgetLines.filter(bl => matchedBudgetLineNames.has(bl.account_name.toLowerCase()))
     const skippedByDupName = unmatchedBudgetLines.filter(bl => !matchedBudgetLineNames.has(bl.account_name.toLowerCase()) && addedBudgetOnlyNames.has(bl.account_name.toLowerCase()) === false)
 
-    console.log('[Report Generate] Matching results:', {
-      xeroAccountsTotal: matchLog.length,
-      matchedToBudget: matched.length,
-      unmatchedXero: unmatched.length,
-      unmatchedBudgetLines: unmatchedBudgetLines.length,
-      budgetDuplicatesBlocked: duplicateBudgetMatches.length,
-      budgetOnlySkippedByName: skippedByName.length,
-      budgetOnlyAdded: addedBudgetOnlyNames.size,
-      matchMethods: {
-        forecast_pl_line_id: matched.filter(m => m.method === 'forecast_pl_line_id').length,
-        forecast_pl_line_name: matched.filter(m => m.method === 'forecast_pl_line_name').length,
-        name_fallback: matched.filter(m => m.method === 'name_fallback').length,
-      },
-      budgetOnlySkippedNames: skippedByName.map(bl => bl.account_name),
-      unmatchedXeroSample: unmatched.slice(0, 10).map(m => m.xero),
-      unmatchedBudgetSample: unmatchedBudgetLines.filter(bl => !matchedBudgetLineNames.has(bl.account_name.toLowerCase())).slice(0, 10).map((bl: any) => bl.account_name),
-    })
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Report Generate] Matching results:', {
+        xeroAccountsTotal: matchLog.length,
+        matchedToBudget: matched.length,
+        unmatchedXero: unmatched.length,
+        unmatchedBudgetLines: unmatchedBudgetLines.length,
+        budgetDuplicatesBlocked: duplicateBudgetMatches.length,
+        budgetOnlySkippedByName: skippedByName.length,
+        budgetOnlyAdded: addedBudgetOnlyNames.size,
+        matchMethods: {
+          forecast_pl_line_id: matched.filter(m => m.method === 'forecast_pl_line_id').length,
+          forecast_pl_line_name: matched.filter(m => m.method === 'forecast_pl_line_name').length,
+          name_fallback: matched.filter(m => m.method === 'name_fallback').length,
+        },
+        budgetOnlySkippedNames: skippedByName.map(bl => bl.account_name),
+        unmatchedXeroSample: unmatched.slice(0, 10).map(m => m.xero),
+        unmatchedBudgetSample: unmatchedBudgetLines.filter(bl => !matchedBudgetLineNames.has(bl.account_name.toLowerCase())).slice(0, 10).map((bl: any) => bl.account_name),
+      })
+    }
 
     const report = {
       business_id,
@@ -645,7 +650,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     const message = String(error?.message ?? error)
     const isInvariant = message.includes('INVARIANT VIOLATED')
-    console.error('[Report Generate] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/generate' }, extra: { context: "[Report Generate] Error" } } as any)
     return NextResponse.json(
       {
         error: isInvariant ? message : 'Failed to generate report',

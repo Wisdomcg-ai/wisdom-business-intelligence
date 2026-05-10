@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (xeroError) {
-      console.error('[Auto-Map] Error fetching xero_pl_lines:', xeroError)
+      Sentry.captureException(xeroError, { tags: { route: 'monthly-report/auto-map' }, extra: { context: "[Auto-Map] Error fetching xero_pl_lines" } } as any)
       return NextResponse.json({ error: 'Failed to fetch Xero accounts' }, { status: 500 })
     }
 
@@ -110,7 +111,7 @@ export async function POST(request: NextRequest) {
     if (err) { forecastError = err }
 
     if (forecastError) {
-      console.error('[Auto-Map] Error fetching active forecast:', forecastError)
+      Sentry.captureException(forecastError, { tags: { route: 'monthly-report/auto-map' }, extra: { context: "[Auto-Map] Error fetching active forecast" } } as any)
     }
 
     if (activeForecast) {
@@ -120,7 +121,7 @@ export async function POST(request: NextRequest) {
         .eq('forecast_id', activeForecast.id)
 
       if (plError) {
-        console.error('[Auto-Map] Error fetching forecast_pl_lines:', plError)
+        Sentry.captureException(plError, { tags: { route: 'monthly-report/auto-map' }, extra: { context: "[Auto-Map] Error fetching forecast_pl_lines" } } as any)
       } else {
         forecastPLLines = plLines || []
       }
@@ -184,14 +185,16 @@ export async function POST(request: NextRequest) {
       .select()
 
     if (upsertError) {
-      console.error('[Auto-Map] Error upserting mappings:', upsertError)
+      Sentry.captureException(upsertError, { tags: { route: 'monthly-report/auto-map' }, extra: { context: "[Auto-Map] Error upserting mappings" } } as any)
       return NextResponse.json(
         { error: upsertError.message || 'Failed to create auto-mappings' },
         { status: 500 }
       )
     }
 
-    console.log(`[Auto-Map] Success: ${upserted?.length || 0} accounts mapped, ${matchedToForecastCount} matched to forecast (${matchedByCode} by code, ${matchedByName} by name)`)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[Auto-Map] Success: ${upserted?.length || 0} accounts mapped, ${matchedToForecastCount} matched to forecast (${matchedByCode} by code, ${matchedByName} by name)`)
+    }
 
     return NextResponse.json({
       success: true,
@@ -202,7 +205,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error in POST /api/monthly-report/auto-map:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/auto-map' }, extra: { context: "Error in POST /api/monthly-report/auto-map" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

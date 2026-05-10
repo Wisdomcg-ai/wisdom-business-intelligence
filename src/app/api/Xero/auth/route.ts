@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { createSignedOAuthState } from '@/lib/utils/encryption';
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest) {
 
     // Check if Xero credentials are configured
     if (!XERO_CLIENT_ID) {
-      console.error('XERO_CLIENT_ID is not configured');
+      Sentry.captureMessage('XERO_CLIENT_ID is not configured', 'error' as any);
       return NextResponse.json(
         { error: 'Xero integration is not configured.' },
         { status: 500 }
@@ -117,7 +118,9 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.append('prompt', 'consent');
 
     const xeroAuthUrl = authUrl.toString();
-    console.log('Redirecting to Xero auth:', xeroAuthUrl);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Redirecting to Xero auth:', xeroAuthUrl);
+    }
 
     // Redirect to Xero with cache-busting headers
     const response = NextResponse.redirect(xeroAuthUrl);
@@ -126,15 +129,20 @@ export async function GET(request: NextRequest) {
     return response;
 
   } catch (error) {
-    console.error('[Xero Auth] Error:', error);
-    console.error('[Xero Auth] Error message:', error instanceof Error ? error.message : 'Unknown error');
-    console.error('[Xero Auth] Environment check:', {
-      hasXeroClientId: !!process.env.XERO_CLIENT_ID,
-      hasEncryptionKey: !!process.env.ENCRYPTION_KEY,
-      hasOAuthStateSecret: !!process.env.OAUTH_STATE_SECRET,
-      hasAppUrl: !!process.env.NEXT_PUBLIC_APP_URL,
-      appUrl: process.env.NEXT_PUBLIC_APP_URL || 'not set'
-    });
+    Sentry.captureException(error, {
+      tags: { route: 'Xero/auth' },
+      extra: {
+        context: '[Xero Auth] Error',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        envCheck: {
+          hasXeroClientId: !!process.env.XERO_CLIENT_ID,
+          hasEncryptionKey: !!process.env.ENCRYPTION_KEY,
+          hasOAuthStateSecret: !!process.env.OAUTH_STATE_SECRET,
+          hasAppUrl: !!process.env.NEXT_PUBLIC_APP_URL,
+          appUrl: process.env.NEXT_PUBLIC_APP_URL || 'not set',
+        },
+      },
+    } as any);
     // Return error message with hint for debugging
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(

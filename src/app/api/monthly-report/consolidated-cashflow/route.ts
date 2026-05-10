@@ -22,6 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import * as Sentry from '@sentry/nextjs'
 import {
   checkRateLimit,
   createRateLimitKey,
@@ -119,7 +120,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, report })
   } catch (err) {
-    console.error('[Consolidated Cashflow] unhandled error, stage:', stage, err)
+    Sentry.captureException(err, { tags: { route: 'monthly-report/consolidated-cashflow' }, extra: { context: 'unhandled error', stage } } as any)
     return NextResponse.json(
       { error: 'Internal error', stage, detail: String(err) },
       { status: 500 },

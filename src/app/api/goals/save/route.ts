@@ -1,6 +1,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -156,7 +157,7 @@ export async function POST(request: Request) {
           .upsert(financialPayload, { onConflict: 'business_id' })
 
         if (error) {
-          console.error('[API /goals/save] Financial save error:', error)
+          Sentry.captureException(error, { tags: { route: 'goals/save' }, extra: { context: "[API /goals/save] Financial save error" } } as any)
           errors.push(`Financial: ${error.message}`)
         } else {
           successes.push('financial')
@@ -219,7 +220,7 @@ export async function POST(request: Request) {
             .upsert(kpisToUpsert, { onConflict: 'business_id,kpi_id', ignoreDuplicates: false })
 
           if (error) {
-            console.error('[API /goals/save] KPI save error:', error)
+            Sentry.captureException(error, { tags: { route: 'goals/save' }, extra: { context: "[API /goals/save] KPI save error" } } as any)
             errors.push(`KPIs: ${error.message}`)
           } else {
             successes.push('kpis')
@@ -300,7 +301,7 @@ export async function POST(request: Request) {
               .insert(insertPayload)
 
             if (insertError) {
-              console.error(`[API /goals/save] Insert ${type} error:`, insertError)
+              Sentry.captureException(insertError, { tags: { route: 'goals/save' }, extra: { context: "[API /goals/save] Insert ${type} error" } } as any)
               errors.push(`${type} insert: ${insertError.message}`)
             }
           }
@@ -340,7 +341,7 @@ export async function POST(request: Request) {
               .upsert(upsertPayload, { onConflict: 'id', ignoreDuplicates: false })
 
             if (upsertError) {
-              console.error(`[API /goals/save] Upsert ${type} error:`, upsertError)
+              Sentry.captureException(upsertError, { tags: { route: 'goals/save' }, extra: { context: "[API /goals/save] Upsert ${type} error" } } as any)
               errors.push(`${type} upsert: ${upsertError.message}`)
             }
           }
@@ -388,7 +389,7 @@ export async function POST(request: Request) {
             .upsert(actionsPayload, { onConflict: 'id' })
 
           if (error) {
-            console.error('[API /goals/save] Sprint actions error:', error)
+            Sentry.captureException(error, { tags: { route: 'goals/save' }, extra: { context: "[API /goals/save] Sprint actions error" } } as any)
             errors.push(`Sprint actions: ${error.message}`)
           } else {
             successes.push('sprintActions')
@@ -446,7 +447,7 @@ export async function POST(request: Request) {
             .upsert(activitiesPayload, { onConflict: 'id' })
 
           if (error) {
-            console.error('[API /goals/save] Operational activities error:', error)
+            Sentry.captureException(error, { tags: { route: 'goals/save' }, extra: { context: "[API /goals/save] Operational activities error" } } as any)
             errors.push(`Operational activities: ${error.message}`)
           } else {
             successes.push('operationalActivities')
@@ -478,7 +479,7 @@ export async function POST(request: Request) {
 
     // Return results
     if (errors.length > 0) {
-      console.error('[API /goals/save] Save completed with errors:', errors)
+      Sentry.captureException(errors, { tags: { route: 'goals/save' }, extra: { context: "[API /goals/save] Save completed with errors" } } as any)
       return NextResponse.json({
         success: false,
         errors,
@@ -493,7 +494,7 @@ export async function POST(request: Request) {
       message: `All ${successes.length} sections saved successfully`
     })
   } catch (err: any) {
-    console.error('[API /goals/save] Unexpected error:', err)
+    Sentry.captureException(err, { tags: { route: 'goals/save' }, extra: { context: "[API /goals/save] Unexpected error" } } as any)
     return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
   }
 }

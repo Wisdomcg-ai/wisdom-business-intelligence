@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -140,7 +141,7 @@ export async function GET(request: NextRequest) {
     const { data: businesses, error: bizError } = await bizQuery
 
     if (bizError) {
-      console.error('[CFO Summaries] business query error:', bizError)
+      Sentry.captureException(bizError, { tags: { route: 'cfo/summaries' }, extra: { context: "[CFO Summaries] business query error" } } as any)
       return NextResponse.json({ error: 'Failed to load businesses' }, { status: 500 })
     }
 
@@ -340,7 +341,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ month: monthKey, summaries, stats })
   } catch (err) {
-    console.error('[CFO Summaries] error:', err)
+    Sentry.captureException(err, { tags: { route: 'cfo/summaries' }, extra: { context: "[CFO Summaries] error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

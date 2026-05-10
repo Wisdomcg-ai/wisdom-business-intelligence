@@ -30,6 +30,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { generateFiscalMonthKeys, getCurrentFiscalYear, getFiscalMonthLabels } from '@/lib/utils/fiscal-year-utils'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -153,7 +154,7 @@ export async function GET(request: Request) {
         .eq('forecast_id', forecastForActuals.id)
 
       if (linesError) {
-        console.error('[dashboard-actuals] Error fetching pl_lines:', linesError)
+        Sentry.captureException(linesError, { tags: { route: 'forecast/dashboard-actuals' }, extra: { context: "[dashboard-actuals] Error fetching pl_lines" } } as any)
         return NextResponse.json({ error: 'Failed to fetch P&L lines' }, { status: 500 })
       }
 
@@ -199,7 +200,7 @@ export async function GET(request: Request) {
       .in('business_id', ids.all)
 
     if (xeroError) {
-      console.warn('[dashboard-actuals] xero_pl_lines_wide_compat read failed (non-fatal):', xeroError.message)
+      Sentry.captureMessage(`[dashboard-actuals] xero_pl_lines_wide_compat read failed (non-fatal): ${xeroError.message}`, 'warning' as any)
     } else if (xeroLines && xeroLines.length > 0) {
       // Reset actual buckets — Xero is source of truth for actuals when present.
       for (const k of monthKeys) {
@@ -266,14 +267,16 @@ export async function GET(request: Request) {
       m.revenueActual !== null || m.revenueForecast !== null
     )
 
-    console.log('[dashboard-actuals] Returning data for business', businessId, {
-      forecastId: forecastForActuals?.id ?? null,
-      forecastFY: forecastForActuals?.fiscal_year ?? null,
-      forecastSource,
-      requestedFY: fiscalYear,
-      monthCount: months.length,
-      hasAnyData,
-    })
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[dashboard-actuals] Returning data for business', businessId, {
+        forecastId: forecastForActuals?.id ?? null,
+        forecastFY: forecastForActuals?.fiscal_year ?? null,
+        forecastSource,
+        requestedFY: fiscalYear,
+        monthCount: months.length,
+        hasAnyData,
+      })
+    }
 
     return NextResponse.json({
       data: {
@@ -283,7 +286,7 @@ export async function GET(request: Request) {
       hasData: hasAnyData,
     })
   } catch (err) {
-    console.error('[dashboard-actuals] Unexpected error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/dashboard-actuals' }, extra: { context: "[dashboard-actuals] Unexpected error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -2,6 +2,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -123,7 +124,7 @@ export async function POST(request: Request) {
         .single()
 
       if (updateError) {
-        console.error('[wizard-v4/generate] Update error:', updateError)
+        Sentry.captureException(updateError, { tags: { route: 'forecast-wizard-v4/generate' }, extra: { context: "[wizard-v4/generate] Update error" } } as any)
         return NextResponse.json(
           { error: 'Failed to update forecast', details: updateError.message },
           { status: 500 }
@@ -150,7 +151,7 @@ export async function POST(request: Request) {
       )
 
       if (rpcError || !rpcData?.id) {
-        console.error('[wizard-v4/generate] Locked-insert error:', rpcError)
+        Sentry.captureException(rpcError, { tags: { route: 'forecast-wizard-v4/generate' }, extra: { context: "[wizard-v4/generate] Locked-insert error" } } as any)
         return NextResponse.json(
           { error: 'Failed to create forecast', details: rpcError?.message ?? 'no id returned' },
           { status: 500 }
@@ -210,7 +211,7 @@ export async function POST(request: Request) {
       )
 
       if (rpcError) {
-        console.error('[wizard-v4/generate] Atomic save failed:', rpcError)
+        Sentry.captureException(rpcError, { tags: { route: 'forecast-wizard-v4/generate' }, extra: { context: "[wizard-v4/generate] Atomic save failed" } } as any)
         return NextResponse.json(
           {
             error: `Atomic save failed: ${rpcError.message}`,
@@ -236,7 +237,7 @@ export async function POST(request: Request) {
       computed_at: computedAt,
     })
   } catch (error) {
-    console.error('[wizard-v4/generate] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'forecast-wizard-v4/generate' }, extra: { context: "[wizard-v4/generate] Error" } } as any)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

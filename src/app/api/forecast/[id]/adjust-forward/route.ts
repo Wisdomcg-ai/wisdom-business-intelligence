@@ -13,6 +13,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { generateFiscalMonthKeys } from '@/lib/utils/fiscal-year-utils'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,7 +79,7 @@ export async function PATCH(
       .maybeSingle()
 
     if (forecastError) {
-      console.error('[adjust-forward] Error fetching forecast:', forecastError)
+      Sentry.captureException(forecastError, { tags: { route: 'forecast/[id]/adjust-forward' }, extra: { context: "[adjust-forward] Error fetching forecast" } } as any)
       return NextResponse.json({ error: 'Failed to fetch forecast' }, { status: 500 })
     }
 
@@ -113,7 +114,7 @@ export async function PATCH(
       .eq('forecast_id', forecastId)
 
     if (linesError) {
-      console.error('[adjust-forward] Error fetching pl_lines:', linesError)
+      Sentry.captureException(linesError, { tags: { route: 'forecast/[id]/adjust-forward' }, extra: { context: "[adjust-forward] Error fetching pl_lines" } } as any)
       return NextResponse.json({ error: 'Failed to fetch P&L lines' }, { status: 500 })
     }
 
@@ -143,14 +144,16 @@ export async function PATCH(
         .eq('id', line.id)
 
       if (updateError) {
-        console.error('[adjust-forward] Error updating line', line.id, updateError)
+        Sentry.captureException(updateError, { tags: { route: 'forecast/[id]/adjust-forward' }, extra: { context: 'Error updating line', lineId: line.id } } as any)
         return NextResponse.json({ error: 'Failed to update forecast line' }, { status: 500 })
       }
 
       adjustedCount++
     }
 
-    console.log('[adjust-forward] Applied', adjustmentPct, '% to', adjustedCount, 'revenue lines,', remainingKeys.length, 'months')
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[adjust-forward] Applied', adjustmentPct, '% to', adjustedCount, 'revenue lines,', remainingKeys.length, 'months')
+    }
 
     return NextResponse.json({
       success: true,
@@ -159,7 +162,7 @@ export async function PATCH(
       adjustmentPct,
     })
   } catch (err) {
-    console.error('[adjust-forward] Unexpected error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/[id]/adjust-forward' }, extra: { context: "[adjust-forward] Unexpected error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

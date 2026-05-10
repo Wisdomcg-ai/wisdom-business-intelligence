@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,13 +29,13 @@ export async function GET(request: NextRequest) {
       .order('name')
 
     if (error) {
-      console.error('[Templates] GET error:', error)
+      Sentry.captureException(error, { tags: { route: 'monthly-report/templates' }, extra: { context: "[Templates] GET error" } } as any)
       return NextResponse.json({ error: 'Failed to fetch templates' }, { status: 500 })
     }
 
     return NextResponse.json({ templates: data || [] })
   } catch (err) {
-    console.error('[Templates] GET exception:', err)
+    Sentry.captureException(err, { tags: { route: 'monthly-report/templates' }, extra: { context: "[Templates] GET exception" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -92,13 +93,13 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('[Templates] POST error:', error)
+      Sentry.captureException(error, { tags: { route: 'monthly-report/templates' }, extra: { context: "[Templates] POST error" } } as any)
       return NextResponse.json({ error: 'Failed to create template' }, { status: 500 })
     }
 
     return NextResponse.json({ template: data })
   } catch (err) {
-    console.error('[Templates] POST exception:', err)
+    Sentry.captureException(err, { tags: { route: 'monthly-report/templates' }, extra: { context: "[Templates] POST exception" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -159,13 +160,13 @@ export async function PUT(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('[Templates] PUT error:', error)
+      Sentry.captureException(error, { tags: { route: 'monthly-report/templates' }, extra: { context: "[Templates] PUT error" } } as any)
       return NextResponse.json({ error: 'Failed to update template' }, { status: 500 })
     }
 
     return NextResponse.json({ template: data })
   } catch (err) {
-    console.error('[Templates] PUT exception:', err)
+    Sentry.captureException(err, { tags: { route: 'monthly-report/templates' }, extra: { context: "[Templates] PUT exception" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -191,13 +192,13 @@ export async function DELETE(request: NextRequest) {
       .eq('business_id', businessId)
 
     if (error) {
-      console.error('[Templates] DELETE error:', error)
+      Sentry.captureException(error, { tags: { route: 'monthly-report/templates' }, extra: { context: "[Templates] DELETE error" } } as any)
       return NextResponse.json({ error: 'Failed to delete template' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error('[Templates] DELETE exception:', err)
+    Sentry.captureException(err, { tags: { route: 'monthly-report/templates' }, extra: { context: "[Templates] DELETE exception" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

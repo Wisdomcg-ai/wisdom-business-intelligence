@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -200,7 +201,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: capexByMonth })
   } catch (err) {
-    console.error('[CapEx] Error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/cashflow/capex' }, extra: { context: "[CapEx] Error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

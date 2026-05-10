@@ -1,6 +1,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
+import * as Sentry from '@sentry/nextjs'
 
 // Generate a secure random password
 function generateSecurePassword(length = 16): string {
@@ -101,7 +102,7 @@ export async function POST(request: Request) {
     const authData = await authResponse.json()
 
     if (!authResponse.ok || authData.error) {
-      console.error('[Coach Client Create] Auth error:', authData)
+      Sentry.captureException(authData, { tags: { route: 'coach/clients' }, extra: { context: "[Coach Client Create] Auth error" } } as any)
       const errorMessage = authData.msg || authData.error?.message || authData.message || 'Unknown error'
       return NextResponse.json(
         { error: `Failed to create user: ${errorMessage}` },
@@ -143,7 +144,7 @@ export async function POST(request: Request) {
       .single()
 
     if (businessError || !business) {
-      console.error('[Coach Client Create] Business error:', businessError)
+      Sentry.captureException(businessError, { tags: { route: 'coach/clients' }, extra: { context: "[Coach Client Create] Business error" } } as any)
       return NextResponse.json(
         { error: `Failed to create business: ${businessError?.message}` },
         { status: 500 }
@@ -288,7 +289,7 @@ export async function POST(request: Request) {
           const memberAuthData = await memberAuthResponse.json()
 
           if (!memberAuthResponse.ok || memberAuthData.error) {
-            console.error('[Coach Client Create] Team member auth error:', memberAuthData)
+            Sentry.captureException(memberAuthData, { tags: { route: 'coach/clients' }, extra: { context: "[Coach Client Create] Team member auth error" } } as any)
             teamMemberResults.push({
               email: member.email,
               success: false,
@@ -352,7 +353,7 @@ export async function POST(request: Request) {
           })
 
         } catch (memberError) {
-          console.error('[Coach Client Create] Team member error:', memberError)
+          Sentry.captureException(memberError, { tags: { route: 'coach/clients' }, extra: { context: "[Coach Client Create] Team member error" } } as any)
           teamMemberResults.push({
             email: member.email,
             success: false,
@@ -373,7 +374,7 @@ export async function POST(request: Request) {
           })
           .eq('business_id', business.id)
       } catch (e) {
-        console.warn('[Coach Client Create] Failed to save assessment data:', e)
+        Sentry.captureException(e, { tags: { route: 'coach/clients' }, extra: { context: 'Failed to save assessment data' }, level: 'warning' } as any)
       }
     }
 
@@ -391,7 +392,7 @@ export async function POST(request: Request) {
             discussion_points: 'Onboarding notes'
           })
       } catch (e) {
-        console.warn('[Coach Client Create] Failed to create coach note:', e)
+        Sentry.captureException(e, { tags: { route: 'coach/clients' }, extra: { context: 'Failed to create coach note' }, level: 'warning' } as any)
       }
     }
 
@@ -413,16 +414,18 @@ export async function POST(request: Request) {
             prep_completed: false
           })
       } catch (e) {
-        console.warn('[Coach Client Create] Failed to create first session:', e)
+        Sentry.captureException(e, { tags: { route: 'coach/clients' }, extra: { context: 'Failed to create first session' }, level: 'warning' } as any)
       }
     }
 
-    console.log('[Coach Client Create] Success:', {
-      businessId: business.id,
-      userId: newUserId,
-      emailSent,
-      teamMembersProcessed: teamMemberResults.length
-    })
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Coach Client Create] Success:', {
+        businessId: business.id,
+        userId: newUserId,
+        emailSent,
+        teamMembersProcessed: teamMemberResults.length
+      })
+    }
 
     // Build response message
     let message = emailSent
@@ -457,7 +460,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('[Coach Client Create] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'coach/clients' }, extra: { context: "[Coach Client Create] Error" } } as any)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }
@@ -507,7 +510,7 @@ export async function GET() {
       .order('business_name', { ascending: true })
 
     if (businessError) {
-      console.error('Error loading clients:', businessError)
+      Sentry.captureException(businessError, { tags: { route: 'coach/clients' }, extra: { context: "Error loading clients" } } as any)
       return NextResponse.json({ error: 'Failed to load clients' }, { status: 500 })
     }
 
@@ -542,7 +545,7 @@ export async function GET() {
     })
 
   } catch (error) {
-    console.error('Coach clients API error:', error)
+    Sentry.captureException(error, { tags: { route: 'coach/clients' }, extra: { context: "Coach clients API error" } } as any)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }

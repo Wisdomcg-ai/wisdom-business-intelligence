@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Error fetching KPIs:', error)
+      Sentry.captureException(error, { tags: { route: 'kpis' }, extra: { context: "Error fetching KPIs" } } as any)
       return NextResponse.json(
         { error: 'Failed to fetch KPIs' },
         { status: 500 }
@@ -82,7 +83,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Unexpected error in GET /api/kpis:', error)
+    Sentry.captureException(error, { tags: { route: 'kpis' }, extra: { context: "Unexpected error in GET /api/kpis" } } as any)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -163,7 +164,7 @@ export async function POST(request: NextRequest) {
       .select()
 
     if (upsertError) {
-      console.error('Error upserting KPIs:', upsertError)
+      Sentry.captureException(upsertError, { tags: { route: 'kpis' }, extra: { context: "Error upserting KPIs" } } as any)
       return NextResponse.json(
         { error: 'Failed to save KPIs' },
         { status: 500 }
@@ -180,7 +181,7 @@ export async function POST(request: NextRequest) {
         .in('kpi_id', kpisToRemove)
 
       if (deleteError) {
-        console.error('Error removing deselected KPIs:', deleteError)
+        Sentry.captureException(deleteError, { tags: { route: 'kpis' }, extra: { context: "Error removing deselected KPIs" } } as any)
         // Non-fatal - the new KPIs are already saved
       }
     }
@@ -205,7 +206,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Unexpected error in POST /api/kpis:', error)
+    Sentry.captureException(error, { tags: { route: 'kpis' }, extra: { context: "Unexpected error in POST /api/kpis" } } as any)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -250,7 +251,7 @@ export async function DELETE(request: NextRequest) {
       .eq('business_id', businessId)
 
     if (error) {
-      console.error('Error deleting KPI:', error)
+      Sentry.captureException(error, { tags: { route: 'kpis' }, extra: { context: "Error deleting KPI" } } as any)
       return NextResponse.json(
         { error: 'Failed to delete KPI' },
         { status: 500 }
@@ -263,7 +264,7 @@ export async function DELETE(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Unexpected error in DELETE /api/kpis:', error)
+    Sentry.captureException(error, { tags: { route: 'kpis' }, extra: { context: "Unexpected error in DELETE /api/kpis" } } as any)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -312,7 +313,7 @@ export async function PATCH(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Error updating KPI value:', error)
+      Sentry.captureException(error, { tags: { route: 'kpis' }, extra: { context: "Error updating KPI value" } } as any)
       return NextResponse.json(
         { error: 'Failed to update KPI value' },
         { status: 500 }
@@ -337,7 +338,7 @@ export async function PATCH(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Unexpected error in PATCH /api/kpis:', error)
+    Sentry.captureException(error, { tags: { route: 'kpis' }, extra: { context: "Unexpected error in PATCH /api/kpis" } } as any)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

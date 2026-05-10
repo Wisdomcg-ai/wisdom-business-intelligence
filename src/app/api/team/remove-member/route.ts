@@ -2,6 +2,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import { csrfProtection } from '@/lib/security/csrf'
+import * as Sentry from '@sentry/nextjs'
 
 export async function POST(request: Request) {
   const supabase = await createRouteHandlerClient()
@@ -88,7 +89,7 @@ export async function POST(request: Request) {
       .eq('id', memberId)
 
     if (removeError) {
-      console.error('[Remove Member] Error removing from business_users:', removeError)
+      Sentry.captureException(removeError, { tags: { route: 'team/remove-member' }, extra: { context: "[Remove Member] Error removing from business_users" } } as any)
       return NextResponse.json({ error: 'Failed to remove team member' }, { status: 500 })
     }
 
@@ -138,7 +139,7 @@ export async function POST(request: Request) {
         )
 
         if (!deleteAuthResponse.ok) {
-          console.error('[Remove Member] Failed to delete from auth.users')
+          Sentry.captureMessage('[Remove Member] Failed to delete from auth.users', 'error' as any)
         }
 
         return NextResponse.json({
@@ -162,7 +163,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('[Remove Member] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'team/remove-member' }, extra: { context: "[Remove Member] Error" } } as any)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }

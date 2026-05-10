@@ -15,14 +15,20 @@ const SALT_LENGTH = 32
  * Get encryption key from environment variable
  * Key must be 32 bytes (256 bits) for AES-256
  * Checks multiple env var names for flexibility across deployments
+ *
+ * SEC-04 PART 2 (Phase 46 plan 46-04): APP_SECRET_KEY (or ENCRYPTION_KEY)
+ * MUST be set explicitly. The previous SUPABASE_SERVICE_KEY PBKDF2-derivation
+ * fallback is removed — see
+ * .planning/phases/46-server-side-hardening/SEC-04-MIGRATION-NOTE.md for
+ * the 2-PR migration path (PR 1 = plan 46-02, this is PR 2).
  */
 function getEncryptionKey(): Buffer {
-  const keyString = process.env.APP_SECRET_KEY
-    || process.env.ENCRYPTION_KEY
-    || process.env.SUPABASE_SERVICE_KEY // Fallback - will derive key via PBKDF2
+  const keyString = process.env.APP_SECRET_KEY || process.env.ENCRYPTION_KEY
 
   if (!keyString) {
-    throw new Error('No encryption key available (APP_SECRET_KEY, ENCRYPTION_KEY, or SUPABASE_SERVICE_KEY)')
+    throw new Error(
+      'APP_SECRET_KEY (or ENCRYPTION_KEY) must be set for encryption — see .planning/phases/46-server-side-hardening/SEC-04-MIGRATION-NOTE.md'
+    )
   }
 
   // If key is hex-encoded (64 chars = 32 bytes)
@@ -70,43 +76,43 @@ export function encrypt(plaintext: string): string {
  * Decrypt encrypted data
  * @param encryptedData - Base64-encoded encrypted data (iv:authTag:ciphertext)
  * @returns Decrypted plaintext
+ *
+ * SEC-04 PART 2 (Phase 46 plan 46-04): all 3 silent fallbacks removed.
+ *  - No more plaintext-tolerance for inputs without `:`
+ *  - No more plaintext-tolerance for inputs with parts.length !== 3
+ *  - No more catch-and-return-plaintext on cipher errors
+ * Decryption failures now surface as thrown Errors. Callers
+ * (src/lib/xero/token-manager.ts:194,195,241,258,295,310,464 and
+ *  src/app/api/Xero/complete-connection/route.ts:126,127) must handle
+ * those throws — the prod migration window in plan 46-02 verified that
+ * every existing xero_connections row decrypts cleanly with the new key
+ * chain (see SEC-04-MIGRATION-NOTE.md).
  */
 export function decrypt(encryptedData: string): string {
   if (!encryptedData) {
     return ''
   }
 
-  // Check if data appears to be encrypted (has our format)
-  if (!encryptedData.includes(':')) {
-    // Data is not encrypted, return as-is (for migration purposes)
-    return encryptedData
-  }
-
+  // SEC-04 PART 2: strict shape check; throw rather than return plaintext.
   const parts = encryptedData.split(':')
   if (parts.length !== 3) {
-    // Invalid format, return as-is
-    return encryptedData
+    throw new Error(
+      'decrypt: invalid token format (expected iv:authTag:ciphertext)'
+    )
   }
 
-  try {
-    const key = getEncryptionKey()
-    const iv = Buffer.from(parts[0], 'base64')
-    const authTag = Buffer.from(parts[1], 'base64')
-    const ciphertext = parts[2]
+  const key = getEncryptionKey()
+  const iv = Buffer.from(parts[0], 'base64')
+  const authTag = Buffer.from(parts[1], 'base64')
+  const ciphertext = parts[2]
 
-    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv)
-    decipher.setAuthTag(authTag)
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv)
+  decipher.setAuthTag(authTag)
 
-    let decrypted = decipher.update(ciphertext, 'base64', 'utf8')
-    decrypted += decipher.final('utf8')
+  let decrypted = decipher.update(ciphertext, 'base64', 'utf8')
+  decrypted += decipher.final('utf8')
 
-    return decrypted
-  } catch (error) {
-    // If decryption fails, assume data is not encrypted
-    // This allows graceful migration from unencrypted to encrypted data
-    console.error('Decryption failed, returning original data:', error)
-    return encryptedData
-  }
+  return decrypted
 }
 
 /**
@@ -144,13 +150,19 @@ export function generateEncryptionKey(): string {
 /**
  * Create HMAC signature for OAuth state
  * Checks multiple env var names for flexibility across deployments
+ *
+ * SEC-04 PART 2 (Phase 46 plan 46-04): SUPABASE_SERVICE_KEY fallback
+ * removed (consistent with getEncryptionKey hardening). OAUTH_STATE_SECRET
+ * is preserved — it has its own rotation cadence. Operator must confirm
+ * OAUTH_STATE_SECRET is set in Vercel Production before this lands;
+ * otherwise OAuth state HMACs in flight at deploy time will fail to
+ * verify (signup completion mid-flight).
  */
 export function createHmacSignature(data: string, secret?: string): string {
   const key = secret
     || process.env.APP_SECRET_KEY
     || process.env.OAUTH_STATE_SECRET
     || process.env.ENCRYPTION_KEY
-    || process.env.SUPABASE_SERVICE_KEY // Fallback to known working secret
   if (!key) {
     throw new Error('No secret available for HMAC signature')
   }

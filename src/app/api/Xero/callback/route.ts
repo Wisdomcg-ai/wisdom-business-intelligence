@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { encrypt, verifySignedOAuthState } from '@/lib/utils/encryption';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,7 +55,9 @@ async function saveXeroConnection(
     canonicalBusinessId = profile.business_id;
   }
 
-  console.log('[Xero] Upserting connection for business:', canonicalBusinessId, 'tenant:', tenant.tenantId);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[Xero] Upserting connection for business:', canonicalBusinessId, 'tenant:', tenant.tenantId);
+  }
   const { data: insertedData, error: upsertError } = await supabase
     .from('xero_connections')
     .upsert(
@@ -74,24 +77,29 @@ async function saveXeroConnection(
     .select();
 
   if (upsertError || !insertedData || insertedData.length === 0) {
-    console.error('[Xero] Connection upsert failed:', {
-      error: upsertError,
-      errorMessage: upsertError?.message,
-      errorCode: upsertError?.code,
-      errorDetails: upsertError?.details,
-      errorHint: upsertError?.hint,
-      businessId: canonicalBusinessId,
-      userId,
-      tenantId: tenant.tenantId,
-      insertedDataLength: insertedData?.length,
-    });
+    Sentry.captureException(upsertError ?? new Error('Xero connection upsert failed'), {
+      tags: { route: 'Xero/callback' },
+      extra: {
+        context: '[Xero] Connection upsert failed',
+        errorMessage: upsertError?.message,
+        errorCode: upsertError?.code,
+        errorDetails: upsertError?.details,
+        errorHint: upsertError?.hint,
+        businessId: canonicalBusinessId,
+        userId,
+        tenantId: tenant.tenantId,
+        insertedDataLength: insertedData?.length,
+      },
+    } as any);
     // Encode error detail in redirect for user to see
     const detail = upsertError?.message || upsertError?.code || 'empty_insert';
     return { success: false, error: `database_error:${encodeURIComponent(detail.slice(0, 100))}` };
   }
 
   const id = (insertedData[0] as any).id;
-  console.log('[Xero] Connection saved:', id, 'tenant:', tenant.tenantName);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[Xero] Connection saved:', id, 'tenant:', tenant.tenantName);
+  }
   return { success: true, connectionId: id };
 }
 
@@ -100,7 +108,9 @@ async function saveXeroConnection(
  * Syncs bank summary and current month P&L to financial_metrics.
  */
 async function triggerInitialSync(businessId: string, accessToken: string, tenantId: string) {
-  console.log('[Xero Callback] Starting initial sync for business:', businessId);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[Xero Callback] Starting initial sync for business:', businessId);
+  }
 
   try {
     // Get bank accounts
@@ -209,13 +219,15 @@ async function triggerInitialSync(businessId: string, accessToken: string, tenan
       .update({ last_synced_at: new Date().toISOString() })
       .eq('business_id', businessId);
 
-    console.log('[Xero Callback] Initial sync completed successfully:', {
-      totalCash,
-      ...monthlyMetrics
-    });
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero Callback] Initial sync completed successfully:', {
+        totalCash,
+        ...monthlyMetrics
+      });
+    }
 
   } catch (error) {
-    console.error('[Xero Callback] Initial sync error:', error);
+    Sentry.captureException(error, { tags: { route: 'Xero/callback' }, extra: { context: "[Xero Callback] Initial sync error" } } as any);
     throw error;
   }
 }
@@ -230,14 +242,14 @@ export async function GET(request: NextRequest) {
 
     // Check for errors from Xero
     if (error) {
-      console.error('Xero returned error:', error);
+      Sentry.captureException(error, { tags: { route: 'Xero/callback' }, extra: { context: "Xero returned error" } } as any);
       return NextResponse.redirect(
         new URL('/integrations?error=xero_denied', request.url)
       );
     }
 
     if (!code || !state) {
-      console.error('Missing code or state');
+      Sentry.captureMessage('Missing code or state', 'error' as any);
       return NextResponse.redirect(
         new URL('/integrations?error=missing_params', request.url)
       );
@@ -250,7 +262,7 @@ export async function GET(request: NextRequest) {
     const signedStateData = verifySignedOAuthState<{ business_id: string; return_to?: string; timestamp: number }>(state);
 
     if (!signedStateData) {
-      console.error('Invalid OAuth state - signature verification failed');
+      Sentry.captureMessage('Invalid OAuth state - signature verification failed', 'error' as any);
       return NextResponse.redirect(
         new URL('/integrations?error=invalid_state', request.url)
       );
@@ -259,7 +271,7 @@ export async function GET(request: NextRequest) {
     // Check state is not too old (max 10 minutes)
     const stateAge = Date.now() - signedStateData.timestamp;
     if (stateAge > 10 * 60 * 1000) {
-      console.error('OAuth state expired');
+      Sentry.captureMessage('OAuth state expired', 'error' as any);
       return NextResponse.redirect(
         new URL('/integrations?error=state_expired', request.url)
       );
@@ -268,7 +280,9 @@ export async function GET(request: NextRequest) {
     returnTo = signedStateData.return_to || '/integrations';
 
     // Step 1: Exchange code for tokens
-    console.log('Exchanging code for tokens...');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Exchanging code for tokens...');
+    }
     
     // Create the authorization header
     const authHeader = Buffer.from(`${XERO_CLIENT_ID}:${XERO_CLIENT_SECRET}`).toString('base64');
@@ -292,17 +306,21 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
-      console.error('Token exchange failed:', errorText);
+      Sentry.captureException(errorText, { tags: { route: 'Xero/callback' }, extra: { context: "Token exchange failed" } } as any);
       return NextResponse.redirect(
         new URL('/integrations?error=token_exchange_failed', request.url)
       );
     }
 
     const tokens = await tokenResponse.json();
-    console.log('Got tokens successfully');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Got tokens successfully');
+    }
 
     // Step 2: Get tenant information
-    console.log('Getting tenant information...');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Getting tenant information...');
+    }
 
     const connectionsResponse = await fetch(XERO_CONNECTIONS_URL, {
       method: 'GET',
@@ -313,7 +331,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!connectionsResponse.ok) {
-      console.error('Failed to get connections');
+      Sentry.captureMessage('Failed to get connections', 'error' as any);
       return NextResponse.redirect(
         new URL('/integrations?error=connections_failed', request.url)
       );
@@ -322,7 +340,7 @@ export async function GET(request: NextRequest) {
     const connections = await connectionsResponse.json();
 
     if (!connections || connections.length === 0) {
-      console.error('No Xero organizations found');
+      Sentry.captureMessage('No Xero organizations found', 'error' as any);
       return NextResponse.redirect(
         new URL('/integrations?error=no_organizations', request.url)
       );
@@ -341,7 +359,7 @@ export async function GET(request: NextRequest) {
 
     const userId = businessData?.owner_id;
     if (!userId) {
-      console.error('Could not find owner_id for business');
+      Sentry.captureMessage('Could not find owner_id for business', 'error' as any);
       return NextResponse.redirect(
         new URL('/integrations?error=user_not_found', request.url)
       );
@@ -353,7 +371,9 @@ export async function GET(request: NextRequest) {
     // a selection page instead of blindly picking the first.
     // =====================================================
     if (connections.length > 1) {
-      console.log(`[Xero Callback] Multiple tenants (${connections.length}), redirecting to selection`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Xero Callback] Multiple tenants (${connections.length}), redirecting to selection`);
+      }
 
       // Resolve business_id to the correct format for xero_connections FK
       const { connectionBusinessId: resolvedBizId } = await resolveXeroBusinessId(supabase, businessId);
@@ -383,7 +403,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (pendingError || !pending) {
-        console.error('[Xero Callback] Failed to store pending connection:', pendingError);
+        Sentry.captureException(pendingError, { tags: { route: 'Xero/callback' }, extra: { context: "[Xero Callback] Failed to store pending connection" } } as any);
         return NextResponse.redirect(
           new URL('/integrations?error=database_error', request.url)
         );
@@ -398,7 +418,9 @@ export async function GET(request: NextRequest) {
     // SINGLE TENANT — auto-connect (existing behaviour)
     // =====================================================
     const tenant = connections[0];
-    console.log('[Xero Callback] Single tenant, auto-connecting:', tenant.tenantName);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Xero Callback] Single tenant, auto-connecting:', tenant.tenantName);
+    }
 
     // Save connection
     const saveResult = await saveXeroConnection({
@@ -417,7 +439,7 @@ export async function GET(request: NextRequest) {
 
     // Trigger an initial sync in the background
     triggerInitialSync(businessId, tokens.access_token, tenant.tenantId).catch(err => {
-      console.error('[Xero Callback] Initial sync failed:', err);
+      Sentry.captureException(err, { tags: { route: 'Xero/callback' }, extra: { context: "[Xero Callback] Initial sync failed" } } as any);
     });
 
     // Redirect back with success
@@ -426,7 +448,7 @@ export async function GET(request: NextRequest) {
     );
 
   } catch (error) {
-    console.error('Callback error:', error);
+    Sentry.captureException(error, { tags: { route: 'Xero/callback' }, extra: { context: "Callback error" } } as any);
     return NextResponse.redirect(
       new URL('/integrations?error=unknown_error', request.url)
     );

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
+import * as Sentry from '@sentry/nextjs'
 import {
   sanitizeAIInput,
   sanitizeConversationHistory,
@@ -128,7 +129,7 @@ export async function POST(request: Request) {
       toolCalls: parsed.toolCalls || [],
     })
   } catch (error) {
-    console.error('[AI Mapper API] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'processes/ai-mapper' }, extra: { context: "[AI Mapper API] Error" } } as any)
     return NextResponse.json(
       { error: 'Failed to process your message. Please try again.' },
       { status: 500 }

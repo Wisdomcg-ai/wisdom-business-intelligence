@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { checkRateLimit, getClientIP, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
+import * as Sentry from '@sentry/nextjs'
 
 // Use service role for admin operations
 const supabase = createClient(
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ valid: true })
 
   } catch (error) {
-    console.error('[VerifyToken] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'auth/update-password' }, extra: { context: "[VerifyToken] Error" } } as any)
     return NextResponse.json({ valid: false, error: 'Failed to verify token' }, { status: 500 })
   }
 }
@@ -125,7 +126,7 @@ export async function POST(request: NextRequest) {
     )
 
     if (updateError) {
-      console.error('[UpdatePassword] Error updating password:', updateError)
+      Sentry.captureException(updateError, { tags: { route: 'auth/update-password' }, extra: { context: "[UpdatePassword] Error updating password" } } as any)
       return NextResponse.json({ error: 'Failed to update password' }, { status: 500 })
     }
 
@@ -135,12 +136,14 @@ export async function POST(request: NextRequest) {
       .update({ used_at: new Date().toISOString() })
       .eq('id', tokenData.id)
 
-    console.log('[UpdatePassword] Password updated for user:', tokenData.user_id)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[UpdatePassword] Password updated for user:', tokenData.user_id)
+    }
 
     return NextResponse.json({ success: true })
 
   } catch (error) {
-    console.error('[UpdatePassword] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'auth/update-password' }, extra: { context: "[UpdatePassword] Error" } } as any)
     return NextResponse.json({ error: 'Failed to update password' }, { status: 500 })
   }
 }

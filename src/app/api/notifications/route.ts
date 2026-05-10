@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,14 +33,14 @@ export async function GET(request: Request) {
     const { data: notifications, error } = await query
 
     if (error) {
-      console.error('Error fetching notifications:', error)
+      Sentry.captureException(error, { tags: { route: 'notifications' }, extra: { context: "Error fetching notifications" } } as any)
       return NextResponse.json({ error: 'Failed to fetch notifications' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, notifications })
 
   } catch (error) {
-    console.error('Notifications API error:', error)
+    Sentry.captureException(error, { tags: { route: 'notifications' }, extra: { context: "Notifications API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
@@ -67,7 +68,7 @@ export async function PUT(request: Request) {
         .eq('read', false)
 
       if (error) {
-        console.error('Error marking all notifications as read:', error)
+        Sentry.captureException(error, { tags: { route: 'notifications' }, extra: { context: "Error marking all notifications as read" } } as any)
         return NextResponse.json({ error: 'Failed to update notifications' }, { status: 500 })
       }
 
@@ -81,7 +82,7 @@ export async function PUT(request: Request) {
         .eq('user_id', user.id) // Ensure user owns this notification
 
       if (error) {
-        console.error('Error marking notification as read:', error)
+        Sentry.captureException(error, { tags: { route: 'notifications' }, extra: { context: "Error marking notification as read" } } as any)
         return NextResponse.json({ error: 'Failed to update notification' }, { status: 500 })
       }
 
@@ -91,7 +92,7 @@ export async function PUT(request: Request) {
     }
 
   } catch (error) {
-    console.error('Notifications API error:', error)
+    Sentry.captureException(error, { tags: { route: 'notifications' }, extra: { context: "Notifications API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }

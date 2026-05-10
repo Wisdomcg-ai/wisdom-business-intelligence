@@ -2,6 +2,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
+import * as Sentry from '@sentry/nextjs'
 import {
   sanitizeAIInput,
   detectPromptInjection,
@@ -143,7 +144,7 @@ Return ONLY valid JSON in this exact format:
     try {
       analysis = JSON.parse(responseText)
     } catch (parseError) {
-      console.error('Failed to parse AI response:', responseText)
+      Sentry.captureException(responseText, { tags: { route: 'sessions/[id]/analyze-transcript' }, extra: { context: "Failed to parse AI response" } } as any)
       return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 })
     }
 
@@ -165,7 +166,7 @@ Return ONLY valid JSON in this exact format:
       .eq('id', sessionId)
 
     if (updateError) {
-      console.error('Error updating session:', updateError)
+      Sentry.captureException(updateError, { tags: { route: 'sessions/[id]/analyze-transcript' }, extra: { context: "Error updating session" } } as any)
       return NextResponse.json({ error: 'Failed to save analysis' }, { status: 500 })
     }
 
@@ -210,7 +211,7 @@ Return ONLY valid JSON in this exact format:
     })
 
   } catch (error: any) {
-    console.error('Analyze transcript API error:', error)
+    Sentry.captureException(error, { tags: { route: 'sessions/[id]/analyze-transcript' }, extra: { context: "Analyze transcript API error" } } as any)
 
     // Handle OpenAI-specific errors
     if (error.message?.includes('API key')) {
