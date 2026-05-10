@@ -1,6 +1,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
+import * as Sentry from '@sentry/nextjs'
 
 // Generate a secure random password
 function generateSecurePassword(length = 16): string {
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
     )
 
     if (!authResponse.ok) {
-      console.error('[Resend Invitation] Failed to reset password')
+      Sentry.captureMessage('[Resend Invitation] Failed to reset password', 'error' as any)
       return NextResponse.json({ error: 'Failed to reset password' }, { status: 500 })
     }
 
@@ -98,7 +99,7 @@ export async function POST(request: Request) {
     })
 
     if (!emailResult.success) {
-      console.error('[Resend Invitation] Email failed:', emailResult.error)
+      Sentry.captureException(emailResult.error, { tags: { route: 'admin/clients/resend-invitation' }, extra: { context: 'Email failed' } } as any)
       return NextResponse.json({
         error: 'Password reset but email failed to send',
         details: emailResult.error
@@ -115,7 +116,9 @@ export async function POST(request: Request) {
       })
       .eq('id', business.id)
 
-    console.log('[Resend Invitation] Success for:', email)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Resend Invitation] Success for:', email)
+    }
 
     return NextResponse.json({
       success: true,
@@ -123,7 +126,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('[Resend Invitation] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'admin/clients/resend-invitation' }, extra: { context: '[Resend Invitation] Error' } } as any)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }

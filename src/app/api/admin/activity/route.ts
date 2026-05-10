@@ -1,6 +1,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 // Use service role client for unrestricted access
 const getServiceClient = () => createClient(
@@ -57,7 +58,7 @@ export async function GET(request: Request) {
       .order('business_name', { ascending: true })
 
     if (businessError) {
-      console.error('Error fetching businesses:', businessError)
+      Sentry.captureException(businessError, { tags: { route: 'admin/activity' }, extra: { context: 'Error fetching businesses' } } as any)
       return NextResponse.json({ error: 'Failed to fetch businesses' }, { status: 500 })
     }
 
@@ -70,7 +71,7 @@ export async function GET(request: Request) {
       .limit(limit)
 
     if (auditError) {
-      console.error('Error fetching audit logs:', auditError)
+      Sentry.captureException(auditError, { tags: { route: 'admin/activity' }, extra: { context: 'Error fetching audit logs' } } as any)
       // Don't fail - audit log might not have data yet
     }
 
@@ -81,7 +82,7 @@ export async function GET(request: Request) {
       .order('login_at', { ascending: false })
 
     if (loginError) {
-      console.error('Error fetching login activity:', loginError)
+      Sentry.captureException(loginError, { tags: { route: 'admin/activity' }, extra: { context: 'Error fetching login activity' } } as any)
       // Don't fail - login tracking might not have data yet
     }
 
@@ -93,7 +94,7 @@ export async function GET(request: Request) {
       .order('updated_at', { ascending: false })
 
     if (profileError) {
-      console.error('Error fetching profile activity:', profileError)
+      Sentry.captureException(profileError, { tags: { route: 'admin/activity' }, extra: { context: 'Error fetching profile activity' } } as any)
     }
 
     // 5. Get recent assessments (completions)
@@ -104,7 +105,7 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false })
 
     if (assessmentError) {
-      console.error('Error fetching assessment activity:', assessmentError)
+      Sentry.captureException(assessmentError, { tags: { route: 'admin/activity' }, extra: { context: 'Error fetching assessment activity' } } as any)
     }
 
     // 6. Get recent weekly reviews
@@ -115,7 +116,7 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false })
 
     if (weeklyError) {
-      console.error('Error fetching weekly reviews:', weeklyError)
+      Sentry.captureException(weeklyError, { tags: { route: 'admin/activity' }, extra: { context: 'Error fetching weekly reviews' } } as any)
     }
 
     // 7. Get coaches info for mapping
@@ -297,7 +298,7 @@ export async function GET(request: Request) {
     })
 
   } catch (error) {
-    console.error('Activity monitoring error:', error)
+    Sentry.captureException(error, { tags: { route: 'admin/activity' }, extra: { context: 'Activity monitoring error' } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }

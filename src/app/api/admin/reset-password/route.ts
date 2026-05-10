@@ -5,6 +5,7 @@ import { sendPasswordReset } from '@/lib/email/resend'
 import crypto from 'crypto'
 import { checkRateLimit, getClientIP, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 import { csrfProtection } from '@/lib/security/csrf'
+import * as Sentry from '@sentry/nextjs'
 
 // Use service role for admin operations
 const supabaseAdmin = createClient(
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
         })
 
       if (insertError) {
-        console.error('[AdminReset] Error storing token:', insertError)
+        Sentry.captureException(insertError, { tags: { route: 'admin/reset-password' }, extra: { context: 'Error storing token' } } as any)
         return NextResponse.json({ error: 'Failed to create reset token' }, { status: 500 })
       }
 
@@ -119,7 +120,7 @@ export async function POST(request: NextRequest) {
       })
 
       if (!emailResult.success) {
-        console.error('[AdminReset] Email failed:', emailResult.error)
+        Sentry.captureException(emailResult.error, { tags: { route: 'admin/reset-password' }, extra: { context: 'Email failed' } } as any)
         return NextResponse.json({ error: 'Failed to send reset email' }, { status: 500 })
       }
 
@@ -135,11 +136,13 @@ export async function POST(request: NextRequest) {
       )
 
       if (updateError) {
-        console.error('[AdminReset] Error updating password:', updateError)
+        Sentry.captureException(updateError, { tags: { route: 'admin/reset-password' }, extra: { context: 'Error updating password' } } as any)
         return NextResponse.json({ error: 'Failed to reset password' }, { status: 500 })
       }
 
-      console.log('[AdminReset] Password reset for user:', userId)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[AdminReset] Password reset for user:', userId)
+      }
 
       return NextResponse.json({
         success: true,
@@ -149,7 +152,7 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('[AdminReset] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'admin/reset-password' }, extra: { context: '[AdminReset] Error' } } as any)
     return NextResponse.json({ error: 'Failed to reset password' }, { status: 500 })
   }
 }
