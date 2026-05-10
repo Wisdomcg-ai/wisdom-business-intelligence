@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,7 +30,7 @@ export async function GET(
       .maybeSingle()
 
     if (forecastError) {
-      console.error('[API /forecast/[id]] Error fetching forecast:', forecastError)
+      Sentry.captureException(forecastError, { tags: { route: 'forecast/[id]' }, extra: { context: "[API /forecast/[id]] Error fetching forecast" } } as any)
       return NextResponse.json({ error: 'Failed to fetch forecast' }, { status: 500 })
     }
 
@@ -110,7 +111,7 @@ export async function GET(
     return NextResponse.json({ forecast })
 
   } catch (error) {
-    console.error('[API /forecast/[id]] Unexpected error:', error)
+    Sentry.captureException(error, { tags: { route: 'forecast/[id]' }, extra: { context: "[API /forecast/[id]] Unexpected error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

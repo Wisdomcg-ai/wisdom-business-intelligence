@@ -14,6 +14,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getMonthKeysForQuarter, sumMonthsForKeys } from '@/lib/utils/fiscal-year-utils'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,7 +83,7 @@ export async function GET(request: Request) {
       .maybeSingle()
 
     if (forecastError) {
-      console.error('[quarterly-summary] Error fetching forecast:', forecastError)
+      Sentry.captureException(forecastError, { tags: { route: 'forecast/quarterly-summary' }, extra: { context: "[quarterly-summary] Error fetching forecast" } } as any)
       return NextResponse.json({ error: 'Failed to fetch forecast' }, { status: 500 })
     }
 
@@ -97,7 +98,7 @@ export async function GET(request: Request) {
       .eq('forecast_id', forecastId)
 
     if (linesError) {
-      console.error('[quarterly-summary] Error fetching pl_lines:', linesError)
+      Sentry.captureException(linesError, { tags: { route: 'forecast/quarterly-summary' }, extra: { context: "[quarterly-summary] Error fetching pl_lines" } } as any)
       return NextResponse.json({ error: 'Failed to fetch P&L lines' }, { status: 500 })
     }
 
@@ -188,18 +189,20 @@ export async function GET(request: Request) {
       hasActuals,
     }
 
-    console.log('[quarterly-summary] Returning summary for forecast', forecastId, {
-      quarter,
-      fiscalYear,
-      qKeys,
-      hasActuals,
-      revForecast,
-      revActual,
-    })
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[quarterly-summary] Returning summary for forecast', forecastId, {
+        quarter,
+        fiscalYear,
+        qKeys,
+        hasActuals,
+        revForecast,
+        revActual,
+      })
+    }
 
     return NextResponse.json(result)
   } catch (err) {
-    console.error('[quarterly-summary] Unexpected error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/quarterly-summary' }, extra: { context: "[quarterly-summary] Unexpected error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

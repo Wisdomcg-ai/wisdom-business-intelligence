@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -138,7 +139,7 @@ export async function POST(request: NextRequest) {
 
     if (!xeroResp.ok) {
       const errText = await xeroResp.text()
-      console.error('[BankBalances] Xero API error:', xeroResp.status, errText)
+      Sentry.captureMessage(`[BankBalances] Xero API error status=${xeroResp.status}`, { level: 'error' as any, extra: { errText } } as any)
       return NextResponse.json({ error: 'Xero API error' }, { status: 502 })
     }
 
@@ -207,7 +208,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: balances })
   } catch (err) {
-    console.error('[BankBalances] Error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/cashflow/bank-balances' }, extra: { context: "[BankBalances] Error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

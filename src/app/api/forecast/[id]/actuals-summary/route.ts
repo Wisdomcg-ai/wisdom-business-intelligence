@@ -10,6 +10,7 @@
 
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,7 +62,7 @@ export async function GET(
       .maybeSingle()
 
     if (forecastError) {
-      console.error('[actuals-summary] Error fetching forecast:', forecastError)
+      Sentry.captureException(forecastError, { tags: { route: 'forecast/[id]/actuals-summary' }, extra: { context: "[actuals-summary] Error fetching forecast" } } as any)
       return NextResponse.json({ error: 'Failed to fetch forecast' }, { status: 500 })
     }
 
@@ -77,7 +78,7 @@ export async function GET(
       .order('sort_order', { ascending: true })
 
     if (linesError) {
-      console.error('[actuals-summary] Error fetching pl_lines:', linesError)
+      Sentry.captureException(linesError, { tags: { route: 'forecast/[id]/actuals-summary' }, extra: { context: "[actuals-summary] Error fetching pl_lines" } } as any)
       return NextResponse.json({ error: 'Failed to fetch P&L lines' }, { status: 500 })
     }
 
@@ -226,20 +227,22 @@ export async function GET(
       seasonalityPattern,
     }
 
-    console.log('[actuals-summary] Returning summary for forecast', forecastId, {
-      fiscal_year: forecast.fiscal_year,
-      is_locked: forecast.is_locked,
-      revenueTotal: totalRevenue,
-      cogsTotal: totalCOGS,
-      opexTotal: totalOpEx,
-      revenueLines: revenueByLine.length,
-      cogsLines: cogsByLine.length,
-      opexLines: opexByLine.length,
-    })
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[actuals-summary] Returning summary for forecast', forecastId, {
+        fiscal_year: forecast.fiscal_year,
+        is_locked: forecast.is_locked,
+        revenueTotal: totalRevenue,
+        cogsTotal: totalCOGS,
+        opexTotal: totalOpEx,
+        revenueLines: revenueByLine.length,
+        cogsLines: cogsByLine.length,
+        opexLines: opexByLine.length,
+      })
+    }
 
     return NextResponse.json(result)
   } catch (err) {
-    console.error('[actuals-summary] Unexpected error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/[id]/actuals-summary' }, extra: { context: "[actuals-summary] Unexpected error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

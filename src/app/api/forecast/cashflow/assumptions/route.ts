@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
 
     if (error) {
-      console.error('[Cashflow Assumptions] Error:', error)
+      Sentry.captureException(error, { tags: { route: 'forecast/cashflow/assumptions' }, extra: { context: "[Cashflow Assumptions] Error" } } as any)
       return NextResponse.json({ error: 'Failed to fetch assumptions' }, { status: 500 })
     }
 
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
     const cashflow = forecast.assumptions?.cashflow ?? null
     return NextResponse.json({ data: cashflow })
   } catch (err) {
-    console.error('[Cashflow Assumptions] Error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/cashflow/assumptions' }, extra: { context: "[Cashflow Assumptions] Error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -88,13 +89,13 @@ export async function POST(request: NextRequest) {
       .eq('id', forecast_id)
 
     if (updateError) {
-      console.error('[Cashflow Assumptions] Update error:', updateError)
+      Sentry.captureException(updateError, { tags: { route: 'forecast/cashflow/assumptions' }, extra: { context: "[Cashflow Assumptions] Update error" } } as any)
       return NextResponse.json({ error: 'Failed to save assumptions' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error('[Cashflow Assumptions] Error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/cashflow/assumptions' }, extra: { context: "[Cashflow Assumptions] Error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,13 +33,13 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
 
     if (error) {
-      console.error('[Payroll Summary] Error:', error)
+      Sentry.captureException(error, { tags: { route: 'forecast/cashflow/payroll-summary' }, extra: { context: "[Payroll Summary] Error" } } as any)
       return NextResponse.json({ error: 'Failed to load payroll summary' }, { status: 500 })
     }
 
     return NextResponse.json({ data: data ?? null })
   } catch (err) {
-    console.error('[Payroll Summary] Error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/cashflow/payroll-summary' }, extra: { context: "[Payroll Summary] Error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

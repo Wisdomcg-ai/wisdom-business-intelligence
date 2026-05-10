@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,13 +48,13 @@ export async function GET(request: NextRequest) {
       .order('account_code', { ascending: true })
 
     if (error) {
-      console.error('[Cashflow Profiles] GET error:', error)
+      Sentry.captureException(error, { tags: { route: 'forecast/cashflow/profiles' }, extra: { context: "[Cashflow Profiles] GET error" } } as any)
       return NextResponse.json({ error: 'Failed to load profiles' }, { status: 500 })
     }
 
     return NextResponse.json({ data: data ?? [] })
   } catch (err) {
-    console.error('[Cashflow Profiles] GET error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/cashflow/profiles' }, extra: { context: "[Cashflow Profiles] GET error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -138,13 +139,13 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('[Cashflow Profiles] POST error:', error)
+      Sentry.captureException(error, { tags: { route: 'forecast/cashflow/profiles' }, extra: { context: "[Cashflow Profiles] POST error" } } as any)
       return NextResponse.json({ error: 'Upsert failed', detail: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ data, success: true })
   } catch (err) {
-    console.error('[Cashflow Profiles] POST error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/cashflow/profiles' }, extra: { context: "[Cashflow Profiles] POST error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

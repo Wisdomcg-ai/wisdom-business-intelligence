@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -161,7 +162,7 @@ export async function POST(request: NextRequest) {
 
     if (!xeroResp.ok) {
       const errText = await xeroResp.text()
-      console.error('[SyncBalances] Xero API error:', xeroResp.status, errText)
+      Sentry.captureMessage(`[SyncBalances] Xero API error status=${xeroResp.status}`, { level: 'error' as any, extra: { errText } } as any)
       return NextResponse.json({ error: 'Xero API error' }, { status: 502 })
     }
 
@@ -220,9 +221,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('[SyncBalances] Classified lines for business', business_id, 'at', balance_date, ':',
-      JSON.stringify(classificationLog, null, 2))
-    console.log('[SyncBalances] Final balances:', balances)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[SyncBalances] Classified lines for business', business_id, 'at', balance_date, ':',
+        JSON.stringify(classificationLog, null, 2))
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[SyncBalances] Final balances:', balances)
+    }
 
     // Try to calculate DSO/DPO from Xero aged receivables/payables
     let dso_days = 30
@@ -355,7 +360,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: result })
   } catch (err) {
-    console.error('[SyncBalances] Error:', err)
+    Sentry.captureException(err, { tags: { route: 'forecast/cashflow/sync-balances' }, extra: { context: "[SyncBalances] Error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
