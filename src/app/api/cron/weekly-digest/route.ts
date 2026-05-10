@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { sendEmail } from '@/lib/email/resend'
+import * as Sentry from '@sentry/nextjs'
 
 // Brand colors for email
 const BRAND_ORANGE = '#F5821F'
@@ -200,7 +201,7 @@ export async function GET(request: NextRequest) {
       errors: errors.length > 0 ? errors : undefined
     })
   } catch (error) {
-    console.error('[Weekly Digest] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'cron/weekly-digest' }, extra: { context: "[Weekly Digest] Error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
