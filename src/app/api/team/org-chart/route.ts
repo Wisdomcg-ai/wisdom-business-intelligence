@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,13 +46,13 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
 
     if (error) {
-      console.error('[OrgChart API] Load error:', error)
+      Sentry.captureException(error, { tags: { route: 'team/org-chart' }, extra: { context: "[OrgChart API] Load error" } } as any)
       return NextResponse.json({ error: 'Failed to load' }, { status: 500 })
     }
 
     return NextResponse.json({ org_chart: data?.org_chart || null })
   } catch (err) {
-    console.error('[OrgChart API] Error:', err)
+    Sentry.captureException(err, { tags: { route: 'team/org-chart' }, extra: { context: "[OrgChart API] Error" } } as any)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }
@@ -90,13 +91,13 @@ export async function POST(request: NextRequest) {
       .upsert(upsertData, { onConflict: 'user_id' })
 
     if (error) {
-      console.error('[OrgChart API] Save error:', error)
+      Sentry.captureException(error, { tags: { route: 'team/org-chart' }, extra: { context: "[OrgChart API] Save error" } } as any)
       return NextResponse.json({ error: 'Failed to save' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error('[OrgChart API] Error:', err)
+    Sentry.captureException(err, { tags: { route: 'team/org-chart' }, extra: { context: "[OrgChart API] Error" } } as any)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }

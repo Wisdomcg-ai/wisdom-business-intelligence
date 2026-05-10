@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email/resend'
 import crypto from 'crypto'
 import { csrfProtection } from '@/lib/security/csrf'
+import * as Sentry from '@sentry/nextjs'
 
 // Generate a secure random password
 function generateSecurePassword(length = 16): string {
@@ -170,7 +171,7 @@ export async function POST(request: Request) {
         })
 
       if (insertError) {
-        console.error('[Team Invite] Insert error:', insertError)
+        Sentry.captureException(insertError, { tags: { route: 'team/invite' }, extra: { context: "[Team Invite] Insert error" } } as any)
         return NextResponse.json({ error: 'Failed to add team member' }, { status: 500 })
       }
 
@@ -231,7 +232,9 @@ export async function POST(request: Request) {
 
         // Check if error is "user already exists"
         if (errorMsg.toLowerCase().includes('already') || errorMsg.toLowerCase().includes('registered')) {
-          console.log('[Team Invite] User already exists, finding and adding to team:', email)
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('[Team Invite] User already exists, finding and adding to team:', email)
+          }
 
           // Find the existing user - paginate through all users
           let foundUser = null
@@ -251,12 +254,14 @@ export async function POST(request: Request) {
             )
 
             if (!findUserResponse.ok) {
-              console.error('[Team Invite] Failed to fetch users page', page)
+              Sentry.captureException(page, { tags: { route: 'team/invite' }, extra: { context: "[Team Invite] Failed to fetch users page" } } as any)
               break
             }
 
             const findData = await findUserResponse.json()
-            console.log('[Team Invite] Searching page', page, 'found', findData.users?.length || 0, 'users')
+            if (process.env.NODE_ENV !== 'production') {
+              console.log('[Team Invite] Searching page', page, 'found', findData.users?.length || 0, 'users')
+            }
 
             foundUser = findData.users?.find(
               (u: { email?: string }) => u.email?.toLowerCase() === email.toLowerCase()
@@ -273,7 +278,9 @@ export async function POST(request: Request) {
           }
 
           if (foundUser) {
-            console.log('[Team Invite] Found existing user:', foundUser.id)
+            if (process.env.NODE_ENV !== 'production') {
+              console.log('[Team Invite] Found existing user:', foundUser.id)
+            }
 
             // Ensure user exists in public users table (use admin to bypass RLS)
             await adminSupabase
@@ -313,7 +320,7 @@ export async function POST(request: Request) {
               })
 
             if (insertError) {
-              console.error('[Team Invite] Insert error:', insertError)
+              Sentry.captureException(insertError, { tags: { route: 'team/invite' }, extra: { context: "[Team Invite] Insert error" } } as any)
               return NextResponse.json({ error: 'Failed to add team member' }, { status: 500 })
             }
 
@@ -339,11 +346,11 @@ export async function POST(request: Request) {
               userExists: true
             })
           } else {
-            console.error('[Team Invite] Could not find existing user by email:', email)
+            Sentry.captureException(email, { tags: { route: 'team/invite' }, extra: { context: "[Team Invite] Could not find existing user by email" } } as any)
           }
         }
 
-        console.error('[Team Invite] Auth error:', authData)
+        Sentry.captureException(authData, { tags: { route: 'team/invite' }, extra: { context: "[Team Invite] Auth error" } } as any)
         return NextResponse.json(
           { error: `Failed to create user: ${errorMsg || 'Unknown error'}` },
           { status: 400 }
@@ -365,7 +372,7 @@ export async function POST(request: Request) {
         }, { onConflict: 'id' })
 
       if (userInsertError) {
-        console.error('[Team Invite] Users table insert error:', userInsertError)
+        Sentry.captureException(userInsertError, { tags: { route: 'team/invite' }, extra: { context: "[Team Invite] Users table insert error" } } as any)
         return NextResponse.json(
           { error: `Failed to create user profile: ${userInsertError.message}` },
           { status: 500 }
@@ -382,7 +389,7 @@ export async function POST(request: Request) {
         }, { onConflict: 'user_id' })
 
       if (roleError) {
-        console.error('[Team Invite] System roles insert error:', roleError)
+        Sentry.captureException(roleError, { tags: { route: 'team/invite' }, extra: { context: "[Team Invite] System roles insert error" } } as any)
         return NextResponse.json(
           { error: `Failed to assign system role: ${roleError.message}` },
           { status: 500 }
@@ -404,7 +411,7 @@ export async function POST(request: Request) {
         })
 
       if (memberError) {
-        console.error('[Team Invite] Member insert error:', memberError)
+        Sentry.captureException(memberError, { tags: { route: 'team/invite' }, extra: { context: "[Team Invite] Member insert error" } } as any)
         return NextResponse.json(
           { error: `Failed to add member to business: ${memberError.message}` },
           { status: 500 }
@@ -547,7 +554,7 @@ export async function POST(request: Request) {
     }
 
   } catch (error) {
-    console.error('[Team Invite] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'team/invite' }, extra: { context: "[Team Invite] Error" } } as any)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }
