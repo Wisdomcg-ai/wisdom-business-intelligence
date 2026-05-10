@@ -17,6 +17,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { sendMonthlyReport } from '@/lib/email/send-report'
 import { buildReportUrl } from '@/lib/reports/build-report-url'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -141,7 +142,7 @@ export async function POST(request: NextRequest) {
         return errorResponse(`Unknown action: ${action}`, 400)
     }
   } catch (err) {
-    console.error('[report-status] error:', err)
+    Sentry.captureException(err, { tags: { route: 'cfo/report-status' }, extra: { context: "[report-status] error" } } as any)
     return errorResponse('Internal server error', 500)
   }
 }
@@ -165,7 +166,7 @@ async function handleMarkReady(userId: string, businessId: string, periodMonth: 
     .single()
 
   if (error) {
-    console.error('[report-status] mark_ready upsert failed:', error)
+    Sentry.captureException(error, { tags: { route: 'cfo/report-status' }, extra: { context: "[report-status] mark_ready upsert failed" } } as any)
     return errorResponse('Failed to update status', 500)
   }
   return NextResponse.json({ success: true, status: 'ready_for_review' })
@@ -220,7 +221,7 @@ async function handleApproveAndSend(userId: string, body: ApproveSendBody) {
     .single()
 
   if (approveErr || !approvedRow) {
-    console.error('[report-status] approve upsert failed:', approveErr)
+    Sentry.captureException(approveErr, { tags: { route: 'cfo/report-status' }, extra: { context: "[report-status] approve upsert failed" } } as any)
     return errorResponse('Failed to write approval state', 500)
   }
 
@@ -242,7 +243,7 @@ async function handleApproveAndSend(userId: string, body: ApproveSendBody) {
     .single()
 
   if (logInsertErr || !logRow) {
-    console.error('[report-status] email log insert failed:', logInsertErr)
+    Sentry.captureException(logInsertErr, { tags: { route: 'cfo/report-status' }, extra: { context: "[report-status] email log insert failed" } } as any)
     return errorResponse('Failed to record email attempt', 500)
   }
 
@@ -377,7 +378,7 @@ async function handleResend(userId: string, body: ResendBody) {
     .single()
 
   if (logInsertErr || !logRow) {
-    console.error('[report-status] resend log insert failed:', logInsertErr)
+    Sentry.captureException(logInsertErr, { tags: { route: 'cfo/report-status' }, extra: { context: "[report-status] resend log insert failed" } } as any)
     return errorResponse('Failed to record resend attempt', 500)
   }
 

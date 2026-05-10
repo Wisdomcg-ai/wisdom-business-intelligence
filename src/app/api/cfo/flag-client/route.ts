@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,13 +62,13 @@ export async function POST(request: NextRequest) {
       .eq('id', business_id)
 
     if (error) {
-      console.error('[CFO Flag] update error:', error)
+      Sentry.captureException(error, { tags: { route: 'cfo/flag-client' }, extra: { context: "[CFO Flag] update error" } } as any)
       return NextResponse.json({ error: 'Update failed', detail: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, business_id, is_cfo_client })
   } catch (err) {
-    console.error('[CFO Flag] error:', err)
+    Sentry.captureException(err, { tags: { route: 'cfo/flag-client' }, extra: { context: "[CFO Flag] error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
