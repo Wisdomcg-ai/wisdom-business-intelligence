@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export async function GET(request: Request) {
   const supabase = await createRouteHandlerClient()
@@ -103,7 +104,7 @@ export async function GET(request: Request) {
     })
 
   } catch (error) {
-    console.error('Coach analytics API error:', error)
+    Sentry.captureException(error, { tags: { route: 'analytics/coach' }, extra: { context: "Coach analytics API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
