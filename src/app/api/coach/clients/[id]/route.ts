@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export async function GET(
   request: Request,
@@ -87,7 +88,7 @@ export async function GET(
     })
 
   } catch (error) {
-    console.error('Coach client detail API error:', error)
+    Sentry.captureException(error, { tags: { route: 'coach/clients/[id]' }, extra: { context: "Coach client detail API error" } } as any)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }
@@ -139,7 +140,7 @@ export async function PUT(
       .single()
 
     if (updateError) {
-      console.error('Error updating client:', updateError)
+      Sentry.captureException(updateError, { tags: { route: 'coach/clients/[id]' }, extra: { context: "Error updating client" } } as any)
       return NextResponse.json({ error: 'Failed to update client' }, { status: 500 })
     }
 
@@ -149,7 +150,7 @@ export async function PUT(
     })
 
   } catch (error) {
-    console.error('Coach client update API error:', error)
+    Sentry.captureException(error, { tags: { route: 'coach/clients/[id]' }, extra: { context: "Coach client update API error" } } as any)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }
