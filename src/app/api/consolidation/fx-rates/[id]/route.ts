@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -85,7 +86,7 @@ export async function DELETE(
     }
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error('[FX Rates] unhandled DELETE error, stage:', stage, err)
+    Sentry.captureException(err, { tags: { route: 'consolidation/fx-rates/[id]' }, extra: { context: 'unhandled DELETE error', stage } } as any)
     return NextResponse.json(
       { error: 'Internal error', stage, detail: String(err) },
       { status: 500 },

@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -77,9 +78,13 @@ export async function GET(request: Request) {
       if (testErr) {
         columns = CORE_COLUMNS
         hasExtendedCols = false
-        console.log('[API /strategic-initiatives] Extended columns NOT available:', testErr.message)
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[API /strategic-initiatives] Extended columns NOT available:', testErr.message)
+        }
       } else {
-        console.log('[API /strategic-initiatives] Extended columns available (estimated_cost, is_monthly_cost)')
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[API /strategic-initiatives] Extended columns available (estimated_cost, is_monthly_cost)')
+        }
       }
     }
 
@@ -98,7 +103,9 @@ export async function GET(request: Request) {
 
       if (!error && data && data.length > 0) {
         const mapped = data.map(d => mapInitiative(d, hasExtendedCols))
-        console.log('[API /strategic-initiatives] Returning', mapped.length, 'initiatives. Sample costs:', mapped.slice(0, 3).map(m => ({ title: m.title, estimated_cost: m.estimated_cost, is_monthly_cost: m.is_monthly_cost })))
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[API /strategic-initiatives] Returning', mapped.length, 'initiatives. Sample costs:', mapped.slice(0, 3).map(m => ({ title: m.title, estimated_cost: m.estimated_cost, is_monthly_cost: m.is_monthly_cost })))
+        }
         return NextResponse.json({ initiatives: mapped })
       }
 
@@ -132,7 +139,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ initiatives: [] })
 
   } catch (error) {
-    console.error('[API /strategic-initiatives] Unexpected error:', error)
+    Sentry.captureException(error, { tags: { route: 'strategic-initiatives' }, extra: { context: "[API /strategic-initiatives] Unexpected error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

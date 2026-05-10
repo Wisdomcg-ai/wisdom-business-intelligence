@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 // POST /api/notifications/create - Create a notification (internal use)
 export async function POST(request: Request) {
@@ -75,14 +76,14 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error('Error creating notification:', error)
+      Sentry.captureException(error, { tags: { route: 'notifications/create' }, extra: { context: "Error creating notification" } } as any)
       return NextResponse.json({ error: 'Failed to create notification' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, notification })
 
   } catch (error) {
-    console.error('Create notification API error:', error)
+    Sentry.captureException(error, { tags: { route: 'notifications/create' }, extra: { context: "Create notification API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }

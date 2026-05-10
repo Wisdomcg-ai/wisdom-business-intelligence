@@ -1,6 +1,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { notifyCoachActionCompleted } from '@/lib/notifications'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,7 +79,7 @@ export async function GET(request: Request) {
     const { data: actions, error: actionsError } = await query
 
     if (actionsError) {
-      console.error('Error loading actions:', actionsError)
+      Sentry.captureException(actionsError, { tags: { route: 'actions' }, extra: { context: "Error loading actions" } } as any)
       return NextResponse.json({ error: 'Failed to load actions' }, { status: 500 })
     }
 
@@ -88,7 +89,7 @@ export async function GET(request: Request) {
     })
 
   } catch (error) {
-    console.error('Actions API error:', error)
+    Sentry.captureException(error, { tags: { route: 'actions' }, extra: { context: "Actions API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
@@ -119,7 +120,7 @@ export async function PUT(request: Request) {
       .single()
 
     if (updateError) {
-      console.error('Error updating action:', updateError)
+      Sentry.captureException(updateError, { tags: { route: 'actions' }, extra: { context: "Error updating action" } } as any)
       return NextResponse.json({ error: 'Failed to update action' }, { status: 500 })
     }
 
@@ -159,7 +160,7 @@ export async function PUT(request: Request) {
     })
 
   } catch (error) {
-    console.error('Update action API error:', error)
+    Sentry.captureException(error, { tags: { route: 'actions' }, extra: { context: "Update action API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }

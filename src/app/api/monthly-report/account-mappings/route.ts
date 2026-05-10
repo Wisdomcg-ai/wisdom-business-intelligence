@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
       .order('xero_account_name', { ascending: true })
 
     if (mappingsError) {
-      console.error('[Account Mappings] Error fetching mappings:', mappingsError)
+      Sentry.captureException(mappingsError, { tags: { route: 'monthly-report/account-mappings' }, extra: { context: "[Account Mappings] Error fetching mappings" } } as any)
       return NextResponse.json({ error: 'Failed to fetch account mappings' }, { status: 500 })
     }
 
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
       .in('business_id', ids.all)
 
     if (xeroError) {
-      console.error('[Account Mappings] Error fetching xero_pl_lines:', xeroError)
+      Sentry.captureException(xeroError, { tags: { route: 'monthly-report/account-mappings' }, extra: { context: "[Account Mappings] Error fetching xero_pl_lines" } } as any)
       return NextResponse.json({ error: 'Failed to fetch Xero accounts' }, { status: 500 })
     }
 
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error in GET /api/monthly-report/account-mappings:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/account-mappings' }, extra: { context: "Error in GET /api/monthly-report/account-mappings" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -129,7 +130,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('[Account Mappings] Error upserting mapping:', error)
+      Sentry.captureException(error, { tags: { route: 'monthly-report/account-mappings' }, extra: { context: "[Account Mappings] Error upserting mapping" } } as any)
       return NextResponse.json(
         { error: error.message || 'Failed to save account mapping' },
         { status: 500 }
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, mapping })
 
   } catch (error) {
-    console.error('Error in POST /api/monthly-report/account-mappings:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/account-mappings' }, extra: { context: "Error in POST /api/monthly-report/account-mappings" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -173,7 +174,7 @@ export async function PUT(request: NextRequest) {
       .select()
 
     if (error) {
-      console.error('[Account Mappings] Error confirming mappings:', error)
+      Sentry.captureException(error, { tags: { route: 'monthly-report/account-mappings' }, extra: { context: "[Account Mappings] Error confirming mappings" } } as any)
       return NextResponse.json(
         { error: error.message || 'Failed to confirm mappings' },
         { status: 500 }
@@ -186,7 +187,7 @@ export async function PUT(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error in PUT /api/monthly-report/account-mappings:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/account-mappings' }, extra: { context: "Error in PUT /api/monthly-report/account-mappings" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

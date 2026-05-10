@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -129,7 +130,7 @@ Use current Australian market rates for small businesses.`
 
         responseText = completion.choices[0]?.message?.content || null
       } catch (err) {
-        console.error('[ai/advisor] OpenAI failed:', err)
+        Sentry.captureException(err, { tags: { route: 'ai/advisor' }, extra: { context: "[ai/advisor] OpenAI failed" } } as any)
       }
     }
 
@@ -145,7 +146,7 @@ Use current Australian market rates for small businesses.`
       suggestion.interactionId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
       return NextResponse.json(suggestion)
     } catch {
-      console.error('[ai/advisor] Failed to parse AI response:', responseText)
+      Sentry.captureException(responseText, { tags: { route: 'ai/advisor' }, extra: { context: "[ai/advisor] Failed to parse AI response" } } as any)
       return NextResponse.json({
         suggestion: 'Estimate unavailable — please try again',
         reasoning: 'Unable to parse detailed estimate. Please check market rates manually.',
@@ -155,7 +156,7 @@ Use current Australian market rates for small businesses.`
       })
     }
   } catch (error) {
-    console.error('[ai/advisor] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'ai/advisor' }, extra: { context: "[ai/advisor] Error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -175,11 +176,13 @@ export async function PATCH(request: Request) {
     const { interactionId, action, userValue } = await request.json()
 
     // Log for analytics (could be stored in a table later)
-    console.log('[ai/advisor] Feedback:', { interactionId, action, userValue, userId: user.id })
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[ai/advisor] Feedback:', { interactionId, action, userValue, userId: user.id })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('[ai/advisor] PATCH error:', error)
+    Sentry.captureException(error, { tags: { route: 'ai/advisor' }, extra: { context: "[ai/advisor] PATCH error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

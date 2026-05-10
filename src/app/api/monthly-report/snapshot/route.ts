@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
         .maybeSingle()
 
       if (error) {
-        console.error('[Snapshot] Error fetching snapshot:', error)
+        Sentry.captureException(error, { tags: { route: 'monthly-report/snapshot' }, extra: { context: "[Snapshot] Error fetching snapshot" } } as any)
         return NextResponse.json({ error: 'Failed to fetch snapshot' }, { status: 500 })
       }
 
@@ -48,14 +49,14 @@ export async function GET(request: NextRequest) {
       .order('report_month', { ascending: false })
 
     if (error) {
-      console.error('[Snapshot] Error listing snapshots:', error)
+      Sentry.captureException(error, { tags: { route: 'monthly-report/snapshot' }, extra: { context: "[Snapshot] Error listing snapshots" } } as any)
       return NextResponse.json({ error: 'Failed to list snapshots' }, { status: 500 })
     }
 
     return NextResponse.json({ snapshots: snapshots || [] })
 
   } catch (error) {
-    console.error('[Snapshot] GET error:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/snapshot' }, extra: { context: "[Snapshot] GET error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('[Snapshot] Error saving snapshot:', error)
+      Sentry.captureException(error, { tags: { route: 'monthly-report/snapshot' }, extra: { context: "[Snapshot] Error saving snapshot" } } as any)
       return NextResponse.json({ error: error.message || 'Failed to save snapshot' }, { status: 500 })
     }
 
@@ -127,13 +128,13 @@ export async function POST(request: NextRequest) {
       await revertReportIfApproved(supabase, business_id, periodMonth)
     } catch (revertErr) {
       // Do not fail the save if revert tracking fails — log and continue.
-      console.error('[monthly-report/snapshot] revertReportIfApproved failed:', revertErr)
+      Sentry.captureException(revertErr, { tags: { route: 'monthly-report/snapshot' }, extra: { context: "[monthly-report/snapshot] revertReportIfApproved failed" } } as any)
     }
 
     return NextResponse.json({ success: true, snapshot })
 
   } catch (error) {
-    console.error('[Snapshot] POST error:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/snapshot' }, extra: { context: "[Snapshot] POST error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

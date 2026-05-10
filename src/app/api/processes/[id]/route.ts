@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import * as Sentry from '@sentry/nextjs'
 
 // Helper: verify the authenticated user has access to a process
 async function verifyProcessAccess(
@@ -79,13 +80,13 @@ export async function GET(
       .single()
 
     if (error) {
-      console.error('[Processes API] Get error:', error)
+      Sentry.captureException(error, { tags: { route: 'processes/[id]' }, extra: { context: "[Processes API] Get error" } } as any)
       return NextResponse.json({ error: error.message }, { status: 404 })
     }
 
     return NextResponse.json({ process: data })
   } catch (error) {
-    console.error('[Processes API] Unexpected error:', error)
+    Sentry.captureException(error, { tags: { route: 'processes/[id]' }, extra: { context: "[Processes API] Unexpected error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -131,13 +132,13 @@ export async function PUT(
       .single()
 
     if (error) {
-      console.error('[Processes API] Update error:', error)
+      Sentry.captureException(error, { tags: { route: 'processes/[id]' }, extra: { context: "[Processes API] Update error" } } as any)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ process: data })
   } catch (error) {
-    console.error('[Processes API] Unexpected error:', error)
+    Sentry.captureException(error, { tags: { route: 'processes/[id]' }, extra: { context: "[Processes API] Unexpected error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -169,13 +170,13 @@ export async function DELETE(
       .eq('id', id)
 
     if (error) {
-      console.error('[Processes API] Delete error:', error)
+      Sentry.captureException(error, { tags: { route: 'processes/[id]' }, extra: { context: "[Processes API] Delete error" } } as any)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('[Processes API] Unexpected error:', error)
+    Sentry.captureException(error, { tags: { route: 'processes/[id]' }, extra: { context: "[Processes API] Unexpected error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

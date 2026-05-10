@@ -1,6 +1,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export async function GET(
   request: Request,
@@ -120,7 +121,7 @@ export async function GET(
     })
 
   } catch (error) {
-    console.error('Analytics API error:', error)
+    Sentry.captureException(error, { tags: { route: 'analytics/client/[id]' }, extra: { context: "Analytics API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }

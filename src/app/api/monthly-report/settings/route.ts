@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,7 +64,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
 
     if (error) {
-      console.error('[Monthly Report Settings] Error fetching settings:', error)
+      Sentry.captureException(error, { tags: { route: 'monthly-report/settings' }, extra: { context: "[Monthly Report Settings] Error fetching settings" } } as any)
       return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 })
     }
 
@@ -90,7 +91,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error in GET /api/monthly-report/settings:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/settings' }, extra: { context: "Error in GET /api/monthly-report/settings" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -160,7 +161,7 @@ export async function POST(request: NextRequest) {
 
     // If the error is about pdf_layout column not existing, retry without it
     if (error && pdf_layout !== undefined && error.message?.includes('pdf_layout')) {
-      console.warn('[Monthly Report Settings] pdf_layout column not found, retrying without it')
+      Sentry.captureMessage('[Monthly Report Settings] pdf_layout column not found, retrying without it', 'warning' as any)
       delete baseData.pdf_layout
       const retry = await supabase
         .from('monthly_report_settings')
@@ -175,7 +176,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (error) {
-      console.error('[Monthly Report Settings] Error upserting settings:', error)
+      Sentry.captureException(error, { tags: { route: 'monthly-report/settings' }, extra: { context: "[Monthly Report Settings] Error upserting settings" } } as any)
       return NextResponse.json(
         { error: error.message || 'Failed to save settings' },
         { status: 500 }
@@ -193,14 +194,14 @@ export async function POST(request: NextRequest) {
         await revertReportIfApproved(supabase, business_id, periodMonth)
       } catch (revertErr) {
         // Do not fail the save if revert tracking fails — log and continue.
-        console.error('[monthly-report/settings] revertReportIfApproved failed:', revertErr)
+        Sentry.captureException(revertErr, { tags: { route: 'monthly-report/settings' }, extra: { context: "[monthly-report/settings] revertReportIfApproved failed" } } as any)
       }
     }
 
     return NextResponse.json({ success: true, settings })
 
   } catch (error) {
-    console.error('Error in POST /api/monthly-report/settings:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/settings' }, extra: { context: "Error in POST /api/monthly-report/settings" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

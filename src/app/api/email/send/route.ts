@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter';
+import * as Sentry from '@sentry/nextjs'
 import {
   sendEmail,
   sendClientInvitation,
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, id: result.id });
   } catch (error) {
-    console.error('[API] Email send error:', error);
+    Sentry.captureException(error, { tags: { route: 'email/send' }, extra: { context: "[API] Email send error" } } as any);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

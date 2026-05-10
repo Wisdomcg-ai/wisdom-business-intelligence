@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,7 +42,7 @@ export async function GET(request: Request) {
       .limit(limit)
 
     if (messagesError) {
-      console.error('Error loading messages:', messagesError)
+      Sentry.captureException(messagesError, { tags: { route: 'chat/messages' }, extra: { context: "Error loading messages" } } as any)
       return NextResponse.json({ error: 'Failed to load messages' }, { status: 500 })
     }
 
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
     })
 
   } catch (error) {
-    console.error('Get messages API error:', error)
+    Sentry.captureException(error, { tags: { route: 'chat/messages' }, extra: { context: "Get messages API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
@@ -102,7 +103,7 @@ export async function POST(request: Request) {
       .single()
 
     if (messageError) {
-      console.error('Error creating message:', messageError)
+      Sentry.captureException(messageError, { tags: { route: 'chat/messages' }, extra: { context: "Error creating message" } } as any)
       return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
     }
 
@@ -112,7 +113,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('Send message API error:', error)
+    Sentry.captureException(error, { tags: { route: 'chat/messages' }, extra: { context: "Send message API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }

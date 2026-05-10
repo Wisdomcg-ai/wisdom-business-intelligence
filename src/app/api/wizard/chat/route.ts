@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter';
+import * as Sentry from '@sentry/nextjs'
 import {
   sanitizeAIInput,
   sanitizeConversationHistory,
@@ -127,7 +128,7 @@ export async function POST(request: Request) {
       updatedProcessData,
     });
   } catch (error) {
-    console.error('[Wizard Chat API] Error:', error);
+    Sentry.captureException(error, { tags: { route: 'wizard/chat' }, extra: { context: "[Wizard Chat API] Error" } } as any);
     // Return generic error message to avoid exposing internal details
     return NextResponse.json(
       { error: 'Failed to process your message. Please try again.' },

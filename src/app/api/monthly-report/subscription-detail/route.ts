@@ -4,6 +4,7 @@ import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { extractVendorName, createVendorKey } from '@/lib/utils/vendor-normalization'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
         }
       }
     } catch (err) {
-      console.error('[SubscriptionDetail] Failed to fetch accounts:', err)
+      Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch accounts" } } as any)
     }
 
     // Vendor totals: accountCode → vendorKey → { vendor_name, actual, prior_actual }
@@ -192,7 +193,7 @@ export async function POST(request: NextRequest) {
       )
       processBankTxns(txns, true)
     } catch (err) {
-      console.error('[SubscriptionDetail] Failed to fetch current bank txns:', err)
+      Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch current bank txns" } } as any)
     }
 
     await sleep(300)
@@ -206,7 +207,7 @@ export async function POST(request: NextRequest) {
       )
       processBankTxns(txns, false)
     } catch (err) {
-      console.error('[SubscriptionDetail] Failed to fetch prior bank txns:', err)
+      Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch prior bank txns" } } as any)
     }
 
     // Fetch per-vendor budgets from subscription_budgets
@@ -222,7 +223,7 @@ export async function POST(request: NextRequest) {
         budgetMap.set(b.vendor_key, b.monthly_budget || 0)
       }
     } catch (err) {
-      console.error('[SubscriptionDetail] Failed to fetch budgets:', err)
+      Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch budgets" } } as any)
     }
 
     // ── Authoritative P&L actuals from xero_pl_lines (matches main report) ──
@@ -251,7 +252,7 @@ export async function POST(request: NextRequest) {
         }
       }
     } catch (err) {
-      console.error('[SubscriptionDetail] Failed to fetch P&L actuals:', err)
+      Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch P&L actuals" } } as any)
     }
 
     // ── Authoritative budget from forecast_pl_lines (matches main report) ──
@@ -323,7 +324,7 @@ export async function POST(request: NextRequest) {
         }
       }
     } catch (err) {
-      console.error('[SubscriptionDetail] Failed to fetch forecast budgets:', err)
+      Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch forecast budgets" } } as any)
     }
 
     // ── Build response ──
@@ -390,7 +391,7 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error('[SubscriptionDetail] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Error" } } as any)
     return NextResponse.json({ error: 'Failed to load subscription detail' }, { status: 500 })
   }
 }

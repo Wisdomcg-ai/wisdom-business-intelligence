@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
+import * as Sentry from '@sentry/nextjs'
 import {
   sanitizeAIInput,
   sanitizeConversationHistory,
@@ -94,7 +95,7 @@ Remember: Help them think through decisions, don't make decisions for them.`
       const textBlock = result.content.find((b: { type: string }) => b.type === 'text')
       responseText = textBlock?.text || null
     } catch (anthropicError) {
-      console.warn('[forecast-assistant] Anthropic failed, trying OpenAI:', anthropicError)
+      Sentry.captureException(anthropicError, { tags: { route: 'ai/forecast-assistant' }, extra: { context: 'Anthropic failed, trying OpenAI' }, level: 'warning' } as any)
     }
 
     if (!responseText) {
@@ -111,7 +112,7 @@ Remember: Help them think through decisions, don't make decisions for them.`
 
         responseText = completion.choices[0]?.message?.content || null
       } catch (openaiError) {
-        console.error('[forecast-assistant] OpenAI also failed:', openaiError)
+        Sentry.captureException(openaiError, { tags: { route: 'ai/forecast-assistant' }, extra: { context: "[forecast-assistant] OpenAI also failed" } } as any)
       }
     }
 
@@ -124,7 +125,7 @@ Remember: Help them think through decisions, don't make decisions for them.`
 
     return NextResponse.json({ message: responseText })
   } catch (error) {
-    console.error('[forecast-assistant] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'ai/forecast-assistant' }, extra: { context: "[forecast-assistant] Error" } } as any)
     return NextResponse.json(
       { error: 'Failed to process your message. Please try again.' },
       { status: 500 }

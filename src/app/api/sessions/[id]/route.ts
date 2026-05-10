@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export async function GET(
   request: Request,
@@ -43,7 +44,7 @@ export async function GET(
     })
 
   } catch (error) {
-    console.error('Get session API error:', error)
+    Sentry.captureException(error, { tags: { route: 'sessions/[id]' }, extra: { context: "Get session API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
@@ -95,7 +96,7 @@ export async function PUT(
       .single()
 
     if (updateError) {
-      console.error('Error updating session:', updateError)
+      Sentry.captureException(updateError, { tags: { route: 'sessions/[id]' }, extra: { context: "Error updating session" } } as any)
       return NextResponse.json({ error: 'Failed to update session' }, { status: 500 })
     }
 
@@ -105,7 +106,7 @@ export async function PUT(
     })
 
   } catch (error) {
-    console.error('Update session API error:', error)
+    Sentry.captureException(error, { tags: { route: 'sessions/[id]' }, extra: { context: "Update session API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
@@ -142,7 +143,7 @@ export async function DELETE(
       .eq('id', sessionId)
 
     if (deleteError) {
-      console.error('Error deleting session:', deleteError)
+      Sentry.captureException(deleteError, { tags: { route: 'sessions/[id]' }, extra: { context: "Error deleting session" } } as any)
       return NextResponse.json({ error: 'Failed to delete session' }, { status: 500 })
     }
 
@@ -152,7 +153,7 @@ export async function DELETE(
     })
 
   } catch (error) {
-    console.error('Delete session API error:', error)
+    Sentry.captureException(error, { tags: { route: 'sessions/[id]' }, extra: { context: "Delete session API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }

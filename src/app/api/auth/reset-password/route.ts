@@ -4,6 +4,7 @@ import { sendPasswordReset } from '@/lib/email/resend'
 import crypto from 'crypto'
 import { checkRateLimit, getClientIP, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 import { csrfProtection } from '@/lib/security/csrf'
+import * as Sentry from '@sentry/nextjs'
 
 // Use service role for admin operations
 const supabase = createClient(
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
     const { data: { users }, error: listError } = await supabase.auth.admin.listUsers()
 
     if (listError) {
-      console.error('[ResetPassword] Error listing users:', listError)
+      Sentry.captureException(listError, { tags: { route: 'auth/reset-password' }, extra: { context: "[ResetPassword] Error listing users" } } as any)
       return NextResponse.json({ error: 'Failed to process request' }, { status: 500 })
     }
 
@@ -56,7 +57,9 @@ export async function POST(request: NextRequest) {
 
     // Return same response whether user exists or not — prevents email enumeration
     if (!user) {
-      console.log('[ResetPassword] User not found:', email)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ResetPassword] User not found:', email)
+      }
       return NextResponse.json({ success: true })
     }
 
@@ -80,7 +83,7 @@ export async function POST(request: NextRequest) {
       })
 
     if (insertError) {
-      console.error('[ResetPassword] Error storing token:', insertError)
+      Sentry.captureException(insertError, { tags: { route: 'auth/reset-password' }, extra: { context: "[ResetPassword] Error storing token" } } as any)
       return NextResponse.json({ error: 'Failed to process request' }, { status: 500 })
     }
 
@@ -105,16 +108,18 @@ export async function POST(request: NextRequest) {
     })
 
     if (!emailResult.success) {
-      console.error('[ResetPassword] Email failed:', emailResult.error)
+      Sentry.captureException(emailResult.error, { tags: { route: 'auth/reset-password' }, extra: { context: "[ResetPassword] Email failed" } } as any)
       // Don't reveal email failure to user
     } else {
-      console.log('[ResetPassword] Email sent:', emailResult.id)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ResetPassword] Email sent:', emailResult.id)
+      }
     }
 
     return NextResponse.json({ success: true })
 
   } catch (error) {
-    console.error('[ResetPassword] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'auth/reset-password' }, extra: { context: "[ResetPassword] Error" } } as any)
     return NextResponse.json({ error: 'Failed to process request' }, { status: 500 })
   }
 }

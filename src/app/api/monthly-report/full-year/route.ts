@@ -5,6 +5,7 @@ import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/f
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import { getPriorYearMonth } from '@/lib/monthly-report/shared'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -138,7 +139,7 @@ export async function POST(request: NextRequest) {
       .eq('business_id', business_id)
 
     if (mappingsErr) {
-      console.error('[Full Year] Error loading mappings:', mappingsErr)
+      Sentry.captureException(mappingsErr, { tags: { route: 'monthly-report/full-year' }, extra: { context: "[Full Year] Error loading mappings" } } as any)
       return NextResponse.json({ error: 'Failed to load account mappings', detail: mappingsErr.message }, { status: 500 })
     }
 
@@ -221,7 +222,7 @@ export async function POST(request: NextRequest) {
         .in('business_id', ids.all)
 
       if (xeroErr) {
-        console.error('[Full Year] Error loading xero_pl_lines:', xeroErr)
+        Sentry.captureException(xeroErr, { tags: { route: 'monthly-report/full-year' }, extra: { context: "[Full Year] Error loading xero_pl_lines" } } as any)
         // If the table doesn't exist yet, treat as empty (no actuals synced)
       }
 
@@ -238,7 +239,7 @@ export async function POST(request: NextRequest) {
       xeroLines = Array.from(xeroDedup.values())
 
       if (rawXeroLines && rawXeroLines.length !== xeroLines.length) {
-        console.warn(`[Full Year] Deduplicated xero_pl_lines: ${rawXeroLines.length} rows → ${xeroLines.length} unique accounts`)
+        Sentry.captureMessage(`[Full Year] Deduplicated xero_pl_lines: ${rawXeroLines.length} rows → ${xeroLines.length} unique accounts`, 'warning' as any)
       }
       // D-44.2-03 quality gate — fallback path; compute via public wrapper.
       const fallbackQuality = await createForecastReadService(supabase).getDataQualityForBusiness(ids.all)
@@ -503,7 +504,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     const message = String(error?.message ?? error)
     const isInvariant = message.includes('INVARIANT VIOLATED')
-    console.error('[Full Year] Error:', error)
+    Sentry.captureException(error, { tags: { route: 'monthly-report/full-year' }, extra: { context: "[Full Year] Error" } } as any)
     return NextResponse.json(
       {
         error: isInvariant ? message : 'Failed to generate full year projection',

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
+import * as Sentry from '@sentry/nextjs'
 import {
   sendTestEmail,
   sendClientInvitation,
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error) {
-    console.error('[API] Error sending test email:', error);
+    Sentry.captureException(error, { tags: { route: 'email/test' }, extra: { context: "[API] Error sending test email" } } as any);
     return NextResponse.json(
       { success: false, error: 'Failed to send test email' },
       { status: 500 }

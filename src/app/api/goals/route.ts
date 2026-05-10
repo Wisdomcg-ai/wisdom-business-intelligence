@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,7 +62,7 @@ export async function GET(request: Request) {
         .maybeSingle()
 
       if (error) {
-        console.error('[API /goals] Error querying with id:', id, error)
+        Sentry.captureException(error, { tags: { route: 'goals' }, extra: { context: 'Error querying with id', id } } as any)
         continue
       }
 
@@ -72,7 +73,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ goals: null })
   } catch (err) {
-    console.error('[API /goals] Unexpected error:', err)
+    Sentry.captureException(err, { tags: { route: 'goals' }, extra: { context: "[API /goals] Unexpected error" } } as any)
     return NextResponse.json({ goals: null })
   }
 }

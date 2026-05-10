@@ -13,6 +13,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids';
 import { syncBusinessXeroPL } from '@/lib/xero/sync-orchestrator';
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
 // Path A orchestrator can take >60s for multi-tenant + 24-month windows.
@@ -194,7 +195,9 @@ export async function POST(request: NextRequest) {
 
     stage = 'resolve_business_ids';
     const ids = await resolveBusinessIds(supabaseAdmin, business_id);
-    console.log(`[Sync Xero] Resolved IDs for ${business_id}:`, ids);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[Sync Xero] Resolved IDs for ${business_id}:`, ids);
+    }
 
     stage = 'fetch_business';
     const { data: business, error: bizError } = await supabaseAdmin
@@ -204,7 +207,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (bizError) {
-      console.error('[Sync Xero] Business fetch error:', bizError);
+      Sentry.captureException(bizError, { tags: { route: 'monthly-report/sync-xero' }, extra: { context: "[Sync Xero] Business fetch error" } } as any);
       return NextResponse.json({ error: 'Business lookup failed', detail: bizError.message, stage }, { status: 500 });
     }
     if (!business) {
@@ -226,14 +229,16 @@ export async function POST(request: NextRequest) {
       .eq('is_active', true);
 
     if (connError) {
-      console.error('[Sync Xero] Connection fetch error:', connError);
+      Sentry.captureException(connError, { tags: { route: 'monthly-report/sync-xero' }, extra: { context: "[Sync Xero] Connection fetch error" } } as any);
       return NextResponse.json({ error: 'Connection lookup failed', detail: connError.message, stage }, { status: 500 });
     }
     if (!connections || connections.length === 0) {
       return NextResponse.json({ error: 'No active Xero connection found', stage, searched_ids: ids.all }, { status: 404 });
     }
 
-    console.log(`[Sync Xero] Found ${connections.length} active connection(s) for business ${business_id}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[Sync Xero] Found ${connections.length} active connection(s) for business ${business_id}`);
+    }
 
     // ── P&L sync via Path A orchestrator (Phase 44.2-06B) ──
     // Replaces this route's prior per-tenant fetcher. The orchestrator handles
@@ -242,9 +247,11 @@ export async function POST(request: NextRequest) {
     // into xero_pl_lines (with correct business_id = profileId per 06A FK).
     stage = 'sync_pl_via_orchestrator';
     const plResult = await syncBusinessXeroPL(business_id);
-    console.log(
-      `[Sync Xero] P&L orchestrator: status=${plResult.status} rows_inserted=${plResult.rows_inserted} xero_requests=${plResult.xero_request_count}`
-    );
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(
+        `[Sync Xero] P&L orchestrator: status=${plResult.status} rows_inserted=${plResult.rows_inserted} xero_requests=${plResult.xero_request_count}`
+      );
+    }
 
     const totalAccountsSynced = plResult.rows_inserted;
     let totalMonthsFetched = plResult.coverage?.months_covered ?? 0;
@@ -259,7 +266,9 @@ export async function POST(request: NextRequest) {
     for (const connection of connections) {
       const tenantId = connection.tenant_id;
       const tenantLabel = connection.display_name || connection.tenant_name || tenantId;
-      console.log(`[Sync Xero] === BS sync for tenant ${tenantLabel} (${tenantId}) ===`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Sync Xero] === BS sync for tenant ${tenantLabel} (${tenantId}) ===`);
+      }
 
       stage = `refresh_token:${tenantId}`;
       const tokenResult = await getValidAccessToken(connection, supabaseAdmin);
@@ -290,7 +299,7 @@ export async function POST(request: NextRequest) {
         await new Promise((r) => setTimeout(r, 500));
         const bsResult = await fetchSingleMonthBS(accessToken, tenantId, month.toDate);
         if (!bsResult.success) {
-          console.warn(`[Sync Xero BS] ${tenantLabel} ${month.key}: ${bsResult.status} ${bsResult.error?.slice(0, 150)}`);
+          Sentry.captureMessage(`[Sync Xero BS] ${tenantLabel} ${month.key}: ${bsResult.status} ${bsResult.error?.slice(0, 150)}`, 'warning' as any);
           continue;
         }
         if (!bsResult.report) continue;
@@ -324,16 +333,18 @@ export async function POST(request: NextRequest) {
         .in('business_id', ids.all)
         .eq('tenant_id', tenantId);
       if (bsDeleteError) {
-        console.warn(`[Sync Xero BS] ${tenantLabel}: delete failed — ${bsDeleteError.message}`);
+        Sentry.captureMessage(`[Sync Xero BS] ${tenantLabel}: delete failed — ${bsDeleteError.message}`, 'warning' as any);
       } else if (tenantBSLines.length > 0) {
         stage = `db_insert_bs:${tenantId}`;
         const { error: bsInsertError } = await supabaseAdmin
           .from('xero_balance_sheet_lines')
           .insert(tenantBSLines);
         if (bsInsertError) {
-          console.warn(`[Sync Xero BS] ${tenantLabel}: insert failed — ${bsInsertError.message}`);
+          Sentry.captureMessage(`[Sync Xero BS] ${tenantLabel}: insert failed — ${bsInsertError.message}`, 'warning' as any);
         } else {
-          console.log(`[Sync Xero BS] ${tenantLabel}: ${tenantBSLines.length} BS accounts (${bsMonths.length} months)`);
+          if (process.env.NODE_ENV !== 'production') {
+            console.log(`[Sync Xero BS] ${tenantLabel}: ${tenantBSLines.length} BS accounts (${bsMonths.length} months)`);
+          }
         }
       }
 
@@ -345,7 +356,9 @@ export async function POST(request: NextRequest) {
       syncedTenantIds.push(tenantId);
     }
 
-    console.log(`[Sync Xero] Done: ${totalAccountsSynced} accounts synced across ${syncedTenantIds.length}/${connections.length} tenants`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[Sync Xero] Done: ${totalAccountsSynced} accounts synced across ${syncedTenantIds.length}/${connections.length} tenants`);
+    }
 
     return NextResponse.json({
       success: true,
@@ -358,7 +371,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error(`[Sync Xero] Error at stage "${stage}":`, error);
+    Sentry.captureException(error, { tags: { route: 'monthly-report/sync-xero' }, extra: { context: "[Sync Xero] Error at stage \"${stage}\"" } } as any);
     const errMsg = error instanceof Error ? error.message : 'Sync failed';
     const stack = error instanceof Error ? error.stack : undefined;
 

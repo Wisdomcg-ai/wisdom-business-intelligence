@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
+import * as Sentry from '@sentry/nextjs'
 import {
   sanitizeAIInput,
   detectPromptInjection,
@@ -100,7 +101,7 @@ export async function POST(request: Request) {
       const textBlock = result.content.find((b: { type: string }) => b.type === 'text')
       responseText = textBlock?.text || null
     } catch (anthropicError) {
-      console.warn('[forecast-insights] Anthropic failed, trying OpenAI:', anthropicError)
+      Sentry.captureException(anthropicError, { tags: { route: 'ai/forecast-insights' }, extra: { context: 'Anthropic failed, trying OpenAI' }, level: 'warning' } as any)
     }
 
     if (!responseText) {
@@ -120,7 +121,7 @@ export async function POST(request: Request) {
 
         responseText = result.choices[0]?.message?.content || null
       } catch (openaiError) {
-        console.error('[forecast-insights] OpenAI also failed:', openaiError)
+        Sentry.captureException(openaiError, { tags: { route: 'ai/forecast-insights' }, extra: { context: "[forecast-insights] OpenAI also failed" } } as any)
         return NextResponse.json({ error: 'AI service unavailable' }, { status: 503 })
       }
     }
@@ -137,11 +138,11 @@ export async function POST(request: Request) {
       const parsed = JSON.parse(jsonStr)
       return NextResponse.json({ result: parsed })
     } catch {
-      console.error('[forecast-insights] Failed to parse AI response as JSON:', responseText.slice(0, 300))
+      Sentry.captureMessage('[forecast-insights] Failed to parse AI response as JSON', { level: 'error' as any, extra: { responseTextSnippet: responseText.slice(0, 300) } } as any)
       return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 502 })
     }
   } catch (error) {
-    console.error('[forecast-insights] Unexpected error:', error)
+    Sentry.captureException(error, { tags: { route: 'ai/forecast-insights' }, extra: { context: "[forecast-insights] Unexpected error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

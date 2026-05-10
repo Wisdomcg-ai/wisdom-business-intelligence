@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
 
     if (error) {
-      console.error('[Subscription Budgets] Fetch error:', error);
+      Sentry.captureException(error, { tags: { route: 'subscription-budgets' }, extra: { context: "[Subscription Budgets] Fetch error" } } as any);
       return NextResponse.json({ error: 'Failed to fetch subscription budgets' }, { status: 500 });
     }
 
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
-    console.error('[Subscription Budgets] Error:', err);
+    Sentry.captureException(err, { tags: { route: 'subscription-budgets' }, extra: { context: "[Subscription Budgets] Error" } } as any);
     return NextResponse.json({ error: 'Failed to fetch subscription budgets' }, { status: 500 });
   }
 }
@@ -92,7 +93,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[Subscription Budgets] Saving', budgets.length, 'budgets for business:', business_id);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Budgets] Saving', budgets.length, 'budgets for business:', business_id);
+    }
 
     // Prepare records for upsert
     const records = budgets.map((b: SubscriptionBudgetInput) => ({
@@ -121,14 +124,16 @@ export async function POST(request: NextRequest) {
       .select();
 
     if (error) {
-      console.error('[Subscription Budgets] Save error:', error);
+      Sentry.captureException(error, { tags: { route: 'subscription-budgets' }, extra: { context: "[Subscription Budgets] Save error" } } as any);
       return NextResponse.json({ error: 'Failed to save subscription budgets' }, { status: 500 });
     }
 
     // Calculate totals
     const totalMonthly = records.reduce((sum: number, item: any) => sum + (item.monthly_budget || 0), 0);
 
-    console.log('[Subscription Budgets] Saved successfully:', data?.length, 'records');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Subscription Budgets] Saved successfully:', data?.length, 'records');
+    }
 
     return NextResponse.json({
       success: true,
@@ -139,7 +144,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (err) {
-    console.error('[Subscription Budgets] Error:', err);
+    Sentry.captureException(err, { tags: { route: 'subscription-budgets' }, extra: { context: "[Subscription Budgets] Error" } } as any);
     return NextResponse.json({ error: 'Failed to save subscription budgets' }, { status: 500 });
   }
 }
@@ -172,13 +177,13 @@ export async function DELETE(request: NextRequest) {
     const { error } = await query;
 
     if (error) {
-      console.error('[Subscription Budgets] Delete error:', error);
+      Sentry.captureException(error, { tags: { route: 'subscription-budgets' }, extra: { context: "[Subscription Budgets] Delete error" } } as any);
       return NextResponse.json({ error: 'Failed to delete subscription budget' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('[Subscription Budgets] Error:', err);
+    Sentry.captureException(err, { tags: { route: 'subscription-budgets' }, extra: { context: "[Subscription Budgets] Error" } } as any);
     return NextResponse.json({ error: 'Failed to delete subscription budget' }, { status: 500 });
   }
 }

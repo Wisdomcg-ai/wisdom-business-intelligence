@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export async function GET(
   request: Request,
@@ -38,7 +39,7 @@ export async function GET(
       .createSignedUrl(document.file_path, 60) // 60 seconds expiry
 
     if (urlError || !urlData) {
-      console.error('Error creating signed URL:', urlError)
+      Sentry.captureException(urlError, { tags: { route: 'documents/[id]/download' }, extra: { context: "Error creating signed URL" } } as any)
       return NextResponse.json({ error: 'Failed to generate download URL' }, { status: 500 })
     }
 
@@ -49,7 +50,7 @@ export async function GET(
     })
 
   } catch (error) {
-    console.error('Download document API error:', error)
+    Sentry.captureException(error, { tags: { route: 'documents/[id]/download' }, extra: { context: "Download document API error" } } as any)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }

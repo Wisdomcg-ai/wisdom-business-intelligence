@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
       .maybeSingle()
 
     if (error) {
-      console.error('[API /business-profile] Error:', error)
+      Sentry.captureException(error, { tags: { route: 'business-profile' }, extra: { context: "[API /business-profile] Error" } } as any)
       return NextResponse.json({ profile: null })
     }
 
@@ -45,7 +46,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ profile: data })
   } catch (err) {
-    console.error('[API /business-profile] Unexpected error:', err)
+    Sentry.captureException(err, { tags: { route: 'business-profile' }, extra: { context: "[API /business-profile] Unexpected error" } } as any)
     return NextResponse.json({ profile: null })
   }
 }

@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error('[Coach Questions API] Error inserting question:', error)
+      Sentry.captureException(error, { tags: { route: 'coach-questions' }, extra: { context: "[Coach Questions API] Error inserting question" } } as any)
       return NextResponse.json(
         { error: 'Failed to submit question', details: error.message },
         { status: 500 }
@@ -61,7 +62,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, data })
   } catch (error) {
-    console.error('[Coach Questions API] Unexpected error:', error)
+    Sentry.captureException(error, { tags: { route: 'coach-questions' }, extra: { context: "[Coach Questions API] Unexpected error" } } as any)
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -107,7 +108,7 @@ export async function GET(request: Request) {
     const { data, error } = await query
 
     if (error) {
-      console.error('[Coach Questions API] Error fetching questions:', error)
+      Sentry.captureException(error, { tags: { route: 'coach-questions' }, extra: { context: "[Coach Questions API] Error fetching questions" } } as any)
       return NextResponse.json(
         { error: 'Failed to fetch questions', details: error.message },
         { status: 500 }
@@ -116,7 +117,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ questions: data || [] })
   } catch (error) {
-    console.error('[Coach Questions API] Unexpected error:', error)
+    Sentry.captureException(error, { tags: { route: 'coach-questions' }, extra: { context: "[Coach Questions API] Unexpected error" } } as any)
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
