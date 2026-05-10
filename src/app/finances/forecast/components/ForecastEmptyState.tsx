@@ -25,12 +25,23 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight, Plug, Sparkles, TrendingUp } from 'lucide-react'
 import type { HistoricalPLSummary } from '../types'
+import { DEFAULT_YEAR_START_MONTH, getCurrentFiscalYear } from '@/lib/utils/fiscal-year-utils'
 
 export interface ForecastEmptyStateProps {
   businessId: string
   fiscalYear: number
   /** Opens the wizard with startFresh=true. */
   onCreateForecast: () => void
+  /**
+   * Prior FY for which a saved forecast exists. When set, the empty state
+   * surfaces a discrete "View/edit FYxx" affordance so a user landed on a
+   * planning-season default (e.g. FY27) can still reach last year's forecast.
+   */
+  priorFiscalYearWithForecast?: number | null
+  /** Switch the page's selected fiscal year. */
+  onSwitchFiscalYear?: (fy: number) => void
+  /** Business's fiscal year start month (1-12). Defaults to 7 (AU FY). */
+  yearStartMonth?: number
 }
 
 function fmtMoney(n: number): string {
@@ -56,16 +67,24 @@ export default function ForecastEmptyState({
   businessId,
   fiscalYear,
   onCreateForecast,
+  priorFiscalYearWithForecast,
+  onSwitchFiscalYear,
+  yearStartMonth = DEFAULT_YEAR_START_MONTH,
 }: ForecastEmptyStateProps) {
   const [summary, setSummary] = useState<HistoricalPLSummary | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+
+  // When the wizard target FY is the upcoming year (planning-season default),
+  // pulling Xero "YTD" data for that future FY returns nothing. Clamp the
+  // actuals fetch to whichever year contains today.
+  const actualsFiscalYear = Math.min(fiscalYear, getCurrentFiscalYear(yearStartMonth))
 
   useEffect(() => {
     if (!businessId) return
     let cancelled = false
     setIsLoading(true)
 
-    fetch(`/api/Xero/pl-summary?business_id=${encodeURIComponent(businessId)}&fiscal_year=${fiscalYear}`)
+    fetch(`/api/Xero/pl-summary?business_id=${encodeURIComponent(businessId)}&fiscal_year=${actualsFiscalYear}`)
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return (await res.json()) as { summary: HistoricalPLSummary }
@@ -86,7 +105,7 @@ export default function ForecastEmptyState({
     return () => {
       cancelled = true
     }
-  }, [businessId, fiscalYear])
+  }, [businessId, actualsFiscalYear])
 
   const ytd = summary?.current_ytd
   const hasXeroData = !!summary?.has_xero_data && !!ytd && ytd.months_count > 0
@@ -99,7 +118,7 @@ export default function ForecastEmptyState({
           <TrendingUp className="w-7 h-7 text-white" strokeWidth={2} />
         </div>
         <h1 className="text-3xl sm:text-4xl font-semibold text-gray-900 tracking-tight">
-          Build your first forecast
+          Build your FY{fiscalYear} forecast
         </h1>
         <p className="mt-3 text-base sm:text-lg text-gray-600 max-w-xl mx-auto leading-relaxed">
           See your year-end trajectory, monthly trends, and key insights at a
@@ -114,11 +133,23 @@ export default function ForecastEmptyState({
             className="inline-flex items-center gap-2 px-6 py-3 bg-brand-orange text-white text-base font-semibold rounded-lg shadow-sm hover:bg-brand-orange-600 transition-colors"
           >
             <Sparkles className="w-5 h-5" strokeWidth={2.25} />
-            Create Forecast
+            Start FY{fiscalYear} Forecast
           </button>
           <p className="mt-3 text-xs text-gray-500">
             Takes about 5 minutes · We&apos;ll guide you through every step
           </p>
+          {priorFiscalYearWithForecast && onSwitchFiscalYear && (
+            <p className="mt-4 text-sm text-gray-600">
+              Or{' '}
+              <button
+                type="button"
+                onClick={() => onSwitchFiscalYear(priorFiscalYearWithForecast)}
+                className="text-brand-navy font-medium hover:underline"
+              >
+                view/edit your FY{priorFiscalYearWithForecast} forecast
+              </button>
+            </p>
+          )}
         </div>
 
         {/* YTD summary or connect-Xero prompt */}
@@ -136,7 +167,7 @@ export default function ForecastEmptyState({
               </div>
             </div>
           ) : hasXeroData && ytd ? (
-            <YtdSummaryCard ytd={ytd} fiscalYear={fiscalYear} />
+            <YtdSummaryCard ytd={ytd} fiscalYear={actualsFiscalYear} />
           ) : (
             <ConnectXeroCard />
           )}
