@@ -36,7 +36,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act, render, screen, within } from '@testing-library/react';
+import { renderHook, act, render, screen, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useForecastWizard } from '@/app/finances/forecast/components/wizard-v4/useForecastWizard';
 import { Step3RevenueCOGS } from '@/app/finances/forecast/components/wizard-v4/steps/Step3RevenueCOGS';
@@ -312,6 +312,11 @@ describe('Bug 2 — FCST-BUG-02: Step 5 OpEx total includes team-classified line
 
     render(<Step5OpEx state={state} actions={actions} fiscalYear={FISCAL_YEAR_END} />);
 
+    // BudgetFramework now starts with the breakdown collapsed (PR #174 — the
+    // 7-line deduction chain was too tall for a sticky panel). Expand it so
+    // the "− Team Costs" row exists in the DOM.
+    fireEvent.click(screen.getByRole('button', { name: /show breakdown/i }));
+
     // The "Team Costs" subtraction row in BudgetFramework. Find it by its
     // exact label text "− Team Costs" (the BudgetFramework breakdown uses a
     // unicode minus sign followed by "Team Costs"). Other strings like
@@ -366,6 +371,9 @@ describe('Bug 2 — FCST-BUG-02: Step 5 OpEx total includes team-classified line
     });
     const actions = makeStubActions();
     render(<Step5OpEx state={state} actions={actions} fiscalYear={FISCAL_YEAR_END} />);
+
+    // BudgetFramework breakdown is collapsed by default — expand to access the rows.
+    fireEvent.click(screen.getByRole('button', { name: /show breakdown/i }));
 
     const teamCostLabel = screen.getByText(/^−\s*Team Costs$/i);
     const row = teamCostLabel.parentElement;
