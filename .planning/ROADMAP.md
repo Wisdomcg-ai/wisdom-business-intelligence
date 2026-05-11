@@ -996,11 +996,11 @@ Phases 50–58 exist as `.planning/phases/*` directories with full PHASE.md / pl
 
 **Goal:** One-click seed of a new-FY forecast (revenue/COGS/OpEx/team/subscriptions) from the prior-FY forecast, excluding CapEx and Goals.
 **Depends on:** PR #163 (planning-season default shift, merged 2026-05-11)
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 - [x] 59-01 — Seed service (month-shift + assumptions strip; clears plannedHires per D1; preserves forecastDuration per D3)
-- [ ] 59-02 — POST /api/forecast/seed-from-prior (reuses save_assumptions_and_materialize RPC; does NOT write subscription_budgets)
+- [x] 59-02 — POST /api/forecast/seed-from-prior (reuses save_assumptions_and_materialize RPC; does NOT write subscription_budgets)
 - [ ] 59-03 — Empty-state UI (side-by-side CTAs; opens wizard at Step 1 per D2)
 - [ ] 59-04 — Integration tests + VERIFICATION.md (wizard hydration verified by code tracing + manual smoke)
 
