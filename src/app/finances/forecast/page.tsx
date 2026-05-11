@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
@@ -77,6 +77,7 @@ export default function FinancialForecastPage() {
   const [skipWelcome, setSkipWelcome] = useState(false)
   const [wizardStartStep, setWizardStartStep] = useState<number | undefined>(undefined)
   const [wizardStartFresh, setWizardStartFresh] = useState(false)
+  const [isSeedingForecast, setIsSeedingForecast] = useState(false)
 
   // FY selector state
   const [selectedFiscalYear, setSelectedFiscalYear] = useState<number | null>(null)
@@ -390,6 +391,48 @@ export default function FinancialForecastPage() {
 
   // Xero handlers are now provided by useXeroSync hook
 
+  // Seed handler — POSTs to 59-02 endpoint, then opens the wizard on Step 1
+  // (Critical decision 2: Goals first, operator sets new-year goals before
+  //  reviewing seeded revenue/COGS/OpEx). startFresh=true clears localStorage
+  //  so the wizard hydrates from the DB-seeded state (research §Q1+Q8).
+  // NOTE: must be defined BEFORE early returns to comply with Rules of Hooks.
+  const handleSeedForecast = useCallback(async () => {
+    if (!businessId) return
+    const targetFY = selectedFiscalYear || forecast?.fiscal_year
+    if (!targetFY) {
+      toast.error('No target fiscal year selected')
+      return
+    }
+    setIsSeedingForecast(true)
+    try {
+      const res = await fetch('/api/forecast/seed-from-prior', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessId, targetFiscalYear: targetFY }),
+      })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({ error: 'Seed failed' }))
+        toast.error(payload?.error || 'Seed failed')
+        return
+      }
+      const { forecastId } = await res.json()
+      setSelectedForecastId(forecastId)
+      setSelectedForecastName(null)
+      // Critical decision 2 (2026-05-11): wizard opens on Step 1 (Goals) after
+      // seed, NOT Step 3. Goals were intentionally stripped from the seed so the
+      // operator sets new-year goals BEFORE reviewing seeded revenue/COGS/etc.
+      setWizardStartStep(1)
+      // Research §Q1+Q8: startFresh=true causes useForecastWizard's useState
+      // initializer to synchronously removeItem the localStorage key BEFORE any
+      // render. ForecastWizardV4's mount-time loadData() effect then hydrates
+      // from GET /api/forecast/{id} so the seeded assumptions are source of truth.
+      setWizardStartFresh(true)
+      setShowWizardV4(true)
+    } finally {
+      setIsSeedingForecast(false)
+    }
+  }, [businessId, selectedFiscalYear, forecast?.fiscal_year])
+
   if (!mounted || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -484,6 +527,8 @@ export default function FinancialForecastPage() {
             setWizardStartFresh(true)
             setShowWizardV4(true)
           }}
+          onSeedForecast={handleSeedForecast}
+          isSeedingForecast={isSeedingForecast}
         />
       </div>
     )

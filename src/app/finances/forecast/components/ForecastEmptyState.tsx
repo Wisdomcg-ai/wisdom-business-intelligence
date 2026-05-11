@@ -33,6 +33,14 @@ export interface ForecastEmptyStateProps {
   /** Opens the wizard with startFresh=true. */
   onCreateForecast: () => void
   /**
+   * When provided alongside priorFiscalYearWithForecast, surfaces a
+   * "Seed from FY{prior}" primary CTA so the operator can copy last
+   * year's revenue/COGS/OpEx/team lines into the new forecast.
+   */
+  onSeedForecast?: () => void
+  /** True while POST /api/forecast/seed-from-prior is in flight. Disables the seed button. */
+  isSeedingForecast?: boolean
+  /**
    * Prior FY for which a saved forecast exists. When set, the empty state
    * surfaces a discrete "View/edit FYxx" affordance so a user landed on a
    * planning-season default (e.g. FY27) can still reach last year's forecast.
@@ -67,6 +75,8 @@ export default function ForecastEmptyState({
   businessId,
   fiscalYear,
   onCreateForecast,
+  onSeedForecast,
+  isSeedingForecast = false,
   priorFiscalYearWithForecast,
   onSwitchFiscalYear,
   yearStartMonth = DEFAULT_YEAR_START_MONTH,
@@ -127,14 +137,38 @@ export default function ForecastEmptyState({
 
         {/* Primary CTA */}
         <div className="mt-7">
-          <button
-            type="button"
-            onClick={onCreateForecast}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-brand-orange text-white text-base font-semibold rounded-lg shadow-sm hover:bg-brand-orange-600 transition-colors"
-          >
-            <Sparkles className="w-5 h-5" strokeWidth={2.25} />
-            Start FY{fiscalYear} Forecast
-          </button>
+          {priorFiscalYearWithForecast && onSeedForecast ? (
+            /* Two-CTA layout: seed (primary) + blank (secondary) */
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                type="button"
+                onClick={onSeedForecast}
+                disabled={isSeedingForecast}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-5 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Sparkles className="h-5 w-5" aria-hidden="true" />
+                {isSeedingForecast ? 'Seeding…' : `Seed from FY${priorFiscalYearWithForecast}`}
+              </button>
+              <button
+                type="button"
+                onClick={onCreateForecast}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-5 py-3 text-base font-semibold text-gray-900 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+              >
+                Start FY{fiscalYear} blank
+                <ArrowRight className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
+          ) : (
+            /* Single-CTA layout: preserved exactly for the no-prior-FY case */
+            <button
+              type="button"
+              onClick={onCreateForecast}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-brand-orange text-white text-base font-semibold rounded-lg shadow-sm hover:bg-brand-orange-600 transition-colors"
+            >
+              <Sparkles className="w-5 h-5" strokeWidth={2.25} />
+              Start FY{fiscalYear} Forecast
+            </button>
+          )}
           <p className="mt-3 text-xs text-gray-500">
             Takes about 5 minutes · We&apos;ll guide you through every step
           </p>

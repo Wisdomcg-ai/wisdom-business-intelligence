@@ -2,26 +2,27 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
-status: verifying
-last_updated: "2026-05-06T16:05:00.000Z"
-last_activity: 2026-05-06 (Phase 54-01 PayRun-derived hours + salary fallback shipped — PR opening)
+status: Phase complete — ready for verification
+last_updated: "2026-05-11T12:50:00.000Z"
+last_activity: 2026-05-11
 progress:
   total_phases: 52
-  completed_phases: 21
-  total_plans: 119
-  completed_plans: 119
+  completed_phases: 22
+  total_plans: 121
+  completed_plans: 118
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 44, 44.1, 44.2, 44.3, 45, 49, 50 — **COMPLETE**.
+Phase: 59 (forecast-seed-from-prior-fy) — **COMPLETE** (4/4 plans shipped 2026-05-11). 59-01 pure seed transformer (36 unit tests). 59-02 POST /api/forecast/seed-from-prior route (23 route tests). 59-03 dual-CTA empty state + handleSeedForecast handler (startFresh=true localStorage handshake). 59-04 integration tests (23 tests, seed→pl-lines pipeline) + VERIFICATION.md (all 7 criteria) + Rules-of-Hooks lint fix in page.tsx.
+Plan: 4 of 4
 Phase: 46 (Server-Side Hardening) — **PARTIAL** (3/4 plans shipped). Plan 46-04 deferred ≥2026-05-10 per cooling period.
 Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-05-08). All 56 orphan-prone FKs covered: 50 SET NULL + 4 CASCADE + 2 RESTRICT/CASCADE. fk-policy.md is the authoritative reference going forward.
 Phase: 53 (Xero Connection Durability) — **COMPLETE** (5/5 plans shipped 2026-05-06). 53-01 server-side disconnect with dual-ID purge (PR #107). 53-03 token-rotation race holes closed + tightened deactivation policy (commit b5a233d, merged). 53-02 centralized Xero refresh through token-manager + deleted dead refresh-tokens route (PR #109). 53-04 proactive refresh cron at `0 */6 * * *` UTC (PR #110). **53-05 Sentry capture + coach dashboard health pill (PR opened 2026-05-06).** Durability story is whole — JDS root cause permanently closed.
 Phase: 54 (Xero Employee Import Completion) — **PARTIAL** (1/2 plans shipped 2026-05-06). **54-01 PayRun-derived hours + salary fallback (PR opening 2026-05-06).** ENTEREARNINGSRATE employees (timesheet-driven payroll, JDS default) now return populated hours_per_week + annual_salary derived from last 4 POSTED PayRuns; PayTemplate values WIN via ??= precedence; new optional `derived_from` provenance field on response. 54-02 (soft auto-fill on empty Step 4 + new-employees banner) is next.
-Last activity: 2026-05-06 (Phase 54-01 PR opening, awaiting CI; Phase 54 1/2)
+Last activity: 2026-05-11
 
 ## Active operational notes
 
