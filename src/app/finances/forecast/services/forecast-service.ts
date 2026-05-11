@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/client'
 import {
   calculateForecastPeriods as _calcPeriods,
   DEFAULT_YEAR_START_MONTH,
+  getFiscalYearStartDate,
+  getFiscalYearEndDate,
 } from '@/lib/utils/fiscal-year-utils'
 import type {
   FinancialForecast,
@@ -171,6 +173,108 @@ export class ForecastService {
     } catch (err) {
       console.error('[Forecast] Error:', err)
       return { forecast: null, error: err instanceof Error ? err.message : 'Unknown error' }
+    }
+  }
+
+  /**
+   * Phase 65 — Load prior-FY actuals from xero_pl_lines as read-only PLLine[].
+   *
+   * Used when a past-FY forecast is opened and has no forecast_pl_lines (empty
+   * stub from getOrCreateForecast). Renders the synced Xero actuals inline
+   * instead of pushing the operator into a retrospective wizard build.
+   *
+   * Returns lines with actual_months populated, forecast_months empty.
+   */
+  static async loadActualsAsPLLines(
+    businessId: string,
+    fiscalYear: number,
+    yearStartMonth: number = DEFAULT_YEAR_START_MONTH
+  ): Promise<PLLine[]> {
+    try {
+      // Dual-ID lookup — xero_pl_lines.business_id may reference either
+      // businesses.id or business_profiles.id depending on sync vintage.
+      const idsToTry: string[] = [businessId]
+      const { data: profile } = await this.supabase
+        .from('business_profiles')
+        .select('id')
+        .eq('business_id', businessId)
+        .maybeSingle()
+      if (profile?.id && profile.id !== businessId) {
+        idsToTry.push(profile.id)
+      }
+
+      const fyStart = getFiscalYearStartDate(fiscalYear, yearStartMonth)
+      const fyEnd = getFiscalYearEndDate(fiscalYear, yearStartMonth)
+      const startISO = `${fyStart.getFullYear()}-${String(fyStart.getMonth() + 1).padStart(2, '0')}-01`
+      const endISO = `${fyEnd.getFullYear()}-${String(fyEnd.getMonth() + 1).padStart(2, '0')}-${String(fyEnd.getDate()).padStart(2, '0')}`
+
+      // Paginate to avoid the PostgREST 1000-row cap (multi-year tenants
+      // exceed it — Phase 44.1 hotfix pattern).
+      type RawRow = {
+        account_code: string | null
+        account_name: string | null
+        account_type: string | null
+        period_month: string
+        amount: number
+      }
+      const rows: RawRow[] = []
+      const pageSize = 1000
+      let from = 0
+      while (true) {
+        const { data, error } = await this.supabase
+          .from('xero_pl_lines')
+          .select('account_code, account_name, account_type, period_month, amount')
+          .in('business_id', idsToTry)
+          .gte('period_month', startISO)
+          .lte('period_month', endISO)
+          .range(from, from + pageSize - 1)
+        if (error) {
+          console.error('[Forecast] Error loading actuals:', error)
+          return []
+        }
+        if (!data || data.length === 0) break
+        rows.push(...(data as RawRow[]))
+        if (data.length < pageSize) break
+        from += pageSize
+      }
+
+      if (rows.length === 0) return []
+
+      // Group by account_code (fallback NAME:<account_name> for null codes),
+      // sum amount per month. Mirrors forecast-read-service aggregation so
+      // totals match what the rest of the app already shows.
+      const grouped = new Map<string, PLLine>()
+      for (const r of rows) {
+        const key = r.account_code ?? `NAME:${r.account_name ?? 'Unknown'}`
+        let line = grouped.get(key)
+        if (!line) {
+          line = {
+            account_code: r.account_code ?? undefined,
+            account_name: r.account_name ?? 'Unknown',
+            account_type: r.account_type ?? undefined,
+            actual_months: {},
+            forecast_months: {},
+            is_from_xero: true,
+          }
+          grouped.set(key, line)
+        }
+        const monthKey = (r.period_month ?? '').slice(0, 7)
+        if (!monthKey) continue
+        const amt = Number(r.amount)
+        line.actual_months[monthKey] = (line.actual_months[monthKey] ?? 0) + (Number.isFinite(amt) ? amt : 0)
+      }
+
+      const out = [...grouped.values()]
+      out.sort((a, b) => {
+        const ta = a.account_type ?? ''
+        const tb = b.account_type ?? ''
+        if (ta !== tb) return ta.localeCompare(tb)
+        return a.account_name.localeCompare(b.account_name)
+      })
+      return out
+    } catch (err) {
+      console.error('[Forecast] loadActualsAsPLLines error:', err)
+      return []
     }
   }
 
