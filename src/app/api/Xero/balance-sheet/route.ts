@@ -96,6 +96,10 @@ export async function GET(request: NextRequest) {
     const month = searchParams.get('month') // YYYY-MM
     const compare = (searchParams.get('compare') ?? 'yoy') as BalanceSheetCompare
     const cashOnly = searchParams.get('cash_only') === 'true'
+    // Optional date override for cash_only — callers viewing a past FY pass
+    // the FY end date so the Cash KPI reflects 30 June of that year, not
+    // today. Format: YYYY-MM-DD; ignored when cashOnly is false.
+    const asOfParam = searchParams.get('as_of')
 
     if (!businessId) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 })
@@ -140,15 +144,17 @@ export async function GET(request: NextRequest) {
     const accessToken = tokenResult.accessToken!
     const tenantId = connection.tenant_id
 
-    // Cash-only mode queries Xero AS OF today — the Cash KPI card shows the
-    // current bank balance, not the projected end-of-month balance. Querying
-    // 31 May while it's still 10 May returned a future-dated, misleading
-    // figure. The full balance-sheet endpoint keeps month-end semantics for
-    // back-compat with the Calxa-style monthly report.
+    // Cash-only mode queries Xero AS OF today by default — the Cash KPI card
+    // normally shows the current bank balance, not a projected end-of-month
+    // figure. Phase 65 added the `as_of` override so the past-FY view can
+    // ask for "cash on 30 June 2025" instead of today's balance. The full
+    // balance-sheet endpoint keeps month-end semantics for back-compat
+    // with the Calxa-style monthly report.
     const today = new Date()
     const todayDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    const isValidAsOf = asOfParam && /^\d{4}-\d{2}-\d{2}$/.test(asOfParam)
     const reportDate = cashOnly
-      ? todayDate
+      ? (isValidAsOf ? asOfParam! : todayDate)
       : lastDayOfMonth(month as string)
     const timeframe = compare === 'mom' ? 'MONTH' : 'YEAR'
 

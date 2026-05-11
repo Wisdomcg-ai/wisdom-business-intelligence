@@ -48,6 +48,7 @@ import {
   getExpectedLastActualIndex,
   getFiscalMonthLabels,
   getFiscalMonthLabelsWithYear,
+  getFiscalYearEndDate,
 } from '@/lib/utils/fiscal-year-utils'
 import { getCurrentFiscalYear } from '../utils/fiscal-year'
 
@@ -108,12 +109,21 @@ const TEAM_HINTS = [
 const SUBS_HINTS = ['subscription', 'software', 'saas', 'licence', 'license']
 
 function isRevenue(line: Pick<PLLine, 'category' | 'account_type'>): boolean {
-  if (line.account_type && line.account_type.toLowerCase() === 'revenue') return true
+  const t = line.account_type?.toLowerCase()
+  // Phase 65: prior-FY actuals from xero_pl_lines carry account_type but no
+  // category. 'other_income' belongs above the bottom line (Total Income in
+  // Xero) so it joins the revenue bucket here — otherwise it leaks into
+  // OpEx and silently *reduces* Net Profit.
+  if (t === 'revenue' || t === 'other_income') return true
   if (!line.category) return false
   return REVENUE_CATEGORIES.includes(line.category.toLowerCase())
 }
 
-function isCOGS(line: Pick<PLLine, 'category'>): boolean {
+function isCOGS(line: Pick<PLLine, 'category' | 'account_type'>): boolean {
+  // Phase 65: same root cause as isRevenue — actuals-only rows lack
+  // category. Fall back to account_type so COGS doesn't leak into OpEx
+  // (which collapses Gross Profit to Revenue).
+  if (line.account_type?.toLowerCase() === 'cogs') return true
   if (!line.category) return false
   return COGS_CATEGORIES.includes(line.category.toLowerCase())
 }
@@ -399,7 +409,17 @@ export default function ForecastOverview({
     setCashLoading(true)
     setCashUnavailable(false)
 
-    fetch(`/api/Xero/balance-sheet?business_id=${encodeURIComponent(businessId)}&cash_only=true`)
+    // Past-FY view → ask for cash AS OF the last day of that FY (30 June
+    // for an AU FY25, etc.). Current and future FY keep today's balance.
+    const url = new URL('/api/Xero/balance-sheet', window.location.origin)
+    url.searchParams.set('business_id', businessId)
+    url.searchParams.set('cash_only', 'true')
+    if (fyMode === 'prior') {
+      const fyEnd = getFiscalYearEndDate(fiscalYear, yearStartMonth)
+      const asOf = `${fyEnd.getFullYear()}-${String(fyEnd.getMonth() + 1).padStart(2, '0')}-${String(fyEnd.getDate()).padStart(2, '0')}`
+      url.searchParams.set('as_of', asOf)
+    }
+    fetch(url.toString())
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return (await res.json()) as { cash: number | null; currency: string; as_of: string }
@@ -421,7 +441,7 @@ export default function ForecastOverview({
     return () => {
       cancelled = true
     }
-  }, [businessId])
+  }, [businessId, fyMode, fiscalYear, yearStartMonth])
 
   return (
     <div className="space-y-6">
