@@ -8,7 +8,7 @@
 // numbering and ForecastWizardV4.tsx renderStep() for the switch.
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Plus, Trash2, HelpCircle, ChevronDown, X, Info, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, HelpCircle, ChevronDown, ChevronUp, X, Info, AlertTriangle } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, CostBehavior, OpExLine, SUPER_RATE, calculateNewSalary, InputMode } from '../types';
 import { classifyExpense, getSuggestedValue, isTeamCost } from '../utils/opex-classifier';
 import { getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
@@ -133,74 +133,51 @@ function BudgetFramework({
     ...(y3Budget ? [{ label: getFYLabel(2), budget: y3Budget, opex: opexByYear.y3, yearNum: 3 }] : []),
   ];
 
+  // Collapsed by default — the breakdown's 7 lines × N years became too tall
+  // for a sticky panel. Compact view shows just the headline number per year
+  // plus utilization; operator can expand to see the deduction chain.
+  const [showBreakdown, setShowBreakdown] = useState(false);
+
   return (
-    // Hotfix (Issue 2): made compact + sticky so the operator can see the
-    // budget breakdown and Available OpEx number while scrolling through
-    // OpEx line edits below. The verbose explainer paragraph was dropped
-    // (operator already saw it on first visit); the formula stays visible
-    // in the header. Padding reduced (px-5 py-4 → px-4 py-2; p-5 → p-3)
-    // and the per-year breakdown grid gap tightened so the whole panel
-    // collapses into ~150-180px tall depending on forecast duration.
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-      <div className="px-4 py-2 border-b border-gray-100 bg-gray-50">
-        <div className="flex items-center gap-3 flex-wrap">
+      <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 flex-wrap min-w-0">
           <h3 className="text-sm font-semibold text-gray-900">OpEx Budget</h3>
-          <span className="text-xs text-gray-400">|</span>
-          <p className="text-xs text-gray-500">Revenue − COGS − Team − Subscriptions − <strong className="text-gray-700">Profit</strong> = Available for OpEx</p>
+          <span className="text-xs text-gray-400 hidden sm:inline">|</span>
+          <p className="text-xs text-gray-500 hidden sm:block">Revenue − COGS − Team − Subscriptions − <strong className="text-gray-700">Profit</strong> = Available for OpEx</p>
         </div>
+        <button
+          type="button"
+          onClick={() => setShowBreakdown(v => !v)}
+          className="text-xs text-brand-navy hover:text-brand-navy-800 font-medium whitespace-nowrap inline-flex items-center gap-1"
+          aria-expanded={showBreakdown}
+        >
+          {showBreakdown ? 'Hide breakdown' : 'Show breakdown'}
+          {showBreakdown ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        </button>
       </div>
 
       <div className="p-3">
         <div className={`grid gap-4 ${years.length === 1 ? 'grid-cols-1 max-w-md' : years.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-          {years.map(({ label, budget, opex, yearNum }) => {
+          {years.map(({ label, budget, opex }) => {
             const isOverBudget = opex > budget.availableOpEx;
             const utilizationPct = budget.availableOpEx > 0 ? Math.min((opex / budget.availableOpEx) * 100, 100) : 0;
             const overAmount = opex - budget.availableOpEx;
 
             return (
-              // Hotfix (Issue 2): tightened vertical rhythm (space-y-3 → space-y-2)
-              // so the sticky banner stays compact when there are 2-3 years.
-              <div key={label} className="space-y-2">
-                <div className="text-center">
+              <div key={label} className="space-y-1.5">
+                {/* Compact headline — visible whether breakdown is open or closed. */}
+                <div className="flex items-baseline justify-between gap-2">
                   <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
+                  <span className="text-xs text-gray-500">Available OpEx</span>
                 </div>
-
-                {/* Budget breakdown */}
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between text-gray-600">
-                    <span>Revenue</span>
-                    <span className="tabular-nums">{formatCurrency(budget.revenue)}</span>
-                  </div>
-                  <div className="flex justify-between text-gray-500">
-                    <span>− COGS</span>
-                    <span className="tabular-nums">{formatCurrency(budget.cogs)}</span>
-                  </div>
-                  <div className="flex justify-between text-gray-600 font-medium">
-                    <span>= Gross Profit ({budget.grossProfitPct}%)</span>
-                    <span className="tabular-nums">{formatCurrency(budget.grossProfit)}</span>
-                  </div>
-                  <div className="flex justify-between text-gray-500">
-                    <span>− Team Costs</span>
-                    <span className="tabular-nums">{formatCurrency(budget.teamCosts)}</span>
-                  </div>
-                  {/* Phase 57 T10 (B4): explicit Subscriptions deduction line. */}
-                  <div className="flex justify-between text-gray-500">
-                    <span>− Subscriptions</span>
-                    <span className="tabular-nums">{formatCurrency(budget.subscriptions)}</span>
-                  </div>
-                  <div className="flex justify-between text-gray-700 font-medium">
-                    <span>− Target Profit ({budget.netProfitPct}%)</span>
-                    <span className="tabular-nums">{formatCurrency(budget.targetProfit)}</span>
-                  </div>
-                  <div className="border-t border-gray-200 pt-1.5 flex justify-between font-medium text-gray-900">
-                    <span>= Available OpEx</span>
-                    <span className="tabular-nums">{formatCurrency(budget.availableOpEx)}</span>
-                  </div>
+                <div className="text-xl font-bold text-gray-900 tabular-nums leading-tight">
+                  {formatCurrency(budget.availableOpEx)}
                 </div>
 
                 {/* Progress bar */}
-                <div className="space-y-1.5">
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="space-y-1">
+                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all ${isOverBudget ? 'bg-red-500' : 'bg-green-500'}`}
                       style={{ width: `${Math.min(utilizationPct, 100)}%` }}
@@ -218,16 +195,41 @@ function BudgetFramework({
                   </div>
                 </div>
 
-                {/* Implied Net Profit — reactive to OpEx changes so the operator
-                    can see how their adjustments hit the bottom line in real time.
-                    Phase 57 T10 (B4): formula now includes Subscriptions to match
-                    the canonical net-profit calc in useForecastWizard. Without
-                    this subtraction, the implied number would silently
-                    over-state NP by the subscription amount on any forecast
-                    with active vendors.
+                {/* Expanded breakdown — toggled by the header button. */}
+                {showBreakdown && (
+                  <div className="space-y-1 text-sm pt-2 border-t border-gray-100">
+                    <div className="flex justify-between text-gray-600">
+                      <span>Revenue</span>
+                      <span className="tabular-nums">{formatCurrency(budget.revenue)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-500">
+                      <span>− COGS</span>
+                      <span className="tabular-nums">{formatCurrency(budget.cogs)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-600 font-medium">
+                      <span>= Gross Profit ({budget.grossProfitPct}%)</span>
+                      <span className="tabular-nums">{formatCurrency(budget.grossProfit)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-500">
+                      <span>− Team Costs</span>
+                      <span className="tabular-nums">{formatCurrency(budget.teamCosts)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-500">
+                      <span>− Subscriptions</span>
+                      <span className="tabular-nums">{formatCurrency(budget.subscriptions)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-700 font-medium">
+                      <span>− Target Profit ({budget.netProfitPct}%)</span>
+                      <span className="tabular-nums">{formatCurrency(budget.targetProfit)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Implied Net Profit — reactive to OpEx changes so operators
+                    can see how adjustments hit the bottom line in real time.
                     Implied profit = Gross Profit − Team Costs − Subscriptions − OpEx.
-                    Color: green if ≥ target net profit %, amber if positive but
-                    below target, red if negative. */}
+                    Color: green if ≥ target NP %, amber if positive but below
+                    target, red if negative. */}
                 {(() => {
                   const impliedProfit = budget.grossProfit - budget.teamCosts - budget.subscriptions - opex;
                   const impliedProfitPct = budget.revenue > 0
@@ -240,9 +242,9 @@ function BudgetFramework({
                       ? 'text-green-600'
                       : 'text-amber-600';
                   return (
-                    <div className="border-t border-gray-100 pt-2 flex justify-between items-baseline">
-                      <span className="text-xs text-gray-500">Implied Net Profit</span>
-                      <span className={`text-sm font-semibold tabular-nums ${colorClass}`}>
+                    <div className="pt-1.5 flex justify-between items-baseline">
+                      <span className="text-xs text-gray-500">Implied NP</span>
+                      <span className={`text-xs font-semibold tabular-nums ${colorClass}`}>
                         {formatCurrency(impliedProfit)} ({impliedProfitPct.toFixed(1)}%)
                       </span>
                     </div>

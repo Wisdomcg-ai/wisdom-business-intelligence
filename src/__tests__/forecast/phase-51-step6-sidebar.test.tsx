@@ -99,6 +99,7 @@ function makeStubActions(): WizardActions {
     'addInvestment', 'updateInvestment', 'removeInvestment',
     'addPlannedSpend', 'updatePlannedSpend', 'removePlannedSpend',
     'addOtherExpense', 'updateOtherExpense', 'removeOtherExpense',
+    'setSubscriptions',
     'initializeFromXero', 'saveDraft', 'generateForecast',
   ] as const;
   const obj: Record<string, ReturnType<typeof vi.fn>> = {};

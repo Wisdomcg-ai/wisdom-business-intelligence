@@ -953,6 +953,16 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
     }
   }, [vendors, businessId, summary]);
 
+  // Mirror component-local `vendors` → wizard `state.subscriptions` so the
+  // BudgetFramework on Step 6 (OpEx) subtracts a fresh subscription total
+  // instead of the one-time mount-fetch snapshot from useForecastWizard.
+  // Without this, edits/analysis here never reach the OpEx ceiling math,
+  // which silently overstates "Available OpEx" by the unsaved delta.
+  useEffect(() => {
+    if (phase !== 'review') return;
+    actions.setSubscriptions(vendors);
+  }, [vendors, phase, actions]);
+
   // Auto-save: debounce vendor changes while in review phase
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasAutoSavedInitial = useRef(false);
