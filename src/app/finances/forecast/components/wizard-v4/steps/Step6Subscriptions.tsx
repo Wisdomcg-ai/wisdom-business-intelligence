@@ -232,6 +232,13 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
   const [isLoading, setIsLoading] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  // Phase 60: track whether vendors were loaded from existing subscription_budgets
+  // (vs freshly analyzed in this session). Drives the "Confirm subscriptions"
+  // banner — only show it when the operator hasn't yet acknowledged the pre-loaded
+  // list for the current FY.
+  const [restoredFromExistingBudgets, setRestoredFromExistingBudgets] = useState(false);
+  const [subscriptionsConfirmed, setSubscriptionsConfirmed] = useState(false);
+  const [hasBrokenAccountCodes, setHasBrokenAccountCodes] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isManualMode, setIsManualMode] = useState(false);
@@ -369,6 +376,15 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             }));
             setVendors(existingVendors);
             setPhase('review');
+            setRestoredFromExistingBudgets(true);
+            // Phase 60: detect "broken" restoration — rows where account_codes
+            // is empty, which breaks lazy-fetch of transactions on expand. PR
+            // #165 fixed the save-path race; this surfaces the legacy data so
+            // the operator can re-analyze to backfill.
+            const anyEmptyAccountCodes = existingVendors.some(
+              v => !v.accountCodes || v.accountCodes.length === 0,
+            );
+            setHasBrokenAccountCodes(anyEmptyAccountCodes);
             console.log('[Subscriptions] Restored', existingVendors.length, 'saved budgets');
           }
         }
@@ -413,8 +429,14 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             transactions: [],
             isExpanded: false,
             isActive: b.is_active !== false,
+            accountCodes: b.account_codes || [],
           }));
           setVendors(existingVendors);
+          // Phase 60: track restoration + detect broken account_codes
+          setRestoredFromExistingBudgets(true);
+          setHasBrokenAccountCodes(
+            existingVendors.some(v => !v.accountCodes || v.accountCodes.length === 0),
+          );
         }
       }
     } catch (err) {
@@ -492,6 +514,13 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
       setVendors(prev => mergeByVendorKey(prev, vendorBudgets));
       setSummary(data.summary);
       setPhase('review');
+      // Phase 60: a fresh analyze run produces vendors with correct accountCodes
+      // (post-PR-#165 save path persists them per-vendor), so clear both flags.
+      // The "Confirm subscriptions" banner is only for restored-from-DB vendors
+      // that the operator hasn't acknowledged yet.
+      setRestoredFromExistingBudgets(false);
+      setHasBrokenAccountCodes(false);
+      setSubscriptionsConfirmed(false);
 
       // Auto-save budgets immediately after analysis
       if (vendorBudgets.length > 0) {
@@ -1029,6 +1058,83 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             </aside>
           )}
           <div className="flex-1 min-w-0 space-y-6">
+          {/* Phase 60 — broken-account-codes banner (60-01).
+              Shown when restored budgets have empty account_codes arrays,
+              which breaks lazy-fetch of transactions on vendor expand.
+              Single CTA points the operator at the existing re-analyze flow. */}
+          {hasBrokenAccountCodes && !isManualMode && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-amber-900">
+                  Transaction details are unavailable for some vendors
+                </p>
+                <p className="mt-1 text-sm text-amber-800">
+                  These subscriptions were saved before the 2026-05-11 fix and have
+                  empty account codes. Expanding a vendor will show an error instead
+                  of transactions. Re-run subscription analysis to restore.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRestoredFromExistingBudgets(false);
+                    setHasBrokenAccountCodes(false);
+                    setSubscriptionsConfirmed(false);
+                    setPhase('select-accounts');
+                  }}
+                  className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-md"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Re-run subscription analysis
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Phase 60 — confirm subscriptions banner (60-02).
+              Shown only when vendors were RESTORED from subscription_budgets
+              (not freshly analyzed this session) AND the operator hasn't yet
+              acknowledged the pre-loaded list. The banner reminds them the
+              list came from a previous forecast and invites explicit confirm. */}
+          {restoredFromExistingBudgets && !subscriptionsConfirmed && !isManualMode && (
+            <div className="rounded-lg border border-brand-navy/20 bg-brand-navy/5 p-4 flex items-start gap-3">
+              <CheckCircle className="w-5 h-5 text-brand-navy flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-brand-navy">
+                  Loaded {vendors.length} {vendors.length === 1 ? 'subscription' : 'subscriptions'} from your previous forecast
+                </p>
+                <p className="mt-1 text-sm text-gray-700">
+                  Review the vendor list, mark any as inactive that no longer apply,
+                  then confirm. You can also re-run analysis if you want to pick up
+                  new vendors from Xero.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSubscriptionsConfirmed(true)}
+                  className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-brand-navy hover:bg-brand-navy-800 rounded-md"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Confirm subscriptions for FY{fiscalYear}
+                </button>
+              </div>
+            </div>
+          )}
+          {restoredFromExistingBudgets && subscriptionsConfirmed && !isManualMode && (
+            <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2.5 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-green-800">
+                <CheckCircle className="w-4 h-4 text-green-600" />
+                <span>Subscriptions confirmed for FY{fiscalYear} ({vendors.filter(v => v.isActive).length} active)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubscriptionsConfirmed(false)}
+                className="text-xs text-green-700 hover:text-green-900 underline"
+              >
+                Unconfirm
+              </button>
+            </div>
+          )}
+
           {/* Summary Cards */}
           <div className={`grid ${isManualMode ? 'grid-cols-3' : 'grid-cols-5'} gap-4`}>
             {!isManualMode && (
@@ -1578,22 +1684,39 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                               {vendor.transactions.length === 0
                                 && !loadingTxnKeys.has(vendor.vendorKey)
                                 && txnFetchErrorKeys.has(vendor.vendorKey) && (
-                                <div className="flex items-center gap-3">
-                                  <p className="text-sm text-red-600">Failed to load transactions.</p>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const codes = vendor.accountCodes && vendor.accountCodes.length > 0
-                                        ? vendor.accountCodes
-                                        : null;
-                                      if (!codes) return;
-                                      void fetchVendorTransactions(vendor.vendorKey, vendor.vendorName, codes);
-                                    }}
-                                    disabled={!vendor.accountCodes || vendor.accountCodes.length === 0}
-                                    className="text-xs px-2 py-1 bg-white border border-red-300 text-red-700 rounded hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                  >
-                                    Try again
-                                  </button>
+                                <div className="rounded border border-red-200 bg-red-50 p-3">
+                                  <p className="text-sm text-red-800">
+                                    {(!vendor.accountCodes || vendor.accountCodes.length === 0)
+                                      ? <>Account codes missing for this vendor — can&apos;t load transactions until subscription analysis is re-run.</>
+                                      : <>Failed to load transactions for this vendor.</>}
+                                  </p>
+                                  <div className="mt-2 flex items-center gap-2">
+                                    {vendor.accountCodes && vendor.accountCodes.length > 0 ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          void fetchVendorTransactions(vendor.vendorKey, vendor.vendorName, vendor.accountCodes!);
+                                        }}
+                                        className="text-xs px-2 py-1 bg-white border border-red-300 text-red-700 rounded hover:bg-red-50"
+                                      >
+                                        Try again
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setRestoredFromExistingBudgets(false);
+                                          setHasBrokenAccountCodes(false);
+                                          setSubscriptionsConfirmed(false);
+                                          setPhase('select-accounts');
+                                        }}
+                                        className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700"
+                                      >
+                                        <RefreshCw className="w-3 h-3" />
+                                        Re-run subscription analysis
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               )}
 
