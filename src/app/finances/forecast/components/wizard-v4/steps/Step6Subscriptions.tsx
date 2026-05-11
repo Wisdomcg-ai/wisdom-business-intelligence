@@ -96,6 +96,10 @@ interface VendorBudget {
   // phases may consume these for cashflow timing).
   category?: string;
   startMonth?: string;
+  // Phase 63: calendar month (1-12) the annual sub renews. Null for monthly /
+  // quarterly / ad-hoc. Drives native-rhythm display ($X/yr (Mar)) and
+  // (later) cashflow burst.
+  renewalMonth?: number | null;
 }
 
 interface ReconciliationPeriod {
@@ -147,6 +151,11 @@ const FREQUENCY_COLORS: Record<string, string> = {
 // Kept narrow on purpose — the operator wants a small fixed list, not free-text.
 // Future expansion can pull from a shared categories module if needed.
 const MANUAL_CATEGORY_OPTIONS = ['Software', 'Marketing', 'Operations', 'Other'] as const;
+
+// Phase 63: short month labels used by the "annual lumps" breakdown in the
+// summary card. Indexed 0-11 (Jan-Dec); callers convert from 1-12 by
+// subtracting 1.
+const MONTH_ABBREVS_LOCAL = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
 interface ManualVendorInput {
   name: string;
@@ -324,9 +333,14 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
   const [newVendor, setNewVendor] = useState({
     name: '',
     frequency: 'monthly' as VendorBudget['frequency'],
+    // Phase 63: single amount field interpreted in the chosen frequency's
+    // unit. UI converts → monthlyBudget on submit.
+    amount: 0,
     monthlyBudget: 0,
     startMonth: defaultStartMonth,
     category: MANUAL_CATEGORY_OPTIONS[0] as string,
+    // Phase 63: capture renewal month for annual subs.
+    renewalMonth: null as number | null,
   });
 
   // Calculate current FY context
@@ -348,6 +362,22 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
     const totalAnnualBudget = totalMonthlyBudget * 12;
     const remainingFYBudget = totalMonthlyBudget * monthsRemaining;
 
+    // Phase 63: split monthly-recurring vs annual-one-off totals so the
+    // summary card can show both honestly. Annual subs are smoothed into
+    // monthlyBudget for P&L purposes — here we surface them as lumps.
+    const monthlyVendors = activeVendors.filter(v => v.frequency !== 'annual');
+    const annualVendors = activeVendors.filter(v => v.frequency === 'annual');
+    const monthlyRecurring = monthlyVendors.reduce((sum, v) => sum + v.monthlyBudget, 0);
+    const annualLumps = annualVendors
+      .map(v => ({
+        vendorKey: v.vendorKey,
+        vendorName: v.vendorName,
+        amount: v.monthlyBudget * 12,
+        renewalMonth: v.renewalMonth ?? 1, // fallback to Jan if missing
+      }))
+      .sort((a, b) => a.renewalMonth - b.renewalMonth || b.amount - a.amount);
+    const annualLumpsTotal = annualLumps.reduce((s, l) => s + l.amount, 0);
+
     return {
       historical: totalHistorical,
       priorFY: totalPriorFY,
@@ -357,6 +387,9 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
       remainingFY: remainingFYBudget,
       vendorCount: activeVendors.length,
       excludedCount: vendors.length - activeVendors.length,
+      monthlyRecurring,
+      annualLumps,
+      annualLumpsTotal,
     };
   }, [vendors, monthsRemaining]);
 
@@ -447,6 +480,8 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
               transactions: [],
               monthsSpan: 12,
               accountCodes: b.account_codes || [],
+              // Phase 63: restore renewal month for annual subs.
+              renewalMonth: b.renewal_month ?? null,
               isActive: b.is_active !== false,
             }));
             setVendors(existingVendors);
@@ -508,6 +543,8 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             isExpanded: false,
             isActive: b.is_active !== false,
             accountCodes: b.account_codes || [],
+            // Phase 63: restore renewal month for annual subs.
+            renewalMonth: b.renewal_month ?? null,
           }));
           setVendors(existingVendors);
           // Phase 60/61: track restoration + detect either degraded shape
@@ -583,6 +620,8 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         isExpanded: false,
         isActive: true,
         accountCodes: v.accountCodes ?? analyzedAccountCodes,
+        // Phase 63: pulled from analyze API for annual subs.
+        renewalMonth: v.renewalMonth ?? null,
       }));
 
       // Phase 51 (UX-S6-02): merge with existing vendor list so operator's
@@ -788,8 +827,34 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
     updateVendor(vendorKey, { monthlyBudget: numValue });
   };
 
+  // Phase 63: when a vendor is annual, the per-row input shows the annual
+  // amount. Internally we still persist `monthlyBudget` (smoothed annual / 12)
+  // so downstream math (rollups, sidebar attribution) stays the same — but
+  // the operator sees and edits the number in its native rhythm.
+  const handleAnnualBudgetChange = (vendorKey: string, value: string) => {
+    const numValue = parseFloat(value) || 0;
+    updateVendor(vendorKey, { monthlyBudget: numValue / 12 });
+  };
+
+  const handleRenewalMonthChange = (vendorKey: string, monthString: string) => {
+    const month = parseInt(monthString, 10);
+    if (Number.isInteger(month) && month >= 1 && month <= 12) {
+      updateVendor(vendorKey, { renewalMonth: month });
+    }
+  };
+
   const addManualVendor = () => {
-    if (!newVendor.name.trim() || newVendor.monthlyBudget <= 0) return;
+    if (!newVendor.name.trim() || newVendor.amount <= 0) return;
+
+    // Phase 63: convert the entered amount from its native rhythm into the
+    // canonical smoothed monthlyBudget. P&L math everywhere downstream uses
+    // monthlyBudget; the operator never has to do this conversion themselves.
+    const monthlyBudget =
+      newVendor.frequency === 'annual'
+        ? newVendor.amount / 12
+        : newVendor.frequency === 'quarterly'
+          ? newVendor.amount / 3
+          : newVendor.amount;
 
     // Check for duplicate vendor key
     const vendorKey = newVendor.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -801,17 +866,22 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
     const vendor = createManualVendor({
       name: newVendor.name.trim(),
       frequency: newVendor.frequency,
-      monthlyBudget: newVendor.monthlyBudget,
+      monthlyBudget,
       startMonth: newVendor.startMonth,
       category: newVendor.category,
     });
+    // Stamp renewalMonth for annual subs (createManualVendor doesn't know
+    // about this field; we patch it on after).
+    vendor.renewalMonth = newVendor.frequency === 'annual' ? newVendor.renewalMonth : null;
     setVendors(prev => [...prev, vendor]);
     setNewVendor({
       name: '',
       frequency: 'monthly',
+      amount: 0,
       monthlyBudget: 0,
       startMonth: defaultStartMonth,
       category: MANUAL_CATEGORY_OPTIONS[0],
+      renewalMonth: null,
     });
     setShowAddVendor(false);
     setError(null);
@@ -850,6 +920,9 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             // closure still saw `summary = null` and wrote `[]` for every row,
             // breaking the lazy-fetch transaction expand later.
             accountCodes: v.accountCodes || [],
+            // Phase 63: persist renewalMonth so native-rhythm display
+            // survives a page refresh.
+            renewalMonth: v.renewalMonth ?? null,
             isActive: true,
           })),
         }),
@@ -1215,56 +1288,45 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             </div>
           )}
 
-          {/* Summary Cards */}
-          <div className={`grid ${isManualMode ? 'grid-cols-3' : 'grid-cols-5'} gap-4`}>
-            {!isManualMode && (
-              <>
-                <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-4 border border-slate-700">
-                  <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="w-5 h-5 text-slate-400" />
-                    <p className="text-xs text-slate-400 uppercase tracking-wide">Prior FY (Full)</p>
-                  </div>
-                  <p className="text-2xl font-bold text-white tabular-nums">{formatCurrency(totals.priorFY)}</p>
-                  <p className="text-sm text-slate-400">{summary?.dateRange?.priorFY ? `${summary.dateRange.priorFY.from} - ${summary.dateRange.priorFY.to}` : 'Jul-Jun'}</p>
-                </div>
-
-                <div className="bg-gradient-to-br from-indigo-700 to-indigo-800 rounded-xl p-4 shadow-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="w-5 h-5 text-indigo-200" />
-                    <p className="text-xs text-indigo-200 uppercase tracking-wide">Current FY YTD</p>
-                  </div>
-                  <p className="text-2xl font-bold text-white tabular-nums">{formatCurrency(totals.currentFY)}</p>
-                  <p className="text-sm text-indigo-100">{monthsElapsed} months elapsed</p>
-                </div>
-              </>
+          {/* Phase 62 (62-02): single honest summary line replacing the
+              5-card grid. The old grid showed Prior FY, Current FY YTD,
+              Monthly Budget, Annual Budget, Remaining FY — too many big
+              numbers, mixing historical (analyze) and forward-looking
+              (budget) without explaining which is which. The new single
+              line shows the one number that matters (total annual
+              subscription budget) with the monthly-recurring vs annual-
+              one-offs breakdown explicit. */}
+          <div className="rounded-xl p-5 bg-gradient-to-br from-brand-navy to-brand-navy-800 text-white">
+            <p className="text-xs uppercase tracking-wide text-white/70 mb-1">
+              Total subscription budget
+            </p>
+            <p className="text-3xl font-bold tabular-nums">
+              {formatCurrency(totals.annualBudget)}<span className="text-base font-normal text-white/80 ml-1">/yr</span>
+            </p>
+            <p className="mt-2 text-sm text-white/90">
+              {formatCurrency(totals.monthlyRecurring)}/mo every month
+              {totals.annualLumps.length > 0 && (
+                <> + <strong>{formatCurrency(totals.annualLumpsTotal)}</strong> in {totals.annualLumps.length} annual renewal{totals.annualLumps.length !== 1 ? 's' : ''}</>
+              )}
+            </p>
+            {totals.annualLumps.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/80">
+                {totals.annualLumps.slice(0, 6).map(lump => (
+                  <span key={lump.vendorKey}>
+                    {MONTH_ABBREVS_LOCAL[lump.renewalMonth - 1]}: {formatCurrency(lump.amount)} <span className="text-white/60">({lump.vendorName})</span>
+                  </span>
+                ))}
+                {totals.annualLumps.length > 6 && (
+                  <span className="text-white/60">+ {totals.annualLumps.length - 6} more</span>
+                )}
+              </div>
             )}
-
-            <div className="bg-gradient-to-br from-cyan-600 to-blue-700 rounded-xl p-4 shadow-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <DollarSign className="w-5 h-5 text-cyan-200" />
-                <p className="text-xs text-cyan-200 uppercase tracking-wide">Monthly Budget</p>
-              </div>
-              <p className="text-2xl font-bold text-white tabular-nums">{formatCurrency(totals.monthlyBudget)}</p>
-              <p className="text-sm text-cyan-100">{totals.vendorCount} active vendor{totals.vendorCount !== 1 ? 's' : ''}</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-xl p-4 shadow-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <CreditCard className="w-5 h-5 text-emerald-200" />
-                <p className="text-xs text-emerald-200 uppercase tracking-wide">Annual Budget</p>
-              </div>
-              <p className="text-2xl font-bold text-white tabular-nums">{formatCurrency(totals.annualBudget)}</p>
-              <p className="text-sm text-emerald-100">{formatCurrency(totals.monthlyBudget)} x 12</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl p-4 shadow-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <Calendar className="w-5 h-5 text-purple-200" />
-                <p className="text-xs text-purple-200 uppercase tracking-wide">Remaining FY</p>
-              </div>
-              <p className="text-2xl font-bold text-white tabular-nums">{formatCurrency(totals.remainingFY)}</p>
-              <p className="text-sm text-purple-100">{monthsRemaining} months left</p>
-            </div>
+            <p className="mt-3 text-xs text-white/60">
+              {totals.vendorCount} active vendor{totals.vendorCount !== 1 ? 's' : ''}
+              {!isManualMode && summary?.dateRange?.priorFY && (
+                <> · prior FY actual {formatCurrency(totals.priorFY)} ({summary.dateRange.priorFY.from} - {summary.dateRange.priorFY.to})</>
+              )}
+            </p>
           </div>
 
           {/* Phase 57 T12 (B4) — Gap warning banner.
@@ -1294,121 +1356,31 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             </div>
           )}
 
-          {/* P&L Reconciliation Check — Xero mode only */}
-          {!isManualMode && summary?.reconciliation && (
-            <div className={`rounded-xl p-4 border ${
-              summary.reconciliation.priorFY.isReconciled && summary.reconciliation.currentFY.isReconciled
-                ? 'bg-green-50 border-green-200'
-                : 'bg-amber-50 border-amber-200'
-            }`}>
-              <div className="flex items-start gap-3">
-                {summary.reconciliation.priorFY.isReconciled && summary.reconciliation.currentFY.isReconciled ? (
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                )}
-                <div className="flex-1">
-                  <p className={`font-medium ${
-                    summary.reconciliation.priorFY.isReconciled && summary.reconciliation.currentFY.isReconciled
-                      ? 'text-green-800'
-                      : 'text-amber-800'
-                  }`}>
-                    P&L Reconciliation Check
-                  </p>
-                  <div className="grid grid-cols-2 gap-4 mt-3">
-                    {/* Prior FY Reconciliation */}
-                    <div className={`rounded-lg p-3 ${
-                      summary.reconciliation.priorFY.isReconciled
-                        ? 'bg-green-100/50'
-                        : 'bg-amber-100/50'
-                    }`}>
-                      <p className="text-xs font-medium text-gray-600 uppercase mb-2">Prior FY (Jul {fiscalYear - 2} - Jun {fiscalYear - 1})</p>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Transactions Analyzed:</span>
-                          <span className="font-medium">{formatCurrency(summary.reconciliation.priorFY.analyzed)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Xero P&L Actual:</span>
-                          <span className="font-medium">
-                            {summary.reconciliation.priorFY.actual !== null
-                              ? formatCurrency(summary.reconciliation.priorFY.actual)
-                              : 'N/A'}
-                          </span>
-                        </div>
-                        {summary.reconciliation.priorFY.variance !== null && (
-                          <div className="flex justify-between pt-1 border-t border-gray-200">
-                            <span className="text-gray-600">Variance:</span>
-                            <span className={`font-medium ${
-                              Math.abs(summary.reconciliation.priorFY.variance) < 100
-                                ? 'text-green-600'
-                                : 'text-amber-600'
-                            }`}>
-                              {summary.reconciliation.priorFY.variance >= 0 ? '+' : ''}
-                              {formatCurrency(summary.reconciliation.priorFY.variance)}
-                              {summary.reconciliation.priorFY.variancePercent !== null && (
-                                <span className="text-xs ml-1">
-                                  ({summary.reconciliation.priorFY.variancePercent >= 0 ? '+' : ''}
-                                  {summary.reconciliation.priorFY.variancePercent.toFixed(1)}%)
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Current FY Reconciliation */}
-                    <div className={`rounded-lg p-3 ${
-                      summary.reconciliation.currentFY.isReconciled
-                        ? 'bg-green-100/50'
-                        : 'bg-amber-100/50'
-                    }`}>
-                      <p className="text-xs font-medium text-gray-600 uppercase mb-2">Current FY YTD (Jul {fiscalYear - 1} - Today)</p>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Transactions Analyzed:</span>
-                          <span className="font-medium">{formatCurrency(summary.reconciliation.currentFY.analyzed)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Xero P&L Actual:</span>
-                          <span className="font-medium">
-                            {summary.reconciliation.currentFY.actual !== null
-                              ? formatCurrency(summary.reconciliation.currentFY.actual)
-                              : 'N/A'}
-                          </span>
-                        </div>
-                        {summary.reconciliation.currentFY.variance !== null && (
-                          <div className="flex justify-between pt-1 border-t border-gray-200">
-                            <span className="text-gray-600">Variance:</span>
-                            <span className={`font-medium ${
-                              Math.abs(summary.reconciliation.currentFY.variance) < 100
-                                ? 'text-green-600'
-                                : 'text-amber-600'
-                            }`}>
-                              {summary.reconciliation.currentFY.variance >= 0 ? '+' : ''}
-                              {formatCurrency(summary.reconciliation.currentFY.variance)}
-                              {summary.reconciliation.currentFY.variancePercent !== null && (
-                                <span className="text-xs ml-1">
-                                  ({summary.reconciliation.currentFY.variancePercent >= 0 ? '+' : ''}
-                                  {summary.reconciliation.currentFY.variancePercent.toFixed(1)}%)
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {(!summary.reconciliation.priorFY.isReconciled || !summary.reconciliation.currentFY.isReconciled) && (
-                    <p className="text-xs text-amber-700 mt-3">
-                      Note: Variance may be due to journal entries, manual adjustments, or transactions not yet coded to these accounts.
-                    </p>
-                  )}
-                </div>
+          {/* Phase 62: replace the old P&L Reconciliation panel with a single
+              honest sentence. The old panel surfaced a "Transactions Analyzed
+              vs Xero P&L Actual" variance the operator could never reconcile
+              (the two metrics measure different things — recurring vendors
+              vs total account spend). Coaches reported it as confusing noise.
+              The new sentence directs them at the correct next step (OpEx)
+              for non-recurring spend instead of waving a red flag. */}
+          {!isManualMode && summary?.reconciliation && (() => {
+            const priorActual = summary.reconciliation.priorFY.actual ?? 0
+            const priorRecurring = totals.priorFY
+            const nonRecurringAnnual = Math.max(0, priorActual - priorRecurring)
+            const nonRecurringMonthly = nonRecurringAnnual / 12
+            // Only render the note if there's a meaningful gap. Below ~$100/mo
+            // of unclassified spend isn't actionable and adds visual noise.
+            if (nonRecurringMonthly < 100) return null
+            return (
+              <div className="rounded-lg bg-blue-50/40 border border-blue-100 px-4 py-3 text-sm text-gray-700">
+                We identified <strong>{totals.vendorCount}</strong> recurring vendors totalling{' '}
+                <strong>{formatCurrency(totals.monthlyBudget)}/mo</strong>. The other{' '}
+                <strong>~{formatCurrency(nonRecurringMonthly)}/mo</strong> of spending in these
+                accounts (one-offs, ad-hoc purchases, journal entries) won&apos;t be in this
+                forecast — budget them under OpEx in Step 6.
               </div>
-            </div>
-          )}
+            )
+          })()}
 
           {/* Vendor Table */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -1490,32 +1462,51 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                       ))}
                     </select>
                   </label>
+                  {/* Phase 63 (63-04): single amount input labelled by
+                      frequency. The operator enters "$1,200/yr" for an
+                      annual sub directly — no monthly/annual mental math. */}
                   <label className="col-span-2 flex flex-col gap-1 text-xs font-medium text-gray-700">
-                    Monthly amount
+                    Amount {newVendor.frequency === 'annual' ? '($/yr)' : newVendor.frequency === 'quarterly' ? '($/qtr)' : '($/mo)'}
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                       <input
                         type="number"
-                        value={newVendor.monthlyBudget || ''}
-                        onChange={(e) => setNewVendor({ ...newVendor, monthlyBudget: parseFloat(e.target.value) || 0 })}
-                        placeholder="Monthly"
+                        value={newVendor.amount || ''}
+                        onChange={(e) => setNewVendor({ ...newVendor, amount: parseFloat(e.target.value) || 0 })}
+                        placeholder={newVendor.frequency === 'annual' ? 'Annual' : newVendor.frequency === 'quarterly' ? 'Quarterly' : 'Monthly'}
                         className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand-navy font-normal"
                         onKeyDown={(e) => e.key === 'Enter' && addManualVendor()}
                       />
                     </div>
                   </label>
-                  <label className="col-span-2 flex flex-col gap-1 text-xs font-medium text-gray-700">
-                    Start month
-                    <select
-                      value={newVendor.startMonth}
-                      onChange={(e) => setNewVendor({ ...newVendor, startMonth: e.target.value })}
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy font-normal"
-                    >
-                      {startMonthOptions.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </label>
+                  {newVendor.frequency === 'annual' ? (
+                    <label className="col-span-2 flex flex-col gap-1 text-xs font-medium text-gray-700">
+                      Renewal month
+                      <select
+                        value={newVendor.renewalMonth ?? ''}
+                        onChange={(e) => setNewVendor({ ...newVendor, renewalMonth: e.target.value ? parseInt(e.target.value, 10) : null })}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy font-normal"
+                      >
+                        <option value="">— Select —</option>
+                        {MONTH_ABBREVS_LOCAL.map((m, i) => (
+                          <option key={m} value={i + 1}>{m}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : (
+                    <label className="col-span-2 flex flex-col gap-1 text-xs font-medium text-gray-700">
+                      Start month
+                      <select
+                        value={newVendor.startMonth}
+                        onChange={(e) => setNewVendor({ ...newVendor, startMonth: e.target.value })}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy font-normal"
+                      >
+                        {startMonthOptions.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <label className="col-span-3 flex flex-col gap-1 text-xs font-medium text-gray-700">
                     Category
                     <select
@@ -1535,9 +1526,11 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                         setNewVendor({
                           name: '',
                           frequency: 'monthly',
+                          amount: 0,
                           monthlyBudget: 0,
                           startMonth: defaultStartMonth,
                           category: MANUAL_CATEGORY_OPTIONS[0],
+                          renewalMonth: null,
                         });
                       }}
                       className="px-3 py-2 text-gray-600 text-sm rounded-lg hover:bg-gray-100 transition-colors"
@@ -1546,7 +1539,11 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                     </button>
                     <button
                       onClick={addManualVendor}
-                      disabled={!newVendor.name.trim() || newVendor.monthlyBudget <= 0}
+                      disabled={
+                        !newVendor.name.trim() ||
+                        newVendor.amount <= 0 ||
+                        (newVendor.frequency === 'annual' && !newVendor.renewalMonth)
+                      }
                       className="px-4 py-2 bg-brand-navy text-white text-sm font-medium rounded-lg hover:bg-brand-navy-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       Add
@@ -1638,21 +1635,59 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                           </>
                         )}
                         <td className="px-4 py-3 text-right">
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                            <input
-                              type="number"
-                              value={vendor.monthlyBudget}
-                              onChange={(e) => handleMonthlyBudgetChange(vendor.vendorKey, e.target.value)}
-                              disabled={!vendor.isActive}
-                              className="w-full pl-7 pr-3 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
-                              step="0.01"
-                              min="0"
-                            />
-                          </div>
+                          {/* Phase 63: render in native rhythm. Annual subs
+                              show as "$X/yr" with a renewal-month dropdown
+                              alongside; all others stay as "$X/mo". */}
+                          {vendor.frequency === 'annual' ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <div className="relative flex-1 max-w-[110px]">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                                <input
+                                  type="number"
+                                  value={(vendor.monthlyBudget * 12).toFixed(2)}
+                                  onChange={(e) => handleAnnualBudgetChange(vendor.vendorKey, e.target.value)}
+                                  disabled={!vendor.isActive}
+                                  className="w-full pl-7 pr-9 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
+                                  step="0.01"
+                                  min="0"
+                                  title="Annual cost — smoothed to monthly for forecasting"
+                                />
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">/yr</span>
+                              </div>
+                              <select
+                                value={vendor.renewalMonth ?? ''}
+                                onChange={(e) => handleRenewalMonthChange(vendor.vendorKey, e.target.value)}
+                                disabled={!vendor.isActive}
+                                className="text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100"
+                                title="Renewal month"
+                              >
+                                {!vendor.renewalMonth && <option value="">—</option>}
+                                {MONTH_ABBREVS_LOCAL.map((m, i) => (
+                                  <option key={m} value={i + 1}>{m}</option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                              <input
+                                type="number"
+                                value={vendor.monthlyBudget}
+                                onChange={(e) => handleMonthlyBudgetChange(vendor.vendorKey, e.target.value)}
+                                disabled={!vendor.isActive}
+                                className="w-full pl-7 pr-9 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
+                                step="0.01"
+                                min="0"
+                              />
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">/mo</span>
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right font-medium text-gray-900 tabular-nums">
                           {formatCurrency(vendor.monthlyBudget * 12)}
+                          {vendor.frequency === 'annual' && vendor.renewalMonth && (
+                            <span className="block text-xs text-gray-400 mt-0.5">paid {MONTH_ABBREVS_LOCAL[vendor.renewalMonth - 1]}</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-center">
                           {isManualMode ? (
