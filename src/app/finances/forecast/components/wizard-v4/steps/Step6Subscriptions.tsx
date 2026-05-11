@@ -1204,50 +1204,31 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
           {!isManualMode && (
             <aside aria-label="Selected Accounts" className="w-64 shrink-0 border border-gray-200 rounded-xl p-4 bg-gray-50">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Selected Accounts</h3>
+              {/* Per-operator request 2026-05-12: drop per-account dollar
+                  totals from the sidebar. They were a source of confusion
+                  (multi-account vendors made the attribution math hard to
+                  trust). Sidebar now just shows the selected accounts +
+                  an Edit button to revise selection. The full attribution
+                  data still flows through accountSplits — just isn't
+                  surfaced here. */}
               {accounts.filter(a => a.isSelected).length === 0 ? (
                 <p className="text-xs text-gray-500 italic">No accounts selected.</p>
               ) : (
-                <ul className="space-y-2">
-                  {accounts.filter(a => a.isSelected).map(account => {
-                    /**
-                     * Phase 64 — exact per-account attribution using splits as
-                     * proportions. Preserves the sidebar's "monthly budget per
-                     * account" semantics (sum across accounts == total
-                     * monthlyBudget) while killing the double-count.
-                     *
-                     * For a vendor with monthlyBudget $100/mo and accountSplits
-                     * { A: $800, B: $300, C: $100 } (prior-FY $ amounts),
-                     * proportions are 67% / 25% / 8% — so $67 / $25 / $8 of the
-                     * monthly budget gets attributed to A / B / C respectively.
-                     * Old shape attributed $100 to EACH account (triple-counted).
-                     *
-                     * Legacy rows without accountSplits fall back to evenly
-                     * splitting monthlyBudget across the vendor's accountCodes.
-                     */
-                    const total = vendors
-                      .filter(v => v.isActive && v.accountCodes?.includes(account.accountCode))
-                      .reduce((sum, v) => {
-                        const monthlyBudget = v.monthlyBudget || 0;
-                        const splits = v.accountSplits ?? {};
-                        const splitsTotal = Object.values(splits).reduce((s, n) => s + (n || 0), 0);
-                        if (splitsTotal > 0 && splits[account.accountCode] != null) {
-                          const proportion = splits[account.accountCode] / splitsTotal;
-                          return sum + monthlyBudget * proportion;
-                        }
-                        // Fallback: even-split monthlyBudget across the vendor's
-                        // accountCodes (no exact data, equal weighting).
-                        const codeCount = v.accountCodes?.length || 1;
-                        return sum + monthlyBudget / codeCount;
-                      }, 0);
-                    return (
-                      <li key={account.accountId} className="flex justify-between gap-2 text-sm">
-                        <span className="truncate text-gray-700" title={account.accountName}>{account.accountName}</span>
-                        <span className="font-medium text-gray-900 tabular-nums">{formatCurrency(total)}</span>
-                      </li>
-                    );
-                  })}
+                <ul className="space-y-1.5">
+                  {accounts.filter(a => a.isSelected).map(account => (
+                    <li key={account.accountId} className="text-sm text-gray-700 truncate" title={account.accountName}>
+                      {account.accountName}
+                    </li>
+                  ))}
                 </ul>
               )}
+              <button
+                type="button"
+                onClick={() => setPhase('select-accounts')}
+                className="mt-4 w-full text-xs px-2 py-1.5 border border-gray-300 rounded text-gray-700 hover:bg-white"
+              >
+                Edit selected accounts
+              </button>
             </aside>
           )}
           <div className="flex-1 min-w-0 space-y-6">
