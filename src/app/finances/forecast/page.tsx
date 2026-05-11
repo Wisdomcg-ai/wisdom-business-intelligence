@@ -262,14 +262,29 @@ export default function FinancialForecastPage() {
       // Detect whether a forecast exists for the prior FY so the empty state
       // can surface a "View/edit FY{prior}" affordance when the planning-season
       // default lands on a year the business hasn't started yet.
+      //
+      // Dual-ID system: financial_forecasts.business_id FK references
+      // business_profiles(id), but bizId from resolveBusinessId is businesses.id.
+      // Collect both IDs so this query matches the same rows that
+      // ForecastService.getOrCreateForecast (which does the same dance) sees.
       try {
-        const { data: priorRows } = await supabase
-          .from('forecasts')
+        const priorFY = fiscalYear - 1
+        const idsToTry: string[] = [bizId]
+        const { data: profile } = await supabase
+          .from('business_profiles')
           .select('id')
           .eq('business_id', bizId)
-          .eq('fiscal_year', fiscalYear - 1)
+          .maybeSingle()
+        if (profile?.id && profile.id !== bizId) {
+          idsToTry.push(profile.id)
+        }
+        const { data: priorRows } = await supabase
+          .from('financial_forecasts')
+          .select('id')
+          .in('business_id', idsToTry)
+          .eq('fiscal_year', priorFY)
           .limit(1)
-        setPriorFiscalYearWithForecast(priorRows && priorRows.length > 0 ? fiscalYear - 1 : null)
+        setPriorFiscalYearWithForecast(priorRows && priorRows.length > 0 ? priorFY : null)
       } catch {
         setPriorFiscalYearWithForecast(null)
       }
