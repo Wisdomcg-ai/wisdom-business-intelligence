@@ -1,20 +1,15 @@
 /**
  * Phase 51 — UX-S6-01: Step 6 Subscriptions sidebar with selected accounts
  *
- * Sidebar shows the names of operator-selected Xero accounts AND a per-account
- * total computed from active vendors mapped to that account. Visible only in
- * `phase === 'review'`.
- *
- * Test infra mocks fetch so Step 6 can be driven into the 'review' phase
- * deterministically. We seed the component with:
- *   - chart-of-accounts: 3 accounts (2 with isSuggested=true → preselected)
- *   - subscription-budgets GET: 2 active vendors mapped to the selected accounts
+ * Sidebar shows the names of operator-selected Xero accounts and an Edit CTA
+ * to return to the account-picker. PR #172 dropped per-account dollar totals
+ * — the sidebar is now strictly a selection reminder, not an attribution
+ * readout, because the per-vendor attribution math confused operators.
+ * Visible only in `phase === 'review'`.
  *
  * The sidebar should:
- *   - List ONLY the selected accounts
- *   - Show per-account totals (sum of monthlyBudget across active vendors with
- *     accountCodes matching that account's code)
- *   - Update reactively when a vendor toggles isActive
+ *   - List ONLY the selected accounts (no dollar values)
+ *   - Render an "Edit selected accounts" button that returns to select-accounts
  *   - Show empty state "No accounts selected." when zero are selected
  *   - NOT render in phase === 'select-accounts'
  */
@@ -198,7 +193,7 @@ async function renderStep6AtReview() {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('UX-S6-01 — Step 6 sidebar with selected accounts', () => {
-  it('Test 1: renders sidebar listing selected accounts with per-account vendor sums', async () => {
+  it('Test 1: renders sidebar listing selected accounts with an Edit CTA', async () => {
     setupReviewPhaseMocks();
     await renderStep6AtReview();
 
@@ -213,36 +208,29 @@ describe('UX-S6-01 — Step 6 sidebar with selected accounts', () => {
     // Unselected account "Other Expenses" must NOT be in the sidebar
     expect(within(sidebar).queryByText('Other Expenses')).toBeNull();
 
-    // Per-account totals: Notion ($50/mo) → Software Subscriptions; AWS ($200/mo) → Cloud Hosting
-    expect(within(sidebar).getByText('$50')).toBeInTheDocument();
-    expect(within(sidebar).getByText('$200')).toBeInTheDocument();
+    // PR #172: no dollar values rendered alongside accounts in the sidebar.
+    expect(within(sidebar).queryByText(/\$\d/)).toBeNull();
+
+    // Edit CTA returns user to the account-picker phase.
+    expect(within(sidebar).getByRole('button', { name: /edit selected accounts/i })).toBeInTheDocument();
   });
 
-  it('Test 2: toggling a vendor isActive=false drops its account total to $0', async () => {
+  it('Test 2: Edit CTA returns to select-accounts phase', async () => {
     const user = userEvent.setup();
     setupReviewPhaseMocks();
     await renderStep6AtReview();
 
     const sidebar = await screen.findByRole('complementary', { name: /selected accounts/i });
-    expect(within(sidebar).getByText('$50')).toBeInTheDocument();
+    const editButton = within(sidebar).getByRole('button', { name: /edit selected accounts/i });
+    await user.click(editButton);
 
-    // Toggle Notion (mapped to Software Subscriptions) off via the include checkbox.
-    // Find the row containing 'Notion' in the vendor table, then its checkbox.
-    const notionRow = screen.getByText('Notion').closest('tr');
-    expect(notionRow).not.toBeNull();
-    const notionCheckbox = within(notionRow as HTMLElement).getByRole('checkbox');
-    await user.click(notionCheckbox);
-
-    // Sidebar reactively reflects: Software Subscriptions total → $0
+    // Component navigates back to the account-picker.
     await waitFor(() => {
-      const softwareRow = within(sidebar).getByText('Software Subscriptions').closest('li');
-      expect(softwareRow).not.toBeNull();
-      expect(within(softwareRow as HTMLElement).getByText('$0')).toBeInTheDocument();
+      expect(screen.getByText(/Select Accounts to Analyze/i)).toBeInTheDocument();
     });
 
-    // Cloud Hosting remains $200
-    const cloudRow = within(sidebar).getByText('Cloud Hosting').closest('li');
-    expect(within(cloudRow as HTMLElement).getByText('$200')).toBeInTheDocument();
+    // Sidebar is gone in select-accounts phase.
+    expect(screen.queryByRole('complementary', { name: /selected accounts/i })).toBeNull();
   });
 
   it('Test 3: shows "No accounts selected." italic empty state when zero accounts selected', async () => {
