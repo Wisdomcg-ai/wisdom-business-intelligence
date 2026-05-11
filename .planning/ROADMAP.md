@@ -862,8 +862,6 @@ Plans:
 - Portal client cannot access any coach route (`/coach/*`, `/cfo`, `/finances/*`) — middleware redirects to portal login
 - Disconnecting or revoking portal access (deleting the system_roles row) immediately prevents login
 
----
-
 ## Milestone v1.1 — Codebase Hardening
 
 **Source:** `CODEBASE-AUDIT.md` at repo root (production readiness 55/100, written 2026-04-28)
@@ -985,3 +983,24 @@ Plans:
 | 47. Input Validation Rollout | 0/0 | Not started | - |
 | 48. Decimal Money Arithmetic | 0/0 | Not started | - |
 | 49. Database Integrity Hygiene | 0/0 | Not started | - |
+
+---
+
+## Phases 50–58 (codebase-resident, roadmap drift)
+
+Phases 50–58 exist as `.planning/phases/*` directories with full PHASE.md / plans / summaries; they were not consistently added to this roadmap during execution. See each phase directory directly. A future cleanup phase should backfill these entries.
+
+---
+
+### Phase 59: Forecast Seed from Prior FY
+
+**Goal:** One-click seed of a new-FY forecast (revenue/COGS/OpEx/team/subscriptions) from the prior-FY forecast, excluding CapEx and Goals.
+**Depends on:** PR #163 (planning-season default shift, merged 2026-05-11)
+**Plans:** 0/4 planned
+
+Plans:
+- [ ] 59-01 — Seed service (month-shift + assumptions strip; clears plannedHires per D1; preserves forecastDuration per D3)
+- [ ] 59-02 — POST /api/forecast/seed-from-prior (reuses save_assumptions_and_materialize RPC; does NOT write subscription_budgets)
+- [ ] 59-03 — Empty-state UI (side-by-side CTAs; opens wizard at Step 1 per D2)
+- [ ] 59-04 — Integration tests + VERIFICATION.md (wizard hydration verified by code tracing + manual smoke)
+
