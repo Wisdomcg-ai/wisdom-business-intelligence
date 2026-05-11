@@ -301,7 +301,19 @@ export default function FinancialForecastPage() {
       setForecast(loadedForecast)
 
       // Load P&L lines
-      const lines = await ForecastService.loadPLLines(loadedForecast.id!)
+      let lines = await ForecastService.loadPLLines(loadedForecast.id!)
+
+      // Phase 65 — past-FY views render Xero actuals inline when the forecast
+      // has no stored lines. Avoids pushing the operator into a retrospective
+      // wizard build for years that are already closed.
+      if (lines.length === 0 && fiscalYear < getCurrentFiscalYear(yearStart)) {
+        const actuals = await ForecastService.loadActualsAsPLLines(bizId, fiscalYear, yearStart)
+        if (actuals.length > 0) {
+          lines = actuals
+          console.log('[Forecast] Loaded', actuals.length, 'prior-FY actual lines from xero_pl_lines')
+        }
+      }
+
       setPlLines(lines)
 
       // Load Xero connection via API (bypasses RLS timing issues)
@@ -516,10 +528,15 @@ export default function FinancialForecastPage() {
     )
   }
 
-  // Check if this is a new/empty forecast (no forecast values set)
+  // Check if this is a new/empty forecast (no forecast values AND no actuals).
+  // Phase 65: prior-FY views populate actual_months from xero_pl_lines — those
+  // are not "new" forecasts even though forecast_months stays empty.
   const isNewForecast = plLines.length === 0 || plLines.every(line => {
     const forecastMonths = Object.keys(line.forecast_months || {})
-    return forecastMonths.length === 0 || forecastMonths.every(key => !line.forecast_months[key])
+    const actualMonths = Object.keys(line.actual_months || {})
+    const hasForecastValues = forecastMonths.some(key => Boolean(line.forecast_months[key]))
+    const hasActualValues = actualMonths.some(key => Boolean(line.actual_months[key]))
+    return !hasForecastValues && !hasActualValues
   })
 
   // Phase 58.3 — inline empty state for tenants who haven't built a forecast.
