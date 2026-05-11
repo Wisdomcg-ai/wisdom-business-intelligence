@@ -1004,3 +1004,13 @@ Plans:
 - [x] 59-03 — Empty-state UI (side-by-side CTAs; opens wizard at Step 1 per D2)
 - [x] 59-04 — Integration tests + VERIFICATION.md (wizard hydration verified by code tracing + manual smoke)
 
+### Phase 60: Subscription Step UX Fixes
+
+**Goal:** Close three rough edges in Step 5 (Subscriptions) — visible error on lazy-fetch failure + per-vendor re-analyze affordance + fresh-forecast confirm UX.
+**Depends on:** PR #165 (subscription account_codes save-path fix, merged 2026-05-11)
+**Plans:** 0/2 planned
+
+Plans:
+- [ ] 60-01 — Visible error on lazy-fetch failure + per-vendor "Re-analyze" affordance (recovery path)
+- [ ] 60-02 — Fresh-forecast confirm UX (proactive path with Confirm/Skip CTAs)
+
