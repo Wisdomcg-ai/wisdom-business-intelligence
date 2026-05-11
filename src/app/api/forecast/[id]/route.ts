@@ -115,3 +115,106 @@ export async function GET(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+/**
+ * DELETE — permanently remove a forecast.
+ *
+ * Cascades via DB FKs to forecast_pl_lines, forecast_employees,
+ * forecast_payroll_summary, cashflow_* and other child tables. The few
+ * tables with SET NULL semantics (forecast_audit_log, monthly_report_settings)
+ * keep their rows with a null forecast_id pointer — intentional, those rows
+ * are historical / cross-forecast artifacts.
+ *
+ * Access: owner of the business OR coach/super_admin. Team members get 403
+ * — deletion is destructive and stays an owner-level capability.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const supabase = await createRouteHandlerClient()
+
+  try {
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { id: forecastId } = await params
+    if (!forecastId) {
+      return NextResponse.json({ error: 'Forecast ID is required' }, { status: 400 })
+    }
+
+    // Load the forecast to resolve its owning business (mirrors the GET
+    // handler's dual-ID resolution since financial_forecasts.business_id
+    // points at business_profiles.id, not businesses.id).
+    const { data: forecast, error: fetchError } = await supabase
+      .from('financial_forecasts')
+      .select('id, business_id')
+      .eq('id', forecastId)
+      .maybeSingle()
+
+    if (fetchError) {
+      Sentry.captureException(fetchError, { tags: { route: 'forecast/[id]' }, extra: { context: '[API DELETE /forecast/[id]] fetch error' } } as any)
+      return NextResponse.json({ error: 'Failed to load forecast' }, { status: 500 })
+    }
+    if (!forecast) {
+      return NextResponse.json({ error: 'Forecast not found' }, { status: 404 })
+    }
+
+    let ownerId: string | null = null
+    const { data: bizDirect } = await supabase
+      .from('businesses')
+      .select('owner_id')
+      .eq('id', forecast.business_id)
+      .maybeSingle()
+    if (bizDirect) {
+      ownerId = bizDirect.owner_id
+    } else {
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('business_id, user_id')
+        .eq('id', forecast.business_id)
+        .maybeSingle()
+      if (profile?.business_id) {
+        const { data: biz } = await supabase
+          .from('businesses')
+          .select('owner_id')
+          .eq('id', profile.business_id)
+          .maybeSingle()
+        ownerId = biz?.owner_id || null
+      }
+      if (profile?.user_id === user.id) {
+        ownerId = user.id
+      }
+    }
+
+    const isOwner = ownerId === user.id
+    if (!isOwner) {
+      const { data: roleData } = await supabase
+        .from('system_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      const isCoachOrAdmin = roleData?.role === 'coach' || roleData?.role === 'super_admin'
+      if (!isCoachOrAdmin) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+    }
+
+    const { error: deleteError } = await supabase
+      .from('financial_forecasts')
+      .delete()
+      .eq('id', forecastId)
+
+    if (deleteError) {
+      Sentry.captureException(deleteError, { tags: { route: 'forecast/[id]' }, extra: { context: '[API DELETE /forecast/[id]] delete error' } } as any)
+      return NextResponse.json({ error: 'Failed to delete forecast' }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, deleted: forecastId })
+  } catch (error) {
+    Sentry.captureException(error, { tags: { route: 'forecast/[id]' }, extra: { context: '[API DELETE /forecast/[id]] unexpected error' } } as any)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
