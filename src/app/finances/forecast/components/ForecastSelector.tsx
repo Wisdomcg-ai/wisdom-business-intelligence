@@ -60,6 +60,11 @@ export function ForecastSelector({
   const [showMenu, setShowMenu] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isDuplicating, setIsDuplicating] = useState<string | null>(null);
+  // Forecast pending delete-confirmation. Null = no modal; non-null = render
+  // the confirmation dialog for this forecast. Deletes are destructive (and
+  // cascade across forecast_pl_lines, forecast_employees, cashflow tables…),
+  // so an explicit confirm step is required before the API call fires.
+  const [pendingDelete, setPendingDelete] = useState<ForecastVersion | null>(null);
   const supabase = createClient();
 
   useEffect(() => {
@@ -170,32 +175,34 @@ export function ForecastSelector({
     }
   };
 
-  const handleDelete = async (forecast: ForecastVersion) => {
-    if (forecast.is_active) {
-      toast.error('Cannot delete the active forecast');
-      return;
-    }
+  // Opens the confirmation modal — actual deletion fires from confirmDelete
+  // below after the operator clicks the destructive button in the dialog.
+  const requestDelete = (forecast: ForecastVersion) => {
+    setShowMenu(null);
+    setPendingDelete(forecast);
+  };
+
+  const confirmDelete = async () => {
+    const forecast = pendingDelete;
+    if (!forecast) return;
 
     setIsDeleting(forecast.id);
-    setShowMenu(null);
+    setPendingDelete(null);
     try {
-      // Delete related records first
-      await supabase.from('forecast_pl_lines').delete().eq('forecast_id', forecast.id);
-      await supabase.from('forecast_employees').delete().eq('forecast_id', forecast.id);
-
-      // Delete the forecast
-      const { error } = await supabase
-        .from('financial_forecasts')
-        .delete()
-        .eq('id', forecast.id);
-
-      if (error) throw error;
-
+      // Server-side delete via /api/forecast/[id]. The route enforces auth
+      // (owner / coach / super_admin) and lets the DB cascade child rows
+      // (forecast_pl_lines, forecast_employees, cashflow_*, …) — no need
+      // for client-side staged deletes.
+      const res = await fetch(`/api/forecast/${forecast.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || `HTTP ${res.status}`);
+      }
       toast.success('Forecast deleted');
       loadForecasts();
     } catch (err) {
       console.error('Error deleting forecast:', err);
-      toast.error('Failed to delete forecast');
+      toast.error(err instanceof Error ? err.message : 'Failed to delete forecast');
     } finally {
       setIsDeleting(null);
     }
@@ -320,7 +327,7 @@ export function ForecastSelector({
                     isActive={true}
                     onSelect={() => onSelectForecast(activeForecast.id, activeForecast.name)}
                     onDuplicate={() => handleDuplicate(activeForecast)}
-                    onDelete={() => handleDelete(activeForecast)}
+                    onDelete={() => requestDelete(activeForecast)}
                     onSetActive={() => {}}
                     showMenu={showMenu === activeForecast.id}
                     onToggleMenu={() => setShowMenu(showMenu === activeForecast.id ? null : activeForecast.id)}
@@ -346,7 +353,7 @@ export function ForecastSelector({
                         isActive={false}
                         onSelect={() => onSelectForecast(forecast.id, forecast.name)}
                         onDuplicate={() => handleDuplicate(forecast)}
-                        onDelete={() => handleDelete(forecast)}
+                        onDelete={() => requestDelete(forecast)}
                         onSetActive={() => handleSetActive(forecast)}
                         showMenu={showMenu === forecast.id}
                         onToggleMenu={() => setShowMenu(showMenu === forecast.id ? null : forecast.id)}
@@ -374,6 +381,58 @@ export function ForecastSelector({
           </button>
         </div>
       </div>
+
+      {/* Delete confirmation modal — destructive action requires explicit
+          confirm. Spells out the cascade (P&L lines, employees, cashflow
+          settings) and warns when the active forecast is being removed. */}
+      {pendingDelete && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="delete-forecast-title" className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-start gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 id="delete-forecast-title" className="text-lg font-semibold text-gray-900">Delete this forecast?</h2>
+                <p className="text-sm text-gray-500 mt-0.5 truncate">
+                  {pendingDelete.name || `FY${pendingDelete.fiscal_year} Forecast`}
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-4 space-y-3 text-sm text-gray-700">
+              <p>
+                This permanently removes the forecast and everything inside it: P&amp;L lines,
+                team members, payroll summary, and cashflow assumptions.
+              </p>
+              {pendingDelete.is_active && (
+                <p className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-amber-900">
+                  <strong>Heads up:</strong> this is the <em>active</em> forecast for FY{pendingDelete.fiscal_year}.
+                  After deletion there will be no active forecast for this year until you create
+                  one or promote another scenario.
+                </p>
+              )}
+              <p className="text-gray-500 text-xs">This cannot be undone.</p>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setPendingDelete(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg inline-flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete forecast
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -518,7 +577,11 @@ function ForecastCard({
                       Set as Active
                     </button>
                   )}
-                  {!isActive && !forecast.is_locked && (
+                  {/* Active forecasts are deletable too — the confirmation
+                      modal in ForecastSelector spells out the consequence
+                      (no active forecast for this FY until another is
+                      promoted). Locked forecasts stay protected. */}
+                  {!forecast.is_locked && (
                     <button
                       onClick={onDelete}
                       className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
