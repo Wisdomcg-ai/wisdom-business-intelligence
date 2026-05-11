@@ -734,7 +734,13 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             transactionCount: v.transactionCount,
             avgTransactionAmount: v.avgAmount,
             lastTransactionDate: v.lastTransaction || null,
-            accountCodes: summary?.accountsAnalyzed || [],
+            // Per-vendor accountCodes from the vendor object (set at analyze
+            // time, line 486). Previously read from `summary?.accountsAnalyzed`,
+            // which suffered a React state-flush race when saveSubscriptionBudgets
+            // ran immediately after analyzeSubscriptions's setSummary — the
+            // closure still saw `summary = null` and wrote `[]` for every row,
+            // breaking the lazy-fetch transaction expand later.
+            accountCodes: v.accountCodes || [],
             isActive: true,
           })),
         }),
