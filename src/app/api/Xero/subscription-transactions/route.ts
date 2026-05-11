@@ -54,6 +54,12 @@ interface VendorSummary {
   lastTransaction: string;
   monthsSpan: number;
   suggestedMonthlyBudget: number;
+  // Per-vendor account codes — the distinct Xero account codes that this
+  // vendor's transactions actually post to. Persisted on subscription_budgets
+  // so the Step 5 sidebar can correctly attribute per-account totals (a
+  // vendor only "belongs to" accounts where it actually has transactions,
+  // not the full selected-account list).
+  accountCodes: string[];
 }
 
 // Parse Xero date format (can be ISO string or /Date(timestamp)/ format)
@@ -989,6 +995,10 @@ export async function POST(request: NextRequest) {
           lastTransaction: tx.date,
           monthsSpan: 0,
           suggestedMonthlyBudget: 0,
+          // Per-vendor account codes — accumulated below from the actual
+          // transactions of this vendor (a Set deduplicates; Array.from
+          // serializes for the response).
+          accountCodes: [],
         });
       }
 
@@ -996,6 +1006,14 @@ export async function POST(request: NextRequest) {
       vendor.transactions.push(tx);
       vendor.totalAmount += tx.amount;
       vendor.transactionCount++;
+
+      // Track this vendor's account codes (distinct set across its txs).
+      // Step 5 sidebar uses this to attribute per-account totals — without
+      // it, every vendor would carry the full selected-account list and
+      // the sidebar would show the same total for every account.
+      if (tx.accountCode && !vendor.accountCodes.includes(tx.accountCode)) {
+        vendor.accountCodes.push(tx.accountCode);
+      }
 
       // Track by FY period
       if (tx.period === 'prior_fy') {
@@ -1261,6 +1279,10 @@ export async function POST(request: NextRequest) {
         lastTransaction: v.lastTransaction,
         monthsSpan: v.monthsSpan,
         suggestedMonthlyBudget: Math.round(v.suggestedMonthlyBudget * 100) / 100,
+        // Per-vendor account codes derived from this vendor's actual
+        // transactions (NOT the full selected-account list). The Step 5
+        // sidebar uses this to attribute per-account totals correctly.
+        accountCodes: v.accountCodes,
         // Include ALL transactions for review
         transactions: v.transactions.map(t => ({
           date: t.date,
