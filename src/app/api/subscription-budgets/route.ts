@@ -20,6 +20,9 @@ interface SubscriptionBudgetInput {
   frequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc';
   monthlyBudget: number;
   last12MonthsSpend?: number;
+  // Phase 61 (B2): current-FY YTD spend captured at analyze time. Persisted
+  // so the wizard's Current FYTD card survives a page refresh.
+  currentFySpend?: number;
   transactionCount?: number;
   avgTransactionAmount?: number;
   lastTransactionDate?: string;
@@ -106,6 +109,7 @@ export async function POST(request: NextRequest) {
       frequency: b.frequency,
       monthly_budget: b.monthlyBudget,
       last_12_months_spend: b.last12MonthsSpend || 0,
+      current_fy_spend: b.currentFySpend || 0,
       transaction_count: b.transactionCount || 0,
       avg_transaction_amount: b.avgTransactionAmount || 0,
       last_transaction_date: b.lastTransactionDate || null,
