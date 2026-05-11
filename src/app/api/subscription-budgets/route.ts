@@ -29,6 +29,10 @@ interface SubscriptionBudgetInput {
   accountCodes?: string[];
   // Phase 63: calendar month (1-12) for annual subs only. Null otherwise.
   renewalMonth?: number | null;
+  // Phase 64: per-account prior-FY $ split (keyed by Xero accountCode).
+  // Sidebar uses for exact per-account attribution. Optional — legacy rows
+  // restore as {} and the sidebar falls back to evenly-splitting accountCodes.
+  accountSplits?: Record<string, number>;
   isActive?: boolean;
   notes?: string;
 }
@@ -117,6 +121,7 @@ export async function POST(request: NextRequest) {
       last_transaction_date: b.lastTransactionDate || null,
       account_codes: b.accountCodes || [],
       renewal_month: b.renewalMonth ?? null,
+      account_splits: b.accountSplits || {},
       is_active: b.isActive !== false,
       notes: b.notes || null,
     }));

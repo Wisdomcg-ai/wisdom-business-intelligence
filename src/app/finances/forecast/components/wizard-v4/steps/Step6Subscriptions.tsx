@@ -100,6 +100,11 @@ interface VendorBudget {
   // quarterly / ad-hoc. Drives native-rhythm display ($X/yr (Mar)) and
   // (later) cashflow burst.
   renewalMonth?: number | null;
+  // Phase 64: per-account prior-FY $ split. Sidebar uses exact splits so a
+  // vendor whose transactions span multiple accounts doesn't get full-amount
+  // attributed to each. {} or undefined for legacy rows → sidebar falls back
+  // to even-split of accountCodes.
+  accountSplits?: Record<string, number>;
 }
 
 interface ReconciliationPeriod {
@@ -482,6 +487,8 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
               accountCodes: b.account_codes || [],
               // Phase 63: restore renewal month for annual subs.
               renewalMonth: b.renewal_month ?? null,
+              // Phase 64: restore per-account spend split.
+              accountSplits: (b.account_splits as Record<string, number> | null) ?? {},
               isActive: b.is_active !== false,
             }));
             setVendors(existingVendors);
@@ -545,6 +552,8 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             accountCodes: b.account_codes || [],
             // Phase 63: restore renewal month for annual subs.
             renewalMonth: b.renewal_month ?? null,
+            // Phase 64: restore per-account spend split.
+            accountSplits: (b.account_splits as Record<string, number> | null) ?? {},
           }));
           setVendors(existingVendors);
           // Phase 60/61: track restoration + detect either degraded shape
@@ -622,6 +631,8 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         accountCodes: v.accountCodes ?? analyzedAccountCodes,
         // Phase 63: pulled from analyze API for annual subs.
         renewalMonth: v.renewalMonth ?? null,
+        // Phase 64: per-account prior-FY $ amounts from the analyze step.
+        accountSplits: v.accountSplits ?? {},
       }));
 
       // Phase 51 (UX-S6-02): merge with existing vendor list so operator's
@@ -923,6 +934,8 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             // Phase 63: persist renewalMonth so native-rhythm display
             // survives a page refresh.
             renewalMonth: v.renewalMonth ?? null,
+            // Phase 64: persist per-account spend split.
+            accountSplits: v.accountSplits ?? {},
             isActive: true,
           })),
         }),
@@ -1196,9 +1209,36 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
               ) : (
                 <ul className="space-y-2">
                   {accounts.filter(a => a.isSelected).map(account => {
+                    /**
+                     * Phase 64 — exact per-account attribution using splits as
+                     * proportions. Preserves the sidebar's "monthly budget per
+                     * account" semantics (sum across accounts == total
+                     * monthlyBudget) while killing the double-count.
+                     *
+                     * For a vendor with monthlyBudget $100/mo and accountSplits
+                     * { A: $800, B: $300, C: $100 } (prior-FY $ amounts),
+                     * proportions are 67% / 25% / 8% — so $67 / $25 / $8 of the
+                     * monthly budget gets attributed to A / B / C respectively.
+                     * Old shape attributed $100 to EACH account (triple-counted).
+                     *
+                     * Legacy rows without accountSplits fall back to evenly
+                     * splitting monthlyBudget across the vendor's accountCodes.
+                     */
                     const total = vendors
                       .filter(v => v.isActive && v.accountCodes?.includes(account.accountCode))
-                      .reduce((sum, v) => sum + (v.monthlyBudget || 0), 0);
+                      .reduce((sum, v) => {
+                        const monthlyBudget = v.monthlyBudget || 0;
+                        const splits = v.accountSplits ?? {};
+                        const splitsTotal = Object.values(splits).reduce((s, n) => s + (n || 0), 0);
+                        if (splitsTotal > 0 && splits[account.accountCode] != null) {
+                          const proportion = splits[account.accountCode] / splitsTotal;
+                          return sum + monthlyBudget * proportion;
+                        }
+                        // Fallback: even-split monthlyBudget across the vendor's
+                        // accountCodes (no exact data, equal weighting).
+                        const codeCount = v.accountCodes?.length || 1;
+                        return sum + monthlyBudget / codeCount;
+                      }, 0);
                     return (
                       <li key={account.accountId} className="flex justify-between gap-2 text-sm">
                         <span className="truncate text-gray-700" title={account.accountName}>{account.accountName}</span>
@@ -1323,8 +1363,14 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             )}
             <p className="mt-3 text-xs text-white/60">
               {totals.vendorCount} active vendor{totals.vendorCount !== 1 ? 's' : ''}
+              {/* Phase 64: use absolute date windows instead of "prior FY" /
+                  "current FY YTD" — operators planning a future FY found
+                  the FY-relative labels confusing (which FY?). */}
               {!isManualMode && summary?.dateRange?.priorFY && (
-                <> · prior FY actual {formatCurrency(totals.priorFY)} ({summary.dateRange.priorFY.from} - {summary.dateRange.priorFY.to})</>
+                <> · {summary.dateRange.priorFY.from} – {summary.dateRange.priorFY.to}: <strong>{formatCurrency(totals.priorFY)}</strong> actual</>
+              )}
+              {!isManualMode && summary?.dateRange?.currentFY && totals.currentFY > 0 && (
+                <> · {summary.dateRange.currentFY.from} – {summary.dateRange.currentFY.to}: <strong>{formatCurrency(totals.currentFY)}</strong> YTD</>
               )}
             </p>
           </div>
