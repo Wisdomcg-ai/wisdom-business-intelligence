@@ -30,7 +30,7 @@ function makeFixture(): ForecastAssumptions {
         },
       ],
       seasonalityPattern: Array(12).fill(8.33),
-      seasonalitySource: 'override',
+      seasonalitySource: 'manual',
     },
     cogs: {
       lines: [
