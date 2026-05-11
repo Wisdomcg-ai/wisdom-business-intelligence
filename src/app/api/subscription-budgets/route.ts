@@ -27,6 +27,8 @@ interface SubscriptionBudgetInput {
   avgTransactionAmount?: number;
   lastTransactionDate?: string;
   accountCodes?: string[];
+  // Phase 63: calendar month (1-12) for annual subs only. Null otherwise.
+  renewalMonth?: number | null;
   isActive?: boolean;
   notes?: string;
 }
@@ -114,6 +116,7 @@ export async function POST(request: NextRequest) {
       avg_transaction_amount: b.avgTransactionAmount || 0,
       last_transaction_date: b.lastTransactionDate || null,
       account_codes: b.accountCodes || [],
+      renewal_month: b.renewalMonth ?? null,
       is_active: b.isActive !== false,
       notes: b.notes || null,
     }));

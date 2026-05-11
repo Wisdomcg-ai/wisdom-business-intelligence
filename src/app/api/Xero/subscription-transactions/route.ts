@@ -60,6 +60,10 @@ interface VendorSummary {
   // vendor only "belongs to" accounts where it actually has transactions,
   // not the full selected-account list).
   accountCodes: string[];
+  // Phase 63: calendar month (1-12) the vendor renews. Set for annual subs
+  // only — null for monthly / quarterly / ad-hoc. Derived from lastTransaction
+  // here; operator can override in the manual-add form.
+  renewalMonth: number | null;
 }
 
 // Parse Xero date format (can be ISO string or /Date(timestamp)/ format)
@@ -999,6 +1003,8 @@ export async function POST(request: NextRequest) {
           // transactions of this vendor (a Set deduplicates; Array.from
           // serializes for the response).
           accountCodes: [],
+          // Phase 63: set below if detectFrequency() flags this as annual.
+          renewalMonth: null,
         });
       }
 
@@ -1053,6 +1059,16 @@ export async function POST(request: NextRequest) {
       const { frequency, confidence } = detectFrequency(vendor.transactions);
       vendor.suggestedFrequency = frequency;
       vendor.confidence = confidence;
+
+      // Phase 63: for annual subs, capture the renewal month from the most
+      // recent transaction. Operator can override in the manual-add form. We
+      // intentionally use lastTransaction (not firstTransaction) — if a sub
+      // moves its renewal date, the most recent payment reflects the new
+      // schedule.
+      if (frequency === 'annual') {
+        const lastDate = parseXeroDate(vendor.lastTransaction);
+        vendor.renewalMonth = lastDate ? lastDate.getMonth() + 1 : null;
+      }
 
       // Calculate suggested monthly budget using prior FY for annual subscriptions
       vendor.suggestedMonthlyBudget = calculateSuggestedMonthlyBudget(
@@ -1283,6 +1299,8 @@ export async function POST(request: NextRequest) {
         // transactions (NOT the full selected-account list). The Step 5
         // sidebar uses this to attribute per-account totals correctly.
         accountCodes: v.accountCodes,
+        // Phase 63: renewal calendar month (1-12) for annual subs only.
+        renewalMonth: v.renewalMonth,
         // Include ALL transactions for review
         transactions: v.transactions.map(t => ({
           date: t.date,
