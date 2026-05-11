@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: Ready to execute
-last_updated: "2026-05-11T02:22:57.203Z"
+last_updated: "2026-05-11T02:30:44.160Z"
 last_activity: 2026-05-11
 progress:
   total_phases: 52
   completed_phases: 21
   total_plans: 121
-  completed_plans: 116
+  completed_plans: 117
 ---
 
 # Project State
@@ -17,7 +17,7 @@ progress:
 ## Current Position
 
 Phase: 59 (forecast-seed-from-prior-fy) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Phase: 46 (Server-Side Hardening) — **PARTIAL** (3/4 plans shipped). Plan 46-04 deferred ≥2026-05-10 per cooling period.
 Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-05-08). All 56 orphan-prone FKs covered: 50 SET NULL + 4 CASCADE + 2 RESTRICT/CASCADE. fk-policy.md is the authoritative reference going forward.
 Phase: 53 (Xero Connection Durability) — **COMPLETE** (5/5 plans shipped 2026-05-06). 53-01 server-side disconnect with dual-ID purge (PR #107). 53-03 token-rotation race holes closed + tightened deactivation policy (commit b5a233d, merged). 53-02 centralized Xero refresh through token-manager + deleted dead refresh-tokens route (PR #109). 53-04 proactive refresh cron at `0 */6 * * *` UTC (PR #110). **53-05 Sentry capture + coach dashboard health pill (PR opened 2026-05-06).** Durability story is whole — JDS root cause permanently closed.
