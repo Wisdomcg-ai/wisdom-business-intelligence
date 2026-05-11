@@ -221,6 +221,70 @@ function buildStartMonthOptions(fiscalYearStart: number): Array<{ value: string;
   return options;
 }
 
+/**
+ * Phase 61 (B3): tighten the default-on account selection.
+ *
+ * The chart-of-accounts API marks accounts as `isSuggested` using a
+ * permissive name match (any account whose name contains "subscription",
+ * "software", "hosting", etc.). On businesses with internal dev cost
+ * accounts (e.g. "Software Development - PK Costs"), this sweeps up
+ * accounts that hold contractor / labor payments — which then surface in
+ * Step 5 as "subscriptions" alongside the real SaaS vendors. JDS 2026-05-12
+ * showed the failure mode: top vendor "Cohaptic LLC" at $107k/yr is a
+ * contractor, not a subscription, but they were paid through the "Software
+ * Development" account that the suggester marked as on by default.
+ *
+ * This local blocklist runs AFTER the server suggestion and de-selects
+ * (but does NOT hide) accounts whose names match the blocklist. The
+ * operator can still manually re-select them in the chart picker.
+ */
+function looksLikeContractorAccount(accountName: string): boolean {
+  const n = (accountName || '').toLowerCase();
+  // Order matters only for readability — any match wins.
+  const blocklist = [
+    /\bdevelopment\b/,           // "Software Development - PK Costs"
+    /\bcontractor/,              // "Contractor Costs"
+    /\blabou?r\b/,               // "Labour Costs" / "Labor Costs"
+    /\bdept\b.*\bcosts?\b/,      // "Software Development Dept AH Costs"
+    /\bpurchases\b(?!.*software)/, // "Purchases - Hardware" (keep "Purchases - Software")
+  ];
+  return blocklist.some(re => re.test(n));
+}
+
+/**
+ * Phase 60 + 61: detect whether the loaded vendor list has a degraded
+ * account_codes shape that breaks per-account attribution + lazy-fetch.
+ *
+ * Two cases are flagged:
+ *   (a) Any vendor row with empty account_codes — pre-PR-#165 save-race
+ *       data; vendors saved before that fix never persisted any codes.
+ *   (b) Every vendor row shares the IDENTICAL set of account_codes — the
+ *       pre-PR-#168 shape where the analyze API copied the full
+ *       selected-account list onto every vendor. Sidebar then shows the
+ *       SAME total next to every account.
+ *
+ * Either case → operator should re-run subscription analyze. The amber
+ * banner at the top of Step 5 surfaces this state and offers a CTA.
+ */
+function isAccountCodesShapeDegraded(vendors: VendorBudget[]): boolean {
+  if (vendors.length === 0) return false;
+  // Case (a) — any empty array
+  if (vendors.some(v => !v.accountCodes || v.accountCodes.length === 0)) {
+    return true;
+  }
+  // Case (b) — every vendor shares the same (non-empty) codes. Sort each
+  // vendor's codes so order doesn't fool the comparison, then count
+  // distinct serialized forms.
+  const distinctShapes = new Set<string>();
+  for (const v of vendors) {
+    const sorted = [...(v.accountCodes ?? [])].sort();
+    distinctShapes.add(sorted.join(','));
+    if (distinctShapes.size > 1) return false; // diversity proven, healthy
+  }
+  // Only flag as degraded if there are multiple vendors but only one shape.
+  return vendors.length > 1 && distinctShapes.size === 1;
+}
+
 // Phase 57 T12 (B4): forwardRef so T13/B5's StepBar can call flushPendingSaves
 // before navigating away. Inner function signature unchanged from pre-T12.
 export const Step6Subscriptions = forwardRef<Step6SubscriptionsHandle, Step6SubscriptionsProps>(
@@ -337,7 +401,16 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         accountCode: acc.accountCode,
         accountName: acc.accountName,
         accountType: acc.accountType,
-        isSelected: acc.isSuggested,
+        // Phase 61 (B3): the API marks accounts as `isSuggested` based on
+        // name-matching against subscription keywords. That sweep is too
+        // permissive on businesses with software dev expense accounts —
+        // "Software Development - PK Costs" looked like a subscription
+        // account but actually contains contractor payments (JDS 2026-05-12:
+        // top vendor "Cohaptic LLC" at $107k/yr was a contractor swept up
+        // by these accounts). Filter the default-on selection against a
+        // tighter blocklist so coaches don't have to manually un-tick the
+        // dev / contractor / labor accounts every time.
+        isSelected: acc.isSuggested && !looksLikeContractorAccount(acc.accountName),
         isSuggested: acc.isSuggested,
       }));
 
@@ -362,7 +435,9 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
               monthlyBudget: b.monthly_budget || 0,
               priorFYAmount: b.last_12_months_spend || 0,
               priorFYCount: b.transaction_count || 0,
-              currentFYAmount: 0,
+              // Phase 61 (B2): restore from persisted column (default 0
+              // for legacy rows that predate the column).
+              currentFYAmount: b.current_fy_spend || 0,
               currentFYCount: 0,
               totalAmount: b.last_12_months_spend || 0,
               transactionCount: b.transaction_count || 0,
@@ -377,14 +452,16 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             setVendors(existingVendors);
             setPhase('review');
             setRestoredFromExistingBudgets(true);
-            // Phase 60: detect "broken" restoration — rows where account_codes
-            // is empty, which breaks lazy-fetch of transactions on expand. PR
-            // #165 fixed the save-path race; this surfaces the legacy data so
-            // the operator can re-analyze to backfill.
-            const anyEmptyAccountCodes = existingVendors.some(
-              v => !v.accountCodes || v.accountCodes.length === 0,
-            );
-            setHasBrokenAccountCodes(anyEmptyAccountCodes);
+            // Detect "broken" restoration. Two distinct degraded shapes both
+            // break per-account attribution + lazy-fetch:
+            //   (a) Phase 60: any row with empty account_codes (legacy /
+            //       PR #165-era save-race rows)
+            //   (b) Phase 61 (B1): every row carries the IDENTICAL set of
+            //       account_codes — the pre-PR-#168 "attach full selected
+            //       list to every vendor" shape. Sidebar shows same total
+            //       next to every account; lazy-fetch loads transactions
+            //       from every selected account, not just the vendor's own.
+            setHasBrokenAccountCodes(isAccountCodesShapeDegraded(existingVendors));
             console.log('[Subscriptions] Restored', existingVendors.length, 'saved budgets');
           }
         }
@@ -417,9 +494,10 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             totalAmount: b.last_12_months_spend || 0,
             avgAmount: b.avg_transaction_amount || b.monthly_budget || 0,
             transactionCount: b.transaction_count || 0,
-            priorFYAmount: 0,
+            priorFYAmount: b.last_12_months_spend || 0,
             priorFYCount: 0,
-            currentFYAmount: 0,
+            // Phase 61 (B2): restore persisted current-FY YTD spend.
+            currentFYAmount: b.current_fy_spend || 0,
             currentFYCount: 0,
             firstTransaction: '',
             lastTransaction: b.last_transaction_date || '',
@@ -432,11 +510,10 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             accountCodes: b.account_codes || [],
           }));
           setVendors(existingVendors);
-          // Phase 60: track restoration + detect broken account_codes
+          // Phase 60/61: track restoration + detect either degraded shape
+          // (empty account_codes OR all-vendors-share-identical-codes).
           setRestoredFromExistingBudgets(true);
-          setHasBrokenAccountCodes(
-            existingVendors.some(v => !v.accountCodes || v.accountCodes.length === 0),
-          );
+          setHasBrokenAccountCodes(isAccountCodesShapeDegraded(existingVendors));
         }
       }
     } catch (err) {
@@ -760,6 +837,9 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             frequency: v.frequency,
             monthlyBudget: v.monthlyBudget,
             last12MonthsSpend: v.totalAmount,
+            // Phase 61 (B2): persist current-FY YTD spend so it survives a
+            // page refresh. Without this, restoring from DB always shows $0.
+            currentFySpend: v.currentFYAmount,
             transactionCount: v.transactionCount,
             avgTransactionAmount: v.avgAmount,
             lastTransactionDate: v.lastTransaction || null,
