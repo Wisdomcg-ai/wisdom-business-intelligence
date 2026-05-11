@@ -64,6 +64,11 @@ interface VendorSummary {
   // only — null for monthly / quarterly / ad-hoc. Derived from lastTransaction
   // here; operator can override in the manual-add form.
   renewalMonth: number | null;
+  // Phase 64: per-account prior-FY $ amount for this vendor. Sidebar uses
+  // these exact splits instead of attributing the full monthlyBudget to
+  // every account in accountCodes (which double-counted multi-account
+  // vendors). Keyed by accountCode.
+  accountSplits: Record<string, number>;
 }
 
 // Parse Xero date format (can be ISO string or /Date(timestamp)/ format)
@@ -1005,6 +1010,10 @@ export async function POST(request: NextRequest) {
           accountCodes: [],
           // Phase 63: set below if detectFrequency() flags this as annual.
           renewalMonth: null,
+          // Phase 64: accumulated below from each transaction's accountCode +
+          // amount so the sidebar can attribute the vendor's spend to each
+          // account exactly (no double-counting for multi-account vendors).
+          accountSplits: {},
         });
       }
 
@@ -1019,6 +1028,16 @@ export async function POST(request: NextRequest) {
       // the sidebar would show the same total for every account.
       if (tx.accountCode && !vendor.accountCodes.includes(tx.accountCode)) {
         vendor.accountCodes.push(tx.accountCode);
+      }
+
+      // Phase 64: per-account amount accumulation. Only count prior-FY
+      // transactions in the split (sidebar shows annualized spend; current-FY
+      // YTD is partial and would skew the picture). For a vendor whose
+      // transactions span multiple accounts, this gives the sidebar an
+      // EXACT distribution instead of the "attribute full amount to each
+      // account" double-count.
+      if (tx.accountCode && tx.period === 'prior_fy') {
+        vendor.accountSplits[tx.accountCode] = (vendor.accountSplits[tx.accountCode] || 0) + tx.amount;
       }
 
       // Track by FY period
@@ -1301,6 +1320,12 @@ export async function POST(request: NextRequest) {
         accountCodes: v.accountCodes,
         // Phase 63: renewal calendar month (1-12) for annual subs only.
         renewalMonth: v.renewalMonth,
+        // Phase 64: per-account prior-FY $ amount keyed by accountCode. The
+        // sidebar uses this to attribute the vendor's spend exactly across
+        // accounts (avoids double-counting multi-account vendors).
+        accountSplits: Object.fromEntries(
+          Object.entries(v.accountSplits).map(([k, n]) => [k, Math.round((n as number) * 100) / 100]),
+        ),
         // Include ALL transactions for review
         transactions: v.transactions.map(t => ({
           date: t.date,
