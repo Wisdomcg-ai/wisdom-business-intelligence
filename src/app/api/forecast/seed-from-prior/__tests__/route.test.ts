@@ -73,41 +73,21 @@ let rpcSpy: ReturnType<typeof vi.fn>
 function makeSupabase(tables: TableMap, rpcResult: { data?: unknown; error?: unknown } = {}) {
   fromSpy = vi.fn((table: string) => {
     const tableResult: TableResult = tables[table] ?? { data: null }
+    const result = {
+      data: tableResult.data,
+      error: tableResult.error ?? null,
+      count: tableResult.count ?? null,
+    }
 
-    const builder: Record<string, unknown> = {}
-
-    const chain = () => builder
-
-    builder.select = vi.fn(chain)
-    builder.insert = vi.fn(chain)
-    builder.eq = vi.fn(chain)
-    builder.in = vi.fn(chain)
-    builder.order = vi.fn(chain)
-    builder.limit = vi.fn(chain)
-    builder.gt = vi.fn(chain)
-
-    // update returns a new builder that supports .eq() chained calls and resolves
     updateSpy = vi.fn(() => {
       const updateBuilder: Record<string, unknown> = {}
       updateBuilder.eq = vi.fn(() => Promise.resolve({ data: null, error: null }))
       return updateBuilder
     })
-    builder.update = updateSpy
 
-    // maybeSingle resolves with { data, error }
-    builder.maybeSingle = vi.fn(() =>
-      Promise.resolve({
-        data: tableResult.data,
-        error: tableResult.error ?? null,
-        count: tableResult.count ?? null,
-      }),
-    )
-
-    // For count queries: head:true path — maybeSingle resolves with count
-    // Attach count to the builder itself for head queries
-    builder.count = tableResult.count ?? null
-
-    return builder
+    const b = makeThenableBuilder(result)
+    b.update = updateSpy
+    return b
   })
 
   rpcSpy = vi.fn(() => Promise.resolve({ data: rpcResult.data ?? null, error: rpcResult.error ?? null }))
@@ -182,6 +162,26 @@ function makeRequest(body: Record<string, unknown> = {}) {
   })
 }
 
+// Helper: make a thenable builder that resolves with `result` when awaited
+// and still supports chaining calls before the await.
+function makeThenableBuilder(result: unknown): Record<string, unknown> {
+  const b: Record<string, unknown> = {}
+  const chain = () => b
+  b.select = vi.fn(chain)
+  b.insert = vi.fn(chain)
+  b.eq = vi.fn(chain)
+  b.in = vi.fn(chain)
+  b.order = vi.fn(chain)
+  b.limit = vi.fn(chain)
+  b.gt = vi.fn(chain)
+  b.maybeSingle = vi.fn(() => Promise.resolve(result))
+  // Make the builder itself awaitable (thenable) for `const { count } = await builder`
+  ;(b as any).then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
+    Promise.resolve(result).then(resolve, reject)
+  }
+  return b
+}
+
 // Helper: build a supabase mock set up for the happy-path success scenario
 // Each call to .from() must return the right table data in the right order.
 // Because the route calls .from('financial_forecasts') twice (prior + target)
@@ -203,48 +203,34 @@ function makeSuccessSupabase(overrides: {
 
   const supabase: Record<string, unknown> = {}
   fromSpy = vi.fn((table: string) => {
-    const builder: Record<string, unknown> = {}
-    const chain = () => builder
-    builder.select = vi.fn(chain)
-    builder.insert = vi.fn(chain)
-    builder.in = vi.fn(chain)
-    builder.order = vi.fn(chain)
-    builder.limit = vi.fn(chain)
-    builder.gt = vi.fn(chain)
-
     updateSpy = vi.fn(() => {
       const updateBuilder: Record<string, unknown> = {}
       updateBuilder.eq = vi.fn(() => Promise.resolve({ data: null, error: updateError ?? null }))
       return updateBuilder
     })
-    builder.update = updateSpy
 
     if (table === 'businesses') {
-      builder.eq = vi.fn(chain)
-      builder.maybeSingle = vi.fn(() => Promise.resolve({ data: { id: 'biz-1', owner_id: 'user-1' }, error: null }))
+      const b = makeThenableBuilder({ data: { id: 'biz-1', owner_id: 'user-1' }, error: null })
+      b.update = updateSpy
+      return b
     } else if (table === 'financial_forecasts') {
-      builder.eq = vi.fn(chain)
       forecastCallCount++
       const callNum = forecastCallCount
-      builder.maybeSingle = vi.fn(() => {
-        if (callNum === 1) {
-          return Promise.resolve({ data: priorForecast, error: null })
-        } else {
-          return Promise.resolve({ data: targetForecast, error: null })
-        }
-      })
+      const result = callNum === 1
+        ? { data: priorForecast, error: null }
+        : { data: targetForecast, error: null }
+      const b = makeThenableBuilder(result)
+      b.update = updateSpy
+      return b
     } else if (table === 'forecast_pl_lines') {
-      builder.eq = vi.fn(chain)
-      // count query: head=true — maybeSingle resolves with count
-      builder.maybeSingle = vi.fn(() =>
-        Promise.resolve({ data: null, error: null, count: targetPlLineCount }),
-      )
+      // The route does: const { count } = await supabase.from('forecast_pl_lines').select(...).eq(...)
+      // No .maybeSingle() — awaited directly. Use a thenable builder.
+      return makeThenableBuilder({ data: null, error: null, count: targetPlLineCount })
     } else {
-      builder.eq = vi.fn(chain)
-      builder.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }))
+      const b = makeThenableBuilder({ data: null, error: null })
+      b.update = updateSpy
+      return b
     }
-
-    return builder
   })
 
   rpcSpy = vi.fn(() => Promise.resolve({ data: null, error: rpcError ?? null }))
@@ -338,27 +324,23 @@ describe('A: Auth gate', () => {
 
   it('proceeds when user IS the owner (skips team/role checks)', async () => {
     // Owner path: should get past auth and hit the 404 for no prior forecast
-    const supabase = makeSuccessSupabase()
-    // Override so prior forecast is missing (to stop the request early after auth)
-    let fCallCount = 0
+    const supabase: Record<string, unknown> = {}
+    supabase.auth = { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null }) }
+    supabase.rpc = vi.fn(() => Promise.resolve({ data: null, error: null }))
     ;(supabase as any).from = vi.fn((table: string) => {
-      const b: Record<string, unknown> = {}
-      const chain = () => b
-      b.select = vi.fn(chain)
-      b.eq = vi.fn(chain)
-      b.in = vi.fn(chain)
-      b.order = vi.fn(chain)
-      b.limit = vi.fn(chain)
+      if (table === 'forecast_pl_lines') {
+        return makeThenableBuilder({ data: null, error: null, count: 0 })
+      }
+      const b = makeThenableBuilder({ data: null, error: null })
       b.update = vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ error: null })) }))
-      b.maybeSingle = vi.fn(() => {
-        if (table === 'businesses') return Promise.resolve({ data: { id: 'biz-1', owner_id: 'user-1' }, error: null })
-        if (table === 'financial_forecasts') {
-          fCallCount++
-          if (fCallCount === 1) return Promise.resolve({ data: null, error: null }) // no prior
-          return Promise.resolve({ data: null, error: null })
+      if (table === 'businesses') {
+        const result = { data: { id: 'biz-1', owner_id: 'user-1' }, error: null }
+        b.maybeSingle = vi.fn(() => Promise.resolve(result))
+        ;(b as any).then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
+          Promise.resolve(result).then(resolve, reject)
         }
-        return Promise.resolve({ data: null, error: null })
-      })
+      }
+      // financial_forecasts: return null (no prior) to stop early
       return b
     })
     createRouteHandlerClientMock.mockResolvedValue(supabase)
@@ -412,23 +394,28 @@ describe('C: Prior forecast lookup', () => {
     sb.auth = { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null }) }
     sb.rpc = vi.fn(() => Promise.resolve({ data: null, error: null }))
     sb.from = vi.fn((table: string) => {
-      const b: Record<string, unknown> = {}
-      const chain = () => b
-      b.select = vi.fn(chain)
-      b.eq = vi.fn(chain)
-      b.in = vi.fn(chain)
-      b.order = vi.fn(chain)
-      b.limit = vi.fn(chain)
+      if (table === 'forecast_pl_lines') {
+        return makeThenableBuilder({ data: null, error: null, count: 0 })
+      }
+      const b = makeThenableBuilder({ data: null, error: null })
       b.update = vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ error: null })) }))
-      b.maybeSingle = vi.fn(() => {
-        if (table === 'businesses') return Promise.resolve({ data: { id: 'biz-1', owner_id: 'user-1' }, error: null })
-        if (table === 'financial_forecasts') {
-          fCallCount++
-          if (fCallCount === 1) return Promise.resolve({ data: forecastData, error: null }) // prior
-          return Promise.resolve({ data: null, error: null })
+      if (table === 'businesses') {
+        const result = { data: { id: 'biz-1', owner_id: 'user-1' }, error: null }
+        b.maybeSingle = vi.fn(() => Promise.resolve(result))
+        ;(b as any).then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
+          Promise.resolve(result).then(resolve, reject)
         }
-        return Promise.resolve({ data: null, error: null })
-      })
+      } else if (table === 'financial_forecasts') {
+        fCallCount++
+        const callNum = fCallCount
+        const result = callNum === 1
+          ? { data: forecastData, error: null }
+          : { data: null, error: null }
+        b.maybeSingle = vi.fn(() => Promise.resolve(result))
+        ;(b as any).then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
+          Promise.resolve(result).then(resolve, reject)
+        }
+      }
       return b
     })
     return sb
@@ -463,23 +450,28 @@ describe('D: Target forecast lookup', () => {
     sb.auth = { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null }) }
     sb.rpc = vi.fn(() => Promise.resolve({ data: null, error: null }))
     sb.from = vi.fn((table: string) => {
-      const b: Record<string, unknown> = {}
-      const chain = () => b
-      b.select = vi.fn(chain)
-      b.eq = vi.fn(chain)
-      b.in = vi.fn(chain)
-      b.order = vi.fn(chain)
-      b.limit = vi.fn(chain)
+      if (table === 'forecast_pl_lines') {
+        return makeThenableBuilder({ data: null, error: null, count: 0 })
+      }
+      const b = makeThenableBuilder({ data: null, error: null })
       b.update = vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ error: null })) }))
-      b.maybeSingle = vi.fn(() => {
-        if (table === 'businesses') return Promise.resolve({ data: { id: 'biz-1', owner_id: 'user-1' }, error: null })
-        if (table === 'financial_forecasts') {
-          fCallCount++
-          if (fCallCount === 1) return Promise.resolve({ data: PRIOR_FORECAST, error: null }) // prior
-          return Promise.resolve({ data: null, error: null }) // target missing
+      if (table === 'businesses') {
+        const result = { data: { id: 'biz-1', owner_id: 'user-1' }, error: null }
+        b.maybeSingle = vi.fn(() => Promise.resolve(result))
+        ;(b as any).then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
+          Promise.resolve(result).then(resolve, reject)
         }
-        return Promise.resolve({ data: null, error: null })
-      })
+      } else if (table === 'financial_forecasts') {
+        fCallCount++
+        const callNum = fCallCount
+        const result = callNum === 1
+          ? { data: PRIOR_FORECAST, error: null }  // prior exists
+          : { data: null, error: null }             // target missing
+        b.maybeSingle = vi.fn(() => Promise.resolve(result))
+        ;(b as any).then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
+          Promise.resolve(result).then(resolve, reject)
+        }
+      }
       return b
     })
     createRouteHandlerClientMock.mockResolvedValue(sb)
@@ -497,39 +489,34 @@ describe('D: Target forecast lookup', () => {
 describe('E: Idempotency', () => {
   function makeIdempotencySupabase(targetAssumptions: unknown, plLineCount: number) {
     let fCallCount = 0
-    const plLineBuilder: Record<string, unknown> = {}
-    const plLineChain = () => plLineBuilder
-    plLineBuilder.select = vi.fn(plLineChain)
-    plLineBuilder.eq = vi.fn(plLineChain)
-    plLineBuilder.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null, count: plLineCount }))
-
     const rpc = vi.fn(() => Promise.resolve({ data: null, error: null }))
 
     const sb: Record<string, unknown> = {}
     sb.auth = { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null }) }
     sb.rpc = rpc
     sb.from = vi.fn((table: string) => {
-      if (table === 'forecast_pl_lines') return plLineBuilder
-      const b: Record<string, unknown> = {}
-      const chain = () => b
-      b.select = vi.fn(chain)
-      b.eq = vi.fn(chain)
-      b.in = vi.fn(chain)
-      b.order = vi.fn(chain)
-      b.limit = vi.fn(chain)
+      if (table === 'forecast_pl_lines') {
+        // Route awaits the builder directly (no .maybeSingle) — use thenable
+        return makeThenableBuilder({ data: null, error: null, count: plLineCount })
+      }
+      const b = makeThenableBuilder({ data: null, error: null })
       b.update = vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ error: null })) }))
-      b.maybeSingle = vi.fn(() => {
-        if (table === 'businesses') return Promise.resolve({ data: { id: 'biz-1', owner_id: 'user-1' }, error: null })
-        if (table === 'financial_forecasts') {
-          fCallCount++
-          if (fCallCount === 1) return Promise.resolve({ data: PRIOR_FORECAST, error: null })
-          return Promise.resolve({
-            data: { ...TARGET_FORECAST, assumptions: targetAssumptions },
-            error: null,
-          })
+      if (table === 'businesses') {
+        b.maybeSingle = vi.fn(() => Promise.resolve({ data: { id: 'biz-1', owner_id: 'user-1' }, error: null }))
+        ;(b as any).then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
+          Promise.resolve({ data: { id: 'biz-1', owner_id: 'user-1' }, error: null }).then(resolve, reject)
         }
-        return Promise.resolve({ data: null, error: null })
-      })
+      } else if (table === 'financial_forecasts') {
+        fCallCount++
+        const callNum = fCallCount
+        const result = callNum === 1
+          ? { data: PRIOR_FORECAST, error: null }
+          : { data: { ...TARGET_FORECAST, assumptions: targetAssumptions }, error: null }
+        b.maybeSingle = vi.fn(() => Promise.resolve(result))
+        ;(b as any).then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
+          Promise.resolve(result).then(resolve, reject)
+        }
+      }
       return b
     })
     return { sb, rpc }
@@ -663,7 +650,7 @@ describe('G: Failure paths', () => {
     const Sentry = await import('@sentry/nextjs')
     expect((Sentry.captureException as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(1)
     const sentryCall = (Sentry.captureException as ReturnType<typeof vi.fn>).mock.calls.find(
-      (c: unknown[]) => (c[1] as Record<string, unknown>)?.tags?.route === 'forecast/seed-from-prior',
+      (c: unknown[]) => (c[1] as { tags?: { route?: string } })?.tags?.route === 'forecast/seed-from-prior',
     )
     expect(sentryCall).toBeDefined()
   })
