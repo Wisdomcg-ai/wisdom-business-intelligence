@@ -764,18 +764,19 @@ function TeamTimelineSummary({
     : 0;
 
   return (
-    <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl shadow-xl overflow-hidden">
-      {/* Header with gradient accent */}
-      <div className="relative px-5 py-4 border-b border-white/10">
+    <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl shadow overflow-hidden">
+      {/* Header with gradient accent — compact variant (Matt felt the
+          original was overpowering for a summary block). */}
+      <div className="relative px-4 py-2.5 border-b border-white/10">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20" />
         <div className="relative flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
-              <Users className="w-5 h-5 text-white" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow">
+              <Users className="w-3.5 h-3.5 text-white" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-white">Team Evolution</h3>
-              <p className="text-xs text-slate-400">{duration}-year workforce plan</p>
+              <h3 className="text-sm font-semibold text-white">Team Evolution</h3>
+              <p className="text-[11px] text-slate-400">{duration}-year workforce plan</p>
             </div>
           </div>
           {duration > 1 && (
@@ -790,9 +791,10 @@ function TeamTimelineSummary({
         </div>
       </div>
 
-      {/* Year Cards - Premium Design */}
-      <div className="p-5">
-        <div className="grid grid-cols-3 gap-4">
+      {/* Year Cards - compact variant. Reduced vertical rhythm so the
+          summary doesn't dominate the page when there's a 3-year forecast. */}
+      <div className="p-3">
+        <div className="grid grid-cols-3 gap-3">
           {yearData.map((year, idx) => {
             const isCurrentYear = year.year === 1;
             const prevYear = idx > 0 ? yearData[idx - 1] : null;
@@ -801,15 +803,15 @@ function TeamTimelineSummary({
             return (
               <div
                 key={year.year}
-                className={`relative p-4 rounded-xl transition-all duration-300 ${
+                className={`relative p-2.5 rounded-lg transition-all ${
                   isCurrentYear
-                    ? 'bg-gradient-to-br from-blue-600 to-blue-700 shadow-lg shadow-blue-600/25'
+                    ? 'bg-gradient-to-br from-blue-600 to-blue-700 shadow shadow-blue-600/20'
                     : 'bg-white/5 hover:bg-white/10 border border-white/10'
                 }`}
               >
                 {/* Year Badge */}
-                <div className="flex items-center justify-between mb-3">
-                  <span className={`text-[11px] font-bold uppercase tracking-wider ${
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${
                     isCurrentYear ? 'text-blue-200' : 'text-slate-500'
                   }`}>
                     FY{fiscalYear + year.year - 1}
@@ -834,20 +836,26 @@ function TeamTimelineSummary({
                   )}
                 </div>
 
-                {/* Main Metric - Headcount */}
-                <div className="flex items-end gap-2 mb-1">
-                  <span className={`text-3xl font-bold tabular-nums ${
-                    isCurrentYear ? 'text-white' : 'text-white'
-                  }`}>
+                {/* Headcount + FTE on a single line to halve the height. */}
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold tabular-nums text-white leading-none">
                     {year.headcount}
                   </span>
-                  <span className={`text-sm font-medium mb-1 ${
+                  <span className={`text-xs font-medium ${
                     isCurrentYear ? 'text-blue-200' : 'text-slate-400'
                   }`}>
                     team
                   </span>
+                  <span
+                    className={`text-[11px] tabular-nums cursor-help ${
+                      isCurrentYear ? 'text-blue-100' : 'text-slate-400'
+                    }`}
+                    title="Full-Time Equivalent: max 1.0 per person, pro-rated by months worked (e.g., a 6-month hire counts as 0.5 FTE)."
+                  >
+                    · {year.fte} FTE
+                  </span>
                   {!isCurrentYear && headcountChange !== 0 && (
-                    <span className={`text-xs font-semibold mb-1 ${
+                    <span className={`text-[11px] font-semibold ml-auto ${
                       headcountChange > 0 ? 'text-emerald-400' : 'text-red-400'
                     }`}>
                       {headcountChange > 0 ? '+' : ''}{headcountChange}
@@ -855,46 +863,33 @@ function TeamTimelineSummary({
                   )}
                 </div>
 
-                {/* FTE Badge — capped at 1.0 per person and pro-rated by months
-                    worked, so FTE ≤ headcount. Tooltip surfaces the formula. */}
-                <div
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium mb-3 cursor-help ${
-                    isCurrentYear ? 'bg-white/20 text-white' : 'bg-white/10 text-slate-300'
-                  }`}
-                  title="Full-Time Equivalent: max 1.0 per person, pro-rated by months worked (e.g., a 6-month hire counts as 0.5 FTE)."
-                >
-                  {year.fte} FTE
-                </div>
-
-                {/* Cost */}
-                <div className={`text-sm font-semibold tabular-nums ${
-                  isCurrentYear ? 'text-white' : 'text-white'
-                }`}>
-                  {formatCurrency(year.totalCost)}
-                </div>
-                <div className={`text-[10px] uppercase tracking-wide ${
-                  isCurrentYear ? 'text-blue-200' : 'text-slate-500'
-                }`}>
-                  total cost
+                {/* Cost row */}
+                <div className="mt-2 flex items-baseline justify-between">
+                  <span className={`text-[10px] uppercase tracking-wide ${
+                    isCurrentYear ? 'text-blue-200' : 'text-slate-500'
+                  }`}>
+                    Total cost
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums text-white">
+                    {formatCurrency(year.totalCost)}
+                  </span>
                 </div>
 
                 {/* Revenue per FTE metric */}
                 {year.revenue > 0 && (
-                  <div className={`mt-3 pt-3 border-t ${
+                  <div className={`mt-1.5 flex items-baseline justify-between border-t pt-1.5 ${
                     isCurrentYear ? 'border-white/20' : 'border-white/10'
                   }`}>
-                    <div className="flex items-center justify-between">
-                      <span className={`text-[10px] uppercase tracking-wide ${
-                        isCurrentYear ? 'text-blue-200' : 'text-slate-500'
-                      }`}>
-                        Rev/FTE
-                      </span>
-                      <span className={`text-sm font-bold tabular-nums ${
-                        isCurrentYear ? 'text-white' : 'text-emerald-400'
-                      }`}>
-                        {formatCurrency(year.revenuePerFTE)}
-                      </span>
-                    </div>
+                    <span className={`text-[10px] uppercase tracking-wide ${
+                      isCurrentYear ? 'text-blue-200' : 'text-slate-500'
+                    }`}>
+                      Rev/FTE
+                    </span>
+                    <span className={`text-sm font-bold tabular-nums ${
+                      isCurrentYear ? 'text-white' : 'text-emerald-400'
+                    }`}>
+                      {formatCurrency(year.revenuePerFTE)}
+                    </span>
                   </div>
                 )}
               </div>
@@ -904,7 +899,7 @@ function TeamTimelineSummary({
 
         {/* Growth Summary Bar - Only show for multi-year */}
         {duration > 1 && (
-          <div className="mt-4 p-3 rounded-xl bg-white/5 border border-white/10">
+          <div className="mt-3 p-2 rounded-lg bg-white/5 border border-white/10">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-6">
                 <div className="flex items-center gap-2">
@@ -1216,6 +1211,28 @@ function TeamPlanningOverview({
     return getFiscalYear(date, DEFAULT_YEAR_START_MONTH);
   };
 
+  // Same definitions as the main Step4Team component (lines 636–650) — kept
+  // local to this scope since calculateFTEContribution needs them for
+  // pro-rating partial-year staff in the Planning Overview rollup.
+  const getMonthsInFY = (startMonth: string, fy: number): number => {
+    const startFY = getFYFromMonth(startMonth);
+    if (startFY > fy) return 0;
+    if (startFY < fy) return 12;
+    const month = parseInt(startMonth.split('-')[1]);
+    const ysm = DEFAULT_YEAR_START_MONTH;
+    const fyMonthIdx = getFiscalMonthIndex(month, ysm);
+    return 12 - fyMonthIdx;
+  };
+
+  const getMonthsBeforeDeparture = (endMonth: string, fy: number): number => {
+    const endFY = getFYFromMonth(endMonth);
+    if (endFY > fy) return 12;
+    if (endFY < fy) return 0;
+    const month = parseInt(endMonth.split('-')[1]);
+    const ysm = DEFAULT_YEAR_START_MONTH;
+    return getFiscalMonthIndex(month, ysm) + 1;
+  };
+
   // Calculate actual headcount per year
   const calculateActualHeadcount = (yearNum: 1 | 2 | 3): number => {
     const targetFY = fiscalYear + yearNum - 1;
@@ -1248,30 +1265,38 @@ function TeamPlanningOverview({
     return headcount;
   };
 
-  // Calculate FTE per year
-  // For contractors, only include if includeInHeadcount is true
+  // Calculate FTE per year using the capped + pro-rated formula so total
+  // FTE is always ≤ headcount (matches the Team Evolution card after
+  // PR #180; previously this rollup still used the uncapped hours/38
+  // ratio, which is why Matt saw FTE > headcount on the Planning Overview
+  // table even after #180 shipped).
+  // For contractors, only include if includeInHeadcount is true.
   const calculateActualFTE = (yearNum: 1 | 2 | 3): number => {
     const targetFY = fiscalYear + yearNum - 1;
     let totalFTE = 0;
 
     teamMembers.forEach(member => {
       const departure = departures.find(d => d.teamMemberId === member.id);
+      let monthsWorked = 12;
       if (departure) {
         const departureFY = getFYFromMonth(departure.endMonth);
-        if (departureFY <= targetFY) return;
+        if (departureFY < targetFY) return;
+        if (departureFY === targetFY) {
+          monthsWorked = getMonthsBeforeDeparture(departure.endMonth, targetFY);
+        }
       }
-      // For contractors, check includeInHeadcount flag
       if (member.type === 'contractor' && !member.includeInHeadcount) return;
-      totalFTE += calculateFTE(member.hoursPerWeek);
+      if (monthsWorked <= 0) return;
+      totalFTE += calculateFTEContribution(member.hoursPerWeek, monthsWorked);
     });
 
     newHires.forEach(hire => {
       const hireFY = getFYFromMonth(hire.startMonth);
-      if (hireFY <= targetFY) {
-        // For contractors, check includeInHeadcount flag
-        if (hire.type === 'contractor' && !hire.includeInHeadcount) return;
-        totalFTE += calculateFTE(hire.hoursPerWeek);
-      }
+      if (hireFY > targetFY) return;
+      if (hire.type === 'contractor' && !hire.includeInHeadcount) return;
+      const monthsWorked = getMonthsInFY(hire.startMonth, targetFY);
+      if (monthsWorked <= 0) return;
+      totalFTE += calculateFTEContribution(hire.hoursPerWeek, monthsWorked);
     });
 
     return Math.round(totalFTE * 10) / 10;
@@ -1561,7 +1586,7 @@ function YearFilterCards({
         }
         if (monthsWorked > 0) {
           headcount++;
-          totalFTE += STANDARD_HOURS > 0 ? Math.round((member.hoursPerWeek / STANDARD_HOURS) * 100) / 100 : 0;
+          totalFTE += calculateFTEContribution(member.hoursPerWeek, monthsWorked);
           totalCost += ((salary + superAmount) * monthsWorked) / 12;
         }
       }
@@ -1575,7 +1600,7 @@ function YearFilterCards({
         const monthsWorked = getMonthsInFY(hire.startMonth, targetFY);
         if (monthsWorked > 0) {
           headcount++;
-          totalFTE += STANDARD_HOURS > 0 ? Math.round((hire.hoursPerWeek / STANDARD_HOURS) * 100) / 100 : 0;
+          totalFTE += calculateFTEContribution(hire.hoursPerWeek, monthsWorked);
           totalCost += ((salary + superAmount) * monthsWorked) / 12;
         }
       }
@@ -3769,34 +3794,41 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
         onUpdateHeadcountTarget={handleUpdateHeadcountTarget}
       />
 
-      {/* Phase 51 (UX-S4-03): business-level default pay frequency.
-          Pure persistence — Phase 52 wires this into Xero PayrollCalendar
-          auto-fill + cashflow distribution. Annual salary calculations are
-          unchanged in Phase 51. Per-employee row dropdowns inherit this when
-          their own payFrequency is undefined. */}
-      <div className="bg-white rounded-xl border border-gray-200 px-6 py-3 flex items-center gap-3">
-        <label
-          htmlFor="default-pay-frequency"
-          className="text-sm font-medium text-gray-700"
-        >
-          Default pay frequency:
-        </label>
-        <select
-          id="default-pay-frequency"
-          value={state.defaultPayFrequency ?? 'monthly'}
-          onChange={(e) =>
-            actions.setDefaultPayFrequency(e.target.value as PayFrequency)
-          }
-          aria-label="Default pay frequency"
-          className="px-2 py-1 text-sm border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
-        >
-          <option value="weekly">Weekly</option>
-          <option value="fortnightly">Fortnightly</option>
-          <option value="monthly">Monthly</option>
-        </select>
-        <span className="text-xs text-gray-500">
-          Inherited by employees without an explicit override. Affects cashflow timing only — annual salary unchanged.
-        </span>
+      {/* Phase 51 (UX-S4-03) — business-level default pay frequency.
+          Visually elevated (icon, brand-tinted background, larger dropdown)
+          so operators don't skip it when first setting up the wizard. Per-
+          employee row dropdowns inherit this when their own payFrequency is
+          undefined; the cashflow tab uses it for payment timing. */}
+      <div className="bg-brand-navy/5 rounded-xl border-2 border-brand-navy/20 px-5 py-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2.5 flex-shrink-0">
+            <div className="w-9 h-9 rounded-lg bg-brand-navy text-white flex items-center justify-center">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <label
+              htmlFor="default-pay-frequency"
+              className="text-base font-semibold text-gray-900"
+            >
+              Default pay frequency
+            </label>
+          </div>
+          <select
+            id="default-pay-frequency"
+            value={state.defaultPayFrequency ?? 'monthly'}
+            onChange={(e) =>
+              actions.setDefaultPayFrequency(e.target.value as PayFrequency)
+            }
+            aria-label="Default pay frequency"
+            className="px-3 py-2 text-sm font-semibold bg-white border-2 border-brand-navy/30 rounded-lg focus:border-brand-navy focus:ring-2 focus:ring-brand-navy/20 hover:border-brand-navy/50 transition-colors"
+          >
+            <option value="weekly">Weekly</option>
+            <option value="fortnightly">Fortnightly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+          <span className="text-xs text-gray-600 flex-1 min-w-0">
+            Inherited by employees without an override. Affects cashflow timing only — annual salary unchanged.
+          </span>
+        </div>
       </div>
 
       {/* ─── Phase 55-01: Year-card filter ──────────────────────────────────
