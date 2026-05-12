@@ -1619,7 +1619,7 @@ function YearFilterCards({
   const slots: (1 | 2 | 3)[] = [1, 2, 3];
 
   return (
-    <div className="grid grid-cols-3 gap-4" data-testid="year-filter-cards">
+    <div className="grid grid-cols-3 gap-3" data-testid="year-filter-cards">
       {slots.map((yearNum) => {
         const data = yearData.find((y) => y.year === yearNum);
         const inRange = !!data && yearNum <= duration;
@@ -1631,20 +1631,23 @@ function YearFilterCards({
           return (
             <div
               key={yearNum}
-              className="p-4 rounded-xl border border-dashed border-gray-200 bg-gray-50/50 text-gray-400 text-sm"
+              className="p-2.5 rounded-lg border border-dashed border-gray-200 bg-gray-50/50 text-gray-400 text-xs"
               aria-hidden="true"
             >
-              <div className="text-[11px] font-bold uppercase tracking-wider">FY{fiscalYear + yearNum - 1}</div>
-              <div className="mt-2 text-xs">Outside forecast duration</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider">FY{fiscalYear + yearNum - 1}</div>
+              <div className="mt-1 text-[11px]">Outside forecast duration</div>
             </div>
           );
         }
 
-        const baseClasses = 'relative p-4 rounded-xl transition-all duration-200 text-left w-full cursor-pointer';
+        // Compact variant — Matt: the cards below the pay-frequency setting
+        // were too tall. Headcount + FTE collapsed onto one line; cost line
+        // reduced to a single row with "Total cost: $X" inline.
+        const baseClasses = 'relative p-2.5 rounded-lg transition-all duration-200 text-left w-full cursor-pointer';
         const palette = isCurrentYear
-          ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-md'
+          ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow'
           : 'bg-white border border-gray-200 hover:bg-gray-50';
-        const selectedRing = isSelected ? 'ring-2 ring-blue-400 ring-offset-2' : '';
+        const selectedRing = isSelected ? 'ring-2 ring-blue-400 ring-offset-1' : '';
 
         return (
           <button
@@ -1657,25 +1660,27 @@ function YearFilterCards({
             data-testid={`year-card-${yearNum}`}
             className={`${baseClasses} ${palette} ${selectedRing}`}
           >
-            <div className={`text-[11px] font-bold uppercase tracking-wider ${isCurrentYear ? 'text-blue-100' : 'text-gray-500'}`}>
+            <div className={`text-[10px] font-bold uppercase tracking-wider ${isCurrentYear ? 'text-blue-100' : 'text-gray-500'}`}>
               FY{fiscalYear + yearNum - 1}
             </div>
-            <div className="mt-2 flex items-end gap-2">
-              <span className={`text-3xl font-bold tabular-nums ${isCurrentYear ? 'text-white' : 'text-gray-900'}`}>
+            <div className="mt-1 flex items-baseline gap-1.5">
+              <span className={`text-2xl font-bold tabular-nums leading-none ${isCurrentYear ? 'text-white' : 'text-gray-900'}`}>
                 {data!.headcount}
               </span>
-              <span className={`text-sm mb-1 ${isCurrentYear ? 'text-blue-100' : 'text-gray-500'}`}>
+              <span className={`text-xs ${isCurrentYear ? 'text-blue-100' : 'text-gray-500'}`}>
                 team
               </span>
+              <span className={`text-[11px] tabular-nums ${isCurrentYear ? 'text-blue-100' : 'text-gray-500'}`}>
+                · {data!.fte} FTE
+              </span>
             </div>
-            <div className={`mt-1 text-xs ${isCurrentYear ? 'text-blue-100' : 'text-gray-500'}`}>
-              {data!.fte} FTE
-            </div>
-            <div className={`mt-2 text-sm font-semibold tabular-nums ${isCurrentYear ? 'text-white' : 'text-gray-900'}`}>
-              {formatCurrency(data!.totalCost)}
-            </div>
-            <div className={`text-[10px] uppercase tracking-wide ${isCurrentYear ? 'text-blue-100' : 'text-gray-500'}`}>
-              total cost
+            <div className="mt-1.5 flex items-baseline justify-between">
+              <span className={`text-[10px] uppercase tracking-wide ${isCurrentYear ? 'text-blue-100' : 'text-gray-500'}`}>
+                Total cost
+              </span>
+              <span className={`text-sm font-semibold tabular-nums ${isCurrentYear ? 'text-white' : 'text-gray-900'}`}>
+                {formatCurrency(data!.totalCost)}
+              </span>
             </div>
           </button>
         );
@@ -3795,38 +3800,64 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
       />
 
       {/* Phase 51 (UX-S4-03) — business-level default pay frequency.
-          Visually elevated (icon, brand-tinted background, larger dropdown)
-          so operators don't skip it when first setting up the wizard. Per-
-          employee row dropdowns inherit this when their own payFrequency is
-          undefined; the cashflow tab uses it for payment timing. */}
-      <div className="bg-brand-navy/5 rounded-xl border-2 border-brand-navy/20 px-5 py-4">
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-2.5 flex-shrink-0">
-            <div className="w-9 h-9 rounded-lg bg-brand-navy text-white flex items-center justify-center">
-              <Calendar className="w-4 h-4" />
+          Segmented-button design (was a plain dropdown) so the three
+          choices are visible at once and the current value is unmissable.
+          Left-accent stripe + gradient tint pulls the operator's eye to
+          this setting on first visit (Matt: "needs to stand out more"). */}
+      <div className="bg-gradient-to-r from-brand-navy/10 via-brand-navy/5 to-transparent rounded-xl border border-brand-navy/20 border-l-4 border-l-brand-navy px-5 py-4 shadow-sm">
+        <div className="flex items-center gap-5 flex-wrap">
+          <div className="flex items-start gap-3 flex-shrink-0">
+            <div className="w-10 h-10 rounded-lg bg-brand-navy text-white flex items-center justify-center flex-shrink-0">
+              <Calendar className="w-5 h-5" />
             </div>
-            <label
-              htmlFor="default-pay-frequency"
-              className="text-base font-semibold text-gray-900"
-            >
-              Default pay frequency
-            </label>
+            <div className="min-w-0">
+              <label
+                htmlFor="default-pay-frequency-segment"
+                id="default-pay-frequency-label"
+                className="block text-base font-bold text-gray-900 leading-tight"
+              >
+                Pay frequency
+              </label>
+              <p className="text-xs text-gray-600 mt-0.5">
+                Set once for the business — all employees inherit
+              </p>
+            </div>
           </div>
-          <select
-            id="default-pay-frequency"
-            value={state.defaultPayFrequency ?? 'monthly'}
-            onChange={(e) =>
-              actions.setDefaultPayFrequency(e.target.value as PayFrequency)
-            }
-            aria-label="Default pay frequency"
-            className="px-3 py-2 text-sm font-semibold bg-white border-2 border-brand-navy/30 rounded-lg focus:border-brand-navy focus:ring-2 focus:ring-brand-navy/20 hover:border-brand-navy/50 transition-colors"
+
+          {/* Segmented control — three options always visible. The current
+              selection is rendered as a brand-navy pill so the choice is
+              unmissable even at a glance. */}
+          <div
+            id="default-pay-frequency-segment"
+            role="radiogroup"
+            aria-labelledby="default-pay-frequency-label"
+            className="inline-flex items-center bg-white rounded-lg p-1 border-2 border-brand-navy/30 shadow-sm"
           >
-            <option value="weekly">Weekly</option>
-            <option value="fortnightly">Fortnightly</option>
-            <option value="monthly">Monthly</option>
-          </select>
-          <span className="text-xs text-gray-600 flex-1 min-w-0">
-            Inherited by employees without an override. Affects cashflow timing only — annual salary unchanged.
+            {(['weekly', 'fortnightly', 'monthly'] as const).map((freq) => {
+              const isSelected = (state.defaultPayFrequency ?? 'monthly') === freq;
+              const label = freq.charAt(0).toUpperCase() + freq.slice(1);
+              return (
+                <button
+                  key={freq}
+                  type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  aria-label={`Pay frequency: ${label}`}
+                  onClick={() => actions.setDefaultPayFrequency(freq)}
+                  className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-all duration-150 ${
+                    isSelected
+                      ? 'bg-brand-navy text-white shadow'
+                      : 'text-gray-600 hover:text-brand-navy hover:bg-gray-50'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          <span className="text-xs text-gray-600 flex-1 min-w-[180px]">
+            Affects cashflow timing only — annual salary unchanged.
           </span>
         </div>
       </div>
