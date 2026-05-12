@@ -23,9 +23,15 @@ interface PLForecastTableProps {
   onSave: (lines: PLLine[]) => void
   onChange?: () => void // Optional callback when data changes
   defaultViewMode?: 'view' | 'setup'
+  /**
+   * True when plLines are YTD actuals + projected remaining months (no
+   * user-built forecast). Surfaces an "Estimated" banner at the top — the
+   * cell math is unchanged (forecast_months still drives projection).
+   */
+  isEstimatedMode?: boolean
 }
 
-export default function PLForecastTable({ forecast, plLines, onSave, onChange, defaultViewMode }: PLForecastTableProps) {
+export default function PLForecastTable({ forecast, plLines, onSave, onChange, defaultViewMode, isEstimatedMode = false }: PLForecastTableProps) {
   // Dynamic FY labels from forecast data
   const baselineFY = `FY${(forecast.fiscal_year - 1) % 100}`
   const forecastFY = `FY${forecast.fiscal_year % 100}`
@@ -622,6 +628,16 @@ export default function PLForecastTable({ forecast, plLines, onSave, onChange, d
 
   return (
     <div className="bg-white rounded-lg shadow-sm">
+      {isEstimatedMode && (
+        <div className="px-6 pt-5 pb-3 border-b border-blue-100 bg-blue-50/50">
+          <p className="text-sm font-medium text-blue-900">
+            Estimated FY{(forecast.fiscal_year % 100).toString().padStart(2, '0')} P&amp;L — YTD actuals + projected remaining months
+          </p>
+          <p className="text-xs text-blue-800 mt-0.5">
+            Cells past YTD are estimates per line, using prior-FY seasonality (or last-3-month average for new lines). Build a forecast to plan precisely.
+          </p>
+        </div>
+      )}
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <div>

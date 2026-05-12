@@ -6,6 +6,7 @@ import {
   DEFAULT_YEAR_START_MONTH,
   getFiscalYearStartDate,
   getFiscalYearEndDate,
+  generateFiscalMonthKeys,
 } from '@/lib/utils/fiscal-year-utils'
 import type {
   FinancialForecast,
@@ -14,6 +15,87 @@ import type {
   PayrollSummary,
   XeroConnection
 } from '../types'
+
+/**
+ * Pure helper exported for tests. Projects the remaining months of a fiscal
+ * year for a single P&L line using a hybrid rule:
+ *
+ *   1. Prior-FY seasonality reweight — when prior-FY has ≥3 non-zero months
+ *      AND prior-FY total + share of YTD months are positive. Annualizes
+ *      current-FY YTD using prior-FY's same-month share, then redistributes
+ *      remaining months by prior-FY's share. Honors seasonality (Christmas
+ *      vendors stay Christmas-shaped, BAS-quarter spikes land in Q4).
+ *   2. Last-3-month average — when seasonality is unusable but YTD has ≥3
+ *      months of data. Tracks recent trend; avoids smearing a one-off across
+ *      the rest of the year.
+ *   3. Run-rate (YTD avg × remaining count, even distribution) — final
+ *      fallback for lines with <3 YTD months and no prior-FY data.
+ *
+ * Returns a map of `YYYY-MM` → projected amount for the months in `fyKeys`
+ * that have no entry (or a $0 entry) in `ytdActuals`. Months already in
+ * `ytdActuals` with a non-zero value are NEVER overwritten.
+ */
+export function projectRemainingMonths(
+  ytdActuals: Record<string, number>,
+  fyKeys: string[],
+  priorFY: { keys: string[]; actuals: Record<string, number> }
+): Record<string, number> {
+  const out: Record<string, number> = {}
+
+  const ytdEntries = Object.entries(ytdActuals).filter(([, v]) => v !== 0 && Number.isFinite(v))
+  const ytdMonthCount = ytdEntries.length
+  const remainingKeys = fyKeys.filter(k => {
+    const v = ytdActuals[k]
+    return v === undefined || v === 0
+  })
+  if (remainingKeys.length === 0) return out
+
+  // ── Rule 1: prior-FY seasonality ───────────────────────────────────────
+  // fyKeys[i] and priorFY.keys[i] share the same fiscal month index
+  // (i=0 → first month of FY, i=11 → last), so we can compare position-wise.
+  const priorTotal = priorFY.keys.reduce((s, k) => s + (priorFY.actuals[k] ?? 0), 0)
+  const priorNonZeroCount = priorFY.keys.filter(k => (priorFY.actuals[k] ?? 0) !== 0).length
+
+  if (priorNonZeroCount >= 3 && priorTotal > 0 && ytdMonthCount > 0) {
+    // Sum of prior-FY for the same fiscal month indices that YTD covers.
+    const ytdFmIdx = fyKeys
+      .map((k, i) => (ytdActuals[k] !== undefined && ytdActuals[k] !== 0 ? i : -1))
+      .filter(i => i >= 0)
+    const priorAtYtdMonths = ytdFmIdx.reduce(
+      (s, i) => s + (priorFY.actuals[priorFY.keys[i]] ?? 0),
+      0
+    )
+    const ytdShareOfPrior = priorAtYtdMonths / priorTotal
+    if (priorAtYtdMonths > 0 && ytdShareOfPrior > 0) {
+      const ytdSum = ytdEntries.reduce((s, [, v]) => s + v, 0)
+      const annualized = ytdSum / ytdShareOfPrior
+      for (const k of remainingKeys) {
+        const fmIdx = fyKeys.indexOf(k)
+        const priorAmt = priorFY.actuals[priorFY.keys[fmIdx]] ?? 0
+        const share = priorAmt / priorTotal
+        out[k] = annualized * share
+      }
+      return out
+    }
+  }
+
+  // ── Rule 2: last-3-month average ───────────────────────────────────────
+  if (ytdMonthCount >= 3) {
+    const last3 = ytdEntries
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-3)
+      .map(([, v]) => v)
+    const avg = last3.reduce((s, v) => s + v, 0) / last3.length
+    for (const k of remainingKeys) out[k] = avg
+    return out
+  }
+
+  // ── Rule 3: straight-line run-rate ─────────────────────────────────────
+  const ytdSum = ytdEntries.reduce((s, [, v]) => s + v, 0)
+  const avg = ytdMonthCount > 0 ? ytdSum / ytdMonthCount : 0
+  for (const k of remainingKeys) out[k] = avg
+  return out
+}
 
 export class ForecastService {
   private static supabase = createClient()
@@ -177,13 +259,18 @@ export class ForecastService {
   }
 
   /**
-   * Phase 65 — Load prior-FY actuals from xero_pl_lines as read-only PLLine[].
+   * Phase 65 — Load Xero actuals as read-only PLLine[] for a fiscal year.
    *
-   * Used when a past-FY forecast is opened and has no forecast_pl_lines (empty
-   * stub from getOrCreateForecast). Renders the synced Xero actuals inline
-   * instead of pushing the operator into a retrospective wizard build.
+   * - Past FY (`fiscalYear < currentFY`): returns actual_months only.
+   *   forecast_months is empty.
+   * - Current FY (`fiscalYear === currentFY`): returns actual_months for
+   *   the YTD months that exist in xero_pl_lines AND forecast_months for
+   *   the remaining FY months, projected per-line via projectRemainingMonths
+   *   (prior-FY seasonality with last-3-avg / run-rate fallbacks). Callers
+   *   should treat the line as "estimated" not "planned" in UI labels.
    *
-   * Returns lines with actual_months populated, forecast_months empty.
+   * Avoids pushing the operator into a wizard build just to see YTD
+   * performance + a defensible end-of-FY estimate.
    */
   static async loadActualsAsPLLines(
     businessId: string,
@@ -203,7 +290,17 @@ export class ForecastService {
         idsToTry.push(profile.id)
       }
 
-      const fyStart = getFiscalYearStartDate(fiscalYear, yearStartMonth)
+      // Current-FY mode needs both this FY (for YTD actuals) and prior FY
+      // (for seasonality projection). Single query spanning both keeps it to
+      // one round-trip; we partition rows in memory below.
+      const currentFY = (() => {
+        const now = new Date()
+        const m = now.getMonth() + 1
+        return m >= yearStartMonth ? now.getFullYear() + 1 : now.getFullYear()
+      })()
+      const isCurrentFY = fiscalYear === currentFY
+
+      const fyStart = getFiscalYearStartDate(isCurrentFY ? fiscalYear - 1 : fiscalYear, yearStartMonth)
       const fyEnd = getFiscalYearEndDate(fiscalYear, yearStartMonth)
       const startISO = `${fyStart.getFullYear()}-${String(fyStart.getMonth() + 1).padStart(2, '0')}-01`
       const endISO = `${fyEnd.getFullYear()}-${String(fyEnd.getMonth() + 1).padStart(2, '0')}-${String(fyEnd.getDate()).padStart(2, '0')}`
@@ -240,31 +337,70 @@ export class ForecastService {
 
       if (rows.length === 0) return []
 
+      const currentFYKeys = generateFiscalMonthKeys(fiscalYear, yearStartMonth)
+      const priorFYKeys = generateFiscalMonthKeys(fiscalYear - 1, yearStartMonth)
+      const currentFYKeySet = new Set(currentFYKeys)
+      const priorFYKeySet = new Set(priorFYKeys)
+
       // Group by account_code (fallback NAME:<account_name> for null codes),
-      // sum amount per month. Mirrors forecast-read-service aggregation so
-      // totals match what the rest of the app already shows.
-      const grouped = new Map<string, PLLine>()
+      // sum amount per month. Two month-buckets per line so we can project
+      // current-FY remaining months from prior-FY seasonality below.
+      type Bucket = {
+        line: PLLine
+        priorActuals: Record<string, number>
+      }
+      const grouped = new Map<string, Bucket>()
       for (const r of rows) {
         const key = r.account_code ?? `NAME:${r.account_name ?? 'Unknown'}`
-        let line = grouped.get(key)
-        if (!line) {
-          line = {
-            account_code: r.account_code ?? undefined,
-            account_name: r.account_name ?? 'Unknown',
-            account_type: r.account_type ?? undefined,
-            actual_months: {},
-            forecast_months: {},
-            is_from_xero: true,
+        let bucket = grouped.get(key)
+        if (!bucket) {
+          bucket = {
+            line: {
+              account_code: r.account_code ?? undefined,
+              account_name: r.account_name ?? 'Unknown',
+              account_type: r.account_type ?? undefined,
+              actual_months: {},
+              forecast_months: {},
+              is_from_xero: true,
+            },
+            priorActuals: {},
           }
-          grouped.set(key, line)
+          grouped.set(key, bucket)
         }
         const monthKey = (r.period_month ?? '').slice(0, 7)
         if (!monthKey) continue
         const amt = Number(r.amount)
-        line.actual_months[monthKey] = (line.actual_months[monthKey] ?? 0) + (Number.isFinite(amt) ? amt : 0)
+        const safe = Number.isFinite(amt) ? amt : 0
+        if (currentFYKeySet.has(monthKey)) {
+          bucket.line.actual_months[monthKey] = (bucket.line.actual_months[monthKey] ?? 0) + safe
+        } else if (isCurrentFY && priorFYKeySet.has(monthKey)) {
+          bucket.priorActuals[monthKey] = (bucket.priorActuals[monthKey] ?? 0) + safe
+        }
       }
 
-      const out = [...grouped.values()]
+      // Drop lines that have nothing inside the requested FY range. (For
+      // current-FY mode a line might have only prior-FY rows — we don't
+      // surface those as new FY rows.)
+      const emptyKeys: string[] = []
+      for (const [k, b] of grouped) {
+        if (Object.keys(b.line.actual_months).length === 0) emptyKeys.push(k)
+      }
+      for (const k of emptyKeys) grouped.delete(k)
+
+      // Project remaining months for current-FY view. Past-FY skips this
+      // branch and just returns the actuals (months are complete by definition).
+      if (isCurrentFY) {
+        for (const { line, priorActuals } of grouped.values()) {
+          const projected = projectRemainingMonths(
+            line.actual_months,
+            currentFYKeys,
+            { keys: priorFYKeys, actuals: priorActuals }
+          )
+          line.forecast_months = projected
+        }
+      }
+
+      const out = [...grouped.values()].map(b => b.line)
       out.sort((a, b) => {
         const ta = a.account_type ?? ''
         const tb = b.account_type ?? ''

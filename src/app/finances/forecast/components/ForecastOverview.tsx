@@ -88,6 +88,13 @@ export interface ForecastOverviewProps {
   onSwitchTab: (tab: 'pl' | 'assumptions' | 'versions') => void
   /** Open the wizard / forecast selector. */
   onEditPlan: () => void
+  /**
+   * True when plLines are YTD actuals + per-line projections (no user-built
+   * forecast saved). Used to switch labels from "Plan / Variance" to
+   * "Estimated" semantics and suppress vs-plan widgets that have no plan
+   * to compare against.
+   */
+  isEstimatedMode?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -341,6 +348,7 @@ export default function ForecastOverview({
   businessId,
   onSwitchTab,
   onEditPlan,
+  isEstimatedMode = false,
 }: ForecastOverviewProps) {
   const monthKeys = useMemo(
     () => generateFiscalMonthKeys(fiscalYear, yearStartMonth),
@@ -445,6 +453,29 @@ export default function ForecastOverview({
 
   return (
     <div className="space-y-6">
+      {/* Estimated-mode banner — visible reminder that the totals/charts
+          below are YTD actuals + per-line projections (prior-FY seasonality),
+          not a confirmed plan. CTA opens the wizard so the operator can
+          replace the estimate with a real forecast. */}
+      {isEstimatedMode && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-blue-900">
+              Showing estimated FY{fiscalYear.toString().slice(-2)} — YTD actuals + projected remaining months
+            </p>
+            <p className="text-xs text-blue-800 mt-0.5">
+              No forecast saved for this year yet. Remaining months are estimated per line using prior-FY seasonality (or last-3-month average for new lines). Build a forecast to plan precisely.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onEditPlan}
+            className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
+          >
+            Build forecast
+          </button>
+        </div>
+      )}
       <KpiStrip
         totals={totals}
         revenuePlan={revenuePlan}
