@@ -36,7 +36,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act, render, screen, within, fireEvent } from '@testing-library/react';
+import { renderHook, act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useForecastWizard } from '@/app/finances/forecast/components/wizard-v4/useForecastWizard';
 import { Step3RevenueCOGS } from '@/app/finances/forecast/components/wizard-v4/steps/Step3RevenueCOGS';
@@ -312,28 +312,19 @@ describe('Bug 2 — FCST-BUG-02: Step 5 OpEx total includes team-classified line
 
     render(<Step5OpEx state={state} actions={actions} fiscalYear={FISCAL_YEAR_END} />);
 
-    // BudgetFramework now starts with the breakdown collapsed (PR #174 — the
-    // 7-line deduction chain was too tall for a sticky panel). Expand it so
-    // the "− Team Costs" row exists in the DOM.
-    fireEvent.click(screen.getByRole('button', { name: /show breakdown/i }));
-
-    // The "Team Costs" subtraction row in BudgetFramework. Find it by its
-    // exact label text "− Team Costs" (the BudgetFramework breakdown uses a
-    // unicode minus sign followed by "Team Costs"). Other strings like
-    // "in Team Costs" / "Counted in Team Costs" appear elsewhere on the
-    // page and must be excluded.
-    const teamCostLabel = screen.getByText(/^−\s*Team Costs$/i);
-    // The row is structured as: <span>− Team Costs</span><span>$X</span>
-    const row = teamCostLabel.parentElement;
-    expect(row).toBeTruthy();
-    const rowText = row?.textContent || '';
+    // PR #183: BudgetFramework breakdown is now an always-on inline line.
+    // Each metric span carries a `title` with the raw formatCurrency value
+    // and a `data-testid` for direct selection — no need to parse the
+    // compact "$112k team" rendered text.
+    const teamSpan = screen.getByTestId(/^budget-team-/);
+    const title = teamSpan.getAttribute('title') || '';
+    const m = title.match(/\$([\d,]+)/);
+    expect(m, `Expected $ value in team-cost title "${title}"`).toBeTruthy();
+    const displayedNum = parseInt(m![1].replace(/,/g, ''), 10);
     // Step 4 team: $100k salary + ~$11.5k super ≈ $111.5k.
     // The OpEx 'Wages and Salaries' line ($60k) MUST NOT be added on top —
     // it's the same wages viewed from a different angle. Expect ~$111-115k,
     // strictly LESS than $130k (which would imply the wages line was added).
-    const numericMatches = rowText.match(/\$([\d,]+)/);
-    expect(numericMatches, `Expected currency value in "${rowText}"`).toBeTruthy();
-    const displayedNum = parseInt(numericMatches![1].replace(/,/g, ''), 10);
     expect(
       displayedNum,
       `BudgetFramework Team Costs should be ~$111k (Step 4 only), NOT include the $60k Wages OpEx line (got ${displayedNum})`
@@ -372,14 +363,12 @@ describe('Bug 2 — FCST-BUG-02: Step 5 OpEx total includes team-classified line
     const actions = makeStubActions();
     render(<Step5OpEx state={state} actions={actions} fiscalYear={FISCAL_YEAR_END} />);
 
-    // BudgetFramework breakdown is collapsed by default — expand to access the rows.
-    fireEvent.click(screen.getByRole('button', { name: /show breakdown/i }));
-
-    const teamCostLabel = screen.getByText(/^−\s*Team Costs$/i);
-    const row = teamCostLabel.parentElement;
-    const numericMatches = (row?.textContent || '').match(/\$([\d,]+)/);
-    expect(numericMatches).toBeTruthy();
-    const displayedNum = parseInt(numericMatches![1].replace(/,/g, ''), 10);
+    // PR #183: pick team cost off the title attribute (raw $ value).
+    const teamSpan = screen.getByTestId(/^budget-team-/);
+    const title = teamSpan.getAttribute('title') || '';
+    const m = title.match(/\$([\d,]+)/);
+    expect(m).toBeTruthy();
+    const displayedNum = parseInt(m![1].replace(/,/g, ''), 10);
     expect(
       displayedNum,
       `Empty-Step-4 fallback should show OpEx Wages ($60k), got ${displayedNum}`
