@@ -22,7 +22,7 @@
 
 import React from 'react';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useForecastWizard } from '@/app/finances/forecast/components/wizard-v4/useForecastWizard';
 import { Step4Team } from '@/app/finances/forecast/components/wizard-v4/steps/Step4Team';
@@ -195,11 +195,15 @@ describe('UX-S4-03 — Step 4 pay frequency selector', () => {
         initialMembers={[makeMember({ name: 'Alice' })]}
       />
     );
-    const dropdown = await screen.findByLabelText(/^default pay frequency$/i);
-    expect(dropdown.tagName.toLowerCase()).toBe('select');
+    // PR #182: the business-default selector is a segmented button group
+    // (three radio buttons), not a <select>. The control's accessible name
+    // comes from the "Pay frequency" header label via aria-labelledby.
+    const group = await screen.findByRole('radiogroup', { name: /pay frequency/i });
+    expect(group).toBeInTheDocument();
+    expect(within(group).getAllByRole('radio')).toHaveLength(3);
   });
 
-  it('Test 7: setting the business-default dropdown persists to state.defaultPayFrequency', async () => {
+  it('Test 7: setting the business-default selector persists to state.defaultPayFrequency', async () => {
     const user = userEvent.setup();
     let latestState: ForecastWizardState | null = null;
     render(
@@ -211,8 +215,8 @@ describe('UX-S4-03 — Step 4 pay frequency selector', () => {
         }}
       />
     );
-    const dropdown = (await screen.findByLabelText(/^default pay frequency$/i)) as HTMLSelectElement;
-    await user.selectOptions(dropdown, 'fortnightly');
+    const fortnightlyBtn = await screen.findByRole('radio', { name: /pay frequency: fortnightly/i });
+    await user.click(fortnightlyBtn);
     await new Promise((r) => setTimeout(r, 10));
     expect(latestState).not.toBeNull();
     expect(latestState!.defaultPayFrequency).toBe('fortnightly');
@@ -232,8 +236,8 @@ describe('UX-S4-03 — Step 4 pay frequency selector', () => {
     );
 
     // Set business default to 'weekly' — Alice's own payFrequency must remain undefined.
-    const businessDefault = (await screen.findByLabelText(/^default pay frequency$/i)) as HTMLSelectElement;
-    await user.selectOptions(businessDefault, 'weekly');
+    const weeklyBtn = await screen.findByRole('radio', { name: /pay frequency: weekly/i });
+    await user.click(weeklyBtn);
     await new Promise((r) => setTimeout(r, 10));
 
     expect(latestState).not.toBeNull();
@@ -245,7 +249,8 @@ describe('UX-S4-03 — Step 4 pay frequency selector', () => {
     expect(aliceDropdown.value).toBe('weekly');
 
     // Switch business default to 'fortnightly' — Alice still undefined, display tracks default.
-    await user.selectOptions(businessDefault, 'fortnightly');
+    const fortnightlyBtn = await screen.findByRole('radio', { name: /pay frequency: fortnightly/i });
+    await user.click(fortnightlyBtn);
     await new Promise((r) => setTimeout(r, 10));
     expect(latestState!.teamMembers[0].payFrequency).toBeUndefined();
     aliceDropdown = (await screen.findByLabelText(/pay frequency for alice/i)) as HTMLSelectElement;
@@ -280,8 +285,8 @@ describe('UX-S4-03 — Step 4 pay frequency selector', () => {
     expect(after).toBe(before);
 
     // Also try the business-level default — must not change rollup either.
-    const businessDefault = (await screen.findByLabelText(/^default pay frequency$/i)) as HTMLSelectElement;
-    await user.selectOptions(businessDefault, 'fortnightly');
+    const fortnightlyBtn = await screen.findByRole('radio', { name: /pay frequency: fortnightly/i });
+    await user.click(fortnightlyBtn);
     await new Promise((r) => setTimeout(r, 20));
     const afterBusinessDefault = latestSummary!.year1.teamCosts;
     expect(afterBusinessDefault).toBe(before);
