@@ -158,6 +158,24 @@ const calculateFTE = (hoursPerWeek: number): number => {
   return Math.round((hoursPerWeek / STANDARD_HOURS) * 100) / 100;
 };
 
+/**
+ * Per-person FTE contribution for the year summary aggregate.
+ *
+ * Two rules vs the raw hours/standard ratio:
+ *   1. Capped at 1.0 — a person can't contribute more than one FTE-worth
+ *      of work, even if their week is 40+ hours. The dashboard treats FTE
+ *      as a "bodies in seats" metric; overtime doesn't add headcount.
+ *   2. Pro-rated by months worked — a 6-month hire contributes 0.5 FTE
+ *      for the year, not 1.0.
+ *
+ * Without these rules, a 5-person team imported from Xero at 40 hrs/wk
+ * showed FTE = 5.26 (> headcount 5), which Matt flagged as confusing.
+ */
+const calculateFTEContribution = (hoursPerWeek: number, monthsWorked: number): number => {
+  const ratio = (hoursPerWeek * monthsWorked) / (STANDARD_HOURS * 12);
+  return Math.min(1, Math.max(0, ratio));
+};
+
 const calculateCasualAnnual = (hourlyRate: number, hoursPerWeek: number, weeksPerYear: number = DEFAULT_WEEKS): number => {
   return Math.round(hourlyRate * hoursPerWeek * weeksPerYear);
 };
@@ -676,7 +694,7 @@ function TeamTimelineSummary({
 
         if (monthsWorked > 0) {
           headcount++;
-          totalFTE += calculateFTE(member.hoursPerWeek);
+          totalFTE += calculateFTEContribution(member.hoursPerWeek, monthsWorked);
           totalCost += ((salary + superAmount) * monthsWorked) / 12;
         }
       }
@@ -693,7 +711,7 @@ function TeamTimelineSummary({
 
         if (monthsWorked > 0) {
           headcount++;
-          totalFTE += calculateFTE(hire.hoursPerWeek);
+          totalFTE += calculateFTEContribution(hire.hoursPerWeek, monthsWorked);
           totalCost += ((salary + superAmount) * monthsWorked) / 12;
           if (hireFY === targetFY) {
             yearNewHires++;
@@ -837,10 +855,14 @@ function TeamTimelineSummary({
                   )}
                 </div>
 
-                {/* FTE Badge */}
-                <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium mb-3 ${
-                  isCurrentYear ? 'bg-white/20 text-white' : 'bg-white/10 text-slate-300'
-                }`}>
+                {/* FTE Badge — capped at 1.0 per person and pro-rated by months
+                    worked, so FTE ≤ headcount. Tooltip surfaces the formula. */}
+                <div
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium mb-3 cursor-help ${
+                    isCurrentYear ? 'bg-white/20 text-white' : 'bg-white/10 text-slate-300'
+                  }`}
+                  title="Full-Time Equivalent: max 1.0 per person, pro-rated by months worked (e.g., a 6-month hire counts as 0.5 FTE)."
+                >
                   {year.fte} FTE
                 </div>
 
@@ -1418,9 +1440,14 @@ function TeamPlanningOverview({
               ))}
             </tr>
 
-            {/* FTE */}
+            {/* FTE — capped at 1.0/person and pro-rated by months worked, so FTE ≤ headcount. */}
             <tr className="hover:bg-gray-50 bg-gray-50/50">
-              <td className="px-4 py-3 text-sm text-gray-600">FTE</td>
+              <td
+                className="px-4 py-3 text-sm text-gray-600 cursor-help"
+                title="Full-Time Equivalent: max 1.0 per person, pro-rated by months worked (e.g., a 6-month hire counts as 0.5 FTE)."
+              >
+                FTE
+              </td>
               {yearlyData.map(year => (
                 <td key={`fte-${year.fyLabel}`} className="px-4 py-3 text-sm text-right text-gray-600 tabular-nums">
                   {year.fte}
