@@ -456,26 +456,55 @@ export default function ForecastOverview({
       {/* Estimated-mode banner — visible reminder that the totals/charts
           below are YTD actuals + per-line projections (prior-FY seasonality),
           not a confirmed plan. CTA opens the wizard so the operator can
-          replace the estimate with a real forecast. */}
-      {isEstimatedMode && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3">
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-blue-900">
-              Showing estimated FY{fiscalYear.toString().slice(-2)} — YTD actuals + projected remaining months
-            </p>
-            <p className="text-xs text-blue-800 mt-0.5">
-              No forecast saved for this year yet. Remaining months are estimated per line using prior-FY seasonality (or last-3-month average for new lines). Build a forecast to plan precisely.
-            </p>
+          replace the estimate with a real forecast. Also surfaces a "May
+          to date vs projected" comparison when partial-month actuals exist. */}
+      {isEstimatedMode && (() => {
+        const today = new Date()
+        const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+        const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        const currentMonthName = monthNames[today.getMonth()]
+        const daysIn = today.getDate()
+        // Revenue MTD: a sanity-check on whether the projection is in the
+        // right ballpark. Per-line partial actuals were stashed in
+        // `partial_month_actuals` by the loader so the rollup never reads
+        // 12-days-of-May as the whole month.
+        let partialRev = 0
+        let projectedRev = 0
+        for (const line of plLines) {
+          if (!isRevenue(line)) continue
+          partialRev += line.partial_month_actuals?.[currentMonthKey] ?? 0
+          projectedRev += line.forecast_months?.[currentMonthKey] ?? 0
+        }
+        const showComparison = partialRev !== 0 && projectedRev !== 0
+        return (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-blue-900">
+                Showing estimated FY{fiscalYear.toString().slice(-2)} — YTD actuals + projected remaining months
+              </p>
+              <p className="text-xs text-blue-800 mt-0.5">
+                Remaining months use prior-FY seasonality (or last-3-month average for new lines). {currentMonthName} is projected because it&apos;s only {daysIn} day{daysIn !== 1 ? 's' : ''} in.
+              </p>
+              {showComparison && (
+                <p className="text-xs text-blue-900 mt-1.5">
+                  <span className="font-medium">{currentMonthName} revenue to date:</span>{' '}
+                  <span className="font-semibold tabular-nums">{fmtMoney(partialRev)}</span>
+                  {' actual vs '}
+                  <span className="font-semibold tabular-nums">{fmtMoney(projectedRev)}</span>
+                  {' projected for the full month'}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={onEditPlan}
+              className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
+            >
+              Build forecast
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onEditPlan}
-            className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
-          >
-            Build forecast
-          </button>
-        </div>
-      )}
+        )
+      })()}
       <KpiStrip
         totals={totals}
         revenuePlan={revenuePlan}

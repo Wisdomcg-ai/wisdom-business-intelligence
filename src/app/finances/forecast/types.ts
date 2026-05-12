@@ -80,6 +80,14 @@ export interface PLLine {
   sort_order?: number
   actual_months: { [key: string]: number } // e.g., { "2024-07": 10000, "2024-08": 12000 }
   forecast_months: { [key: string]: number }
+  /**
+   * Phase 65.1 — partial-current-month actuals carried alongside the
+   * projection so the dashboard can show "May to date: $X vs projected $Y".
+   * Populated only for current-FY estimated mode where the current month
+   * has begun but not yet finished. Never read by the rollup (which would
+   * incorrectly treat a 12-days-of-May figure as the full month).
+   */
+  partial_month_actuals?: { [key: string]: number }
   is_from_xero?: boolean
   is_from_payroll?: boolean
   is_manual?: boolean

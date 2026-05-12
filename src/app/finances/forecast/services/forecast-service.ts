@@ -31,21 +31,41 @@ import type {
  *   3. Run-rate (YTD avg × remaining count, even distribution) — final
  *      fallback for lines with <3 YTD months and no prior-FY data.
  *
+ * `lastCompleteMonth` (YYYY-MM) defines where YTD "completeness" ends. Any
+ * month strictly after this is considered partial/projected and is filled
+ * in `out`, even if `ytdActuals` already has a non-zero value for it (a
+ * 12-days-of-May figure must not pose as the full month). Months ≤
+ * `lastCompleteMonth` with a non-zero value drive the projection math and
+ * are NEVER overwritten.
+ *
  * Returns a map of `YYYY-MM` → projected amount for the months in `fyKeys`
- * that have no entry (or a $0 entry) in `ytdActuals`. Months already in
- * `ytdActuals` with a non-zero value are NEVER overwritten.
+ * that need projecting.
  */
 export function projectRemainingMonths(
   ytdActuals: Record<string, number>,
   fyKeys: string[],
-  priorFY: { keys: string[]; actuals: Record<string, number> }
+  priorFY: { keys: string[]; actuals: Record<string, number> },
+  lastCompleteMonth?: string
 ): Record<string, number> {
   const out: Record<string, number> = {}
 
-  const ytdEntries = Object.entries(ytdActuals).filter(([, v]) => v !== 0 && Number.isFinite(v))
-  const ytdMonthCount = ytdEntries.length
+  // Complete months drive the projection math. A month is "complete" if
+  // either (a) it's present in ytdActuals with a non-zero value AND
+  // (lastCompleteMonth is undefined OR month ≤ lastCompleteMonth), or
+  // (b) just non-zero when no cutoff is supplied (legacy 1-arg call site).
+  const completeEntries = Object.entries(ytdActuals).filter(
+    ([k, v]) =>
+      v !== 0 &&
+      Number.isFinite(v) &&
+      (lastCompleteMonth === undefined || k <= lastCompleteMonth)
+  )
+  const ytdMonthCount = completeEntries.length
+
+  // A month needs projecting when it's missing/zero in ytdActuals OR when
+  // it's after the last-complete cutoff (i.e., partial or future).
   const remainingKeys = fyKeys.filter(k => {
     const v = ytdActuals[k]
+    if (lastCompleteMonth !== undefined && k > lastCompleteMonth) return true
     return v === undefined || v === 0
   })
   if (remainingKeys.length === 0) return out
@@ -57,9 +77,11 @@ export function projectRemainingMonths(
   const priorNonZeroCount = priorFY.keys.filter(k => (priorFY.actuals[k] ?? 0) !== 0).length
 
   if (priorNonZeroCount >= 3 && priorTotal > 0 && ytdMonthCount > 0) {
-    // Sum of prior-FY for the same fiscal month indices that YTD covers.
+    // Sum of prior-FY for the same fiscal month indices that COMPLETE YTD
+    // covers (partial/future months are excluded from the math).
+    const completeKeySet = new Set(completeEntries.map(([k]) => k))
     const ytdFmIdx = fyKeys
-      .map((k, i) => (ytdActuals[k] !== undefined && ytdActuals[k] !== 0 ? i : -1))
+      .map((k, i) => (completeKeySet.has(k) ? i : -1))
       .filter(i => i >= 0)
     const priorAtYtdMonths = ytdFmIdx.reduce(
       (s, i) => s + (priorFY.actuals[priorFY.keys[i]] ?? 0),
@@ -67,7 +89,7 @@ export function projectRemainingMonths(
     )
     const ytdShareOfPrior = priorAtYtdMonths / priorTotal
     if (priorAtYtdMonths > 0 && ytdShareOfPrior > 0) {
-      const ytdSum = ytdEntries.reduce((s, [, v]) => s + v, 0)
+      const ytdSum = completeEntries.reduce((s, [, v]) => s + v, 0)
       const annualized = ytdSum / ytdShareOfPrior
       for (const k of remainingKeys) {
         const fmIdx = fyKeys.indexOf(k)
@@ -81,7 +103,7 @@ export function projectRemainingMonths(
 
   // ── Rule 2: last-3-month average ───────────────────────────────────────
   if (ytdMonthCount >= 3) {
-    const last3 = ytdEntries
+    const last3 = completeEntries
       .sort(([a], [b]) => a.localeCompare(b))
       .slice(-3)
       .map(([, v]) => v)
@@ -91,7 +113,7 @@ export function projectRemainingMonths(
   }
 
   // ── Rule 3: straight-line run-rate ─────────────────────────────────────
-  const ytdSum = ytdEntries.reduce((s, [, v]) => s + v, 0)
+  const ytdSum = completeEntries.reduce((s, [, v]) => s + v, 0)
   const avg = ytdMonthCount > 0 ? ytdSum / ytdMonthCount : 0
   for (const k of remainingKeys) out[k] = avg
   return out
@@ -390,13 +412,36 @@ export class ForecastService {
       // Project remaining months for current-FY view. Past-FY skips this
       // branch and just returns the actuals (months are complete by definition).
       if (isCurrentFY) {
+        // Last fully-elapsed calendar month — anything on/after today's
+        // month is partial and must be projected, not treated as complete.
+        const now = new Date()
+        const lastCompleteDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        const lastCompleteMonth = `${lastCompleteDate.getFullYear()}-${String(lastCompleteDate.getMonth() + 1).padStart(2, '0')}`
+
         for (const { line, priorActuals } of grouped.values()) {
           const projected = projectRemainingMonths(
             line.actual_months,
             currentFYKeys,
-            { keys: priorFYKeys, actuals: priorActuals }
+            { keys: priorFYKeys, actuals: priorActuals },
+            lastCompleteMonth
           )
           line.forecast_months = projected
+
+          // Partition actual_months → complete (drives totals) vs partial
+          // (sidecar for "May to date" display). The rollup reads
+          // actual_months first, so leaving a partial-May figure there
+          // would make the dashboard count 12 days of May as the whole
+          // month and skew the FY26 total downward.
+          const partialEntries: Record<string, number> = {}
+          const completeEntries: Record<string, number> = {}
+          for (const [k, v] of Object.entries(line.actual_months)) {
+            if (k > lastCompleteMonth) partialEntries[k] = v
+            else completeEntries[k] = v
+          }
+          line.actual_months = completeEntries
+          if (Object.keys(partialEntries).length > 0) {
+            line.partial_month_actuals = partialEntries
+          }
         }
       }
 
