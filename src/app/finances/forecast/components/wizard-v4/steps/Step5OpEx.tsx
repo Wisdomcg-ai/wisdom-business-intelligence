@@ -1336,17 +1336,20 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
               </div>
             )}
 
-            {/* Default Increase % - only show when viewing Y2/Y3 */}
+            {/* Default % Change - only show when viewing Y2/Y3.
+                Renamed from "Default Increase" — accepts negatives so a
+                line can be reduced vs. the prior year. */}
             {activeYear > 1 && (
               <div className="flex items-center gap-2 ml-4 pl-4 border-l border-gray-200">
-                <label className="text-sm text-gray-600 whitespace-nowrap">Default Increase:</label>
+                <label className="text-sm text-gray-600 whitespace-nowrap">Default % Change:</label>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
                     value={effectiveDefaultGrowth}
                     onChange={(e) => actions.setDefaultOpExIncreasePct(parseFloat(e.target.value) || 0)}
                     step="0.5"
-                    className="w-14 px-2 py-1 text-center text-sm border border-gray-300 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
+                    title="Default annual % change applied to lines without an explicit override. Negative values reduce spend (e.g., -5)."
+                    className="w-16 px-2 py-1 text-center text-sm border border-gray-300 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
                   />
                   <span className="text-gray-500 text-sm">%</span>
                 </div>
@@ -1373,8 +1376,8 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                 </button>
                 <span className="relative group">
                   <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
-                  <span className="absolute left-1/2 -translate-x-1/2 top-6 w-52 p-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                    Set default annual increase for all rows. Override individual rows in the Increase column.
+                  <span className="absolute left-1/2 -translate-x-1/2 top-6 w-56 p-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                    Default annual % change for all rows. Negative reduces (e.g., -5 cuts each line 5%). Override individual rows in the % Change column.
                   </span>
                 </span>
               </div>
@@ -1461,15 +1464,19 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
               </tr>
               {/* Sub-header row for Workings columns */}
               <tr className="bg-gray-50 border-b border-gray-200">
-                {/* Increase % sub-header - only show for Y2/Y3 */}
+                {/* % Change sub-header - only show for Y2/Y3.
+                    Renamed from "Increase" to "% Change" — Matt: the old
+                    label implied increases-only. Negative values reduce
+                    the line vs. the prior year (e.g., -10% cuts the line
+                    by 10%). */}
                 {activeYear > 1 && (
-                  <th className="px-2 py-1.5 text-center text-xs font-medium text-blue-600 tracking-wide bg-blue-50" style={{ width: '70px' }}>
+                  <th className="px-2 py-1.5 text-center text-xs font-medium text-blue-600 tracking-wide bg-blue-50" style={{ width: '80px' }}>
                     <div className="flex items-center justify-center gap-1">
-                      <span>Increase</span>
+                      <span>% Change</span>
                       <span className="relative group">
                         <HelpCircle className="w-3 h-3 text-blue-400 cursor-help" />
-                        <span className="absolute left-1/2 -translate-x-1/2 top-5 w-44 p-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 font-normal normal-case text-left">
-                          Annual increase % from prior year
+                        <span className="absolute left-1/2 -translate-x-1/2 top-5 w-48 p-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 font-normal normal-case text-left">
+                          Annual % change vs. prior year. Type a negative number to reduce a line (e.g., -10 cuts spend by 10%).
                         </span>
                       </span>
                     </div>
@@ -1718,7 +1725,7 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                                     ? 'border-blue-300 bg-white text-blue-700'
                                     : 'border-gray-200 bg-white text-gray-400'
                                 }`}
-                                title={hasExplicitIncrease ? 'Custom increase rate' : `Using default (${effectiveDefaultGrowth}%)`}
+                                title={hasExplicitIncrease ? 'Custom % change — negative reduces the line' : `Using default (${effectiveDefaultGrowth}%) — type a negative number to reduce`}
                               />
                               <span className="text-gray-400 text-xs">%</span>
                             </div>
