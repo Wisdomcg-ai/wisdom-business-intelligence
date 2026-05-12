@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
-import { Loader2, Save, Pencil, TrendingUp, Lock } from 'lucide-react'
+import { Loader2, Save, Pencil, TrendingUp, Lock, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import PageHeader from '@/components/ui/PageHeader'
 import ForecastService from './services/forecast-service'
@@ -57,6 +57,13 @@ export default function FinancialForecastPage() {
   // and PLForecastTable so they can render "Estimated" labels and italic
   // "(est)" months instead of treating projections as a confirmed plan.
   const [isEstimatedMode, setIsEstimatedMode] = useState(false)
+  // Audit fix #7 — true between wizard onComplete and the post-reload
+  // verification. If loadInitialData finishes and `plLines` is still empty
+  // (and we're not in estimated mode), the materialize RPC half-failed —
+  // surface a sticky banner so the operator can retry instead of silently
+  // staring at a $0 dashboard.
+  const [pendingMaterializeCheck, setPendingMaterializeCheck] = useState(false)
+  const [showMaterializeWarning, setShowMaterializeWarning] = useState(false)
   const [xeroConnection, setXeroConnection] = useState<XeroConnection | null>(null)
 
   const [activeTab, setActiveTab] = useState<ForecastTab>(() => {
@@ -330,6 +337,17 @@ export default function FinancialForecastPage() {
 
       setPlLines(lines)
       setIsEstimatedMode(isEstimated)
+
+      // Audit fix #7 — reconcile read-after-write verification. If we
+      // came from a wizard onComplete and the post-reload `lines` are
+      // empty (and not estimated-mode fallback), the materialize RPC
+      // half-failed — show the warning banner. Otherwise clear it.
+      setPendingMaterializeCheck(prev => {
+        if (!prev) return false
+        const materializeFailed = lines.length === 0 && !isEstimated
+        setShowMaterializeWarning(materializeFailed)
+        return false
+      })
 
       // Load Xero connection via API (bypasses RLS timing issues)
       try {
@@ -607,6 +625,11 @@ export default function FinancialForecastPage() {
             setSelectedForecastName(null)
             setWizardStartStep(undefined)
             setWizardStartFresh(false)
+            // Audit fix #7 — read-after-write verification. Set the
+            // pending flag now; loadInitialData reconciles it based on
+            // actual lines fetched (only surfaces a warning banner if
+            // lines stay empty AND we're not in estimated mode).
+            setPendingMaterializeCheck(true)
             loadInitialData()
             toast.success('Forecast generated successfully!')
           }}
@@ -798,6 +821,32 @@ export default function FinancialForecastPage() {
           />
         )}
 
+        {/* Audit fix #7 — read-after-write warning. Set by onComplete and
+            reconciled in loadInitialData. Surfaces when the wizard
+            reported success but no P&L lines materialized server-side
+            (and we're not just in the estimated-mode fallback view). */}
+        {showMaterializeWarning && (
+          <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 mb-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-red-900">
+                Forecast saved but no P&amp;L lines were materialized
+              </p>
+              <p className="text-xs text-red-800 mt-1">
+                Your wizard inputs are stored, but the line-item table is empty.
+                Try regenerating from the wizard, or contact support if this persists.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowMaterializeWarning(false)}
+              className="flex-shrink-0 text-xs text-red-700 hover:text-red-900 underline"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* Tabs */}
         <ForecastTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
@@ -897,6 +946,11 @@ export default function FinancialForecastPage() {
             setSelectedForecastName(null)
             setWizardStartStep(undefined)
             setWizardStartFresh(false)
+            // Audit fix #7 — read-after-write verification. Set the
+            // pending flag now; loadInitialData reconciles it based on
+            // actual lines fetched (only surfaces a warning banner if
+            // lines stay empty AND we're not in estimated mode).
+            setPendingMaterializeCheck(true)
             loadInitialData()
             toast.success('Forecast generated successfully!')
           }}
