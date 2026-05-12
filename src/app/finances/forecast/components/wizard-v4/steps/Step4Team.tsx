@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback, useRef, memo } from 'react';
-import { Plus, Trash2, HelpCircle, ChevronDown, ChevronUp, Info, Calendar, Sparkles, X, Briefcase, UserCheck, Loader2, Users, UserPlus, TrendingUp, DollarSign, Target, Lightbulb, ArrowRight, DownloadCloud, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, HelpCircle, ChevronDown, ChevronUp, Info, Calendar, Sparkles, X, Briefcase, UserCheck, Loader2, Users, UserPlus, TrendingUp, DollarSign, Target, Lightbulb, ArrowRight, DownloadCloud, RefreshCw, AlertTriangle } from 'lucide-react';
 import {
   ForecastWizardState,
   WizardActions,
@@ -3860,6 +3860,32 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
             Affects cashflow timing only — annual salary unchanged.
           </span>
         </div>
+
+        {/* Audit fix #5 — Xero-import mismatch warning. The business-level
+            default applies only to team members whose own `payFrequency`
+            is undefined; rows imported from Xero with an explicit
+            different frequency keep theirs (row-level wins). Surface a
+            single inline banner if there's a mismatch so the operator
+            doesn't quietly forecast the wrong cashflow rhythm. */}
+        {(() => {
+          const mismatched = teamMembers.filter(m =>
+            (m._xeroEmployeeId || m.isFromXero) &&
+            m.payFrequency &&
+            m.payFrequency !== (state.defaultPayFrequency ?? 'monthly')
+          );
+          if (mismatched.length === 0) return null;
+          const sample = mismatched.slice(0, 2).map(m => `${m.name} (${m.payFrequency})`).join(', ');
+          const extra = mismatched.length > 2 ? ` +${mismatched.length - 2} more` : '';
+          return (
+            <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-700" />
+              <div>
+                <strong>{mismatched.length} Xero-imported team member{mismatched.length === 1 ? '' : 's'}</strong>{' '}
+                use a different pay frequency: {sample}{extra}. Row-level frequency wins for cashflow timing — update the row dropdown if intended, or change this default to match.
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* ─── Phase 55-01: Year-card filter ──────────────────────────────────

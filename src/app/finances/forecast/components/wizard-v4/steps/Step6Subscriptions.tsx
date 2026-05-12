@@ -948,6 +948,10 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
     } catch (err) {
       console.error('Error saving budgets:', err);
       setError('Failed to save subscription budgets. Please try again.');
+      // Audit fix #6 — re-throw so flushPendingSaves can reject and the
+      // StepBar blocks navigation. The setError above keeps the inline
+      // error banner; the toast in StepBar covers the nav-blocked case.
+      throw err instanceof Error ? err : new Error(String(err));
     } finally {
       setIsSaving(false);
     }
@@ -980,7 +984,11 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
 
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
-      saveSubscriptionBudgets();
+      // Audit fix #6 — saveSubscriptionBudgets now re-throws on failure so
+      // flushPendingSaves can reject and block navigation. The debounced
+      // auto-save doesn't need that escalation; swallow the error here
+      // (setError inside saveSubscriptionBudgets already surfaces it).
+      saveSubscriptionBudgets().catch(() => {});
     }, 1500);
 
     return () => {
@@ -991,9 +999,13 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
   // Phase 57 T12 (B4) — flushPendingSaves exposed via ref for T13/B5's
   // clickable nav. Cancels the in-flight debounce timer and immediately
   // POSTs the current vendor list. Resolves once the network call returns
-  // (or immediately if there's nothing to save). Never rejects — the
-  // component's existing error UI surfaces failures; rejecting here would
-  // break callers that just want to await before navigation.
+  // (or immediately if there's nothing to save).
+  //
+  // Audit fix #6 — previously this method *swallowed* save failures so
+  // navigation always proceeded. That meant a failed POST silently dropped
+  // the operator's vendor edits on the floor while they navigated away.
+  // It now rejects on save failure so the StepBar can stay on Step 5 and
+  // let the operator retry.
   useImperativeHandle(ref, () => ({
     flushPendingSaves: async () => {
       // Cancel any pending debounced save.
@@ -1005,13 +1017,8 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
       if (vendors.length === 0) return;
       const activeCount = vendors.filter(v => v.isActive).length;
       if (activeCount === 0) return;
-      try {
-        await saveSubscriptionBudgets();
-      } catch (err) {
-        // saveSubscriptionBudgets handles UI error state itself; swallow here
-        // so the caller's `await flushPendingSaves()` never rejects.
-        console.warn('[Step6Subscriptions T12] flushPendingSaves error (non-fatal):', err);
-      }
+      // Re-throw on failure so the caller can block navigation.
+      await saveSubscriptionBudgets();
     },
   }), [saveSubscriptionBudgets, vendors]);
 
