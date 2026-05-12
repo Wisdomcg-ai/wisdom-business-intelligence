@@ -5,10 +5,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
 
+// Service-key client — used INSIDE handlers (after auth passes) for actual DB ops.
+// Keeps RLS-bypass behaviour intact while the auth gate guards business_id access.
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
@@ -37,6 +40,95 @@ interface SubscriptionBudgetInput {
   notes?: string;
 }
 
+type AuthResult =
+  | { ok: true; userId: string }
+  | { ok: false; response: NextResponse };
+
+/**
+ * Verify the authenticated user has access to the given business_id.
+ * Mirrors the dual-ID auth pattern from /api/forecast/[id] GET:
+ *   - direct match against businesses.owner_id
+ *   - dual-ID lookup via business_profiles (id or business_id, plus user_id)
+ *   - team membership via business_users
+ *   - coach/super_admin role via system_roles
+ *
+ * Returns { ok: true } on success, or { ok: false, response } with a 401/403 payload.
+ */
+async function authoriseBusinessAccess(businessId: string): Promise<AuthResult> {
+  const sb = await createRouteHandlerClient();
+  const { data: { user }, error: userError } = await sb.auth.getUser();
+  if (userError || !user) {
+    return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+  }
+
+  // The incoming businessId could be either businesses.id OR business_profiles.id.
+  // Resolve both shapes and check access against both.
+  let resolvedBusinessId: string = businessId;
+  let ownerId: string | null = null;
+
+  // Direct lookup in businesses
+  const { data: bizDirect } = await sb
+    .from('businesses')
+    .select('id, owner_id')
+    .eq('id', businessId)
+    .maybeSingle();
+
+  if (bizDirect) {
+    resolvedBusinessId = bizDirect.id;
+    ownerId = bizDirect.owner_id;
+  } else {
+    // Fall back to business_profiles.id → businesses.id resolution
+    const { data: profile } = await sb
+      .from('business_profiles')
+      .select('business_id, user_id')
+      .eq('id', businessId)
+      .maybeSingle();
+
+    if (profile?.business_id) {
+      resolvedBusinessId = profile.business_id;
+      const { data: biz } = await sb
+        .from('businesses')
+        .select('owner_id')
+        .eq('id', profile.business_id)
+        .maybeSingle();
+      ownerId = biz?.owner_id || null;
+    }
+    if (profile?.user_id === user.id) {
+      ownerId = user.id;
+    }
+  }
+
+  if (ownerId === user.id) {
+    return { ok: true, userId: user.id };
+  }
+
+  // Team membership check
+  const { data: teamMember } = await sb
+    .from('business_users')
+    .select('id')
+    .eq('business_id', resolvedBusinessId)
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (teamMember) {
+    return { ok: true, userId: user.id };
+  }
+
+  // Coach / super_admin role
+  const { data: roleData } = await sb
+    .from('system_roles')
+    .select('role')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (roleData?.role === 'coach' || roleData?.role === 'super_admin') {
+    return { ok: true, userId: user.id };
+  }
+
+  return { ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
+}
+
 // GET - Retrieve subscription budgets for a business
 export async function GET(request: NextRequest) {
   try {
@@ -48,6 +140,9 @@ export async function GET(request: NextRequest) {
     if (!businessId) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
     }
+
+    const auth = await authoriseBusinessAccess(businessId);
+    if (auth.ok === false) return auth.response;
 
     let query = supabase
       .from('subscription_budgets')
@@ -101,6 +196,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const auth = await authoriseBusinessAccess(business_id);
+    if (!auth.ok) return auth.response;
 
     if (process.env.NODE_ENV !== 'production') {
       console.log('[Subscription Budgets] Saving', budgets.length, 'budgets for business:', business_id);
@@ -172,6 +270,9 @@ export async function DELETE(request: NextRequest) {
     if (!businessId) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
     }
+
+    const auth = await authoriseBusinessAccess(businessId);
+    if (!auth.ok) return auth.response;
 
     let query = supabase
       .from('subscription_budgets')
