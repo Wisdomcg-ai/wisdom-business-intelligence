@@ -151,37 +151,56 @@ function BudgetFramework({
             const overAmount = opex - budget.availableOpEx;
 
             return (
-              <div key={label} className="space-y-1.5">
-                {/* Headline */}
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
-                  <span className="text-xs text-gray-500">Available OpEx</span>
-                </div>
-                <div className="text-xl font-bold text-gray-900 tabular-nums leading-tight">
-                  {formatCurrency(budget.availableOpEx)}
-                </div>
+              <div key={label} className="space-y-2">
+                {/* Year label */}
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</div>
 
-                {/* Inline breakdown — single dense line that replaces the
-                    7-row vertical list and the "Show breakdown" toggle (Matt:
-                    "make it smaller without having to collapse and expand").
-                    Reads left-to-right: Revenue → minus COGS = GP → minus
-                    Team → minus Subs → minus Target Profit, with $ values
-                    inline. data-testid + title on each metric so tests can
-                    assert on individual values without parsing compact
-                    formatting, and operators can hover for exact amounts. */}
-                <div className="text-[11px] leading-snug text-gray-600 tabular-nums">
-                  <span className="text-gray-700 font-medium" data-testid={`budget-revenue-${label}`} title={`Revenue: ${formatCurrency(budget.revenue)}`}>{fmtCompact(budget.revenue)}</span>
-                  <span className="text-gray-400"> rev </span>
-                  <span className="text-gray-500" data-testid={`budget-cogs-${label}`} title={`COGS: ${formatCurrency(budget.cogs)}`}>− {fmtCompact(budget.cogs)} cogs</span>
-                  <span className="text-gray-400"> · </span>
-                  <span className="text-gray-700 font-medium" data-testid={`budget-gp-${label}`} title={`Gross Profit: ${formatCurrency(budget.grossProfit)} (${budget.grossProfitPct}%)`}>{fmtCompact(budget.grossProfit)} GP <span className="text-gray-400 font-normal">({budget.grossProfitPct}%)</span></span>
-                  <span className="text-gray-400"> · </span>
-                  <span className="text-gray-500" data-testid={`budget-team-${label}`} title={`Team costs: ${formatCurrency(budget.teamCosts)}`}>− {fmtCompact(budget.teamCosts)} team</span>
-                  <span className="text-gray-400"> · </span>
-                  <span className="text-gray-500" data-testid={`budget-subs-${label}`} title={`Subscriptions: ${formatCurrency(budget.subscriptions)}`}>− {fmtCompact(budget.subscriptions)} subs</span>
-                  <span className="text-gray-400"> · </span>
-                  <span className="text-gray-500" data-testid={`budget-target-${label}`} title={`Target profit: ${formatCurrency(budget.targetProfit)} (${budget.netProfitPct}%)`}>− {fmtCompact(budget.targetProfit)} profit <span className="text-gray-400">({budget.netProfitPct}%)</span></span>
-                </div>
+                {/* Structured P&L mini-statement. Reads top-to-bottom like an
+                    actual P&L: Revenue → minus COGS → equals Gross Profit →
+                    minus deductions → equals Available OpEx. Two-column grid
+                    keeps every $ value right-aligned. Replaces the cramped
+                    one-line breakdown from PR #183 (Matt: "looks rubbish"). */}
+                <dl
+                  className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-xs leading-snug tabular-nums"
+                  data-testid={`budget-statement-${label}`}
+                >
+                  <dt className="text-gray-500">Revenue</dt>
+                  <dd className="text-gray-900 font-medium" data-testid={`budget-revenue-${label}`} title={`Revenue: ${formatCurrency(budget.revenue)}`}>
+                    {formatCurrency(budget.revenue)}
+                  </dd>
+
+                  <dt className="text-gray-500">− COGS</dt>
+                  <dd className="text-gray-500" data-testid={`budget-cogs-${label}`} title={`COGS: ${formatCurrency(budget.cogs)}`}>
+                    {formatCurrency(budget.cogs)}
+                  </dd>
+
+                  <dt className="text-gray-700 font-semibold">= Gross Profit <span className="font-normal text-gray-400">({budget.grossProfitPct}%)</span></dt>
+                  <dd className="text-gray-900 font-semibold" data-testid={`budget-gp-${label}`} title={`Gross Profit: ${formatCurrency(budget.grossProfit)}`}>
+                    {formatCurrency(budget.grossProfit)}
+                  </dd>
+
+                  <dt className="text-gray-500">− Team</dt>
+                  <dd className="text-gray-500" data-testid={`budget-team-${label}`} title={`Team costs: ${formatCurrency(budget.teamCosts)}`}>
+                    {formatCurrency(budget.teamCosts)}
+                  </dd>
+
+                  <dt className="text-gray-500">− Subscriptions</dt>
+                  <dd className="text-gray-500" data-testid={`budget-subs-${label}`} title={`Subscriptions: ${formatCurrency(budget.subscriptions)}`}>
+                    {formatCurrency(budget.subscriptions)}
+                  </dd>
+
+                  <dt className="text-gray-500">− Target Profit <span className="text-gray-400">({budget.netProfitPct}%)</span></dt>
+                  <dd className="text-gray-500" data-testid={`budget-target-${label}`} title={`Target profit: ${formatCurrency(budget.targetProfit)}`}>
+                    {formatCurrency(budget.targetProfit)}
+                  </dd>
+
+                  {/* "Available OpEx" — the answer to the math. Spans both
+                      cols with a top border for visual finality. */}
+                  <dt className="text-brand-navy font-bold border-t border-gray-200 pt-1 mt-0.5">= Available OpEx</dt>
+                  <dd className="text-brand-navy font-bold border-t border-gray-200 pt-1 mt-0.5 text-sm" data-testid={`budget-available-${label}`}>
+                    {formatCurrency(budget.availableOpEx)}
+                  </dd>
+                </dl>
 
                 {/* Progress bar */}
                 <div className="space-y-1 pt-1">
@@ -235,18 +254,6 @@ function BudgetFramework({
   );
 }
 
-/**
- * Compact currency for the dense inline breakdown ($1.2M / $850k / $25k /
- * $0). Keeps the deduction chain on one line per year column even on a
- * 3-year forecast where space is tight.
- */
-function fmtCompact(n: number): string {
-  const abs = Math.abs(n);
-  const sign = n < 0 ? '-' : '';
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(abs >= 100_000 ? 0 : abs >= 10_000 ? 0 : 1)}k`;
-  return `${sign}$${Math.round(abs)}`;
-}
 
 // ============================================
 // GUIDANCE PANEL (Dismissible)
