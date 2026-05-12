@@ -152,6 +152,62 @@ describe('projectRemainingMonths', () => {
     })
   })
 
+  describe('lastCompleteMonth cutoff (partial-current-month handling)', () => {
+    it('projects the partial current month even if YTD has a non-zero entry for it', () => {
+      // FY26 YTD: 10 months × $10k complete (Jul–Apr) PLUS $4k of partial May
+      // (today is May 12). Without the cutoff, May would lock in at $4k.
+      const ytd: Record<string, number> = {}
+      for (const k of FY26_KEYS.slice(0, 10)) ytd[k] = 10_000
+      ytd['2026-05'] = 4_000
+
+      const priorFY: Record<string, number> = {}
+      for (const k of FY25_KEYS) priorFY[k] = 10_000 // flat, no seasonality
+
+      const out = projectRemainingMonths(
+        ytd,
+        FY26_KEYS,
+        { keys: FY25_KEYS, actuals: priorFY },
+        '2026-04' // last complete month
+      )
+
+      // May (partial) AND June (future) get projections. Both should be the
+      // full-month projection (~$10k from flat prior FY), NOT the $4k partial.
+      expect(out['2026-05']).toBeDefined()
+      expect(out['2026-06']).toBeDefined()
+      expect(out['2026-05']).toBeGreaterThan(8_000)
+      expect(out['2026-05']).toBeLessThan(13_000)
+      // The partial entry must NOT be overwritten in the caller's input map.
+      expect(ytd['2026-05']).toBe(4_000)
+    })
+
+    it('excludes the partial month from the seasonality math (annualization)', () => {
+      // FY25 prior: flat $10k each month, total $120k.
+      const priorFY: Record<string, number> = {}
+      for (const k of FY25_KEYS) priorFY[k] = 10_000
+
+      // FY26 YTD: 10 complete months × $10k (Jul–Apr) = $100k complete.
+      // Partial May = $20k (huge spike — would distort annualization if treated
+      // as a complete month covering 11/12 of the year).
+      const ytd: Record<string, number> = {}
+      for (const k of FY26_KEYS.slice(0, 10)) ytd[k] = 10_000
+      ytd['2026-05'] = 20_000
+
+      const out = projectRemainingMonths(
+        ytd,
+        FY26_KEYS,
+        { keys: FY25_KEYS, actuals: priorFY },
+        '2026-04'
+      )
+
+      // With the cutoff: complete YTD = $100k over 10/12 months → annualized
+      // = $120k → May/Jun ≈ $10k each.
+      // Without the cutoff: YTD = $120k over 11/12 → annualized = $130.9k →
+      // May/Jun ≈ $10.9k each. The cutoff version should be LOWER (~$10k).
+      expect(out['2026-05']).toBeCloseTo(10_000, -2)
+      expect(out['2026-06']).toBeCloseTo(10_000, -2)
+    })
+  })
+
   describe('General behavior', () => {
     it('never overwrites a non-zero YTD month', () => {
       const ytd: Record<string, number> = {}
