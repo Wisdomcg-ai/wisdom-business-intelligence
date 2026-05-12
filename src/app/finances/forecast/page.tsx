@@ -52,6 +52,11 @@ export default function FinancialForecastPage() {
 
   const [forecast, setForecast] = useState<FinancialForecast | null>(null)
   const [plLines, setPlLines] = useState<PLLine[]>([])
+  // True when the page is showing YTD actuals + per-line projections for
+  // the current FY (no user-built forecast). Threaded into ForecastOverview
+  // and PLForecastTable so they can render "Estimated" labels and italic
+  // "(est)" months instead of treating projections as a confirmed plan.
+  const [isEstimatedMode, setIsEstimatedMode] = useState(false)
   const [xeroConnection, setXeroConnection] = useState<XeroConnection | null>(null)
 
   const [activeTab, setActiveTab] = useState<ForecastTab>(() => {
@@ -302,19 +307,29 @@ export default function FinancialForecastPage() {
 
       // Load P&L lines
       let lines = await ForecastService.loadPLLines(loadedForecast.id!)
+      // Estimated mode: true when we're rendering YTD actuals + projected
+      // remaining months (no user-built forecast saved). The dashboard +
+      // P&L table label months as "(est)" and hide vs-plan widgets.
+      let isEstimated = false
 
-      // Phase 65 — past-FY views render Xero actuals inline when the forecast
-      // has no stored lines. Avoids pushing the operator into a retrospective
-      // wizard build for years that are already closed.
-      if (lines.length === 0 && fiscalYear < getCurrentFiscalYear(yearStart)) {
+      // Phase 65 — render Xero actuals inline when no forecast is saved.
+      // - Past FY: actual_months only (year is closed, nothing to project).
+      // - Current FY: actual_months for YTD + forecast_months projected
+      //   per-line via prior-FY seasonality → operator sees a "where will
+      //   we land?" view without being forced into the wizard.
+      if (lines.length === 0 && fiscalYear <= getCurrentFiscalYear(yearStart)) {
         const actuals = await ForecastService.loadActualsAsPLLines(bizId, fiscalYear, yearStart)
         if (actuals.length > 0) {
           lines = actuals
-          console.log('[Forecast] Loaded', actuals.length, 'prior-FY actual lines from xero_pl_lines')
+          isEstimated = fiscalYear === getCurrentFiscalYear(yearStart)
+          console.log('[Forecast] Loaded', actuals.length,
+            isEstimated ? 'current-FY actuals + projections' : 'prior-FY actuals',
+            'from xero_pl_lines')
         }
       }
 
       setPlLines(lines)
+      setIsEstimatedMode(isEstimated)
 
       // Load Xero connection via API (bypasses RLS timing issues)
       try {
@@ -795,6 +810,7 @@ export default function FinancialForecastPage() {
             fiscalYear={selectedFiscalYear || forecast.fiscal_year}
             yearStartMonth={fiscalYearStart}
             businessId={businessId}
+            isEstimatedMode={isEstimatedMode}
             onSwitchTab={(tab) => setActiveTab(tab)}
             onEditPlan={() => setShowForecastSelector(true)}
           />
@@ -807,6 +823,7 @@ export default function FinancialForecastPage() {
             onSave={handleSavePLLines}
             onChange={() => setHasUnsavedChanges(true)}
             defaultViewMode="view"
+            isEstimatedMode={isEstimatedMode}
           />
         )}
 
