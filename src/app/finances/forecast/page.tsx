@@ -554,6 +554,14 @@ export default function FinancialForecastPage() {
           onSwitchFiscalYear={setSelectedFiscalYear}
           yearStartMonth={fiscalYearStart}
           onCreateForecast={() => {
+            // Same planning-season default as the ForecastSelector flow:
+            // empty state on the current or past FY tab during planning
+            // season → wizard opens for currentFY + 1.
+            const curFY = getCurrentFiscalYear(fiscalYearStart)
+            const viewing = selectedFiscalYear ?? curFY
+            if (planningSeasonActive && viewing <= curFY) {
+              setSelectedFiscalYear(curFY + 1)
+            }
             setSelectedForecastId(null)
             setSelectedForecastName(null)
             setWizardStartFresh(true)
@@ -899,6 +907,18 @@ export default function FinancialForecastPage() {
             setShowWizardV4(true)
           }}
           onCreateNew={() => {
+            // Planning-season default — when the operator is in the last
+            // 3 months of the current FY (Apr–Jun on AU FY) and viewing the
+            // current or a past FY tab, a "Create New Forecast" almost
+            // always means "plan next year". Override selectedFiscalYear so
+            // the wizard opens for currentFY + 1 instead of inheriting the
+            // current view. Future-FY tabs are preserved — a coach building
+            // an FY28 plan from the FY28 tab still gets FY28.
+            const curFY = getCurrentFiscalYear(fiscalYearStart)
+            const viewing = selectedFiscalYear ?? curFY
+            if (planningSeasonActive && viewing <= curFY) {
+              setSelectedFiscalYear(curFY + 1)
+            }
             setSelectedForecastId(null)
             setSelectedForecastName(null)
             setWizardStartFresh(true)
