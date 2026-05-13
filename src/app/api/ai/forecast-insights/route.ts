@@ -87,21 +87,24 @@ export async function POST(request: Request) {
     // Call Claude (preferred) → OpenAI fallback
     let responseText: string | null = null
 
-    try {
-      const Anthropic = require('@anthropic-ai/sdk').default
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim()
+    if (anthropicKey) {
+      try {
+        const Anthropic = require('@anthropic-ai/sdk').default
+        const anthropic = new Anthropic({ apiKey: anthropicKey })
 
-      const result = await anthropic.messages.create({
-        model: 'claude-haiku-3-5-20241022', // Fast + cheap for structured output
-        max_tokens: 1024,
-        system,
-        messages: [{ role: 'user', content: userMessage }],
-      })
+        const result = await anthropic.messages.create({
+          model: 'claude-haiku-3-5-20241022', // Fast + cheap for structured output
+          max_tokens: 1024,
+          system,
+          messages: [{ role: 'user', content: userMessage }],
+        })
 
-      const textBlock = result.content.find((b: { type: string }) => b.type === 'text')
-      responseText = textBlock?.text || null
-    } catch (anthropicError) {
-      Sentry.captureException(anthropicError, { tags: { route: 'ai/forecast-insights' }, extra: { context: 'Anthropic failed, trying OpenAI' }, level: 'warning' } as any)
+        const textBlock = result.content.find((b: { type: string }) => b.type === 'text')
+        responseText = textBlock?.text || null
+      } catch (anthropicError) {
+        Sentry.captureException(anthropicError, { tags: { route: 'ai/forecast-insights' }, extra: { context: 'Anthropic failed, trying OpenAI' }, level: 'warning' } as any)
+      }
     }
 
     if (!responseText) {
