@@ -1,35 +1,17 @@
-'use client'
-
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { getUserSystemRole } from '@/lib/auth/roles'
-import { Loader2 } from 'lucide-react'
+// Forecast page is now available to all authenticated users — clients, coaches,
+// and super_admins. The previous coach/super_admin-only guard redirected
+// clients to /dashboard, which was the source of the "click Financial
+// Forecast and it kicks me back" bug. The page itself enforces business-
+// scoping via resolveBusinessId, so this layer was redundant for actual
+// data protection.
+//
+// Kept as a passthrough so the route remains a separate layout segment
+// (in case future role-aware shells need to wrap the forecast view).
 
 export default function ForecastLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const router = useRouter()
-  const [checking, setChecking] = useState(true)
-
-  useEffect(() => {
-    getUserSystemRole().then(role => {
-      if (role === 'coach' || role === 'super_admin') {
-        setChecking(false)
-      } else {
-        router.replace('/dashboard')
-      }
-    })
-  }, [router])
-
-  if (checking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-      </div>
-    )
-  }
-
   return <>{children}</>
 }
