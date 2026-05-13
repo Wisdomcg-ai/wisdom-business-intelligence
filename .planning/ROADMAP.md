@@ -1018,10 +1018,10 @@ Plans:
 
 **Goal:** Let users share individual `daily_tasks` and `ideas` either with the entire team or with selected teammates — defaulting to private. Recipients can mark complete but not edit/delete; owners retain full control. Coach dashboard surfaces owned vs team-shared idea counts.
 **Depends on:** None (orthogonal to forecast/subscriptions work)
-**Plans:** 0/6 planned
+**Plans:** 1/6 plans executed
 
 Plans:
-- [ ] 61-01 — DB migration: add `shared_with_all boolean` + `shared_with uuid[]` to `daily_tasks` and `ideas` (defaults preserve current private-only behavior)
+- [x] 61-01 — DB migration: add `shared_with_all boolean` + `shared_with uuid[]` to `daily_tasks` and `ideas` (defaults preserve current private-only behavior)
 - [ ] 61-02 — RLS update: asymmetric policies (broad SELECT: owner OR shared_with_all+member OR uid=ANY(shared_with); narrow UPDATE/DELETE: owner only)
 - [ ] 61-03 — Service layer: extend `dailyTasksService` + `ideasService` to return `is_owner`, add `share()` method, fix existing ownership gaps in `updateIdea`/`archiveIdea`/`getIdeaById`
 - [ ] 61-04 — API: `PATCH /api/todos/[id]/share` + `PATCH /api/ideas/[id]/share`; status sync (recipient mark-complete updates the single row)
