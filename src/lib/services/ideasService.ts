@@ -24,6 +24,8 @@ export type IdeaStatus = 'captured' | 'under_review' | 'approved' | 'rejected' |
 export type IdeaCategory = 'product' | 'marketing' | 'operations' | 'people' | 'finance' | 'technology' | 'other';
 export type IdeaImpact = 'low' | 'medium' | 'high';
 
+export type IdeaShareMode = 'private' | 'team' | 'specific';
+
 export interface Idea {
   id: string;
   user_id: string;
@@ -37,6 +39,12 @@ export interface Idea {
   estimated_impact: IdeaImpact | null;
   created_at: string;
   updated_at: string;
+  // Phase 61 sharing fields
+  shared_with_all?: boolean;
+  shared_with?: string[];
+  // Derived by the service (not stored)
+  is_owner?: boolean;
+  owner_display_name?: string;
 }
 
 export interface CreateIdeaInput {
@@ -57,18 +65,62 @@ export interface UpdateIdeaInput {
   archived?: boolean;
 }
 
+// ----------------------------------------------------------------------------
+// Phase 61-03 — owner-display-name resolution
+//
+// `public.users` carries first_name / last_name / email keyed by id. RLS on
+// `users` already allows authenticated reads of name/email for accessible
+// teammates, so PostgREST will inline the joined row when the FK is followed.
+// ----------------------------------------------------------------------------
+const IDEA_OWNER_SELECT = '*, owner:users!user_id(first_name, last_name, email)';
+
+interface OwnerJoinRow {
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+}
+
+function resolveOwnerDisplayName(owner: OwnerJoinRow | null | undefined): string {
+  if (owner) {
+    const first = owner.first_name?.trim();
+    const last = owner.last_name?.trim();
+    if (first && last) return `${first} ${last}`;
+    if (first) return first;
+    if (last) return last;
+    if (owner.email && owner.email.trim()) return owner.email;
+  }
+  return 'Team member';
+}
+
+function decorateIdea(
+  row: Record<string, unknown> & { owner?: OwnerJoinRow | OwnerJoinRow[] | null },
+  viewerId: string | null
+): Idea {
+  const ownerRow = Array.isArray(row.owner) ? row.owner[0] ?? null : row.owner ?? null;
+  const { owner: _owner, ...rest } = row;
+  void _owner;
+  const userId = (rest as { user_id?: string }).user_id;
+  return {
+    ...(rest as unknown as Idea),
+    is_owner: viewerId != null && userId === viewerId,
+    owner_display_name: resolveOwnerDisplayName(ownerRow),
+  };
+}
+
 // Get all active ideas (not archived)
-// SHARED BOARD: Now supports querying by business_id
+// SHARED BOARD: Supports querying by business_id (UNCHANGED — already broad)
+// LEGACY MODE: Phase 61-03 broadens visibility — RLS now gates whether shared
+// rows surface, so the .eq('user_id') filter is removed.
 export async function getActiveIdeas(overrideUserId?: string, businessId?: string) {
   try {
     const supabase = createClient();
 
-    // Shared board: query by business_id if provided
+    // Shared board: query by business_id if provided — UNCHANGED.
     if (businessId) {
       console.log('[IdeasService] getActiveIdeas (SHARED BOARD) - businessId:', businessId);
       const { data, error } = await supabase
         .from('ideas')
-        .select('*')
+        .select(IDEA_OWNER_SELECT)
         .eq('business_id', businessId)
         .eq('archived', false)
         .order('created_at', { ascending: false });
@@ -77,17 +129,22 @@ export async function getActiveIdeas(overrideUserId?: string, businessId?: strin
         console.error('Error fetching active ideas:', error);
         return [];
       }
-      return data as Idea[];
+      // Decorate with is_owner (relative to the override or current user) +
+      // owner_display_name. viewerId may be null when called from server
+      // contexts; is_owner then resolves to false uniformly.
+      const viewerId = await getEffectiveUserId(overrideUserId);
+      return ((data || []) as any[]).map((row) => decorateIdea(row, viewerId));
     }
 
-    // Legacy: query by user_id
+    // Legacy: query by user_id — but phase 61-03 drops the .eq filter.
+    // RLS (broadened in 61-02) handles visibility; the service derives is_owner
+    // against the requesting user.
     const userId = await getEffectiveUserId(overrideUserId);
     if (!userId) return [];
 
     const { data, error } = await supabase
       .from('ideas')
-      .select('*')
-      .eq('user_id', userId)
+      .select(IDEA_OWNER_SELECT)
       .eq('archived', false)
       .order('created_at', { ascending: false });
 
@@ -95,14 +152,14 @@ export async function getActiveIdeas(overrideUserId?: string, businessId?: strin
       console.error('Error fetching active ideas:', error);
       return [];
     }
-    return data as Idea[];
+    return ((data || []) as any[]).map((row) => decorateIdea(row, userId));
   } catch (error) {
     console.error('Error fetching active ideas:', error);
     return [];
   }
 }
 
-// Get ideas by status
+// Get ideas by status — phase 61-03: drops .eq('user_id'), maps is_owner.
 export async function getIdeasByStatus(status: IdeaStatus, overrideUserId?: string) {
   try {
     const supabase = createClient();
@@ -111,8 +168,7 @@ export async function getIdeasByStatus(status: IdeaStatus, overrideUserId?: stri
 
     const { data, error } = await supabase
       .from('ideas')
-      .select('*')
-      .eq('user_id', userId)
+      .select(IDEA_OWNER_SELECT)
       .eq('status', status)
       .eq('archived', false)
       .order('created_at', { ascending: false });
@@ -121,28 +177,32 @@ export async function getIdeasByStatus(status: IdeaStatus, overrideUserId?: stri
       console.error('Error fetching ideas by status:', error);
       return [];
     }
-    return data as Idea[];
+    return ((data || []) as any[]).map((row) => decorateIdea(row, userId));
   } catch (error) {
     console.error('Error fetching ideas by status:', error);
     return [];
   }
 }
 
-// Get a single idea by ID
-export async function getIdeaById(id: string) {
+// Get a single idea by ID.
+// Phase 61-03 — closes RESEARCH.md §3 ownership-gap #3:
+//   - Accepts an optional `viewerId` so callers can tag the row with is_owner.
+//   - Does NOT add .eq('user_id') — recipients must be able to read shared rows.
+//   - RLS still enforces visibility (broadened in 61-02).
+export async function getIdeaById(id: string, viewerId?: string) {
   try {
     const supabase = createClient();
     const { data, error } = await supabase
       .from('ideas')
-      .select('*')
+      .select(IDEA_OWNER_SELECT)
       .eq('id', id)
       .single();
 
-    if (error) {
-      console.error('Error fetching idea:', error);
+    if (error || !data) {
+      if (error) console.error('Error fetching idea:', error);
       return null;
     }
-    return data as Idea;
+    return decorateIdea(data as any, viewerId ?? null);
   } catch (error) {
     console.error('Error fetching idea:', error);
     return null;
@@ -150,7 +210,7 @@ export async function getIdeaById(id: string) {
 }
 
 // Create a new idea
-// SHARED BOARD: Now requires businessId to associate with the business
+// SHARED BOARD: Requires businessId to associate with the business
 export async function createIdea(input: CreateIdeaInput, overrideUserId?: string, businessId?: string) {
   try {
     const supabase = createClient();
@@ -186,9 +246,14 @@ export async function createIdea(input: CreateIdeaInput, overrideUserId?: string
 }
 
 // Update an idea
-export async function updateIdea(id: string, updates: UpdateIdeaInput) {
+// Phase 61-03 — closes RESEARCH.md §3 ownership-gap #1: ADD .eq('user_id', userId)
+// for defense-in-depth alongside the owner-only RLS UPDATE policy from 61-02.
+export async function updateIdea(id: string, updates: UpdateIdeaInput, overrideUserId?: string) {
   try {
     const supabase = createClient();
+    const userId = await getEffectiveUserId(overrideUserId);
+    if (!userId) throw new Error('Not authenticated');
+
     const { data, error } = await supabase
       .from('ideas')
       .update({
@@ -196,6 +261,7 @@ export async function updateIdea(id: string, updates: UpdateIdeaInput) {
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
+      .eq('user_id', userId)  // Phase 61-03: ownership-gap fix
       .select()
       .single();
 
@@ -208,9 +274,13 @@ export async function updateIdea(id: string, updates: UpdateIdeaInput) {
 }
 
 // Archive an idea
-export async function archiveIdea(id: string) {
+// Phase 61-03 — closes RESEARCH.md §3 ownership-gap #2: ADD .eq('user_id', userId).
+export async function archiveIdea(id: string, overrideUserId?: string) {
   try {
     const supabase = createClient();
+    const userId = await getEffectiveUserId(overrideUserId);
+    if (!userId) throw new Error('Not authenticated');
+
     const { data, error } = await supabase
       .from('ideas')
       .update({
@@ -218,6 +288,7 @@ export async function archiveIdea(id: string) {
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
+      .eq('user_id', userId)  // Phase 61-03: ownership-gap fix
       .select()
       .single();
 
@@ -300,8 +371,80 @@ export async function getIdeasStats(overrideUserId?: string, businessId?: string
   }
 }
 
+// Phase 61-03 — Share an idea.
+// Owner-only; defensive .eq('user_id', userId) complements the RLS owner-only
+// UPDATE policy. Validation matches shareTask exactly.
+export async function shareIdea(
+  id: string,
+  mode: IdeaShareMode,
+  userIds?: string[],
+  overrideUserId?: string
+): Promise<Idea | null> {
+  const supabase = createClient();
+  const userId = await getEffectiveUserId(overrideUserId);
+  if (!userId) return null;
+
+  if (mode === 'specific' && (!userIds || userIds.length === 0)) {
+    // "specific" share mode requires at least one user_id. Treat empty as a
+    // validation failure. (No new console.error per phase 61-03 constraint.)
+    return null;
+  }
+
+  let patch: { shared_with_all: boolean; shared_with: string[] };
+  if (mode === 'private') {
+    patch = { shared_with_all: false, shared_with: [] };
+  } else if (mode === 'team') {
+    patch = { shared_with_all: true, shared_with: [] };
+  } else {
+    patch = { shared_with_all: false, shared_with: userIds as string[] };
+  }
+
+  const { data, error } = await supabase
+    .from('ideas')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select(IDEA_OWNER_SELECT)
+    .single();
+
+  if (error || !data) {
+    // Silent failure — RLS denial, validation failure, or row-not-found all
+    // collapse to null. (No new console.error per phase 61-03 constraint.)
+    return null;
+  }
+
+  // Caller IS the owner here (defensive filter just succeeded).
+  return decorateIdea(data as any, userId);
+}
+
+// Phase 61-03 — Recipient-safe status flip via SECURITY DEFINER RPC from 61-02.
+// Visibility (owner OR shared) is the gate; the RPC narrows the actual UPDATE
+// to the status column. Never bypasses with a direct UPDATE.
+export async function markIdeaStatus(
+  id: string,
+  status: IdeaStatus,
+  overrideUserId?: string
+): Promise<Idea | null> {
+  const supabase = createClient();
+  const userId = await getEffectiveUserId(overrideUserId);
+
+  const { data, error } = await supabase.rpc('mark_idea_status', {
+    p_idea_id: id,
+    p_status: status,
+  });
+
+  if (error || !data) {
+    // Silent failure (RPC access denied, idea not found, invalid status).
+    // (No new console.error per phase 61-03 constraint.)
+    return null;
+  }
+
+  // RPC returns the bare row (no joined owner). Decorate with is_owner only.
+  return decorateIdea(data as any, userId);
+}
+
 // ============================================================================
-// IDEAS FILTER (Evaluation)
+// IDEAS FILTER (Evaluation) — Phase 61: UNCHANGED (stays per-user per CONTEXT)
 // ============================================================================
 
 export type FilterDecision = 'proceed' | 'reject' | 'park' | 'needs_more_info';
@@ -473,6 +616,7 @@ export async function upsertIdeasFilter(input: CreateIdeasFilterInput, overrideU
 }
 
 // Get all ideas with their filter evaluation (for overview)
+// Phase 61-03: UNCHANGED — per-user view of own ideas, intentional.
 export async function getIdeasWithFilters(overrideUserId?: string) {
   try {
     const supabase = createClient();
