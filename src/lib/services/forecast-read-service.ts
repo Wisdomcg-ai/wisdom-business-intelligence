@@ -43,6 +43,17 @@ import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
  */
 const STRICT_INVARIANTS = process.env.FORECAST_INVARIANTS_STRICT === 'true'
 
+/**
+ * Dedupe key for `forecast_freshness` soft-fail captures.
+ *
+ * Why: GET /api/Xero/pl-summary fires on every page load. A single forecast
+ * stuck with stale (or null) computed_at would otherwise spam Sentry hundreds
+ * of times for the same condition. We capture once per (forecastId,
+ * assumptions_updated_at) within a warm function instance; when assumptions
+ * change, the key changes and we re-log the new violation.
+ */
+const freshnessViolationSeen = new Set<string>()
+
 export type AccountType =
   | 'revenue'
   | 'cogs'
@@ -550,15 +561,19 @@ export class ForecastReadService {
           delta_seconds: deltaSeconds,
         },
       })
-      Sentry.captureMessage('forecast_freshness violation (logging-only)', {
-        level: 'warning',
-        tags: { invariant_violation_logged: 'forecast_freshness', forecast_id: forecastId },
-        extra: {
-          delta_seconds: deltaSeconds,
-          computed_at: computedAt,
-          assumptions_updated_at: assumptionsUpdatedAt,
-        },
-      })
+      const dedupeKey = `${forecastId}|${assumptionsUpdatedAt}`
+      if (!freshnessViolationSeen.has(dedupeKey)) {
+        freshnessViolationSeen.add(dedupeKey)
+        Sentry.captureMessage('forecast_freshness violation (logging-only)', {
+          level: 'warning',
+          tags: { invariant_violation_logged: 'forecast_freshness', forecast_id: forecastId },
+          extra: {
+            delta_seconds: deltaSeconds,
+            computed_at: computedAt,
+            assumptions_updated_at: assumptionsUpdatedAt,
+          },
+        })
+      }
     }
   }
 
