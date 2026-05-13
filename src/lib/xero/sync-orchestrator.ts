@@ -579,6 +579,30 @@ export async function syncBusinessXeroPL(
     for (const conn of connections) {
       if (opts.tenantIdFilter && conn.tenant_id !== opts.tenantIdFilter) continue
 
+      // P3a defence in depth: refuse to sync a connection with a missing
+      // tenant_id. The DB column is NOT NULL since 20260513000000, but an
+      // attempted insert here would fail mid-loop with a low-level Postgres
+      // error and could leave a half-written tenant. Fail loud and skip,
+      // so the operator sees the malformed connection in Sentry instead of
+      // a cryptic constraint violation deep in the upsert path.
+      if (!conn.tenant_id || conn.tenant_id.trim() === '') {
+        try {
+          Sentry.captureMessage('xero_connections row has empty tenant_id — skipped', {
+            level: 'error',
+            tags: {
+              invariant: 'xero_sync_tenant_id_present',
+              business_id: profileId,
+              connection_id: conn.id,
+            },
+          } as any)
+        } catch {
+          /* ignore */
+        }
+        console.warn('[syncBusinessXeroPL] skipping connection with empty tenant_id:', conn.id)
+        tenantErrorCount += 1
+        continue
+      }
+
       console.log('[syncBusinessXeroPL] === tenant', conn.tenant_name, conn.tenant_id, '===')
 
       // 4a. Per-tenant sync_jobs row at status='running' (44.2-02 audit).
