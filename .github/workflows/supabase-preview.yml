@@ -19,6 +19,7 @@ on:
     paths:
       - 'supabase/**'
       - 'src/**'
+      - 'scripts/**'
       - 'package.json'
       - 'package-lock.json'
       - 'next.config.js'
