@@ -28,6 +28,11 @@ interface IdeasStats {
   captured: number
   underReview: number
   approved: number
+  // Phase 61-06 — optional split of `total` into private vs team-shared.
+  // When both are present, the UI renders a small sub-line under "Total Ideas":
+  // "X private · Y shared with team". Shown only when teamShared > 0.
+  private?: number
+  teamShared?: number
 }
 
 interface OverviewTabProps {
@@ -225,6 +230,16 @@ export function OverviewTab({
             <div className="p-4 bg-gray-50 rounded-lg">
               <p className="text-2xl font-bold text-gray-900">{ideasStats.total}</p>
               <p className="text-sm text-gray-500">Total Ideas</p>
+              {/* Phase 61-06: conditional breakdown sub-line. Renders only
+                  when the client has at least one team-shared idea — keeps
+                  single-user clients visually identical to pre-phase. */}
+              {ideasStats.private !== undefined &&
+                ideasStats.teamShared !== undefined &&
+                ideasStats.teamShared > 0 && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    {ideasStats.private} private · {ideasStats.teamShared} shared with team
+                  </p>
+                )}
             </div>
             <div className="p-4 bg-gray-50 rounded-lg">
               <p className="text-2xl font-bold text-gray-600">{ideasStats.captured}</p>

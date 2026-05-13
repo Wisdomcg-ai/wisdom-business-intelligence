@@ -108,7 +108,7 @@ export default function ClientFilePage() {
     completedGoals: 0,
     goalsProgress: 0,
     healthScore: null as number | null,
-    ideasStats: null as { total: number; captured: number; underReview: number; approved: number } | null
+    ideasStats: null as { total: number; captured: number; underReview: number; approved: number; private: number; teamShared: number } | null
   })
   const [recentActivity, setRecentActivity] = useState<Array<{
     id: string
@@ -317,7 +317,7 @@ export default function ClientFilePage() {
       let businessProfileId: string | null = null
 
       // Ideas stats holder
-      let ideasStats: { total: number; captured: number; underReview: number; approved: number } | null = null
+      let ideasStats: { total: number; captured: number; underReview: number; approved: number; private: number; teamShared: number } | null = null
 
       // Only query user-specific data if we have users to query for
       if (possibleUserIds.length > 0) {
@@ -602,20 +602,31 @@ export default function ClientFilePage() {
         } catch (e) { /* Ignore */ }
 
         // Get ideas stats and activity
+        // Phase 61-06: also pull shared_with_all + shared_with so we can split
+        // the headline total into private vs team-shared. The headline (total)
+        // is preserved — sharing only decomposes it, it does not shrink it.
         try {
           const { data: ideas } = await supabase
             .from('ideas')
-            .select('id, title, status, created_at, updated_at')
+            .select('id, title, status, created_at, updated_at, shared_with_all, shared_with')
             .in('user_id', possibleUserIds)
             .eq('archived', false)
 
           if (ideas && ideas.length > 0) {
+            const privateCount = ideas.filter((i: any) => {
+              const sharedAll = i.shared_with_all === true
+              const sharedWith = Array.isArray(i.shared_with) ? i.shared_with : []
+              return !sharedAll && sharedWith.length === 0
+            }).length
+
             // Calculate ideas stats
             ideasStats = {
               total: ideas.length,
               captured: ideas.filter((i: any) => i.status === 'captured').length,
               underReview: ideas.filter((i: any) => i.status === 'under_review').length,
-              approved: ideas.filter((i: any) => i.status === 'approved').length
+              approved: ideas.filter((i: any) => i.status === 'approved').length,
+              private: privateCount,
+              teamShared: ideas.length - privateCount,
             }
 
             // Add recent ideas to activity
