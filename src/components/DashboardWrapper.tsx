@@ -148,7 +148,7 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
     FINANCES: {
       label: 'Finances',
       items: [
-        { name: 'Financial Forecast', href: '/forecast', icon: TrendingUp },
+        { name: 'Financial Forecast', href: '/finances/forecast', icon: TrendingUp },
         { name: 'Budget vs Actual', href: '/budget', icon: CreditCard },
         { name: '13-Week Rolling Cashflow', href: '#', icon: DollarSign, disabled: true }
       ]
