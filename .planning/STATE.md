@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: Phase complete — ready for verification
-last_updated: "2026-05-13T23:18:28.266Z"
-last_activity: 2026-05-14
+last_updated: "2026-05-13T23:45:23.012Z"
+last_activity: 2026-05-13
 progress:
   total_phases: 54
-  completed_phases: 22
+  completed_phases: 23
   total_plans: 127
-  completed_plans: 120
+  completed_plans: 124
 ---
 
 # Project State
@@ -23,7 +23,7 @@ Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-
 Phase: 53 (Xero Connection Durability) — **COMPLETE** (5/5 plans shipped 2026-05-06). 53-01 server-side disconnect with dual-ID purge (PR #107). 53-03 token-rotation race holes closed + tightened deactivation policy (commit b5a233d, merged). 53-02 centralized Xero refresh through token-manager + deleted dead refresh-tokens route (PR #109). 53-04 proactive refresh cron at `0 */6 * * *` UTC (PR #110). **53-05 Sentry capture + coach dashboard health pill (PR opened 2026-05-06).** Durability story is whole — JDS root cause permanently closed.
 Phase: 54 (Xero Employee Import Completion) — **PARTIAL** (1/2 plans shipped 2026-05-06). **54-01 PayRun-derived hours + salary fallback (PR opening 2026-05-06).** ENTEREARNINGSRATE employees (timesheet-driven payroll, JDS default) now return populated hours_per_week + annual_salary derived from last 4 POSTED PayRuns; PayTemplate values WIN via ??= precedence; new optional `derived_from` provenance field on response. 54-02 (soft auto-fill on empty Step 4 + new-employees banner) is next.
 Phase: 61 (Selective List Sharing) — **IN PROGRESS** (1/6 plans shipped 2026-05-14). **61-01 schema foundation:** added `shared_with_all boolean DEFAULT false` + `shared_with uuid[] DEFAULT '{}'` to `daily_tasks` and `ideas`, plus GIN indexes on `shared_with` for both tables. Idempotent migration, transaction-wrapped, scoped strictly to the two tables (action_items / issues_list / ideas_filter untouched). Defaults preserve current Private-only behavior on every existing row — no backfill. RLS deferred to 61-02 so columns physically exist before policies reference them. **Task 2 (human-verify checkpoint) PENDING:** Docker is currently down so local `supabase db push` could not be executed; needs operator to bring Docker up, apply the migration locally, and confirm the 4 `information_schema` checks before 61-02 ships. Commit `42da18fb` on branch `phase-61-selective-list-sharing` (not pushed).
-Last activity: 2026-05-14
+Last activity: 2026-05-13
 
 ## Active operational notes
 

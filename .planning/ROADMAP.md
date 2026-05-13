@@ -1018,13 +1018,13 @@ Plans:
 
 **Goal:** Let users share individual `daily_tasks` and `ideas` either with the entire team or with selected teammates — defaulting to private. Recipients can mark complete but not edit/delete; owners retain full control. Coach dashboard surfaces owned vs team-shared idea counts.
 **Depends on:** None (orthogonal to forecast/subscriptions work)
-**Plans:** 2/6 plans executed
+**Plans:** 6/6 plans complete
 
 Plans:
 - [x] 61-01 — DB migration: add `shared_with_all boolean` + `shared_with uuid[]` to `daily_tasks` and `ideas` (defaults preserve current private-only behavior)
 - [x] 61-02 — RLS update: asymmetric policies (broad SELECT: owner OR shared_with_all+member OR uid=ANY(shared_with); narrow UPDATE/DELETE: owner only)
-- [ ] 61-03 — Service layer: extend `dailyTasksService` + `ideasService` to return `is_owner`, add `share()` method, fix existing ownership gaps in `updateIdea`/`archiveIdea`/`getIdeaById`
-- [ ] 61-04 — API: `PATCH /api/todos/[id]/share` + `PATCH /api/ideas/[id]/share`; status sync (recipient mark-complete updates the single row)
-- [ ] 61-05 — UI: share dialog (Private / Everyone on team / Specific people), teammate picker, "shared by …" badge on recipient view, owner-only edit/delete affordances
-- [ ] 61-06 — Coach dashboard breakdown: split `client-completion` idea counts into owned vs team-shared; update coach client page UI
+- [x] 61-03 — Service layer: extend `dailyTasksService` + `ideasService` to return `is_owner`, add `share()` method, fix existing ownership gaps in `updateIdea`/`archiveIdea`/`getIdeaById`
+- [x] 61-04 — API: `PATCH /api/todos/[id]/share` + `PATCH /api/ideas/[id]/share`; status sync (recipient mark-complete updates the single row)
+- [x] 61-05 — UI: share dialog (Private / Everyone on team / Specific people), teammate picker, "shared by …" badge on recipient view, owner-only edit/delete affordances
+- [x] 61-06 — Coach dashboard breakdown: split `client-completion` idea counts into owned vs team-shared; update coach client page UI
 
