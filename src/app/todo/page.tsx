@@ -4,9 +4,13 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { Plus, Check, Trash2, ChevronDown, Calendar, AlertCircle, RotateCcw, CheckSquare } from 'lucide-react'
+import { Plus, Check, Trash2, ChevronDown, Calendar, AlertCircle, RotateCcw, CheckSquare, Share2 } from 'lucide-react'
+import { toast } from 'sonner'
 import PageHeader from '@/components/ui/PageHeader'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { ShareDialog, deriveShareMode, type ShareMode } from '@/components/sharing/ShareDialog'
+import { SharedByBadge } from '@/components/sharing/SharedByBadge'
+import { useBusinessContext } from '@/hooks/useBusinessContext'
 import {
   getTodaysTasks,
   getTodaysCompletedTasks,
@@ -32,8 +36,11 @@ export default function TodoPage() {
   // STATE - Keep track of tasks, form visibility, loading state
   // ========================================================================
 
+  const { currentUser } = useBusinessContext()
   const [activeTasks, setActiveTasks] = useState<DailyTask[]>([])
   const [completedTasks, setCompletedTasks] = useState<DailyTask[]>([])
+  // Phase 61-05: Share dialog state — null means closed.
+  const [shareTarget, setShareTarget] = useState<DailyTask | null>(null)
   const [stats, setStats] = useState({
     total: 0,
     critical: 0,
@@ -125,13 +132,35 @@ export default function TodoPage() {
     }
   }
 
-  async function handleStatusChange(taskId: string, newStatus: TaskStatus) {
+  async function handleStatusChange(task: DailyTask, newStatus: TaskStatus) {
+    // Phase 61-05: recipients (is_owner === false) must NOT use the owner-only
+    // updateTaskStatus path. Route them through the dedicated RPC-backed
+    // /api/todos/[id]/complete endpoint instead. Default is_owner=true for
+    // legacy rows that pre-date the field (RLS already enforces ownership).
+    const isOwner = task.is_owner !== false
+
     try {
-      await updateTaskStatus(taskId, newStatus)
+      if (!isOwner) {
+        const completed = newStatus === 'done'
+        const res = await fetch(`/api/todos/${task.id}/complete`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ completed }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          toast.error(err?.error || 'Failed to update task')
+          return
+        }
+        await loadData()
+        return
+      }
+
+      await updateTaskStatus(task.id, newStatus)
       await loadData()
     } catch (error) {
       console.error('Error updating task:', error)
-      alert('Failed to update task')
+      toast.error('Failed to update task')
     }
   }
 
@@ -252,6 +281,8 @@ export default function TodoPage() {
     const priorityConfig = PRIORITY_CONFIG[task.priority as TaskPriority]
     const taskIsOverdue = isOverdue(task.due_date, task.specific_date)
     const daysOverdue = calculateDaysOverdue(task.due_date, task.specific_date)
+    // Phase 61-05: Default to owner when the field is absent (legacy rows).
+    const isOwner = task.is_owner !== false
 
     return (
       <div
@@ -265,7 +296,7 @@ export default function TodoPage() {
       >
         {/* Task title */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-start gap-2 mb-2">
+          <div className="flex items-start gap-2 mb-2 flex-wrap">
             <h3
               className={`font-medium leading-tight text-sm sm:text-base ${
                 isCompleted ? 'line-through text-gray-500' : 'text-gray-900'
@@ -279,6 +310,10 @@ export default function TodoPage() {
                 {daysOverdue}d overdue
               </div>
             )}
+            {/* Phase 61-05: badge appears only when the viewer is NOT the owner */}
+            {!isOwner && (
+              <SharedByBadge ownerName={task.owner_display_name} />
+            )}
           </div>
 
           {/* Priority badge */}
@@ -289,16 +324,18 @@ export default function TodoPage() {
           </div>
         </div>
 
-        {/* Actions - Due date dropdown, complete button, undo button, and delete */}
+        {/* Actions - Due date dropdown, complete button, undo button, delete, share */}
         <div className="flex items-center gap-2 flex-shrink-0">
           {!isCompleted && (
             <>
-              <DueDateDropdown task={task} />
+              {/* Due-date is owner-only (mutates the row). Hidden for recipients. */}
+              {isOwner && <DueDateDropdown task={task} />}
 
+              {/* Mark-complete: owner and recipient both allowed, but routed differently */}
               <button
-                onClick={() => handleStatusChange(task.id, 'done')}
+                onClick={() => handleStatusChange(task, 'done')}
                 className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
-                title="Mark as complete"
+                title={isOwner ? 'Mark as complete' : 'Mark complete (shared with you)'}
               >
                 <Check className="w-4 h-4" />
               </button>
@@ -307,7 +344,7 @@ export default function TodoPage() {
 
           {isCompleted && (
             <button
-              onClick={() => handleStatusChange(task.id, 'to-do')}
+              onClick={() => handleStatusChange(task, 'to-do')}
               className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded transition-colors"
               title="Undo - restore to active tasks"
             >
@@ -315,13 +352,27 @@ export default function TodoPage() {
             </button>
           )}
 
-          <button
-            onClick={() => handleDeleteTask(task.id)}
-            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-            title="Delete task"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {/* Phase 61-05: Share + Delete are owner-only */}
+          {isOwner && !isCompleted && (
+            <button
+              onClick={() => setShareTarget(task)}
+              className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded transition-colors"
+              title="Share this task"
+              aria-label="Share task"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+          )}
+
+          {isOwner && (
+            <button
+              onClick={() => handleDeleteTask(task.id)}
+              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+              title="Delete task"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
     )
@@ -515,6 +566,32 @@ export default function TodoPage() {
           )}
         </div>
       </div>
+
+      {/* PHASE 61-05: Share dialog — opens when a task's Share button is clicked. */}
+      {shareTarget && currentUser && (
+        <ShareDialog
+          open
+          itemId={shareTarget.id}
+          itemType="todo"
+          businessId={shareTarget.business_id ?? null}
+          currentMode={deriveShareMode(shareTarget) as ShareMode}
+          currentSharedWith={shareTarget.shared_with ?? []}
+          currentUserId={currentUser.id}
+          onSaved={(updated) => {
+            // Optimistic local update so the next loadData() doesn't flicker.
+            const u = updated as DailyTask
+            setActiveTasks((prev) =>
+              prev.map((t) => (t.id === u.id ? { ...t, ...u } : t))
+            )
+            setCompletedTasks((prev) =>
+              prev.map((t) => (t.id === u.id ? { ...t, ...u } : t))
+            )
+            // Reload to reconcile with server-authoritative state.
+            loadData()
+          }}
+          onClose={() => setShareTarget(null)}
+        />
+      )}
 
       {/* ADD TASK MODAL - Popup form */}
       {showForm && (
