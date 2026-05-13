@@ -1,6 +1,13 @@
 // /lib/services/dailyTasksService.ts
 // DAILY TASKS SERVICE - Supabase Integration
 // Handles: Overdue detection, specific dates, days overdue tracking, and auto-archive
+//
+// Phase 61-03 update:
+//   - READ functions drop `.eq('user_id', userId)`; RLS (from 61-02) gates visibility.
+//   - Each returned row carries `is_owner` and `owner_display_name` derived in-memory.
+//   - `shareTask` / `markTaskComplete` exposed for the new share-and-status-sync flow.
+//   - Owner-only mutations (updateTaskStatus / updateTaskPriority / updateTaskDueDate /
+//     deleteTask / deleteArchivedTasks) keep their defensive `user_id` filter.
 
 'use client'
 
@@ -13,6 +20,8 @@ import { createClient } from '@/lib/supabase/client'
 export type TaskPriority = 'critical' | 'important' | 'nice-to-do'
 export type TaskStatus = 'to-do' | 'in-progress' | 'done'
 export type TaskDueDate = 'today' | 'tomorrow' | 'this-week' | 'next-week' | 'custom'
+
+export type ShareMode = 'private' | 'team' | 'specific'
 
 export interface DailyTask {
   id: string
@@ -28,6 +37,12 @@ export interface DailyTask {
   created_at: string
   updated_at: string
   archived_at?: string | null // When task was archived
+  // Phase 61 sharing fields
+  shared_with_all?: boolean
+  shared_with?: string[]
+  // Derived by the service (not stored)
+  is_owner?: boolean
+  owner_display_name?: string
 }
 
 export interface CreateDailyTaskInput {
@@ -184,6 +199,58 @@ function sortTasks(tasks: DailyTask[]): DailyTask[] {
   })
 }
 
+// ----------------------------------------------------------------------------
+// Phase 61-03: PostgREST nested-select used for the owner join.
+//
+// `public.users` carries first_name / last_name / email keyed by id. RLS on
+// `users` already allows authenticated reads of name/email for accessible
+// teammates, so PostgREST will inline the row when the FK is followed.
+// ----------------------------------------------------------------------------
+const TASK_OWNER_SELECT = '*, owner:users!user_id(first_name, last_name, email)'
+
+interface OwnerJoinRow {
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+}
+
+/**
+ * Resolve a display name for the row owner.
+ * Order: "First Last" → "First" → "Last" → email → 'Team member'
+ */
+function resolveOwnerDisplayName(owner: OwnerJoinRow | null | undefined): string {
+  if (owner) {
+    const first = owner.first_name?.trim()
+    const last = owner.last_name?.trim()
+    if (first && last) return `${first} ${last}`
+    if (first) return first
+    if (last) return last
+    if (owner.email && owner.email.trim()) return owner.email
+  }
+  return 'Team member'
+}
+
+/**
+ * Strip the join shape and add the derived fields. Returns a clean DailyTask
+ * with `is_owner` + `owner_display_name`.
+ */
+function decorateTask(
+  row: Record<string, unknown> & { owner?: OwnerJoinRow | OwnerJoinRow[] | null },
+  viewerId: string | null
+): DailyTask {
+  // PostgREST may return the joined row as object or single-element array
+  const ownerRow = Array.isArray(row.owner) ? row.owner[0] ?? null : row.owner ?? null
+  // Remove the join key from the surface object so callers don't see it
+  const { owner: _owner, ...rest } = row
+  void _owner
+  const userId = (rest as { user_id?: string }).user_id
+  return {
+    ...(rest as unknown as DailyTask),
+    is_owner: viewerId != null && userId === viewerId,
+    owner_display_name: resolveOwnerDisplayName(ownerRow),
+  }
+}
+
 // ============================================================================
 // SUPABASE SERVICE CLASS
 // ============================================================================
@@ -225,6 +292,7 @@ class DailyTasksService {
     const todayStart = getTodayDateString() + 'T00:00:00.000Z'
 
     // Archive tasks that are done and completed before today
+    // Owner-only: defensive `.eq('user_id', userId)` retained.
     await this.supabase
       .from('daily_tasks')
       .update({
@@ -238,19 +306,20 @@ class DailyTasksService {
   }
 
   /**
-   * Get tasks for today (not completed, not archived) - sorted with overdue at top
+   * Get tasks for today (not completed, not archived) - sorted with overdue at top.
+   * Phase 61-03: visibility now widened by RLS. Returns owner + shared rows.
    */
   async getTodaysTasks(): Promise<DailyTask[]> {
     const userId = await this.getUserId()
     if (!userId) return []
 
-    // Run auto-archive first
+    // Run auto-archive first (owner-only; safe to skip when called by recipients
+    // because their user_id won't match owned rows).
     await this.archiveOldCompletedTasks()
 
     const { data, error } = await this.supabase
       .from('daily_tasks')
-      .select('*')
-      .eq('user_id', userId)
+      .select(TASK_OWNER_SELECT)
       .neq('status', 'done')
       .is('archived_at', null)
       .order('created_at', { ascending: true })
@@ -260,7 +329,8 @@ class DailyTasksService {
       return []
     }
 
-    return sortTasks(data || [])
+    const decorated = (data || []).map((row) => decorateTask(row as any, userId))
+    return sortTasks(decorated)
   }
 
   /**
@@ -272,8 +342,7 @@ class DailyTasksService {
 
     const { data, error } = await this.supabase
       .from('daily_tasks')
-      .select('*')
-      .eq('user_id', userId)
+      .select(TASK_OWNER_SELECT)
       .eq('status', 'done')
       .is('archived_at', null)
       .order('completed_at', { ascending: false })
@@ -284,7 +353,9 @@ class DailyTasksService {
     }
 
     // Filter to only tasks completed today
-    return (data || []).filter(task => wasCompletedToday(task.completed_at))
+    return (data || [])
+      .map((row) => decorateTask(row as any, userId))
+      .filter(task => wasCompletedToday(task.completed_at))
   }
 
   /**
@@ -296,8 +367,7 @@ class DailyTasksService {
 
     const { data, error } = await this.supabase
       .from('daily_tasks')
-      .select('*')
-      .eq('user_id', userId)
+      .select(TASK_OWNER_SELECT)
       .not('archived_at', 'is', null)
       .order('archived_at', { ascending: false })
 
@@ -306,7 +376,7 @@ class DailyTasksService {
       return []
     }
 
-    return data || []
+    return (data || []).map((row) => decorateTask(row as any, userId))
   }
 
   /**
@@ -318,8 +388,7 @@ class DailyTasksService {
 
     const { data, error } = await this.supabase
       .from('daily_tasks')
-      .select('*')
-      .eq('user_id', userId)
+      .select(TASK_OWNER_SELECT)
       .order('created_at', { ascending: true })
 
     if (error) {
@@ -327,7 +396,7 @@ class DailyTasksService {
       return []
     }
 
-    return data || []
+    return (data || []).map((row) => decorateTask(row as any, userId))
   }
 
   /**
@@ -370,7 +439,8 @@ class DailyTasksService {
   }
 
   /**
-   * Update task status (to-do → in-progress → done)
+   * Update task status (to-do → in-progress → done).
+   * Owner-only path. Recipients should call `markTaskComplete` (RPC) instead.
    */
   async updateTaskStatus(taskId: string, newStatus: TaskStatus): Promise<void> {
     const userId = await this.getUserId()
@@ -401,7 +471,7 @@ class DailyTasksService {
   }
 
   /**
-   * Update task priority
+   * Update task priority (owner-only)
    */
   async updateTaskPriority(taskId: string, newPriority: TaskPriority): Promise<void> {
     const userId = await this.getUserId()
@@ -422,7 +492,7 @@ class DailyTasksService {
   }
 
   /**
-   * Update task due date
+   * Update task due date (owner-only)
    */
   async updateTaskDueDate(
     taskId: string,
@@ -448,7 +518,7 @@ class DailyTasksService {
   }
 
   /**
-   * Delete a task permanently
+   * Delete a task permanently (owner-only)
    */
   async deleteTask(taskId: string): Promise<void> {
     const userId = await this.getUserId()
@@ -466,7 +536,7 @@ class DailyTasksService {
   }
 
   /**
-   * Permanently delete archived tasks (cleanup)
+   * Permanently delete archived tasks (cleanup; owner-only)
    */
   async deleteArchivedTasks(): Promise<void> {
     const userId = await this.getUserId()
@@ -481,6 +551,81 @@ class DailyTasksService {
     if (error) {
       console.error('[DailyTasks] Error deleting archived tasks:', error)
     }
+  }
+
+  /**
+   * Phase 61-03 — Share a task. Owner-only; defensive `.eq('user_id', userId)`
+   * complements the RLS owner-only UPDATE policy.
+   *
+   * mode='private'  → shared_with_all=false, shared_with=[]
+   * mode='team'     → shared_with_all=true,  shared_with=[]
+   * mode='specific' → shared_with_all=false, shared_with=userIds (must be non-empty)
+   */
+  async shareTask(
+    taskId: string,
+    mode: ShareMode,
+    userIds?: string[]
+  ): Promise<DailyTask | null> {
+    const userId = await this.getUserId()
+    if (!userId) return null
+
+    if (mode === 'specific' && (!userIds || userIds.length === 0)) {
+      // "specific" share mode requires at least one user_id; treat empty as a
+      // validation failure. (No new console.error per phase 61-03 constraint.)
+      return null
+    }
+
+    let patch: { shared_with_all: boolean; shared_with: string[] }
+    if (mode === 'private') {
+      patch = { shared_with_all: false, shared_with: [] }
+    } else if (mode === 'team') {
+      patch = { shared_with_all: true, shared_with: [] }
+    } else {
+      patch = { shared_with_all: false, shared_with: userIds as string[] }
+    }
+
+    const { data, error } = await this.supabase
+      .from('daily_tasks')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', taskId)
+      .eq('user_id', userId)
+      .select(TASK_OWNER_SELECT)
+      .single()
+
+    if (error || !data) {
+      // Silent failure — RLS denial, validation failure, or row-not-found all
+      // collapse to null. Caller decides UX response. (No new console.error
+      // per phase 61-03 constraint.)
+      return null
+    }
+
+    // The caller IS the owner here (defensive filter just succeeded), so
+    // is_owner is necessarily true.
+    return decorateTask(data as any, userId)
+  }
+
+  /**
+   * Phase 61-03 — Recipient-safe completion flip. Routes through the
+   * SECURITY DEFINER RPC from 61-02 so visibility (owner OR shared) is the
+   * only gate; the RPC narrows the actual UPDATE to status/completed_at.
+   */
+  async markTaskComplete(taskId: string, completed: boolean): Promise<DailyTask | null> {
+    const userId = await this.getUserId()
+    const { data, error } = await this.supabase.rpc('mark_task_complete', {
+      p_task_id: taskId,
+      p_completed: completed,
+    })
+
+    if (error || !data) {
+      // Silent failure (RPC access denied, task not found, RLS rejection).
+      // (No new console.error per phase 61-03 constraint.)
+      return null
+    }
+
+    // RPC returns the row as-is (no joined owner). Decorate with is_owner only;
+    // owner_display_name resolves to 'Team member' here — callers that need
+    // the resolved name should refetch via a list endpoint.
+    return decorateTask(data as any, userId)
   }
 
   /**
@@ -575,4 +720,15 @@ export async function calculateStats(): Promise<DailyTaskStats> {
   return dailyTasksService.calculateStats()
 }
 
-// Remove loadSampleTasks - no longer needed with Supabase
+// Phase 61-03 — new exports
+export async function shareTask(
+  taskId: string,
+  mode: ShareMode,
+  userIds?: string[]
+): Promise<DailyTask | null> {
+  return dailyTasksService.shareTask(taskId, mode, userIds)
+}
+
+export async function markTaskComplete(taskId: string, completed: boolean): Promise<DailyTask | null> {
+  return dailyTasksService.markTaskComplete(taskId, completed)
+}

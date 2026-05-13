@@ -20,12 +20,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ─── Chainable Supabase mock ────────────────────────────────────────────────
 
-type FilterCall = { method: string; args: unknown[] }
+type FilterCall = { method: string; args: unknown[]; op: 'select' | 'update' | 'insert' | 'delete' }
 
 interface MockState {
   // Per-table per-op response shape: { data, error }
   responses: Record<string, { data: unknown; error: unknown } | null>
-  // Captured filter calls per table
+  // Captured filter calls per table (tagged with the chain op so tests can
+  // distinguish "no user_id filter on SELECT" from owner-only update filters)
   filterCalls: Record<string, FilterCall[]>
   // Captured update/delete/insert payloads per table
   payloads: Record<string, unknown[]>
@@ -35,7 +36,7 @@ interface MockState {
   // Spy for from()
   fromSpy: ReturnType<typeof vi.fn>
   authUser: { id: string } | null
-  // Last operation per table (for response keying: 'select' | 'update' | 'insert' | 'delete')
+  // Last operation per table (for response keying)
   lastOp: Record<string, string>
 }
 
@@ -56,20 +57,27 @@ function resetMock() {
 
 function buildChain(table: string) {
   const chain: any = {}
+  // Per-chain operation tracker. The FIRST verb invoked
+  // (select/update/insert/delete) wins — subsequent `.select()` after `.update()`
+  // is just the PostgREST "return the row" modifier, not a fresh select.
+  let chainOp: 'select' | 'update' | 'insert' | 'delete' | null = null
+
   const recordFilter = (method: string) => (...args: unknown[]) => {
     if (!mockState.filterCalls[table]) mockState.filterCalls[table] = []
-    mockState.filterCalls[table].push({ method, args })
+    mockState.filterCalls[table].push({ method, args, op: chainOp || 'select' })
     return chain
   }
   const passThrough = () => chain
   const terminal = () => {
-    const key = `${table}:${mockState.lastOp[table] || 'select'}`
+    const op = chainOp || 'select'
+    mockState.lastOp[table] = op
+    const key = `${table}:${op}`
     const resp = mockState.responses[key] ?? mockState.responses[table] ?? { data: [], error: null }
     return Promise.resolve(resp)
   }
 
   chain.select = vi.fn((..._args: unknown[]) => {
-    if (!mockState.lastOp[table]) mockState.lastOp[table] = 'select'
+    if (chainOp === null) chainOp = 'select'
     return chain
   })
   chain.eq = vi.fn(recordFilter('eq'))
@@ -84,19 +92,19 @@ function buildChain(table: string) {
   chain.single = vi.fn(() => terminal())
   chain.maybeSingle = vi.fn(() => terminal())
   chain.insert = vi.fn((payload: unknown) => {
-    mockState.lastOp[table] = 'insert'
+    chainOp = 'insert'
     if (!mockState.payloads[table]) mockState.payloads[table] = []
     mockState.payloads[table].push(payload)
     return chain
   })
   chain.update = vi.fn((payload: unknown) => {
-    mockState.lastOp[table] = 'update'
+    chainOp = 'update'
     if (!mockState.payloads[table]) mockState.payloads[table] = []
     mockState.payloads[table].push(payload)
     return chain
   })
   chain.delete = vi.fn(() => {
-    mockState.lastOp[table] = 'delete'
+    chainOp = 'delete'
     return chain
   })
   // Allow `await` directly on the chain (for non-.single() queries)
@@ -107,7 +115,7 @@ function buildChain(table: string) {
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
     from: (table: string) => {
-      mockState.fromSpy(table)
+      ;(mockState.fromSpy as any)(table)
       return buildChain(table)
     },
     rpc: (name: string, args: unknown) => {
@@ -130,25 +138,44 @@ beforeEach(() => {
 
 // ─── Group A — READ broadening + is_owner + owner_display_name ──────────────
 
+// Helper: filter user_id eq calls scoped to SELECT op only. Owner-only
+// UPDATE / DELETE paths (including archiveOldCompletedTasks under getTodaysTasks)
+// still have their defensive user_id filter — that's correct behavior, not a
+// regression.
+const selectUserIdEq = (table: string) =>
+  (mockState.filterCalls[table] || []).find(
+    (c) => c.op === 'select' && c.method === 'eq' && c.args[0] === 'user_id'
+  )
+
+const mutationUserIdEq = (table: string) =>
+  (mockState.filterCalls[table] || []).find(
+    (c) => (c.op === 'update' || c.op === 'delete') && c.method === 'eq' && c.args[0] === 'user_id'
+  )
+
+const FIXTURE_TASK_BASE = {
+  status: 'to-do' as const,
+  archived_at: null,
+  due_date: 'today' as const,
+  specific_date: null,
+}
+
 describe('Group A — READ broadening + is_owner + owner_display_name', () => {
-  it('getTodaysTasks does NOT call .eq("user_id", ...) on daily_tasks', async () => {
+  it('getTodaysTasks does NOT call .eq("user_id", ...) on the SELECT path', async () => {
     mockState.responses['daily_tasks:select'] = {
       data: [
-        { id: 't1', user_id: 'u1', status: 'to-do', archived_at: null, owner: { first_name: 'Alice', last_name: 'A', email: 'alice@x.com' } },
+        { id: 't1', user_id: 'u1', ...FIXTURE_TASK_BASE, owner: { first_name: 'Alice', last_name: 'A', email: 'alice@x.com' } },
       ],
       error: null,
     }
     await svc.getTodaysTasks()
-    const calls = mockState.filterCalls['daily_tasks'] || []
-    const userIdEq = calls.find((c) => c.method === 'eq' && c.args[0] === 'user_id')
-    expect(userIdEq).toBeUndefined()
+    expect(selectUserIdEq('daily_tasks')).toBeUndefined()
   })
 
   it('getTodaysTasks maps is_owner correctly for owner + recipient rows', async () => {
     mockState.responses['daily_tasks:select'] = {
       data: [
-        { id: 't1', user_id: 'u1', status: 'to-do', archived_at: null, owner: { first_name: 'Alice', last_name: 'A', email: 'alice@x.com' } },
-        { id: 't2', user_id: 'u2', status: 'to-do', archived_at: null, shared_with: ['u1'], owner: { first_name: 'Bob', last_name: 'B', email: 'bob@x.com' } },
+        { id: 't1', user_id: 'u1', ...FIXTURE_TASK_BASE, owner: { first_name: 'Alice', last_name: 'A', email: 'alice@x.com' } },
+        { id: 't2', user_id: 'u2', ...FIXTURE_TASK_BASE, shared_with: ['u1'], owner: { first_name: 'Bob', last_name: 'B', email: 'bob@x.com' } },
       ],
       error: null,
     }
@@ -163,7 +190,7 @@ describe('Group A — READ broadening + is_owner + owner_display_name', () => {
   it('getTodaysTasks resolves owner_display_name "First Last" when both name parts present', async () => {
     mockState.responses['daily_tasks:select'] = {
       data: [
-        { id: 't2', user_id: 'u2', status: 'to-do', archived_at: null, owner: { first_name: 'Bob', last_name: 'B', email: 'bob@x.com' } },
+        { id: 't2', user_id: 'u2', ...FIXTURE_TASK_BASE, owner: { first_name: 'Bob', last_name: 'B', email: 'bob@x.com' } },
       ],
       error: null,
     }
@@ -174,7 +201,7 @@ describe('Group A — READ broadening + is_owner + owner_display_name', () => {
   it('getTodaysTasks falls back to email when name parts missing', async () => {
     mockState.responses['daily_tasks:select'] = {
       data: [
-        { id: 't2', user_id: 'u2', status: 'to-do', archived_at: null, owner: { first_name: null, last_name: null, email: 'bob@x.com' } },
+        { id: 't2', user_id: 'u2', ...FIXTURE_TASK_BASE, owner: { first_name: null, last_name: null, email: 'bob@x.com' } },
       ],
       error: null,
     }
@@ -185,7 +212,7 @@ describe('Group A — READ broadening + is_owner + owner_display_name', () => {
   it('getTodaysTasks falls back to "Team member" when join row is null', async () => {
     mockState.responses['daily_tasks:select'] = {
       data: [
-        { id: 't2', user_id: 'u2', status: 'to-do', archived_at: null, owner: null },
+        { id: 't2', user_id: 'u2', ...FIXTURE_TASK_BASE, owner: null },
       ],
       error: null,
     }
@@ -197,30 +224,28 @@ describe('Group A — READ broadening + is_owner + owner_display_name', () => {
     mockState.responses['daily_tasks:select'] = { data: [], error: null }
     await svc.getTodaysTasks()
     const calls = mockState.filterCalls['daily_tasks'] || []
-    const statusFilter = calls.find((c) => c.method === 'neq' && c.args[0] === 'status')
-    const archivedFilter = calls.find((c) => c.method === 'is' && c.args[0] === 'archived_at')
+    const statusFilter = calls.find((c) => c.op === 'select' && c.method === 'neq' && c.args[0] === 'status')
+    const archivedFilter = calls.find((c) => c.op === 'select' && c.method === 'is' && c.args[0] === 'archived_at')
     expect(statusFilter).toBeDefined()
     expect(archivedFilter).toBeDefined()
   })
 
-  it('getAllTasks does NOT call .eq("user_id", ...) on daily_tasks', async () => {
+  it('getAllTasks does NOT call .eq("user_id", ...) on the SELECT path', async () => {
     mockState.responses['daily_tasks:select'] = {
       data: [
-        { id: 't1', user_id: 'u1', status: 'to-do', owner: { first_name: 'Alice', last_name: 'A', email: 'a@x.com' } },
+        { id: 't1', user_id: 'u1', ...FIXTURE_TASK_BASE, owner: { first_name: 'Alice', last_name: 'A', email: 'a@x.com' } },
       ],
       error: null,
     }
     await svc.getAllTasks()
-    const calls = mockState.filterCalls['daily_tasks'] || []
-    const userIdEq = calls.find((c) => c.method === 'eq' && c.args[0] === 'user_id')
-    expect(userIdEq).toBeUndefined()
+    expect(selectUserIdEq('daily_tasks')).toBeUndefined()
   })
 
   it('getAllTasks maps is_owner per row', async () => {
     mockState.responses['daily_tasks:select'] = {
       data: [
-        { id: 't1', user_id: 'u1', status: 'to-do', owner: { first_name: 'Alice', last_name: 'A', email: 'a@x.com' } },
-        { id: 't2', user_id: 'u2', status: 'to-do', shared_with: ['u1'], owner: { first_name: 'Bob', last_name: 'B', email: 'b@x.com' } },
+        { id: 't1', user_id: 'u1', ...FIXTURE_TASK_BASE, owner: { first_name: 'Alice', last_name: 'A', email: 'a@x.com' } },
+        { id: 't2', user_id: 'u2', ...FIXTURE_TASK_BASE, shared_with: ['u1'], owner: { first_name: 'Bob', last_name: 'B', email: 'b@x.com' } },
       ],
       error: null,
     }
@@ -229,20 +254,16 @@ describe('Group A — READ broadening + is_owner + owner_display_name', () => {
     expect((result[1] as any).is_owner).toBe(false)
   })
 
-  it('getTodaysCompletedTasks does NOT call .eq("user_id", ...) on daily_tasks', async () => {
+  it('getTodaysCompletedTasks does NOT call .eq("user_id", ...) on the SELECT path', async () => {
     mockState.responses['daily_tasks:select'] = { data: [], error: null }
     await svc.getTodaysCompletedTasks()
-    const calls = mockState.filterCalls['daily_tasks'] || []
-    const userIdEq = calls.find((c) => c.method === 'eq' && c.args[0] === 'user_id')
-    expect(userIdEq).toBeUndefined()
+    expect(selectUserIdEq('daily_tasks')).toBeUndefined()
   })
 
-  it('getArchivedTasks does NOT call .eq("user_id", ...) on daily_tasks', async () => {
+  it('getArchivedTasks does NOT call .eq("user_id", ...) on the SELECT path', async () => {
     mockState.responses['daily_tasks:select'] = { data: [], error: null }
     await svc.getArchivedTasks()
-    const calls = mockState.filterCalls['daily_tasks'] || []
-    const userIdEq = calls.find((c) => c.method === 'eq' && c.args[0] === 'user_id')
-    expect(userIdEq).toBeUndefined()
+    expect(selectUserIdEq('daily_tasks')).toBeUndefined()
   })
 })
 
@@ -363,43 +384,33 @@ describe('Group C — markTaskComplete (RPC)', () => {
 // ─── Group D — Owner-only mutations retain user_id filter ────────────────────
 
 describe('Group D — Owner-only mutations retained', () => {
-  it('updateTaskStatus keeps .eq("user_id", userId)', async () => {
+  it('updateTaskStatus keeps .eq("user_id", userId) on the UPDATE path', async () => {
     mockState.responses['daily_tasks:update'] = { data: null, error: null }
     await svc.updateTaskStatus('t1', 'done')
-    const calls = mockState.filterCalls['daily_tasks'] || []
-    const userIdEq = calls.find((c) => c.method === 'eq' && c.args[0] === 'user_id')
-    expect(userIdEq).toBeDefined()
+    expect(mutationUserIdEq('daily_tasks')).toBeDefined()
   })
 
-  it('updateTaskPriority keeps .eq("user_id", userId)', async () => {
+  it('updateTaskPriority keeps .eq("user_id", userId) on the UPDATE path', async () => {
     mockState.responses['daily_tasks:update'] = { data: null, error: null }
     await svc.updateTaskPriority('t1', 'critical')
-    const calls = mockState.filterCalls['daily_tasks'] || []
-    const userIdEq = calls.find((c) => c.method === 'eq' && c.args[0] === 'user_id')
-    expect(userIdEq).toBeDefined()
+    expect(mutationUserIdEq('daily_tasks')).toBeDefined()
   })
 
-  it('updateTaskDueDate keeps .eq("user_id", userId)', async () => {
+  it('updateTaskDueDate keeps .eq("user_id", userId) on the UPDATE path', async () => {
     mockState.responses['daily_tasks:update'] = { data: null, error: null }
     await svc.updateTaskDueDate('t1', 'today')
-    const calls = mockState.filterCalls['daily_tasks'] || []
-    const userIdEq = calls.find((c) => c.method === 'eq' && c.args[0] === 'user_id')
-    expect(userIdEq).toBeDefined()
+    expect(mutationUserIdEq('daily_tasks')).toBeDefined()
   })
 
-  it('deleteTask keeps .eq("user_id", userId)', async () => {
+  it('deleteTask keeps .eq("user_id", userId) on the DELETE path', async () => {
     mockState.responses['daily_tasks:delete'] = { data: null, error: null }
     await svc.deleteTask('t1')
-    const calls = mockState.filterCalls['daily_tasks'] || []
-    const userIdEq = calls.find((c) => c.method === 'eq' && c.args[0] === 'user_id')
-    expect(userIdEq).toBeDefined()
+    expect(mutationUserIdEq('daily_tasks')).toBeDefined()
   })
 
-  it('deleteArchivedTasks keeps .eq("user_id", userId)', async () => {
+  it('deleteArchivedTasks keeps .eq("user_id", userId) on the DELETE path', async () => {
     mockState.responses['daily_tasks:delete'] = { data: null, error: null }
     await svc.deleteArchivedTasks()
-    const calls = mockState.filterCalls['daily_tasks'] || []
-    const userIdEq = calls.find((c) => c.method === 'eq' && c.args[0] === 'user_id')
-    expect(userIdEq).toBeDefined()
+    expect(mutationUserIdEq('daily_tasks')).toBeDefined()
   })
 })
