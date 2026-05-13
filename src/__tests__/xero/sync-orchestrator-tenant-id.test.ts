@@ -52,11 +52,15 @@ function makeSupabaseStub(opts: {
   rpcReturns?: Record<string, RpcReturn>
   upsertError?: any | null
   tenantJobIdSequence?: string[]
+  // For stale-sweep test: returned by .delete({count:'exact'}) on xero_pl_lines.
+  // Number = success count. Object = error.
+  staleSweepResult?: ((filters: any[]) => { count?: number; error?: any })
 }) {
   const callLog: CallLogEntry[] = []
   const connections = opts.connections ?? []
   const upsertError = opts.upsertError ?? null
   const upsertedRowsCapture: any[][] = []
+  const sweepDeleteCalls: Array<{ filters: any[] }> = []
   const syncJobsInsertPayloads: any[] = []
   const syncJobsUpdatePayloads: Array<{ payload: any; filter: any }> = []
   const idSequence = opts.tenantJobIdSequence ?? [
@@ -139,7 +143,34 @@ function makeSupabaseStub(opts: {
         count: rows.length,
       })
     }
+    ctx.not = (col: string, op: string, val: any) => {
+      ctx._filters.push({ kind: 'not', col, op, val })
+      return ctx
+    }
+    ctx.delete = (_deleteOpts?: any) => {
+      ctx._pendingDelete = true
+      // Return ctx so the caller can chain .eq()/.not() filters; the actual
+      // resolution happens when the chain is awaited via .then().
+      return ctx
+    }
     ctx.then = (resolve: any, reject: any) => {
+      // Resolve a pending DELETE chain (the orchestrator's stale-row sweep).
+      if (ctx._pendingDelete) {
+        const filters = ctx._filters
+        callLog.push({ kind: `from:${table}:delete`, arg: filters })
+        if (table === 'xero_pl_lines') {
+          sweepDeleteCalls.push({ filters })
+          const sweepResult = opts.staleSweepResult
+            ? opts.staleSweepResult(filters)
+            : { count: 0 }
+          return Promise.resolve({
+            data: null,
+            error: sweepResult.error ?? null,
+            count: sweepResult.count ?? 0,
+          }).then(resolve, reject)
+        }
+        return Promise.resolve({ data: null, error: null, count: 0 }).then(resolve, reject)
+      }
       callLog.push({ kind: `from:${table}:select-list`, arg: ctx._filters })
       if (table === 'xero_connections') {
         return Promise.resolve({ data: connections, error: null }).then(resolve, reject)
@@ -161,6 +192,7 @@ function makeSupabaseStub(opts: {
   return {
     callLog,
     upsertedRowsCapture,
+    sweepDeleteCalls,
     syncJobsInsertPayloads,
     syncJobsUpdatePayloads,
   }
@@ -533,5 +565,45 @@ describe('Sync orchestrator — per-tenant sync_jobs.tenant_id (44.2-02 / 44.2-0
         tags: expect.objectContaining({ invariant: 'xero_sync_tenant_id_present' }),
       }),
     )
+  })
+
+  it('Test 7 — stale-row sweep runs after each successful upsert, scoped per period_month', async () => {
+    const { sweepDeleteCalls, upsertedRowsCapture } = makeSupabaseStub({
+      connections: [
+        { id: 'conn-1', tenant_id: 'tenant-A-uuid', tenant_name: 'JDS', business_id: 'profile-id-1' },
+      ],
+      // Pretend nothing stale exists — exercise the call shape, not the count.
+      staleSweepResult: () => ({ count: 0 }),
+    })
+    defaultPathAFetch()
+    const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
+    await syncBusinessXeroPL('biz-id-1')
+
+    // The orchestrator processes two FY windows (current + prior). For each
+    // window with rows, we expect one sweep DELETE per period_month written.
+    // Path A writes 12 months per FY window for the happy path → 24 deletes.
+    expect(sweepDeleteCalls.length).toBeGreaterThanOrEqual(2)
+
+    // Every sweep call must scope to a single tenant + business + month, and
+    // must use a `NOT IN (...)` clause on account_id. This is the contract
+    // that prevents the sweep from clobbering rows from other tenants/months.
+    for (const call of sweepDeleteCalls) {
+      const kinds = call.filters.map((f) => `${f.kind}:${f.col}`)
+      expect(kinds).toContain('eq:business_id')
+      expect(kinds).toContain('eq:tenant_id')
+      expect(kinds).toContain('eq:period_month')
+      const notFilter = call.filters.find(
+        (f) => f.kind === 'not' && f.col === 'account_id',
+      )
+      expect(notFilter).toBeTruthy()
+      expect(notFilter!.op).toBe('in')
+      // The IN clause must reference the same account_id we just upserted
+      // for that month — otherwise we'd be deleting today's freshly-written
+      // rows. We check the substring at minimum.
+      expect(String(notFilter!.val)).toContain(ACC_ID)
+    }
+
+    // Sanity: upserts still happened.
+    expect(upsertedRowsCapture.length).toBeGreaterThanOrEqual(2)
   })
 })
