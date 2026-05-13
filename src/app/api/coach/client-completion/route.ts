@@ -6,6 +6,15 @@ import * as Sentry from '@sentry/nextjs'
 
 type ModuleStatus = 'completed' | 'in_progress' | 'not_started'
 
+interface IdeasBreakdown {
+  // Plan 61-06 contract — owned/team_shared/total — matches "owned vs shared with the client"
+  // For the coach-dashboard headline preservation, we map owned := private (ideas the client
+  // owns or that nobody shared) and team_shared := team_shared. total === ideas_total === pre-phase count.
+  owned: number
+  team_shared: number
+  total: number
+}
+
 interface ClientCompletion {
   businessId: string
   businessName: string
@@ -20,6 +29,14 @@ interface ClientCompletion {
     engagementScore: number
   }
   alerts: string[]
+  // Phase 61-06 — ideas breakdown additions.
+  // ideas_total preserves the pre-phase headline count (sum of all ideas in the
+  // client's business). Sharing does NOT shrink the headline.
+  // ideas_private + ideas_team_shared === ideas_total.
+  ideas_total: number
+  ideas_private: number
+  ideas_team_shared: number
+  ideas_breakdown: IdeasBreakdown
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -351,10 +368,14 @@ export async function GET() {
           .or(ownerOrBizFilter)
       ),
       // 16. Ideas (has both user_id and business_id)
+      // Phase 61-06: also fetch shared_with_all + shared_with so the per-client
+      // breakdown can split private vs team_shared without an additional query.
+      // The filter is unchanged — we still pull the same business-wide row set
+      // as the pre-phase route, preserving the headline ideas_total.
       safeQuery<R[]>(() =>
         supabase
           .from('ideas')
-          .select('id, user_id, business_id')
+          .select('id, user_id, business_id, shared_with_all, shared_with')
           .or(ownerOrBizFilter)
       ),
       // 17. Open Loops (has both user_id and business_id)
@@ -725,6 +746,48 @@ export async function GET() {
         camelModules[keyMap[key] || key] = value as ModuleStatus
       }
 
+      // ── Phase 61-06 — ideas breakdown ──────────────────────────
+      // ideas_total PRESERVES the pre-phase headline count (sum of all idea
+      // rows visible to this client via the existing ownerOrBizFilter — i.e.
+      // owner-owned ideas OR business-scoped ideas). Sharing does NOT shrink
+      // the headline; it only decomposes it into private vs team-shared.
+      //
+      // Definitions:
+      //   ideas_private      = rows with shared_with_all = false AND
+      //                        coalesce(array_length(shared_with, 1), 0) = 0
+      //   ideas_team_shared  = ideas_total - ideas_private (everything else)
+      //
+      // ideasResult may be null if the SELECT failed (safeQuery returns null
+      // and writes a Sentry breadcrumb). In that case zero the breakdown so
+      // the dashboard renders a degraded but non-broken state.
+      let ideas_total = 0
+      let ideas_private = 0
+      let ideas_team_shared = 0
+      if (ideasResult) {
+        const ownerIdeas = ownerId ? (ideasByUser.get(ownerId) || []) : []
+        const bizIdeas = ideasByBusiness.get(biz.id) || []
+        // Dedup by id — an idea owned by the client AND tagged with the
+        // business will appear in both maps. The pre-phase route counted such
+        // a row once, so we preserve that semantic here.
+        const seen = new Set<string>()
+        const all: any[] = []
+        for (const row of [...ownerIdeas, ...bizIdeas]) {
+          if (!seen.has(row.id)) {
+            seen.add(row.id)
+            all.push(row)
+          }
+        }
+        ideas_total = all.length
+        for (const row of all) {
+          const sharedAll = row.shared_with_all === true
+          const sharedWith = Array.isArray(row.shared_with) ? row.shared_with : []
+          if (!sharedAll && sharedWith.length === 0) {
+            ideas_private++
+          }
+        }
+        ideas_team_shared = ideas_total - ideas_private
+      }
+
       return {
         businessId: biz.id,
         businessName: biz.business_name || biz.name || 'Unnamed',
@@ -732,6 +795,14 @@ export async function GET() {
         modules: camelModules,
         engagement,
         alerts,
+        ideas_total,
+        ideas_private,
+        ideas_team_shared,
+        ideas_breakdown: {
+          owned: ideas_private,
+          team_shared: ideas_team_shared,
+          total: ideas_total,
+        },
       }
     })
 
