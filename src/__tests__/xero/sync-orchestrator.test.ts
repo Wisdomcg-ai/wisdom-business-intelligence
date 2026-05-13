@@ -135,7 +135,23 @@ function makeSupabaseStub(opts: {
         count: rows.length,
       })
     }
+    ctx.not = (col: string, op: string, val: any) => {
+      ctx._filters.push({ kind: 'not', col, op, val })
+      return ctx
+    }
+    ctx.delete = (_deleteOpts?: any) => {
+      ctx._pendingDelete = true
+      return ctx
+    }
     ctx.then = (resolve: any, reject: any) => {
+      // Stale-row sweep DELETE chain resolves here.
+      if (ctx._pendingDelete) {
+        callLog.push({ kind: `from:${table}:delete`, arg: ctx._filters })
+        return Promise.resolve({ data: null, error: null, count: 0 }).then(
+          resolve,
+          reject,
+        )
+      }
       callLog.push({ kind: `from:${table}:select-list`, arg: ctx._filters })
       if (table === 'xero_connections') {
         return Promise.resolve({ data: connections, error: null }).then(resolve, reject)

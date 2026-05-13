@@ -854,6 +854,97 @@ export async function syncBusinessXeroPL(
             rowsInserted += dbRows.length
             tenantRowsInserted += dbRows.length
             console.log('[syncBusinessXeroPL]', conn.tenant_id, 'FY', window.fy, 'upserted', dbRows.length, 'rows')
+
+            // P3a follow-up — sweep stale rows.
+            //
+            // The upsert conflict key is (business_id, tenant_id, account_id,
+            // period_month). Pre-Path-A rows can have a different account_id
+            // for the same logical account: the Phase 44.2-06A backfill
+            // derived synthetic UUIDs from one namespace + seed, while
+            // today's parser derives from a different namespace + seed (and
+            // Xero now reliably returns real AccountIDs anyway). Result:
+            // both old and new rows co-exist, double-counting in the
+            // wide_compat view. Confirmed on Efficient Living 2026-05-13 —
+            // a fresh Path A sync produced ~2x the correct totals until the
+            // pre-2026-05-13 rows were deleted.
+            //
+            // Cleanup logic: for each period_month written by today's sync,
+            // delete any existing rows that share (business_id, tenant_id,
+            // period_month) but whose account_id is NOT in today's write set
+            // for that month. Per-month scope keeps account_id lists short
+            // (URL-safe under PostgREST's query string).
+            //
+            // Idempotency: subsequent syncs find nothing to delete (each
+            // month's account set is stable across syncs). Failure is
+            // non-fatal — today's data is already correct, and the next
+            // sync retries. Sentry-info when staleSwept > 0 so we can see
+            // the legacy-cleanup transient.
+            const monthToAccountIds = new Map<string, string[]>()
+            for (const r of dbRows) {
+              const arr = monthToAccountIds.get(r.period_month) ?? []
+              arr.push(r.account_id)
+              monthToAccountIds.set(r.period_month, arr)
+            }
+            let staleSwept = 0
+            for (const [month, ids] of monthToAccountIds) {
+              const inClause = `(${ids.map((id) => `"${id}"`).join(',')})`
+              const sweepRes = (await supabase
+                .from('xero_pl_lines')
+                .delete({ count: 'exact' })
+                .eq('business_id', profileId)
+                .eq('tenant_id', conn.tenant_id)
+                .eq('period_month', month)
+                .not('account_id', 'in', inClause)) as any
+              if (sweepRes?.error) {
+                try {
+                  Sentry.captureMessage('xero_pl_lines stale-row sweep failed', {
+                    level: 'warning',
+                    tags: {
+                      invariant: 'xero_sync_stale_sweep',
+                      business_id: profileId,
+                      tenant_id: conn.tenant_id,
+                      period_month: month,
+                    },
+                    extra: {
+                      error:
+                        sweepRes.error.message ?? sweepRes.error.code ?? 'unknown',
+                    },
+                  } as any)
+                } catch {
+                  /* ignore */
+                }
+                continue
+              }
+              staleSwept += sweepRes?.count ?? 0
+            }
+            if (staleSwept > 0) {
+              console.log(
+                '[syncBusinessXeroPL]',
+                conn.tenant_id,
+                'FY',
+                window.fy,
+                'swept',
+                staleSwept,
+                'stale rows',
+              )
+              try {
+                Sentry.captureMessage(
+                  'xero_pl_lines stale rows swept after sync',
+                  {
+                    level: 'info',
+                    tags: {
+                      invariant: 'xero_sync_stale_sweep',
+                      business_id: profileId,
+                      tenant_id: conn.tenant_id,
+                      fy: window.fy,
+                    },
+                    extra: { swept_count: staleSwept },
+                  } as any,
+                )
+              } catch {
+                /* ignore */
+              }
+            }
           }
 
           // Coverage record (sparse-aware).
