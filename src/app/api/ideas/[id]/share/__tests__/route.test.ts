@@ -193,7 +193,8 @@ describe('D: Teammate validation', () => {
     const body = await res.json()
     expect(body.error).toMatch(/invalid teammate/i)
     expect(body.invalid).toEqual(['bad-user'])
-    expect(updateSpy).toBeUndefined()
+    expect(updateSpy).not.toHaveBeenCalled()
+    expect(updatePatch).toBeUndefined()
   })
 })
 

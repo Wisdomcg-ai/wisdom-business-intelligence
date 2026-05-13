@@ -217,8 +217,11 @@ describe('D: Teammate validation', () => {
     const body = await res.json()
     expect(body.error).toMatch(/invalid teammate/i)
     expect(body.invalid).toEqual(['bad-user'])
-    // assert no UPDATE was issued
-    expect(updateSpy).toBeUndefined()
+    // assert no UPDATE was issued (the updateSpy is the .update fn on the from('daily_tasks')
+    // builder — it gets created when from() is called for the initial SELECT, but the test
+    // confirms it was never invoked as a function)
+    expect(updateSpy).not.toHaveBeenCalled()
+    expect(updatePatch).toBeUndefined()
   })
 })
 
