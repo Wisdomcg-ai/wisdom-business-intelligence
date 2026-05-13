@@ -483,7 +483,7 @@ export default function ForecastOverview({
                 Showing estimated FY{fiscalYear.toString().slice(-2)} — YTD actuals + projected remaining months
               </p>
               <p className="text-xs text-blue-800 mt-0.5">
-                Remaining months use prior-FY seasonality (or last-3-month average for new lines). {currentMonthName} is projected because it&apos;s only {daysIn} day{daysIn !== 1 ? 's' : ''} in.
+                Remaining months use prior-FY seasonality (or last-3-month average for new lines). {currentMonthName} is projected because it&apos;s only {daysIn} day{daysIn !== 1 ? 's' : ''} in. <span className="font-medium">Build a forecast to replace these estimates with your own assumptions.</span>
               </p>
               {showComparison && (
                 <p className="text-xs text-blue-900 mt-1.5">

@@ -1686,7 +1686,13 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
               lineAmount = line.y3SeasonalTargetAmount;
             } else {
               const growthPct = line.seasonalGrowthPct ?? defaultIncrease;
-              lineAmount = priorTotal * Math.pow(1 + growthPct / 100, yearNum);
+              // Audit fix: previously `^yearNum`, which made Y1 = priorYear × (1+g) — out
+              // of step with the `fixed` (line ~1656) and `default` (line ~1695) cases that
+              // both treat Y1 as the baseline and apply growth from Y2 onwards. Aligning
+              // to `^(yearNum - 1)` makes Y1 = priorYear, Y2 = priorYear × (1+g),
+              // Y3 = priorYear × (1+g)². Consistent semantics across all three cost
+              // behaviours; previously seasonal forecasts ran ~3pp hot in Y3.
+              lineAmount = priorTotal * Math.pow(1 + growthPct / 100, yearNum - 1);
             }
             break;
           }

@@ -1899,7 +1899,18 @@ export function ForecastWizardV4({
           state={state}
           onStepClickAsync={async (target) => {
             try {
+              // Audit fix #8 — same hard-gate as the Continue button:
+              // refuse forward nav out of Step 1 until Y1 revenue is set.
+              // Backward nav is unaffected.
+              if (state.currentStep === 1 && target > 1 && (!state.goals?.year1?.revenue || state.goals.year1.revenue <= 0)) {
+                toast.error('Set a Y1 revenue goal before continuing');
+                return;
+              }
               if (state.currentStep === 5 && subscriptionsStepRef.current) {
+                // Audit fix #6 — flushPendingSaves now rejects on save
+                // failure (was previously swallow-and-resolve). If it
+                // rejects, the catch below blocks navigation so the
+                // operator can retry instead of silently losing changes.
                 await subscriptionsStepRef.current.flushPendingSaves();
               }
               // Persist wizard state — saveDraft writes to localStorage +
@@ -2004,7 +2015,18 @@ export function ForecastWizardV4({
               </button>
             ) : (
               <button
-                onClick={actions.nextStep}
+                onClick={() => {
+                  // Audit fix #8 — hard-gate Step 1 forward navigation
+                  // until a Y1 revenue goal is set. Without this, the
+                  // operator could skim past Goals and arrive at Review
+                  // with undefined assumptions; downstream tabs would
+                  // render "$0k" everywhere. Backward nav is unaffected.
+                  if (state.currentStep === 1 && (!state.goals?.year1?.revenue || state.goals.year1.revenue <= 0)) {
+                    toast.error('Set a Y1 revenue goal before continuing');
+                    return;
+                  }
+                  actions.nextStep();
+                }}
                 className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-brand-navy rounded-lg hover:bg-brand-navy-800 transition-colors"
               >
                 Continue

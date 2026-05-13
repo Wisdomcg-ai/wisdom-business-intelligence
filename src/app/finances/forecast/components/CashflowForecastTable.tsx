@@ -61,7 +61,7 @@ export default function CashflowForecastTable({ data }: CashflowForecastTablePro
               className={`px-3 py-1 text-xs font-medium transition-colors border-l border-gray-300 ${
                 viewMode === 'indirect' ? 'bg-brand-navy text-white' : 'text-gray-600 hover:bg-gray-50'
               } disabled:opacity-50 disabled:cursor-not-allowed`}
-              title={hasIndirectFields ? '' : 'Indirect method requires Phase 28.2 cashflow settings (depreciation, company tax, CapEx)'}
+              title={hasIndirectFields ? '' : 'Indirect method requires cashflow settings — depreciation, company tax, and CapEx tracking.'}
             >
               Indirect
             </button>
