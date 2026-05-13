@@ -510,4 +510,28 @@ describe('Sync orchestrator — per-tenant sync_jobs.tenant_id (44.2-02 / 44.2-0
     const errorUpdate = syncJobsUpdatePayloads.find((u) => u.payload.status === 'error')!
     expect(String(errorUpdate.payload.error)).toMatch(/403|forbidden|xero/i)
   })
+
+  it('Test 6 — connection with empty tenant_id is skipped before any Xero call', async () => {
+    const { syncJobsInsertPayloads } = makeSupabaseStub({
+      connections: [
+        { id: 'conn-bad', tenant_id: '', tenant_name: 'Malformed', business_id: 'profile-id-1' },
+      ],
+    })
+    const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation(async () => {
+      throw new Error('fetch should never be called for an empty-tenant_id connection')
+    })
+
+    const Sentry = await import('@sentry/nextjs')
+    const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
+    await syncBusinessXeroPL('biz-id-1')
+
+    expect(syncJobsInsertPayloads.length).toBe(0)
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringMatching(/empty tenant_id/i),
+      expect.objectContaining({
+        tags: expect.objectContaining({ invariant: 'xero_sync_tenant_id_present' }),
+      }),
+    )
+  })
 })
