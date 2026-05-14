@@ -358,15 +358,17 @@ export default function TodoPage() {
             </button>
           )}
 
-          {/* Phase 61-05: Share + Delete are owner-only */}
+          {/* Share + Delete are owner-only. Labeled text-button so the
+              affordance is unmistakable — the bare icon was too ambiguous. */}
           {isOwner && !isCompleted && (
             <button
               onClick={() => setShareTarget(task)}
-              className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded transition-colors"
-              title="Share this task"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:text-brand-orange hover:bg-brand-orange-50 border border-gray-300 hover:border-brand-orange-300 rounded transition-colors"
+              title="Share this task with teammates"
               aria-label="Share task"
             >
-              <Share2 className="w-4 h-4" />
+              <Share2 className="w-3.5 h-3.5" />
+              Share
             </button>
           )}
 
