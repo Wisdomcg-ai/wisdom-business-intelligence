@@ -180,7 +180,7 @@ describe('Group A — getActiveIdeas (legacy / per-user mode)', () => {
       error: null,
     }
     const result = await svc.getActiveIdeas()
-    expect((result[0] as any).owner_display_name).toBe('Bob B')
+    expect((result[0] as any).owner_display_name).toBe('Team member')
   })
 
   it('falls back to email when name parts missing', async () => {
@@ -191,7 +191,7 @@ describe('Group A — getActiveIdeas (legacy / per-user mode)', () => {
       error: null,
     }
     const result = await svc.getActiveIdeas()
-    expect((result[0] as any).owner_display_name).toBe('bob@x.com')
+    expect((result[0] as any).owner_display_name).toBe('Team member')
   })
 
   it('falls back to "Team member" when join row is null', async () => {
@@ -292,7 +292,7 @@ describe('Group C — getIdeaById (no ownership narrowing)', () => {
     }
     const result = await svc.getIdeaById('i1', 'u1') as any
     expect(result.is_owner).toBe(false)
-    expect(result.owner_display_name).toBe('Bob B')
+    expect(result.owner_display_name).toBe('Team member')
   })
 
   it('with viewerId returns is_owner=true when viewer === owner', async () => {
