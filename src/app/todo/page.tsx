@@ -10,6 +10,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ShareDialog, deriveShareMode, type ShareMode } from '@/components/sharing/ShareDialog'
 import { SharedByBadge } from '@/components/sharing/SharedByBadge'
+import { ShareStatePill } from '@/components/sharing/ShareStatePill'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import {
   getTodaysTasks,
@@ -292,7 +293,7 @@ export default function TodoPage() {
             : taskIsOverdue
             ? 'bg-red-50 border-red-300 border-2'
             : priorityConfig.color + ' border'
-        }`}
+        } ${!isOwner ? 'border-l-4 border-l-brand-orange-400' : ''}`}
       >
         {/* Task title */}
         <div className="flex-1 min-w-0">
@@ -310,9 +311,14 @@ export default function TodoPage() {
                 {daysOverdue}d overdue
               </div>
             )}
-            {/* Phase 61-05: badge appears only when the viewer is NOT the owner */}
-            {!isOwner && (
+            {/* Recipient sees "Shared with you"; owner sees the share state */}
+            {!isOwner ? (
               <SharedByBadge ownerName={task.owner_display_name} />
+            ) : (
+              <ShareStatePill
+                sharedWithAll={task.shared_with_all ?? false}
+                sharedWith={task.shared_with}
+              />
             )}
           </div>
 
