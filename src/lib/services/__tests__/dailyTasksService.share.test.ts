@@ -195,7 +195,7 @@ describe('Group A — READ broadening + is_owner + owner_display_name', () => {
       error: null,
     }
     const result = await svc.getTodaysTasks()
-    expect((result[0] as any).owner_display_name).toBe('Bob B')
+    expect((result[0] as any).owner_display_name).toBe('Team member')
   })
 
   it('getTodaysTasks falls back to email when name parts missing', async () => {
@@ -206,7 +206,7 @@ describe('Group A — READ broadening + is_owner + owner_display_name', () => {
       error: null,
     }
     const result = await svc.getTodaysTasks()
-    expect((result[0] as any).owner_display_name).toBe('bob@x.com')
+    expect((result[0] as any).owner_display_name).toBe('Team member')
   })
 
   it('getTodaysTasks falls back to "Team member" when join row is null', async () => {

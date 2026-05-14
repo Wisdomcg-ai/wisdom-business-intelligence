@@ -65,45 +65,22 @@ export interface UpdateIdeaInput {
   archived?: boolean;
 }
 
-// ----------------------------------------------------------------------------
-// Phase 61-03 — owner-display-name resolution
-//
-// `public.users` carries first_name / last_name / email keyed by id. RLS on
-// `users` already allows authenticated reads of name/email for accessible
-// teammates, so PostgREST will inline the joined row when the FK is followed.
-// ----------------------------------------------------------------------------
-const IDEA_OWNER_SELECT = '*, owner:users!user_id(first_name, last_name, email)';
-
-interface OwnerJoinRow {
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
-}
-
-function resolveOwnerDisplayName(owner: OwnerJoinRow | null | undefined): string {
-  if (owner) {
-    const first = owner.first_name?.trim();
-    const last = owner.last_name?.trim();
-    if (first && last) return `${first} ${last}`;
-    if (first) return first;
-    if (last) return last;
-    if (owner.email && owner.email.trim()) return owner.email;
-  }
-  return 'Team member';
-}
+// Hotfix: the original Phase 61-03 implementation joined to `public.users`,
+// which doesn't exist in this schema. PostgREST errored on the relationship
+// and returned an empty list, hiding the owner's own ideas. Until we wire up
+// a proper join to `public.profiles` (which has full_name) the badge falls
+// back to 'Team member' on shared rows.
+const IDEA_SELECT = '*';
 
 function decorateIdea(
-  row: Record<string, unknown> & { owner?: OwnerJoinRow | OwnerJoinRow[] | null },
+  row: Record<string, unknown>,
   viewerId: string | null
 ): Idea {
-  const ownerRow = Array.isArray(row.owner) ? row.owner[0] ?? null : row.owner ?? null;
-  const { owner: _owner, ...rest } = row;
-  void _owner;
-  const userId = (rest as { user_id?: string }).user_id;
+  const userId = (row as { user_id?: string }).user_id;
   return {
-    ...(rest as unknown as Idea),
+    ...(row as unknown as Idea),
     is_owner: viewerId != null && userId === viewerId,
-    owner_display_name: resolveOwnerDisplayName(ownerRow),
+    owner_display_name: 'Team member',
   };
 }
 
@@ -120,7 +97,7 @@ export async function getActiveIdeas(overrideUserId?: string, businessId?: strin
       console.log('[IdeasService] getActiveIdeas (SHARED BOARD) - businessId:', businessId);
       const { data, error } = await supabase
         .from('ideas')
-        .select(IDEA_OWNER_SELECT)
+        .select(IDEA_SELECT)
         .eq('business_id', businessId)
         .eq('archived', false)
         .order('created_at', { ascending: false });
@@ -144,7 +121,7 @@ export async function getActiveIdeas(overrideUserId?: string, businessId?: strin
 
     const { data, error } = await supabase
       .from('ideas')
-      .select(IDEA_OWNER_SELECT)
+      .select(IDEA_SELECT)
       .eq('archived', false)
       .order('created_at', { ascending: false });
 
@@ -168,7 +145,7 @@ export async function getIdeasByStatus(status: IdeaStatus, overrideUserId?: stri
 
     const { data, error } = await supabase
       .from('ideas')
-      .select(IDEA_OWNER_SELECT)
+      .select(IDEA_SELECT)
       .eq('status', status)
       .eq('archived', false)
       .order('created_at', { ascending: false });
@@ -194,7 +171,7 @@ export async function getIdeaById(id: string, viewerId?: string) {
     const supabase = createClient();
     const { data, error } = await supabase
       .from('ideas')
-      .select(IDEA_OWNER_SELECT)
+      .select(IDEA_SELECT)
       .eq('id', id)
       .single();
 
@@ -404,7 +381,7 @@ export async function shareIdea(
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', id)
     .eq('user_id', userId)
-    .select(IDEA_OWNER_SELECT)
+    .select(IDEA_SELECT)
     .single();
 
   if (error || !data) {

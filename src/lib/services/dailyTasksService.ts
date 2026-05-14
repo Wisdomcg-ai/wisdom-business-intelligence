@@ -199,55 +199,22 @@ function sortTasks(tasks: DailyTask[]): DailyTask[] {
   })
 }
 
-// ----------------------------------------------------------------------------
-// Phase 61-03: PostgREST nested-select used for the owner join.
-//
-// `public.users` carries first_name / last_name / email keyed by id. RLS on
-// `users` already allows authenticated reads of name/email for accessible
-// teammates, so PostgREST will inline the row when the FK is followed.
-// ----------------------------------------------------------------------------
-const TASK_OWNER_SELECT = '*, owner:users!user_id(first_name, last_name, email)'
+// Hotfix: the original Phase 61-03 implementation joined to `public.users`,
+// which doesn't exist in this schema. PostgREST errored on the relationship
+// and returned an empty list, hiding the owner's own tasks. Until we wire up
+// a proper join to `public.profiles` (which has full_name) the badge falls
+// back to 'Team member' on shared rows.
+const TASK_SELECT = '*'
 
-interface OwnerJoinRow {
-  first_name: string | null
-  last_name: string | null
-  email: string | null
-}
-
-/**
- * Resolve a display name for the row owner.
- * Order: "First Last" → "First" → "Last" → email → 'Team member'
- */
-function resolveOwnerDisplayName(owner: OwnerJoinRow | null | undefined): string {
-  if (owner) {
-    const first = owner.first_name?.trim()
-    const last = owner.last_name?.trim()
-    if (first && last) return `${first} ${last}`
-    if (first) return first
-    if (last) return last
-    if (owner.email && owner.email.trim()) return owner.email
-  }
-  return 'Team member'
-}
-
-/**
- * Strip the join shape and add the derived fields. Returns a clean DailyTask
- * with `is_owner` + `owner_display_name`.
- */
 function decorateTask(
-  row: Record<string, unknown> & { owner?: OwnerJoinRow | OwnerJoinRow[] | null },
+  row: Record<string, unknown>,
   viewerId: string | null
 ): DailyTask {
-  // PostgREST may return the joined row as object or single-element array
-  const ownerRow = Array.isArray(row.owner) ? row.owner[0] ?? null : row.owner ?? null
-  // Remove the join key from the surface object so callers don't see it
-  const { owner: _owner, ...rest } = row
-  void _owner
-  const userId = (rest as { user_id?: string }).user_id
+  const userId = (row as { user_id?: string }).user_id
   return {
-    ...(rest as unknown as DailyTask),
+    ...(row as unknown as DailyTask),
     is_owner: viewerId != null && userId === viewerId,
-    owner_display_name: resolveOwnerDisplayName(ownerRow),
+    owner_display_name: 'Team member',
   }
 }
 
@@ -319,7 +286,7 @@ class DailyTasksService {
 
     const { data, error } = await this.supabase
       .from('daily_tasks')
-      .select(TASK_OWNER_SELECT)
+      .select(TASK_SELECT)
       .neq('status', 'done')
       .is('archived_at', null)
       .order('created_at', { ascending: true })
@@ -342,7 +309,7 @@ class DailyTasksService {
 
     const { data, error } = await this.supabase
       .from('daily_tasks')
-      .select(TASK_OWNER_SELECT)
+      .select(TASK_SELECT)
       .eq('status', 'done')
       .is('archived_at', null)
       .order('completed_at', { ascending: false })
@@ -367,7 +334,7 @@ class DailyTasksService {
 
     const { data, error } = await this.supabase
       .from('daily_tasks')
-      .select(TASK_OWNER_SELECT)
+      .select(TASK_SELECT)
       .not('archived_at', 'is', null)
       .order('archived_at', { ascending: false })
 
@@ -388,7 +355,7 @@ class DailyTasksService {
 
     const { data, error } = await this.supabase
       .from('daily_tasks')
-      .select(TASK_OWNER_SELECT)
+      .select(TASK_SELECT)
       .order('created_at', { ascending: true })
 
     if (error) {
@@ -589,7 +556,7 @@ class DailyTasksService {
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq('id', taskId)
       .eq('user_id', userId)
-      .select(TASK_OWNER_SELECT)
+      .select(TASK_SELECT)
       .single()
 
     if (error || !data) {
