@@ -29,6 +29,7 @@ import {
 import { toast } from 'sonner';
 import { ShareDialog, deriveShareMode, type ShareMode } from '@/components/sharing/ShareDialog';
 import { SharedByBadge } from '@/components/sharing/SharedByBadge';
+import { ShareStatePill } from '@/components/sharing/ShareStatePill';
 import {
   getActiveIdeas,
   createIdea,
@@ -193,9 +194,14 @@ function IdeaCard({
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-brand-orange flex-shrink-0" />
               <h3 className="font-semibold text-gray-900 text-base sm:text-lg">{idea.title}</h3>
-              {/* Phase 61-05: badge appears only when the viewer is NOT the owner. */}
-              {!isOwner && (
+              {/* Recipient sees "Shared with you"; owner sees the share state */}
+              {!isOwner ? (
                 <SharedByBadge ownerName={idea.owner_display_name} />
+              ) : (
+                <ShareStatePill
+                  sharedWithAll={idea.shared_with_all ?? false}
+                  sharedWith={idea.shared_with}
+                />
               )}
             </div>
 
