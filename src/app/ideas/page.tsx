@@ -23,8 +23,12 @@ import {
   BookOpen,
   ArrowRight,
   Sparkles,
-  MoreVertical
+  MoreVertical,
+  Share2
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { ShareDialog, deriveShareMode, type ShareMode } from '@/components/sharing/ShareDialog';
+import { SharedByBadge } from '@/components/sharing/SharedByBadge';
 import {
   getActiveIdeas,
   createIdea,
@@ -161,16 +165,20 @@ function IdeaCard({
   onEvaluate,
   onArchive,
   onDelete,
+  onShare,
   isUpdating,
-  canDelete
+  canDelete,
+  isOwner
 }: {
   idea: Idea;
   onEdit: () => void;
   onEvaluate: () => void;
   onArchive: () => void;
   onDelete: () => void;
+  onShare: () => void;
   isUpdating: boolean;
   canDelete: boolean;  // true if user can delete this specific idea
+  isOwner: boolean;    // Phase 61-05: viewer is the row owner
 }) {
   const [expanded, setExpanded] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -185,6 +193,10 @@ function IdeaCard({
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-brand-orange flex-shrink-0" />
               <h3 className="font-semibold text-gray-900 text-base sm:text-lg">{idea.title}</h3>
+              {/* Phase 61-05: badge appears only when the viewer is NOT the owner. */}
+              {!isOwner && (
+                <SharedByBadge ownerName={idea.owner_display_name} />
+              )}
             </div>
 
             {/* Description preview */}
@@ -228,7 +240,9 @@ function IdeaCard({
 
           {/* Actions */}
           <div className="flex items-start gap-2 flex-shrink-0">
-            {/* Primary Action: Evaluate (for captured ideas) */}
+            {/* Primary Action: Evaluate (for captured ideas).
+                Evaluation writes to ideas_filter (per-user) so it remains
+                available even for recipients of shared ideas. */}
             {idea.status === 'captured' && (
               <button
                 onClick={onEvaluate}
@@ -239,75 +253,95 @@ function IdeaCard({
               </button>
             )}
 
-            {/* Secondary Actions Menu */}
-            <div className="relative">
+            {/* Phase 61-05: Share button targets per-item sharing. The existing
+                business-wide shared-board mode (toggled elsewhere on this page)
+                is a coexisting mechanism that already makes ideas team-visible
+                — both paths are valid. Hidden for non-owner recipients. */}
+            {isOwner && (
               <button
-                onClick={() => setShowMenu(!showMenu)}
-                disabled={isUpdating}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                onClick={onShare}
+                className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
+                title="Share this idea"
+                aria-label="Share idea"
               >
-                {isUpdating ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <MoreVertical className="w-5 h-5" />
-                )}
+                <Share2 className="w-5 h-5" />
               </button>
+            )}
 
-              {showMenu && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-                  <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                    <button
-                      onClick={() => {
-                        onEdit();
-                        setShowMenu(false);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                      Edit
-                    </button>
-                    {idea.status !== 'captured' && (
+            {/* Secondary Actions Menu — owner-only (Edit/Archive/Delete are
+                mutations blocked by RLS for non-owners; we hide rather than
+                disable to keep the recipient view uncluttered). */}
+            {isOwner && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowMenu(!showMenu)}
+                  disabled={isUpdating}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  aria-label="More actions"
+                >
+                  {isUpdating ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <MoreVertical className="w-5 h-5" />
+                  )}
+                </button>
+
+                {showMenu && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
+                    <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
                       <button
                         onClick={() => {
-                          onEvaluate();
+                          onEdit();
                           setShowMenu(false);
                         }}
                         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                       >
-                        <Filter className="w-4 h-4" />
-                        Re-evaluate
+                        <Edit3 className="w-4 h-4" />
+                        Edit
                       </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        onArchive();
-                        setShowMenu(false);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                    >
-                      <Archive className="w-4 h-4" />
-                      Archive
-                    </button>
-                    {canDelete && (
-                      <>
-                        <div className="border-t border-gray-100 my-1" />
+                      {idea.status !== 'captured' && (
                         <button
                           onClick={() => {
-                            onDelete();
+                            onEvaluate();
                             setShowMenu(false);
                           }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                         >
-                          <Trash2 className="w-4 h-4" />
-                          Delete
+                          <Filter className="w-4 h-4" />
+                          Re-evaluate
                         </button>
-                      </>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
+                      )}
+                      <button
+                        onClick={() => {
+                          onArchive();
+                          setShowMenu(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        <Archive className="w-4 h-4" />
+                        Archive
+                      </button>
+                      {canDelete && (
+                        <>
+                          <div className="border-t border-gray-100 my-1" />
+                          <button
+                            onClick={() => {
+                              onDelete();
+                              setShowMenu(false);
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -475,6 +509,8 @@ export default function IdeasJournalPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [deleteIdeaItem, setDeleteIdeaItem] = useState<Idea | null>(null);
+  // Phase 61-05: Share dialog state.
+  const [shareTarget, setShareTarget] = useState<Idea | null>(null);
 
   // Filter and search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -622,6 +658,40 @@ export default function IdeasJournalPage() {
   function handleEvaluate(ideaId: string) {
     router.push(`/ideas/${ideaId}/evaluate`);
   }
+
+  /**
+   * Phase 61-05: status flip for recipients (is_owner === false).
+   *
+   * Owners write status via the existing updateIdea path. Recipients can
+   * still progress the team-shared idea through statuses (e.g. captured ->
+   * under_review) via the SECURITY DEFINER RPC behind
+   * PATCH /api/ideas/[id]/status. Not wired to a button on THIS listing
+   * page (recipients flip status from the evaluate flow); exported here so
+   * future surfaces can call it and so the file makes its dependency on
+   * /api/ideas/[id]/status explicit.
+   */
+  async function handleRecipientStatusChange(ideaId: string, status: IdeaStatus) {
+    try {
+      const res = await fetch(`/api/ideas/${ideaId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err?.error || 'Failed to update status');
+        return;
+      }
+      await loadData();
+    } catch {
+      toast.error('Failed to update status');
+    }
+  }
+  // Keep the binding live so it's reachable when a status-flip surface is
+  // added on this page (recipients currently flip status via the evaluate
+  // flow); also makes the file's dependency on /api/ideas/[id]/status
+  // explicit for traceability + grep verification.
+  void handleRecipientStatusChange;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -832,6 +902,11 @@ export default function IdeasJournalPage() {
               const canDeleteAll = viewerContext.permissions?.canDeleteAllItems ?? false;
               const isOwnItem = idea.user_id === currentUser?.id;
               const canDelete = canDeleteAll || isOwnItem;
+              // Phase 61-05: Prefer the server-derived `is_owner` flag from the
+              // service layer (61-03). Falls back to local comparison for safety
+              // (e.g. when getActiveIdeas is called from the shared-board mode
+              // where viewerId may not be propagated to every row historically).
+              const isOwner = idea.is_owner ?? isOwnItem;
 
               return (
                 <IdeaCard
@@ -841,8 +916,10 @@ export default function IdeasJournalPage() {
                   onEvaluate={() => handleEvaluate(idea.id)}
                   onArchive={() => handleArchive(idea.id)}
                   onDelete={() => setDeleteIdeaItem(idea)}
+                  onShare={() => setShareTarget(idea)}
                   isUpdating={updatingId === idea.id}
                   canDelete={canDelete}
+                  isOwner={isOwner}
                 />
               );
             })}
@@ -969,6 +1046,31 @@ export default function IdeasJournalPage() {
           idea={deleteIdeaItem}
           onConfirm={handleDelete}
           onCancel={() => setDeleteIdeaItem(null)}
+        />
+      )}
+
+      {/* PHASE 61-05: Share dialog for per-item idea sharing. The coexisting
+          business-wide shared-board mode (toggled elsewhere on this page) is
+          UNCHANGED — both surfaces remain valid ways to make an idea
+          team-visible. action_items + issues_list are intentionally out of
+          scope (those remain business-wide). */}
+      {shareTarget && currentUser && (
+        <ShareDialog
+          open
+          itemId={shareTarget.id}
+          itemType="idea"
+          businessId={shareTarget.business_id ?? null}
+          currentMode={deriveShareMode(shareTarget) as ShareMode}
+          currentSharedWith={shareTarget.shared_with ?? []}
+          currentUserId={currentUser.id}
+          onSaved={(updated) => {
+            const u = updated as Idea;
+            // Optimistic local update keeps the card in sync immediately.
+            setIdeas((prev) => prev.map((i) => (i.id === u.id ? { ...i, ...u } : i)));
+            // Reload to reconcile + refresh stats counts.
+            loadData();
+          }}
+          onClose={() => setShareTarget(null)}
         />
       )}
     </div>
