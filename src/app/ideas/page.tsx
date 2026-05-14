@@ -259,18 +259,19 @@ function IdeaCard({
               </button>
             )}
 
-            {/* Phase 61-05: Share button targets per-item sharing. The existing
-                business-wide shared-board mode (toggled elsewhere on this page)
-                is a coexisting mechanism that already makes ideas team-visible
-                — both paths are valid. Hidden for non-owner recipients. */}
+            {/* Share button targets per-item sharing. The existing
+                business-wide shared-board mode (toggled elsewhere on this
+                page) coexists — both paths are valid. Labeled text-button
+                so the affordance is unmistakable. Hidden for non-owners. */}
             {isOwner && (
               <button
                 onClick={onShare}
-                className="p-2 text-gray-400 hover:text-brand-orange hover:bg-brand-orange-50 rounded-lg transition-colors"
-                title="Share this idea"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-gray-700 hover:text-brand-orange hover:bg-brand-orange-50 border border-gray-300 hover:border-brand-orange-300 rounded-lg transition-colors"
+                title="Share this idea with teammates"
                 aria-label="Share idea"
               >
-                <Share2 className="w-5 h-5" />
+                <Share2 className="w-4 h-4" />
+                Share
               </button>
             )}
 
