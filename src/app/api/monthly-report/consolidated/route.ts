@@ -34,6 +34,8 @@ import {
   createRateLimitKey,
   RATE_LIMIT_CONFIGS,
 } from '@/lib/utils/rate-limiter'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 import {
   generateFiscalMonthKeys,
   DEFAULT_YEAR_START_MONTH,
@@ -101,6 +103,22 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      authSupabase,        // auth-bound client; NEVER pass a service-role client here
+      user.id,
+      business_id,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/monthly-report/consolidated',
+      user.id,
+      business_id,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     // --- FISCAL YEAR ---
     stage = 'fetch_year_start'

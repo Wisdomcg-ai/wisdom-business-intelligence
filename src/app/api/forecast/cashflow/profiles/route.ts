@@ -4,6 +4,8 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,6 +42,22 @@ export async function GET(request: NextRequest) {
     const ids = await resolveBusinessIds(supabase, forecast.business_id)
     const hasAccess = await verifyBusinessAccess(user.id, ids.bizId)
     if (!hasAccess) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      authClient,          // auth-bound client; NEVER pass a service-role client here
+      user.id,
+      ids.bizId,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/forecast/cashflow/profiles',
+      user.id,
+      ids.bizId,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     const { data, error } = await supabase
       .from('cashflow_account_profiles')
@@ -105,6 +123,22 @@ export async function POST(request: NextRequest) {
     const ids = await resolveBusinessIds(supabase, forecast.business_id)
     const hasAccess = await verifyBusinessAccess(user.id, ids.bizId)
     if (!hasAccess) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdictPost = await requireSectionPermission(
+      authClient,          // auth-bound client; NEVER pass a service-role client here
+      user.id,
+      ids.bizId,
+      'finances',
+    )
+    const _sectionBlockedPost = enforceSectionPermission(
+      _sectionVerdictPost,
+      'finances',
+      'api/forecast/cashflow/profiles',
+      user.id,
+      ids.bizId,
+    )
+    if (_sectionBlockedPost) return _sectionBlockedPost
 
     if (deleteFlag) {
       const { error } = await supabase

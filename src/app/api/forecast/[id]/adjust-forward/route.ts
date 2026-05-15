@@ -14,6 +14,8 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { generateFiscalMonthKeys } from '@/lib/utils/fiscal-year-utils'
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -93,6 +95,22 @@ export async function PATCH(
         { status: 403 }
       )
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      supabase,            // auth-bound client (assigned from createRouteHandlerClient() above)
+      user.id,
+      forecast.business_id,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/forecast/[id]/adjust-forward',
+      user.id,
+      forecast.business_id,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     // Determine which month keys are "remaining" (from today forward within the fiscal year)
     const allKeys = generateFiscalMonthKeys(fiscalYear, yearStartMonth)

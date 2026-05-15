@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import { getPriorYearMonth } from '@/lib/monthly-report/shared'
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -90,6 +93,14 @@ function buildFullYearSubtotal(lines: FullYearLine[], label: string, category: s
  */
 export async function POST(request: NextRequest) {
   try {
+    // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
+    // The module-level service-role `supabase` continues to be used for data fetching below.
+    const authClient = await createRouteHandlerClient()
+    const { data: { user }, error: authError } = await authClient.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await request.json()
     const { business_id, fiscal_year } = body
 
@@ -99,6 +110,22 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      authClient,          // auth-bound client; NEVER pass a service-role client here
+      user.id,
+      business_id,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/monthly-report/full-year',
+      user.id,
+      business_id,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     // Resolve dual business IDs (businesses.id vs business_profiles.id)
     const ids = await resolveBusinessIds(supabase, business_id)

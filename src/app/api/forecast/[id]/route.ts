@@ -1,6 +1,8 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -103,6 +105,22 @@ export async function GET(
       }
     }
 
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      supabase,            // auth-bound client (assigned from createRouteHandlerClient() above)
+      user.id,
+      businessId,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/forecast/[id]',
+      user.id,
+      businessId,
+    )
+    if (_sectionBlocked) return _sectionBlocked
+
     // Fallback: if assumptions were previously saved in category_assumptions, map them
     if (!forecast.assumptions && forecast.category_assumptions?.wizard_v4?.assumptions) {
       forecast.assumptions = forecast.category_assumptions.wizard_v4.assumptions
@@ -201,6 +219,22 @@ export async function DELETE(
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdictDel = await requireSectionPermission(
+      supabase,            // auth-bound client (assigned from createRouteHandlerClient() above)
+      user.id,
+      forecast.business_id,
+      'finances',
+    )
+    const _sectionBlockedDel = enforceSectionPermission(
+      _sectionVerdictDel,
+      'finances',
+      'api/forecast/[id]',
+      user.id,
+      forecast.business_id,
+    )
+    if (_sectionBlockedDel) return _sectionBlockedDel
 
     const { error: deleteError } = await supabase
       .from('financial_forecasts')

@@ -11,6 +11,8 @@ import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
 import { VENDOR_MAPPINGS, extractVendorName, createVendorKey } from '@/lib/utils/vendor-normalization';
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic';
 
@@ -393,6 +395,22 @@ export async function POST(request: NextRequest) {
     if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      authClient,          // auth-bound client; NEVER pass a service-role client here
+      user.id,
+      business_id,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/Xero/subscription-transactions',
+      user.id,
+      business_id,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     // Filter out empty account codes
     const validAccountCodes = account_codes.filter((code: string) => code && code.trim());

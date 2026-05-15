@@ -29,6 +29,8 @@ import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { getHistoricalSummary } from '@/lib/services/historical-pl-summary'
 import type { HistoricalPLSummary } from '@/app/finances/forecast/types'
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -53,6 +55,22 @@ export async function GET(request: NextRequest) {
     if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      supabase,            // auth-bound client (assigned from createRouteHandlerClient() above)
+      user.id,
+      businessId,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/Xero/pl-summary',
+      user.id,
+      businessId,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     const fiscalYear = fiscalYearParam ? parseInt(fiscalYearParam) : new Date().getFullYear() + 1
 

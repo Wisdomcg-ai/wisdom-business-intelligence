@@ -11,6 +11,8 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,7 +56,7 @@ export async function GET(
       return NextResponse.json({ error: 'Forecast ID is required' }, { status: 400 })
     }
 
-    // Fetch forecast row
+    // Fetch forecast row (include business_id for section-permission gate)
     const { data: forecast, error: forecastError } = await supabase
       .from('financial_forecasts')
       .select('id, business_id, fiscal_year, is_locked, actual_start_month, actual_end_month')
@@ -69,6 +71,22 @@ export async function GET(
     if (!forecast) {
       return NextResponse.json({ error: 'Forecast not found' }, { status: 404 })
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      supabase,            // auth-bound client (assigned from createRouteHandlerClient() above)
+      user.id,
+      forecast.business_id,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/forecast/[id]/actuals-summary',
+      user.id,
+      forecast.business_id,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     // Fetch all pl_lines for this forecast
     const { data: plLines, error: linesError } = await supabase

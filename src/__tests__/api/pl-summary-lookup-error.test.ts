@@ -35,6 +35,27 @@ vi.mock('@sentry/nextjs', () => ({
   addBreadcrumb: vi.fn(),
 }))
 
+// Chainable mock builder — supports arbitrary `.eq()/.or()/.in()/.is()/.order()`
+// chains. Needed because Phase 65's `requireSectionPermission` helper queries
+// `businesses`, `business_users`, and `system_roles` via the auth client.
+// All branches return null so the helper falls through to `not_a_member`,
+// which LOG_ONLY mode lets pass through (Sentry log, route proceeds).
+function chainable(data: any): any {
+  const chain: any = {
+    eq: () => chain,
+    or: () => chain,
+    in: () => chain,
+    is: () => chain,
+    order: () => chain,
+    limit: (n: number) => Promise.resolve({ data: data ? [data].slice(0, n) : [], error: null }),
+    maybeSingle: async () => ({ data, error: null }),
+    single: async () => ({ data, error: data ? null : { message: 'not found' } }),
+    then: (resolve: any) =>
+      Promise.resolve({ data: data ? [data] : [], error: null }).then(resolve),
+  }
+  return chain
+}
+
 vi.mock('@/lib/supabase/server', () => ({
   createRouteHandlerClient: vi.fn(async () => ({
     auth: {
@@ -43,9 +64,7 @@ vi.mock('@/lib/supabase/server', () => ({
         error: null,
       })),
     },
-    // Not used directly — resolveXeroBusinessId is its own mock and
-    // getHistoricalSummary is never reached on the no-connection path.
-    from: vi.fn(),
+    from: (_table: string) => ({ select: () => chainable(null) }),
   })),
 }))
 

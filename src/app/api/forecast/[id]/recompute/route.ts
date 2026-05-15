@@ -25,6 +25,8 @@ import { NextResponse } from 'next/server'
 import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -106,6 +108,22 @@ export async function POST(
     if (!isOwner && !isAssignedCoach && !isMember && !isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      supabase,            // auth-bound client (assigned from createRouteHandlerClient() above)
+      user.id,
+      ids.bizId,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/forecast/[id]/recompute',
+      user.id,
+      ids.bizId,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     // ── Re-derive pl_lines from current assumptions ───────────────────────
     const assumptions = forecast.assumptions ?? {}
