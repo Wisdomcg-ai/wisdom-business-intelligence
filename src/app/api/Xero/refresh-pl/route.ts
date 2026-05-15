@@ -17,6 +17,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { syncBusinessXeroPL } from '@/lib/xero/sync-orchestrator'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -41,6 +43,22 @@ export async function POST(request: NextRequest) {
   if (!hasAccess) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 })
   }
+
+  // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+  const _sectionVerdict = await requireSectionPermission(
+    supabase,            // auth-bound client (assigned from createRouteHandlerClient() above)
+    user.id,
+    businessId,
+    'finances',
+  )
+  const _sectionBlocked = enforceSectionPermission(
+    _sectionVerdict,
+    'finances',
+    'api/Xero/refresh-pl',
+    user.id,
+    businessId,
+  )
+  if (_sectionBlocked) return _sectionBlocked
 
   try {
     const result = await syncBusinessXeroPL(businessId)

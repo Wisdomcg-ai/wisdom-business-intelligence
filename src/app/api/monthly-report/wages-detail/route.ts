@@ -5,6 +5,8 @@ import { buildFuzzyLookup, isAccountMatch } from '@/lib/utils/account-matching'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,6 +80,22 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      authClient,          // auth-bound client; NEVER pass a service-role client here
+      user.id,
+      business_id,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/monthly-report/wages-detail',
+      user.id,
+      business_id,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     // Return empty data if no wages accounts configured
     if (!wages_account_names || wages_account_names.length === 0) {

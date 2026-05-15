@@ -5,6 +5,8 @@ import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { extractVendorInfo } from '@/lib/utils/vendor-normalization'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -108,6 +110,22 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      authClient,          // auth-bound client; NEVER pass a service-role client here
+      user.id,
+      business_id,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/monthly-report/commentary',
+      user.id,
+      business_id,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     if (expense_lines.length === 0) {
       return NextResponse.json({ success: true, commentary: {} })

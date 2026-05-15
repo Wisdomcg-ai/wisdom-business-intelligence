@@ -4,6 +4,8 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -118,6 +120,22 @@ export async function POST(request: NextRequest) {
     if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      authClient,          // auth-bound client; NEVER pass a service-role client here
+      user.id,
+      business_id,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/forecast/cashflow/sync-balances',
+      user.id,
+      business_id,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     // Resolve Xero connection (3-step lookup pattern)
     let connection: any = null

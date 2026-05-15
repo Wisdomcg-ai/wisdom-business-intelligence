@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { extractVendorName, createVendorKey } from '@/lib/utils/vendor-normalization'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -74,6 +77,14 @@ async function fetchAllPages(
  */
 export async function POST(request: NextRequest) {
   try {
+    // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
+    // The module-level service-role `supabase` continues to be used for data fetching below.
+    const authClient = await createRouteHandlerClient()
+    const { data: { user }, error: authError } = await authClient.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await request.json()
     const { business_id, report_month, account_codes } = body as {
       business_id: string
@@ -87,6 +98,22 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      authClient,          // auth-bound client; NEVER pass a service-role client here
+      user.id,
+      business_id,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/monthly-report/subscription-detail',
+      user.id,
+      business_id,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     const emptyData = { accounts: [], grand_total: { prior_month: 0, actual: 0, budget: 0, variance: 0 }, report_month: report_month || '' }
 

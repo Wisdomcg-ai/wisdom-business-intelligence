@@ -20,6 +20,8 @@ import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,6 +54,22 @@ export async function GET(request: NextRequest) {
     if (!(await verifyBusinessAccess(user.id, businessId))) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      authClient,          // auth-bound client; NEVER pass a service-role client here
+      user.id,
+      businessId,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/forecast/cashflow/xero-actuals',
+      user.id,
+      businessId,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     const ids = await resolveBusinessIds(supabase, businessId)
 

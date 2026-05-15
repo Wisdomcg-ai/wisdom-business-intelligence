@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
+import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
+import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,12 +53,36 @@ const DEFAULT_SETTINGS = {
  */
 export async function GET(request: NextRequest) {
   try {
+    // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
+    // The module-level service-role `supabase` continues to be used for data fetching below.
+    const authClient = await createRouteHandlerClient()
+    const { data: { user }, error: authError } = await authClient.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const businessId = searchParams.get('business_id')
 
     if (!businessId) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 })
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      authClient,          // auth-bound client; NEVER pass a service-role client here
+      user.id,
+      businessId,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/monthly-report/settings',
+      user.id,
+      businessId,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     const { data: settings, error } = await supabase
       .from('monthly_report_settings')
@@ -102,6 +129,13 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
+    const authClient = await createRouteHandlerClient()
+    const { data: { user }, error: authError } = await authClient.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await request.json()
     const {
       business_id,
@@ -125,6 +159,22 @@ export async function POST(request: NextRequest) {
     if (!business_id) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 })
     }
+
+    // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
+    const _sectionVerdict = await requireSectionPermission(
+      authClient,          // auth-bound client; NEVER pass a service-role client here
+      user.id,
+      business_id,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/monthly-report/settings',
+      user.id,
+      business_id,
+    )
+    if (_sectionBlocked) return _sectionBlocked
 
     // Merge provided sections with defaults (so partial updates work)
     const mergedSections = sections
