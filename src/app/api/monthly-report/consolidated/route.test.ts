@@ -98,6 +98,27 @@ function mockSupabase(rowsByTable: Record<string, any[]>) {
   }
 }
 
+// Chainable mock builder — supports arbitrary `.eq()/.or()/.in()/.is()/.order()`
+// chains terminating in `.maybeSingle()`, `.single()`, `.limit()`, or `.then()`.
+// Used because the route's own access-check uses `.eq().or().maybeSingle()`
+// while Phase 65's `requireSectionPermission` helper uses `.eq().maybeSingle()`
+// and `.eq().eq().maybeSingle()`. A flat chain handles all shapes.
+function chainable(data: any): any {
+  const chain: any = {
+    eq: () => chain,
+    or: () => chain,
+    in: () => chain,
+    is: () => chain,
+    order: () => chain,
+    limit: (n: number) => Promise.resolve({ data: data ? [data].slice(0, n) : [], error: null }),
+    maybeSingle: async () => ({ data, error: null }),
+    single: async () => ({ data, error: data ? null : { message: 'not found' } }),
+    then: (resolve: any) =>
+      Promise.resolve({ data: data ? [data] : [], error: null }).then(resolve),
+  }
+  return chain
+}
+
 function mockAuthClient(userId: string, businessId: string, isSuperAdmin = false) {
   return {
     auth: {
@@ -105,36 +126,18 @@ function mockAuthClient(userId: string, businessId: string, isSuperAdmin = false
     },
     from: (table: string) => {
       if (table === 'businesses') {
-        return {
-          select: () => ({
-            eq: () => ({
-              or: () => ({
-                maybeSingle: async () => ({
-                  data: { id: businessId },
-                  error: null,
-                }),
-              }),
-            }),
-          }),
-        }
+        // Returns { id } only — helper's `owner_id` and `assigned_coach_id`
+        // lookups read undefined, fall through to business_users check.
+        return { select: () => chainable({ id: businessId }) }
       }
       if (table === 'system_roles') {
         return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({
-                data: isSuperAdmin ? { role: 'super_admin' } : null,
-                error: null,
-              }),
-            }),
-          }),
+          select: () =>
+            chainable(isSuperAdmin ? { role: 'super_admin' } : null),
         }
       }
-      return {
-        select: () => ({
-          eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }),
-        }),
-      }
+      // Includes business_users — helper sees null → not_a_member fallthrough.
+      return { select: () => chainable(null) }
     },
   }
 }
