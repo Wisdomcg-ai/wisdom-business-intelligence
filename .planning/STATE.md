@@ -2,21 +2,21 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
-status: Executing Phase 66
-last_updated: "2026-05-16T22:38:33.486Z"
-last_activity: 2026-05-16 -- Phase 66 Plan 66-01 Tasks 1-2 complete; at Task 3 checkpoint:human-verify
+status: Phase 65 soak in progress (66 complete)
+last_updated: "2026-05-17T00:00:00.000Z"
+last_activity: 2026-05-17 -- Phase 66 verified + completed; Phase 65 LOG_ONLY soak running
 progress:
   total_phases: 55
-  completed_phases: 23
+  completed_phases: 24
   total_plans: 131
-  completed_plans: 124
+  completed_plans: 128
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped + deployed 2026-05-17, PR #198 merged `0cd6bcd2`). 66-01 audit script + backfill migration (expanded to also correct the `business_users`/`team_invites` section_permissions DEFAULTs onto canonical `finances` — see `66-01-DEVIATION.md`). Production audit confirmed migration applied: 0 rows missing `finances` (was 23, all owner/admin → no security exposure existed). 66-02 normalized the 3 consolidated routes to `resolveBusinessIds` + ids.bizId + regression test. 66-03 `66-SERVICE-ROLE-AUDIT.md` (32 routes: 11 auth-bound, 11 keep, 10 convert, 0 carve — conversions deferred to a future phase). 66-04 `66-OPS-ADMIN-SECTION-PERMISSION-AUDIT.md` — all 16 ops/admin/coach routes need no gate. Vercel auto-deployed `origin/main` to production 2026-05-17.
+Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
 
 Phase: 65 (section-permission-api-enforcement) — **IN PROGRESS** (Waves 1-2 shipped + deployed; PR #197 merged). LOG_ONLY section-permission gate is LIVE in production as of 2026-05-17 — 24-48h Sentry soak (Wave 65-03) now running. Watch `section_permission_check` events: healthy = denials only for genuine non-finance members; red flag = any owner/coach/admin/super_admin triggering a denial. Wave 65-04 (flip `SECTION_PERMISSION_ENFORCE=true` in Vercel) is UNBLOCKED — the Phase 66 audit proved zero member rows had the legacy-key gap. Wave 65-05 (PR risk assessment + phase close-out) follows ENFORCE.
@@ -25,7 +25,7 @@ Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-
 Phase: 53 (Xero Connection Durability) — **COMPLETE** (5/5 plans shipped 2026-05-06). 53-01 server-side disconnect with dual-ID purge (PR #107). 53-03 token-rotation race holes closed + tightened deactivation policy (commit b5a233d, merged). 53-02 centralized Xero refresh through token-manager + deleted dead refresh-tokens route (PR #109). 53-04 proactive refresh cron at `0 */6 * * *` UTC (PR #110). **53-05 Sentry capture + coach dashboard health pill (PR opened 2026-05-06).** Durability story is whole — JDS root cause permanently closed.
 Phase: 54 (Xero Employee Import Completion) — **PARTIAL** (1/2 plans shipped 2026-05-06). **54-01 PayRun-derived hours + salary fallback (PR opening 2026-05-06).** ENTEREARNINGSRATE employees (timesheet-driven payroll, JDS default) now return populated hours_per_week + annual_salary derived from last 4 POSTED PayRuns; PayTemplate values WIN via ??= precedence; new optional `derived_from` provenance field on response. 54-02 (soft auto-fill on empty Step 4 + new-employees banner) is next.
 Phase: 61 (Selective List Sharing) — **IN PROGRESS** (1/6 plans shipped 2026-05-14). **61-01 schema foundation:** added `shared_with_all boolean DEFAULT false` + `shared_with uuid[] DEFAULT '{}'` to `daily_tasks` and `ideas`, plus GIN indexes on `shared_with` for both tables. Idempotent migration, transaction-wrapped, scoped strictly to the two tables (action_items / issues_list / ideas_filter untouched). Defaults preserve current Private-only behavior on every existing row — no backfill. RLS deferred to 61-02 so columns physically exist before policies reference them. **Task 2 (human-verify checkpoint) PENDING:** Docker is currently down so local `supabase db push` could not be executed; needs operator to bring Docker up, apply the migration locally, and confirm the 4 `information_schema` checks before 61-02 ships. Commit `42da18fb` on branch `phase-61-selective-list-sharing` (not pushed).
-Last activity: 2026-05-17 -- Phase 66 complete + deployed to production; Phase 65 LOG_ONLY soak started
+Last activity: 2026-05-16
 
 ## Active operational notes
 

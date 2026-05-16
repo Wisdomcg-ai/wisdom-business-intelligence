@@ -995,7 +995,7 @@ Phases 50–58 exist as `.planning/phases/*` directories with full PHASE.md / pl
 **Goal:** Close the four follow-up items surfaced by Phase 65 so the `SECTION_PERMISSION_ENFORCE` cutover is safe: (1) audit/migrate `business_users` rows carrying only the legacy `financials` JSONB key — **prerequisite for Phase 65 Wave 65-04**; (2) normalize business-ID resolution across the consolidated routes; (3) per-route disposition of service-role data-fetching clients left in the 32 finance routes; (4) decide whether ops/admin service-role routes that surface $ data should also run the section-permission check.
 **Requirements**: none mapped (follow-up phase; goal-derived must_haves per plan)
 **Depends on:** Phase 65 (Waves 65-01/65-02 merged); blocks Phase 65 Wave 65-04
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 
 Plans:
 - [x] 66-01-PLAN.md — Legacy `financials`-key audit script + idempotent backfill migration (standalone, critical-path; gates Phase 65 Wave 65-04 ENFORCE cutover) — SUMMARY: 66-01-SUMMARY.md (Tasks 1-2 complete; Task 3 at human-verify checkpoint)
