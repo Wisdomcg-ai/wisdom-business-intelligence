@@ -273,10 +273,10 @@ export default function CfoDashboardPage() {
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
             <p className="text-sm font-medium text-amber-900">No CFO clients flagged yet</p>
             <p className="text-xs text-amber-700 mt-1">
-              Mark a business as a CFO client via the coach portal or via SQL:
-              <code className="ml-1 px-1 py-0.5 bg-amber-100 rounded text-xs">
-                UPDATE businesses SET is_cfo_client = true WHERE id = &apos;...&apos;;
-              </code>
+              To add a client here: open the client in the coach portal
+              (<span className="font-medium">Clients → select a client</span>), then
+              choose <span className="font-medium">&ldquo;Mark as CFO client&rdquo;</span> from
+              the actions menu (top-right <span aria-hidden="true">⋯</span>).
             </p>
           </div>
         )}
