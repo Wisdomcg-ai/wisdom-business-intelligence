@@ -24,7 +24,8 @@ import {
   Archive,
   Trash2,
   RefreshCw,
-  TrendingUp
+  TrendingUp,
+  Star
 } from 'lucide-react'
 
 interface BusinessData {
@@ -47,6 +48,7 @@ interface BusinessData {
     documents: boolean
   }
   owner_id: string | null
+  is_cfo_client: boolean | null
   // Additional fields for editing
   legal_name: string | null
   years_in_business: number | null
@@ -1014,6 +1016,31 @@ export default function ClientFilePage() {
           >
             <Edit className="w-4 h-4" />
             Edit Client Details
+          </button>
+          <button
+            onClick={async () => {
+              setShowMenu(false)
+              const next = !business.is_cfo_client
+              try {
+                const res = await fetch('/api/cfo/flag-client', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ business_id: clientId, is_cfo_client: next }),
+                })
+                if (!res.ok) {
+                  const body = await res.json().catch(() => ({}))
+                  alert(body.error || 'Failed to update CFO client flag. Please try again.')
+                  return
+                }
+                setBusiness({ ...business, is_cfo_client: next })
+              } catch {
+                alert('Failed to update CFO client flag. Please try again.')
+              }
+            }}
+            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            <Star className={`w-4 h-4 ${business.is_cfo_client ? 'fill-amber-400 text-amber-400' : ''}`} />
+            {business.is_cfo_client ? 'Remove CFO client flag' : 'Mark as CFO client'}
           </button>
           <div className="border-t border-gray-100 my-2" />
           <button
