@@ -1,10 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 // Create a service role client for notification creation
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
+const supabaseAdmin = createClient(supabaseUrl, getSupabaseSecretKey())
 
 export interface CreateNotificationParams {
   userId: string
