@@ -8,6 +8,7 @@
 // snapshot: the client sees exactly what the coach approved, frozen in time
 // (D-19). Live data is deliberately excluded.
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { verifyReportToken } from '@/lib/reports/report-token'
 import ReportSnapshotView from './ReportSnapshotView'
 import ReportNotFound from './not-found'
@@ -17,7 +18,7 @@ export const runtime = 'nodejs'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
+  getSupabaseSecretKey()
 )
 
 interface PageProps {

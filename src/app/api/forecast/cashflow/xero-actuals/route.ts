@@ -15,6 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
@@ -25,7 +26,7 @@ import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionCon
 
 export const dynamic = 'force-dynamic'
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!)
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, getSupabaseSecretKey())
 
 const CATEGORY_MAP: Record<string, string> = {
   revenue: 'Revenue', other_income: 'Other Income', cogs: 'Cost of Sales',

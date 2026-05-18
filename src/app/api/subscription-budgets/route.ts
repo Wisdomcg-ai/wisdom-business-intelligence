@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import * as Sentry from '@sentry/nextjs'
 
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
 // Keeps RLS-bypass behaviour intact while the auth gate guards business_id access.
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
+  getSupabaseSecretKey()
 );
 
 interface SubscriptionBudgetInput {

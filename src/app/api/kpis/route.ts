@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
 
@@ -7,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 // Initialize Supabase client with service role for admin operations
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabaseServiceKey = getSupabaseSecretKey()
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
 // Helper to verify user has access to business

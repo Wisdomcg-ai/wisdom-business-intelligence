@@ -46,6 +46,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -53,7 +54,7 @@ export const dynamic = 'force-dynamic';
 // Service-role client to bypass RLS — endpoint enforces RBAC in code.
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!,
+  getSupabaseSecretKey(),
 );
 
 export type ConnectionHealthStatus = 'verified' | 'stale' | 'dead' | 'none';

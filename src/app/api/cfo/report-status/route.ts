@@ -13,6 +13,7 @@
 // Resend failure NEVER leaves the row at status='sent'.
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { sendMonthlyReport } from '@/lib/email/send-report'
 import { buildReportUrl } from '@/lib/reports/build-report-url'
@@ -26,7 +27,7 @@ export const maxDuration = 30
 // Module-level service-role client (mirrors flag-client/route.ts)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!,
+  getSupabaseSecretKey(),
 )
 
 // ~7.5MB decoded — guards against runaway uploads while staying well under

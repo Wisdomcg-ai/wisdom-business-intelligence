@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { buildFuzzyLookup, isAccountMatch } from '@/lib/utils/account-matching'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
+  getSupabaseSecretKey()
 )
 
 // Normalize employee name for matching

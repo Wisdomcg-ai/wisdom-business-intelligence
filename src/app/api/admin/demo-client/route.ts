@@ -23,7 +23,7 @@ function devLog(...args: any[]) {
 // Service role client to bypass RLS for demo data creation
 const getServiceClient = () => createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  getSupabaseSecretKey()
 )
 
 // Demo client configuration

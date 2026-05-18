@@ -37,7 +37,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const SERVICE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY ?? ''
+  process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY ?? ''
 
 const SHOULD_SKIP =
   !SUPABASE_URL ||
@@ -240,7 +240,7 @@ d('06C BS schema', () => {
     expect(insErr).toBeNull()
 
     // Hit the same table via an anon client — RLS should reject (or return empty).
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
     if (!anonKey) {
       // Without an anon key we cannot verify the RLS denial path; skip silently.
       return
