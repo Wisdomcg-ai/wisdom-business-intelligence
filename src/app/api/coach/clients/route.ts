@@ -1,4 +1,5 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
 import * as Sentry from '@sentry/nextjs'
@@ -84,8 +85,7 @@ export async function POST(request: Request) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-          'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+          'apikey': getSupabaseSecretKey()
         },
         body: JSON.stringify({
           email: ownerEmail,
@@ -271,8 +271,7 @@ export async function POST(request: Request) {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-                'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+                'apikey': getSupabaseSecretKey()
               },
               body: JSON.stringify({
                 email: member.email.toLowerCase(),

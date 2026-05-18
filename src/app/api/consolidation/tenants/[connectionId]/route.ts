@@ -18,6 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { validateTenantPatchPayload } from '@/lib/consolidation/admin-guards'
 import * as Sentry from '@sentry/nextjs'
@@ -26,7 +27,7 @@ export const dynamic = 'force-dynamic'
 
 const adminDb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!,
+  getSupabaseSecretKey(),
 )
 
 const UUID_REGEX =

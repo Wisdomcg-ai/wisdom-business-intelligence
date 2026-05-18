@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
 // Phase 52 (XERO-S4-01..04): mapping helpers extracted to a pure module so
@@ -54,7 +55,7 @@ function parseXeroDate(dateStr: string | undefined | null): string | undefined {
 function getSupabaseAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!,
+    getSupabaseSecretKey(),
     {
       auth: { persistSession: false },
       global: { fetch: (url, opts) => fetch(url, { ...opts, cache: 'no-store' }) },

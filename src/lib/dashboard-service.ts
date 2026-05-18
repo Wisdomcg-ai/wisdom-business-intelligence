@@ -1,5 +1,6 @@
 import { createBrowserClient } from '@supabase/ssr'
 import { Database } from '@/types/database.types';
+import { getSupabasePublishableKey } from './supabase/keys';
 
 export interface AssessmentSummary {
   id: string;
@@ -41,7 +42,7 @@ export interface AssessmentData {
 export async function saveAssessment(data: AssessmentData): Promise<string> {
   const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  getSupabasePublishableKey()
 );
   
   try {

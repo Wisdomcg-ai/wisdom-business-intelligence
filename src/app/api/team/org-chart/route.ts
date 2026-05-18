@@ -3,19 +3,20 @@ import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import * as Sentry from '@sentry/nextjs'
+import { getSupabasePublishableKey, getSupabaseSecretKey } from '@/lib/supabase/keys'
 
 export const dynamic = 'force-dynamic'
 
 const adminClient = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
+  getSupabaseSecretKey()
 )
 
 async function getAuthUser(request: NextRequest) {
   const cookieStore = cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    getSupabasePublishableKey(),
     {
       cookies: {
         get(name: string) {

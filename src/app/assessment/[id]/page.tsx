@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
+import { getSupabasePublishableKey } from '@/lib/supabase/keys';
 import {
   TrendingUp,
   AlertCircle,
@@ -55,7 +56,7 @@ export default function AssessmentResultsPage() {
   const [loading, setLoading] = useState(true);
   const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  getSupabasePublishableKey()
 );
 
   useEffect(() => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
+import { getSupabasePublishableKey } from '@/lib/supabase/keys';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { Database } from '@/types/database.types';
@@ -31,7 +32,7 @@ export default function CoachDashboard() {
   const router = useRouter();
   const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  getSupabasePublishableKey()
 );
 
   useEffect(() => {

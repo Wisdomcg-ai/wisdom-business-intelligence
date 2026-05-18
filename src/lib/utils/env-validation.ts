@@ -15,7 +15,18 @@ interface EnvValidationResult {
  */
 const REQUIRED_ENV_VARS = [
   'NEXT_PUBLIC_SUPABASE_URL',
-  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+] as const
+
+/**
+ * Required key groups — exactly one name in each group must be set.
+ * Supabase is migrating from legacy JWT keys to publishable/secret keys;
+ * either the new or the legacy name satisfies the requirement.
+ */
+const REQUIRED_ENV_VAR_GROUPS = [
+  {
+    label: 'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or legacy NEXT_PUBLIC_SUPABASE_ANON_KEY)',
+    names: ['NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'],
+  },
 ] as const
 
 /**
@@ -23,8 +34,17 @@ const REQUIRED_ENV_VARS = [
  * but won't prevent the app from starting
  */
 const OPTIONAL_ENV_VARS = [
-  'SUPABASE_SERVICE_ROLE_KEY',
   'OPENAI_API_KEY',
+] as const
+
+/**
+ * Optional key groups — warn if none of the names in a group is set.
+ */
+const OPTIONAL_ENV_VAR_GROUPS = [
+  {
+    label: 'SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_KEY / SUPABASE_SERVICE_ROLE_KEY)',
+    names: ['SUPABASE_SECRET_KEY', 'SUPABASE_SERVICE_KEY', 'SUPABASE_SERVICE_ROLE_KEY'],
+  },
 ] as const
 
 /**
@@ -41,10 +61,24 @@ export function validateEnv(): EnvValidationResult {
     }
   }
 
+  // Check required key groups (new-or-legacy name satisfies the requirement)
+  for (const group of REQUIRED_ENV_VAR_GROUPS) {
+    if (!group.names.some(name => process.env[name])) {
+      missing.push(group.label)
+    }
+  }
+
   // Check optional variables (warn but don't fail)
   for (const envVar of OPTIONAL_ENV_VARS) {
     if (!process.env[envVar]) {
       warnings.push(`${envVar} is not set - some features may not work`)
+    }
+  }
+
+  // Check optional key groups (warn if none of the names is set)
+  for (const group of OPTIONAL_ENV_VAR_GROUPS) {
+    if (!group.names.some(name => process.env[name])) {
+      warnings.push(`${group.label} is not set - some features may not work`)
     }
   }
 

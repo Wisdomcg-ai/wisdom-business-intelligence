@@ -15,6 +15,7 @@ import {
 import { SwotGrid } from '@/components/swot/SwotGrid';
 import { QuarterSelector } from '@/components/swot/QuarterSelector';
 import { createBrowserClient } from '@supabase/ssr';
+import { getSupabasePublishableKey } from '@/lib/supabase/keys';
 import { CheckCircle, AlertCircle, Download, History, TrendingUp, Target, HelpCircle, ChevronRight, ChevronLeft, ChevronDown, Loader2 } from 'lucide-react';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import PageHeader from '@/components/ui/PageHeader';
@@ -25,7 +26,7 @@ export default function SwotPage() {
   const { activeBusiness, viewerContext, currentUser, isLoading: isContextLoading } = useBusinessContext();
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    getSupabasePublishableKey()
   );
 
   // State management

@@ -1,12 +1,13 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 
 // Use service role client for unrestricted access
 const getServiceClient = () => createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  getSupabaseSecretKey()
 )
 
 export async function GET(request: Request) {

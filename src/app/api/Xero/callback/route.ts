@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { encrypt, verifySignedOAuthState } from '@/lib/utils/encryption';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
 import * as Sentry from '@sentry/nextjs'
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic'
 // Initialize Supabase with service key for server-side operations
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
+  getSupabaseSecretKey()
 );
 
 // Get environment variables
