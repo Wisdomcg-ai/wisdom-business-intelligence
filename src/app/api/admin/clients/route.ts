@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
 import * as Sentry from '@sentry/nextjs'
@@ -129,8 +130,7 @@ export async function POST(request: Request) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-          'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+          'apikey': getSupabaseSecretKey()
         },
         body: JSON.stringify({
           email,
@@ -209,8 +209,7 @@ export async function POST(request: Request) {
           {
             method: 'DELETE',
             headers: {
-              'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-              'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+              'apikey': getSupabaseSecretKey()
             }
           }
         )
@@ -590,8 +589,7 @@ export async function DELETE(request: Request) {
         {
           method: 'DELETE',
           headers: {
-            'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-            'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+            'apikey': getSupabaseSecretKey()
           }
         }
       )

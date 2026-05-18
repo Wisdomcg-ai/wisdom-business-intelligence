@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import { csrfProtection } from '@/lib/security/csrf'
 import * as Sentry from '@sentry/nextjs'
@@ -132,8 +133,7 @@ export async function POST(request: Request) {
           {
             method: 'DELETE',
             headers: {
-              'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-              'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+              'apikey': getSupabaseSecretKey()
             }
           }
         )
