@@ -14,6 +14,7 @@ import { getFiscalYear, getQuarterForMonth, startMonthFromYearType } from '@/lib
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
+import { getSupabasePublishableKey } from '@/lib/supabase/keys'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { calculateQuarters, determinePlanYear } from './utils/quarters'
 import PageHeader from '@/components/ui/PageHeader'
@@ -305,7 +306,7 @@ function StrategicPlanningContent() {
       try {
         const supabase = createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          getSupabasePublishableKey()
         )
         const { data: { user } } = await supabase.auth.getUser()
         if (user && businessId) {
@@ -358,7 +359,7 @@ function StrategicPlanningContent() {
         setLoadingSwot(true)
         const supabase = createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          getSupabasePublishableKey()
         )
 
         // Get the most recent SWOT analysis

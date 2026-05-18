@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { createBrowserClient } from '@supabase/ssr';
+import { getSupabasePublishableKey } from '@/lib/supabase/keys';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -422,7 +423,7 @@ function MorningRitual({
 export default function TodoManagerV2({ userId, businessId, userRole }: TodoManagerV2Props) {
   const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  getSupabasePublishableKey()
 )
   
   // State

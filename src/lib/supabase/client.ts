@@ -3,6 +3,7 @@
 
 import { createBrowserClient } from '@supabase/ssr'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { getSupabasePublishableKey } from './keys'
 
 // Singleton instance to prevent multiple clients causing auth state flickering
 let supabaseInstance: SupabaseClient | null = null
@@ -16,12 +17,12 @@ export function createClient() {
 
   // Get environment variables - these should be in your .env.local file
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  const supabasePublishableKey = getSupabasePublishableKey()
 
   // Create the client with proper cookie handling for Next.js 14
   supabaseInstance = createBrowserClient(
     supabaseUrl,
-    supabaseAnonKey
+    supabasePublishableKey
   )
 
   return supabaseInstance

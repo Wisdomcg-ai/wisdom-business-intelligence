@@ -16,6 +16,7 @@ import Step5SprintPlanning from '@/app/goals/components/Step5SprintPlanning'
 import { Target, Calendar, Brain, Rocket, ChevronLeft, ChevronRight, CheckCircle, TrendingUp, AlertCircle, HelpCircle, ChevronDown, Shield, AlertTriangle as AlertTriangleIcon, Lightbulb, Save } from 'lucide-react'
 import Link from 'next/link'
 import { createBrowserClient } from '@supabase/ssr'
+import { getSupabasePublishableKey } from '@/lib/supabase/keys'
 
 type StepNumber = 1 | 2 | 3 | 4 | 5
 
@@ -299,7 +300,7 @@ export default function CoachGoalsPage() {
         setLoadingSwot(true)
         const supabase = createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          getSupabasePublishableKey()
         )
 
         console.log('[Coach Goals] Loading SWOT data for business_id:', swotBusinessId)
