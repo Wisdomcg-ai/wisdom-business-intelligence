@@ -1,7 +1,12 @@
 # Supabase Legacy Keys → Publishable/Secret — Migration Plan & Progress
 
-**Branch:** `supabase-api-key-migration` · **Status:** Commits 1–2 done, Commit 3 next.
+**Branch:** `supabase-api-key-migration` · **Status:** Commits 1–3 done, Commit 4 next.
 Resume by reading this file. Nothing pushed; app runs on legacy keys via fallback.
+
+> Commit 3 done (`79a32d09`): 10 Authorization-header sites fixed across the 4
+> Auth-Admin-REST files; `tsc` clean. NOTE: full `vitest` not yet run post-Commit-3
+> (header-only change in `fetch()` calls) — run it at the start of the next session.
+> Commit 4 PRECONDITION still pending: the user-scoped-vs-admin client confirmation.
 
 ## Goal
 Migrate Supabase client init from legacy JWT keys (`anon` / `service_role`) to the
