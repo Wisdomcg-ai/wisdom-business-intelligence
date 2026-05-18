@@ -1,5 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 
@@ -78,8 +79,7 @@ export async function POST(request: Request) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-          'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+          'apikey': getSupabaseSecretKey()
         },
         body: JSON.stringify({
           email: DEMO_CLIENT.email,
@@ -103,8 +103,7 @@ export async function POST(request: Request) {
           `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users?filter=email.eq.${encodeURIComponent(DEMO_CLIENT.email)}`,
           {
             headers: {
-              'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-              'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+              'apikey': getSupabaseSecretKey()
             }
           }
         )
@@ -137,8 +136,7 @@ export async function POST(request: Request) {
           await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${orphanedUserId}`, {
             method: 'DELETE',
             headers: {
-              'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-              'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+              'apikey': getSupabaseSecretKey()
             }
           })
           return NextResponse.json({
@@ -187,8 +185,7 @@ export async function POST(request: Request) {
       await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${demoUserId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-          'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+          'apikey': getSupabaseSecretKey()
         }
       })
       return NextResponse.json({ error: `Failed to create business: ${businessError.message}` }, { status: 500 })
@@ -866,8 +863,7 @@ export async function DELETE(request: Request) {
     await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${ownerId}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-        'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+        'apikey': getSupabaseSecretKey()
       }
     })
 

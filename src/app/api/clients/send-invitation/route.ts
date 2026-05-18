@@ -1,4 +1,5 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
 import * as Sentry from '@sentry/nextjs'
@@ -76,8 +77,7 @@ export async function POST(request: Request) {
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${business.owner_id}`,
         {
           headers: {
-            'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-            'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+            'apikey': getSupabaseSecretKey()
           }
         }
       )
