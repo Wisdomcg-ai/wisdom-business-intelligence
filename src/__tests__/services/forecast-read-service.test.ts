@@ -141,6 +141,7 @@ function activeForecastRow(overrides: Partial<Record<string, unknown>> = {}) {
     business_id: BUSINESS_ID,
     fiscal_year: FY,
     is_active: true,
+    is_completed: true,
     updated_at: '2026-04-01T00:00:00Z',
     ...overrides,
   }
@@ -479,7 +480,7 @@ describe('ForecastReadService', () => {
 
 // Builds a MockSupabase preloaded with rows that trip the freshness invariant
 // when read via getMonthlyComposite (computed_at < financial_forecasts.updated_at).
-function makeStaleSupabaseMock() {
+function makeStaleSupabaseMock(opts: { isCompleted?: boolean } = {}) {
   const supabase = new MockSupabase()
   supabase.setFixture('financial_forecasts', {
     data: [
@@ -488,6 +489,7 @@ function makeStaleSupabaseMock() {
         business_id: BUSINESS_ID,
         fiscal_year: FY,
         is_active: true,
+        is_completed: opts.isCompleted ?? true,
         // updated_at AFTER computed_at → freshness violation.
         updated_at: '2026-04-10T00:00:00Z',
       },
@@ -523,6 +525,7 @@ function makeNegativeCoverageSupabaseMock() {
         business_id: BUSINESS_ID,
         fiscal_year: FY,
         is_active: true,
+        is_completed: true,
         updated_at: '2026-03-01T00:00:00Z', // older than computed_at → freshness OK
       },
     ],
@@ -553,6 +556,7 @@ function makeFreshSupabaseMock() {
         business_id: BUSINESS_ID,
         fiscal_year: FY,
         is_active: true,
+        is_completed: true,
         updated_at: '2026-03-01T00:00:00Z',
       },
     ],
@@ -618,6 +622,32 @@ describe('Soft-fail invariant mode — D-44.1-08', () => {
         data: expect.objectContaining({ forecast_id: 'forecast-stale-1' }),
       }),
     )
+  })
+
+  it('incomplete forecast — stale computed_at does NOT fire the freshness invariant', async () => {
+    const captureMessageSpy = vi.fn()
+    const addBreadcrumbSpy = vi.fn()
+    vi.doMock('@sentry/nextjs', () => ({
+      captureException: vi.fn(),
+      captureMessage: captureMessageSpy,
+      addBreadcrumb: addBreadcrumbSpy,
+    }))
+
+    const { createForecastReadService: createSvc } = await import(
+      '@/lib/services/forecast-read-service'
+    )
+    // Same stale data as the violation test, but the forecast is incomplete
+    // (wizard never finished) — the invariant must be skipped entirely.
+    const supabase = makeStaleSupabaseMock({ isCompleted: false })
+    const svc = createSvc(supabase as any)
+
+    const result = await svc.getMonthlyComposite('forecast-stale-1')
+    expect(result).toBeDefined()
+    expect(result.forecast_id).toBe('forecast-stale-1')
+
+    // No Sentry capture, no breadcrumb — the freshness check did not run.
+    expect(captureMessageSpy).not.toHaveBeenCalled()
+    expect(addBreadcrumbSpy).not.toHaveBeenCalled()
   })
 
   it('strict-off — negative coverage logs to Sentry but does NOT throw via getMonthlyComposite (D-44.1-09, W3)', async () => {

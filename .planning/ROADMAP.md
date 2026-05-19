@@ -990,6 +990,19 @@ Plans:
 
 Phases 50–58 exist as `.planning/phases/*` directories with full PHASE.md / plans / summaries; they were not consistently added to this roadmap during execution. See each phase directory directly. A future cleanup phase should backfill these entries.
 
+### Phase 66: Section-Permission Follow-ups & Hardening
+
+**Goal:** Close the four follow-up items surfaced by Phase 65 so the `SECTION_PERMISSION_ENFORCE` cutover is safe: (1) audit/migrate `business_users` rows carrying only the legacy `financials` JSONB key — **prerequisite for Phase 65 Wave 65-04**; (2) normalize business-ID resolution across the consolidated routes; (3) per-route disposition of service-role data-fetching clients left in the 32 finance routes; (4) decide whether ops/admin service-role routes that surface $ data should also run the section-permission check.
+**Requirements**: none mapped (follow-up phase; goal-derived must_haves per plan)
+**Depends on:** Phase 65 (Waves 65-01/65-02 merged); blocks Phase 65 Wave 65-04
+**Plans:** 4/4 plans complete
+
+Plans:
+- [x] 66-01-PLAN.md — Legacy `financials`-key audit script + idempotent backfill migration (standalone, critical-path; gates Phase 65 Wave 65-04 ENFORCE cutover) — SUMMARY: 66-01-SUMMARY.md (Tasks 1-2 complete; Task 3 at human-verify checkpoint)
+- [ ] 66-02-PLAN.md — Normalize business-ID resolution in the three consolidated routes via `resolveBusinessIds`
+- [ ] 66-03-PLAN.md — Service-role data-fetching disposition document for the 32 finance routes (report only)
+- [ ] 66-04-PLAN.md — Ops/admin section-permission decision document for admin/cron/coach routes (decision only)
+
 ---
 
 ### Phase 59: Forecast Seed from Prior FY
