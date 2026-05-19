@@ -300,8 +300,11 @@ export async function POST(request: Request) {
       Sentry.captureException(permissionsError, { tags: { route: 'admin/clients' }, extra: { context: 'Permissions creation error' } } as any)
     }
 
-    // STEP 6: Create onboarding progress tracker
-    const { error: onboardingError } = await supabase
+    // STEP 6: Create onboarding progress tracker.
+    // onboarding_progress has RLS enabled but no INSERT policy, so an
+    // auth-bound client can never insert. This is an admin create flow —
+    // use the service-role client (same pattern as the demo-client route).
+    const { error: onboardingError } = await createServiceRoleClient()
       .from('onboarding_progress')
       .insert({
         business_id: business.id
