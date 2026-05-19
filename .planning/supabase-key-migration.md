@@ -1,7 +1,9 @@
 # Supabase Legacy Keys → Publishable/Secret — Migration Plan & Progress
 
-**Branch:** `supabase-api-key-migration` · **Status:** All code commits done (1–5 + 4.5).
-Nothing pushed. App runs on legacy keys via fallback. Next: open PR + Step 4 verify.
+**Branch:** `supabase-api-key-migration` · **Status:** ✅ MERGED & VERIFIED in production.
+Merged to `main` via PR #202 (squash `852d2f58`) on 2026-05-18. Production smoke
+test passed; Sentry clean. Remaining: operator disables JWT keys in Supabase
+(no deadline — legacy keys valid through end-2026).
 
 ## Goal
 Migrate Supabase client init from legacy JWT keys (`anon` / `service_role`) to the
@@ -48,31 +50,35 @@ timezone), `db-05-filename-hygiene` (untracked stray `… 2.sql`).
 Final state: 1431 passed, 2 known failures, tsc clean (errors only in stray
 `… 2/3`-suffixed files + out-of-scope `scripts/`).
 
-## Step 4 — Production verification & cutover
+## Step 4 — Production verification & cutover — ✅ COMPLETE
 
-### Pre-merge
-- [ ] Open ONE PR vs `wisdom-business-intelligence` (no push to main).
-- [ ] Confirm CI green (the 2 known failures are local-only — verify CI baseline).
+### Pre-merge — DONE
+- [x] PR #202 opened vs `wisdom-business-intelligence`.
+- [x] CI green (build / lint / typecheck / vitest all pass).
 
-### Add new env vars (Vercel) — keep legacy vars in place as fallback
-- [ ] `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` = `sb_publishable_…` (from Supabase
-      dashboard → API keys) — Production + Preview + Development.
-- [ ] `SUPABASE_SECRET_KEY` = `sb_secret_…` — Production + Preview + Development.
-- [ ] Leave `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`,
-      `SUPABASE_SERVICE_ROLE_KEY` set — resolvers fall back to them.
+### Add new env vars (Vercel) — DONE
+- [x] `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` = `sb_publishable_…` — Production +
+      Preview (added as Sensitive; Development skipped — legacy fallback covers it).
+- [x] `SUPABASE_SECRET_KEY` = `sb_secret_…` — Production + Preview (Sensitive).
+- [x] Legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`,
+      `SUPABASE_SERVICE_ROLE_KEY` left in place — resolvers fall back to them.
 
-### Post-deploy smoke (production, after merge auto-deploys)
-- [ ] Browser/auth: log in as a coach — dashboard loads (publishable key + SSR).
-- [ ] User-scoped RLS read: open a client's monthly report — data scoped correctly.
-- [ ] Admin/service path: create a test client via admin (admin/clients POST —
-      exercises the Auth-Admin-REST `apikey`-only header from Commit 4.5).
-- [ ] Xero: open a Xero-connected client's report (service-role read path).
-- [ ] Team: invite + remove a team member (Commit 3 + 4.5 paths).
-- [ ] Check Sentry — no `Missing Supabase … key` errors, no 401 from Auth Admin API.
+### Post-deploy smoke (production) — DONE 2026-05-18, Sentry clean throughout
+- [x] Coach login — dashboard loads (publishable key + SSR).
+- [x] User-scoped RLS read — client monthly report, data scoped correctly.
+- [x] Admin create-client — real auth user created via Auth-Admin-REST POST
+      (`apikey`-only header, Commit 3/4.5). Test client then deleted (DELETE path).
+- [x] Xero — Xero-connected client's report loads (service-role read path).
+- [x] Team — member add (POST) + delete (DELETE) — both Auth-Admin-REST paths.
+- [x] Sentry — zero errors / zero issues across the entire smoke-test window.
 
-### Cutover (operator-only, after smoke passes)
-- [ ] Once verified, optionally remove the legacy env vars in Vercel.
-- [ ] ONLY THEN: toggle "Disable JWT-based API keys" in Supabase — operator's call.
+### Cutover (operator-only) — PENDING, no deadline
+- [ ] Optionally remove the legacy env vars in Vercel once confident.
+- [ ] Toggle "Disable JWT-based API keys" in Supabase — operator's call. Once
+      disabled the resolver fallback is gone; suggest leaving a few days first.
+- [ ] When rotating the leaked service-role key (separate task), also update
+      `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_SERVICE_KEY` in Vercel — still the
+      active fallback until JWT keys are disabled.
 
 ### Rollback
 - New keys are additive; legacy keys still work. To roll back: remove the new

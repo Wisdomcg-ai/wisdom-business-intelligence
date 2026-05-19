@@ -94,7 +94,7 @@ export async function POST(request: Request) {
         const anthropic = new Anthropic({ apiKey: anthropicKey })
 
         const result = await anthropic.messages.create({
-          model: 'claude-haiku-3-5-20241022', // Fast + cheap for structured output
+          model: 'claude-haiku-4-5-20251001', // Fast + cheap for structured output
           max_tokens: 1024,
           system,
           messages: [{ role: 'user', content: userMessage }],
