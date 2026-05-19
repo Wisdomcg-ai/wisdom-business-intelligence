@@ -193,7 +193,7 @@ export class ForecastReadService {
     //    partial index guarantees active-forecast uniqueness at write time).
     const { data: forecast, error: fError } = await this.supabase
       .from('financial_forecasts')
-      .select('id, business_id, fiscal_year, is_active, updated_at')
+      .select('id, business_id, fiscal_year, is_active, is_completed, updated_at')
       .eq('id', forecastId)
       .maybeSingle()
 
@@ -238,7 +238,12 @@ export class ForecastReadService {
     }, null)
 
     // 4. D-18 freshness invariant.
-    this.assertComputedAtIsFresh(assumptionsUpdatedAt, computedAt, forecastId)
+    this.assertComputedAtIsFresh(
+      assumptionsUpdatedAt,
+      computedAt,
+      forecastId,
+      forecast.is_completed === true,
+    )
 
     // 5. Aggregate xero_pl_lines from long → wide shape (D-09).
     const rows = this.aggregateXeroRows(xeroRowsAll)
@@ -526,7 +531,12 @@ export class ForecastReadService {
     assumptionsUpdatedAt: string | null,
     computedAt: string | null,
     forecastId: string,
+    isCompleted: boolean,
   ): void {
+    // Incomplete forecasts (wizard never finished) legitimately have no
+    // forecast_pl_lines — the freshness invariant does not apply until the
+    // forecast is actually built.
+    if (!isCompleted) return
     if (!assumptionsUpdatedAt) return
     if (computedAt && new Date(computedAt) >= new Date(assumptionsUpdatedAt)) return
 
