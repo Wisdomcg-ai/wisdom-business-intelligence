@@ -24,6 +24,8 @@ import {
   Users
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 type ViewMode = 'grid' | 'list'
 type StatusFilter = 'all' | 'active' | 'pending' | 'at-risk' | 'inactive'
 
@@ -112,13 +114,20 @@ function ClientsListContent() {
         activitySummaryResult,
         sessionsResult
       ] = await Promise.all([
-        // 1. Login data - last login per owner
+        // 1. Last login per owner: authoritative source = auth.users
+        //    .last_sign_in_at via /api/coach/last-logins. Replaces the prior
+        //    user_logins table which only updated when useLoginTracker fired
+        //    with an activeBusiness — missing logins and advancing on page
+        //    reloads (i.e. tracking page visits, not actual logins).
         ownerIds.length > 0
-          ? supabase
-              .from('user_logins')
-              .select('user_id, login_at')
-              .in('user_id', ownerIds)
-          : Promise.resolve({ data: [], error: null }),
+          ? fetch('/api/coach/last-logins', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ user_ids: ownerIds }),
+            })
+              .then((r) => (r.ok ? r.json() : { data: {} }))
+              .catch(() => ({ data: {} }))
+          : Promise.resolve({ data: {} }),
 
         // 2a. Open loops (pending actions) per owner
         ownerIds.length > 0
@@ -200,16 +209,13 @@ function ClientsListContent() {
 
       // Build lookup maps
 
-      // Last login per user
+      // Last login per user from /api/coach/last-logins (record keyed by user_id).
       const lastLoginByUser = new Map<string, string>()
-      userLoginsResult.data?.forEach((u: { user_id: string; login_at: string }) => {
-        if (u.login_at) {
-          const existing = lastLoginByUser.get(u.user_id)
-          if (!existing || new Date(u.login_at) > new Date(existing)) {
-            lastLoginByUser.set(u.user_id, u.login_at)
-          }
-        }
-      })
+      const loginMap: Record<string, string | null> =
+        (userLoginsResult as { data?: Record<string, string | null> })?.data ?? {}
+      for (const [userId, ts] of Object.entries(loginMap)) {
+        if (ts) lastLoginByUser.set(userId, ts)
+      }
 
       // Open loops count per user
       const openLoopsByUser = new Map<string, number>()
@@ -330,7 +336,7 @@ function ClientsListContent() {
           businessName: b.name || b.business_name || 'Unnamed Business',
           industry: b.industry || undefined,
           status: calculateStatus(b.id, ownerId, b.status),
-          lastSessionDate: lastSessionByBusiness.get(b.id) || b.last_session_date || undefined,
+          lastSessionDate: lastSessionByBusiness.get(b.id) || undefined,
           nextSessionDate: nextSessionByBusiness.get(b.id) || undefined,
           programType: b.program_type || undefined,
           unreadMessages: unreadByBusiness.get(b.id) || 0,
@@ -549,7 +555,7 @@ function ClientsListContent() {
                     <div>
                       <p className="font-medium text-gray-900">{client.business_name || 'Unnamed Business'}</p>
                       <p className="text-sm text-gray-500">
-                        {client.industry || 'No industry'} &middot; Added {new Date(client.created_at).toLocaleDateString()}
+                        {client.industry || 'No industry'} &middot; Added {formatDate(new Date(client.created_at))}
                       </p>
                     </div>
                     <button
@@ -593,7 +599,7 @@ function ClientsListContent() {
                     <div>
                       <p className="font-medium text-gray-900">{client.business_name || 'Unnamed Business'}</p>
                       <p className="text-sm text-gray-500">
-                        Added {new Date(client.created_at).toLocaleDateString()}
+                        Added {formatDate(new Date(client.created_at))}
                       </p>
                     </div>
                     <button

@@ -13,6 +13,8 @@ import {
   Loader2
 } from 'lucide-react'
 
+import { formatDate, formatDateTime } from '@/lib/timezone'
+
 interface AuditLogEntry {
   id: string
   user_id: string
@@ -132,7 +134,7 @@ export function ClientActivityLog({
     if (diffDays === 1) return 'Yesterday'
     if (diffDays < 7) return `${diffDays}d ago`
 
-    return date.toLocaleDateString('en-AU', {
+    return formatDate(date, {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -142,7 +144,7 @@ export function ClientActivityLog({
 
   const formatFullDate = (timestamp: string) => {
     const date = new Date(timestamp)
-    return date.toLocaleString('en-AU', {
+    return formatDateTime(date, {
       weekday: 'short',
       year: 'numeric',
       month: 'short',

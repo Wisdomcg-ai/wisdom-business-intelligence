@@ -22,6 +22,8 @@ import {
   ArrowUpRight
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 export interface ClientMetrics {
   id: string
   businessName: string
@@ -253,7 +255,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
     if (diffDays < 7) return `${diffDays}d ago`
     if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`
 
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    return formatDate(date, { month: 'short', day: 'numeric' })
   }
 
   const getDateStatus = (dateString: string | null, warningDays: number = 7, criticalDays: number = 14): 'good' | 'warning' | 'critical' => {

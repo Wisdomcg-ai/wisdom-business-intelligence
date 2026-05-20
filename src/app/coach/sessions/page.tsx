@@ -20,6 +20,8 @@ import {
 } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
 
+import { formatDate } from '@/lib/timezone'
+
 interface SessionNote {
   id: string
   business_id: string
@@ -221,7 +223,7 @@ export default function CoachSessionsPage() {
     } else if (date.toDateString() === yesterday.toDateString()) {
       return 'Yesterday'
     } else {
-      return date.toLocaleDateString('en-AU', {
+      return formatDate(date, {
         weekday: 'long',
         day: 'numeric',
         month: 'long',

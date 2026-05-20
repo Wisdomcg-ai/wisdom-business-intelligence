@@ -16,6 +16,8 @@ import {
   User
 } from 'lucide-react'
 
+import { formatDate, formatTime } from '@/lib/timezone'
+
 export interface Session {
   id: string
   scheduledAt: string
@@ -68,7 +70,7 @@ export function SessionsTab({
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
-    return date.toLocaleDateString('en-AU', {
+    return formatDate(date, {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -78,7 +80,7 @@ export function SessionsTab({
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString)
-    return date.toLocaleTimeString('en-AU', {
+    return formatTime(date, {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
@@ -216,7 +218,7 @@ export function SessionsTab({
                         {new Date(session.scheduledAt).getDate()}
                       </p>
                       <p className="text-xs uppercase">
-                        {new Date(session.scheduledAt).toLocaleDateString('en-AU', { month: 'short' })}
+                        {formatDate(new Date(session.scheduledAt), { month: 'short' })}
                       </p>
                     </div>
 

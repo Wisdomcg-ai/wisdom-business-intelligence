@@ -14,6 +14,8 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 
+import { formatDate } from '@/lib/timezone'
+
 export interface ClientTableData {
   id: string
   businessName: string
@@ -102,7 +104,7 @@ export function ClientTable({ clients, onMessage, onSchedule, onView }: ClientTa
     if (diffDays === 0) return 'Today'
     if (diffDays === 1) return 'Yesterday'
     if (diffDays < 7) return `${diffDays}d ago`
-    return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
+    return formatDate(date, { month: 'short', day: 'numeric' })
   }
 
   const SortIcon = ({ field }: { field: SortField }) => {

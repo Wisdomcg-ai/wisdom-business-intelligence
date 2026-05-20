@@ -13,6 +13,8 @@ import { useRouter } from 'next/navigation'
 import { aggregateDataQualityAcrossBusinesses, type DataQuality } from '@/lib/services/forecast-read-service'
 
 // Stage calculation from revenue (matching stage-service.ts)
+import { formatTime } from '@/lib/timezone'
+
 function calculateStageFromRevenue(revenue: number | null | undefined): string {
   if (!revenue || revenue < 500000) return 'Foundation'
   if (revenue < 1000000) return 'Traction'
@@ -204,13 +206,19 @@ export default function CoachDashboardPage() {
               .order('created_at', { ascending: false })
           : Promise.resolve({ data: [], error: null }),
 
-        // User last login times (from public.users which has coach RLS access)
+        // Last login: authoritative source = auth.users.last_sign_in_at via
+        // /api/coach/last-logins. Replaces the prior public.users.last_login_at
+        // mirror, which drifted (fire-and-forget update from /auth/login that
+        // missed magic-link / OAuth / silently-failed writes).
         ownerIds.length > 0
-          ? supabase
-              .from('users')
-              .select('id, last_login_at')
-              .in('id', ownerIds)
-          : Promise.resolve({ data: [], error: null }),
+          ? fetch('/api/coach/last-logins', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ user_ids: ownerIds }),
+            })
+              .then((r) => (r.ok ? r.json() : { data: {} }))
+              .catch(() => ({ data: {} }))
+          : Promise.resolve({ data: {} }),
 
         // Coaching sessions this week
         (async () => {
@@ -405,13 +413,13 @@ export default function CoachDashboardPage() {
         }
       })
 
-      // Build user login map from public.users table
+      // Build user login map from /api/coach/last-logins response (record shape).
       const lastLoginByUser = new Map<string, string>()
-      userLoginsResult.data?.forEach((u: { id: string; last_login_at: string | null }) => {
-        if (u.last_login_at) {
-          lastLoginByUser.set(u.id, u.last_login_at)
-        }
-      })
+      const loginMap: Record<string, string | null> =
+        (userLoginsResult as { data?: Record<string, string | null> })?.data ?? {}
+      for (const [id, ts] of Object.entries(loginMap)) {
+        if (ts) lastLoginByUser.set(id, ts)
+      }
 
       // Helper to get most recent date from CLIENT activity sources only
       const getMostRecentActivity = (businessId: string, ownerId: string | undefined): string | null => {
@@ -519,7 +527,7 @@ export default function CoachDashboardPage() {
 
         const scheduledAt = new Date(s.scheduled_at)
         const endAt = new Date(scheduledAt.getTime() + (s.duration_minutes || 60) * 60000)
-        const formatTime = (d: Date) => d.toLocaleTimeString('en-AU', { timeZone: 'Australia/Sydney', hour: '2-digit', minute: '2-digit', hour12: false })
+        const formatHHMM = (d: Date) => formatTime(d, { hour: '2-digit', minute: '2-digit', hour12: false })
 
         // Determine session status for the TodaySchedule component
         const now = new Date()
@@ -534,8 +542,8 @@ export default function CoachDashboardPage() {
           id: s.id,
           clientName: business?.business_name || 'Unknown',
           clientId: s.business_id,
-          time: formatTime(scheduledAt),
-          endTime: formatTime(endAt),
+          time: formatHHMM(scheduledAt),
+          endTime: formatHHMM(endAt),
           type: (s.session_type as TodaySession['type']) || 'video',
           status: displayStatus,
           prepCompleted: s.prep_completed || false,

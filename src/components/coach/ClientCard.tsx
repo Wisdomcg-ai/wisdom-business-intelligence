@@ -14,6 +14,8 @@ import {
   FileEdit
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 export interface ClientCardData {
   id: string
   businessName: string
@@ -58,7 +60,7 @@ export function ClientCard({ client, onMessage, onSchedule }: ClientCardProps) {
     if (diffDays === 0) return 'Today'
     if (diffDays === 1) return 'Yesterday'
     if (diffDays < 7) return `${diffDays}d ago`
-    return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
+    return formatDate(date, { month: 'short', day: 'numeric' })
   }
 
   const statusStyles = getStatusStyles(client.status)

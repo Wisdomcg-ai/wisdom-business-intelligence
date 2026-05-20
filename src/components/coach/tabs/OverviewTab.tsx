@@ -16,6 +16,8 @@ import {
   Lightbulb
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 interface RecentActivity {
   id: string
   type: 'session' | 'action' | 'message' | 'goal'
@@ -81,7 +83,7 @@ export function OverviewTab({
   const formatDate = (dateString?: string) => {
     if (!dateString) return null
     const date = new Date(dateString)
-    return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
+    return formatDate(date, { month: 'short', day: 'numeric' })
   }
 
   const formatTimestamp = (timestamp: string) => {

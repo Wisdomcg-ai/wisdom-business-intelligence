@@ -14,6 +14,8 @@ import {
   ExternalLink
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 export interface ClientProgress {
   id: string
   businessName: string
@@ -104,7 +106,7 @@ export function ClientProgressTable({ clients, onGenerateReport }: ClientProgres
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Never'
-    return new Date(dateString).toLocaleDateString('en-AU', {
+    return formatDate(new Date(dateString), {
       month: 'short',
       day: 'numeric'
     })

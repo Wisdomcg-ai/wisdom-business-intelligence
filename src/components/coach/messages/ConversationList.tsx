@@ -11,6 +11,8 @@ import {
   Archive
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 export interface Conversation {
   id: string
   businessId: string
@@ -68,7 +70,7 @@ export function ConversationList({
     if (diffMins < 60) return `${diffMins}m`
     if (diffHours < 24) return `${diffHours}h`
     if (diffDays < 7) return `${diffDays}d`
-    return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
+    return formatDate(date, { month: 'short', day: 'numeric' })
   }
 
   const unreadCount = conversations.filter(c => c.unreadCount > 0 && !c.isArchived).length

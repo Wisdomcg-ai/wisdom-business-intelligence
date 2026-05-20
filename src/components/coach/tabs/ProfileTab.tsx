@@ -11,6 +11,8 @@ import {
   DollarSign
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 interface ProfileTabProps {
   clientId: string
   businessName: string
@@ -125,7 +127,7 @@ export function ProfileTab({
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return '--'
-    return new Date(dateString).toLocaleDateString('en-AU', {
+    return formatDate(new Date(dateString), {
       year: 'numeric',
       month: 'long',
       day: 'numeric'

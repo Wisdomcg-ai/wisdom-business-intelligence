@@ -15,6 +15,8 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
+import { formatDate } from '@/lib/timezone'
+
 interface SessionNote {
   id: string
   business_id: string
@@ -101,12 +103,11 @@ export function NotesTab({ businessId, businessName }: NotesTabProps) {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString + 'T00:00:00')
-    return date.toLocaleDateString('en-AU', {
+    return formatDate(date, {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
-      day: 'numeric',
-    })
+      day: 'numeric' })
   }
 
   const handleToggleExpand = (noteId: string) => {

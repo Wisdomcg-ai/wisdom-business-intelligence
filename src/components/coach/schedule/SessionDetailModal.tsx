@@ -26,6 +26,8 @@ import {
 import type { CalendarSession } from './CalendarView'
 import { downloadICS, getGoogleCalendarUrl } from '@/lib/utils/ics-generator'
 
+import { formatDate, formatTime } from '@/lib/timezone'
+
 interface SessionDetailModalProps {
   session: CalendarSession
   isOpen: boolean
@@ -67,8 +69,7 @@ export function SessionDetailModal({
   const TZ = 'Australia/Sydney'
 
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-AU', {
-      timeZone: TZ,
+    return formatDate(date, {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -77,8 +78,7 @@ export function SessionDetailModal({
   }
 
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-AU', {
-      timeZone: TZ,
+    return formatTime(date, {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
