@@ -218,7 +218,7 @@ export function SessionsTab({
                         {new Date(session.scheduledAt).getDate()}
                       </p>
                       <p className="text-xs uppercase">
-                        {formatLocalDate(new Date(session.scheduledAt), { month: 'short' })}
+                        {formatDate(new Date(session.scheduledAt), { month: 'short' })}
                       </p>
                     </div>
 
