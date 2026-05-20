@@ -68,7 +68,7 @@ export function SessionsTab({
     }
   }
 
-  const formatDate = (dateString: string) => {
+  const formatLocalDate = (dateString: string) => {
     const date = new Date(dateString)
     return formatDate(date, {
       weekday: 'long',
@@ -78,7 +78,7 @@ export function SessionsTab({
     })
   }
 
-  const formatTime = (dateString: string) => {
+  const formatLocalTime = (dateString: string) => {
     const date = new Date(dateString)
     return formatTime(date, {
       hour: '2-digit',
@@ -140,12 +140,12 @@ export function SessionsTab({
             <div>
               <p className="text-sm font-medium text-brand-orange mb-1">Next Session</p>
               <h3 className="text-lg font-semibold text-gray-900">
-                {formatDate(upcomingSessions[0].scheduledAt)}
+                {formatLocalDate(upcomingSessions[0].scheduledAt)}
               </h3>
               <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
                 <span className="flex items-center gap-1">
                   <Clock className="w-4 h-4" />
-                  {formatTime(upcomingSessions[0].scheduledAt)}
+                  {formatLocalTime(upcomingSessions[0].scheduledAt)}
                 </span>
                 <span className="flex items-center gap-1">
                   {(() => {
@@ -218,7 +218,7 @@ export function SessionsTab({
                         {new Date(session.scheduledAt).getDate()}
                       </p>
                       <p className="text-xs uppercase">
-                        {formatDate(new Date(session.scheduledAt), { month: 'short' })}
+                        {formatLocalDate(new Date(session.scheduledAt), { month: 'short' })}
                       </p>
                     </div>
 
@@ -226,7 +226,7 @@ export function SessionsTab({
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="font-semibold text-gray-900">
-                          {formatTime(session.scheduledAt)}
+                          {formatLocalTime(session.scheduledAt)}
                         </h4>
                         {today && (
                           <span className="px-2 py-0.5 text-xs font-medium bg-brand-orange-100 text-brand-orange-700 rounded-full">

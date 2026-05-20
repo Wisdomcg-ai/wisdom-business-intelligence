@@ -104,7 +104,7 @@ export function ClientProgressTable({ clients, onGenerateReport }: ClientProgres
     return 'text-red-600 bg-red-100'
   }
 
-  const formatDate = (dateString?: string) => {
+  const formatLocalDate = (dateString?: string) => {
     if (!dateString) return 'Never'
     return formatDate(new Date(dateString), {
       month: 'short',
@@ -212,7 +212,7 @@ export function ClientProgressTable({ clients, onGenerateReport }: ClientProgres
 
                   {/* Last Session */}
                   <td className="px-6 py-4">
-                    <span className="text-gray-600">{formatDate(client.lastSessionDate)}</span>
+                    <span className="text-gray-600">{formatLocalDate(client.lastSessionDate)}</span>
                   </td>
 
                   {/* Actions */}

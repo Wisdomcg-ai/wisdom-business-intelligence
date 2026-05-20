@@ -125,7 +125,7 @@ export function ProfileTab({
     }
   }
 
-  const formatDate = (dateString?: string) => {
+  const formatLocalDate = (dateString?: string) => {
     if (!dateString) return '--'
     return formatDate(new Date(dateString), {
       year: 'numeric',
@@ -520,14 +520,14 @@ export function ProfileTab({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange"
                 />
               ) : (
-                <p className="text-gray-900">{formatDate(engagementStartDate)}</p>
+                <p className="text-gray-900">{formatLocalDate(engagementStartDate)}</p>
               )}
             </div>
 
             {/* Contract End */}
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Contract End Date</label>
-              <p className="text-gray-900">{formatDate(contractEndDate)}</p>
+              <p className="text-gray-900">{formatLocalDate(contractEndDate)}</p>
             </div>
           </div>
         </div>

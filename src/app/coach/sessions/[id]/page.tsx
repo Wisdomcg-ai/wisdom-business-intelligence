@@ -526,7 +526,7 @@ export default function SessionDetailPage() {
     setNewActions(updated)
   }
 
-  const formatDate = (dateString: string) => {
+  const formatLocalDate = (dateString: string) => {
     const date = new Date(dateString + 'T00:00:00')
     return formatDate(date, {
       weekday: 'long',
@@ -614,7 +614,7 @@ export default function SessionDetailPage() {
                 <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
                   <span className="flex items-center gap-1">
                     <Calendar className="w-4 h-4" />
-                    {formatDate(session.session_date)}
+                    {formatLocalDate(session.session_date)}
                   </span>
                   {session.duration_minutes && (
                     <span className="flex items-center gap-1">

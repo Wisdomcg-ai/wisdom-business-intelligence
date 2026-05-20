@@ -51,7 +51,7 @@ export function MessageThread({
     }
   }, [messages])
 
-  const formatTime = (dateString: string) => {
+  const formatLocalTime = (dateString: string) => {
     const date = new Date(dateString)
     return formatTime(date, {
       hour: '2-digit',
@@ -235,7 +235,7 @@ export function MessageThread({
                         </div>
                         <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
                           <span className={`text-xs ${isOwn ? 'text-gray-500' : 'text-gray-400'}`}>
-                            {formatTime(message.createdAt)}
+                            {formatLocalTime(message.createdAt)}
                           </span>
                           {isOwn && getStatusIcon(message.status)}
                         </div>

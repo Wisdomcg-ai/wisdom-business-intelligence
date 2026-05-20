@@ -95,7 +95,7 @@ export function ClientTable({ clients, onMessage, onSchedule, onView }: ClientTa
     return 'text-red-600 bg-red-50'
   }
 
-  const formatDate = (dateString?: string) => {
+  const formatLocalDate = (dateString?: string) => {
     if (!dateString) return '--'
     const date = new Date(dateString)
     const now = new Date()
@@ -210,7 +210,7 @@ export function ClientTable({ clients, onMessage, onSchedule, onView }: ClientTa
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center gap-1.5 text-sm text-gray-600">
                     <Clock className="w-4 h-4 text-gray-400" />
-                    {formatDate(client.lastSessionDate)}
+                    {formatLocalDate(client.lastSessionDate)}
                   </div>
                 </td>
 

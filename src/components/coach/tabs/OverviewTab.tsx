@@ -80,7 +80,7 @@ export function OverviewTab({
     return 'text-red-600'
   }
 
-  const formatDate = (dateString?: string) => {
+  const formatLocalDate = (dateString?: string) => {
     if (!dateString) return null
     const date = new Date(dateString)
     return formatDate(date, { month: 'short', day: 'numeric' })
@@ -95,7 +95,7 @@ export function OverviewTab({
     if (diffMins < 60) return `${diffMins}m ago`
     const diffHours = Math.floor(diffMins / 60)
     if (diffHours < 24) return `${diffHours}h ago`
-    return formatDate(timestamp)
+    return formatLocalDate(timestamp)
   }
 
   const getActivityIcon = (type: RecentActivity['type']) => {
@@ -179,7 +179,7 @@ export function OverviewTab({
           <div className="flex items-center justify-between mb-3">
             <Calendar className="w-5 h-5 text-brand-orange" />
             {nextSessionDate && (
-              <span className="text-xs text-brand-orange">Next: {formatDate(nextSessionDate)}</span>
+              <span className="text-xs text-brand-orange">Next: {formatLocalDate(nextSessionDate)}</span>
             )}
           </div>
           <p className="text-2xl font-bold text-gray-900">{upcomingSessions}</p>

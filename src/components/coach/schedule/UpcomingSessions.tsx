@@ -50,7 +50,7 @@ export function UpcomingSessions({ sessions, onSessionClick }: UpcomingSessionsP
 
   const TZ = 'Australia/Sydney'
 
-  const formatTime = (dateString: string) => {
+  const formatLocalTime = (dateString: string) => {
     const date = new Date(dateString)
     return formatTime(date, {
       hour: '2-digit',
@@ -130,7 +130,7 @@ export function UpcomingSessions({ sessions, onSessionClick }: UpcomingSessionsP
                       <div className="flex items-center justify-between">
                         <p className="font-medium text-gray-900 truncate">{session.businessName}</p>
                         <span className="text-sm text-gray-500 flex-shrink-0 ml-2">
-                          {formatTime(session.scheduledAt)}
+                          {formatLocalTime(session.scheduledAt)}
                         </span>
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">

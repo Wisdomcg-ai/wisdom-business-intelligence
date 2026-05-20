@@ -58,7 +58,7 @@ export function ConversationList({
     return matchesSearch && matchesFilter
   })
 
-  const formatTime = (dateString: string) => {
+  const formatLocalTime = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
@@ -195,7 +195,7 @@ export function ConversationList({
                         )}
                       </div>
                       <span className="text-xs text-gray-500 flex-shrink-0">
-                        {formatTime(conversation.lastMessageAt)}
+                        {formatLocalTime(conversation.lastMessageAt)}
                       </span>
                     </div>
                     <p className={`text-sm truncate ${

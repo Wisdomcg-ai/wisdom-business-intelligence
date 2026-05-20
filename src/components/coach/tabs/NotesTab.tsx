@@ -101,7 +101,7 @@ export function NotesTab({ businessId, businessName }: NotesTabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const formatDate = (dateString: string) => {
+  const formatLocalDate = (dateString: string) => {
     const date = new Date(dateString + 'T00:00:00')
     return formatDate(date, {
       weekday: 'long',
@@ -442,7 +442,7 @@ export function NotesTab({ businessId, businessName }: NotesTabProps) {
                     </div>
                     <div>
                       <h4 className="font-semibold text-gray-900">
-                        {formatDate(note.session_date)}
+                        {formatLocalDate(note.session_date)}
                       </h4>
                       <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
                         {note.duration_minutes && (
