@@ -295,6 +295,12 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   // <RevenueLineMixInputs> child component. COGS still uses the local pattern
   // because Phase 51-01 is scoped to the revenue branch only.
   const [pendingCogsMixPcts, setPendingCogsMixPcts] = useState<Record<string, string>>({});
+  // Tracks the COGS line whose mix % was most recently committed by the
+  // operator. cogsLinePercentages uses this to route the to-100 residue
+  // absorption AWAY from the just-edited line, so the displayed % matches
+  // the value the operator just typed (instead of being overwritten by
+  // whatever rounding residue happens to be left after the other lines).
+  const [lastEditedCogsLineId, setLastEditedCogsLineId] = useState<string | null>(null);
   const [newRevenueName, setNewRevenueName] = useState('');
   const [newCOGSName, setNewCOGSName] = useState('');
   const [viewMode, setViewMode] = useState<'summary' | 'monthly'>('summary');
@@ -368,6 +374,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         delete next[lineId];
         return next;
       });
+      // Mark this line so cogsLinePercentages routes residue absorption to a
+      // different line. Otherwise — for a new line added at the end of the
+      // list (the default residue absorber) — typing 4% may render as e.g.
+      // 6% if the other lines' rounded fractions sum below 96.
+      setLastEditedCogsLineId(lineId);
     }
   };
 
@@ -1252,19 +1263,39 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
       });
       return pcts;
     }
+    // Pick the residue absorber. By default it's the last line so the
+    // displayed sum is exactly 100. If the last line is also the one the
+    // operator most recently committed a value for, absorbing residue there
+    // would overwrite their input — instead pick the OTHER line with the
+    // largest amount (smallest relative distortion).
+    let residueAbsorberIdx = cogsLines.length - 1;
+    if (
+      lastEditedCogsLineId &&
+      cogsLines[residueAbsorberIdx].id === lastEditedCogsLineId &&
+      cogsLines.length > 1
+    ) {
+      let pickIdx = -1;
+      let pickAmt = -Infinity;
+      cogsLines.forEach((line, i) => {
+        if (i === residueAbsorberIdx) return;
+        const a = calculateCOGSAmount(line);
+        if (a > pickAmt) {
+          pickAmt = a;
+          pickIdx = i;
+        }
+      });
+      if (pickIdx >= 0) residueAbsorberIdx = pickIdx;
+    }
     let runningSum = 0;
-    const lastIdx = cogsLines.length - 1;
     cogsLines.forEach((line, i) => {
-      if (i === lastIdx) {
-        pcts[line.id] = Math.max(0, 100 - runningSum);
-      } else {
-        const rounded = Math.round((calculateCOGSAmount(line) / totalCOGS) * 100);
-        pcts[line.id] = rounded;
-        runningSum += rounded;
-      }
+      if (i === residueAbsorberIdx) return;
+      const rounded = Math.round((calculateCOGSAmount(line) / totalCOGS) * 100);
+      pcts[line.id] = rounded;
+      runningSum += rounded;
     });
+    pcts[cogsLines[residueAbsorberIdx].id] = Math.max(0, 100 - runningSum);
     return pcts;
-  }, [cogsLines, totalCOGS, totalRevenue, activeYear, revenuePattern, revenueLines]);
+  }, [cogsLines, totalCOGS, totalRevenue, activeYear, revenuePattern, revenueLines, lastEditedCogsLineId]);
 
   const cogsPctTotal = Object.values(cogsLinePercentages).reduce((a, b) => a + b, 0);
 
