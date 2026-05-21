@@ -1299,6 +1299,227 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
   const cogsPctTotal = Object.values(cogsLinePercentages).reduce((a, b) => a + b, 0);
 
+  // Redistribute variable COGS lines so the active-year total COGS hits the
+  // Step-1 GP% target (total COGS = revenue × (1 − GP%/100)).
+  //
+  // Weight selection follows a three-tier fallback:
+  //   1. preserve current line proportions  — keeps operator's in-flight work
+  //   2. prior-year COGS mix (matched by id) — falls back when current is empty
+  //   3. even split across variable lines   — last-resort for brand-new clients
+  //
+  // Mode 'reset' skips tier 1 — used by the "Reset to GP target" button when
+  // the operator explicitly wants to start over from the goal.
+  //
+  // Fixed-cost COGS lines are untouched; their total is subtracted from the
+  // target so the variable lines fill in the remainder. Y1 actual months
+  // remain locked from currentYTD.
+  const redistributeCOGSToHitGPTarget = (mode: 'auto' | 'reset' = 'auto') => {
+    if (revenueLines.length === 0 || cogsLines.length === 0) return;
+
+    const yearMonthlyKey =
+      activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
+    const goalKey = activeYear === 1 ? 'year1' : activeYear === 2 ? 'year2' : 'year3';
+    const gpPct = goals[goalKey]?.grossProfitPct ?? 0;
+    if (gpPct <= 0 || gpPct >= 100) return;
+
+    const sumYearMonthly = (m?: Record<string, number>) =>
+      m ? Object.values(m).reduce((a, b) => a + (b || 0), 0) : 0;
+
+    const revenueY = revenueLines.reduce(
+      (s, l) => s + sumYearMonthly(l[yearMonthlyKey] as Record<string, number> | undefined),
+      0,
+    );
+    if (revenueY <= 0) return;
+
+    const targetTotalCOGS = revenueY * (1 - gpPct / 100);
+
+    const variableLines = cogsLines.filter((l) => l.costBehavior === 'variable');
+    if (variableLines.length === 0) return;
+
+    const fixedCOGSTotal = cogsLines
+      .filter((l) => l.costBehavior === 'fixed')
+      .reduce((s, l) => {
+        const m = l[yearMonthlyKey] as Record<string, number> | undefined;
+        const fromMonthly = sumYearMonthly(m);
+        if (fromMonthly > 0) return s + fromMonthly;
+        return s + (l.monthlyAmount || 0) * 12;
+      }, 0);
+    const variableTarget = Math.max(0, targetTotalCOGS - fixedCOGSTotal);
+
+    const weights: Record<string, number> = {};
+    let weightSource: 'current' | 'prior' | 'even' = 'even';
+
+    if (mode === 'auto') {
+      const currentVarSum = variableLines.reduce(
+        (s, l) => s + sumYearMonthly(l[yearMonthlyKey] as Record<string, number> | undefined),
+        0,
+      );
+      if (currentVarSum > 0) {
+        variableLines.forEach((l) => {
+          const amt = sumYearMonthly(l[yearMonthlyKey] as Record<string, number> | undefined);
+          weights[l.id] = amt / currentVarSum;
+        });
+        weightSource = 'current';
+      }
+    }
+
+    if (weightSource === 'even' && priorYear?.cogs?.byLine && priorYear.cogs.byLine.length > 0) {
+      const priorByLine: Record<string, number> = {};
+      let priorTotal = 0;
+      for (const pl of priorYear.cogs.byLine) {
+        priorByLine[pl.id] = pl.total || 0;
+        priorTotal += pl.total || 0;
+      }
+      if (priorTotal > 0) {
+        let coveredWeight = 0;
+        const noPriorLines: string[] = [];
+        for (const l of variableLines) {
+          const share = (priorByLine[l.id] || 0) / priorTotal;
+          if (share > 0) {
+            weights[l.id] = share;
+            coveredWeight += share;
+          } else {
+            noPriorLines.push(l.id);
+          }
+        }
+        if (Object.keys(weights).length > 0) {
+          const leftover = Math.max(0, 1 - coveredWeight);
+          const equalLeftover = noPriorLines.length > 0 ? leftover / noPriorLines.length : 0;
+          for (const id of noPriorLines) weights[id] = equalLeftover;
+          weightSource = 'prior';
+        }
+      }
+    }
+
+    if (weightSource === 'even') {
+      const equal = 1 / variableLines.length;
+      for (const l of variableLines) weights[l.id] = equal;
+    }
+
+    // Normalise (defensive — handles floating-point drift)
+    const totalW = Object.values(weights).reduce((a, b) => a + b, 0);
+    if (totalW > 0) {
+      for (const id of Object.keys(weights)) weights[id] = weights[id] / totalW;
+    }
+
+    // Per-line annual targets with residue absorption on the last variable line
+    const lineYearTargets: Record<string, number> = {};
+    let running = 0;
+    variableLines.forEach((line, idx) => {
+      const isLast = idx === variableLines.length - 1;
+      const t = isLast
+        ? variableTarget - running
+        : Math.round(variableTarget * (weights[line.id] ?? 0));
+      lineYearTargets[line.id] = t;
+      running += t;
+    });
+
+    const monthKeys = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
+    const isY1 = activeYear === 1;
+    const ytdMonthlyKeys = isY1
+      ? new Set(Object.keys(currentYTD?.revenue_by_month ?? {}))
+      : new Set<string>();
+
+    const updatedCOGSLines = cogsLines.map((line) => {
+      if (line.costBehavior !== 'variable') return line;
+      const annualTarget = lineYearTargets[line.id] ?? 0;
+      const seasonality = getEffectiveSeasonality(line, priorYear?.seasonalityPattern);
+
+      if (isY1) {
+        const oldMonthly = (line[yearMonthlyKey] as Record<string, number> | undefined) || {};
+        const monthly: Record<string, number> = {};
+        let actualSum = 0;
+        for (const k of monthKeys) {
+          if (ytdMonthlyKeys.has(k)) {
+            monthly[k] = oldMonthly[k] || 0;
+            actualSum += monthly[k];
+          }
+        }
+        const remaining = Math.max(0, annualTarget - actualSum);
+        const nonActual = monthKeys.filter((k) => !ytdMonthlyKeys.has(k));
+        let totalSeasonRemaining = 0;
+        nonActual.forEach((k) => {
+          const idx = monthKeys.indexOf(k);
+          totalSeasonRemaining += seasonality[idx] ?? 8.33;
+        });
+        let nonActualRunning = 0;
+        nonActual.forEach((k, ni) => {
+          const isLast = ni === nonActual.length - 1;
+          if (isLast) {
+            monthly[k] = Math.max(0, remaining - nonActualRunning);
+          } else if (totalSeasonRemaining > 0 && remaining > 0) {
+            const idx = monthKeys.indexOf(k);
+            monthly[k] = Math.max(
+              0,
+              Math.round(remaining * ((seasonality[idx] ?? 8.33) / totalSeasonRemaining)),
+            );
+            nonActualRunning += monthly[k];
+          } else {
+            monthly[k] = 0;
+          }
+        });
+        return { ...line, [yearMonthlyKey]: monthly };
+      }
+
+      const totalPct = seasonality.reduce((a: number, b: number) => a + b, 0);
+      const monthly: Record<string, number> = {};
+      let yrRunning = 0;
+      monthKeys.forEach((k, idx) => {
+        const isLast = idx === monthKeys.length - 1;
+        if (isLast) {
+          monthly[k] = Math.max(0, annualTarget - yrRunning);
+        } else if (totalPct > 0) {
+          monthly[k] = Math.max(
+            0,
+            Math.round(annualTarget * ((seasonality[idx] ?? 8.33) / totalPct)),
+          );
+          yrRunning += monthly[k];
+        } else {
+          monthly[k] = Math.max(0, Math.round(annualTarget / 12));
+          yrRunning += monthly[k];
+        }
+      });
+      return { ...line, [yearMonthlyKey]: monthly };
+    });
+
+    actions.setCOGSLines(updatedCOGSLines);
+  };
+
+  // Auto-cascade: when the active-year GP% goal changes, drive the variable
+  // COGS lines toward the new target. Skips when revenue isn't set yet or
+  // when current GP% already matches the goal (within 0.5pp tolerance).
+  useEffect(() => {
+    if (revenueLines.length === 0 || cogsLines.length === 0) return;
+    const yearMonthlyKey =
+      activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
+    const goalKey = activeYear === 1 ? 'year1' : activeYear === 2 ? 'year2' : 'year3';
+    const gpPct = goals[goalKey]?.grossProfitPct ?? 0;
+    if (gpPct <= 0 || gpPct >= 100) return;
+    const sumYearMonthly = (m?: Record<string, number>) =>
+      m ? Object.values(m).reduce((a, b) => a + (b || 0), 0) : 0;
+    const revenueY = revenueLines.reduce(
+      (s, l) => s + sumYearMonthly(l[yearMonthlyKey] as Record<string, number> | undefined),
+      0,
+    );
+    if (revenueY <= 0) return;
+    const cogsY = cogsLines.reduce(
+      (s, l) => s + sumYearMonthly(l[yearMonthlyKey] as Record<string, number> | undefined),
+      0,
+    );
+    const currentGP = ((revenueY - cogsY) / revenueY) * 100;
+    if (Math.abs(currentGP - gpPct) < 0.5) return;
+    redistributeCOGSToHitGPTarget('auto');
+    // redistributeCOGSToHitGPTarget closes over the rendering scope; we
+    // depend only on the GP-target values + activeYear so this fires exactly
+    // when the operator's target moves or they switch tab.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    goals.year1?.grossProfitPct,
+    goals.year2?.grossProfitPct,
+    goals.year3?.grossProfitPct,
+    activeYear,
+  ]);
+
   // Handle COGS mix % change — redistribute COGS total by mix using seasonality
   const handleCogsMixChange = (lineId: string, newMixPct: number) => {
     if (totalCOGS <= 0) return;
@@ -1683,12 +1904,28 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                         </div>
                       </div>
                     </div>
-                    <button
-                      onClick={() => setShowAddCOGS(true)}
-                      className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
-                    >
-                      <Plus className="w-3 h-3" /> Add Line
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const gpKey = activeYear === 1 ? 'year1' : activeYear === 2 ? 'year2' : 'year3';
+                        const gpTarget = goals[gpKey]?.grossProfitPct ?? 0;
+                        if (gpTarget <= 0 || gpTarget >= 100 || totalRevenue <= 0 || cogsLines.length === 0) return null;
+                        return (
+                          <button
+                            onClick={() => redistributeCOGSToHitGPTarget('reset')}
+                            title={`Distribute variable COGS lines using prior-year mix and seasonality so total COGS = revenue × (1 − ${gpTarget}%/100).`}
+                            className="px-2 py-0.5 text-xs font-medium text-gray-600 hover:text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
+                          >
+                            Reset to {gpTarget}% GP
+                          </button>
+                        );
+                      })()}
+                      <button
+                        onClick={() => setShowAddCOGS(true)}
+                        className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
+                      >
+                        <Plus className="w-3 h-3" /> Add Line
+                      </button>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -2010,12 +2247,28 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                   <td colSpan={16} className="px-4 py-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Cost of Sales</span>
-                      <button
-                        onClick={() => setShowAddCOGS(true)}
-                        className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
-                      >
-                        <Plus className="w-3 h-3" /> Add Line
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const gpKey = activeYear === 1 ? 'year1' : activeYear === 2 ? 'year2' : 'year3';
+                          const gpTarget = goals[gpKey]?.grossProfitPct ?? 0;
+                          if (gpTarget <= 0 || gpTarget >= 100 || totalRevenue <= 0 || cogsLines.length === 0) return null;
+                          return (
+                            <button
+                              onClick={() => redistributeCOGSToHitGPTarget('reset')}
+                              title={`Distribute variable COGS lines using prior-year mix and seasonality so total COGS = revenue × (1 − ${gpTarget}%/100).`}
+                              className="px-2 py-0.5 text-xs font-medium text-gray-600 hover:text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
+                            >
+                              Reset to {gpTarget}% GP
+                            </button>
+                          );
+                        })()}
+                        <button
+                          onClick={() => setShowAddCOGS(true)}
+                          className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
+                        >
+                          <Plus className="w-3 h-3" /> Add Line
+                        </button>
+                      </div>
                     </div>
                   </td>
                 </tr>
