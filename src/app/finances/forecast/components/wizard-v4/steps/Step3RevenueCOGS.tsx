@@ -2326,7 +2326,9 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                           )}
                         </div>
                         <div className="text-xs text-gray-400">
-                          {line.costBehavior === 'variable' ? `${line.percentOfRevenue || 0}% of rev` : `$${(line.monthlyAmount || 0).toLocaleString()}/mo`}
+                          {line.costBehavior === 'variable'
+                            ? `${totalRevenue > 0 ? ((lineTotal / totalRevenue) * 100).toFixed(1) : '0.0'}% of rev`
+                            : `$${(line.monthlyAmount || 0).toLocaleString()}/mo`}
                           {hasMonthlyData && <span className="ml-1 text-amber-500">(edited)</span>}
                         </div>
                       </td>
