@@ -807,6 +807,165 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     actions.setRevenueLines(updatedRevenueLines);
   };
 
+  // Redistribute the lines of a SINGLE year (the active tab) against a new
+  // year target. Mirrors the year-specific math in handlePatternChange but
+  // does not touch the other years — used by the goal-sync useEffect below
+  // so an operator's empty Y2/Y3 baseline isn't silently populated just
+  // because Y1's goal moved.
+  //
+  // Line weights are computed exactly as handlePatternChange does (prior-year
+  // share, with equal-share fallback for manually-added lines), so the
+  // resulting per-line targets match what clicking the Pattern toggle would
+  // produce — operator UX stays consistent across both code paths.
+  const redistributeYearForActiveTabAgainstGoal = (target: number) => {
+    if (revenueLines.length === 0 || target <= 0) return;
+    if (revenuePattern === 'manual') return;
+
+    const priorByLine: Record<string, number> = {};
+    let priorRevTotal = 0;
+    if (priorYear?.revenue?.byLine) {
+      for (const pl of priorYear.revenue.byLine) {
+        priorByLine[pl.id] = pl.total || 0;
+        priorRevTotal += pl.total || 0;
+      }
+    }
+    let priorWeightCovered = 0;
+    const linesWithoutPrior: string[] = [];
+    for (const line of revenueLines) {
+      const share = priorRevTotal > 0 ? (priorByLine[line.id] || 0) / priorRevTotal : 0;
+      if (share > 0) priorWeightCovered += share;
+      else linesWithoutPrior.push(line.id);
+    }
+    const remainingForNoPrior = Math.max(0, 1 - priorWeightCovered);
+    const equalShareForNoPrior = linesWithoutPrior.length > 0
+      ? remainingForNoPrior / linesWithoutPrior.length
+      : 0;
+    const lineWeights: Record<string, number> = {};
+    for (const line of revenueLines) {
+      const priorShare = priorRevTotal > 0 ? (priorByLine[line.id] || 0) / priorRevTotal : 0;
+      lineWeights[line.id] = priorShare > 0 ? priorShare : equalShareForNoPrior;
+    }
+    const totalWeight = revenueLines.reduce((s, l) => s + (lineWeights[l.id] || 0), 0);
+    if (totalWeight > 0) {
+      for (const line of revenueLines) lineWeights[line.id] = lineWeights[line.id] / totalWeight;
+    } else {
+      for (const line of revenueLines) lineWeights[line.id] = 1 / revenueLines.length;
+    }
+
+    const lineYearTargets: Record<string, number> = {};
+    let runningSum = 0;
+    revenueLines.forEach((line, idx) => {
+      const isLast = idx === revenueLines.length - 1;
+      const t = isLast ? target - runningSum : Math.round(target * (lineWeights[line.id] ?? 0));
+      lineYearTargets[line.id] = t;
+      runningSum += t;
+    });
+
+    const isYearOne = activeYear === 1;
+    const yearMonthKeys = generateMonthKeys(
+      isYearOne ? fiscalYear - 1 : activeYear === 2 ? fiscalYear : fiscalYear + 1,
+    );
+
+    // Y1 preserves actual months from currentYTD; Y2/Y3 are fully redistributed.
+    const ytdMonthlyKeys = isYearOne ? new Set(Object.keys(currentYTD?.revenue_by_month ?? {})) : new Set<string>();
+
+    const updated = revenueLines.map((line) => {
+      const seasonality = getEffectiveSeasonality(line, priorYear?.seasonalityPattern);
+      const lineTotalTarget = lineYearTargets[line.id];
+
+      if (isYearOne) {
+        const oldY1 = line.year1Monthly || {};
+        const monthly: Record<string, number> = {};
+        for (const k of yearMonthKeys) {
+          if (ytdMonthlyKeys.has(k)) monthly[k] = oldY1[k] || 0;
+        }
+        const actualSum = yearMonthKeys
+          .filter((k) => ytdMonthlyKeys.has(k))
+          .reduce((s, k) => s + (monthly[k] || 0), 0);
+        const remaining = lineTotalTarget - actualSum;
+        const nonActual = yearMonthKeys.filter((k) => !ytdMonthlyKeys.has(k));
+        let totalSeasonRemaining = 0;
+        nonActual.forEach((k) => {
+          const idx = yearMonthKeys.indexOf(k);
+          totalSeasonRemaining += seasonality[idx] ?? 8.33;
+        });
+        let nonActualRunning = 0;
+        nonActual.forEach((k, ni) => {
+          const isLast = ni === nonActual.length - 1;
+          if (isLast) {
+            monthly[k] = Math.max(0, remaining - nonActualRunning);
+          } else if (revenuePattern === 'straight-line') {
+            monthly[k] = Math.max(0, nonActual.length > 0 ? Math.round(remaining / nonActual.length) : 0);
+            nonActualRunning += monthly[k];
+          } else if (revenuePattern === 'seasonal' && totalSeasonRemaining > 0 && remaining > 0) {
+            const idx = yearMonthKeys.indexOf(k);
+            const factor = (seasonality[idx] ?? 8.33) / totalSeasonRemaining;
+            monthly[k] = Math.max(0, Math.round(remaining * factor));
+            nonActualRunning += monthly[k];
+          } else {
+            monthly[k] = 0;
+          }
+        });
+        return { ...line, year1Monthly: monthly };
+      }
+
+      // Y2 / Y3 — no actual months, full target distribution.
+      const totalPct = seasonality.reduce((a: number, b: number) => a + b, 0);
+      const monthly: Record<string, number> = {};
+      let running = 0;
+      yearMonthKeys.forEach((k, idx) => {
+        const isLast = idx === yearMonthKeys.length - 1;
+        if (isLast) {
+          monthly[k] = Math.max(0, lineTotalTarget - running);
+        } else if (revenuePattern === 'seasonal' && totalPct > 0) {
+          monthly[k] = Math.max(0, Math.round(lineTotalTarget * ((seasonality[idx] ?? 8.33) / totalPct)));
+          running += monthly[k];
+        } else {
+          monthly[k] = Math.max(0, Math.round(lineTotalTarget / 12));
+          running += monthly[k];
+        }
+      });
+
+      return activeYear === 2 ? { ...line, year2Monthly: monthly } : { ...line, year3Monthly: monthly };
+    });
+
+    actions.setRevenueLines(updated);
+  };
+
+  // When the operator changes the active-year goal in Step 1, redistribute
+  // just that year's lines against the new target. Skipped when:
+  //   * pattern is 'manual' (operator is hand-entering and any redistribute
+  //     would clobber their work),
+  //   * no revenue lines exist yet,
+  //   * the active year has no data yet (sum === 0 — the operator hasn't
+  //     populated it; auto-populating from goal would surprise them),
+  //   * the line sum already matches the goal (no-op, avoids gratuitous
+  //     re-renders).
+  // ActiveYear is in the dep array so switching tabs also re-checks
+  // staleness against the (possibly previously-changed) goal for that year.
+  useEffect(() => {
+    if (revenuePattern === 'manual') return;
+    if (revenueLines.length === 0) return;
+    const monthlyKey =
+      activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
+    const goalKey = activeYear === 1 ? 'year1' : activeYear === 2 ? 'year2' : 'year3';
+    const target = goals[goalKey]?.revenue || 0;
+    if (target <= 0) return;
+    const currentSum = revenueLines.reduce(
+      (s, l) =>
+        s +
+        Object.values(l[monthlyKey] ?? {}).reduce((a, b) => a + (b || 0), 0),
+      0,
+    );
+    if (currentSum <= 0) return;
+    if (Math.abs(currentSum - target) <= 10) return;
+    redistributeYearForActiveTabAgainstGoal(target);
+    // redistributeYearForActiveTabAgainstGoal closes over the rendering
+    // scope; we depend only on the goal values + activeYear so this fires
+    // exactly when an upstream goal moves or the operator switches tab.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goals.year1?.revenue, goals.year2?.revenue, goals.year3?.revenue, activeYear]);
+
   // Get prior year total for a revenue line
   const getLinePriorYear = (lineId: string): number => {
     const priorLine = priorYear?.revenue.byLine.find(l => l.id === lineId);

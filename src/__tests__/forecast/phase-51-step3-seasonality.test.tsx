@@ -475,6 +475,17 @@ describe('UX-S3-03 — Step 3 per-line seasonality override', () => {
     render(
       <Step3Harness
         businessId="test-51-03-10-baseline"
+        // Goal Y1 must match the prior-year total (the setPriorYear path
+        // distributes prior-year actuals into year1Monthly summing to that
+        // total) so the Step 3 goal-sync useEffect treats Y1 as non-stale
+        // and skips redistribution. This test locks setPriorYear's inline
+        // seasonality read path; the goal-sync redistribute is exercised
+        // by Test 10b's handleMixChange path.
+        initialGoals={{
+          year1: { revenue: 100_000, grossProfitPct: 50, netProfitPct: 15 },
+          year2: { revenue: 0, grossProfitPct: 50, netProfitPct: 15 },
+          year3: { revenue: 0, grossProfitPct: 50, netProfitPct: 15 },
+        }}
         initialPriorYear={makePriorYear(FRONT_LOADED_SEASONALITY)}
         // NOTE: no initialRevLines — let setPriorYear create the default
         // "Sales Revenue" line with seasonal distribution (the path that hits

@@ -170,6 +170,15 @@ describe('UX-S3-02 — Step 3 Y-on-Y Growth % column', () => {
       <Step3Harness
         businessId="test-51-02-2"
         seededActiveYear={2}
+        // Goals must match the seeded line sums so the Step 3 goal-sync
+        // useEffect treats Y1/Y2 as non-stale and skips redistribution.
+        // The test is asserting the Growth display formula on already-
+        // settled lines, not the redistribute path.
+        initialGoals={{
+          year1: { revenue: 50_000, grossProfitPct: 50, netProfitPct: 15 },
+          year2: { revenue: 60_000, grossProfitPct: 52, netProfitPct: 17 },
+          year3: { revenue: 0, grossProfitPct: 55, netProfitPct: 20 },
+        }}
         initialRevLines={[
           {
             id: 'rev-1',
