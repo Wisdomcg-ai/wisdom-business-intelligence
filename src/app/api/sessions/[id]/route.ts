@@ -34,8 +34,15 @@ export async function GET(
       .eq('id', session.business_id)
       .single()
 
-    if (!business || (business.assigned_coach_id !== user.id && business.owner_id !== user.id)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    if (!business) {
+      return NextResponse.json({ error: 'Business not found' }, { status: 404 })
+    }
+    if (business.assigned_coach_id !== user.id && business.owner_id !== user.id) {
+      // Super-admin bypass — see notes in chat/messages/route.ts.
+      const { data: isSuper } = await supabase.rpc('auth_is_super_admin')
+      if (!isSuper) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
     }
 
     return NextResponse.json({

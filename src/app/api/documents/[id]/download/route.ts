@@ -30,7 +30,11 @@ export async function GET(
     // Verify access
     const business = (document as any).businesses
     if (business.assigned_coach_id !== user.id && business.owner_id !== user.id) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      // Super-admin bypass — see notes in chat/messages/route.ts.
+      const { data: isSuper } = await supabase.rpc('auth_is_super_admin')
+      if (!isSuper) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
     }
 
     // Get signed URL for download

@@ -29,8 +29,18 @@ export async function GET(request: Request) {
       .eq('id', businessId)
       .maybeSingle()
 
-    if (!business || (business.assigned_coach_id !== user.id && business.owner_id !== user.id)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    if (!business) {
+      return NextResponse.json({ error: 'Business not found' }, { status: 404 })
+    }
+    if (business.assigned_coach_id !== user.id && business.owner_id !== user.id) {
+      // Super-admin bypass: super_admin users aren't coaches or owners but
+      // need read/write access to every business (support, ops, audits).
+      // auth_is_super_admin() is SECURITY DEFINER so the auth-bound client
+      // can call it; returns false for anyone without the row.
+      const { data: isSuper } = await supabase.rpc('auth_is_super_admin')
+      if (!isSuper) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
     }
 
     // Get messages
@@ -87,8 +97,18 @@ export async function POST(request: Request) {
       .eq('id', business_id)
       .maybeSingle()
 
-    if (!business || (business.assigned_coach_id !== user.id && business.owner_id !== user.id)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    if (!business) {
+      return NextResponse.json({ error: 'Business not found' }, { status: 404 })
+    }
+    if (business.assigned_coach_id !== user.id && business.owner_id !== user.id) {
+      // Super-admin bypass: super_admin users aren't coaches or owners but
+      // need read/write access to every business (support, ops, audits).
+      // auth_is_super_admin() is SECURITY DEFINER so the auth-bound client
+      // can call it; returns false for anyone without the row.
+      const { data: isSuper } = await supabase.rpc('auth_is_super_admin')
+      if (!isSuper) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
     }
 
     // Create message
