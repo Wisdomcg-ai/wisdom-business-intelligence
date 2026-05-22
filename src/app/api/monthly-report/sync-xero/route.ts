@@ -217,7 +217,14 @@ export async function POST(request: NextRequest) {
 
     stage = 'authz';
     if (business.owner_id !== user.id && business.assigned_coach_id !== user.id) {
-      return NextResponse.json({ error: 'Access denied', stage, user_id: user.id }, { status: 403 });
+      // Super-admin bypass — super_admins aren't the assigned coach but must
+      // be able to trigger syncs for any business (support, ops, audits).
+      // RPC is on the auth-bound client (not supabaseAdmin) so auth.uid()
+      // resolves to the calling user inside the SECURITY DEFINER function.
+      const { data: isSuper } = await supabase.rpc('auth_is_super_admin');
+      if (!isSuper) {
+        return NextResponse.json({ error: 'Access denied', stage, user_id: user.id }, { status: 403 });
+      }
     }
 
     stage = 'fetch_connections';

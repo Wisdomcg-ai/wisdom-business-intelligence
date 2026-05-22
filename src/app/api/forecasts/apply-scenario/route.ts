@@ -28,7 +28,11 @@ export async function POST(request: Request) {
     // Type-safe access to the joined business data
     const business = forecast.businesses as unknown as { owner_id: string; assigned_coach_id: string | null }
     if (business.owner_id !== user.id && business.assigned_coach_id !== user.id) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      // Super-admin bypass — see notes in chat/messages/route.ts.
+      const { data: isSuper } = await supabase.rpc('auth_is_super_admin')
+      if (!isSuper) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
     }
 
     // Get current P&L lines
