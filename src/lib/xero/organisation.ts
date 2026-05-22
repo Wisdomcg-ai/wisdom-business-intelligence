@@ -28,6 +28,13 @@ export type XeroConnectionRef = {
 export type OrgTimezone = {
   timezone: string // IANA TZ name, e.g. 'Australia/Sydney'
   countryCode: string
+  /**
+   * Phase 67-01: Xero org's BaseCurrency (ISO 4217, e.g. 'AUD', 'HKD', 'NZD').
+   * The consolidation engine reads xero_connections.functional_currency to
+   * decide whether to FX-translate via fx_rates; we capture BaseCurrency here
+   * so callers can keep that column accurate.
+   */
+  baseCurrency: string
 }
 
 // ─── Xero TZ → IANA mapping ─────────────────────────────────────────────────
@@ -115,6 +122,10 @@ export async function getXeroOrgTimezone(
   const org = orgs[0]
   const xeroTz = String(org?.Timezone ?? '')
   const countryCode = String(org?.CountryCode ?? '')
+  // Xero returns BaseCurrency as ISO 4217 (e.g. 'AUD', 'HKD'). Empty string
+  // when missing — callers should treat that as "unknown" and leave the
+  // stored functional_currency untouched rather than overwriting with ''.
+  const baseCurrency = String(org?.BaseCurrency ?? '').toUpperCase()
 
   const iana = mapXeroTimezoneToIANA(xeroTz)
   if (iana === 'UTC' && xeroTz && xeroTz.toUpperCase() !== 'UTC') {
@@ -132,5 +143,5 @@ export async function getXeroOrgTimezone(
     }
   }
 
-  return { timezone: iana, countryCode }
+  return { timezone: iana, countryCode, baseCurrency }
 }

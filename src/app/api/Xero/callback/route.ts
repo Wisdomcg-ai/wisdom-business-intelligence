@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { encrypt, verifySignedOAuthState } from '@/lib/utils/encryption';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import { getXeroOrgTimezone } from '@/lib/xero/organisation';
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
@@ -101,6 +102,32 @@ async function saveXeroConnection(
   if (process.env.NODE_ENV !== 'production') {
     console.log('[Xero] Connection saved:', id, 'tenant:', tenant.tenantName);
   }
+
+  // Phase 67-01: capture Xero's BaseCurrency so xero_connections.functional_currency
+  // matches the source of truth. The consolidation engine reads this column to
+  // decide whether to FX-translate via fx_rates. Non-fatal on failure — the
+  // sync orchestrator will retry on the first sync.
+  try {
+    const org = await getXeroOrgTimezone(
+      { tenant_id: tenant.tenantId },
+      tokens.access_token,
+    );
+    if (org.baseCurrency) {
+      const { error: ccyErr } = await supabase
+        .from('xero_connections')
+        .update({ functional_currency: org.baseCurrency })
+        .eq('id', id);
+      if (ccyErr) {
+        console.warn('[Xero] functional_currency capture failed at callback:', ccyErr.message);
+      } else if (process.env.NODE_ENV !== 'production') {
+        console.log('[Xero] functional_currency captured:', org.baseCurrency, 'for', tenant.tenantName);
+      }
+    }
+  } catch (err) {
+    // Don't block OAuth on /Organisation hiccups — sync orchestrator will refresh.
+    console.warn('[Xero] /Organisation read failed at callback (non-fatal):', err instanceof Error ? err.message : err);
+  }
+
   return { success: true, connectionId: id };
 }
 

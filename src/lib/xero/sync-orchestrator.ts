@@ -642,7 +642,7 @@ export async function syncBusinessXeroPL(
         }
         const accessToken = tokenResult.accessToken
 
-        // 4c. Pre-fetch /Organisation (timezone). 429-daily → tenant paused.
+        // 4c. Pre-fetch /Organisation (timezone + base currency). 429-daily → tenant paused.
         let _orgTimezone = 'UTC'
         try {
           const org = await getXeroOrgTimezone(
@@ -653,6 +653,34 @@ export async function syncBusinessXeroPL(
           xeroRequestCount++
           tenantXeroRequestCount++
           console.log('[syncBusinessXeroPL]', conn.tenant_id, 'org timezone:', _orgTimezone)
+
+          // Phase 67-01: keep xero_connections.functional_currency aligned with
+          // Xero's BaseCurrency. The consolidation engine reads this column to
+          // decide whether to FX-translate. Empty baseCurrency means /Organisation
+          // didn't return one (treat as "unknown" — don't overwrite).
+          if (org.baseCurrency && org.baseCurrency !== (conn as any).functional_currency) {
+            const { error: updErr } = await supabase
+              .from('xero_connections')
+              .update({ functional_currency: org.baseCurrency })
+              .eq('id', conn.id)
+            if (updErr) {
+              console.warn(
+                '[syncBusinessXeroPL]',
+                conn.tenant_id,
+                'functional_currency update failed:',
+                updErr.message,
+              )
+            } else {
+              console.log(
+                '[syncBusinessXeroPL]',
+                conn.tenant_id,
+                'functional_currency updated:',
+                (conn as any).functional_currency,
+                '→',
+                org.baseCurrency,
+              )
+            }
+          }
         } catch (orgErr) {
           if (orgErr instanceof RateLimitDailyExceededError) {
             tenantPaused = true

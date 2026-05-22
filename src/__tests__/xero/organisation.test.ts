@@ -13,7 +13,7 @@ vi.mock('@sentry/nextjs', () => ({
   captureMessage: vi.fn(),
 }))
 
-function makeOrgResponse(timezone: string, countryCode: string = 'AU') {
+function makeOrgResponse(timezone: string, countryCode: string = 'AU', baseCurrency: string = 'AUD') {
   return new Response(
     JSON.stringify({
       Organisations: [
@@ -21,6 +21,7 @@ function makeOrgResponse(timezone: string, countryCode: string = 'AU') {
           OrganisationID: 'org-1',
           Timezone: timezone,
           CountryCode: countryCode,
+          BaseCurrency: baseCurrency,
         },
       ],
     }),
@@ -54,7 +55,7 @@ describe('getXeroOrgTimezone', () => {
 
   it('HONGKONGSTANDARDTIME → Asia/Hong_Kong (IICT support)', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(
-      makeOrgResponse('HONGKONGSTANDARDTIME', 'HK'),
+      makeOrgResponse('HONGKONGSTANDARDTIME', 'HK', 'HKD'),
     )
     const { getXeroOrgTimezone } = await import('@/lib/xero/organisation')
     const res = await getXeroOrgTimezone(
@@ -63,6 +64,25 @@ describe('getXeroOrgTimezone', () => {
     )
     expect(res.timezone).toBe('Asia/Hong_Kong')
     expect(res.countryCode).toBe('HK')
+    // Phase 67-01: BaseCurrency captured so xero_connections.functional_currency
+    // can be kept aligned with the source of truth.
+    expect(res.baseCurrency).toBe('HKD')
+  })
+
+  it('Phase 67-01: BaseCurrency missing in response → returns empty string (callers must treat as unknown)', async () => {
+    const noCcyResponse = new Response(
+      JSON.stringify({
+        Organisations: [{ OrganisationID: 'org-1', Timezone: 'AUSEASTERNSTANDARDTIME', CountryCode: 'AU' }],
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(noCcyResponse)
+    const { getXeroOrgTimezone } = await import('@/lib/xero/organisation')
+    const res = await getXeroOrgTimezone(
+      { tenant_id: 'tenant-no-ccy' } as any,
+      'tok',
+    )
+    expect(res.baseCurrency).toBe('')
   })
 
   it('NZSTANDARDTIME → Pacific/Auckland', async () => {
