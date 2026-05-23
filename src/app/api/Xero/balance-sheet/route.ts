@@ -4,6 +4,8 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { loadFxRates } from '@/lib/consolidation/fx'
 import type { BalanceSheetRow, BalanceSheetData, BalanceSheetCompare } from '@/app/finances/monthly-report/types'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -73,6 +75,77 @@ function mapSubtotalLabel(xeroLabel: string): string {
 }
 
 /**
+ * Extract the cash position (sum of Bank account balances) from a parsed Xero
+ * BalanceSheet report. Returns null when no Bank section / no rows are present.
+ *
+ * The standardLayout BS nests Bank accounts directly inside Assets (sub-section
+ * title "Bank") OR sometimes lifts them to a top-level section also titled
+ * "Bank". Handle both.
+ *
+ * Phase 67 follow-up — extracted from the inline cash_only branch so the
+ * multi-tenant aggregation can call it once per tenant.
+ */
+function parseBankCashFromReport(report: any): number | null {
+  let cashSum: number | null = null
+
+  for (const row of (report.Rows ?? [])) {
+    if (row.RowType !== 'Section') continue
+    const sectionTitle = (row.Title ?? '').trim()
+    const isAssetsLike = sectionTitle === 'Assets' || sectionTitle === 'Bank'
+    if (!isAssetsLike) continue
+
+    for (const r of (row.Rows ?? [])) {
+      if (r.RowType === 'Section') {
+        const innerTitle = (r.Title ?? '').trim()
+        if (innerTitle === 'Bank') {
+          for (const lineRow of (r.Rows ?? [])) {
+            if (lineRow.RowType !== 'Row') continue
+            const v = parseAmount(lineRow.Cells?.[1]?.Value ?? '')
+            if (v !== null) {
+              cashSum = (cashSum ?? 0) + v
+            }
+          }
+        }
+      } else if (r.RowType === 'Row' && sectionTitle === 'Bank') {
+        const v = parseAmount(r.Cells?.[1]?.Value ?? '')
+        if (v !== null) {
+          cashSum = (cashSum ?? 0) + v
+        }
+      }
+    }
+  }
+
+  return cashSum
+}
+
+/** Fetch the BalanceSheet report for a single tenant on a specific date. */
+async function fetchBalanceSheetForTenant(
+  accessToken: string,
+  tenantId: string,
+  reportDate: string,
+  timeframe: 'MONTH' | 'YEAR',
+): Promise<{ ok: true; report: any } | { ok: false; status: number; errText: string }> {
+  const url = `https://api.xero.com/api.xro/2.0/Reports/BalanceSheet?date=${reportDate}&periods=1&timeframe=${timeframe}&standardLayout=true`
+  const resp = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'xero-tenant-id': tenantId,
+      Accept: 'application/json',
+    },
+  })
+  if (!resp.ok) {
+    const errText = await resp.text()
+    return { ok: false, status: resp.status, errText }
+  }
+  const data = await resp.json()
+  const report = data?.Reports?.[0]
+  if (!report) {
+    return { ok: false, status: 502, errText: 'Empty response from Xero' }
+  }
+  return { ok: true, report }
+}
+
+/**
  * GET /api/Xero/balance-sheet?business_id=&month=YYYY-MM[&compare=yoy|mom]
  *
  * Fetches Xero /Reports/BalanceSheet for the given month and parses it
@@ -132,36 +205,23 @@ export async function GET(request: NextRequest) {
     )
     if (_sectionBlocked) return _sectionBlocked
 
-    // Resolve Xero connection (try all ID formats — same pattern as other routes)
-    let connection: any = null
-    const { data: c1 } = await supabase.from('xero_connections').select('*').eq('business_id', businessId).eq('is_active', true).maybeSingle()
-    if (c1) connection = c1
-    if (!connection) {
-      const { data: p } = await supabase.from('business_profiles').select('id').eq('business_id', businessId).maybeSingle()
-      if (p?.id) {
-        const { data: c2 } = await supabase.from('xero_connections').select('*').eq('business_id', p.id).eq('is_active', true).maybeSingle()
-        if (c2) connection = c2
-      }
-    }
-    if (!connection) {
-      const { data: bp } = await supabase.from('business_profiles').select('business_id').eq('id', businessId).maybeSingle()
-      if (bp?.business_id) {
-        const { data: c3 } = await supabase.from('xero_connections').select('*').eq('business_id', bp.business_id).eq('is_active', true).maybeSingle()
-        if (c3) connection = c3
-      }
-    }
+    // Resolve Xero connections — Phase 67 follow-up: this route previously used
+    // .maybeSingle() three times, which ERRORS when a business has more than one
+    // active connection (consolidated multi-tenant clients like IICT). The
+    // resulting null connection then 400'd as "NO_CONNECTION" even though
+    // multiple connections existed. Now we load ALL active connections for the
+    // business via the canonical resolveBusinessIds helper.
+    const ids = await resolveBusinessIds(supabase, businessId)
+    const { data: connections } = await supabase
+      .from('xero_connections')
+      .select('*')
+      .in('business_id', ids.all)
+      .eq('is_active', true)
 
-    if (!connection) {
+    const allConns = connections ?? []
+    if (allConns.length === 0) {
       return NextResponse.json({ error: 'No active Xero connection', code: 'NO_CONNECTION' }, { status: 400 })
     }
-
-    const tokenResult = await getValidAccessToken(connection, supabase)
-    if (!tokenResult.success) {
-      return NextResponse.json({ error: 'Xero connection expired' }, { status: 401 })
-    }
-
-    const accessToken = tokenResult.accessToken!
-    const tenantId = connection.tenant_id
 
     // Cash-only mode queries Xero AS OF today by default — the Cash KPI card
     // normally shows the current bank balance, not a projected end-of-month
@@ -176,6 +236,107 @@ export async function GET(request: NextRequest) {
       ? (isValidAsOf ? asOfParam! : todayDate)
       : lastDayOfMonth(month as string)
     const timeframe = compare === 'mom' ? 'MONTH' : 'YEAR'
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Phase 67 follow-up — multi-tenant cash_only with FX translation
+    // For consolidated multi-tenant businesses, fetch the bank balance per
+    // tenant, FX-translate non-AUD tenants to AUD via fx_rates.closing_spot,
+    // and return the sum. Single-tenant businesses fall through to the
+    // existing single-tenant path below.
+    // ─────────────────────────────────────────────────────────────────────
+    if (cashOnly && allConns.length > 1) {
+      const reportMonth = reportDate.slice(0, 7) // 'YYYY-MM'
+      // Preload closing_spot rates for every distinct non-AUD pair, scoped to
+      // the as_of month. Cash balances are a point-in-time stock measure, so
+      // spot is more accurate than monthly-average (used for P&L).
+      const rateByPair = new Map<string, number | null>()
+      for (const c of allConns) {
+        const ccy = ((c as any).functional_currency || 'AUD').toUpperCase()
+        if (ccy === 'AUD') continue
+        const pair = `${ccy}/AUD`
+        if (rateByPair.has(pair)) continue
+        const rates = await loadFxRates(
+          supabase as unknown as Parameters<typeof loadFxRates>[0],
+          pair,
+          'closing_spot',
+          [reportMonth],
+        )
+        rateByPair.set(pair, rates.get(reportMonth) ?? null)
+      }
+
+      let totalCashAUD: number | null = null
+      const missingRates: string[] = []
+
+      for (const c of allConns) {
+        const tokenResult = await getValidAccessToken(c as any, supabase)
+        if (!tokenResult.success || !tokenResult.accessToken) {
+          Sentry.captureMessage(
+            `[BalanceSheet cash_only] Token failure for tenant ${(c as any).tenant_name}: ${tokenResult.message ?? tokenResult.error}`,
+            'warning' as any,
+          )
+          continue // skip this tenant; partial cash sum is better than 502
+        }
+        const bsResult = await fetchBalanceSheetForTenant(
+          tokenResult.accessToken,
+          (c as any).tenant_id,
+          reportDate,
+          'MONTH',
+        )
+        if (!bsResult.ok) {
+          Sentry.captureMessage(
+            `[BalanceSheet cash_only] Xero ${bsResult.status} for tenant ${(c as any).tenant_name}`,
+            'warning' as any,
+          )
+          continue
+        }
+        const tenantCash = parseBankCashFromReport(bsResult.report)
+        if (tenantCash == null) continue
+
+        const ccy = ((c as any).functional_currency || 'AUD').toUpperCase()
+        let cashAUD: number = tenantCash
+        if (ccy !== 'AUD') {
+          const pair = `${ccy}/AUD`
+          const rate = rateByPair.get(pair) ?? null
+          if (rate == null) {
+            // No rate available — skip this tenant rather than corrupt the
+            // sum. Surface missing-rate so the UI can warn (P4 follow-up).
+            missingRates.push(`${pair}::${reportMonth}`)
+            Sentry.captureMessage(
+              `[BalanceSheet cash_only] Missing closing_spot rate ${pair} ${reportMonth} — skipping tenant ${(c as any).tenant_name}`,
+              'warning' as any,
+            )
+            continue
+          }
+          cashAUD = tenantCash * rate
+        }
+        totalCashAUD = (totalCashAUD ?? 0) + cashAUD
+      }
+
+      return NextResponse.json({
+        cash: totalCashAUD,
+        currency: 'AUD',
+        as_of: reportDate,
+        ...(missingRates.length > 0 ? { missing_rates: missingRates } : {}),
+      })
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Single-tenant path (cash_only OR full BS) — uses the first active
+    // connection. For multi-tenant FULL balance sheets, callers should use
+    // /api/monthly-report/consolidated-bs instead — that route runs the FX
+    // engine with eliminations and proper account alignment. This route's
+    // full-BS shape predates the consolidation engine and is preserved for
+    // back-compat with the existing Calxa-style monthly report.
+    // ─────────────────────────────────────────────────────────────────────
+    const connection = allConns[0]
+
+    const tokenResult = await getValidAccessToken(connection as any, supabase)
+    if (!tokenResult.success) {
+      return NextResponse.json({ error: 'Xero connection expired' }, { status: 401 })
+    }
+
+    const accessToken = tokenResult.accessToken!
+    const tenantId = (connection as any).tenant_id
 
     // Cash-only requests don't need a comparison column — keep the standard
     // layout so we can locate the "Bank" sub-section consistently with the
@@ -203,53 +364,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Empty response from Xero' }, { status: 502 })
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Phase 58.3 — cash_only branch
-    // Walks the Assets section, finds the "Bank" sub-section, and returns
-    // the sum of its line items (excluding any SummaryRow within). Returns
-    // { cash: null } when no bank section / no rows are found, so the UI
-    // can render a friendly placeholder.
-    // ─────────────────────────────────────────────────────────────────────
     if (cashOnly) {
-      let cashSum: number | null = null
-
-      for (const row of (report.Rows ?? [])) {
-        if (row.RowType !== 'Section') continue
-        const sectionTitle = (row.Title ?? '').trim()
-        // The standardLayout BS nests Bank accounts directly inside Assets
-        // (sub-section title "Bank") OR sometimes lifts them to a top-level
-        // section also titled "Bank". Handle both.
-        const isAssetsLike = sectionTitle === 'Assets' || sectionTitle === 'Bank'
-        if (!isAssetsLike) continue
-
-        const collectFromRows = (rows: any[]) => {
-          for (const r of rows) {
-            if (r.RowType === 'Section') {
-              const innerTitle = (r.Title ?? '').trim()
-              if (innerTitle === 'Bank') {
-                for (const lineRow of (r.Rows ?? [])) {
-                  if (lineRow.RowType !== 'Row') continue
-                  const v = parseAmount(lineRow.Cells?.[1]?.Value ?? '')
-                  if (v !== null) {
-                    cashSum = (cashSum ?? 0) + v
-                  }
-                }
-              }
-            } else if (r.RowType === 'Row' && sectionTitle === 'Bank') {
-              const v = parseAmount(r.Cells?.[1]?.Value ?? '')
-              if (v !== null) {
-                cashSum = (cashSum ?? 0) + v
-              }
-            }
-          }
-        }
-
-        collectFromRows(row.Rows ?? [])
-      }
-
+      const cashSum = parseBankCashFromReport(report)
       return NextResponse.json({
         cash: cashSum,
-        currency: 'AUD',
+        currency: ((connection as any).functional_currency || 'AUD').toUpperCase(),
         as_of: reportDate,
       })
     }
