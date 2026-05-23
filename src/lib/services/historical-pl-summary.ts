@@ -23,6 +23,7 @@ import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import {
   calculateForecastPeriods,
   DEFAULT_YEAR_START_MONTH,
+  generateFiscalMonthKeys,
 } from '@/lib/utils/fiscal-year-utils'
 import {
   createForecastReadService,
@@ -30,6 +31,10 @@ import {
   type CoverageRecord,
 } from '@/lib/services/forecast-read-service'
 import type { HistoricalPLSummary, PeriodSummary, OpExCategory, PLLineItem, XeroCoverage } from '@/app/finances/forecast/types'
+// Phase 67-02 — FX engine wiring for multi-currency consolidated businesses.
+import { needsFxConsolidation } from '@/lib/utils/needs-fx-consolidation'
+import { buildConsolidation } from '@/lib/consolidation/engine'
+import { loadFxRates, translatePLAtMonthlyAverage } from '@/lib/consolidation/fx'
 
 // Account type enum from xero_pl_lines (set by sync-all's mapSectionToType)
 type XeroAccountType = 'revenue' | 'cogs' | 'opex' | 'other_income' | 'other_expense'
@@ -63,30 +68,115 @@ export async function getHistoricalSummary(
   // Resolve dual business IDs (Phase 21+ pattern).
   const ids = await resolveBusinessIds(supabase, businessId)
 
-  // Try the canonical D-13 path first: route through ForecastReadService.
-  // We need an active forecast for (business_id, fiscal_year) to do that.
+  // Phase 67-02 — multi-currency consolidation gate.
+  // When any active included tenant has a non-AUD functional_currency, route
+  // through the consolidation engine instead of reading xero_pl_lines (or the
+  // composite view) directly. Single-tenant / all-AUD businesses are unchanged
+  // — the predicate returns false and we fall through to the existing path.
+  // FORECAST_FX_VIA_ENGINE_DISABLE=true is an emergency rollback flag.
+  const fxEngineEnabled = process.env.FORECAST_FX_VIA_ENGINE_DISABLE !== 'true'
+  const useFxEngine =
+    fxEngineEnabled && (await needsFxConsolidation(supabase, ids.bizId))
+
   let composite: MonthlyComposite | null = null
-  const { data: activeForecast } = await supabase
-    .from('financial_forecasts')
-    .select('id')
-    .in('business_id', ids.all)
-    .eq('fiscal_year', fiscalYear)
-    .eq('is_active', true)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (activeForecast?.id) {
-    // Let any D-18 invariant violation propagate — the route handler surfaces it as a 500.
-    const service = createForecastReadService(supabase)
-    composite = await service.getMonthlyComposite(activeForecast.id)
-  }
-
-  // Source the wide-shaped Xero rows.
   let xeroLines: WideXeroRow[] = []
   let coverage: XeroCoverage | undefined
 
-  if (composite) {
+  if (useFxEngine) {
+    // Build a 24-month window (prior FY + current FY) so aggregatePeriod can
+    // slice prior_fy and current_ytd from the same merged dataset. Two engine
+    // calls — each one respects its own fiscalYear-scoped eliminations and
+    // budget mode (we ignore budget outputs; the wizard only uses
+    // consolidated.lines).
+    const currentFyMonths = generateFiscalMonthKeys(fiscalYear, yearStartMonth)
+    const priorFyMonths = generateFiscalMonthKeys(fiscalYear - 1, yearStartMonth)
+    const allMonths = [...priorFyMonths, ...currentFyMonths]
+
+    // FX translator — invoked by the engine once per non-AUD tenant. Loads
+    // monthly-average rates for the entire 24-month window so both engine
+    // calls share a single rate-fetch round-trip per tenant.
+    const translate = async (
+      tenant: { functional_currency: string },
+      lines: import('@/lib/consolidation/types').XeroPLLineLike[],
+    ) => {
+      const pair = `${tenant.functional_currency}/AUD`
+      const rates = await loadFxRates(
+        supabase as unknown as Parameters<typeof loadFxRates>[0],
+        pair,
+        'monthly_average',
+        allMonths,
+      )
+      const { translated, missing } = translatePLAtMonthlyAverage(lines, rates)
+      const ratesUsed: Record<string, number> = {}
+      for (const [m, r] of rates.entries()) {
+        ratesUsed[`${pair}::${m}`] = r
+      }
+      return { translated, missing, ratesUsed }
+    }
+
+    const [currentRep, priorRep] = await Promise.all([
+      buildConsolidation(supabase, {
+        businessId: ids.bizId,
+        reportMonth: currentFyMonths[currentFyMonths.length - 1],
+        fiscalYear,
+        fyMonths: currentFyMonths,
+        translate,
+      }),
+      buildConsolidation(supabase, {
+        businessId: ids.bizId,
+        reportMonth: priorFyMonths[priorFyMonths.length - 1],
+        fiscalYear: fiscalYear - 1,
+        fyMonths: priorFyMonths,
+        translate,
+      }),
+    ])
+
+    // Merge consolidated lines from both reports — same (account_type,
+    // account_name) key, monthly_values unioned across the 24 months.
+    const lineMap = new Map<string, WideXeroRow>()
+    const ingest = (lines: { account_type: string; account_name: string; monthly_values: Record<string, number> }[]) => {
+      for (const l of lines) {
+        const key = `${l.account_type}::${l.account_name}`
+        const existing = lineMap.get(key)
+        if (existing) {
+          Object.assign(existing.monthly_values, l.monthly_values)
+        } else {
+          lineMap.set(key, {
+            account_name: l.account_name,
+            account_type: l.account_type as XeroAccountType,
+            monthly_values: { ...l.monthly_values },
+          })
+        }
+      }
+    }
+    ingest(priorRep.consolidated.lines)
+    ingest(currentRep.consolidated.lines)
+    xeroLines = Array.from(lineMap.values())
+    coverage = computeCoverageFromRows(xeroLines)
+  } else {
+    // Try the canonical D-13 path first: route through ForecastReadService.
+    // We need an active forecast for (business_id, fiscal_year) to do that.
+    const { data: activeForecast } = await supabase
+      .from('financial_forecasts')
+      .select('id')
+      .in('business_id', ids.all)
+      .eq('fiscal_year', fiscalYear)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (activeForecast?.id) {
+      // Let any D-18 invariant violation propagate — the route handler surfaces it as a 500.
+      const service = createForecastReadService(supabase)
+      composite = await service.getMonthlyComposite(activeForecast.id)
+    }
+  }
+
+  // The FX-engine path above already populated xeroLines + coverage. Skip the
+  // composite/fallback chain when useFxEngine is true; those paths read raw
+  // xero_pl_lines (or the composite that includes them) without FX awareness.
+  if (!useFxEngine && composite) {
     // Preferred: convert composite rows to the wide shape aggregatePeriod() expects.
     xeroLines = composite.rows.map(r => ({
       account_name: r.account_name,
@@ -99,7 +189,7 @@ export async function getHistoricalSummary(
       last_period: composite.coverage.last_period,
       expected_months: composite.coverage.expected_months,
     }
-  } else {
+  } else if (!useFxEngine) {
     // Fallback (no active forecast): read xero_pl_lines_wide_compat directly.
     // No D-18 freshness check applies — there are no forecast_pl_lines rows
     // to be stale against.
