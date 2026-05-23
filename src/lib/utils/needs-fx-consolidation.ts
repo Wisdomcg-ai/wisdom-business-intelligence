@@ -23,8 +23,7 @@ import { resolveBusinessIds } from './resolve-business-ids'
 const PRESENTATION_CURRENCY = 'AUD'
 
 export async function needsFxConsolidation(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
+  supabase: any, // matches the prevailing pattern across this codebase
   businessId: string,
 ): Promise<boolean> {
   const ids = await resolveBusinessIds(supabase, businessId)
