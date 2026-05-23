@@ -31,6 +31,14 @@
 import * as Sentry from '@sentry/nextjs'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+// Phase 67-03 — FX engine wiring for multi-currency consolidated businesses.
+import { needsFxConsolidation } from '@/lib/utils/needs-fx-consolidation'
+import { buildConsolidation } from '@/lib/consolidation/engine'
+import { loadFxRates, translatePLAtMonthlyAverage } from '@/lib/consolidation/fx'
+import {
+  generateFiscalMonthKeys,
+  DEFAULT_YEAR_START_MONTH,
+} from '@/lib/utils/fiscal-year-utils'
 
 /**
  * Phase 44.1 D-44.1-08 — soft-fail invariant gate.
@@ -204,7 +212,21 @@ export class ForecastReadService {
     // 2. Resolve dual IDs at the API boundary (Phase 21+ pattern).
     const ids = await resolveBusinessIds(this.supabase, forecast.business_id)
 
-    // 3. Load forecast_pl_lines + xero_pl_lines in parallel.
+    // Phase 67-03 — multi-currency consolidation gate. Mirrors the gate in
+    // historical-pl-summary.ts (Phase 67-02). When any active included tenant
+    // has a non-AUD functional_currency, route the xero-row aggregation
+    // through the consolidation engine (FX-translated via fx_rates) instead
+    // of the direct xero_pl_lines fetch. Single-tenant / all-AUD remain on
+    // the existing fast path — bit-identical. Emergency rollback:
+    // FORECAST_FX_VIA_ENGINE_DISABLE=true.
+    const fxEngineEnabled = process.env.FORECAST_FX_VIA_ENGINE_DISABLE !== 'true'
+    const useFxEngine =
+      fxEngineEnabled && (await needsFxConsolidation(this.supabase, ids.bizId))
+
+    // 3. Load forecast_pl_lines + xero rows in parallel. Forecast rows always
+    //    come from the direct table (the wizard saves in AUD); xero rows
+    //    come from the engine in the multi-currency branch or the direct
+    //    paginated read otherwise.
     //
     // xero_pl_lines is long-format (per Wave 2/5 migration); it has no
     // `fiscal_year` column — period_month is the time dimension. We do NOT
@@ -212,17 +234,19 @@ export class ForecastReadService {
     // need to look back to the BASELINE fiscal year, which in planning-season
     // mode is currentFY-1 (up to 3 fiscal years before forecast.fiscal_year).
     //
-    // Pagination is REQUIRED: PostgREST/Supabase JS client caps a single
-    // SELECT at 1000 rows by default. Multi-year tenants (e.g. JDS has ~1830
-    // rows over 22 months) silently truncate without pagination, dropping
-    // COGS/OpEx accounts that fall after the first page and producing
-    // zeroed-out aggregates that don't reconcile to Xero.
-    const [plLinesRes, xeroRowsAll] = await Promise.all([
+    // Pagination is REQUIRED for the direct path: PostgREST/Supabase JS client
+    // caps a single SELECT at 1000 rows by default. Multi-year tenants
+    // (e.g. JDS has ~1830 rows over 22 months) silently truncate without
+    // pagination, dropping COGS/OpEx accounts that fall after the first page
+    // and producing zeroed-out aggregates that don't reconcile to Xero.
+    const [plLinesRes, rowsFromXero] = await Promise.all([
       this.supabase
         .from('forecast_pl_lines')
         .select('account_code, account_name, category, forecast_months, computed_at')
         .eq('forecast_id', forecastId),
-      this.fetchAllXeroRows(ids.all),
+      useFxEngine
+        ? this.loadXeroRowsViaFxEngine(ids.bizId, forecast.fiscal_year as number)
+        : this.fetchAllXeroRows(ids.all).then((raw) => this.aggregateXeroRows(raw)),
     ])
 
     const assumptionsUpdatedAt: string | null = (forecast.updated_at as string) ?? null
@@ -245,8 +269,9 @@ export class ForecastReadService {
       forecast.is_completed === true,
     )
 
-    // 5. Aggregate xero_pl_lines from long → wide shape (D-09).
-    const rows = this.aggregateXeroRows(xeroRowsAll)
+    // 5. xero rows already in wide MonthlyCompositeRow shape (either from FX
+    //    engine projection or from the direct path's aggregateXeroRows).
+    const rows = rowsFromXero
 
     // 6. Coverage from the aggregated wide shape.
     const coverage = this.computeCoverage(rows)
@@ -473,6 +498,88 @@ export class ForecastReadService {
    * Long → wide aggregation. Group by account_code (with account_name fallback
    * for null codes), then sum amount per period_month across all tenants.
    */
+  /**
+   * Phase 67-03 — FX-aware projection. Routes through the consolidation engine
+   * for businesses with at least one non-AUD tenant. Two engine calls (prior
+   * FY + current FY) cover the lookback window that aggregatePeriod() consumers
+   * need; results are merged by (account_type, account_name) into the
+   * MonthlyCompositeRow shape the rest of this service produces.
+   *
+   * Trade-off: the engine output does not surface per-line account_code (it
+   * groups by alignment key). Downstream consumers that key on account_code
+   * will see null in the multi-currency branch. None of the wizard's Step 2 /
+   * Step 3 aggregations depend on account_code, but future consumers should
+   * be aware.
+   */
+  private async loadXeroRowsViaFxEngine(
+    businessId: string,
+    fiscalYear: number,
+  ): Promise<MonthlyCompositeRow[]> {
+    const yearStartMonth = DEFAULT_YEAR_START_MONTH
+    const currentFyMonths = generateFiscalMonthKeys(fiscalYear, yearStartMonth)
+    const priorFyMonths = generateFiscalMonthKeys(fiscalYear - 1, yearStartMonth)
+    const allMonths = [...priorFyMonths, ...currentFyMonths]
+
+    const translate = async (
+      tenant: { functional_currency: string },
+      lines: import('@/lib/consolidation/types').XeroPLLineLike[],
+    ) => {
+      const pair = `${tenant.functional_currency}/AUD`
+      const rates = await loadFxRates(
+        this.supabase as unknown as Parameters<typeof loadFxRates>[0],
+        pair,
+        'monthly_average',
+        allMonths,
+      )
+      const { translated, missing } = translatePLAtMonthlyAverage(lines, rates)
+      const ratesUsed: Record<string, number> = {}
+      for (const [m, r] of rates.entries()) {
+        ratesUsed[`${pair}::${m}`] = r
+      }
+      return { translated, missing, ratesUsed }
+    }
+
+    const [currentRep, priorRep] = await Promise.all([
+      buildConsolidation(this.supabase, {
+        businessId,
+        reportMonth: currentFyMonths[currentFyMonths.length - 1],
+        fiscalYear,
+        fyMonths: currentFyMonths,
+        translate,
+      }),
+      buildConsolidation(this.supabase, {
+        businessId,
+        reportMonth: priorFyMonths[priorFyMonths.length - 1],
+        fiscalYear: fiscalYear - 1,
+        fyMonths: priorFyMonths,
+        translate,
+      }),
+    ])
+
+    // Merge consolidated lines from both reports — same (account_type,
+    // account_name) key, monthly_values unioned across the 24 months.
+    const lineMap = new Map<string, MonthlyCompositeRow>()
+    const ingest = (lines: { account_type: string; account_name: string; monthly_values: Record<string, number> }[]) => {
+      for (const l of lines) {
+        const key = `${l.account_type}::${l.account_name}`
+        const existing = lineMap.get(key)
+        if (existing) {
+          Object.assign(existing.monthly_values, l.monthly_values)
+        } else {
+          lineMap.set(key, {
+            account_code: null, // engine drops code; see helper doc above
+            account_name: l.account_name,
+            account_type: this.normalizeAccountType(l.account_type),
+            monthly_values: { ...l.monthly_values },
+          })
+        }
+      }
+    }
+    ingest(priorRep.consolidated.lines)
+    ingest(currentRep.consolidated.lines)
+    return Array.from(lineMap.values())
+  }
+
   private aggregateXeroRows(xeroRows: ReadonlyArray<RawXeroRow>): MonthlyCompositeRow[] {
     const grouped = new Map<string, MonthlyCompositeRow>()
     for (const row of xeroRows) {
