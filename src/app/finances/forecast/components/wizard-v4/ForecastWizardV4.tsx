@@ -436,19 +436,35 @@ export function ForecastWizardV4({
                   isOneOff: false,
                 }));
 
-                const totalRevenue = (savedAssumptions.revenue?.lines || []).reduce(
+                // Phase 67 follow-up — prefer fresh /api/Xero/pl-summary totals + byMonth
+                // when they're already in state.priorYear (the fresh-fetch path at
+                // line ~247 ran first and called setPriorYearDisplay). Saved
+                // priorYearTotal sums can be stale/incomplete — visible on IICT FY25
+                // where OpEx total displayed as $1.0M (sum of saved priorYearTotals)
+                // while the monthly grid showed the real $2.6M. Use saved sums only
+                // as a fallback when the fresh fetch returned nothing usable.
+                const freshTotals = state.priorYear?.revenue?.total
+                  ? state.priorYear
+                  : null;
+                const savedTotalRevenue = (savedAssumptions.revenue?.lines || []).reduce(
                   (sum: number, l: { priorYearTotal?: number }) => sum + (l.priorYearTotal || 0), 0);
-                const totalCogs = (savedAssumptions.cogs?.lines || []).reduce(
+                const savedTotalCogs = (savedAssumptions.cogs?.lines || []).reduce(
                   (sum: number, l: { priorYearTotal?: number }) => sum + (l.priorYearTotal || 0), 0);
-                const totalOpex = (savedAssumptions.opex?.lines || []).reduce(
+                const savedTotalOpex = (savedAssumptions.opex?.lines || []).reduce(
                   (sum: number, l: { priorYearTotal?: number }) => sum + (l.priorYearTotal || 0), 0);
+                const totalRevenue = freshTotals?.revenue.total ?? savedTotalRevenue;
+                const totalCogs = freshTotals?.cogs.total ?? savedTotalCogs;
+                const totalOpex = freshTotals?.opex.total ?? savedTotalOpex;
+                const effectiveRevenueByMonth = freshTotals?.revenue.byMonth ?? revenueByMonth;
+                const effectiveCogsByMonth = freshTotals?.cogs.byMonth ?? cogsByMonth;
+                const effectiveOpexByMonth = freshTotals?.opex.byMonth ?? opexByMonth;
 
                 const priorYear: PriorYearData = {
-                  revenue: { total: Math.round(totalRevenue), byMonth: revenueByMonth, byLine: revenueByLine },
+                  revenue: { total: Math.round(totalRevenue), byMonth: effectiveRevenueByMonth, byLine: revenueByLine },
                   cogs: {
                     total: Math.round(totalCogs),
                     percentOfRevenue: totalRevenue ? Math.round((totalCogs / totalRevenue) * 1000) / 10 : 0,
-                    byMonth: cogsByMonth,
+                    byMonth: effectiveCogsByMonth,
                     byLine: cogsByLine,
                   },
                   grossProfit: {
@@ -456,7 +472,7 @@ export function ForecastWizardV4({
                     percent: totalRevenue ? Math.round(((totalRevenue - totalCogs) / totalRevenue) * 1000) / 10 : 0,
                     byMonth: {},
                   },
-                  opex: { total: Math.round(totalOpex), byMonth: opexByMonth, byLine: opexByLine },
+                  opex: { total: Math.round(totalOpex), byMonth: effectiveOpexByMonth, byLine: opexByLine },
                   // Restore otherIncome/otherExpenses when the snapshot carried them.
                   // Absent in the snapshot → omit (matches "no Other Income at all").
                   otherIncome: priorYearSnapshot?.otherIncome
