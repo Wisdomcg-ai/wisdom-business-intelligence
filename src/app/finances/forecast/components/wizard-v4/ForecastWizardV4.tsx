@@ -436,13 +436,23 @@ export function ForecastWizardV4({
                   isOneOff: false,
                 }));
 
-                // Phase 67 follow-up — prefer fresh /api/Xero/pl-summary totals + byMonth
-                // when they're already in state.priorYear (the fresh-fetch path at
-                // line ~247 ran first and called setPriorYearDisplay). Saved
-                // priorYearTotal sums can be stale/incomplete — visible on IICT FY25
-                // where OpEx total displayed as $1.0M (sum of saved priorYearTotals)
-                // while the monthly grid showed the real $2.6M. Use saved sums only
-                // as a fallback when the fresh fetch returned nothing usable.
+                // Phase 67 follow-up — when reconstructing prior-year totals from
+                // a saved snapshot, derive each total from the byMonth snapshot
+                // (preferred) when it has values, fall back to fresh state.priorYear
+                // totals next, and only use sum(line.priorYearTotal) as a final
+                // fallback. The per-line priorYearTotal values can be stale or
+                // incomplete — visible on IICT FY25 where OpEx total displayed as
+                // $1.0M (sum of saved priorYearTotals) even though the monthly
+                // grid (priorYearByMonth.opex) sums to the real ~$2.6M. The byMonth
+                // snapshot is captured at save-time alongside the priorYearTotal
+                // sums; preferring it keeps the displayed total internally
+                // consistent with the monthly grid the operator actually sees.
+                const sumByMonth = (m: Record<string, number> | undefined): number | null => {
+                  if (!m) return null;
+                  const keys = Object.keys(m);
+                  if (keys.length === 0) return null;
+                  return keys.reduce((s, k) => s + (Number(m[k]) || 0), 0);
+                };
                 const freshTotals = state.priorYear?.revenue?.total
                   ? state.priorYear
                   : null;
@@ -452,9 +462,12 @@ export function ForecastWizardV4({
                   (sum: number, l: { priorYearTotal?: number }) => sum + (l.priorYearTotal || 0), 0);
                 const savedTotalOpex = (savedAssumptions.opex?.lines || []).reduce(
                   (sum: number, l: { priorYearTotal?: number }) => sum + (l.priorYearTotal || 0), 0);
-                const totalRevenue = freshTotals?.revenue.total ?? savedTotalRevenue;
-                const totalCogs = freshTotals?.cogs.total ?? savedTotalCogs;
-                const totalOpex = freshTotals?.opex.total ?? savedTotalOpex;
+                const totalRevenue =
+                  sumByMonth(revenueByMonth) ?? freshTotals?.revenue.total ?? savedTotalRevenue;
+                const totalCogs =
+                  sumByMonth(cogsByMonth) ?? freshTotals?.cogs.total ?? savedTotalCogs;
+                const totalOpex =
+                  sumByMonth(opexByMonth) ?? freshTotals?.opex.total ?? savedTotalOpex;
                 const effectiveRevenueByMonth = freshTotals?.revenue.byMonth ?? revenueByMonth;
                 const effectiveCogsByMonth = freshTotals?.cogs.byMonth ?? cogsByMonth;
                 const effectiveOpexByMonth = freshTotals?.opex.byMonth ?? opexByMonth;
