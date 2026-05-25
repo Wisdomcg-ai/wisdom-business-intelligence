@@ -83,14 +83,19 @@ export async function getHistoricalSummary(
   let coverage: XeroCoverage | undefined
 
   if (useFxEngine) {
-    // Build a 24-month window (prior FY + current FY) so aggregatePeriod can
-    // slice prior_fy and current_ytd from the same merged dataset. Two engine
-    // calls — each one respects its own fiscalYear-scoped eliminations and
-    // budget mode (we ignore budget outputs; the wizard only uses
-    // consolidated.lines).
+    // Build a 36-month window (fiscalYear-2 + fiscalYear-1 + fiscalYear) so
+    // aggregatePeriod can slice prior_fy and current_ytd from the same merged
+    // dataset, including in planning-season mode where calculateForecastPeriods
+    // returns baseline = fiscalYear-2 (extended forecast: working on FY27
+    // means baseline = FY25, current YTD = FY26). A 24-month window
+    // (fiscalYear + fiscalYear-1) skipped the baseline entirely → prior_fy
+    // came back empty and the wizard fell back to stale localStorage cache.
+    // Three engine calls — each respects its own fiscalYear-scoped
+    // eliminations and budget mode (we ignore budget outputs).
     const currentFyMonths = generateFiscalMonthKeys(fiscalYear, yearStartMonth)
     const priorFyMonths = generateFiscalMonthKeys(fiscalYear - 1, yearStartMonth)
-    const allMonths = [...priorFyMonths, ...currentFyMonths]
+    const baselineFyMonths = generateFiscalMonthKeys(fiscalYear - 2, yearStartMonth)
+    const allMonths = [...baselineFyMonths, ...priorFyMonths, ...currentFyMonths]
 
     // FX translator — invoked by the engine once per non-AUD tenant. Loads
     // monthly-average rates for the entire 24-month window so both engine
@@ -114,7 +119,7 @@ export async function getHistoricalSummary(
       return { translated, missing, ratesUsed }
     }
 
-    const [currentRep, priorRep] = await Promise.all([
+    const [currentRep, priorRep, baselineRep] = await Promise.all([
       buildConsolidation(supabase, {
         businessId: ids.bizId,
         reportMonth: currentFyMonths[currentFyMonths.length - 1],
@@ -129,10 +134,17 @@ export async function getHistoricalSummary(
         fyMonths: priorFyMonths,
         translate,
       }),
+      buildConsolidation(supabase, {
+        businessId: ids.bizId,
+        reportMonth: baselineFyMonths[baselineFyMonths.length - 1],
+        fiscalYear: fiscalYear - 2,
+        fyMonths: baselineFyMonths,
+        translate,
+      }),
     ])
 
-    // Merge consolidated lines from both reports — same (account_type,
-    // account_name) key, monthly_values unioned across the 24 months.
+    // Merge consolidated lines from all three reports — same (account_type,
+    // account_name) key, monthly_values unioned across the 36 months.
     const lineMap = new Map<string, WideXeroRow>()
     const ingest = (lines: { account_type: string; account_name: string; monthly_values: Record<string, number> }[]) => {
       for (const l of lines) {
@@ -149,6 +161,7 @@ export async function getHistoricalSummary(
         }
       }
     }
+    ingest(baselineRep.consolidated.lines)
     ingest(priorRep.consolidated.lines)
     ingest(currentRep.consolidated.lines)
     xeroLines = Array.from(lineMap.values())
