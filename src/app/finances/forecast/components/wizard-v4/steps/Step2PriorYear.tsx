@@ -125,6 +125,10 @@ import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH, getCurrentFiscalYear, i
 import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBanner';
 import type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read-service';
 import { ConsolidatedMembersBadge } from '../components/ConsolidatedMembersBadge';
+// Phase 67-04 — reuse the monthly-report banner so wizard + report share
+// identical FX-missing visuals + copy. The banner short-circuits to null
+// when missing_rates is empty, so it's safe to render unconditionally.
+import FXRateMissingBanner from '@/app/finances/monthly-report/components/FXRateMissingBanner';
 
 const MONTHS = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
 
@@ -157,6 +161,11 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
   // D-44.2-03 read-path quality gate; surfaces in DataIntegrityBanner.
   const [dataQuality, setDataQuality] = useState<DataQuality>('verified')
   const [perTenantQuality, setPerTenantQuality] = useState<PerTenantQuality[]>([])
+
+  // Phase 67-04 — FX missing-rate signaling. Surfaced only when the engine
+  // path returns fx_context.missing_rates (single-tenant / all-AUD businesses
+  // return undefined → banner stays hidden).
+  const [missingFxRates, setMissingFxRates] = useState<{ currency_pair: string; period: string }[]>([])
 
   // Issue B (hotfix step2-secondaries) — pl-summary lookup_error visibility.
   // When the resolver finds a business/profile mapping but no xero_connections
@@ -215,6 +224,12 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
         if (Array.isArray(data.summary?.per_tenant_quality)) {
           setPerTenantQuality(data.summary.per_tenant_quality);
         }
+        // Phase 67-04 — surface missing FX rates so the operator knows when
+        // a foreign-currency tenant's month was left untranslated.
+        const fxMissing = Array.isArray(data.summary?.fx_context?.missing_rates)
+          ? data.summary.fx_context.missing_rates
+          : [];
+        setMissingFxRates(fxMissing);
         // Issue B (hotfix step2-secondaries) — surface dual-id lookup
         // failures. The route returns `lookup_error: string` when the
         // resolver found a business/profile mapping but no xero_connections
@@ -985,6 +1000,14 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
           IICT-style "phantom mismatch" trap where the operator reconciles
           against an external report whose consolidation membership differs. */}
       <ConsolidatedMembersBadge businessId={businessId} />
+      {/* Phase 67-04 — when any month's foreign-currency tenant lacks an
+          fx_rates entry, the engine reports it and the cell stays untranslated.
+          Banner explains the gap and links to /admin/consolidation to add the
+          rate. Single-tenant / all-AUD businesses never populate this list. */}
+      <FXRateMissingBanner
+        missingRates={missingFxRates}
+        onAddRate={() => { window.open('/admin/consolidation', '_blank'); }}
+      />
       {/* D-44.2-02 — read-path data integrity banner. Renders nothing when verified.
           Suppress 'no_sync' when actuals are already loaded — the API returns
           'no_sync' if xero_connections.is_active is false or sync_jobs is in

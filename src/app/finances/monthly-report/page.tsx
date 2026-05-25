@@ -113,6 +113,55 @@ export default function MonthlyReportPage() {
     return 'report'
   })
 
+  // Phase 67 deferred — for multi-currency businesses (IICT today), the
+  // non-consolidated P&L / BS / Cashflow tabs sum tenants without FX
+  // translation and show mixed-currency rows. Auto-redirect those tabs to
+  // their consolidated equivalents so the user never lands on a broken view.
+  // Single-tenant and all-AUD multi-tenant businesses stay unchanged.
+  const [isMultiCurrency, setIsMultiCurrency] = useState(false)
+  useEffect(() => {
+    if (!businessId) {
+      setIsMultiCurrency(false)
+      return
+    }
+    let aborted = false
+    fetch(`/api/Xero/active-tenants?business_id=${encodeURIComponent(businessId)}`)
+      .then(async (res) => {
+        if (!res.ok || aborted) return
+        const data = await res.json()
+        if (aborted) return
+        const tenants = Array.isArray(data.tenants) ? data.tenants : []
+        const fx = tenants.some(
+          (t: { functional_currency?: string; include_in_consolidation?: boolean }) =>
+            (t.include_in_consolidation !== false) &&
+            (t.functional_currency || 'AUD').toUpperCase() !== 'AUD',
+        )
+        setIsMultiCurrency(fx)
+      })
+      .catch(() => {
+        if (!aborted) setIsMultiCurrency(false)
+      })
+    return () => {
+      aborted = true
+    }
+  }, [businessId])
+
+  useEffect(() => {
+    if (!isMultiCurrency) return
+    const consolEquivalent: Partial<Record<ReportTab, ReportTab>> = {
+      report: 'consolidated',
+      'balance-sheet': 'balance-sheet-consolidated',
+      cashflow: 'cashflow-consolidated',
+    }
+    const target = consolEquivalent[activeTab]
+    if (target) {
+      setActiveTab(target)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('monthly-report-active-tab', target)
+      }
+    }
+  }, [isMultiCurrency, activeTab])
+
   // Hooks
   const {
     report,

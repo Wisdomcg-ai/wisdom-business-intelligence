@@ -81,6 +81,10 @@ export async function getHistoricalSummary(
   let composite: MonthlyComposite | null = null
   let xeroLines: WideXeroRow[] = []
   let coverage: XeroCoverage | undefined
+  // Phase 67-04 — populated only on the FX-engine path. Stays undefined for
+  // single-tenant / all-AUD businesses so the wizard can detect "not relevant"
+  // vs "no missing rates" cleanly.
+  let fxContext: HistoricalPLSummary['fx_context'] | undefined
 
   if (useFxEngine) {
     // Build a 36-month window (fiscalYear-2 + fiscalYear-1 + fiscalYear) so
@@ -166,6 +170,26 @@ export async function getHistoricalSummary(
     ingest(currentRep.consolidated.lines)
     xeroLines = Array.from(lineMap.values())
     coverage = computeCoverageFromRows(xeroLines)
+
+    // Phase 67-04 — merge fx_context across the 3 engine calls so Step 2 can
+    // surface a single missing-rate banner. Dedup missing entries on
+    // currency_pair+period (each engine call sees the FY's full month window;
+    // overlapping months would otherwise produce duplicate banner rows).
+    const ratesUsedMerged: Record<string, number> = {}
+    const missingSeen = new Set<string>()
+    const missingMerged: { currency_pair: string; period: string }[] = []
+    for (const rep of [baselineRep, priorRep, currentRep]) {
+      const ctx = rep.fx_context
+      if (!ctx) continue
+      Object.assign(ratesUsedMerged, ctx.rates_used)
+      for (const m of ctx.missing_rates) {
+        const key = `${m.currency_pair}::${m.period}`
+        if (missingSeen.has(key)) continue
+        missingSeen.add(key)
+        missingMerged.push(m)
+      }
+    }
+    fxContext = { rates_used: ratesUsedMerged, missing_rates: missingMerged }
   } else {
     // Try the canonical D-13 path first: route through ForecastReadService.
     // We need an active forecast for (business_id, fiscal_year) to do that.
@@ -288,6 +312,7 @@ export async function getHistoricalSummary(
     coverage,
     data_quality: dataQuality.data_quality,
     per_tenant_quality: dataQuality.per_tenant_quality,
+    fx_context: fxContext,
   }
 }
 
