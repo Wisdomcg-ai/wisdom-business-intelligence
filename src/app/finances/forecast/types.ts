@@ -597,6 +597,15 @@ export interface HistoricalPLSummary {
   data_quality?: import('@/lib/services/forecast-read-service').DataQuality
   per_tenant_quality?: import('@/lib/services/forecast-read-service').PerTenantQuality[]
 
+  // Phase 67-04 — surfaced when the multi-currency engine path produced this
+  // summary. Lets Step 2 render a missing-rate banner so the user knows when
+  // any month's foreign-currency tenant was left untranslated (never silently
+  // 1:1 — engine surfaces the gap, banner explains it).
+  fx_context?: {
+    rates_used: Record<string, number>
+    missing_rates: { currency_pair: string; period: string }[]
+  }
+
   // Forecast period - what we're planning
   forecast_period?: {
     start_month: string

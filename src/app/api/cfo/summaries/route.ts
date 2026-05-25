@@ -3,6 +3,17 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
+// Phase 67 deferred — route multi-currency businesses (e.g. IICT) through the
+// FX engine so HKD tenant rows are translated to AUD before summing. Single-
+// tenant and all-AUD businesses keep the bulk-query fast path.
+import { needsFxConsolidation } from '@/lib/utils/needs-fx-consolidation'
+import { buildConsolidation } from '@/lib/consolidation/engine'
+import { loadFxRates, translatePLAtMonthlyAverage } from '@/lib/consolidation/fx'
+import {
+  generateFiscalMonthKeys,
+  getFiscalYear,
+  DEFAULT_YEAR_START_MONTH,
+} from '@/lib/utils/fiscal-year-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -170,11 +181,72 @@ export async function GET(request: NextRequest) {
     const profileIds = Array.from(profileIdByBiz.values())
     const allRelatedIds = [...bizIds, ...profileIds]
 
-    // Xero P&L actuals for the requested month (keyed by businesses.id)
+    // Xero P&L actuals for the requested month (keyed by businesses.id).
+    // Multi-currency businesses (e.g. IICT — 2 AUD + 1 HKD tenant) hit the FX
+    // engine path below instead of using these bulk rows directly.
     const { data: xeroLines } = await supabase
       .from('xero_pl_lines_wide_compat')
       .select('business_id, account_type, monthly_values')
       .in('business_id', allRelatedIds)
+
+    // Phase 67 deferred — identify which businesses are multi-currency, then
+    // call buildConsolidation once per such business to get AUD-translated
+    // P&L lines for the requested month's fiscal year. Done in parallel; only
+    // IICT-shaped businesses trigger any work, so the cost is negligible for
+    // typical CFO portfolios.
+    const fxYear = getFiscalYear(
+      new Date(`${monthKey}-15T00:00:00.000Z`),
+      DEFAULT_YEAR_START_MONTH,
+    )
+    const fxMonths = generateFiscalMonthKeys(fxYear, DEFAULT_YEAR_START_MONTH)
+    const fxLinesByBiz = new Map<string, { account_type: string; monthly_values: Record<string, number> }[]>()
+    await Promise.all(
+      businesses.map(async (biz) => {
+        try {
+          const needsFx = await needsFxConsolidation(supabase, biz.id)
+          if (!needsFx) return
+          const translate = async (
+            tenant: { functional_currency: string },
+            lines: import('@/lib/consolidation/types').XeroPLLineLike[],
+          ) => {
+            const pair = `${tenant.functional_currency}/AUD`
+            const rates = await loadFxRates(
+              supabase as unknown as Parameters<typeof loadFxRates>[0],
+              pair,
+              'monthly_average',
+              fxMonths,
+            )
+            const { translated, missing } = translatePLAtMonthlyAverage(lines, rates)
+            const ratesUsed: Record<string, number> = {}
+            for (const [m, r] of rates.entries()) {
+              ratesUsed[`${pair}::${m}`] = r
+            }
+            return { translated, missing, ratesUsed }
+          }
+          const report = await buildConsolidation(supabase, {
+            businessId: biz.id,
+            reportMonth: monthKey,
+            fiscalYear: fxYear,
+            fyMonths: fxMonths,
+            translate,
+          })
+          fxLinesByBiz.set(
+            biz.id,
+            report.consolidated.lines.map((l) => ({
+              account_type: l.account_type,
+              monthly_values: l.monthly_values,
+            })),
+          )
+        } catch (err) {
+          // Log and fall back to bulk-query path for this business so a single
+          // FX failure doesn't black-hole the whole coach dashboard.
+          Sentry.captureException(err, {
+            tags: { route: 'cfo/summaries', subsystem: 'fx_engine' },
+            extra: { business_id: biz.id, month: monthKey },
+          } as any)
+        }
+      }),
+    )
 
     // Forecast P&L budget for the requested month
     // forecast.business_id may be business_profiles.id; load forecasts for all related ids
@@ -242,8 +314,13 @@ export async function GET(request: NextRequest) {
       const bizProfileId = profileIdByBiz.get(biz.id)
       const bizRelatedIds = bizProfileId ? [biz.id, bizProfileId] : [biz.id]
 
-      // Filter P&L lines for this business
-      const bizXeroLines = (xeroLines ?? []).filter(l => bizRelatedIds.includes(l.business_id))
+      // Filter P&L lines for this business. Multi-currency businesses get the
+      // engine-translated lines; everyone else uses the bulk-query rows
+      // unchanged (single-tenant or all-AUD multi-tenant — both safe to sum
+      // directly).
+      const bizXeroLines = fxLinesByBiz.has(biz.id)
+        ? fxLinesByBiz.get(biz.id)!
+        : (xeroLines ?? []).filter(l => bizRelatedIds.includes(l.business_id))
 
       const revenue = sumMonthlyValues(
         bizXeroLines.filter(l => l.account_type === 'revenue' || l.account_type === 'other_income'),
