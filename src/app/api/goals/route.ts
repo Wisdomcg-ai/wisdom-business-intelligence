@@ -38,7 +38,13 @@ export async function GET(request: Request) {
       .maybeSingle()
 
     if (!businessAccess && !businessOwnerOrCoach) {
-      return NextResponse.json({ goals: null, error: 'Access denied' }, { status: 403 })
+      // Super-admin bypass — same pattern as PR #213 on the other 6
+      // coach-or-owner gates. super_admin users aren't the coach or owner
+      // of every business but need read access (support, ops, audits).
+      const { data: isSuper } = await supabase.rpc('auth_is_super_admin')
+      if (!isSuper) {
+        return NextResponse.json({ goals: null, error: 'Access denied' }, { status: 403 })
+      }
     }
 
     // business_financial_goals uses business_profiles.id as its business_id,
