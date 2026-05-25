@@ -1,8 +1,25 @@
 ---
 phase: 67
 slug: multi-currency-consolidation-fix
-status: P1 in progress
+status: COMPLETE (verified against Calxa 2026-05-26)
 created: 2026-05-23
+completed: 2026-05-26
+---
+
+## Close-out note (2026-05-26)
+
+**Outcome: wizard reconciles to live Calxa output within $36 net profit on IICT FY25.** Original investigation thought there was a $70k gap; turned out to be a stale reference — the IICT Finance Report PDF Matt was reconciling against (prepared 9 July 2025) included a 4th member, `IICT Airwallex`, that has since been removed from Calxa's IICT Consolidated group. Airwallex contributed ~$271k income + ~$202k expense (net $70k loss reduction). Re-run against today's 3-tenant Calxa configuration matches the wizard to within rounding.
+
+**Scope of impact:** only multi-currency clients hit the FX engine path. Per Matt's confirmation, only IICT triggers it. Dragon Roofing (2 AUD tenants) uses the direct multi-tenant aggregation. Everyone else is single-tenant AUD and unchanged.
+
+**Deferred (multi-currency only, low priority):**
+- 67-03 (sibling reads): `cfo/summaries`, `Xero/sync-forecast`, monthly-report non-consolidated routes
+- 67-04: UI signaling for translation context + missing-rate warnings
+- 0.12% FX rate-source drift between OXR (this app) and Calxa's built-in feed
+- Airwallex CSV ingestion — explicitly out of scope per Matt
+
+**Live Calxa investigation captured at** `/tmp/calxa-methodology-iict.md` (transient — copy somewhere durable if needed for future sessions).
+
 ---
 
 # Phase 67 — Multi-Currency Consolidation Fix

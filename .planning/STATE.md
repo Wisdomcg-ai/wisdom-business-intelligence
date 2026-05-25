@@ -2,19 +2,22 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
-status: Phase 65 soak in progress (66 complete)
-last_updated: "2026-05-17T00:00:00.000Z"
-last_activity: 2026-05-17 -- Phase 66 verified + completed; Phase 65 LOG_ONLY soak running
+status: Phase 67 COMPLETE (multi-currency consolidation fix landed for IICT)
+last_updated: "2026-05-26T00:00:00.000Z"
+last_activity: 2026-05-26 -- Phase 67-01/02/03 shipped (9 PRs); IICT FY25 reconciled to live Calxa within $36
 progress:
-  total_phases: 55
-  completed_phases: 24
-  total_plans: 131
-  completed_plans: 128
+  total_phases: 56
+  completed_phases: 25
+  total_plans: 134
+  completed_plans: 131
 ---
 
 # Project State
 
 ## Current Position
+
+Phase: 67 (multi-currency-consolidation-fix) — **COMPLETE** (3 plans shipped 2026-05-23..26; verified against Calxa 2026-05-26). Triggered by IICT (3 Xero tenants — 2 AUD + 1 HKD) showing wrong FY25 in the forecast wizard. **67-01:** captured Xero `BaseCurrency` into `xero_connections.functional_currency` (PR #214 + backfill script applied — IICT Group Limited flipped AUD→HKD). **67-02:** routed `historical-pl-summary.ts` through the consolidation engine when `needsFxConsolidation` returns true (PR #215). **67-03 (partial):** routed `forecast-read-service.getMonthlyComposite` through the engine (PR #216). Plus collateral fixes — PR #217 (balance-sheet 400 for multi-tenant cash_only), #218 (wizard saved-snapshot vs fresh-fetch race), #219 (totals from byMonth snapshot), #220 (goals 403 super_admin bypass), #221 (36-month engine window for planning-season baselines), and #213 (super_admin bypass on 6 coach-or-owner routes). **Reconciliation verified 2026-05-26** against live Calxa Multi-Column P&L for IICT FY25 — wizard matches within $36 net profit on -$147k total. The original "old PDF showed -$77k, wizard shows -$147k" $70k gap turned out to be Calxa's IICT Consolidated had a 4th member (`IICT Airwallex`, CSV-imported) when the PDF was prepared that's since been removed; wizard is correct against the current 3-tenant configuration. Calxa methodology spec captured at `/tmp/calxa-methodology-iict.md` (or wherever the investigation session saved it). **Deferred:** cfo/summaries multi-currency, `Xero/sync-forecast` push-back policy, monthly-report non-consolidated views — affects multi-currency businesses only (IICT). Multi-tenant single-currency clients (Dragon Roofing — 2 AUD tenants) unaffected. All other clients are single-tenant AUD and bypass the engine path entirely.
+Plan: 3 of 4 — 67-01/02/03 complete; 67-04 (UI signaling for translation context + missing-rate warnings) optional, not started.
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
