@@ -23,7 +23,7 @@ Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, ve
 Plan: 4 of 4 — phase complete
 
 Phase: 65 (section-permission-api-enforcement) — **READY FOR CUTOVER** (Waves 1-2 shipped via PR #197; Wave 65-04 code+runbook shipped via PR #224 2026-05-26). LOG_ONLY soak ran from 2026-05-17 → 2026-05-26 (9 days). Wave 65-04 PR added 3 ENFORCE-mode integration tests (9/9 pass, pinning both 403 + LOG_ONLY rollback paths) + a complete cutover runbook at `.planning/phases/65-section-permission-api-enforcement/65-04-ENFORCE-CUTOVER.md` with exact Vercel CLI commands, Sentry verification protocol, and kill switch. **NEXT STEP IS HUMAN-ONLY: Matt runs `vercel env add SECTION_PERMISSION_ENFORCE production` + `vercel --prod` per the runbook.** Wave 65-05 (PR risk assessment + phase close-out) follows the actual cutover.
-Phase: 46 (Server-Side Hardening) — **PARTIAL** (3/4 plans shipped). Plan 46-04 deferred ≥2026-05-10 per cooling period.
+Phase: 46 (Server-Side Hardening) — **COMPLETE** (4/4 plans shipped). 46-04 (SEC-04 PART 2 + SEC-07 + SEC-08) merged via PR #162 on 2026-05-10 — hardened encryption (no plaintext fallbacks), fail-loud Sentry config, Sentry-first logging swept across ~120 API routes (console.error count dropped 98%). Production has been running on the hardened code for 16 days with no decrypt or boot-throw alerts in Sentry — the post-merge 24-48h health checkpoint is de-facto satisfied. Phase 47 (Input Validation Rollout) is now UNBLOCKED.
 Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-05-08). All 56 orphan-prone FKs covered: 50 SET NULL + 4 CASCADE + 2 RESTRICT/CASCADE. fk-policy.md is the authoritative reference going forward.
 Phase: 53 (Xero Connection Durability) — **COMPLETE** (5/5 plans shipped 2026-05-06). 53-01 server-side disconnect with dual-ID purge (PR #107). 53-03 token-rotation race holes closed + tightened deactivation policy (commit b5a233d, merged). 53-02 centralized Xero refresh through token-manager + deleted dead refresh-tokens route (PR #109). 53-04 proactive refresh cron at `0 */6 * * *` UTC (PR #110). **53-05 Sentry capture + coach dashboard health pill (PR opened 2026-05-06).** Durability story is whole — JDS root cause permanently closed.
 Phase: 54 (Xero Employee Import Completion) — **PARTIAL** (1/2 plans shipped 2026-05-06). **54-01 PayRun-derived hours + salary fallback (PR opening 2026-05-06).** ENTEREARNINGSRATE employees (timesheet-driven payroll, JDS default) now return populated hours_per_week + annual_salary derived from last 4 POSTED PayRuns; PayTemplate values WIN via ??= precedence; new optional `derived_from` provenance field on response. 54-02 (soft auto-fill on empty Step 4 + new-employees banner) is next.
@@ -38,10 +38,10 @@ Last activity: 2026-05-26
 
 ## Next eligible work
 
-- **46-04** (after 2026-05-10 cooling period)
+- **Phase 47** (Input Validation Rollout) — UNBLOCKED (46-04 has been live for 16 days). Most concrete v1.1 work remaining.
+- **Phase 54-02** (Xero employee soft auto-fill + new-employees banner). Builds on shipped 54-01 PayRun derivation.
 - **Phase 51** (Forecast Wizard UX — emergent from 2026-05-04 review). Items deferred from Phase 50: Step 3 thousands-separator restoration, Step 4 departure flow, Step 4 part-time/casual flexibility, Step 5 $-vs-% toggle, Step 5 simpler layout, Step 6 visibility/undo/add. Needs operator design conversations before planning.
 - **Phase 52** (Xero employee data — emergent). Step 4 pay cycle, standard hours, hourly rate from Xero API. Pure research first.
-- **Phase 47** (Input Validation Rollout) — blocked on 46-04.
 - **44.2 UI surface spot-checks** — non-blocking; operator on deployed preview.
 
 ## Current Milestone: v1.1 — Codebase Hardening
