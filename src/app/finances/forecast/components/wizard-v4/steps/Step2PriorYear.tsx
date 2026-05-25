@@ -124,6 +124,7 @@ const ACCOUNTING_PACKAGES = [
 import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH, getCurrentFiscalYear, isNearYearEnd } from '@/lib/utils/fiscal-year-utils';
 import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBanner';
 import type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read-service';
+import { ConsolidatedMembersBadge } from '../components/ConsolidatedMembersBadge';
 
 const MONTHS = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
 
@@ -979,6 +980,11 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
 
   return (
     <div className="space-y-6">
+      {/* Phase 67 Tier B — consolidated-member badge. Renders only when >1
+          active tenant; annotates non-AUD tenants with FX. Prevents the
+          IICT-style "phantom mismatch" trap where the operator reconciles
+          against an external report whose consolidation membership differs. */}
+      <ConsolidatedMembersBadge businessId={businessId} />
       {/* D-44.2-02 — read-path data integrity banner. Renders nothing when verified.
           Suppress 'no_sync' when actuals are already loaded — the API returns
           'no_sync' if xero_connections.is_active is false or sync_jobs is in
