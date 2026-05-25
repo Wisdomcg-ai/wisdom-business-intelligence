@@ -61,3 +61,9 @@ scripts/audit-xero-pl-lines-duplicates-report-*.md
 # Phase 44.1 canary snapshot files (runtime artifacts containing business data;
 # emitted by scripts/canary-forecast-save.ts — never committed)
 .planning/phases/44.1-atomic-save-hardening-and-staged-rollout/canary-snapshot-*.json
+
+# macOS Finder duplicates ("file 2.md", "file 3.ts", etc.) — generated when
+# someone duplicates a file in Finder instead of copy/paste. Keep these out
+# of the working tree so they never accumulate again.
+* [0-9].*
+* [0-9][0-9].*
