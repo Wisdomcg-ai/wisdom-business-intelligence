@@ -516,9 +516,14 @@ export class ForecastReadService {
     fiscalYear: number,
   ): Promise<MonthlyCompositeRow[]> {
     const yearStartMonth = DEFAULT_YEAR_START_MONTH
+    // Phase 67 follow-up — 36-month window (baseline + prior + current) so
+    // planning-season baselines (fiscalYear-2 per calculateForecastPeriods)
+    // are covered. A 24-month window skipped the baseline → consumer's
+    // aggregatePeriod found no months and returned empty.
     const currentFyMonths = generateFiscalMonthKeys(fiscalYear, yearStartMonth)
     const priorFyMonths = generateFiscalMonthKeys(fiscalYear - 1, yearStartMonth)
-    const allMonths = [...priorFyMonths, ...currentFyMonths]
+    const baselineFyMonths = generateFiscalMonthKeys(fiscalYear - 2, yearStartMonth)
+    const allMonths = [...baselineFyMonths, ...priorFyMonths, ...currentFyMonths]
 
     const translate = async (
       tenant: { functional_currency: string },
@@ -539,7 +544,7 @@ export class ForecastReadService {
       return { translated, missing, ratesUsed }
     }
 
-    const [currentRep, priorRep] = await Promise.all([
+    const [currentRep, priorRep, baselineRep] = await Promise.all([
       buildConsolidation(this.supabase, {
         businessId,
         reportMonth: currentFyMonths[currentFyMonths.length - 1],
@@ -554,10 +559,17 @@ export class ForecastReadService {
         fyMonths: priorFyMonths,
         translate,
       }),
+      buildConsolidation(this.supabase, {
+        businessId,
+        reportMonth: baselineFyMonths[baselineFyMonths.length - 1],
+        fiscalYear: fiscalYear - 2,
+        fyMonths: baselineFyMonths,
+        translate,
+      }),
     ])
 
-    // Merge consolidated lines from both reports — same (account_type,
-    // account_name) key, monthly_values unioned across the 24 months.
+    // Merge consolidated lines from all three reports — same (account_type,
+    // account_name) key, monthly_values unioned across the 36 months.
     const lineMap = new Map<string, MonthlyCompositeRow>()
     const ingest = (lines: { account_type: string; account_name: string; monthly_values: Record<string, number> }[]) => {
       for (const l of lines) {
@@ -575,6 +587,7 @@ export class ForecastReadService {
         }
       }
     }
+    ingest(baselineRep.consolidated.lines)
     ingest(priorRep.consolidated.lines)
     ingest(currentRep.consolidated.lines)
     return Array.from(lineMap.values())
