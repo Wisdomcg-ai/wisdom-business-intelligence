@@ -1,0 +1,96 @@
+{
+  "tenant": "Just Digital Signage",
+  "businessProfileId": "900aa935-ae8c-4913-baf7-169260fa19ef",
+  "forecastId": "1a03be71-e6c8-4755-8a5b-1035128197dc",
+  "forecastName": "FY2027 Forecast (May 2026)",
+  "fiscalYear": 2027,
+  "forecastDuration": 3,
+  "forecastStartMonth": "2026-07",
+  "forecastEndMonth": "2029-06",
+  "forecastUpdatedAt": "2026-05-07T11:25:23.047868+00:00",
+  "capturedAt": "2026-05-07T11:50:44.703Z",
+  "wizard": {
+    "y1": {
+      "cogs": 76150793,
+      "opex": 727036,
+      "revenue": 10799999,
+      "netProfit": -68911091,
+      "teamCosts": 2547207,
+      "grossProfit": -65350794,
+      "investments": 0,
+      "otherIncome": 0,
+      "depreciation": 0,
+      "netProfitPct": -638.1,
+      "otherExpenses": 0,
+      "subscriptions": 286054,
+      "grossProfitPct": -605.1,
+      "xeroOtherExpense": 0
+    },
+    "y2": {
+      "cogs": 84611993,
+      "opex": 765620,
+      "revenue": 11999999,
+      "netProfit": -76295873,
+      "teamCosts": 2623623,
+      "grossProfit": -72611994,
+      "investments": 0,
+      "otherIncome": 0,
+      "depreciation": 0,
+      "netProfitPct": -635.8,
+      "otherExpenses": 0,
+      "subscriptions": 294636,
+      "grossProfitPct": -605.1,
+      "xeroOtherExpense": 0
+    },
+    "y3": {
+      "cogs": 91663014,
+      "opex": 798990,
+      "revenue": 13000002,
+      "netProfit": -82467809,
+      "teamCosts": 2702332,
+      "grossProfit": -78663012,
+      "investments": 0,
+      "otherIncome": 0,
+      "depreciation": 0,
+      "netProfitPct": -634.4,
+      "otherExpenses": 0,
+      "subscriptions": 303475,
+      "grossProfitPct": -605.1,
+      "xeroOtherExpense": 0
+    }
+  },
+  "serverY1": {
+    "revenue": 10870632,
+    "cogs": 6669677,
+    "grossProfit": 4200955,
+    "opex": 3821771,
+    "otherIncome": 0,
+    "otherExpense": 0,
+    "netProfit": 379184,
+    "monthsCovered": 12,
+    "rowCount": 84
+  },
+  "serverVsWizardDelta": {
+    "revenue": 70633,
+    "cogs": -69481116,
+    "opex": 547528,
+    "netProfit": 69290275
+  },
+  "subscriptions": {
+    "count": 0,
+    "totalMonthly": 0,
+    "totalAnnual": 0,
+    "accountCodes": [],
+    "accountCodesCount": 0,
+    "vendors": []
+  },
+  "varianceThreshold": {
+    "absolute": 10,
+    "relative": 0.0005,
+    "applies": "Y1 NP delta must be within max(absolute, relative * y1.revenue)"
+  },
+  "notes": [
+    "Server Y1 netProfit (379184) differs from wizard.year1.netProfit (-68911091) by >$100. Possible client/server formula drift OR pl_lines staleness (see ForecastReadService computed_at invariant). Baseline the wizard number for QA — that's what the operator saw — but file the gap in the QA report.",
+    "subscription_budgets has 0 active rows — Phase 57 Step 5 will be empty for this tenant until the operator runs the new wizard flow. This is expected for a pre-Phase-57 baseline."
+  ]
+}
