@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Shield, Lock, Mail, AlertCircle } from 'lucide-react'
 import { getUserSystemRole } from '@/lib/auth/roles'
+import { isLockTimeoutError, recoverFromLockTimeout } from '@/lib/auth/lock-recovery'
 
 // Same-origin relative paths only — blocks open-redirect.
 function safeNext(raw: string | null): string | null {
@@ -67,6 +68,11 @@ function AdminLoginInner() {
 
     } catch (err) {
       console.error('Login error:', err)
+      if (isLockTimeoutError(err)) {
+        setError('Session error detected. Resetting browser state and reloading…')
+        await recoverFromLockTimeout()
+        return
+      }
       setError('An unexpected error occurred')
       setLoading(false)
     }

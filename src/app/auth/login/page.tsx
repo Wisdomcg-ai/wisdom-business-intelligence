@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, Mail, Lock, Building2, AlertCircle } from 'lucide-react'
 import { getUserSystemRole } from '@/lib/auth/roles'
+import { isLockTimeoutError, recoverFromLockTimeout } from '@/lib/auth/lock-recovery'
 
 function safeNext(raw: string | null): string | null {
   if (!raw) return null
@@ -114,6 +115,14 @@ function LoginPageInner() {
         router.push(next ?? '/dashboard')
       }
     } catch (err: any) {
+      if (isLockTimeoutError(err)) {
+        // Orphaned navigator.locks entry from a previous tab / JWT key
+        // rotation — auth call hung past the 10s lockAcquireTimeout. Wipe
+        // Supabase storage and reload for a fresh client.
+        setError('Session error detected. Resetting browser state and reloading…')
+        await recoverFromLockTimeout()
+        return
+      }
       setError(err.message || 'An error occurred. Please try again.')
     } finally {
       setIsLoading(false)
