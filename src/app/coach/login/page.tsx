@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Briefcase, Lock, Mail, AlertCircle } from 'lucide-react'
 import { getUserSystemRole } from '@/lib/auth/roles'
+import { isLockTimeoutError, recoverFromLockTimeout } from '@/lib/auth/lock-recovery'
 
 // Same-origin relative paths only — blocks open-redirect.
 function safeNext(raw: string | null): string | null {
@@ -72,6 +73,14 @@ function CoachLoginInner() {
 
     } catch (err) {
       console.error('Login error:', err)
+      if (isLockTimeoutError(err)) {
+        // Orphaned navigator.locks entry — auth call hung past the 10s
+        // lockAcquireTimeout. Wipe Supabase storage and reload so the user
+        // gets a fresh client instead of being stuck.
+        setError('Session error detected. Resetting browser state and reloading…')
+        await recoverFromLockTimeout()
+        return
+      }
       setError('An unexpected error occurred')
       setLoading(false)
     }
