@@ -101,6 +101,7 @@ centralized token-manager — do not hand-roll token refresh.
 - Don't bypass hooks (`--no-verify`) or skip CI gates to "make it pass".
 - Don't add raw-SQL instructions to coach/client-facing UI — build the control.
 - Don't ship incremental patches before tracing the root cause.
+- **Don't add `// eslint-disable-next-line @typescript-eslint/no-explicit-any`** comments. That rule isn't configured in this project, so the disable directive itself errors at CI lint time (`Definition for rule '...' was not found.`). A plain `as any` cast is fine on its own — no rule flags it, so no comment is needed. This trap has bitten multiple PRs (notably #215 and #229 reverted on it); avoid the directive entirely.
 
 ## GSD planning workflow
 
