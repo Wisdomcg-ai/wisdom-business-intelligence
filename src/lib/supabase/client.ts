@@ -34,7 +34,6 @@ export function createClient() {
   // `@supabase/ssr` type re-exports don't yet surface. Drop the cast once the
   // types catch up. Keep the runtime value.
   supabaseInstance = createBrowserClient(supabaseUrl, supabasePublishableKey, {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     auth: { lockAcquireTimeout: 10_000 } as any,
   })
 
