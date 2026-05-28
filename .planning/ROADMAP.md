@@ -1003,6 +1003,34 @@ Plans:
 - [ ] 66-03-PLAN.md — Service-role data-fetching disposition document for the 32 finance routes (report only)
 - [ ] 66-04-PLAN.md — Ops/admin section-permission decision document for admin/cron/coach routes (decision only)
 
+### Phase 68: Step 4 wizard MVP improvements + Armstrong & Co plan-data refresh
+
+**Goal:** Ship two coordinated workstreams: (A) refresh Armstrong & Co's plan data to reflect the 2026-05-12 coaching session — dedupe `strategic_initiatives`, quarter-assign initiatives, add diversification ideas, fix team roster, add missing KPIs, correct owner-hours data, polish values/mission/SWOT, and capture a baseline `plan_snapshots` row; (B) ship the Step 4 wizard MVP UX/bug-fix changes (B2–B8, B15, B16) that fix latent issues (Owner Hours row dropped when year1=0, dead `handleStaggerByPriority`, `current_remainder` boundary wrong for extended-period plans, `autoSplitEvenly` excludes remainder when extended) and add coach-facing affordances (category/priority badges, engine balance bar, filterable Available pool, per-quarter notes, plan-snapshot save). Methodology preserved: `MAX_PER_QUARTER = 5`. No schema changes; all writes additive at the JSONB layer.
+
+**Requirements**: TBD (operational phase; goal-derived must_haves per plan)
+**Depends on:** Phase 66, Phase 67 (multi-currency, codebase-resident)
+**Source:** `docs/armstrong-update-and-step4-plan.md` (PRD)
+**Plans:** 15 plans
+
+Plans:
+- [ ] 68-01-PLAN.md — Pre-write snapshot of all Armstrong-affected tables (rollback baseline)
+- [ ] 68-02-PLAN.md — A1+A2: dedupe strategic_initiatives + quarter-assign FY27
+- [ ] 68-03-PLAN.md — A3: insert 13 diversification ideas as exploratory strategic_ideas
+- [ ] 68-04-PLAN.md — A4+A6: team roster (Pablo/Kye/Carly/Cooper/Chris) + owner-hours backfill
+- [ ] 68-05-PLAN.md — A5: insert 8 active KPIs (Revenue Invoiced, Quote-to-Win, Luke Hours, etc.)
+- [ ] 68-06-PLAN.md — A7+A8+A9: refine core values (9 we statements), mission, SWOT touch-ups
+- [ ] 68-07-PLAN.md — A11: sales-process documentation note on Unpack sales process initiative
+- [ ] 68-08-PLAN.md — A10: plan_snapshots baseline (Post 2026-05-12 session refresh)
+- [ ] 68-09-PLAN.md — B2+B3: Owner Hours row always shown + surface Stagger by Priority button
+- [ ] 68-10-PLAN.md — B15+B16: extended-period remainder boundary fix + autoSplitEvenly 5-period
+- [ ] 68-11-PLAN.md — B4: category + priority badges on initiative cards (both kanban + Available)
+- [ ] 68-12-PLAN.md — B5: per-quarter 6px engine balance bar
+- [ ] 68-13-PLAN.md — B6: filterable Available pool by category chips
+- [ ] 68-14-PLAN.md — B7: per-quarter notes textarea (additive period_notes metricKey)
+- [ ] 68-15-PLAN.md — B8: explicit Save plan version button + POST /api/plan-snapshots
+
+> **Numbering note**: assigned 68 because Phase 67 (multi-currency consolidation fix) already exists as a directory `.planning/phases/67-multi-currency-consolidation-fix/` and shipped per commit 165e3f12, but was not listed in this roadmap. Phase 68 numbering avoids collision pending roadmap drift cleanup.
+
 ---
 
 ### Phase 59: Forecast Seed from Prior FY
