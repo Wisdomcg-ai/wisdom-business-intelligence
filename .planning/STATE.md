@@ -66,6 +66,7 @@ Goal: take the codebase from 55/100 to ~75/100 (Series-A defensible) over 6 phas
 ### Roadmap Evolution
 
 - Phase 66 added (2026-05-16): Section-Permission Follow-ups & Hardening — legacy `financials`-key audit (gates Phase 65 Wave 65-04 ENFORCE cutover), consolidated-route business-ID drift, service-role data-fetching audit, ops/admin section-permission audit. Source: 65-02-SUMMARY.md follow-ups.
+- Phase 68 added (2026-05-28): Step 4 wizard MVP improvements + Armstrong & Co plan-data refresh — 9 Step 4 UX/bug-fix items (B2–B8, B15, B16) + 11 Armstrong data-update items (A1–A11). Source: 2026-05-12 Armstrong & Co planning session transcript + `docs/armstrong-update-and-step4-plan.md`. Numbered 68 because Phase 67 (multi-currency-consolidation-fix) already exists as codebase-resident drift not listed in roadmap.
 
 ### Active production tenants
 
