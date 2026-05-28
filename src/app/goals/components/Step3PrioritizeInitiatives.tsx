@@ -54,9 +54,11 @@ export default function Step3PrioritizeInitiatives({
       misc: []
     }
 
+    // Unknown categories fall back to `misc` instead of crashing — see
+    // Step2StrategicIdeas for full rationale.
     availableInitiatives.forEach(init => {
       const category = init.category || 'misc'
-      grouped[category].push(init)
+      ;(grouped[category] ?? grouped.misc).push(init)
     })
 
     return grouped

@@ -1100,8 +1100,12 @@ export default function EnhancedKPIModal({ isOpen, onClose, onSave, businessProf
       SYSTEMS: []
     }
 
+    // Defensive: KPI categories should always be in the static map above,
+    // but optional-chain the push so an unexpected category (e.g. stored
+    // as free text by a coach editing in another tool) silently drops the
+    // KPI from the grouped view instead of crashing the modal.
     availableKPIs.forEach(kpi => {
-      grouped[kpi.category].push(kpi)
+      grouped[kpi.category]?.push(kpi)
     })
 
     return grouped

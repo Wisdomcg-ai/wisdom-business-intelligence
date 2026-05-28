@@ -169,10 +169,13 @@ export default function Step2StrategicIdeas({
       misc: []
     }
 
-    // Group user ideas
+    // Group user ideas. Unknown categories fall back to `misc` instead of
+    // crashing the render — DB enum can contain values (e.g. 'growth') that
+    // the static bucket map above doesn't enumerate. Catches future enum
+    // drift without requiring this map to stay in lock-step with the DB.
     strategicIdeas.forEach(idea => {
       const category = idea.category || 'misc'
-      grouped[category].push(idea)
+      ;(grouped[category] ?? grouped.misc).push(idea)
     })
 
     return grouped
