@@ -124,6 +124,9 @@ export default function Step4AnnualPlan({
   const [isSavingNewPerson, setIsSavingNewPerson] = useState(false)
   // B6 (Phase 68): Available-pool category filter. 'all' = no filter.
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  // B7: per-quarter note in-progress draft (avoids firing setQuarterlyTargets
+  // on every keystroke; commits on blur).
+  const [draftQuarterNotes, setDraftQuarterNotes] = useState<Record<string, string>>({})
 
 
   // Load team members from Supabase or localStorage
@@ -741,6 +744,34 @@ export default function Step4AnnualPlan({
 
     setQuarterlyTargets(newTargets)
   }
+
+  // B7 (Phase 68) — per-quarter notes ("why this quarter?") persisted via
+  // the existing quarterlyTargets JSONB shape. Uses a magic metricKey
+  // 'period_notes' whose inner record shape matches the existing
+  // {q1,q2,q3,q4,current_remainder?} pattern — no Step4Props type change
+  // required. Tolerant read: missing notes default to empty string.
+  const getQuarterNote = (quarterId: string): string => {
+    const notesByQuarter = quarterlyTargets['period_notes'] as Record<string, string> | undefined
+    return notesByQuarter?.[quarterId] ?? ''
+  }
+
+  const setQuarterNote = (quarterId: string, value: string) => {
+    const existing = (quarterlyTargets['period_notes'] || { q1: '', q2: '', q3: '', q4: '' }) as Record<string, string>
+    setQuarterlyTargets({
+      ...quarterlyTargets,
+      // 'period_notes' is an additive metricKey — same shape as q1/q2/q3/q4
+      // metric records, just stored as string text instead of numeric values.
+      period_notes: {
+        ...existing,
+        [quarterId]: value,
+      } as { q1: string; q2: string; q3: string; q4: string; current_remainder?: string },
+    })
+  }
+
+  // While the textarea is focused, render the local draft; once the field
+  // blurs we drop the draft entry so future reads come from quarterlyTargets.
+  const getQuarterNoteDraft = (quarterId: string) =>
+    draftQuarterNotes[quarterId] !== undefined ? draftQuarterNotes[quarterId] : getQuarterNote(quarterId)
 
   // Format currency for display
   const formatCurrency = (value: number) => {
@@ -1437,6 +1468,33 @@ export default function Step4AnnualPlan({
                                 )
                               })
                             )}
+                          </div>
+                          {/* B7: per-quarter notes. Commits on blur to avoid setQuarterlyTargets on every keystroke. */}
+                          <div className="mt-2 pt-2 border-t border-gray-200">
+                            <label
+                              htmlFor={`quarter-notes-${quarter.id}`}
+                              className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 block mb-1"
+                            >
+                              Why this quarter?
+                            </label>
+                            <textarea
+                              id={`quarter-notes-${quarter.id}`}
+                              value={getQuarterNoteDraft(quarter.id)}
+                              onChange={(e) => setDraftQuarterNotes(prev => ({ ...prev, [quarter.id]: e.target.value }))}
+                              onBlur={(e) => {
+                                const value = e.target.value
+                                const current = getQuarterNote(quarter.id)
+                                if (value !== current) setQuarterNote(quarter.id, value)
+                                setDraftQuarterNotes(prev => {
+                                  const next = { ...prev }
+                                  delete next[quarter.id]
+                                  return next
+                                })
+                              }}
+                              placeholder="Optional — capture why these initiatives belong here"
+                              rows={2}
+                              className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-brand-orange focus:border-brand-orange resize-none"
+                            />
                           </div>
                         </div>
                       )
