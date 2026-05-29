@@ -950,7 +950,11 @@ export default function Step4AnnualPlan({
           { key: 'teamHeadcount', label: 'Team Headcount', year1: coreMetrics.teamHeadcount?.year1 },
           { key: 'ownerHoursPerWeek', label: 'Owner Hours / Week', year1: coreMetrics.ownerHoursPerWeek?.year1 },
         ]
-        const visibleRows = CORE_ROWS.filter(r => (r.year1 ?? 0) > 0)
+        // B2 (Phase 68): Owner Hours always visible — even when year1 isn't set.
+        // Coach can't drop it silently because Luke's "off the tools" trajectory
+        // is the whole point. When year1 is 0/unset for ownerHoursPerWeek, the
+        // Annual cell renders a "Set in Step 1 →" CTA (see render block below).
+        const visibleRows = CORE_ROWS.filter(r => (r.year1 ?? 0) > 0 || r.key === 'ownerHoursPerWeek')
         if (visibleRows.length === 0) return null
         return (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -999,7 +1003,18 @@ export default function Step4AnnualPlan({
                               <span className="font-semibold text-gray-900 text-sm">{m.label}</span>
                             </td>
                             <td className="p-3 text-center text-sm font-medium text-gray-700">
-                              {m.isPercentage ? `${m.year1}%` : m.isCurrency ? formatCurrency(m.year1 ?? 0) : (m.year1 ?? 0)}
+                              {m.key === 'ownerHoursPerWeek' && (m.year1 ?? 0) <= 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => { document.querySelector('[data-step="1"]')?.scrollIntoView({ behavior: 'smooth' }) }}
+                                  className="text-brand-orange underline hover:text-brand-orange-700 text-sm"
+                                  title="Set Owner Hours / Week in Step 1"
+                                >
+                                  Set in Step 1 →
+                                </button>
+                              ) : (
+                                m.isPercentage ? `${m.year1}%` : m.isCurrency ? formatCurrency(m.year1 ?? 0) : (m.year1 ?? 0)
+                              )}
                             </td>
                             {allPeriods.map((q) => {
                               const raw = metric?.[q.id] || ''
@@ -1121,12 +1136,25 @@ export default function Step4AnnualPlan({
                 <p className="text-sm text-gray-600">Drag initiatives into quarters or use the + Add dropdown — max {MAX_PER_QUARTER} per quarter</p>
               </div>
             </div>
-            <button
-              onClick={() => setExecutionCollapsed(!executionCollapsed)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              {executionCollapsed ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronUp className="w-5 h-5 text-gray-400" />}
-            </button>
+            <div className="flex items-center gap-2">
+              {/* B3 (Phase 68): surface the existing handleStaggerByPriority — function existed but no UI called it. */}
+              {!executionCollapsed && twelveMonthInitiatives.length > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleStaggerByPriority() }}
+                  className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded border border-brand-orange text-brand-orange hover:bg-brand-orange hover:text-white transition-colors"
+                  title="Distribute initiatives across Q1-Q4 by priority (HIGH first, LOW last)"
+                >
+                  Stagger by priority
+                </button>
+              )}
+              <button
+                onClick={() => setExecutionCollapsed(!executionCollapsed)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                {executionCollapsed ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronUp className="w-5 h-5 text-gray-400" />}
+              </button>
+            </div>
           </div>
           {!executionCollapsed && (
             <div className="border-t border-gray-200 p-4 sm:p-6 bg-gradient-to-b from-white to-gray-50">
