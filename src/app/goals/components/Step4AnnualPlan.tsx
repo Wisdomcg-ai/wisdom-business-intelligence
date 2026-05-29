@@ -517,6 +517,38 @@ export default function Step4AnnualPlan({
     return PRIORITY_PALETTE[priority.toLowerCase()] ?? null
   }
 
+  // B5 (Phase 68) — per-quarter engine balance: small stacked bar under each
+  // quarter card header showing the mix of initiative categories. Recomputed
+  // per render (≤5 items per quarter, negligible cost). Returns an empty
+  // array when the quarter has no items so the placeholder strip shows.
+  const computeCategoryBreakdown = (items: StrategicInitiative[]): Array<{ key: string; bg: string; label: string; count: number; widthPct: number }> => {
+    if (!items || items.length === 0) return []
+    const counts = new Map<string, number>()
+    for (const it of items) {
+      const raw = (it.category || 'uncategorised').trim().toLowerCase()
+      counts.set(raw, (counts.get(raw) || 0) + 1)
+    }
+    const total = items.length
+    // Stable order: known palette keys first (PALETTE-defined sequence),
+    // then unknowns alphabetical. Keeps the bar visually stable as the
+    // operator drags items between quarters.
+    const knownOrder = ['marketing', 'finance', 'people', 'systems', 'customer_experience', 'customer experience', 'cx', 'leadership', 'time', 'diversification', 'growth', 'operations', 'product', 'sales', 'other']
+    const known = knownOrder.filter(k => counts.has(k))
+    const unknown = Array.from(counts.keys()).filter(k => !knownOrder.includes(k)).sort()
+    const ordered = [...known, ...unknown]
+    return ordered.map(key => {
+      const style = getCategoryStyle(key) ?? { bg: 'bg-gray-300', text: 'text-gray-700', label: 'OTHER' }
+      const count = counts.get(key) ?? 0
+      return {
+        key,
+        bg: style.bg,
+        label: style.label,
+        count,
+        widthPct: (count / total) * 100,
+      }
+    })
+  }
+
   // Coloured cards (brand-navy / brand-orange) need white-on-translucent
   // badges, otherwise the contextual `bg-{color}-100` palette is unreadable.
   const overrideBadgeForColoredCard = (isColored: boolean, style: { bg: string; text: string; label: string }) => {
@@ -1286,6 +1318,25 @@ export default function Step4AnnualPlan({
                               <p className="text-[11px] text-gray-500 mt-0.5">{quarter.months}</p>
                             </div>
                           </div>
+                          {/* B5: per-quarter engine balance bar — category mix of assigned initiatives. */}
+                          {(() => {
+                            const segments = computeCategoryBreakdown(items)
+                            const titleText = segments.length === 0
+                              ? 'No initiatives assigned to this quarter yet'
+                              : segments.map(s => `${s.label}: ${s.count}`).join(' · ')
+                            return (
+                              <div
+                                className="engine-balance-bar h-1.5 w-full flex rounded-sm overflow-hidden mb-2 bg-gray-100"
+                                title={titleText}
+                                role="img"
+                                aria-label={`Engine balance: ${titleText}`}
+                              >
+                                {segments.map(s => (
+                                  <div key={s.key} className={s.bg} style={{ width: `${s.widthPct}%` }} />
+                                ))}
+                              </div>
+                            )
+                          })()}
                           <div className="flex items-center justify-between mb-1.5">
                             <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
                               Initiatives <span className="text-gray-400">({items.length}/{MAX_PER_QUARTER})</span>
