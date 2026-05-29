@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { formatDollar, parseDollarInput } from '../utils/formatting'
 import { calculateQuarters, deriveCurrentRemainderColumn, determinePlanYear, QuarterInfo } from '../utils/quarters'
 import { TeamMember, getInitials, getColorForName } from '../utils/team'
+import type { OnePagePlanData } from '@/app/one-page-plan/types'
 
 interface Step4Props {
   twelveMonthInitiatives: StrategicInitiative[]
@@ -127,6 +128,9 @@ export default function Step4AnnualPlan({
   // B7: per-quarter note in-progress draft (avoids firing setQuarterlyTargets
   // on every keystroke; commits on blur).
   const [draftQuarterNotes, setDraftQuarterNotes] = useState<Record<string, string>>({})
+  // B8 (Phase 68): "Save plan version" snapshot trigger state.
+  const [savingSnapshot, setSavingSnapshot] = useState(false)
+  const [lastSavedVersion, setLastSavedVersion] = useState<number | null>(null)
 
 
   // Load team members from Supabase or localStorage
@@ -854,6 +858,82 @@ export default function Step4AnnualPlan({
   const clearTargets = () => {
     if (!confirm('Clear all quarterly target values? Initiative assignments are not affected.')) return
     setQuarterlyTargets({})
+  }
+
+  // B8 (Phase 68): build the Step-4-owned slice of OnePagePlanData.
+  // vision/mission/coreValues/SWOT/companyName/ownerGoals are NOT computed
+  // here — the API route at /api/plan-snapshots reads them server-side from
+  // strategy_data + swot_items + business_profiles + businesses and merges
+  // them in before insert. Keeps the wizard component lean and matches the
+  // 68-08 baseline composition exactly.
+  type Step4PartialPlanData = Pick<OnePagePlanData,
+    'financialGoals' | 'coreMetrics' | 'kpis' | 'strategicInitiatives'
+    | 'quarterlyRocks' | 'currentQuarter' | 'currentQuarterLabel' | 'yearType' | 'planYear'>
+
+  const composePlanData = (): Step4PartialPlanData => {
+    const fg = financialData
+    const cm = coreMetrics
+    return {
+      financialGoals: {
+        year3:   { revenue: fg?.revenue?.year3 ?? 0, grossProfit: fg?.grossProfit?.year3 ?? 0, netProfit: fg?.netProfit?.year3 ?? 0 },
+        year2:   { revenue: fg?.revenue?.year2 ?? 0, grossProfit: fg?.grossProfit?.year2 ?? 0, netProfit: fg?.netProfit?.year2 ?? 0 },
+        year1:   { revenue: fg?.revenue?.year1 ?? 0, grossProfit: fg?.grossProfit?.year1 ?? 0, netProfit: fg?.netProfit?.year1 ?? 0 },
+        quarter: { revenue: 0, grossProfit: 0, netProfit: 0 },
+      },
+      coreMetrics: {
+        year3:   cm ?? {},
+        year2:   cm ?? {},
+        year1:   cm ?? {},
+        quarter: {},
+      },
+      kpis: kpis.map(k => ({
+        name: k.friendlyName || k.name,
+        category: ((k as unknown as { category?: string }).category) || 'General',
+        year3Target: Number(k.year3Target) || 0,
+        year1Target: Number(k.year1Target) || 0,
+        quarterTarget: 0,
+      })),
+      strategicInitiatives: twelveMonthInitiatives.map(i => {
+        const inQuarters: string[] = []
+        for (const [q, items] of Object.entries(annualPlanByQuarter)) {
+          if ((items || []).some(x => x.id === i.id || (x.title || '').trim().toLowerCase() === (i.title || '').trim().toLowerCase())) {
+            inQuarters.push(q.toUpperCase())
+          }
+        }
+        return { title: i.title, quarters: inQuarters, owner: i.assignedTo || undefined }
+      }),
+      quarterlyRocks: [],
+      currentQuarter: 'q1',
+      currentQuarterLabel: yearLabel,
+      yearType,
+      planYear,
+    }
+  }
+
+  const handleSaveSnapshot = async () => {
+    if (savingSnapshot) return
+    setSavingSnapshot(true)
+    try {
+      const step4_plan_data = composePlanData()
+      const res = await fetch('/api/plan-snapshots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_id: businessId, step4_plan_data }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) {
+        const msg = json?.error || `Save failed (${res.status})`
+        alert(`Could not save plan version: ${msg}`)
+        return
+      }
+      setLastSavedVersion(json.version_number as number)
+      alert(`Plan version ${json.version_number} saved.`)
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'network error'
+      alert(`Could not save plan version: ${message}`)
+    } finally {
+      setSavingSnapshot(false)
+    }
   }
 
   // Calculate section completion status
@@ -1603,6 +1683,27 @@ export default function Step4AnnualPlan({
           )}
         </div>
       )}
+
+      {/* B8 (Phase 68): Save plan version snapshot trigger */}
+      <div className="flex items-center justify-between bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Save plan version</h3>
+          <p className="text-xs text-gray-600 mt-0.5">
+            Capture current Step 4 state as a snapshot you can refer back to.
+            {lastSavedVersion !== null && (
+              <span className="ml-2 text-brand-orange font-semibold">Last saved: v{lastSavedVersion}</span>
+            )}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleSaveSnapshot}
+          disabled={savingSnapshot}
+          className="px-4 py-2 text-sm font-semibold rounded bg-brand-orange text-white hover:bg-brand-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {savingSnapshot ? 'Saving…' : 'Save plan version'}
+        </button>
+      </div>
 
     </div>
   )
